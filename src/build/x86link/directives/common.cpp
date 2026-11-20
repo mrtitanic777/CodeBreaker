@@ -1,6 +1,7 @@
 // build/x86link/directives/common.cpp -- the directives and options common to every format: file, library, name, option,
 // debug, system blocks, order, output, sort, language (a port of wlink's cmdall.c, and NewOutFile of cmdutils.c).
 #include "build/x86link/directives/common.hpp"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 
 #include <cstddef>
 #include <cstdlib>
@@ -37,7 +38,7 @@ namespace {
 CommonState& common_state() { return state().common; }
 
 bool ProcDosSeg() {
-    LinkState |= LS_DOSSEG_FLAG;
+    wlink().LinkState |= LS_DOSSEG_FLAG;
     DEBUG((DBG_OLD, "dosseg"));
     return true;
 }
@@ -51,62 +52,62 @@ bool ProcName() {
 }
 
 bool ProcDwarfDBI() {
-    if (LinkFlags & (LF_ANY_DBI_FLAG & ~LF_DWARF_DBI_FLAG)) {
+    if (wlink().LinkFlags & (LF_ANY_DBI_FLAG & ~LF_DWARF_DBI_FLAG)) {
         LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
-    LinkFlags |= LF_DWARF_DBI_FLAG;
+    wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
     return true;
 }
 
 bool ProcWatcomDBI() {
-    if (LinkFlags & (LF_ANY_DBI_FLAG & ~LF_OLD_DBI_FLAG)) {
+    if (wlink().LinkFlags & (LF_ANY_DBI_FLAG & ~LF_OLD_DBI_FLAG)) {
         LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
-    LinkFlags |= LF_OLD_DBI_FLAG;
+    wlink().LinkFlags |= LF_OLD_DBI_FLAG;
     return true;
 }
 
 bool ProcCodeviewDBI() {
-    if (LinkFlags & (LF_ANY_DBI_FLAG & ~LF_CV_DBI_FLAG)) {
+    if (wlink().LinkFlags & (LF_ANY_DBI_FLAG & ~LF_CV_DBI_FLAG)) {
         LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
-    LinkFlags |= LF_CV_DBI_FLAG;
+    wlink().LinkFlags |= LF_CV_DBI_FLAG;
     return true;
 }
 
 bool ProcHllDBI() {
-    if (LinkFlags & (LF_ANY_DBI_FLAG & ~LF_HLL_DBI_FLAG)) {
+    if (wlink().LinkFlags & (LF_ANY_DBI_FLAG & ~LF_HLL_DBI_FLAG)) {
         LnkMsg(LOC + LINE + WRN + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
-    LinkFlags |= LF_HLL_DBI_FLAG;
+    wlink().LinkFlags |= LF_HLL_DBI_FLAG;
     return true;
 }
 
 bool ProcLine() {
-    if ((LinkFlags & LF_ANY_DBI_FLAG) == 0) LinkFlags |= LF_DWARF_DBI_FLAG;
-    DBIFlag |= DBI_LINE;
+    if ((wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0) wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
+    wlink().DBIFlag |= DBI_LINE;
     return true;
 }
 
 bool ProcType() {
-    if ((LinkFlags & LF_ANY_DBI_FLAG) == 0) LinkFlags |= LF_DWARF_DBI_FLAG;
-    DBIFlag |= DBI_TYPE;
+    if ((wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0) wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
+    wlink().DBIFlag |= DBI_TYPE;
     return true;
 }
 
 bool ProcLocal() {
-    if ((LinkFlags & LF_ANY_DBI_FLAG) == 0) LinkFlags |= LF_DWARF_DBI_FLAG;
-    DBIFlag |= DBI_LOCAL;
+    if ((wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0) wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
+    wlink().DBIFlag |= DBI_LOCAL;
     return true;
 }
 
 bool ProcAll() {
-    if ((LinkFlags & LF_ANY_DBI_FLAG) == 0) LinkFlags |= LF_DWARF_DBI_FLAG;
-    DBIFlag |= DBI_ALL;
+    if ((wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0) wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
+    wlink().DBIFlag |= DBI_ALL;
     return true;
 }
 
@@ -131,8 +132,8 @@ bool ProcReference() { return process_list(AddReference, Want::include_dot); }
 
 bool ProcOSName() {
     if (reader().get(Sep::equals, Want::include_dot)) {
-        if (FmtData.osname != nullptr) MemFree(FmtData.osname);
-        FmtData.osname = MemToStringSafe(reader().text().data(), reader().text().size());
+        if (wlink().FmtData.osname != nullptr) MemFree(wlink().FmtData.osname);
+        wlink().FmtData.osname = MemToStringSafe(reader().text().data(), reader().text().size());
         return true;
     }
     return false;
@@ -140,20 +141,20 @@ bool ProcOSName() {
 
 // dead code elimination
 bool ProcEliminate() {
-    LinkFlags |= LF_STRIP_CODE;
+    wlink().LinkFlags |= LF_STRIP_CODE;
     return true;
 }
 
 bool ProcMaxErrors() {
-    if (!get_number(MaxErrors)) return false;
-    LinkFlags |= LF_MAX_ERRORS_FLAG;
+    if (!get_number(wlink().MaxErrors)) return false;
+    wlink().LinkFlags |= LF_MAX_ERRORS_FLAG;
     return true;
 }
 
 bool ProcSymFile() {
     if (reader().get(Sep::equals, Want::file_name)) {
-        if (SymFileName != nullptr) MemFree(SymFileName);
-        SymFileName = FileName(reader().text().data(), reader().text().size(), E_SYM, false);
+        if (wlink().SymFileName != nullptr) MemFree(wlink().SymFileName);
+        wlink().SymFileName = FileName(reader().text().data(), reader().text().size(), E_SYM, false);
     }
     return true;
 }
@@ -163,11 +164,11 @@ void* AddObjFile(const char* name, const char* membname, file_list** filelist) {
     member_list* member = nullptr;
     if (membname != nullptr) {
         member = (member_list*)(MemAllocSafe(sizeof(*member) - 1 + strlen(membname) + 1));
-        member->flags_dbi = DBIFlag;
+        member->flags_dbi = wlink().DBIFlag;
         member->flags_mod = (module_flags)(0);
         strcpy(member->name, membname);
         member->next = nullptr;
-        for (file = CurrSect->files; file != nullptr; file = file->next) {
+        for (file = wlink().CurrSect->files; file != nullptr; file = file->next) {
             if (FNAMECMPSTR(file->infile->name.u.ptr, name) == 0) {
                 cmd_flags() |= Flag::member_added;
                 if (file->u.member != nullptr) {
@@ -182,10 +183,10 @@ void* AddObjFile(const char* name, const char* membname, file_list** filelist) {
     }
     file = AllocNewFile(member);
     if (member != nullptr) {
-        file->infile = AllocUniqueFileEntry(name, UsrLibPath);
+        file->infile = AllocUniqueFileEntry(name, wlink().UsrLibPath);
         file->infile->status |= INSTAT_LIBRARY;
     } else {
-        file->infile = AllocFileEntry(name, ObjPath);
+        file->infile = AllocFileEntry(name, wlink().ObjPath);
     }
     *filelist = file;
     return file;
@@ -203,7 +204,7 @@ bool AddLibFile() {
     }
     CommonState& c = common_state();
     file_list* file = AllocNewFile(nullptr);
-    file->infile = AllocFileEntry(ptr, UsrLibPath);
+    file->infile = AllocFileEntry(ptr, wlink().UsrLibPath);
     file->next = *c.last_lib_file;
     *c.last_lib_file = file;
     c.last_lib_file = &file->next;
@@ -216,19 +217,19 @@ bool AddLibFile() {
 }
 
 bool ProcLibFile() {
-    if ((LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0) {
+    if ((wlink().LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0) {
         cmd_flags() |= Flag::files_before_debug;
     }
     CommonState& c = common_state();
-    if (c.last_lib_file == nullptr) c.last_lib_file = &Root->files;
+    if (c.last_lib_file == nullptr) c.last_lib_file = &wlink().Root->files;
     return process_list(AddLibFile, Want::file_name);
 }
 
 bool AddModFile() {
     char* membname;
     char* ptr = file_name(&membname);
-    AddHTableElem(Root->modFilesHashed, ptr);
-    LinkFlags |= LF_GOT_CHGD_FILES;
+    AddHTableElem(wlink().Root->modFilesHashed, ptr);
+    wlink().LinkFlags |= LF_GOT_CHGD_FILES;
     if (membname != nullptr) MemFree(membname);
     return true;
 }
@@ -268,7 +269,7 @@ bool AddFile() {
 }
 
 bool ProcFiles() {
-    if ((LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0) {
+    if ((wlink().LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0) {
         cmd_flags() |= Flag::files_before_debug;
     }
     return process_list(AddFile, Want::file_name);
@@ -322,32 +323,32 @@ bool ProcPath() {
         p_in = GetPathElement(p_in, end, &p);
     }
     *p = '\0';
-    new_path->next = ObjPath;
-    ObjPath = new_path;
+    new_path->next = wlink().ObjPath;
+    wlink().ObjPath = new_path;
     DEBUG((DBG_BASE, "path: %s", new_path->name));
     return true;
 }
 
 bool ProcMap() {
-    MapFlags |= MAP_FLAG;
+    wlink().MapFlags |= MAP_FLAG;
     if (reader().get(Sep::equals, Want::file_name)) {
-        if (MapFName != nullptr) MemFree(MapFName);
-        MapFName = FileName(reader().text().data(), reader().text().size(), E_MAP, false);
+        if (wlink().MapFName != nullptr) MemFree(wlink().MapFName);
+        wlink().MapFName = FileName(reader().text().data(), reader().text().size(), E_MAP, false);
         DEBUG((DBG_OLD, "produce map file"));
     }
     return true;
 }
 
 bool ProcMapLines() {
-    MapFlags |= MAP_LINES;
+    wlink().MapFlags |= MAP_LINES;
     return true;
 }
 
 bool ProcStack() {
     unsigned_32 value;
-    LinkFlags |= LF_STK_SIZE_FLAG;
+    wlink().LinkFlags |= LF_STK_SIZE_FLAG;
     const bool ret = get_number(value);
-    if (ret) StackSize = value;
+    if (ret) wlink().StackSize = value;
     return ret;
 }
 
@@ -358,21 +359,21 @@ bool ProcNameLen() {
         if (value == 0) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "NAMELEN");
         } else {
-            NameLen = value;
+            wlink().NameLen = value;
         }
     }
     return ret;
 }
 
 bool ProcCase() {
-    LinkFlags |= LF_CASE_FLAG;
+    wlink().LinkFlags |= LF_CASE_FLAG;
     SetSymCase();
     DEBUG((DBG_OLD, "case"));
     return true;
 }
 
 bool ProcNoCaseExact() {
-    LinkFlags &= ~LF_CASE_FLAG;
+    wlink().LinkFlags &= ~LF_CASE_FLAG;
     SetSymCase();
     DEBUG((DBG_OLD, "nocase"));
     return true;
@@ -384,14 +385,14 @@ bool ProcNoExtension() {
 }
 
 bool ProcNoCache() {
-    LinkFlags &= ~LF_CACHE_FLAG;
-    LinkFlags |= LF_NOCACHE_FLAG;
+    wlink().LinkFlags &= ~LF_CACHE_FLAG;
+    wlink().LinkFlags |= LF_NOCACHE_FLAG;
     return true;
 }
 
 bool ProcCache() {
-    LinkFlags &= ~LF_NOCACHE_FLAG;
-    LinkFlags |= LF_CACHE_FLAG;
+    wlink().LinkFlags &= ~LF_NOCACHE_FLAG;
+    wlink().LinkFlags |= LF_CACHE_FLAG;
     return true;
 }
 
@@ -401,7 +402,7 @@ bool AddDisable() {
     if (number16(value) == Number::ok) {
         value = value % 1000;
         if (value <= MSG_MAX_ERR_MSG_NUM) {
-            ClearBit(MsgFlags, value);
+            ClearBit(wlink().MsgFlags, value);
         } else {
             LnkMsg(WRN + LOC + LINE + MSG_INVALID_MSG_NUM, nullptr);
         }
@@ -416,39 +417,39 @@ bool ProcDisable() { return process_list(AddDisable, Want::normal); }
 bool ProcNoDefLibs() { return true; }
 
 bool ProcVerbose() {
-    MapFlags |= MAP_VERBOSE;
+    wlink().MapFlags |= MAP_VERBOSE;
     DEBUG((DBG_OLD, "verbose map file"));
     return true;
 }
 
 bool ProcUndefsOK() {
-    LinkFlags |= LF_UNDEFS_ARE_OK;
+    wlink().LinkFlags |= LF_UNDEFS_ARE_OK;
     DEBUG((DBG_OLD, "undefined symbols are OK"));
     return true;
 }
 
 bool ProcNoUndefsOK() {
-    LinkFlags &= ~LF_UNDEFS_ARE_OK;
+    wlink().LinkFlags &= ~LF_UNDEFS_ARE_OK;
     return true;
 }
 
 bool ProcRedefsOK() {
-    LinkFlags |= LF_REDEFS_OK;
+    wlink().LinkFlags |= LF_REDEFS_OK;
     return true;
 }
 
 bool ProcNoRedefs() {
-    LinkFlags &= ~LF_REDEFS_OK;
+    wlink().LinkFlags &= ~LF_REDEFS_OK;
     return true;
 }
 
 bool ProcCVPack() {
-    LinkFlags |= LF_CVPACK_FLAG;
+    wlink().LinkFlags |= LF_CVPACK_FLAG;
     return true;
 }
 
 bool ProcHLLPack() {
-    LinkFlags |= LF_HLLPACK_FLAG;
+    wlink().LinkFlags |= LF_HLLPACK_FLAG;
     return true;
 }
 
@@ -457,13 +458,13 @@ bool ProcIncremental() {
     if (any(cmd_flags() & Flag::after_incremental)) {
         LnkMsg(ERR + LOC + LINE + MSG_INC_NEAR_START, nullptr);
     }
-    LinkFlags |= LF_INC_LINK_FLAG;
+    wlink().LinkFlags |= LF_INC_LINK_FLAG;
     if (reader().get(Sep::equals, Want::file_name)) {
-        IncFileName = FileName(reader().text().data(), reader().text().size(), E_ILK, false);
+        wlink().IncFileName = FileName(reader().text().data(), reader().text().size(), E_ILK, false);
     } else if (exe_name() != nullptr) {
-        IncFileName = FileName(exe_name(), strlen(exe_name()), E_ILK, true);
+        wlink().IncFileName = FileName(exe_name(), strlen(exe_name()), E_ILK, true);
     } else {
-        IncFileName = MemStrdupSafe(DEFAULT_INC_NAME);
+        wlink().IncFileName = MemStrdupSafe(DEFAULT_INC_NAME);
     }
     ReadPermData();
 #endif
@@ -471,22 +472,22 @@ bool ProcIncremental() {
 }
 
 bool ProcQuiet() {
-    LinkFlags |= LF_QUIET_FLAG;
+    wlink().LinkFlags |= LF_QUIET_FLAG;
     return true;
 }
 
 bool ProcMangledNames() {
-    LinkFlags |= LF_DONT_UNMANGLE;
+    wlink().LinkFlags |= LF_DONT_UNMANGLE;
     return true;
 }
 
 bool ProcOpResource() {
     Reader& r = reader();
     if (r.get(Sep::equals, Want::file_name)) {
-        FmtData.res_name_only = true;
-        FmtData.resource = MemToStringSafe(r.text().data(), r.text().size());
+        wlink().FmtData.res_name_only = true;
+        wlink().FmtData.resource = MemToStringSafe(r.text().data(), r.text().size());
     } else if (r.get(Sep::none, Want::include_dot)) {
-        FmtData.resource = MemToStringSafe(r.text().data(), r.text().size());
+        wlink().FmtData.resource = MemToStringSafe(r.text().data(), r.text().size());
     } else {
         return false;
     }
@@ -494,22 +495,22 @@ bool ProcOpResource() {
 }
 
 bool ProcStatics() {
-    MapFlags |= MAP_STATICS;
+    wlink().MapFlags |= MAP_STATICS;
     return true;
 }
 
 bool ProcArtificial() {
-    MapFlags |= MAP_ARTIFICIAL;
+    wlink().MapFlags |= MAP_ARTIFICIAL;
     return true;
 }
 
 bool ProcAlphabetical() {
-    MapFlags |= MAP_ALPHA;
+    wlink().MapFlags |= MAP_ALPHA;
     return true;
 }
 
 bool ProcGlobal() {
-    MapFlags |= MAP_GLOBAL;
+    wlink().MapFlags |= MAP_GLOBAL;
     return true;
 }
 
@@ -529,18 +530,18 @@ bool ProcKorean() {
 }
 
 bool ProcShowDead() {
-    LinkFlags |= LF_SHOW_DEAD;
+    wlink().LinkFlags |= LF_SHOW_DEAD;
     return true;
 }
 
 bool ProcVFRemoval() {
-    LinkFlags |= LF_VF_REMOVAL;
+    wlink().LinkFlags |= LF_VF_REMOVAL;
     return true;
 }
 
 bool ProcStart() {
     if (!reader().get(Sep::equals, Want::include_dot)) return false;
-    StartInfo.user_specd = true;
+    wlink().StartInfo.user_specd = true;
     const std::string name = reader().str();
     SetStartSym(name.c_str());
     return true;
@@ -559,8 +560,8 @@ bool GetPackValue(unsigned_32* value, const char* message) {
 bool ProcPackcode() {
     unsigned_32 value;
     if (GetPackValue(&value, "PACKCODE")) {
-        PackCodeLimit = value;
-        LinkFlags |= LF_PACKCODE_FLAG;
+        wlink().PackCodeLimit = value;
+        wlink().LinkFlags |= LF_PACKCODE_FLAG;
         return true;
     }
     return false;
@@ -569,8 +570,8 @@ bool ProcPackcode() {
 bool ProcPackdata() {
     unsigned_32 value;
     if (GetPackValue(&value, "PACKDATA")) {
-        PackDataLimit = value;
-        LinkFlags |= LF_PACKDATA_FLAG;
+        wlink().PackDataLimit = value;
+        wlink().LinkFlags |= LF_PACKDATA_FLAG;
         return true;
     }
     return false;
@@ -657,18 +658,18 @@ void GetCommandBlock(sysblock** hdr, const char* name, Table endtab) {
 char** getStubNamePtr() {
 #ifdef _OS2
     if (HintFormat(MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD)) {
-        return &FmtData.u.os2fam.stub_file_name;
+        return &wlink().FmtData.u.os2fam.stub_file_name;
     }
 #endif
 #ifdef _DOS16M
     if (HintFormat(MK_DOS16M)) {
-        return &FmtData.u.d16m.stub;
+        return &wlink().FmtData.u.d16m.stub;
     }
 #endif
 #ifdef _PHARLAP
     if (HintFormat(MK_PHAR_LAP)) {
-        FmtData.def_ext = E_LOAD;   // want .exe instead of .exp now
-        return &FmtData.u.phar.stub;
+        wlink().FmtData.def_ext = E_LOAD;   // want .exe instead of .exp now
+        return &wlink().FmtData.u.phar.stub;
     }
 #endif
     return nullptr;
@@ -699,31 +700,31 @@ bool ProcVersion() {
     vb.what = "VERSION";
     const VersionPart result = get_version(vb, VersionPart::major | VersionPart::minor | VersionPart::revision, true);
     if (result != VersionPart::none) {
-        FmtData.major = vb.major;
-        FmtData.minor = vb.minor;
-        FmtData.revision = vb.revision;
-        FmtData.ver_specified = true;
+        wlink().FmtData.major = vb.major;
+        wlink().FmtData.minor = vb.minor;
+        wlink().FmtData.revision = vb.revision;
+        wlink().FmtData.ver_specified = true;
         return true;
     }
     return false;
 }
 
 bool ProcImplib() {
-    FmtData.make_implib = true;
-    FmtData.make_impfile = false;
-    MemFree(FmtData.implibname);
+    wlink().FmtData.make_implib = true;
+    wlink().FmtData.make_impfile = false;
+    MemFree(wlink().FmtData.implibname);
     if (reader().get(Sep::equals, Want::file_name)) {
-        FmtData.implibname = MemToStringSafe(reader().text().data(), reader().text().size());
+        wlink().FmtData.implibname = MemToStringSafe(reader().text().data(), reader().text().size());
     }
     return true;
 }
 
 bool ProcImpFile() {
-    FmtData.make_implib = true;
-    FmtData.make_impfile = true;
-    MemFree(FmtData.implibname);
+    wlink().FmtData.make_implib = true;
+    wlink().FmtData.make_impfile = true;
+    MemFree(wlink().FmtData.implibname);
     if (reader().get(Sep::equals, Want::file_name)) {
-        FmtData.implibname = MemToStringSafe(reader().text().data(), reader().text().size());
+        wlink().FmtData.implibname = MemToStringSafe(reader().text().data(), reader().text().size());
     }
     return true;
 }
@@ -734,7 +735,7 @@ bool AddSymTrace() {
 }
 
 bool ProcSymTrace() {
-    LinkFlags |= LF_TRACE_FLAG;
+    wlink().LinkFlags |= LF_TRACE_FLAG;
     return process_list(AddSymTrace, Want::include_dot);
 }
 
@@ -747,35 +748,35 @@ bool AddModTrace() {
 }
 
 bool ProcModTrace() {
-    LinkFlags |= LF_TRACE_FLAG;
+    wlink().LinkFlags |= LF_TRACE_FLAG;
     return process_list(AddModTrace, Want::file_name);
 }
 
 bool ProcFarCalls() {
-    LinkFlags |= LF_FAR_CALLS_FLAG;
+    wlink().LinkFlags |= LF_FAR_CALLS_FLAG;
     DEBUG((DBG_OLD, "Far Calls optimization"));
     return true;
 }
 
 bool ProcNoFarCalls() {
-    LinkFlags &= ~LF_FAR_CALLS_FLAG;
+    wlink().LinkFlags &= ~LF_FAR_CALLS_FLAG;
     DEBUG((DBG_OLD, "No Far Calls optimization"));
     return true;
 }
 
 #ifdef _RAW
 bool ProcOutputRaw() {
-    FmtData.output_raw = true;
+    wlink().FmtData.output_raw = true;
     return true;
 }
 
 bool ProcOutputHex() {
-    FmtData.output_hex = true;
+    wlink().FmtData.output_hex = true;
     return true;
 }
 
 bool ProcOutputStart() {
-    FmtData.output_start = true;
+    wlink().FmtData.output_start = true;
     return true;
 }
 
@@ -783,8 +784,8 @@ bool ProcOutputOffset() {
     unsigned_32 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number retval = number(value);
-    if (retval == Number::ok && (value <= (0xFFFFUL << FmtData.SegShift) || HintFormat(~MK_SEGMENTED))) {
-        FmtData.output_offset = value;
+    if (retval == Number::ok && (value <= (0xFFFFUL << wlink().FmtData.SegShift) || HintFormat(~MK_SEGMENTED))) {
+        wlink().FmtData.output_offset = value;
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "OUTPUT OFFSET");
@@ -796,8 +797,8 @@ bool ProcOutputHshift() {
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number ret = number16(value);
     if (ret == Number::ok && value < 16) {
-        FmtData.HexSegShift = 16 - value;
-        FmtData.output_hshift = true;
+        wlink().FmtData.HexSegShift = 16 - value;
+        wlink().FmtData.output_hshift = true;
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "OUTPUT HSHIFT");
@@ -810,7 +811,7 @@ bool ProcHshift() {
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number ret = number16(value);
     if (ret == Number::ok && value < 16) {
-        FmtData.Hshift = value;
+        wlink().FmtData.Hshift = value;
         SetSegMask();
         return true;
     }
@@ -823,7 +824,7 @@ bool ProcFillchar() {
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number ret = number16(value);
     if (ret == Number::ok && value < 256) {
-        FmtData.FillChar = value;
+        wlink().FmtData.FillChar = value;
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "FILLCHAR");
@@ -915,15 +916,15 @@ bool ProcObjAlign() {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "OBJALIGN");
         value = _64K;
     }
-    FmtData.objalign = value;
+    wlink().FmtData.objalign = value;
     ChkBase(value);
     return true;
 }
 
 bool ProcDescription() {
     if (!reader().get(Sep::none, Want::include_dot)) return false;
-    if (FmtData.description != nullptr) MemFree(FmtData.description);
-    FmtData.description = MemToStringSafe(reader().text().data(), reader().text().size());
+    if (wlink().FmtData.description != nullptr) MemFree(wlink().FmtData.description);
+    wlink().FmtData.description = MemToStringSafe(reader().text().data(), reader().text().size());
     return true;
 }
 
@@ -1014,21 +1015,21 @@ bool ProcHeapSize() {
 
 #if defined(_PHARLAP) || defined(_QNX) || defined(_OS2) || defined(_ELF) || defined(_RAW)
 bool ProcOffset() {
-    if (!get_number(FmtData.base)) return false;
+    if (!get_number(wlink().FmtData.base)) return false;
 #ifdef _PHARLAP
-    if (FmtData.type & MK_PHAR_LAP) {
+    if (wlink().FmtData.type & MK_PHAR_LAP) {
         ChkBase(_4K);
         return true;
     }
 #endif
 #ifdef _QNX
-    if (FmtData.type & MK_QNX_FLAT) {
+    if (wlink().FmtData.type & MK_QNX_FLAT) {
         ChkBase(_4K);
         return true;
     }
 #endif
 #ifdef _RAW
-    if (FmtData.type & MK_RAW) {
+    if (wlink().FmtData.type & MK_RAW) {
         ChkBase(256);
         return true;
     }
@@ -1063,7 +1064,7 @@ bool ProcXDbg() {
 }
 
 bool ProcIntDbg() {
-    LinkState |= LS_INTERNAL_DEBUG;
+    wlink().LinkState |= LS_INTERNAL_DEBUG;
     return true;
 }
 #endif
@@ -1099,12 +1100,12 @@ constexpr Entry OrderClassOpts[] = {
 bool ProcOrdClass() {
     if (!reader().get(Sep::none, Want::include_dot)) return false;
     CommonState& c = common_state();
-    LinkState |= LS_SPEC_ORDER_FLAG;
+    wlink().LinkState |= LS_SPEC_ORDER_FLAG;
     ORDER_CLASS* last = c.current_order_class;
     c.current_order_class = (ORDER_CLASS*)(MemAllocSafe(sizeof(ORDER_CLASS)));
     ORDER_CLASS* cur = c.current_order_class;
     if (last == nullptr) {
-        CurrSect->orderlist = cur;
+        wlink().CurrSect->orderlist = cur;
     } else {
         last->NextClass = cur;
     }
@@ -1127,7 +1128,7 @@ constexpr Entry OrderOpts[] = {
 
 bool ProcOrder() {
     bool ret = false;
-    common_state().current_order_class = CurrSect->orderlist;
+    common_state().current_order_class = wlink().CurrSect->orderlist;
     if (common_state().current_order_class != nullptr) {
         LnkMsg(WRN + LOC + LINE + MSG_DUP_DIRECTIVE, "s", "OPTION");
     }
@@ -1145,9 +1146,9 @@ constexpr Entry OutputOpts[] = {
 };
 
 bool ProcOutput() {
-    FmtData.output_offset = 0L;
-    FmtData.output_hshift = false;
-    FmtData.output_start = false;
+    wlink().FmtData.output_offset = 0L;
+    wlink().FmtData.output_hshift = false;
+    wlink().FmtData.output_start = false;
     bool ret = false;
     while (process_one(OutputOpts, Sep::none)) ret = true;
     return ret;
@@ -1256,7 +1257,7 @@ constexpr Entry SortOptions[] = {
 };
 
 bool ProcSort() {
-    MapFlags |= MAP_SORT;
+    wlink().MapFlags |= MAP_SORT;
     if (!process_one(SortOptions, Sep::none)) return true;
     process_one(SortOptions, Sep::none);
     return true;
@@ -1287,12 +1288,12 @@ bool ProcDebug() {
         LnkMsg(WRN + LOC + LINE + MSG_DEBUG_AFTER_FILES, nullptr);
     }
     const bool gotmod = process_one(DbgMods, Sep::none);
-    DBIFlag = (dbi_flags)(0);
+    wlink().DBIFlag = (dbi_flags)(0);
     if (process_one(PosDbgMods, Sep::none)) {
         while (process_one(PosDbgMods, Sep::comma)) {
         }
     } else {
-        DBIFlag |= DBI_ALL;
+        wlink().DBIFlag |= DBI_ALL;
         if (!gotmod) return false;
     }
     return true;
@@ -1428,10 +1429,10 @@ constexpr Entry Models[] = {
 };
 
 bool ProcFormat() {
-    if (LinkState & LS_FMT_SPECIFIED) {
+    if (wlink().LinkState & LS_FMT_SPECIFIED) {
         LnkMsg(FTL + LOC + LINE + MSG_MULTIPLE_MODES_FOUND, nullptr);
     }
-    LinkState |= LS_FMT_SPECIFIED;
+    wlink().LinkState |= LS_FMT_SPECIFIED;
     return process_one_or_fail(Models, Sep::none);
 }
 
@@ -1504,7 +1505,7 @@ constexpr Entry Directives[] = {
 
 // `library` (DOS's `fixedlib` runs it too)
 bool ProcLibrary() {
-    if ((LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0 && !in_system_block()) {
+    if ((wlink().LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0 && !in_system_block()) {
         cmd_flags() |= Flag::files_before_debug;
     }
     return process_list(AddLib, Want::file_name);
@@ -1512,12 +1513,12 @@ bool ProcLibrary() {
 
 // Note: align must be a power of 2
 void ChkBase(offset align) {
-    if (FmtData.objalign != NO_BASE_SPEC && FmtData.objalign > align) {
-        align = FmtData.objalign;
+    if (wlink().FmtData.objalign != NO_BASE_SPEC && wlink().FmtData.objalign > align) {
+        align = wlink().FmtData.objalign;
     }
-    if (FmtData.base != NO_BASE_SPEC && (FmtData.base & (align - 1)) != 0) {
+    if (wlink().FmtData.base != NO_BASE_SPEC && (wlink().FmtData.base & (align - 1)) != 0) {
         LnkMsg(WRN + LOC + LINE + MSG_OFFSET_MUST_BE_ALIGNED, "l", align);
-        FmtData.base = __ROUND_UP_SIZE(FmtData.base, align);
+        wlink().FmtData.base = __ROUND_UP_SIZE(wlink().FmtData.base, align);
     }
 }
 
@@ -1530,7 +1531,7 @@ bool DoParseDirectiveSuicide() { return process_one_or_fail(Directives, Sep::non
 bool DoMatchDirective(std::string_view word) { return matches(Directives, word); }
 
 outfilelist* NewOutFile(char* filename) {
-    for (outfilelist* fnode = OutFiles; fnode != nullptr; fnode = fnode->next) {
+    for (outfilelist* fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next) {
         if (FNAMECMPSTR(filename, fnode->fname) == 0) {
             MemFree(filename);   // don't need this now.
             return fnode;
@@ -1539,8 +1540,8 @@ outfilelist* NewOutFile(char* filename) {
     // file name not already in list, so add a list entry.
     outfilelist* fnode = (outfilelist*)(MemAllocSafe(sizeof(outfilelist)));
     InitBuffFile(fnode, filename, true);
-    fnode->next = OutFiles;
-    OutFiles = fnode;
+    fnode->next = wlink().OutFiles;
+    wlink().OutFiles = fnode;
     return fnode;
 }
 
@@ -1552,7 +1553,7 @@ void ResetCmdAll(void) {
     auto& c = cb::x86link::directives::common_state();
     c.last_file.u.file = nullptr;
     c.last_lib_file = nullptr;
-    UsrLibPath = nullptr;
+    wlink().UsrLibPath = nullptr;
 }
 
 sysblock* FindSysBlock(const char* name) {

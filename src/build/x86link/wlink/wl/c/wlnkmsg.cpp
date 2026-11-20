@@ -39,6 +39,7 @@
 #include <sys/types.h>
 #include "wio.h"
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "dbginfo.h"
 #include "mapio.h"
 #include "fileio.h"
@@ -60,7 +61,7 @@
 
 bool InitMsg( void )
 {
-    BannerPrinted = false;   /* CodeBreaker: each link in the process prints its banner, as wlink.exe does */
+    wlink().BannerPrinted = false;   /* CodeBreaker: each link in the process prints its banner, as wlink.exe does */
     return( true );
 }
 
@@ -225,7 +226,7 @@ bool res_seek( FILE *fp, long amount, int where )
     DbgAssert( where != SEEK_END );
     DbgAssert( !( where == SEEK_CUR && amount < 0 ) );
 
-    if( FP2POSIX( fp ) == Root->outfile->handle ) {
+    if( FP2POSIX( fp ) == wlink().Root->outfile->handle ) {
         if( where == SEEK_CUR ) {
             unsigned long   old_pos;
             unsigned long   new_pos;
@@ -249,7 +250,7 @@ bool res_seek( FILE *fp, long amount, int where )
 long res_tell( FILE *fp )
 /***********************/
 {
-    if( FP2POSIX( fp ) == Root->outfile->handle ) {
+    if( FP2POSIX( fp ) == wlink().Root->outfile->handle ) {
         return( PosLoad() );
     }
     return( QPos( FP2POSIX( fp ) ) );

@@ -34,6 +34,7 @@
 #include <cstddef>
 #include <cstring>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "exedos.h"
 #include "loadfile.h"
 #include "dosstub.h"
@@ -61,10 +62,10 @@ unsigned_32 doExeTypeString()
     unsigned_32 msgsize;
 
     Msg_Get( MSG_IS_A_EXE, rc_buff.data() );
-    msgsize = static_cast<unsigned_32>( FmtStr( TokBuff, TokSize, rc_buff.data() ) );
-    TokBuff[msgsize++] = '\r';
-    TokBuff[msgsize++] = '\n';
-    TokBuff[msgsize] = '$';     /* end of string for int 21 fn. 9 */
+    msgsize = static_cast<unsigned_32>( FmtStr( wlink().TokBuff, wlink().TokSize, rc_buff.data() ) );
+    wlink().TokBuff[msgsize++] = '\r';
+    wlink().TokBuff[msgsize++] = '\n';
+    wlink().TokBuff[msgsize] = '$';     /* end of string for int 21 fn. 9 */
     return msgsize + 1;
 }
 
@@ -88,7 +89,7 @@ unsigned_32 WriteDOSDefStub( unsigned_32 stub_align )
 
     std::memcpy( stub.data() + NE_HEADER_OFFSET, &fullsize, sizeof( fullsize ) );
     WriteLoad( stub.data(), stub.size() );
-    WriteLoad( TokBuff, msgsize );
+    WriteLoad( wlink().TokBuff, msgsize );
     PadLoad( fullsize - msgsize - stubsize );
     return fullsize;
 }

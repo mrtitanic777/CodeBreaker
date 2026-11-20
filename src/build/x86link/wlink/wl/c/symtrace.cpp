@@ -32,6 +32,7 @@
 
 #include <string.h>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "library.h"
 #include "overlays.h"
 #include "symtrace.h"
@@ -128,7 +129,7 @@ void CheckTraces( void )
             }
             MemFree( info );
         } else {
-            for( file = ObjLibFiles; file != nullptr; file = file->next ) {
+            for( file = wlink().ObjLibFiles; file != nullptr; file = file->next ) {
                 if( FNAMECMPSTR( file->infile->name.u.ptr, info->u.name ) == 0 ) {
                     info->found = true;
                     MemFree( info->u.name );

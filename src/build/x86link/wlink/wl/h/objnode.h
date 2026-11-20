@@ -54,7 +54,3 @@ extern void             FreeSegData( void * );
 extern list_of_names    *MakeListName( char *, size_t );
 extern unsigned long    BadObjFormat( void );
 
-extern nodearray_handle ExtNodes;           // ptr to obj file import list
-extern nodearray_handle SegNodes;           // ptr to obj file segment list
-extern nodearray_handle GrpNodes;           // ptr to obj file group list
-extern nodearray_handle NameNodes;          // ptr to obj file lname list

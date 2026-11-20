@@ -35,6 +35,7 @@
 #include <cstring>
 #include <string_view>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "alloc.h"
 #include "hll.h"
 #include "virtmem.h"
@@ -147,9 +148,9 @@ static segment hllGetSegment( seg_leader *seg )
 
     if( ( seg != nullptr )
       && ( seg->group != nullptr ) ) {
-        if( FmtData.type & (MK_REAL_MODE | MK_FLAT_OFFS | MK_ID_SPLIT) ) {
+        if( wlink().FmtData.type & (MK_REAL_MODE | MK_FLAT_OFFS | MK_ID_SPLIT) ) {
             segm_index = 1;
-            for( group = Groups; group != nullptr; group = group->next ) {
+            for( group = wlink().Groups; group != nullptr; group = group->next ) {
                 if( group == seg->group )
                     return( segm_index );
                 segm_index++;
@@ -176,7 +177,7 @@ static void hllGenSubSection( hll_sst sect, unsigned size )
     hll_dir_entry   entry;
 
     entry.subsection = sect;
-    entry.iMod = CurrMod ? CurrMod->u3.hll->modidx : 0;
+    entry.iMod = wlink().CurrMod ? wlink().CurrMod->u3.hll->modidx : 0;
     entry.cb = size;
     switch( sect ) {
     case hll_sstModules:
@@ -207,7 +208,7 @@ void HllP1ModuleFinished( mod_entry *obj )
 
     if( MOD_NOT_DEBUGGABLE( obj ) )
         return;
-    CurrMod = obj;
+    wlink().CurrMod = obj;
 
     /* assign module index */
     obj->u3.hll->modidx = ++st.mod_index;
@@ -242,7 +243,7 @@ void HllAddModule( mod_entry *obj, section *sect )
             obj, obj->name.u.ptr, sect, obj->modinfo & MOD_IMPORT_LIB,
             obj->u3.hll->pubsize ));
 
-    CurrMod = obj; // paranoia
+    wlink().CurrMod = obj; // paranoia
 
     /* generate the module entry */
     namelen = static_cast<byte>( std::string_view( obj->name.u.ptr ).size() );
@@ -298,7 +299,7 @@ void HllGenModule( void )
 /***********************/
 // generate an sstSrcModule
 {
-    DEBUG(( DBG_HLL, "HllGenModule: CurrMod=%p %s", CurrMod, CurrMod->name));
+    DEBUG(( DBG_HLL, "HllGenModule: CurrMod=%p %s", wlink().CurrMod, wlink().CurrMod->name));
     // FIXME: sort the old-style linenumbers (not supported yet)
     hllSrcModHeader();
 }
@@ -326,7 +327,7 @@ void HllAddGlobal( symbol *sym )
         unsigned size;
 
         size = static_cast<byte>( std::string_view( sym->name.u.ptr ).size() ) + sizeof( hll_public );
-        CurrMod->u3.hll->pubsize += size;
+        wlink().CurrMod->u3.hll->pubsize += size;
         state().sect_sizes[index_of( HllSect::misc )] += size;
         DEBUG(( DBG_HLL, "HllAddGlobal: size=%h sym=%p %s",
                 size, sym, sym->name ));
@@ -457,7 +458,7 @@ void HllDefClass( class_entry *class_, unsigned size )
     case CLASS_MS_LOCAL:
     case CLASS_HLL_LINE:
         /* add the class to the DBI groups (we'll traverse them later) */
-        group = AllocGroup( AutoGrpName, &DBIGroups );
+        group = AllocGroup( AutoGrpName, &wlink().DBIGroups );
         group->g.class_ = class_;
         group->addr.seg = 0;
 
@@ -491,10 +492,10 @@ static void hllDefSegData( void *_sdata )
         default:
             return;
         }
-        CurrMod = sdata->o.mod;
+        wlink().CurrMod = sdata->o.mod;
         DEBUG(( DBG_HLL, "hllDefSegData: %h: iMod=%d sect=%d length=%h align=2**%d %s",
-                misc - state().hll_base, CurrMod->u3.hll->modidx, sect, sdata->length,
-                sdata->align, CurrMod->name ));
+                misc - state().hll_base, wlink().CurrMod->u3.hll->modidx, sect, sdata->length,
+                sdata->align, wlink().CurrMod->name ));
 
         hllGenSubSection( sect, sdata->length );
         CopyInfo( misc, sdata->u1.vm_ptr, sdata->length );
@@ -563,7 +564,7 @@ void HllAddrStart( void )
     hllDumpInfo( HllSect::directory, &dirhdr, sizeof( dirhdr ) );
 
     /* Walk the debug info groups and dump the data in those segments. */
-    for( group = DBIGroups; group != nullptr; group = group->next ) {
+    for( group = wlink().DBIGroups; group != nullptr; group = group->next ) {
         RingLookup( group->g.class_->segs, hllDefLeader, group );
         group->g.class_ = nullptr;
     }

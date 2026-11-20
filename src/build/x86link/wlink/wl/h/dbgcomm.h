@@ -74,4 +74,3 @@ extern void     DBIAddrInfoScan( seg_leader *,
 extern void     DBILineWalk( lineinfo *, line_walk_fn * );
 extern unsigned DBICalcLineQty( lineinfo * );
 
-extern group_entry *    DBIGroups;

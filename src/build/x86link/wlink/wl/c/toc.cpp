@@ -33,6 +33,7 @@
 
 #include <cstring>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "toc.h"
 #include "hash.h"
 #include "virtmem.h"
@@ -48,8 +49,6 @@
 
 constexpr offset kBogus = 0xa5a5a5a5;
 
-offset TocSize;
-offset TocShift;
 
 namespace {
 
@@ -119,8 +118,8 @@ void AddToToc( const TocEntryId &e )
         TocEntry *entry = static_cast<TocEntry *>(MemAllocSafe( sizeof( *entry ) ));
         *entry = TocEntry{};
         entry->e = e;
-        entry->pos = static_cast<int>( TocSize );
-        TocSize += sizeof( offset );
+        entry->pos = static_cast<int>( wlink().TocSize );
+        wlink().TocSize += sizeof( offset );
         AddHTableElem( st.Toc, entry );
     }
 }
@@ -152,7 +151,7 @@ void ConvertTocEntry( void *e )
 
 offset OffFromToc( offset off )
 {
-    offset toff = off - TocShift;
+    offset toff = off - wlink().TocShift;
     if( static_cast<signed_16>( toff ) != static_cast<signed_32>( toff ) ) {
         LnkMsg( ERR+MSG_TOC_TOO_BIG, nullptr );
     }
@@ -179,7 +178,7 @@ void WriteOutTokElem( void *_elem, void *buf )
         segdata *sdata = elem->e.sdata;
         seg_leader *leader = sdata->u.leader;
         addr = elem->e.u.off + sdata->a.delta + leader->group->linear
-                        + leader->seg_addr.off +  FmtData.base;
+                        + leader->seg_addr.off +  wlink().FmtData.base;
     } else {
         addr = SymbolAbsAddr( elem->e.u.sym );
     }
@@ -195,7 +194,7 @@ void ResetToc( void )
 {
     TocState &st = state();
     st.Toc = nullptr;
-    TocSize = 0;
+    wlink().TocSize = 0;
     st.TocName = nullptr;
     st.TocSym = nullptr;
 }
@@ -211,14 +210,14 @@ void InitToc( void )
 {
     TocState &st = state();
     st.Toc = CreateHTable( 1024, TocEntryHashFunc, TocEntryCmp, MemAllocSafe, MemFree );
-    TocSize = 0;
-    if( (LinkState & LS_HAVE_PPC_CODE)
-      && (FmtData.type & MK_PE) ) {
+    wlink().TocSize = 0;
+    if( (wlink().LinkState & LS_HAVE_PPC_CODE)
+      && (wlink().FmtData.type & MK_PE) ) {
         st.TocName = TocSymName;
-        TocShift = 0x8000;
+        wlink().TocShift = 0x8000;
     } else {
         st.TocName = GotSymName;
-        TocShift = kBogus;
+        wlink().TocShift = kBogus;
         // It is an error to use TocShift until PrepareToc is called
     }
 }
@@ -265,8 +264,8 @@ void PrepareToc( void )
     // (OS/2 PPC's GOT adjustment, development on hold in the original, is not carried.)
     if( st.TocSym != nullptr )  {
         st.TocSym->info |= SYM_1_DCE_REF | SYM_DEFINED;
-        SetAddPubSym( st.TocSym, SYM_REGULAR, FakeModule, 0, 0 );
-        if( LinkFlags & LF_STRIP_CODE ) {
+        SetAddPubSym( st.TocSym, SYM_REGULAR, wlink().FakeModule, 0, 0 );
+        if( wlink().LinkFlags & LF_STRIP_CODE ) {
             CleanStripInfo( st.TocSym );
         }
     }
@@ -278,7 +277,7 @@ void SetTocAddr( offset off, group_entry *group )
     TocState &st = state();
     if( st.Toc != nullptr
       && st.TocSym != nullptr ) {
-        SET_SYM_ADDR( st.TocSym, off + TocShift, group->addr.seg );
+        SET_SYM_ADDR( st.TocSym, off + wlink().TocShift, group->addr.seg );
     }
 }
 

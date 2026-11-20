@@ -35,6 +35,7 @@
 #include <cstring>
 #include <string>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "objio.h"
 #include "newmem.h"
@@ -64,8 +65,6 @@ static constexpr size_t GLOBAL_TABALLOC = 1792 * sizeof( symbol * );    // 1st p
 
 int             (*CmpNRtn)( const char *, const char *, size_t );
 int             (*CmpRtn)( const char *, const char * );
-size_t          NameLen;
-symbol          *LastSym;
 
 namespace {
 
@@ -154,11 +153,11 @@ static constexpr std::array<unsigned, 256> ScatterTable = {{
 void ResetSym( void )
 /**************************/
 {
-    NameLen = 0;
+    wlink().NameLen = 0;
     st().SymList = nullptr;
-    HeadSym = nullptr;
-    LastSym = nullptr;
-    LinkFlags |= LF_CASE_FLAG;
+    wlink().HeadSym = nullptr;
+    wlink().LastSym = nullptr;
+    wlink().LinkFlags |= LF_CASE_FLAG;
     SetSymCase();
     ResetPermBlocks();
     ClearHashPointers();
@@ -215,7 +214,7 @@ static void DumpTable( symbol **table, unsigned tabsize )
 static void DumpHashTable( void )
 /*******************************/
 {
-    if( LinkState & LS_INTERNAL_DEBUG ) {
+    if( wlink().LinkState & LS_INTERNAL_DEBUG ) {
         DEBUG(( DBG_ALWAYS, "symbol table load" ));
         DumpTable( st().GlobalSymPtrs, GLOBAL_TABSIZE );
         DumpTable( st().StaticSymPtrs, STATIC_TABSIZE );
@@ -227,8 +226,8 @@ static void WipeSym( symbol *sym )
 /********************************/
 {
     if( IS_SYM_IMPORTED( sym )
-      && (FmtData.type & MK_ELF) == 0 ) {
-        if( FmtData.type & MK_NOVELL ) {
+      && (wlink().FmtData.type & MK_ELF) == 0 ) {
+        if( wlink().FmtData.type & MK_NOVELL ) {
             if( sym->p.import_nov != DUMMY_IMPORT_PTR ) {
                 MemFree( sym->p.import_nov );
             }
@@ -250,7 +249,7 @@ static void FreeSymbol( symbol *sym )
 /***********************************/
 {
     WipeSym( sym );
-    CarveFree( CarveSymbol, sym );
+    CarveFree( wlink().CarveSymbol, sym );
 }
 
 void CleanSym( void )
@@ -262,8 +261,8 @@ void CleanSym( void )
 #ifdef DEVBUILD
     DumpHashTable();
 #endif
-    if( (LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        for( sym = HeadSym; sym != nullptr; sym = next ) {
+    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+        for( sym = wlink().HeadSym; sym != nullptr; sym = next ) {
             next = sym->next;
             FreeSymbol( sym );
         }
@@ -285,7 +284,7 @@ static void PrepHashTable( symbol **table, unsigned size )
 /********************************************************/
 {
     for( ; size > 0; --size ) {
-        *table = static_cast<symbol *>( CarveGetIndex( CarveSymbol, *table ) );
+        *table = static_cast<symbol *>( CarveGetIndex( wlink().CarveSymbol, *table ) );
         table++;
     }
 }
@@ -306,7 +305,7 @@ static void RebuildHashTable( symbol **table, unsigned size )
 /***********************************************************/
 {
     for( ; size > 0; --size ) {
-        *table = static_cast<symbol *>( CarveMapIndex( CarveSymbol, *table ) );
+        *table = static_cast<symbol *>( CarveMapIndex( wlink().CarveSymbol, *table ) );
         table++;
     }
 }
@@ -335,7 +334,7 @@ void ClearHashPointers( void )
 void SetSymCase( void )
 /****************************/
 {
-    if( LinkFlags & LF_CASE_FLAG ) {
+    if( wlink().LinkFlags & LF_CASE_FLAG ) {
         CmpNRtn = std::strncmp;
         CmpRtn = std::strcmp;
     } else {
@@ -349,7 +348,7 @@ void SymModStart( void )
  * do necessary symbol table processing before the start of a module in pass1
  */
 {
-    st().SymList = LastSym;
+    st().SymList = wlink().LastSym;
 }
 
 void SymModEnd( void )
@@ -362,7 +361,7 @@ void SymModEnd( void )
     symbol *    sym;
 
     if( symlist == nullptr ) {
-        sym = HeadSym;
+        sym = wlink().HeadSym;
     } else {
         sym = symlist;
         if( sym != nullptr ) {  // symlist points to previous one
@@ -445,7 +444,7 @@ symbol *SymOpNWPfx( sym_flags symop, const char *name, size_t length, const char
             LnkMsg( ERR+MSG_SYMBOL_NAME_TOO_LONG, "s", prefix );
             return( nullptr );
         }
-        if( (sym->prefix = AddSymbolStringTable( &PrefixStrings, prefix, prefixlen )) == nullptr ) {
+        if( (sym->prefix = AddSymbolStringTable( &wlink().PrefixStrings, prefix, prefixlen )) == nullptr ) {
             LnkMsg( ERR+MSG_INTERNAL, "s", "no memory for prefix symbol");
             return( nullptr );
         }
@@ -546,7 +545,7 @@ static unsigned StaticHashFn( const char *name, size_t len )
     unsigned    value;
     unsigned    modval;
 
-    modval = static_cast<unsigned>( CurrMod->modtime );
+    modval = static_cast<unsigned>( wlink().CurrMod->modtime );
     value = ScatterTable[modval & 0xff];
     modval >>= 8;
     value = value ^ ScatterTable[modval & 0xff];
@@ -582,9 +581,9 @@ static symbol *DoSymOp( sym_flags symop, const char *symname, size_t length )
     const char          *symname_dbg = symname_dbg_str.c_str();
 #endif
     DEBUG(( DBG_OLD, "SymOp( %d, %s, %d )", symop, symname_dbg, length ));
-    if( NameLen
-      && NameLen < length ) {
-        searchlen = NameLen;
+    if( wlink().NameLen
+      && wlink().NameLen < length ) {
+        searchlen = wlink().NameLen;
     } else {
         searchlen = length;
     }
@@ -609,7 +608,7 @@ static symbol *DoSymOp( sym_flags symop, const char *symname, size_t length )
     }
     if( (symop & ST_FIND) == 0 ) {
         sym = AddSym();
-        sym->name.u.ptr = AddSymbolStringTable( &PermStrings, symname, length );
+        sym->name.u.ptr = AddSymbolStringTable( &wlink().PermStrings, symname, length );
         sym->namelen_cmp = searchlen;
 
         if( symop & ST_STATIC ) {
@@ -675,11 +674,11 @@ void ReportMultiple( symbol *sym, const char *name, size_t len )
 {
     unsigned    lev;
 
-    if( LinkFlags & LF_REDEFS_OK ) {
+    if( wlink().LinkFlags & LF_REDEFS_OK ) {
         lev = WRN;
     } else {
         lev = MILD_ERR;
-        LinkState |= LS_UNDEFED_SYM_ERROR;
+        wlink().LinkState |= LS_UNDEFED_SYM_ERROR;
     }
     if( (*CmpNRtn)( sym->name.u.ptr, name, len + 1 ) == 0 ) {
         LnkMsg( LOC+lev+MSG_MULT_DEF, "S", sym );
@@ -695,14 +694,14 @@ void ReportUndefined( void )
     symbol *    sym;
     unsigned    level;
 
-    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
+    for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
         sym->info &= ~SYM_CLEAR_ON_P2;  // reset also floatin-point patch flags
         if( (sym->info & (SYM_DEFINED | SYM_IS_ALTDEF)) == 0 )  {
-            if( LinkFlags & LF_UNDEFS_ARE_OK ) {
+            if( wlink().LinkFlags & LF_UNDEFS_ARE_OK ) {
                 level = WRN;
             } else {
                 level = MILD_ERR;
-                LinkState |= LS_UNDEFED_SYM_ERROR;
+                wlink().LinkState |= LS_UNDEFED_SYM_ERROR;
             }
             LnkMsg( level+MSG_UNDEF_REF, "S", sym );
         }
@@ -714,15 +713,15 @@ symbol *AddAltDef( symbol *sym, sym_info sym_type )
 {
     symbol *    altsym;
 
-    if( (LinkFlags & LF_INC_LINK_FLAG) == 0 )
+    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 )
         return( sym );
     altsym = AddSym();
     SET_SYM_TYPE( altsym, sym_type );
     altsym->info |= SYM_DEAD | SYM_IS_ALTDEF;
-    altsym->mod = CurrMod;
+    altsym->mod = wlink().CurrMod;
     altsym->name = sym->name;
     altsym->e.mainsym = sym;
-    Ring2Append( &CurrMod->publist, altsym );
+    Ring2Append( &wlink().CurrMod->publist, altsym );
     RingAppend( &sym->u.altdefs, altsym );
     return( altsym );
 }
@@ -738,7 +737,7 @@ symbol *HashReplace( symbol *sym )
     if( IS_SYM_COMMUNAL( sym ) ) {
         sym->p.seg->isdead = true;
     }
-    if( (LinkFlags & LF_INC_LINK_FLAG) == 0 )
+    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 )
         return( sym );
     newsym = AddSym();
     newsym->e.mainsym = sym;
@@ -876,7 +875,7 @@ void PurgeSymbols( void )
 
     WalkHashTables( PurgeHashTable );
     WalkHashTables( CleanupOldAltdefs );
-    for( owner = &HeadSym; (sym = *owner) != nullptr; ) {
+    for( owner = &wlink().HeadSym; (sym = *owner) != nullptr; ) {
         if( sym->info & SYM_KILL ) {
             *owner = sym->next;
             FreeSymbol( sym );
@@ -888,7 +887,7 @@ void PurgeSymbols( void )
                 WipeSym( sym );
                 sym->info = SYM_WEAK_REF | SYM_REFERENCED;
             }
-            LastSym = sym;
+            wlink().LastSym = sym;
             owner = &(*owner)->next;
         }
     }
@@ -910,7 +909,7 @@ void ConvertLazyRefs( void )
     symbol *    defsym;
     symbol *    sym;
 
-    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
+    for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
         if( IS_SYM_A_REF( sym ) ) {
             if( IS_SYM_VF_REF( sym ) ) {
                 defsym = *(sym->e.vfdata);
@@ -923,8 +922,8 @@ void ConvertLazyRefs( void )
             }
             WeldSyms( sym, defsym );
             sym->info |= SYM_WAS_LAZY;
-            if( LinkFlags & LF_SHOW_DEAD ) {
-                if( MapFile != nullptr ) {
+            if( wlink().LinkFlags & LF_SHOW_DEAD ) {
+                if( wlink().MapFile != nullptr ) {
                     WriteMapLnkMsg( MSG_SYMBOL_DEAD, "S", sym );
                 }
             }
@@ -983,7 +982,7 @@ offset SymbolAbsAddr( symbol *sym )
     gr = SymbolGroup( sym );
     addr = sym->addr.off;
     if( gr != nullptr ) {
-        addr += gr->linear + FmtData.base;
+        addr += gr->linear + wlink().FmtData.base;
     } else {
         // it is an imported symbol; addr is already absolute
     }
@@ -998,7 +997,7 @@ group_entry *SymbolGroup( symbol *sym )
     if( IS_SYM_ALIAS( sym ) ) {
         group = nullptr;
     } else if( IS_SYM_GROUP( sym ) ) {
-        for( group = Groups; group != nullptr; group = group->next ) {
+        for( group = wlink().Groups; group != nullptr; group = group->next ) {
             if( sym == group->sym ) {
                 break;
             }

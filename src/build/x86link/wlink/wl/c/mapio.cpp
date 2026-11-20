@@ -43,6 +43,7 @@
 #include <string_view>
 #include <vector>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "newmem.h"
 #include "objnode.h"
@@ -134,9 +135,9 @@ void ResetWriteMapIO( void )
 {
     MapState &st = map_state();
 
-    MapFlags = static_cast<mapflag>( 0 );
-    MapFName = nullptr;
-    MapFile = nullptr;
+    wlink().MapFlags = static_cast<mapflag>( 0 );
+    wlink().MapFName = nullptr;
+    wlink().MapFile = nullptr;
     st.UndefList = nullptr;
     st.SymTraceList = nullptr;
 }
@@ -147,8 +148,8 @@ static void WriteMap( const char *buffer, size_t len )
  */
 {
     if( len > 0 ) {
-        if( fwrite( buffer, len, 1, MapFile ) == 0 ) {
-            LnkMsg( ERR+MSG_IO_PROBLEM, "12", MapFName, strerror( errno ) );
+        if( fwrite( buffer, len, 1, wlink().MapFile ) == 0 ) {
+            LnkMsg( ERR+MSG_IO_PROBLEM, "12", wlink().MapFName, strerror( errno ) );
         }
     }
 }
@@ -252,12 +253,12 @@ static void WriteMapGroups( void )
 {
     group_entry     *group;
 
-    if( Groups != nullptr ) {
+    if( wlink().Groups != nullptr ) {
         WriteMapBox( MSG_MAP_BOX_GROUP );
         WriteMapMsg( MSG_MAP_TITLE_GROUP_0 );
         WriteMapMsg( MSG_MAP_TITLE_GROUP_1 );
         WriteMapNL();
-        for( group = Groups; group != nullptr; group = group->next ) {
+        for( group = wlink().Groups; group != nullptr; group = group->next ) {
             if( !group->isautogrp ) { /* if not an autogroup */
                 WriteMapColPrintf( 0, "%s", group->sym->name );
                 WriteMapColPrintf( 32, "%a", &group->addr );
@@ -275,7 +276,7 @@ static void WriteMapAbsSeg( const seg_leader *leader )
     if( leader->info & SEGINF_ABSOLUTE ) {
         WriteMapColPrintf( 0, "%s", leader->segname );
         WriteMapColPrintf( 24, "%s", leader->class_->name );
-        if( (FmtData.type & MK_16BIT)
+        if( (wlink().FmtData.type & MK_16BIT)
           && (leader->info & SEGINF_USE_32) ) {
             WriteMapColPrintf( 40, "%A", &leader->seg_addr );
         } else {
@@ -297,7 +298,7 @@ static void WriteMapNonAbsSeg( const seg_leader *seg )
         if( seg->group != nullptr ) {
             WriteMapColPrintf( 38, "%s", seg->group->sym->name );
         }
-        if( (FmtData.type & MK_16BIT)
+        if( (wlink().FmtData.type & MK_16BIT)
           && (seg->info & SEGINF_USE_32) ) {
             WriteMapColPrintf( 53, "%A", &seg->seg_addr );
         } else {
@@ -373,7 +374,7 @@ static void WriteMapMemoryMapHead( void )
     WriteMapBox( MSG_MAP_BOX_MEMORY_MAP );
     WriteMapMsg( MSG_MAP_UNREF_SYM );
     WriteMapMsg( MSG_MAP_REF_LOCAL_SYM );
-    if( MapFlags & MAP_STATICS ) {
+    if( wlink().MapFlags & MAP_STATICS ) {
         WriteMapMsg( MSG_MAP_SYM_STATIC );
     }
     WriteMapNL();
@@ -395,13 +396,13 @@ static void WriteMapPubModHead( void )
 {
     std::array<char, PATH_MAX> full_name;
 
-    if( CurrMod->u1.source == nullptr ) {
-        const char *name = CurrMod->name.u.ptr;
+    if( wlink().CurrMod->u1.source == nullptr ) {
+        const char *name = wlink().CurrMod->name.u.ptr;
         std::copy_n( name, strlen( name ) + 1, full_name.begin() );
     } else {
-        MakeFileName( CurrMod->u1.source->infile, full_name.data() );
+        MakeFileName( wlink().CurrMod->u1.source->infile, full_name.data() );
     }
-    WriteMapMsgPrintf( MSG_MAP_DEFINING_MODULE, full_name.data(), CurrMod->name.u.ptr );
+    WriteMapMsgPrintf( MSG_MAP_DEFINING_MODULE, full_name.data(), wlink().CurrMod->name.u.ptr );
 }
 
 static void WriteMapSym( symbol * sym, char star )
@@ -410,7 +411,7 @@ static void WriteMapSym( symbol * sym, char star )
     if( sym->info & SYM_STATIC ) {
         star = 's';
     }
-    if( (FmtData.type & MK_16BIT)
+    if( (wlink().FmtData.type & MK_16BIT)
       && ( sym->p.seg != nullptr )
       && ( sym->p.seg->bits == BITS_32 ) ) {
         WriteMapColPrintf( 0, "%A%c", &sym->addr, star );
@@ -427,7 +428,7 @@ static void WriteMapSymAddr( symbol *sym )
 
     if( sym->info & SYM_REFERENCED ) {
         if( IS_SYM_IMPORTED( sym )
-          || ((FmtData.type & MK_ELF)
+          || ((wlink().FmtData.type & MK_ELF)
           && IsSymElfImported( sym )) ) {
             star = 'i';
         } else {
@@ -512,9 +513,9 @@ static void WriteMapImports( void )
 {
     symbol          *sym;
 
-    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
+    for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
         if( IS_SYM_IMPORTED( sym ) ) {
-            if( FmtData.type & MK_NOVELL ) {
+            if( wlink().FmtData.type & MK_NOVELL ) {
                 if( sym->p.import_nov != nullptr
                   && sym->p.import_nov != DUMMY_IMPORT_PTR ) {
                     if( sym->prefix != nullptr
@@ -529,7 +530,7 @@ static void WriteMapImports( void )
                 if( sym->p.import_dll != nullptr ) {
                     WriteMapColPrintf( 0, "%s", sym->name );
 #ifdef _OS2
-                    if( FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+                    if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
                         WriteMapColPrintf( 36, "%s", sym->p.import_dll->m.modnum->name.u.ptr );
                     }
 #endif
@@ -544,7 +545,7 @@ static void WriteMapImportsHead( void )
 /*************************************/
 {
     WriteMapBox( MSG_MAP_BOX_IMP_SYM );
-    if( FmtData.type & (MK_NOVELL | MK_ELF) ) {
+    if( wlink().FmtData.type & (MK_NOVELL | MK_ELF) ) {
         WriteMapMsg( MSG_MAP_TITLE_IMP_SYM_0 );
         WriteMapMsg( MSG_MAP_TITLE_IMP_SYM_1 );
     } else {
@@ -578,7 +579,7 @@ static void WriteMapSegment( void *_seg )
     see = ( seg->iscdat ) ? 'c' : ' ';
     addr = leader->seg_addr;
     addr.off += seg->a.delta;
-    if( (FmtData.type & MK_16BIT) && ( seg->bits == BITS_32 ) ) {
+    if( (wlink().FmtData.type & MK_16BIT) && ( seg->bits == BITS_32 ) ) {
         WriteMapColPrintf( 53, "%A%c%c%c", &addr, star, see, bang );
     } else {
         WriteMapColPrintf( 53, "%a%c%c%c", &addr, star, see, bang );
@@ -902,7 +903,7 @@ static bool CheckSymRecList( void *_info, void *sym )
 {
     symrecinfo *info = static_cast<symrecinfo *>( _info );
 
-    return( ( sym == info->sym ) && ( CurrMod == info->mod ) );
+    return( ( sym == info->sym ) && ( wlink().CurrMod == info->mod ) );
 }
 
 static void AddSymRecList( symbol *sym, symrecinfo **head )
@@ -914,7 +915,7 @@ static void AddSymRecList( symbol *sym, symrecinfo **head )
         info = static_cast<symrecinfo *>( MemAllocSafe( sizeof( symrecinfo ) ) );
         info->next = nullptr;
         info->sym = sym;
-        info->mod = CurrMod;
+        info->mod = wlink().CurrMod;
         RingAppend( head, info );
     }
 }
@@ -922,8 +923,8 @@ static void AddSymRecList( symbol *sym, symrecinfo **head )
 void RecordUndefinedSym( symbol *sym )
 /************************************/
 {
-    if( (LinkFlags & LF_UNDEFS_ARE_OK) == 0 )
-        LinkState |= LS_LINK_ERROR;
+    if( (wlink().LinkFlags & LF_UNDEFS_ARE_OK) == 0 )
+        wlink().LinkState |= LS_LINK_ERROR;
     AddSymRecList( sym, &map_state().UndefList );
 }
 
@@ -935,7 +936,7 @@ static void PrintUndefinedSym( void *_info )
 
     mod = info->mod;
     LnkMsg( YELL+MSG_UNDEF_SYM, "12S", mod->u1.source->infile->name, mod->name, info->sym );
-    if( MapFile != nullptr ) {
+    if( wlink().MapFile != nullptr ) {
         WriteMapColPrintf( 0, "%S", info->sym );
         WriteMapColPrintf( 32, "%s(%s)", mod->u1.source->infile->name, mod->name );
         WriteMapNL();
@@ -948,7 +949,7 @@ void PrintUndefinedSyms( void )
     MapState    &st = map_state();
 
     if( st.UndefList != nullptr ) {
-        if( MapFile != nullptr ) {
+        if( wlink().MapFile != nullptr ) {
             WriteMapBox( MSG_MAP_BOX_UNRES_REF );
             WriteMapMsg( MSG_MAP_TITLE_UNRES_REF_0 );
             WriteMapMsg( MSG_MAP_TITLE_UNRES_REF_1 );
@@ -961,7 +962,7 @@ void PrintUndefinedSyms( void )
 void WriteMapTracedSymRecord( symbol *sym )
 /*****************************************/
 {
-    if( sym->mod != CurrMod ) {
+    if( sym->mod != wlink().CurrMod ) {
         AddSymRecList( sym, &map_state().SymTraceList );
     }
 }
@@ -1005,15 +1006,15 @@ void WriteMapLibsUsed( void )
     file_list   *file;
     std::array<char, PATH_MAX> new_name;
 
-    if( LinkState & LS_GENERATE_LIB_LIST ) {
+    if( wlink().LinkState & LS_GENERATE_LIB_LIST ) {
         WriteMapBox( MSG_MAP_BOX_LIB_USED );
-        for( file = ObjLibFiles; file != nullptr; file = file->next ) {
+        for( file = wlink().ObjLibFiles; file != nullptr; file = file->next ) {
             if( file->flags_file & STAT_LIB_USED ) {
                 MakeFileName( file->infile, new_name.data() );
                 WriteMapPrintf( "%s", new_name.data() );
             }
         }
-        LinkState &= ~LS_GENERATE_LIB_LIST;
+        wlink().LinkState &= ~LS_GENERATE_LIB_LIST;
     }
 }
 
@@ -1023,21 +1024,21 @@ static const char *getStubName( void )
 #ifdef _OS2
     /* CodeBreaker: no_stub is the OS/2 family's (FmtData.u is a union: for another format it is other data, and
        Netware's `option messages` pointer made "Stub file: none" come and go with the heap) */
-    if( FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
-        if( FmtData.u.os2fam.no_stub ) {
+    if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+        if( wlink().FmtData.u.os2fam.no_stub ) {
             return( "none" );
         }
-        return( FmtData.u.os2fam.stub_file_name );
+        return( wlink().FmtData.u.os2fam.stub_file_name );
     }
 #endif
 #ifdef _DOS16M
-    if( FmtData.type & MK_DOS16M ) {
-        return( FmtData.u.d16m.stub );
+    if( wlink().FmtData.type & MK_DOS16M ) {
+        return( wlink().FmtData.u.d16m.stub );
     }
 #endif
 #ifdef _PHARLAP
-    if( FmtData.type & MK_PHAR_LAP ) {
-        return( FmtData.u.phar.stub );
+    if( wlink().FmtData.type & MK_PHAR_LAP ) {
+        return( wlink().FmtData.u.phar.stub );
     }
 #endif
     return( nullptr );
@@ -1053,23 +1054,23 @@ static void WriteMapSizes( void )
     if( map_state().UndefList != nullptr ) {
         WriteMapNL();
     }
-    if( FmtData.type & (MK_NOVELL | MK_NE | MK_OS2_FLAT | MK_PE) ) {
+    if( wlink().FmtData.type & (MK_NOVELL | MK_NE | MK_OS2_FLAT | MK_PE) ) {
         WriteMapImportsHead();
         WriteMapImports();
     }
     WriteMapLibsUsed();
     WriteMapBox( MSG_MAP_BOX_LINKER_STAT );
-    WriteMapSize( MSG_MAP_STACK_SIZE, StackSize );
+    WriteMapSize( MSG_MAP_STACK_SIZE, wlink().StackSize );
     WriteMapSize( MSG_MAP_MEM_SIZE, MemorySize() );
 #ifdef _EXE
-    if( (FmtData.type & MK_OVERLAYS)
-      && FmtData.u.dos.dynamic ) {
-        WriteMapSize( MSG_MAP_OVL_SIZE, static_cast<unsigned long>( OvlAreaSize ) * 16 );
+    if( (wlink().FmtData.type & MK_OVERLAYS)
+      && wlink().FmtData.u.dos.dynamic ) {
+        WriteMapSize( MSG_MAP_OVL_SIZE, static_cast<unsigned long>( wlink().OvlAreaSize ) * 16 );
     }
 #endif
-    if( (FmtData.type & MK_NOVELL) == 0
-      && ( !FmtData.dll || (FmtData.type & MK_PE) ) ) {
-        WriteMapMsgPrintf( MSG_MAP_ENTRY_PT_ADDR, &StartInfo.addr );
+    if( (wlink().FmtData.type & MK_NOVELL) == 0
+      && ( !wlink().FmtData.dll || (wlink().FmtData.type & MK_PE) ) ) {
+        WriteMapMsgPrintf( MSG_MAP_ENTRY_PT_ADDR, &wlink().StartInfo.addr );
     }
     stubname = getStubName();
     if( stubname != nullptr ) {
@@ -1103,14 +1104,14 @@ void MapInit( void )
     struct tm           *localt;
 
     st.Absolute_Seg = false;
-    if( MapFlags & MAP_FLAG ) {
-        MapFile = fopen( MapFName, "wt" );
-        if( MapFile == nullptr ) {
-            MapFlags = static_cast<mapflag>( 0 );
-            LnkMsg( FTL+MSG_CANT_OPEN, "12", MapFName, strerror( errno ) );
+    if( wlink().MapFlags & MAP_FLAG ) {
+        wlink().MapFile = fopen( wlink().MapFName, "wt" );
+        if( wlink().MapFile == nullptr ) {
+            wlink().MapFlags = static_cast<mapflag>( 0 );
+            LnkMsg( FTL+MSG_CANT_OPEN, "12", wlink().MapFName, strerror( errno ) );
             return;
         }
-        setvbuf( MapFile, nullptr, _IOFBF, MAP_BUFFER_SIZE );
+        setvbuf( wlink().MapFile, nullptr, _IOFBF, MAP_BUFFER_SIZE );
         localt = localtime( &st.StartT );
         st.MapCol = 0;
         WriteMapString( MsgStrings[PRODUCT] );
@@ -1147,7 +1148,7 @@ void MapFini( void )
     signed_16   t;
     std::string tim;
 
-    if( MapFile != nullptr ) {
+    if( wlink().MapFile != nullptr ) {
 
         WriteMapSizes();
 
@@ -1170,20 +1171,20 @@ void MapFini( void )
         PutDec( tim, static_cast<unsigned>( t ) );
         WriteMapMsgPrintf( MSG_MAP_LINK_TIME, tim.c_str() );
 
-        if( MapFlags & MAP_LINES ) {
+        if( wlink().MapFlags & MAP_LINES ) {
             WriteMapLines();
         }
 
-        MapFlags = static_cast<mapflag>( 0 );
+        wlink().MapFlags = static_cast<mapflag>( 0 );
 
-        if( fclose( MapFile ) ) {
-            LnkMsg( ERR+MSG_IO_PROBLEM, "12", MapFName, strerror( errno ) );
+        if( fclose( wlink().MapFile ) ) {
+            LnkMsg( ERR+MSG_IO_PROBLEM, "12", wlink().MapFName, strerror( errno ) );
         }
-        MapFile = nullptr;
+        wlink().MapFile = nullptr;
 
-        if( MapFName != nullptr ) {
-            MemFree( MapFName );
-            MapFName = nullptr;
+        if( wlink().MapFName != nullptr ) {
+            MemFree( wlink().MapFName );
+            wlink().MapFName = nullptr;
         }
     }
     RingFree( &st.SymTraceList );
@@ -1213,7 +1214,7 @@ static int SymAddrCompare( const void *a, const void *b )
 static void WriteMapSymArray( symbol **symarray, size_t num )
 /***********************************************************/
 {
-    if( MapFlags & MAP_ALPHA ) {
+    if( wlink().MapFlags & MAP_ALPHA ) {
         qsort( symarray, num, sizeof( symbol * ), SymAlphaCompare );
     } else {
         qsort( symarray, num, sizeof( symbol * ), SymAddrCompare );
@@ -1238,14 +1239,14 @@ void WriteMapPubEnd( void )
     symbol      *sym;
     bool        ok;
 
-    if( (MapFlags & MAP_GLOBAL)
+    if( (wlink().MapFlags & MAP_GLOBAL)
       && ( st.NumMapSyms > 0 ) ) {
         std::vector<symbol *> symarray;
         ok = ( st.NumMapSyms < ( UINT_MAX / sizeof( symbol * ) ) - 1 );
         if( ok ) {
             symarray.reserve( st.NumMapSyms );
         }
-        for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
+        for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
             if( sym->info & SYM_MAP_GLOBAL ) {
                 sym->info &= ~SYM_MAP_GLOBAL;
                 if( ok ) {
@@ -1267,10 +1268,10 @@ void WriteMapPubSortStart( pubdefinfo *info )
 /*******************************************/
 {
     info->symarray = nullptr;
-    if( (MapFlags & MAP_SORT)
-      && (MapFlags & MAP_GLOBAL) == 0
-      && ( CurrMod->publist != nullptr ) ) {
-        info->symarray = static_cast<symbol **>( MemAllocSafe( Ring2Count( CurrMod->publist ) * sizeof( symbol * ) ) );
+    if( (wlink().MapFlags & MAP_SORT)
+      && (wlink().MapFlags & MAP_GLOBAL) == 0
+      && ( wlink().CurrMod->publist != nullptr ) ) {
+        info->symarray = static_cast<symbol **>( MemAllocSafe( Ring2Count( wlink().CurrMod->publist ) * sizeof( symbol * ) ) );
     }
 }
 
@@ -1291,12 +1292,12 @@ void WriteMapPubEntry( pubdefinfo *info, symbol *sym )
 {
     if( !SkipSymbol( sym ) ) {
         if( info->first
-          && (MapFlags & MAP_GLOBAL) == 0 ) {
+          && (wlink().MapFlags & MAP_GLOBAL) == 0 ) {
             WriteMapPubModHead();
             info->first = false;
         }
-        if( MapFlags & MAP_SORT ) {
-            if( MapFlags & MAP_GLOBAL ) {
+        if( wlink().MapFlags & MAP_SORT ) {
+            if( wlink().MapFlags & MAP_GLOBAL ) {
                 map_state().NumMapSyms++;
                 sym->info |= SYM_MAP_GLOBAL;
             } else {

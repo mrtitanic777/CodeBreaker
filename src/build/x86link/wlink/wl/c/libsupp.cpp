@@ -38,6 +38,7 @@
 
 #include <string.h>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "objcache.h"
 #include "distrib.h"
@@ -65,24 +66,24 @@ static bool SearchAndProcLibFile( file_list *file, const char *name )
     }
     file->flags_file |= STAT_LIB_USED;
 #ifdef _EXE
-    if( (FmtData.type & MK_OVERLAYS) && FmtData.u.dos.distribute ) {
+    if( (wlink().FmtData.type & MK_OVERLAYS) && wlink().FmtData.u.dos.distribute ) {
         if( file->flags_file & STAT_LIB_FIXED ) {
             lp->flags_mod |= MOD_FIXED;
         }
         DistribAddMod( lp, file->ovlref );
     } else {
 #endif
-        for( prev = &LibModules; *prev != nullptr; prev = &(*prev)->u.next ) /*  find end of list */
+        for( prev = &wlink().LibModules; *prev != nullptr; prev = &(*prev)->u.next ) /*  find end of list */
             /* nothing */;
         *prev = lp;
 #ifdef _EXE
     }
 #endif
-    CurrMod = lp;
+    wlink().CurrMod = lp;
     ObjPass1();
     CacheClose( file, 1 );
 #ifdef _EXE
-    if( (FmtData.type & MK_OVERLAYS) && FmtData.u.dos.distribute ) {
+    if( (wlink().FmtData.type & MK_OVERLAYS) && wlink().FmtData.u.dos.distribute ) {
         DistribFinishMod( lp );
     }
 #endif
@@ -102,8 +103,8 @@ bool LibFind( const char *name, bool old_sym )
     bool        isimpsym;
 
     DEBUG(( DBG_OLD, "LibFind( %s )", name ));
-    isimpsym = (FmtData.type & MK_PE) && memcmp( name, ImportSymPrefix, PREFIX_LEN ) == 0;
-    for( file = ObjLibFiles; file != nullptr; file = file->next ) {
+    isimpsym = (wlink().FmtData.type & MK_PE) && memcmp( name, ImportSymPrefix, PREFIX_LEN ) == 0;
+    for( file = wlink().ObjLibFiles; file != nullptr; file = file->next ) {
         if( file->infile->status & INSTAT_IOERR )
             continue;
         if( old_sym && (file->flags_file & STAT_OLD_LIB) )
@@ -146,7 +147,7 @@ file_list *AddObjLib( const char *name, lib_priority priority )
 
     DEBUG(( DBG_OLD, "Adding Object library name %s", name ));
     /* search for new library position in linked list */
-    for( owner = &ObjLibFiles; (file = *owner) != nullptr; owner = &file->next ) {
+    for( owner = &wlink().ObjLibFiles; (file = *owner) != nullptr; owner = &file->next ) {
         if( file->priority < priority )
             break;
         /* end search if library already exists with same or a higher priority */
@@ -166,9 +167,9 @@ file_list *AddObjLib( const char *name, lib_priority priority )
     /* if we need to add one */
     if( file == nullptr ) {
         file = AllocNewFile( nullptr );
-        file->infile = AllocUniqueFileEntry( name, UsrLibPath );
+        file->infile = AllocUniqueFileEntry( name, wlink().UsrLibPath );
         file->infile->status |= INSTAT_LIBRARY | INSTAT_OPEN_WARNING;
-        LinkState |= LS_LIBRARIES_ADDED;
+        wlink().LinkState |= LS_LIBRARIES_ADDED;
     }
     /* put it to new position and setup priority */
     file->next = *new_owner;

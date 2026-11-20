@@ -38,6 +38,7 @@
 #include <errno.h>
 #include "wio.h"
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "objio.h"
 #include "fileio.h"
 
@@ -266,7 +267,7 @@ size_t QWrite( f_handle file, const void *buffer, size_t len, const char *name )
 
         if( pos <= SpyWrite
           && SpyWrite <= pos + len
-          && file == Root->outfile->handle ) {
+          && file == wlink().Root->outfile->handle ) {
             DEBUG((DBG_ALWAYS, "About to write to %s (handle %d) %d bytes at position %d:", name, file, len, pos));
             PrintMemDump( buffer, len, DUMP_BYTE );
         }

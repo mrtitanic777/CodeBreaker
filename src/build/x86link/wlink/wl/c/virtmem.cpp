@@ -35,6 +35,7 @@
 #include <cstddef>
 #include <vector>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "virtmem.h"
 #include "run_state.hpp"
 #if defined( USE_VIRTMEM )
@@ -558,10 +559,10 @@ bool OutInfo( void *dummy, spilladdr loc, size_t off, size_t len )
         if( loc.spilled ) {
             for( ; len != 0; len -= amt ) {
                 amt = len;
-                if( amt > TokSize )
-                    amt = TokSize;
-                SpillRead( loc.u.spill, off, TokBuff, amt );
-                WriteLoad( TokBuff, amt );
+                if( amt > wlink().TokSize )
+                    amt = wlink().TokSize;
+                SpillRead( loc.u.spill, off, wlink().TokBuff, amt );
+                WriteLoad( wlink().TokBuff, amt );
                 off += amt;
             }
         } else {

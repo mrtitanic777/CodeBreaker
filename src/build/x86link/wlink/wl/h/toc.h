@@ -48,5 +48,3 @@ extern void             CheckIfTocSym( symbol * );
 extern bool             IsTocSym( symbol * );
 extern void             ResetToc( void );
 
-extern offset TocSize;
-extern offset TocShift;

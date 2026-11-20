@@ -173,8 +173,6 @@ typedef union {
 
 #include "poppck.h"
 
-extern unsigned         FmtRelocSize;
-extern reloc_info       FloatFixups;
 
 extern void             WriteReloc( group_entry *group, offset, void *, size_t );
 #ifdef _QNX

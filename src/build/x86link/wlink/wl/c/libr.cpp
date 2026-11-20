@@ -35,6 +35,7 @@
 #include <string>
 #include "walloca.h"
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "library.h"
 #include "objnode.h"
@@ -345,7 +346,7 @@ static bool ReadARDict( file_list *file, unsigned long *loc, bool makedict )
             file->u.dict = nullptr;
             return( false );
         }
-        if( (LinkFlags & LF_CASE_FLAG) == 0
+        if( (wlink().LinkFlags & LF_CASE_FLAG) == 0
           || numdicts == 1 ) {
             SortARDict( &file->u.dict->a );
         }
@@ -455,7 +456,7 @@ static void SetDict( file_list *file, unsigned dict_page )
     if( dict->cache == nullptr ) {
         off = dict_page * DIC_REC_SIZE;
         dictoff = dict->start + off;
-        dict->buffer = reinterpret_cast<unsigned_8 *>( TokBuff );
+        dict->buffer = reinterpret_cast<unsigned_8 *>( wlink().TokBuff );
         QSeek( file->infile->handle, dictoff, file->infile->name.u.ptr );
         QRead( file->infile->handle, dict->buffer, DIC_REC_SIZE, file->infile->name.u.ptr );
         file->infile->currpos = dictoff + DIC_REC_SIZE;
@@ -539,7 +540,7 @@ bool DiscardDicts( void )
     file_list       *file;
 
     ptr = nullptr;
-    for( file = ObjLibFiles; file != nullptr; file = file->next ) {
+    for( file = wlink().ObjLibFiles; file != nullptr; file = file->next ) {
         if( file->u.dict == nullptr )
             continue;
         if( file->flags_file & STAT_AR_LIB )
@@ -564,7 +565,7 @@ void BurnLibs( void )
     file_list       *file;
     dict_entry      *dict;
 
-    for( file = ObjLibFiles; file != nullptr; file = file->next ) {
+    for( file = wlink().ObjLibFiles; file != nullptr; file = file->next ) {
         if( file->flags_file & STAT_AR_LIB ) {
             CacheFree( file, file->strtab );
             file->strtab = nullptr;
@@ -655,7 +656,7 @@ mod_entry *SearchLib( file_list *file, const char *name )
      */
     objname = IdentifyObject( file, &pos, &dummy );
     if( objname != nullptr ) {
-        obj->name.u.ptr = AddStringStringTable( &PermStrings, objname );
+        obj->name.u.ptr = AddStringStringTable( &wlink().PermStrings, objname );
         MemFree( objname );
     } else {
         obj->name.u.ptr = nullptr;
@@ -665,7 +666,7 @@ mod_entry *SearchLib( file_list *file, const char *name )
     obj->modtime = file->infile->modtime;
     obj->flags_dbi = file->flags_dbi;
     obj->flags_mod = static_cast<module_flags>( 0 );
-    obj->flags_fmt = ObjFileFormat;
+    obj->flags_fmt = wlink().ObjFileFormat;
     return( obj );
 }
 

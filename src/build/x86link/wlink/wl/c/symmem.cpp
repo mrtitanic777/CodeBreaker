@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <climits>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "strtab.h"
 #include "carve.h"
@@ -216,13 +217,13 @@ symbol * AddSym( void )
 {
     symbol              *sym;
 
-    sym = static_cast<symbol *>( CarveAlloc( CarveSymbol ) );
+    sym = static_cast<symbol *>( CarveAlloc( wlink().CarveSymbol ) );
     BasicInitSym( sym );
-    if( LastSym != nullptr )
-        LastSym->next = sym;
-    LastSym = sym;
-    if( HeadSym == nullptr )
-        HeadSym = sym;
+    if( wlink().LastSym != nullptr )
+        wlink().LastSym->next = sym;
+    wlink().LastSym = sym;
+    if( wlink().HeadSym == nullptr )
+        wlink().HeadSym = sym;
     return( sym );
 }
 

@@ -37,6 +37,7 @@
 #include <cstddef>
 #include <string_view>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "newmem.h"
 #include "specials.h"
@@ -230,13 +231,13 @@ static bool setGroupSeg( group_entry *group, unsigned seg_num )
  */
 {
 #ifdef _DOS16M
-    if( FmtData.type & MK_DOS16M ) {
+    if( wlink().FmtData.type & MK_DOS16M ) {
         group->addr.seg = ToD16MSel( seg_num );
         return( true );
     }
 #endif
 #ifdef _NOVELL
-    if( FmtData.type & MK_ID_SPLIT ) {
+    if( wlink().FmtData.type & MK_ID_SPLIT ) {
         if( group->segflags & SEG_DATA ) {
             group->addr.seg = DATA_SEGMENT;
         } else {
@@ -246,19 +247,19 @@ static bool setGroupSeg( group_entry *group, unsigned seg_num )
     }
 #endif
 #ifdef _QNX
-    if( FmtData.type & MK_QNX ) {
+    if( wlink().FmtData.type & MK_QNX ) {
         group->addr.seg = ToQNXSel( seg_num );
         return( true );
     }
 #endif
 #if defined( _PHARLAP ) || defined( _RAW )
-    if( FmtData.type & MK_FLAT_OFFS ) {
+    if( wlink().FmtData.type & MK_FLAT_OFFS ) {
         group->addr.seg = seg_num;    // only segment 1 in flat mem. model
         return( false );
     }
 #endif
 #ifdef _PHARLAP
-    if( FmtData.type & MK_PHAR_MULTISEG ) {
+    if( wlink().FmtData.type & MK_PHAR_MULTISEG ) {
         group->addr.seg = ( seg_num << 3 ) | 4;
         return( true );
     }
@@ -274,7 +275,7 @@ static void AllocFileSegs( void )
     unsigned            seg_num;
 
     seg_num = 1;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         group->addr.off = 0;
         if( setGroupSeg( group, seg_num ) ) {
             seg_num++;
@@ -304,7 +305,7 @@ static void ReallocFileSegs( void )
     unsigned            seg_num;
 
     seg_num = 1;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         /*
          * segment number is also set for zero length group to be
          * segments in map file sorted properly even if they are not emited
@@ -318,10 +319,10 @@ static void ReallocFileSegs( void )
         }
         if( group->totalsize == 0 ) {
             /* to make life easier in loadxxx remove zero length group from groups count */
-            NumGroups--;
+            wlink().NumGroups--;
         }
     }
-    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
+    for( class_ = wlink().Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( (class_->flags & CLASS_DEBUG_INFO) == 0 ) {
             RingWalk( class_->segs, SetLeaderSeg );
         }
@@ -337,22 +338,22 @@ static void FindUninitDataStart( void )
     bool                setnext;
 
     setnext = true;
-    FmtData.dgroupsplitseg = nullptr;
-    FmtData.bsspad = 0;
-    if( (LinkState & LS_DOSSEG_FLAG) == 0 )
+    wlink().FmtData.dgroupsplitseg = nullptr;
+    wlink().FmtData.bsspad = 0;
+    if( (wlink().LinkState & LS_DOSSEG_FLAG) == 0 )
         return;
-    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
+    for( class_ = wlink().Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( (class_->flags & CLASS_DEBUG_INFO) == 0 ) {
             if( class_->flags & CLASS_LXDATA_SEEN ) {
                 setnext = true;
             } else if( setnext ) {
-                FmtData.dgroupsplitseg = static_cast<seg_leader *>( RingFirst( class_->segs ) );
+                wlink().FmtData.dgroupsplitseg = static_cast<seg_leader *>( RingFirst( class_->segs ) );
                 setnext = false;
             }
         }
     }
     if( setnext ) {             //last one was had an LXDATA or no segs.
-        FmtData.dgroupsplitseg = nullptr;
+        wlink().FmtData.dgroupsplitseg = nullptr;
     }
 }
 
@@ -363,7 +364,7 @@ static bool FindEndAddr( void *_seg, void *_info )
     grpaddrinfo *info = static_cast<grpaddrinfo *>( _info );
     offset      seg_offs;
 
-    if( FmtData.type & MK_REAL_MODE ) {
+    if( wlink().FmtData.type & MK_REAL_MODE ) {
         seg_offs = MK_REAL_ADDR( seg->seg_addr.seg, seg->seg_addr.off );
     } else {
         seg_offs = seg->seg_addr.off;
@@ -394,7 +395,7 @@ static bool FindInitEndAddr( void *_seg, void *_info )
     grpaddrinfo *info = static_cast<grpaddrinfo *>( _info );
     offset      seg_offs;
 
-    if( FmtData.type & MK_REAL_MODE ) {
+    if( wlink().FmtData.type & MK_REAL_MODE ) {
         seg_offs = MK_REAL_ADDR( seg->seg_addr.seg, seg->seg_addr.off );
     } else {
         seg_offs = seg->seg_addr.off;
@@ -441,9 +442,9 @@ static void AllocSeg( void *_seg )
 
     if( (seg->info & SEGINF_ABSOLUTE) == 0 ) {
         if( IS_DBG_DWARF( seg ) ) {
-            CurrLoc.off = 0;
+            wlink().CurrLoc.off = 0;
         }
-        CurrentSeg = seg;
+        wlink().CurrentSeg = seg;
         NewSegment( seg );
         DEBUG(( DBG_OLD, "- segment %s allocated", seg->segname.u.ptr ));
     }
@@ -478,10 +479,10 @@ static void CalcGrpAddr( group_entry *group )
             // for copy classes put it in class size, also, so map file can find it.
             seg->size = group->totalsize;
             // Now must recompute addresses for all segments in all classes beyond this
-            addr = (group->addr.seg << FmtData.SegShift) +
+            addr = (group->addr.seg << wlink().FmtData.SegShift) +
                    group->addr.off + group->totalsize;
-            CurrLoc.seg = addr >> FmtData.SegShift;
-            CurrLoc.off = addr & FmtData.SegMask;
+            wlink().CurrLoc.seg = addr >> wlink().FmtData.SegShift;
+            wlink().CurrLoc.off = addr & wlink().FmtData.SegMask;
             while( (class_ = class_->next) != nullptr ) {
                 if( class_->flags & CLASS_FIXED ) {
                     save_addr = class_->BaseAddr;     // If class is fixed, can stop
@@ -494,7 +495,7 @@ static void CalcGrpAddr( group_entry *group )
             }
         } else {
             Ring2Lookup( seg, FindEndAddr, &info );
-            if( (FmtData.type & MK_REAL_MODE)
+            if( (wlink().FmtData.type & MK_REAL_MODE)
               && (seg->info & SEGINF_USE_32) == 0
               && (info.end_offs - info.start_offs > _64K) ) {
                 LnkMsg( ERR+MSG_GROUP_TOO_BIG, "sl", group->sym->name,
@@ -517,16 +518,16 @@ void AllocClasses( section *sect )
         DEBUG(( DBG_OLD, "Allocating class %s", class_->name.u.ptr ));
         if( class_->flags & CLASS_DEBUG_INFO ) {
             /* don't *really* allocate room for these guys */
-            save_addr = CurrLoc;
-            CurrLoc.off = 0;
-            CurrLoc.seg = 0;
-            size = CurrSect->size;
+            save_addr = wlink().CurrLoc;
+            wlink().CurrLoc.off = 0;
+            wlink().CurrLoc.seg = 0;
+            size = wlink().CurrSect->size;
             RingWalk( class_->segs, AllocSeg );
-            DBIDefClass( class_, CurrSect->size - size );
-            CurrSect->size = size;
-            CurrLoc = save_addr;
+            DBIDefClass( class_, wlink().CurrSect->size - size );
+            wlink().CurrSect->size = size;
+            wlink().CurrLoc = save_addr;
         } else {
-            if( FmtData.type & (MK_PE | MK_QNX_FLAT | MK_OS2_FLAT | MK_WIN_VXD | MK_ELF) ) {
+            if( wlink().FmtData.type & (MK_PE | MK_QNX_FLAT | MK_OS2_FLAT | MK_WIN_VXD | MK_ELF) ) {
                 // flat addresses
                 if( class_->flags & CLASS_FIXED ) {
                     class_->segs->group->addr.off = class_->BaseAddr.off;
@@ -548,7 +549,7 @@ void ConvertToFrame( addr_type *frame_addr, segment frame, bool check_16bit )
 {
     unsigned long   off;
 
-    if( FmtData.type & MK_REAL_MODE ) {
+    if( wlink().FmtData.type & MK_REAL_MODE ) {
         off = MK_REAL_ADDR( static_cast<int>( frame_addr->seg - frame ), frame_addr->off );
         if( check_16bit
           && ( off >= 0x10000 )) {
@@ -568,14 +569,14 @@ static void FindFloatSyms( void )
 {
     symbol      *sym;
 
-    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
+    for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
         SET_SYM_2_FPP( sym, FPP_NONE );
     }
     for( const FloatPatch &patch : FloatPatches ) {
         if( patch.name != nullptr ) {
             sym = FindISymbol( patch.name );
             if( sym != nullptr ) {
-                if( FmtData.type & MK_WIN_NE ) {
+                if( wlink().FmtData.type & MK_WIN_NE ) {
                     SET_SYM_2_FPP( sym, patch.win_fpp );
                 } else {
                     SET_SYM_2_FPP( sym, patch.fpp );
@@ -592,30 +593,30 @@ static void DefinePublics( void )
 
 {
     DEBUG(( DBG_OLD, "DefinePublics()" ));
-    if( MapFlags & MAP_FLAG ) {
+    if( wlink().MapFlags & MAP_FLAG ) {
         LnkMsg( INF+MSG_CREATE_MAP, nullptr );
     }
-    if( MapFile != nullptr ) {
-        WriteMapHead( Root );
+    if( wlink().MapFile != nullptr ) {
+        WriteMapHead( wlink().Root );
         WriteMapPubStart();
     }
-    ProcPubsSect( Root->mods, Root );
+    ProcPubsSect( wlink().Root->mods, wlink().Root );
 #ifdef _EXE
-    if( FmtData.type & MK_OVERLAYS ) {
-        OvlProcPubsSect( Root );
+    if( wlink().FmtData.type & MK_OVERLAYS ) {
+        OvlProcPubsSect( wlink().Root );
     }
 #endif
-    ProcPubsSect( LibModules, Root );
-    if( MapFile != nullptr ) {
+    ProcPubsSect( wlink().LibModules, wlink().Root );
+    if( wlink().MapFile != nullptr ) {
         WriteMapPubEnd();
     }
 #ifdef _EXE
-    if( FmtData.type & MK_OVERLAYS ) {
+    if( wlink().FmtData.type & MK_OVERLAYS ) {
         OvlProcPubs();
     }
 #endif
-    if( MapFile != nullptr ) {
-        if( MapFlags & MAP_VERBOSE ) {
+    if( wlink().MapFile != nullptr ) {
+        if( wlink().MapFlags & MAP_VERBOSE ) {
             WriteMapModulesSegments();
         }
     }
@@ -625,7 +626,7 @@ static void DefinePublics( void )
 void ProcPubsSect( mod_entry *head, section *sect )
 /****************************************************/
 {
-    for( CurrMod = head; CurrMod != nullptr; CurrMod = CurrMod->u.next ) {
+    for( wlink().CurrMod = head; wlink().CurrMod != nullptr; wlink().CurrMod = wlink().CurrMod->u.next ) {
         DoPubsSect( sect );
     }
 }
@@ -660,7 +661,7 @@ static bool DefPubSym( void *_pub, void *_info )
             DBIGenGlobal( sym, info->sect );
         }
     }
-    if( MapFile != nullptr ) {
+    if( wlink().MapFile != nullptr ) {
         WriteMapPubEntry( info, sym );
     }
     return( false );
@@ -672,17 +673,17 @@ void DoPubsSect( section *sect )
 {
     pubdefinfo  info;
 
-    if( !MOD_NOT_DEBUGGABLE( CurrMod ) ) {
-        DBIAddModule( CurrMod, sect );
+    if( !MOD_NOT_DEBUGGABLE( wlink().CurrMod ) ) {
+        DBIAddModule( wlink().CurrMod, sect );
     }
     info.num = 0;
     info.first = true;
     info.sect = sect;
-    if( MapFile != nullptr ) {
+    if( wlink().MapFile != nullptr ) {
         WriteMapPubSortStart( &info );
     }
-    Ring2Lookup( CurrMod->publist, DefPubSym, &info );
-    if( MapFile != nullptr ) {
+    Ring2Lookup( wlink().CurrMod->publist, DefPubSym, &info );
+    if( wlink().MapFile != nullptr ) {
         WriteMapPubSortEnd( &info );
     }
 }
@@ -701,48 +702,48 @@ static void setDefBase( void )
 /****************************/
 {
 #ifdef _OS2
-    if( FmtData.type & MK_PE ) {
-        FmtData.base = PE_DEFAULT_BASE;
+    if( wlink().FmtData.type & MK_PE ) {
+        wlink().FmtData.base = PE_DEFAULT_BASE;
         return;
     }
-    if( FmtData.type & MK_WIN_VXD ) {
+    if( wlink().FmtData.type & MK_WIN_VXD ) {
         // A VxD is a position-independent flat module: VMM loads it at a linear
         // address it chooses and applies the LE fixups, so its objects must be
         // based at 0 (retail VxD objects all have reloc base 0). Using
         // FLAT_GRANULARITY here based every object at 0x10000, which shifted every
         // relocated pointer -- including the DDB service-table handlers -- by 64K,
         // so a peer's first VxDCall into the driver jumped to garbage.
-        FmtData.base = 0;
+        wlink().FmtData.base = 0;
         return;
     }
-    if( FmtData.type & MK_OS2_FLAT ) {
-        FmtData.base = FLAT_GRANULARITY;
+    if( wlink().FmtData.type & MK_OS2_FLAT ) {
+        wlink().FmtData.base = FLAT_GRANULARITY;
         return;
     }
 #endif
 #ifdef _QNX
-    if( FmtData.type & MK_QNX_FLAT ) {
-        FmtData.base = __ROUND_UP_SIZE_4K( StackSize + QNX_DEFAULT_BASE );
+    if( wlink().FmtData.type & MK_QNX_FLAT ) {
+        wlink().FmtData.base = __ROUND_UP_SIZE_4K( wlink().StackSize + QNX_DEFAULT_BASE );
         return;
     }
 #endif
 #ifdef _ELF
-    if( FmtData.type & MK_ELF ) {
-        switch( LinkState & LS_HAVE_MACHTYPE_MASK ) {
+    if( wlink().FmtData.type & MK_ELF ) {
+        switch( wlink().LinkState & LS_HAVE_MACHTYPE_MASK ) {
         case LS_HAVE_ALPHA_CODE:
             break;
         case LS_HAVE_MIPS_CODE:
-            FmtData.base = 0x00400000;
+            wlink().FmtData.base = 0x00400000;
             break;
         case LS_HAVE_PPC_CODE:
-            FmtData.base = 0x10000000;
+            wlink().FmtData.base = 0x10000000;
             break;
         case LS_HAVE_X64_CODE:
             // TODO
-            FmtData.base = 0x08048000;
+            wlink().FmtData.base = 0x08048000;
             break;
         case LS_HAVE_X86_CODE:
-            FmtData.base = 0x08048000;
+            wlink().FmtData.base = 0x08048000;
             break;
         default:
             break;
@@ -750,60 +751,60 @@ static void setDefBase( void )
         return;
     }
 #endif
-    FmtData.base = 0;
+    wlink().FmtData.base = 0;
 }
 
 static void setDefObjAlign( void )
 /********************************/
 {
 #ifdef _OS2
-    if( FmtData.type & MK_PE ) {
-        switch( LinkState & LS_HAVE_MACHTYPE_MASK ) {
+    if( wlink().FmtData.type & MK_PE ) {
+        switch( wlink().LinkState & LS_HAVE_MACHTYPE_MASK ) {
         case LS_HAVE_ALPHA_CODE:
         case LS_HAVE_MIPS_CODE: // TODO
         case LS_HAVE_PPC_CODE:
-            FmtData.objalign = _64K;
+            wlink().FmtData.objalign = _64K;
             break;
         case LS_HAVE_X86_CODE:
-            FmtData.objalign = _4K;
+            wlink().FmtData.objalign = _4K;
             break;
         case LS_HAVE_X64_CODE:
             // TODO
-            FmtData.objalign = _64K;
+            wlink().FmtData.objalign = _64K;
             break;
         default:
-            FmtData.objalign = _64K;
+            wlink().FmtData.objalign = _64K;
             break;
         }
         return;
-    } else if( FmtData.type & MK_WIN_VXD ) {
-        FmtData.objalign = _4K;
+    } else if( wlink().FmtData.type & MK_WIN_VXD ) {
+        wlink().FmtData.objalign = _4K;
         return;
-    } else if( FmtData.type & (MK_NE | MK_OS2_FLAT) ) {
+    } else if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT) ) {
 #if 0
-        if( (LinkState & LS_HAVE_PPC_CODE) ) {
+        if( (wlink().LinkState & LS_HAVE_PPC_CODE) ) {
             // Development temporarly on hold:
-            FmtData.objalign = _1K;
+            wlink().FmtData.objalign = _1K;
             return;
         }
 #endif
-        FmtData.objalign = FLAT_GRANULARITY;
+        wlink().FmtData.objalign = FLAT_GRANULARITY;
         return;
     }
 #endif
 #ifdef _QNX
-    if( FmtData.type & MK_QNX ) {
-        FmtData.objalign = QNX_GROUP_ALIGN;
+    if( wlink().FmtData.type & MK_QNX ) {
+        wlink().FmtData.objalign = QNX_GROUP_ALIGN;
         return;
     }
 #endif
 #ifdef _ELF
-    if( FmtData.type & MK_ELF ) {
-        FmtData.objalign = _4K;
+    if( wlink().FmtData.type & MK_ELF ) {
+        wlink().FmtData.objalign = _4K;
         return;
     }
 #endif
-    FmtData.objalign = _64K;
+    wlink().FmtData.objalign = _64K;
 }
 
 static offset getFlatOffset( void )
@@ -813,22 +814,22 @@ static offset getFlatOffset( void )
      * this must be always first to override target value
      */
 #ifdef _RAW
-    if( FmtData.output_raw || FmtData.output_hex ) {
+    if( wlink().FmtData.output_raw || wlink().FmtData.output_hex ) {
         return( 0 );
     }
 #endif
     /****************************************************/
 #ifdef _OS2
-    if( FmtData.type & MK_PE ) {
+    if( wlink().FmtData.type & MK_PE ) {
         return( GetPEHeaderSize() );
     }
 #endif
 #ifdef _ELF
-    if( FmtData.type & MK_ELF ) {
+    if( wlink().FmtData.type & MK_ELF ) {
         return( GetElfHeaderSize() );
     }
 #endif
-    return( FmtData.base );
+    return( wlink().FmtData.base );
 }
 
 void CalcAddresses( void )
@@ -840,55 +841,55 @@ void CalcAddresses( void )
     offset          flat;
 
     DEBUG(( DBG_OLD, "CalcAddresses()" ));
-    if( FmtData.base == NO_BASE_SPEC ) {
+    if( wlink().FmtData.base == NO_BASE_SPEC ) {
         setDefBase();
     }
     DBIPreAddrCalc();
-    CurrSect = Root;
-    if( FmtData.type & MK_PROT_MODE ) {
+    wlink().CurrSect = wlink().Root;
+    if( wlink().FmtData.type & MK_PROT_MODE ) {
         AllocFileSegs();
-        if( FmtData.objalign == NO_BASE_SPEC ) {
+        if( wlink().FmtData.objalign == NO_BASE_SPEC ) {
             setDefObjAlign();
         }
-        if( FmtData.type & MK_SPLIT_DATA ) {
+        if( wlink().FmtData.type & MK_SPLIT_DATA ) {
             FindUninitDataStart();
         }
     }
     StartMemMap();
-    AllocClasses( Root );
-    if( FmtData.type & (MK_REAL_MODE | MK_FLAT_OFFS | MK_ID_SPLIT) ) {
+    AllocClasses( wlink().Root );
+    if( wlink().FmtData.type & (MK_REAL_MODE | MK_FLAT_OFFS | MK_ID_SPLIT) ) {
 #ifdef _EXE
-        if( FmtData.type & MK_OVERLAYS ) {
+        if( wlink().FmtData.type & MK_OVERLAYS ) {
             OvlCalc();
         }
 #endif
-        CalcGrpAddr( Groups );
-        CalcGrpAddr( AbsGroups );
+        CalcGrpAddr( wlink().Groups );
+        CalcGrpAddr( wlink().AbsGroups );
 #ifdef _DOS16M
-    } else if( FmtData.type & MK_DOS16M ) {
+    } else if( wlink().FmtData.type & MK_DOS16M ) {
         CalcGrpSegs();
 #endif
-    } else if( FmtData.type & (MK_PE | MK_OS2_FLAT | MK_WIN_VXD | MK_QNX_FLAT | MK_ELF) ) {
+    } else if( wlink().FmtData.type & (MK_PE | MK_OS2_FLAT | MK_WIN_VXD | MK_QNX_FLAT | MK_ELF) ) {
         flat = getFlatOffset();
-        for( group = Groups; group != nullptr; group = group->next ) {
+        for( group = wlink().Groups; group != nullptr; group = group->next ) {
             size = group->totalsize;
-            if( group->addr.off > flat + FmtData.base) {
+            if( group->addr.off > flat + wlink().FmtData.base) {
                // ORDER CLNAME name OFFSET option sets start_offs,
                //   retrieve this information here and wrap into linear address
-               flat = group->addr.off - FmtData.base;
+               flat = group->addr.off - wlink().FmtData.base;
                group->addr.off = 0;
             }
             group->linear = flat;
-            if(( group == DataGroup )
-              && ( FmtData.dgroupsplitseg != nullptr )) {
-                if( StackSegPtr != nullptr ) {
-                    size -= StackSize;
+            if(( group == wlink().DataGroup )
+              && ( wlink().FmtData.dgroupsplitseg != nullptr )) {
+                if( wlink().StackSegPtr != nullptr ) {
+                    size -= wlink().StackSize;
                 }
             }
-            flat = __ROUND_UP_SIZE( flat + size, FmtData.objalign );
+            flat = __ROUND_UP_SIZE( flat + size, wlink().FmtData.objalign );
         }
         ReallocFileSegs();
-    } else if( FmtData.type & (MK_QNX_16 | MK_NE) ) {
+    } else if( wlink().FmtData.type & (MK_QNX_16 | MK_NE) ) {
         ReallocFileSegs();
     }
     DBIAddrStart();
@@ -908,7 +909,7 @@ static void FillClassFlags( char *name, unsigned_16 flags )
 {
     class_entry     *class_;
 
-    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
+    for( class_ = wlink().Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( stricmp( class_->name.u.ptr, name ) == 0 ) {
             RingLookup( class_->segs, SetClassFlag, &flags );
             return;
@@ -925,7 +926,7 @@ static void FillTypeFlags( unsigned_16 flags, segflag_type type )
     class_status    class_flags;
 
     class_flags = ( type == SEGFLAG_CODE ) ? CLASS_NONE : CLASS_CODE;
-    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
+    for( class_ = wlink().Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( class_flags == (class_->flags & CLASS_CODE) ) {
             RingLookup( class_->segs, SetClassFlag, &flags );
         }
@@ -941,7 +942,7 @@ void SetSegFlags( seg_flags_struct *start )
     seg_flags_struct    *seg_flags;
     class_entry         *class_;
 
-    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
+    for( class_ = wlink().Root->classes; class_ != nullptr; class_ = class_->next ) {
         RingWalk( class_->segs, SetReadOnly );
     }
     /*
@@ -967,7 +968,7 @@ void SetSegFlags( seg_flags_struct *start )
     for( seg_flags = start; seg_flags != nullptr; seg_flags = next ) {
         next = seg_flags->next;
         if( seg_flags->type == SEGFLAG_SEGMENT ) {
-            leader = FindSegment( Root, seg_flags->name );
+            leader = FindSegment( wlink().Root, seg_flags->name );
             if( leader == nullptr ) {
                 LnkMsg( WRN + MSG_SEG_NAME_NOT_FOUND, "s", seg_flags->name );
             } else {
@@ -993,7 +994,7 @@ static void SplitDGroupClasses( section *sect )
         newlist = nullptr;
         oldlist = nullptr;
         while( (curr = static_cast<seg_leader *>( RingPop( &class_->segs ) )) != nullptr ) {
-            if( curr->group == DataGroup ) {
+            if( curr->group == wlink().DataGroup ) {
                 RingAppend( &newlist, curr );
             } else {
                 RingAppend( &oldlist, curr );
@@ -1037,7 +1038,7 @@ static void ReOrderClasses( section *sect )
         nextclass = class_->next;  // Take class out of original ring
         class_->next = nullptr;
         CheckClassUninitialized( class_ );
-        if( (FmtData.type & (MK_NOVELL | MK_PHAR_LAP | MK_OS2_LX))
+        if( (wlink().FmtData.type & (MK_NOVELL | MK_PHAR_LAP | MK_OS2_LX))
           && ( class_->bits == BITS_16 ) ) {
             ord = ClassOrder::RealMode;
         } else {
@@ -1052,7 +1053,7 @@ static void ReOrderClasses( section *sect )
                 }
             } else if( ( class_->segs == nullptr )
                 || ( class_->segs->group == nullptr )
-                || ( class_->segs->group != DataGroup ) ) {
+                || ( class_->segs->group != wlink().DataGroup ) ) {
                 ord = ClassOrder::Other;
             } else {     // it's the DGROUP segments.
                 if( stricmp( name, BSSClassName ) == 0 ) {
@@ -1148,7 +1149,7 @@ static void SortClasses( section *sect )
                 if( MatchClass->FixedAddr ) {    // and copy any flags or address from it
                     class_->flags |= CLASS_FIXED;
                     class_->BaseAddr = MatchClass->Base;
-                    FmtData.base = 0;  // Otherwise PE will use default and blow up
+                    wlink().FmtData.base = 0;  // Otherwise PE will use default and blow up
                 }
                 if( MatchClass->NoEmit ) {
                     class_->flags |= CLASS_NOEMIT;
@@ -1240,7 +1241,7 @@ static void SortSegments( void )
     bool                added;
 
 
-    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
+    for( class_ = wlink().Root->classes; class_ != nullptr; class_ = class_->next ) {
         foundgroup = false;
         newlist = nullptr;
         for( curr = static_cast<seg_leader *>( RingPop( &class_->segs ) ); curr != nullptr; curr = static_cast<seg_leader *>( RingPop( &class_->segs ) ) ) {
@@ -1285,9 +1286,9 @@ void CheckClassOrder( void )
 /* Reorder the classes if DOSSEG flag set or ORDER directive given */
 {
     SortSegments();
-    if( LinkState & LS_SPEC_ORDER_FLAG ) {
+    if( wlink().LinkState & LS_SPEC_ORDER_FLAG ) {
        WalkAllSects( SortClasses );
-    } else if( LinkState & LS_DOSSEG_FLAG ) {
+    } else if( wlink().LinkState & LS_DOSSEG_FLAG ) {
        WalkAllSects( ReOrderClasses );
     }
 }

@@ -40,6 +40,7 @@
 #include <string>
 #include <string_view>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "newmem.h"
 #include "fileio.h"
@@ -109,8 +110,8 @@ void WriteNulls( f_handle file, size_t len, const char *name )
 void CheckErr( void )
 /**************************/
 {
-    if( LinkState & ( LS_LINK_ERROR | LS_STOP_WORKING ) ) {
-        if( MapFile != nullptr ) {
+    if( wlink().LinkState & ( LS_LINK_ERROR | LS_STOP_WORKING ) ) {
+        if( wlink().MapFile != nullptr ) {
             WriteMapLibsUsed();
         }
         Suicide();
@@ -120,7 +121,7 @@ void CheckErr( void )
 void CheckStop( void )
 /***************************/
 {
-    if( LinkState & LS_STOP_WORKING ) {
+    if( wlink().LinkState & LS_STOP_WORKING ) {
         Suicide();
     }
 }
@@ -160,17 +161,17 @@ static void WalkModsList( mod_entry *list, mods_walk_fn *cbfn )
 static void WalkSectModsList( section *sect, void *mods_walk_cb )
 /***************************************************************/
 {
-    CurrSect = sect;
+    wlink().CurrSect = sect;
     WalkModsList( sect->mods, static_cast<mods_walk_data *>( mods_walk_cb )->cbfn );
 }
 
 void WalkAllSects( void (*rtn)( section * ) )
 /*******************************************/
 {
-    rtn( Root );
+    rtn( wlink().Root );
 #ifdef _EXE
-    if( FmtData.type & MK_OVERLAYS ) {
-        WalkAreas( Root->areas, rtn );
+    if( wlink().FmtData.type & MK_OVERLAYS ) {
+        WalkAreas( wlink().Root->areas, rtn );
     }
 #endif
 }
@@ -178,10 +179,10 @@ void WalkAllSects( void (*rtn)( section * ) )
 void ParmWalkAllSects( void (*rtn)( section *, void * ), void *parm )
 /*******************************************************************/
 {
-    rtn( Root, parm );
+    rtn( wlink().Root, parm );
 #ifdef _EXE
-    if( FmtData.type & MK_OVERLAYS ) {
-        ParmWalkAreas( Root->areas, rtn, parm );
+    if( wlink().FmtData.type & MK_OVERLAYS ) {
+        ParmWalkAreas( wlink().Root->areas, rtn, parm );
     }
 #endif
 }
@@ -192,8 +193,8 @@ void WalkMods( mods_walk_fn *cbfn )
     mods_walk_data      mods_walk_cb{ cbfn };
 
     ParmWalkAllSects( WalkSectModsList, &mods_walk_cb );
-    CurrSect = Root;
-    WalkModsList( LibModules, cbfn );
+    wlink().CurrSect = wlink().Root;
+    WalkModsList( wlink().LibModules, cbfn );
 }
 
 static void WalkClass( class_entry *class_, class_walk_fn *cbfn )
@@ -206,7 +207,7 @@ static void WalkClass( class_entry *class_, class_walk_fn *cbfn )
 void SectWalkClass( section *sect, class_walk_fn *cbfn )
 /******************************************************/
 {
-    CurrSect = sect;
+    wlink().CurrSect = sect;
     for( class_entry *class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         WalkClass( class_, cbfn );
     }
@@ -215,7 +216,7 @@ void SectWalkClass( section *sect, class_walk_fn *cbfn )
 static void _SectWalkClass( section *sect, void *class_walk_cb )
 /**************************************************************/
 {
-    CurrSect = sect;
+    wlink().CurrSect = sect;
     for( class_entry *class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         WalkClass( class_, static_cast<class_walk_data *>( class_walk_cb )->cbfn );
     }
@@ -300,7 +301,7 @@ obj_name_list *AddNameTable( const char *name, size_t len, bool is_mod, obj_name
         imp = static_cast<obj_name_list *>( _PermAlloc( sizeof( obj_name_list ) ) );
         imp->next = nullptr;
         imp->len = len;
-        imp->name.u.ptr = AddSymbolStringTable( &PermStrings, name, len );
+        imp->name.u.ptr = AddSymbolStringTable( &wlink().PermStrings, name, len );
         imp->num = is_mod ? index : off;
         *owner = imp;
     }
@@ -523,29 +524,29 @@ static char *CopyPathList( const char *path_list )
 void InitEnvVars( void )
 /**********************/
 {
-    if( ExePath == nullptr ) {
+    if( wlink().ExePath == nullptr ) {
 #if defined( __QNX__ )
         const char  *path_list = "/usr/watcom";
 #else
         const char  *path_list = GetEnvString( "PATH" );
 #endif
-        ExePath = CopyPathList( path_list );
+        wlink().ExePath = CopyPathList( path_list );
     }
-    if( LibPath == nullptr ) {
-        LibPath = CopyPathList( GetEnvString( "LIB" ) );
+    if( wlink().LibPath == nullptr ) {
+        wlink().LibPath = CopyPathList( GetEnvString( "LIB" ) );
     }
 }
 
 void FiniEnvVars( void )
 /**********************/
 {
-    if( ExePath != nullptr ) {
-        MemFree( ExePath );
-        ExePath = nullptr;
+    if( wlink().ExePath != nullptr ) {
+        MemFree( wlink().ExePath );
+        wlink().ExePath = nullptr;
     }
-    if( LibPath != nullptr ) {
-        MemFree( LibPath );
-        LibPath = nullptr;
+    if( wlink().LibPath != nullptr ) {
+        MemFree( wlink().LibPath );
+        wlink().LibPath = nullptr;
     }
 }
 
@@ -559,8 +560,8 @@ f_handle FindPath( const char *name, char *fullname )
     strcpy( fullpath.data(), name );
     file = QObjOpen( fullpath.data() );
     if( file == NIL_FHANDLE
-      && ExePath != nullptr ) {
-        for( path_list = ExePath; *path_list != '\0'; ) {
+      && wlink().ExePath != nullptr ) {
+        for( path_list = wlink().ExePath; *path_list != '\0'; ) {
             strcpy( MakePath( fullpath.data(), &path_list ), name );
             file = QObjOpen( fullpath.data() );
             if( file != NIL_FHANDLE ) {
@@ -580,7 +581,7 @@ group_entry *FindGroup( segment seg )
 {
     group_entry *group;
 
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( group->addr.seg == seg ) {
             break;
         }
@@ -607,7 +608,7 @@ offset FindLinearAddr2( addr_type *addr )
 
     group = FindGroup( addr->seg );
     if( group != nullptr ) {
-        return( addr->off + group->linear + FmtData.base );
+        return( addr->off + group->linear + wlink().FmtData.base );
     }
     return( addr->off );
 }
@@ -619,7 +620,7 @@ file_list *AllocNewFile( member_list *member )
 
     file = static_cast<file_list *>( _PermAlloc( sizeof( file_list ) ) );
     file->next = nullptr;
-    file->flags_dbi = DBIFlag;
+    file->flags_dbi = wlink().DBIFlag;
     file->flags_file = static_cast<file_flags>( 0 );
     file->strtab = nullptr;
     file->u.member = member;

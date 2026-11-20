@@ -31,6 +31,7 @@
 
 #include <string.h>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include <exerdos.h>
 #include "pcobj.h"
 #include "newmem.h"
@@ -87,12 +88,12 @@ static void WriteBinData( void )
     DEBUG(( DBG_BASE, "Writing data" ));
     OrderGroups( CompareDosSegments );
 
-    Root->outfile->file_loc = Root->u.file_loc;
-    Root->sect_addr = Groups->addr;
+    wlink().Root->outfile->file_loc = wlink().Root->u.file_loc;
+    wlink().Root->sect_addr = wlink().Groups->addr;
 
     /* write groups and relocations */
-    for( group = Groups; group != nullptr; group = group->next ) {
-        CurrSect = group->section;  // needed for WriteInfo.
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+        wlink().CurrSect = group->section;  // needed for WriteInfo.
         if( group->totalsize ) {
             WriteGroup( group );
             state().CodeSize += group->totalsize;
@@ -114,13 +115,13 @@ static void WriteRDOSCode( void )
     DEBUG(( DBG_BASE, "Writing code" ));
     OrderGroups( CompareDosSegments );
 
-    Root->outfile->file_loc = Root->u.file_loc;
-    Root->sect_addr = Groups->addr;
+    wlink().Root->outfile->file_loc = wlink().Root->u.file_loc;
+    wlink().Root->sect_addr = wlink().Groups->addr;
     leader = nullptr;
 
     /* write groups and relocations */
     iscode = false;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( leader != group->leaders ) {
             iscode = false;
             leader = group->leaders;
@@ -129,15 +130,15 @@ static void WriteRDOSCode( void )
                 piece = leader->pieces;
                 if( piece != nullptr ) {
                     if( piece->iscode
-                      && ( leader->seg_addr.seg == FmtData.u.rdos.code_seg ) ) {
+                      && ( leader->seg_addr.seg == wlink().FmtData.u.rdos.code_seg ) ) {
                         iscode = true;
                     }
                 }
             }
         }
-        CurrSect = group->section;  // needed for WriteInfo.
+        wlink().CurrSect = group->section;  // needed for WriteInfo.
         if( iscode ) {
-            CurrSect->u.file_loc = state().HeaderSize + state().CodeSize;
+            wlink().CurrSect->u.file_loc = state().HeaderSize + state().CodeSize;
             WriteGroup( group );
             if( group->totalsize > group->size ) {
                 PadLoad( group->totalsize - group->size );
@@ -163,7 +164,7 @@ static void WriteRDOSData( void )
     /* write groups and relocations */
     leader = nullptr;
     isdata = false;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( leader != group->leaders ) {
             isdata = false;
             leader = group->leaders;
@@ -173,21 +174,21 @@ static void WriteRDOSData( void )
                 if( piece != nullptr ) {
                     if( ( piece->isidata
                       || piece->isuninit )
-                      && ( leader->seg_addr.seg == FmtData.u.rdos.data_seg ) ) {
+                      && ( leader->seg_addr.seg == wlink().FmtData.u.rdos.data_seg ) ) {
                         isdata = true;
                     }
                 }
             }
         }
-        CurrSect = group->section;  // needed for WriteInfo.
+        wlink().CurrSect = group->section;  // needed for WriteInfo.
         if( isdata ) {
-            CurrSect->u.file_loc = state().HeaderSize + state().CodeSize + state().DataSize;
-            if( StackSegPtr != nullptr ) {
-                if( group->totalsize - group->size < StackSize ) {
-                    StackSize = group->totalsize - group->size;
+            wlink().CurrSect->u.file_loc = state().HeaderSize + state().CodeSize + state().DataSize;
+            if( wlink().StackSegPtr != nullptr ) {
+                if( group->totalsize - group->size < wlink().StackSize ) {
+                    wlink().StackSize = group->totalsize - group->size;
                     group->totalsize = group->size;
                 } else {
-                    group->totalsize -= StackSize;
+                    group->totalsize -= wlink().StackSize;
                 }
             }
             WriteGroup( group );
@@ -209,7 +210,7 @@ void GetRdosSegs( void )
     SEGDATA             *piece;
 
     leader = nullptr;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( leader != group->leaders ) {
             leader = group->leaders;
             if( leader != nullptr
@@ -217,10 +218,10 @@ void GetRdosSegs( void )
                 piece = leader->pieces;
                 if( piece != nullptr ) {
                     if( piece->iscode )
-                        FmtData.u.rdos.code_seg = leader->seg_addr.seg;
+                        wlink().FmtData.u.rdos.code_seg = leader->seg_addr.seg;
                     if( piece->isidata
                       || piece->isuninit ) {
-                        FmtData.u.rdos.data_seg = leader->seg_addr.seg;
+                        wlink().FmtData.u.rdos.data_seg = leader->seg_addr.seg;
                     }
                 }
             }
@@ -237,11 +238,11 @@ static void WriteHeader16( void )
 
     SeekLoad( 0 );
     _HostU16toTarg( RDOS_SIGNATURE_16, exe_head.signature );
-    _HostU16toTarg( StartInfo.addr.off, exe_head.IP );
+    _HostU16toTarg( wlink().StartInfo.addr.off, exe_head.IP );
     _HostU16toTarg( state().CodeSize, exe_head.code_size );
-    _HostU16toTarg( FmtData.u.rdos.code_sel, exe_head.code_sel );
+    _HostU16toTarg( wlink().FmtData.u.rdos.code_sel, exe_head.code_sel );
     _HostU16toTarg( state().DataSize, exe_head.data_size );
-    _HostU16toTarg( FmtData.u.rdos.data_sel, exe_head.data_sel );
+    _HostU16toTarg( wlink().FmtData.u.rdos.data_sel, exe_head.data_sel );
     WriteLoad( &exe_head, sizeof( rdos_dev16_header ) );
 }
 
@@ -254,11 +255,11 @@ static void WriteHeader32( void )
 
     SeekLoad( 0 );
     _HostU16toTarg( RDOS_SIGNATURE_32, exe_head.signature );
-    _HostU32toTarg( StartInfo.addr.off, exe_head.EIP );
+    _HostU32toTarg( wlink().StartInfo.addr.off, exe_head.EIP );
     _HostU32toTarg( state().CodeSize, exe_head.code_size );
-    _HostU16toTarg( FmtData.u.rdos.code_sel, exe_head.code_sel );
+    _HostU16toTarg( wlink().FmtData.u.rdos.code_sel, exe_head.code_sel );
     _HostU32toTarg( state().DataSize, exe_head.data_size );
-    _HostU16toTarg( FmtData.u.rdos.data_sel, exe_head.data_sel );
+    _HostU16toTarg( wlink().FmtData.u.rdos.data_sel, exe_head.data_sel );
     WriteLoad( &exe_head, sizeof( rdos_dev32_header ) );
 }
 
@@ -280,7 +281,7 @@ static void WriteMbootHeader( void )
     linear = MB_BASE + state().CodeSize + sizeof( mb_header );
     _HostU32toTarg( linear, mb_head.mb_load_end_addr );
     _HostU32toTarg( linear, mb_head.mb_bss_end_addr );
-    temp32 = MB_BASE + StartInfo.addr.off + sizeof( mb_header );
+    temp32 = MB_BASE + wlink().StartInfo.addr.off + sizeof( mb_header );
     _HostU32toTarg( temp32, mb_head.mb_entry_addr );
     WriteLoad( &mb_head, sizeof( mb_header ) );
 }
@@ -293,10 +294,10 @@ static size_t getHeaderSize( void )
 {
     size_t  size;
 
-    if( FmtData.u.rdos.mboot ) {
+    if( wlink().FmtData.u.rdos.mboot ) {
         size = sizeof( mb_header );
-    } else if( FmtData.u.rdos.driver ) {
-        if( LinkState & LS_FMT_SEEN_32BIT ) {
+    } else if( wlink().FmtData.u.rdos.driver ) {
+        if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
             size = sizeof( rdos_dev32_header );
         } else {
             size = sizeof( rdos_dev16_header );
@@ -313,10 +314,10 @@ static void writeHeader( void )
  * appropriate RDOS format
  */
 {
-    if( FmtData.u.rdos.mboot ) {
+    if( wlink().FmtData.u.rdos.mboot ) {
         WriteMbootHeader();
-    } else if( FmtData.u.rdos.driver ) {
-        if( LinkState & LS_FMT_SEEN_32BIT ) {
+    } else if( wlink().FmtData.u.rdos.driver ) {
+        if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
             state().CodeSize += 0x10;   // this is a fix to make offsets into data segment correct
             WriteHeader32();
         } else {
@@ -332,14 +333,14 @@ void FiniRdosLoadFile( void )
  * finish writing of load file
  */
 {
-    if( (FmtData.type & MK_RDOS_16)
-      && (LinkState & LS_FMT_SEEN_32BIT) ) {
+    if( (wlink().FmtData.type & MK_RDOS_16)
+      && (wlink().LinkState & LS_FMT_SEEN_32BIT) ) {
         LnkMsg( WRN+LOC+MSG_CANNOT_HAVE_16_AND_32, nullptr );
     }
     state().HeaderSize = getHeaderSize();
     SeekLoad( state().HeaderSize );
-    Root->u.file_loc = state().HeaderSize;
-    if( FmtData.u.rdos.driver ) {
+    wlink().Root->u.file_loc = state().HeaderSize;
+    if( wlink().FmtData.u.rdos.driver ) {
         WriteRDOSCode();
         WriteRDOSData();
     } else {

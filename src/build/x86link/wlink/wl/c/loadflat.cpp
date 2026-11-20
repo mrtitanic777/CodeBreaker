@@ -32,6 +32,7 @@
 
 #include <cstring>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "reloc.h"
 #include "exeflat.h"
 #include "loados2.h"
@@ -67,7 +68,7 @@ static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
     unsigned        shift;
 
     numpages = PAGE_COUNT( limit );
-    if( FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+    if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
         size = numpages * sizeof( le_map_entry );
         while( numpages-- > 0 ) {
             *start += 1;
@@ -78,7 +79,7 @@ static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
             buf = reinterpret_cast<map_entry *>( reinterpret_cast<char *>( buf ) + sizeof( le_map_entry ) );
         }
     } else { /* FmtData.type & MK_OS2_LX */
-        shift = FmtData.u.os2fam.segment_shift;
+        shift = wlink().FmtData.u.os2fam.segment_shift;
         size = numpages * sizeof( lx_map_entry );
         while( limit > 0 ) {
             buf->lx.page_offset = *start >> shift;
@@ -116,25 +117,25 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
     numpages = 0;
     numobjects = 0;
     objrec.reserved = 0;
-    if( DataGroup != nullptr ) {
-        header->autodata_obj = DataGroup->addr.seg;
+    if( wlink().DataGroup != nullptr ) {
+        header->autodata_obj = wlink().DataGroup->addr.seg;
     } else {
         header->autodata_obj = 0;
     }
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
-        if( group->addr.seg == StackAddr.seg ) {
-            header->stack_obj = StackAddr.seg;
-            header->esp = StackAddr.off - group->addr.off;
+        if( group->addr.seg == wlink().StackAddr.seg ) {
+            header->stack_obj = wlink().StackAddr.seg;
+            header->esp = wlink().StackAddr.off - group->addr.off;
         }
-        if( group->addr.seg == StartInfo.addr.seg ) {
-            header->start_obj = StartInfo.addr.seg;
-            header->eip = StartInfo.addr.off - group->addr.off;
+        if( group->addr.seg == wlink().StartInfo.addr.seg ) {
+            header->start_obj = wlink().StartInfo.addr.seg;
+            header->eip = wlink().StartInfo.addr.off - group->addr.off;
         }
         objrec.size = group->totalsize;
         objrec.addr = group->linear;
-        if( FmtData.type & MK_WIN_VXD ) {
+        if( wlink().FmtData.type & MK_WIN_VXD ) {
             // A VxD's objects are relocated independently by VMM and referenced
             // through (object,offset) fixups, so each object's LE base address
             // must be 0 (as in every retail VxD). Emitting group->linear here
@@ -172,7 +173,7 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
             objrec.flags |= OBJ_DISCARDABLE;
         }
         if( (group->segflags & SEG_PURE)
-          || (group == DataGroup && (FmtData.u.os2fam.flags & SINGLE_AUTO_DATA)) ) {
+          || (group == wlink().DataGroup && (wlink().FmtData.u.os2fam.flags & SINGLE_AUTO_DATA)) ) {
             objrec.flags |= OBJ_SHARABLE;
         }
         if( group->segflags & SEG_PRELOAD ) {
@@ -197,17 +198,17 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
     loc += size;
     header->objmap_off = loc;
     start = 0;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         for( sizeleft = group->size; sizeleft > PAGEMAP_BUF_SIZE; sizeleft -= PAGEMAP_BUF_SIZE ) {
-            map_size = NumberBuf( &start, PAGEMAP_BUF_SIZE, reinterpret_cast<map_entry *>( TokBuff ) );
+            map_size = NumberBuf( &start, PAGEMAP_BUF_SIZE, reinterpret_cast<map_entry *>( wlink().TokBuff ) );
             size += map_size;
-            WriteLoad( TokBuff, map_size );
+            WriteLoad( wlink().TokBuff, map_size );
         }
-        map_size = NumberBuf( &start, sizeleft, reinterpret_cast<map_entry *>( TokBuff ) );
+        map_size = NumberBuf( &start, sizeleft, reinterpret_cast<map_entry *>( wlink().TokBuff ) );
         size += map_size;
-        WriteLoad( TokBuff, map_size );
+        WriteLoad( wlink().TokBuff, map_size );
     }
     return( size );
 }
@@ -247,7 +248,7 @@ static unsigned long WriteFlatEntryTable( void )
      * space, but that should not be required.
      */
     size = 0;
-    start = FmtData.u.os2fam.exports;
+    start = wlink().FmtData.u.os2fam.exports;
     if( start != nullptr ) {
         prevord = 0;
         for( place = start; place != nullptr; ) {
@@ -350,7 +351,7 @@ static unsigned WriteFixupTables( os2_flat_header *header, unsigned long loc)
     header->fixpage_off = loc;
     numentries = 0;
     size = 0;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         pagelist_array = group->g.pagelist_array;
         numpages = PAGE_COUNT( group->size );
         numentries += numpages;
@@ -368,7 +369,7 @@ static unsigned WriteFixupTables( os2_flat_header *header, unsigned long loc)
     /* now that the page table is written out, do the fixups. */
     header->fixrec_off = loc + numentries * sizeof( unsigned_32 );
     size += numentries * sizeof( unsigned_32 );
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         TraverseOS2RelocList( group, DumpRelocList );
     }
     return( size );
@@ -384,13 +385,13 @@ static unsigned WriteDataPages( unsigned long loc )
     size_t      size;
 
     last_page = 0;
-    for( group = Groups; group != nullptr; group = group->next) {
+    for( group = wlink().Groups; group != nullptr; group = group->next) {
         if( group->size != 0 ) {
             if( last_page != 0 ) {
-                if( FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+                if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
                     size = OSF_DEF_PAGE_SIZE - last_page;
                 } else { /* FmtData.type & MK_OS2_LX */
-                    size = __ROUND_UP_SIZE_PWROF2( last_page, FmtData.u.os2fam.segment_shift ) - last_page;
+                    size = __ROUND_UP_SIZE_PWROF2( last_page, wlink().FmtData.u.os2fam.segment_shift ) - last_page;
                 }
                 PadLoad( size );
                 loc += size;
@@ -402,10 +403,10 @@ static unsigned WriteDataPages( unsigned long loc )
     }
     if( last_page == 0 ) {
         last_page = OSF_DEF_PAGE_SIZE;
-    } else if( FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+    } else if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
         /* nothing */
     } else { /* FmtData.type & MK_OS2_LX */
-        PadLoad( __ROUND_UP_SIZE_PWROF2( last_page, FmtData.u.os2fam.segment_shift ) - last_page );
+        PadLoad( __ROUND_UP_SIZE_PWROF2( last_page, wlink().FmtData.u.os2fam.segment_shift ) - last_page );
     }
     return( last_page );
 }
@@ -444,7 +445,7 @@ static void SetHeaderVxDInfo( os2_flat_header *exe_head )
     unsigned     adjust;
     unsigned     vm_off;
 
-    exp = FmtData.u.os2fam.exports;
+    exp = wlink().FmtData.u.os2fam.exports;
     if( ( exp != nullptr ) && ( exp->sym != nullptr ) ) {
         adjust = exp->sym->p.seg->u.leader->seg_addr.off + exp->sym->p.seg->a.delta;
         vm_off = exp->sym->addr.off - adjust;
@@ -500,14 +501,14 @@ void FiniOS2FlatLoadFile( void )
     exe_head.fixup_size = curr_loc - exe_head.fixpage_off;
     curr_loc = NullAlign( 4 );    /* align to dword boundary */
     exe_head.page_off = curr_loc;
-    if( FmtData.type & MK_WIN_VXD ) {
+    if( wlink().FmtData.type & MK_WIN_VXD ) {
         SetHeaderVxDInfo(&exe_head);
     }
     last_page = WriteDataPages( curr_loc );
-    if( FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+    if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
         exe_head.l.last_page = last_page;
     } else { /* FmtData.type & MK_OS2_LX */
-        exe_head.l.page_shift = FmtData.u.os2fam.segment_shift;
+        exe_head.l.page_shift = wlink().FmtData.u.os2fam.segment_shift;
     }
     exe_head.nonres_off = PosLoad();
     /*
@@ -528,7 +529,7 @@ void FiniOS2FlatLoadFile( void )
         exe_head.debug_off = curr_loc;
         exe_head.debug_len = debug_size;
     }
-    if( FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+    if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
         exe_head.signature = EXESIGN_LE;
     } else { /* FmtData.type & MK_OS2_LX */
         exe_head.signature = EXESIGN_LX;
@@ -536,29 +537,29 @@ void FiniOS2FlatLoadFile( void )
     exe_head.byte_order = OSF_386_BYTE_ORDER;
     exe_head.word_order = OSF_386_WORD_ORDER;
     exe_head.level = OSF_EXE_LEVEL;
-    if( FmtData.cpu_type <= 3 ) {
+    if( wlink().FmtData.cpu_type <= 3 ) {
         exe_head.cpu_type = OSF_CPU_386;
     } else {
         exe_head.cpu_type = OSF_CPU_486;
     }
-    if( FmtData.type & MK_WIN_VXD ) {
+    if( wlink().FmtData.type & MK_WIN_VXD ) {
         exe_head.os_type = OSF_WIN386_LEVEL;
     } else {
         exe_head.os_type = OSF_OS_LEVEL;
     }
-    if( FmtData.ver_specified ) {
-        if( FmtData.minor < 10 ) {
-            exe_head.version = FmtData.major * 100 + FmtData.minor * 10;
+    if( wlink().FmtData.ver_specified ) {
+        if( wlink().FmtData.minor < 10 ) {
+            exe_head.version = wlink().FmtData.major * 100 + wlink().FmtData.minor * 10;
         } else {
-            exe_head.version = FmtData.major * 100 + FmtData.minor;
+            exe_head.version = wlink().FmtData.major * 100 + wlink().FmtData.minor;
         }
     } else {
         exe_head.version = 0;
     }
-    if( FmtData.type & MK_WIN_VXD ) { // VxD flags settings
-        if( FmtData.u.os2fam.flags & VIRT_DEVICE ) {
+    if( wlink().FmtData.type & MK_WIN_VXD ) { // VxD flags settings
+        if( wlink().FmtData.u.os2fam.flags & VIRT_DEVICE ) {
             exe_head.flags |= VXD_DEVICE_DRIVER_DYNAMIC;
-        } else if( FmtData.u.os2fam.flags & PHYS_DEVICE ) {
+        } else if( wlink().FmtData.u.os2fam.flags & PHYS_DEVICE ) {
             exe_head.flags |= VXD_DEVICE_DRIVER_STATIC;
         } else if( flatState().vxdIsDynamic ) {
             /* DDB has DDB_DYNAMIC_VXD set -> dynamically loadable (VXDLDR) */
@@ -569,21 +570,21 @@ void FiniOS2FlatLoadFile( void )
         }
 //        exe_head.heapsize  = FmtData.u.os2fam.heapsize;
     } else { // OS/2 flags settings
-        if( FmtData.u.os2fam.flags & PHYS_DEVICE ) {
+        if( wlink().FmtData.u.os2fam.flags & PHYS_DEVICE ) {
             exe_head.flags |= OSF_PHYS_DEVICE;
-        } else if( FmtData.u.os2fam.flags & VIRT_DEVICE ) {
+        } else if( wlink().FmtData.u.os2fam.flags & VIRT_DEVICE ) {
             exe_head.flags |= OSF_VIRT_DEVICE;
-        } else if( FmtData.dll ) {
+        } else if( wlink().FmtData.dll ) {
             exe_head.flags |= OSF_IS_DLL;
             /*
              * The OS/2 loader REALLY doesn't like to have these flags set if there
              * is no entrypoint!
              */
             if( exe_head.start_obj != 0 ) {
-                if( FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG ) {
+                if( wlink().FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG ) {
                     exe_head.flags |= OSF_INIT_INSTANCE;
                 }
-                if( FmtData.u.os2fam.flags & TERM_INSTANCE_FLAG ) {
+                if( wlink().FmtData.u.os2fam.flags & TERM_INSTANCE_FLAG ) {
                     exe_head.flags |= OSF_TERM_INSTANCE;
                 }
             }
@@ -591,23 +592,23 @@ void FiniOS2FlatLoadFile( void )
             /*
              * These are only relevant for EXEs
              */
-            exe_head.stacksize = StackSize;
-            if( FmtData.u.os2fam.flags & PM_NOT_COMPATIBLE ) {
+            exe_head.stacksize = wlink().StackSize;
+            if( wlink().FmtData.u.os2fam.flags & PM_NOT_COMPATIBLE ) {
                 exe_head.flags |= OSF_NOT_PM_COMPATIBLE;
-            } else if( FmtData.u.os2fam.flags & PM_APPLICATION ) {
+            } else if( wlink().FmtData.u.os2fam.flags & PM_APPLICATION ) {
                 exe_head.flags |= OSF_PM_APP;
             } else {
                 exe_head.flags |= OSF_PM_COMPATIBLE;
             }
         }
-        if( LinkState & LS_LINK_ERROR ) {
+        if( wlink().LinkState & LS_LINK_ERROR ) {
             exe_head.flags |= OSF_LINK_ERROR;
         }
-        if( (FmtData.type & MK_OS2_LX)
-          && (FmtData.u.os2fam.toggle_relocs ^ FmtData.u.os2fam.gen_int_relocs) ) {
+        if( (wlink().FmtData.type & MK_OS2_LX)
+          && (wlink().FmtData.u.os2fam.toggle_relocs ^ wlink().FmtData.u.os2fam.gen_int_relocs) ) {
             exe_head.flags |= OSF_INTERNAL_FIXUPS_DONE;
         }
-        exe_head.heapsize  = FmtData.u.os2fam.heapsize;
+        exe_head.heapsize  = wlink().FmtData.u.os2fam.heapsize;
     }
     exe_head.page_size = OSF_DEF_PAGE_SIZE;
     exe_head.num_preload = 0;       /* NYI: we should fill in this one correctly */

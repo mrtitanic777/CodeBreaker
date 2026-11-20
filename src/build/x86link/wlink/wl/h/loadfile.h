@@ -51,8 +51,6 @@ typedef struct {
     boolbit             from_inc    : 1;
 } startinfo;
 
-extern seg_leader       *StackSegPtr;
-extern startinfo        StartInfo;
 
 extern void             InitLoadFile( void );
 extern void             FiniLoadFile( void );

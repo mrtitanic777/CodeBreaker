@@ -1,6 +1,7 @@
 // build/x86link/directives/qnx.cpp -- QNX (`format qnx [flat]`, its options and `segment` directive): a port of wlink's
 // cmdqnx.c.
 #include "build/x86link/directives/common.hpp"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "exeqnx.h"
 #include "loadqnx.h"
@@ -11,21 +12,21 @@
 namespace cb::x86link::directives {
 
 void SetQNXFmt() {
-    FmtData.def_ext = E_QNX;
-    FmtData.u.qnx.flags = 0;
-    FmtData.u.qnx.priv_level = 0;
-    FmtData.u.qnx.seg_flags = nullptr;
-    FmtData.u.qnx.heapsize = _4K;
-    FmtData.u.qnx.gen_seg_relocs = true;
-    FmtData.u.qnx.gen_linear_relocs = false;
+    wlink().FmtData.def_ext = E_QNX;
+    wlink().FmtData.u.qnx.flags = 0;
+    wlink().FmtData.u.qnx.priv_level = 0;
+    wlink().FmtData.u.qnx.seg_flags = nullptr;
+    wlink().FmtData.u.qnx.heapsize = _4K;
+    wlink().FmtData.u.qnx.gen_seg_relocs = true;
+    wlink().FmtData.u.qnx.gen_linear_relocs = false;
     ChkBase(_4K);
 }
 
-void FreeQNXFmt() { FreeSegFlags(FmtData.u.qnx.seg_flags); }
+void FreeQNXFmt() { FreeSegFlags(wlink().FmtData.u.qnx.seg_flags); }
 
 void CmdQNXFini() {
-    if (!FmtData.u.qnx.gen_linear_relocs && !FmtData.u.qnx.gen_seg_relocs) {
-        LinkState &= ~LS_MAKE_RELOCS;
+    if (!wlink().FmtData.u.qnx.gen_linear_relocs && !wlink().FmtData.u.qnx.gen_seg_relocs) {
+        wlink().LinkState &= ~LS_MAKE_RELOCS;
     }
 }
 
@@ -34,7 +35,7 @@ namespace {
 // ---- "OPtion" directive
 
 bool ProcLongLived() {
-    FmtData.u.qnx.flags |= _TCF_LONG_LIVED;
+    wlink().FmtData.u.qnx.flags |= _TCF_LONG_LIVED;
     return true;
 }
 
@@ -46,13 +47,13 @@ bool ProcPrivilege() {
     if (ret != Number::ok || value > 3) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "PRIVILEGE");
     } else {
-        FmtData.u.qnx.priv_level = value;
+        wlink().FmtData.u.qnx.priv_level = value;
     }
     return true;
 }
 
 bool ProcLinearRelocs() {
-    FmtData.u.qnx.gen_linear_relocs = true;
+    wlink().FmtData.u.qnx.gen_linear_relocs = true;
     return true;
 }
 
@@ -68,22 +69,22 @@ constexpr Entry MainOptions[] = {
 bool ProcQNXClass() { return true; }
 
 bool ProcQNXExecuteonly() {
-    FmtData.u.qnx.seg_flags->flags = (seg_flags_type)(QNX_EXEC_ONLY);
+    wlink().FmtData.u.qnx.seg_flags->flags = (seg_flags_type)(QNX_EXEC_ONLY);
     return true;
 }
 
 bool ProcQNXExecuteread() {
-    FmtData.u.qnx.seg_flags->flags = (seg_flags_type)(QNX_EXEC_READ);
+    wlink().FmtData.u.qnx.seg_flags->flags = (seg_flags_type)(QNX_EXEC_READ);
     return true;
 }
 
 bool ProcQNXReadOnly() {
-    FmtData.u.qnx.seg_flags->flags = (seg_flags_type)(QNX_READ_ONLY);
+    wlink().FmtData.u.qnx.seg_flags->flags = (seg_flags_type)(QNX_READ_ONLY);
     return true;
 }
 
 bool ProcQNXReadWrite() {
-    FmtData.u.qnx.seg_flags->flags = (seg_flags_type)(QNX_READ_WRITE);
+    wlink().FmtData.u.qnx.seg_flags->flags = (seg_flags_type)(QNX_READ_WRITE);
     return true;
 }
 
@@ -110,8 +111,8 @@ bool getSegFlags() {
     std::string_view text = reader().text();
     seg_flags->name = MemToStringSafe(text.data(), text.size());
     seg_flags->type = (isclass) ? SEGFLAG_CLASS : SEGFLAG_SEGMENT;
-    seg_flags->next = FmtData.u.qnx.seg_flags;
-    FmtData.u.qnx.seg_flags = seg_flags;
+    seg_flags->next = wlink().FmtData.u.qnx.seg_flags;
+    wlink().FmtData.u.qnx.seg_flags = seg_flags;
     return process_one(QNXSegModel, Sep::none);
 }
 
@@ -128,7 +129,7 @@ constexpr Entry QNXFormats[] = {
 bool ProcQNXOptions() { return process_one(MainOptions, Sep::none); }
 
 bool ProcQNXNoRelocs() {
-    FmtData.u.qnx.gen_seg_relocs = false;
+    wlink().FmtData.u.qnx.gen_seg_relocs = false;
     return true;
 }
 
@@ -140,7 +141,7 @@ bool ProcQNXHeapSize() {
     if (ret != Number::ok || value == 0) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "HEAPSIZE");
     } else {
-        FmtData.u.qnx.heapsize = value;
+        wlink().FmtData.u.qnx.heapsize = value;
     }
     return true;
 }

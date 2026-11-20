@@ -37,6 +37,7 @@
 #include <cctype>
 #include <string_view>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/state.hpp"   /* CodeBreaker: where the directives being read are */
 #include "fileio.h"
 #include "ideentry.h"
@@ -57,10 +58,7 @@ const char *MsgStrings[] = {
 
 #define MSG_ARRAY_SIZE ((MSG_MAX_ERR_MSG_NUM / 8) + 1)
 
-unsigned_32     MaxErrors;
-bool            BannerPrinted;
 
-byte MsgFlags[MSG_ARRAY_SIZE];
 
 namespace {
 
@@ -101,7 +99,7 @@ void ResetMsg( void )
     st.loc_mem = nullptr;
     st.loc_rec = 0;
     st.arg_info.index = -1;
-    memset( MsgFlags, 0xFF, MSG_ARRAY_SIZE );
+    memset( wlink().MsgFlags, 0xFF, MSG_ARRAY_SIZE );
 }
 
 static size_t MakeExeTypeString( char *buff, size_t max )
@@ -117,10 +115,10 @@ static size_t MakeExeTypeString( char *buff, size_t max )
         return( 0 );
     len = 1;
     *buff++ = 'a';
-    if( FmtData.osname != nullptr ) {
-        str = FmtData.osname;
+    if( wlink().FmtData.osname != nullptr ) {
+        str = wlink().FmtData.osname;
     } else {
-        unsigned    format = FmtData.type;
+        unsigned    format = wlink().FmtData.type;
 
         for( ;; ) {
             num = log2_32( format );
@@ -144,7 +142,7 @@ static size_t MakeExeTypeString( char *buff, size_t max )
     memcpy( buff, str, num );
     buff += num;
     *buff++ = ' ';
-    Msg_Get( FmtData.dll ? MSG_CREATE_TYPE_DLL : MSG_CREATE_TYPE_EXE, rc_buff.data() );
+    Msg_Get( wlink().FmtData.dll ? MSG_CREATE_TYPE_DLL : MSG_CREATE_TYPE_EXE, rc_buff.data() );
     str = rc_buff.data();
     num = strlen( str );
     len += num;
@@ -171,22 +169,22 @@ static size_t fmtAddr( char *dest, size_t len, addr_type *addr, bool offs_32 )
 {
 #if defined( _PHARLAP ) || defined( _RAW )
     /* only flat offset */
-    if( FmtData.type & MK_FLAT_OFFS ) {
+    if( wlink().FmtData.type & MK_FLAT_OFFS ) {
         return( FmtStr( dest, len, "%h", addr->off ) );
     }
 #endif
 #ifdef _QNX
-    if( FmtData.type & MK_QNX_FLAT) {
+    if( wlink().FmtData.type & MK_QNX_FLAT) {
         return( FmtStr( dest, len, "%h", FindLinearAddr( addr ) ) );
     }
 #endif
 #if defined( _ELF ) || defined( _OS2 )
-    if( FmtData.type & (MK_ELF | MK_PE) ) {
+    if( wlink().FmtData.type & (MK_ELF | MK_PE) ) {
         return( FmtStr( dest, len, "%h", FindLinearAddr2( addr ) ) );
     }
 #endif
 #ifdef _NOVELL
-    if( FmtData.type & MK_ID_SPLIT ) {
+    if( wlink().FmtData.type & MK_ID_SPLIT ) {
         if( addr->seg == CODE_SEGMENT ) {
             return( FmtStr( dest, len, "CODE:%h", addr->off ) );
         } else {
@@ -196,7 +194,7 @@ static size_t fmtAddr( char *dest, size_t len, addr_type *addr, bool offs_32 )
 #endif
     /* segmented formats 16:16 or 16:32 */
     if( !offs_32
-      && (FmtData.type & (MK_DOS | MK_NE | MK_DOS16M | MK_QNX_16 | MK_RDOS_16)) ) {
+      && (wlink().FmtData.type & (MK_DOS | MK_NE | MK_DOS16M | MK_QNX_16 | MK_RDOS_16)) ) {
         return( FmtStr( dest, len, "%x:%x", addr->seg, static_cast<unsigned short>( addr->off ) ) );
     } else {
         return( FmtStr( dest, len, "%x:%h", addr->seg, addr->off ) );
@@ -250,7 +248,7 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
                 } else {
                     str = va_arg( args, symbol * )->name.u.ptr;
                 }
-                if( (LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
+                if( (wlink().LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
                     size = __demangle_l( str, 0, dest, len );
                     if( size > ( len - 1 ) )
                         size = len - 1;
@@ -399,14 +397,14 @@ static void LocateFile( unsigned num )
 
     if( num & LOC ) {
         if( num & (LOC_REC & ~LOC) ) {
-            rec = RecNum;
+            rec = wlink().RecNum;
         } else {
             rec = 0;
         }
-        if( CurrMod == nullptr ) {
+        if( wlink().CurrMod == nullptr ) {
             Locator( DirectiveSourceName(), nullptr, 0 );
          } else {
-            Locator( CurrMod->u1.source->infile->name.u.ptr, CurrMod->name.u.ptr, rec );
+            Locator( wlink().CurrMod->u1.source->infile->name.u.ptr, wlink().CurrMod->name.u.ptr, rec );
         }
     }
 }
@@ -451,10 +449,10 @@ static void MessageFini( unsigned num, char *buff, size_t len )
 
     class_ = num & CLASS_MSK;
     if( class_ >= (ERR & CLASS_MSK) ) {
-        LinkState |= LS_LINK_ERROR;
+        wlink().LinkState |= LS_LINK_ERROR;
     }
     if( num & OUT_TERM ) {
-        if( (LinkFlags & LF_QUIET_FLAG) == 0 ) {
+        if( (wlink().LinkFlags & LF_QUIET_FLAG) == 0 ) {
             WLPrtBanner();
             WriteStdOutInfo( buff, num, sym_name );
         } else if( class_ != (INF & CLASS_MSK) ) {
@@ -462,7 +460,7 @@ static void MessageFini( unsigned num, char *buff, size_t len )
         }
     }
     if( num & OUT_MAP ) {
-        if( MapFile != nullptr ) {
+        if( wlink().MapFile != nullptr ) {
             WriteMapLnkMsgCallback( num, buff, len );
         }
     }
@@ -472,9 +470,9 @@ static void MessageFini( unsigned num, char *buff, size_t len )
     /* yells are counted as errors for limits */
     if( ( class_ == (YELL & CLASS_MSK) )
       || ( class_ >= (MILD_ERR & CLASS_MSK) ) ) {
-        if( LinkFlags & LF_MAX_ERRORS_FLAG ) {
-            MaxErrors--;
-            if( MaxErrors == 0 ) {
+        if( wlink().LinkFlags & LF_MAX_ERRORS_FLAG ) {
+            wlink().MaxErrors--;
+            if( wlink().MaxErrors == 0 ) {
                 LnkMsg( FTL+MSG_TOO_MANY_ERRORS, nullptr );
             }
         }
@@ -529,7 +527,7 @@ void LnkMsg(
     std::array<char, MAX_MSG_SIZE>      buff;
     MsgState                            &st = state();
 
-    if( !TestBit( MsgFlags, num & NUM_MSK ) )
+    if( !TestBit( wlink().MsgFlags, num & NUM_MSK ) )
         return;
     st.curr_sym_name = nullptr;
     LocateFile( num );
@@ -658,8 +656,8 @@ void WLPrtBanner( void )
  * print the banner, if it hasn't already been printed
  */
 {
-    if( !BannerPrinted ) {
-        BannerPrinted = true;
+    if( !wlink().BannerPrinted ) {
+        wlink().BannerPrinted = true;
         for( int id : { PRODUCT, COPYRIGHT, COPYRIGHT2, TRADEMARK, TRADEMARK2 } ) {
             WriteStdOutInfo( MsgStrings[id], BANNER, nullptr );
         }
@@ -672,10 +670,10 @@ bool SkipSymbol( symbol * sym )
     mangled_type art;
 
     if( (sym->info & SYM_STATIC)
-      && (MapFlags & MAP_STATICS) == 0 )
+      && (wlink().MapFlags & MAP_STATICS) == 0 )
         return( true );
     art = __is_mangled_internal( sym->name.u.ptr, strlen( sym->name.u.ptr ) );
-    return( (MapFlags & MAP_ARTIFICIAL) == 0 && art == __MANGLED_INTERNAL );
+    return( (wlink().MapFlags & MAP_ARTIFICIAL) == 0 && art == __MANGLED_INTERNAL );
 }
 
 int SymAlphaCompare( const void *a, const void *b )
@@ -689,7 +687,7 @@ int SymAlphaCompare( const void *a, const void *b )
     size_t          rightsize;
     int             result;
 
-    if( (LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
+    if( (wlink().LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
         __unmangled_name( left->name.u.ptr, 0, &leftname, &leftsize );
         __unmangled_name( right->name.u.ptr, 0, &rightname, &rightsize );
     } else {

@@ -35,6 +35,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "fileio.h"
 #include "ideentry.h"
@@ -47,14 +48,12 @@
 #include <array>
 
 
-infilelist      *CachedLibFiles;
-infilelist      *CachedFiles;
 
 void ResetObjIO( void )
 /****************************/
 {
-    CachedFiles = nullptr;
-    CachedLibFiles = nullptr;
+    wlink().CachedFiles = nullptr;
+    wlink().CachedLibFiles = nullptr;
 }
 
 static infilelist *AllocEntry( const char *name, const path_entry *path )
@@ -63,7 +62,7 @@ static infilelist *AllocEntry( const char *name, const path_entry *path )
     infilelist  *infile;
 
     infile = static_cast<infilelist *>( _PermAlloc( sizeof( infilelist ) ) );
-    infile->name.u.ptr = AddStringStringTable( &PermStrings, name );
+    infile->name.u.ptr = AddStringStringTable( &wlink().PermStrings, name );
     infile->path_list = path;
     infile->prefix = nullptr;
     infile->handle = NIL_FHANDLE;
@@ -79,8 +78,8 @@ infilelist *AllocFileEntry( const char *name, const path_entry *path )
     infilelist  *infile;
 
     infile = AllocEntry( name, path );
-    infile->next = CachedFiles;
-    CachedFiles = infile;
+    infile->next = wlink().CachedFiles;
+    wlink().CachedFiles = infile;
     return( infile );
 }
 
@@ -89,17 +88,17 @@ infilelist *AllocUniqueFileEntry( const char *name, const path_entry *path )
 {
     infilelist  *infile;
 
-    for( infile = CachedLibFiles; infile != nullptr; infile = infile->next ) {
+    for( infile = wlink().CachedLibFiles; infile != nullptr; infile = infile->next ) {
         if( FNAMECMPSTR( infile->name.u.ptr, name ) == 0 ) {
             return( infile );    // we found 1 with the same name.
         }
     }
     infile = AllocEntry( name, path );   // didn't find one, so allocate a new 1
-    if( CachedLibFiles == nullptr ) {      // add libraries to the end of the
-        CachedLibFiles = infile;         // regular cached files list.
-        AppendList( reinterpret_cast<void **>( &CachedFiles ), infile );
+    if( wlink().CachedLibFiles == nullptr ) {      // add libraries to the end of the
+        wlink().CachedLibFiles = infile;         // regular cached files list.
+        AppendList( reinterpret_cast<void **>( &wlink().CachedFiles ), infile );
     } else {
-        AppendList( reinterpret_cast<void **>( &CachedLibFiles ), infile );
+        AppendList( reinterpret_cast<void **>( &wlink().CachedLibFiles ), infile );
     }
     return( infile );
 }
@@ -109,7 +108,7 @@ bool CleanCachedHandles( void )
 {
     infilelist *infile;
 
-    for( infile = CachedFiles; infile != nullptr; infile = infile->next ) {
+    for( infile = wlink().CachedFiles; infile != nullptr; infile = infile->next ) {
         if( (infile->status & INSTAT_IN_USE) == 0
           && infile->handle != NIL_FHANDLE ) {
             break;
@@ -221,8 +220,8 @@ bool DoObjOpen( infilelist *infile )
             }
             if( fp == NIL_FHANDLE
               && (infile->status & INSTAT_USE_LIBPATH) ) {
-                if( LibPath != nullptr ) {
-                    fp = PathObjOpen( LibPath, name, new_name.data(), infile );
+                if( wlink().LibPath != nullptr ) {
+                    fp = PathObjOpen( wlink().LibPath, name, new_name.data(), infile );
                 }
             }
         }
@@ -245,30 +244,30 @@ bool DoObjOpen( infilelist *infile )
 void InitTokBuff( void )
 /*****************************/
 {
-    TokSize = MAX_HEADROOM;
-    TokBuff = static_cast<char *>( MemAllocSafe( MAX_HEADROOM ) );
+    wlink().TokSize = MAX_HEADROOM;
+    wlink().TokBuff = static_cast<char *>( MemAllocSafe( MAX_HEADROOM ) );
 }
 
 void FreeTokBuffs( void )
 /******************************/
 {
-    if( TokBuff != nullptr ) {
-        MemFree( TokBuff );
-        TokBuff = nullptr;
+    if( wlink().TokBuff != nullptr ) {
+        MemFree( wlink().TokBuff );
+        wlink().TokBuff = nullptr;
     }
 }
 
 void BadObject( void )
 /***************************/
 {
-    CurrMod->u1.source->infile->status |= INSTAT_IOERR;
+    wlink().CurrMod->u1.source->infile->status |= INSTAT_IOERR;
     LnkMsg( ERR+LOC+MSG_OBJ_FILE_ATTR, nullptr );
 }
 
 void EarlyEOF( void )
 /**************************/
 {
-    CurrMod->u1.source->infile->status |= INSTAT_IOERR;
-    Locator( CurrMod->u1.source->infile->name.u.ptr, nullptr, 0 );
+    wlink().CurrMod->u1.source->infile->status |= INSTAT_IOERR;
+    Locator( wlink().CurrMod->u1.source->infile->name.u.ptr, nullptr, 0 );
     LnkMsg( ERR+MSG_EARLY_EOF, nullptr );
 }

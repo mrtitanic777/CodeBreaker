@@ -32,6 +32,7 @@
 
 #include <string.h>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include <exedos.h>
 #include "pcobj.h"
 #include "newmem.h"
@@ -48,7 +49,6 @@
 
 #ifdef _EXE
 
-unsigned_32             OvlTabOffset;
 
 static unsigned_32 WriteDOSRootRelocs( unsigned_32 mz_hdr_size )
 /***************************************************************
@@ -57,9 +57,9 @@ static unsigned_32 WriteDOSRootRelocs( unsigned_32 mz_hdr_size )
 {
     unsigned long       header_size;
 
-    DumpRelocList( Root->reloclist );
+    DumpRelocList( wlink().Root->reloclist );
     NullAlign( 0x10 );
-    header_size = static_cast<unsigned long>( Root->relocs ) * sizeof( dos_addr )
+    header_size = static_cast<unsigned long>( wlink().Root->relocs ) * sizeof( dos_addr )
                     + mz_hdr_size;
     return( __ROUND_UP_SIZE_PARA( header_size ) );
 }
@@ -97,7 +97,7 @@ static void WriteDOSSectRelocs( section *sect, bool repos )
 static void AssignFileLocs( section *sect )
 /*****************************************/
 {
-    if( FmtData.u.dos.pad_sections ) {
+    if( wlink().FmtData.u.dos.pad_sections ) {
         sect->outfile->file_loc = __ROUND_UP_SIZE_SECTOR( sect->outfile->file_loc );
     }
     sect->u.file_loc = sect->outfile->file_loc;
@@ -122,34 +122,34 @@ static unsigned long WriteDOSData( unsigned_32 mz_hdr_size )
 
     DEBUG(( DBG_BASE, "Writing data" ));
     OrderGroups( CompareDosSegments );
-    CurrSect = Root;        // needed for WriteInfo.
+    wlink().CurrSect = wlink().Root;        // needed for WriteInfo.
     header_size = WriteDOSRootRelocs( mz_hdr_size );
 
-    Root->u.file_loc = header_size;
-    if( Root->areas != nullptr ) {
-        Root->outfile->file_loc = header_size + Root->size;
-        WalkAreas( Root->areas, AssignFileLocs );
+    wlink().Root->u.file_loc = header_size;
+    if( wlink().Root->areas != nullptr ) {
+        wlink().Root->outfile->file_loc = header_size + wlink().Root->size;
+        WalkAreas( wlink().Root->areas, AssignFileLocs );
         OvlEmitTable();
     }
 
     /* keep track of positions within the file. */
-    for( fnode = OutFiles; fnode != nullptr; fnode = fnode->next ) {
+    for( fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next ) {
         fnode->file_loc = 0;
     }
-    Root->outfile->file_loc = Root->u.file_loc;
-    Root->sect_addr = Groups->addr;
+    wlink().Root->outfile->file_loc = wlink().Root->u.file_loc;
+    wlink().Root->sect_addr = wlink().Groups->addr;
 
     /* write groups and relocations */
     root_size = 0;
-    for( group = Groups; group != nullptr; group = next ) {
+    for( group = wlink().Groups; group != nullptr; group = next ) {
         next = group->next;
         sect = group->section;
-        CurrSect = sect;
+        wlink().CurrSect = sect;
         fnode = sect->outfile;
         repos = WriteGroup( group );
         if( ( next == nullptr )
           || ( sect != next->section ) ) {
-            if( sect == Root ) {
+            if( sect == wlink().Root ) {
                 root_size = fnode->file_loc;
             } else {
                 WriteDOSSectRelocs( sect, repos );
@@ -237,7 +237,7 @@ static bool WriteCOMGroup( group_entry *group, soffset chop )
 
     repos = false;
     sect = group->section;
-    CurrSect = sect;
+    wlink().CurrSect = sect;
     finfo = sect->outfile;
     file_loc = GROUP_FILE_LOC( group );
     if( file_loc > finfo->file_loc ) {
@@ -267,23 +267,23 @@ static void WriteCOMFile( void )
     bool                repos;
     soffset             chop;
 
-    if( StartInfo.addr.seg != 0 ) {
+    if( wlink().StartInfo.addr.seg != 0 ) {
         LnkMsg( ERR+MSG_INV_COM_START_ADDR, nullptr );
         return;
     }
-    if( ( StackAddr.seg != 0 )
-      || ( StackAddr.off != 0 ) ) {
+    if( ( wlink().StackAddr.seg != 0 )
+      || ( wlink().StackAddr.off != 0 ) ) {
         LnkMsg( WRN+MSG_STACK_SEG_IGNORED, nullptr );
     }
     OrderGroups( CompareDosSegments );
-    CurrSect = Root;        // needed for WriteInfo.
-    fnode = Root->outfile;
-    fnode->file_loc = Root->u.file_loc = 0;
-    Root->sect_addr = Groups->addr;
+    wlink().CurrSect = wlink().Root;        // needed for WriteInfo.
+    fnode = wlink().Root->outfile;
+    fnode->file_loc = wlink().Root->u.file_loc = 0;
+    wlink().Root->sect_addr = wlink().Groups->addr;
 
     /* write groups */
-    for( group = Groups; group != nullptr; group = group->next ) {
-        chop = SUB_REAL_ADDR( group->addr, StartInfo.addr );
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+        chop = SUB_REAL_ADDR( group->addr, wlink().StartInfo.addr );
         if( chop > 0 ) {
             chop = 0;
         }
@@ -312,24 +312,24 @@ void FiniDOSLoadFile( void )
     unsigned_32         root_size;
     dos_exe_header      exe_head;
 
-    if( FmtData.type & MK_COM ) {
+    if( wlink().FmtData.type & MK_COM ) {
         WriteCOMFile();
         return;
     }
-    if( FmtData.u.dos.full_mz_hdr ) {
+    if( wlink().FmtData.u.dos.full_mz_hdr ) {
         mz_hdr_size = 0x40;
     } else {
         mz_hdr_size = sizeof( dos_exe_header ) + sizeof( unsigned_32 );
     }
     SeekLoad( mz_hdr_size );
     root_size = WriteDOSData( mz_hdr_size );
-    if( FmtData.type & MK_OVERLAYS ) {
+    if( wlink().FmtData.type & MK_OVERLAYS ) {
         OvlPadOvlFiles();
     }
     /* output debug info into root main output file */
-    CurrSect = Root;
+    wlink().CurrSect = wlink().Root;
     DBIWrite();
-    hdr_size = __ROUND_UP_SIZE_PARA( Root->relocs * sizeof( dos_addr ) + mz_hdr_size );
+    hdr_size = __ROUND_UP_SIZE_PARA( wlink().Root->relocs * sizeof( dos_addr ) + mz_hdr_size );
     DEBUG((DBG_LOADDOS, "root size %l, hdr size %l", root_size, hdr_size ));
     SeekLoad( 0 );
     _HostU16toTarg( EXESIGN_DOS, exe_head.signature );
@@ -338,21 +338,21 @@ void FiniDOSLoadFile( void )
     _HostU16toTarg( root_size % 512U, exe_head.mod_size );
     temp = ( root_size + 511U ) / 512U;
     _HostU16toTarg( temp, exe_head.file_size );
-    _HostU16toTarg( Root->relocs, exe_head.num_relocs );
+    _HostU16toTarg( wlink().Root->relocs, exe_head.num_relocs );
 
-    min_size = MemorySize() - ( root_size - hdr_size ) + FmtData.SegMask;
-    min_size >>= FmtData.SegShift;
+    min_size = MemorySize() - ( root_size - hdr_size ) + wlink().FmtData.SegMask;
+    min_size >>= wlink().FmtData.SegShift;
     _HostU16toTarg( min_size, exe_head.min_16 );
     _HostU16toTarg( 0xffff, exe_head.max_16 );
-    _HostU16toTarg( StartInfo.addr.off, exe_head.IP );
-    _HostU16toTarg( StartInfo.addr.seg, exe_head.CS_offset );
-    _HostU16toTarg( StackAddr.seg, exe_head.SS_offset );
-    _HostU16toTarg( StackAddr.off, exe_head.SP );
+    _HostU16toTarg( wlink().StartInfo.addr.off, exe_head.IP );
+    _HostU16toTarg( wlink().StartInfo.addr.seg, exe_head.CS_offset );
+    _HostU16toTarg( wlink().StackAddr.seg, exe_head.SS_offset );
+    _HostU16toTarg( wlink().StackAddr.off, exe_head.SP );
     _HostU16toTarg( 0, exe_head.chk_sum );
     _HostU16toTarg( mz_hdr_size, exe_head.reloc_offset );
     _HostU16toTarg( 0, exe_head.overlay_num );
     WriteLoad( &exe_head, sizeof( dos_exe_header ) );
-    WriteLoadU32( OvlTabOffset );
+    WriteLoadU32( wlink().OvlTabOffset );
 }
 
 #endif

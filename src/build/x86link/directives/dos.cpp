@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "cmdline.h"
@@ -24,16 +25,16 @@ byte& ovl_level() { return state().ovl_level; }   // (wlink's file-static OvlLev
 
 void SetOvlClasses() {
     // make sure the overlay loader is always "overlayed".
-    if (OvlClasses != nullptr) {
+    if (wlink().OvlClasses != nullptr) {
         auto* ovlmgr = static_cast<list_of_names*>(_PermAlloc(sizeof(list_of_names) + OVL_MGR_CL_LEN));
         std::memcpy(ovlmgr->name, OvlMgrClass, OVL_MGR_CL_LEN + 1);
-        ovlmgr->next = OvlClasses;
-        OvlClasses = ovlmgr;
+        ovlmgr->next = wlink().OvlClasses;
+        wlink().OvlClasses = ovlmgr;
     }
 }
 
 section* OvlNewSection() {
-    OvlSectNum++;
+    wlink().OvlSectNum++;
     return NewSection();
 }
 
@@ -42,53 +43,53 @@ void NewArea(section* sect) {
     auto* area = static_cast<areasect*>(_PermAlloc(sizeof(areasect)));
     area->next = nullptr;
     area->sections = sect;
-    sect->parent = CurrSect;
+    sect->parent = wlink().CurrSect;
     areasect** owner;
-    for (owner = &CurrSect->areas; *owner != nullptr; owner = &(*owner)->next) {
+    for (owner = &wlink().CurrSect->areas; *owner != nullptr; owner = &(*owner)->next) {
     }
     *owner = area;
 }
 
 void MakeNonArea() {
     // make a new overlay area for non-overlay classes
-    NonSect = OvlNewSection();   // No debug info in nonsect.
-    NewArea(NonSect);
+    wlink().NonSect = OvlNewSection();   // No debug info in nonsect.
+    NewArea(wlink().NonSect);
 }
 
 // ---- "OPtion" Directive
 
 bool ProcDistribute() {
-    FmtData.u.dos.distribute = true;
+    wlink().FmtData.u.dos.distribute = true;
     return true;
 }
 
 bool ProcPadSections() {
-    FmtData.u.dos.pad_sections = true;
+    wlink().FmtData.u.dos.pad_sections = true;
     return true;
 }
 
 bool ProcSmall() {
-    FmtData.u.dos.ovl_short = true;
+    wlink().FmtData.u.dos.ovl_short = true;
     return true;
 }
 
 bool ProcDynamic() {
-    FmtData.u.dos.dynamic = true;
+    wlink().FmtData.u.dos.dynamic = true;
     return true;
 }
 
 bool ProcNoIndirect() {
-    FmtData.u.dos.noindirect = true;
+    wlink().FmtData.u.dos.noindirect = true;
     return true;
 }
 
 bool ProcFullHeader() {
-    FmtData.u.dos.full_mz_hdr = true;
+    wlink().FmtData.u.dos.full_mz_hdr = true;
     return true;
 }
 
 bool ProcStandard() {
-    FmtData.u.dos.dynamic = false;
+    wlink().FmtData.u.dos.dynamic = false;
     return true;
 }
 
@@ -97,7 +98,7 @@ bool ProcArea() {
     unsigned_32 value;
     const bool ret = get_number(value);
     if (ret) {
-        OvlAreaSize = (value + FmtData.SegMask) >> FmtData.SegShift;
+        wlink().OvlAreaSize = (value + wlink().FmtData.SegMask) >> wlink().FmtData.SegShift;
     }
     return ret;
 }
@@ -120,8 +121,8 @@ bool AddClass() {
     auto* ovlclass = static_cast<list_of_names*>(_PermAlloc(sizeof(list_of_names) + text.size()));
     std::memcpy(ovlclass->name, text.data(), text.size());
     ovlclass->name[text.size()] = '\0';
-    ovlclass->next = OvlClasses;
-    OvlClasses = ovlclass;
+    ovlclass->next = wlink().OvlClasses;
+    wlink().OvlClasses = ovlclass;
     return true;
 }
 
@@ -131,7 +132,7 @@ bool ProcInto() {
     // Process the INTO keyword.
     if (reader().get(Sep::none, Want::file_name)) {
         const std::string_view text = reader().text();
-        CurrSect->outfile = NewOutFile(FileName(text.data(), text.size(), E_OVL, false));
+        wlink().CurrSect->outfile = NewOutFile(FileName(text.data(), text.size(), E_OVL, false));
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_DIRECTIVE_ERR, "s", "into");
@@ -175,8 +176,8 @@ bool ProcEnd() {
     if (ovl_level() > 0) {   // OvlLevel should always be > 0, but just in case..
         ovl_level()--;
     }
-    if (CurrSect->relocs != 0) {   // this only happens if the user specifies
-        CurrSect->relocs = 0;      // an overlay area with no files in it.
+    if (wlink().CurrSect->relocs != 0) {   // this only happens if the user specifies
+        wlink().CurrSect->relocs = 0;      // an overlay area with no files in it.
     }
     return false;   // cause loop to be exited in ProcBegin
 }
@@ -213,7 +214,7 @@ bool AddForceVector() {
 // ---- "FORMat" Directive
 
 bool ProcCom() {
-    FmtData.def_ext = E_COM;
+    wlink().FmtData.def_ext = E_COM;
     return true;
 }
 
@@ -224,7 +225,7 @@ constexpr Entry DosFormats[] = {
 }  // namespace
 
 void SetDosFmt() {
-    FmtData.def_ext = E_LOAD;
+    wlink().FmtData.def_ext = E_LOAD;
 }
 
 void FreeDosFmt() {
@@ -232,7 +233,7 @@ void FreeDosFmt() {
 
 overlay_ref GetOvlRef() {
     // OvlSectNum value 0 is reserved for Root
-    return (ovl_level() == 0) ? 0 : OvlSectNum - 1;
+    return (ovl_level() == 0) ? 0 : wlink().OvlSectNum - 1;
 }
 
 void CmdOvlFini() {
@@ -240,7 +241,7 @@ void CmdOvlFini() {
         Ignite();
         LnkMsg(FTL + LOC + LINE + MSG_EXPECTING_END, nullptr);
     }
-    if (FmtData.u.dos.dynamic && ((Root->areas == nullptr) || (Root->areas->next != nullptr))) {
+    if (wlink().FmtData.u.dos.dynamic && ((wlink().Root->areas == nullptr) || (wlink().Root->areas->next != nullptr))) {
         Ignite();
         LnkMsg(FTL + LOC + LINE + MSG_INCORRECT_NUM_AREAS, nullptr);
     }
@@ -249,20 +250,20 @@ void CmdOvlFini() {
 }
 
 void MakeNewSection() {
-    if (CurrSect->relocs != SECT_ALREADY_MADE) {
+    if (wlink().CurrSect->relocs != SECT_ALREADY_MADE) {
         section* sect = OvlNewSection();
-        if (LinkFlags & LF_ANY_DBI_FLAG) {
+        if (wlink().LinkFlags & LF_ANY_DBI_FLAG) {
             DBISectInit(sect);
         }
         if (any(cmd_flags() & Flag::auto_section)) {
-            sect->outfile = CurrSect->outfile;
+            sect->outfile = wlink().CurrSect->outfile;
         }
-        sect->parent = CurrSect->parent;
-        CurrSect->next = sect;
-        CurrSect = sect;
+        sect->parent = wlink().CurrSect->parent;
+        wlink().CurrSect->next = sect;
+        wlink().CurrSect = sect;
         state().current_file_list = &sect->files;
     } else {
-        CurrSect->relocs = 0;
+        wlink().CurrSect->relocs = 0;
     }
 }
 
@@ -286,29 +287,29 @@ bool ProcBegin() {
     section* oldsect;
     file_list** oldflist;
 
-    LinkState |= LS_FMT_SPECIFIED;   // she must want DOS mode.
-    if ((ovl_level() > 0) && FmtData.u.dos.dynamic) {
+    wlink().LinkState |= LS_FMT_SPECIFIED;   // she must want DOS mode.
+    if ((ovl_level() > 0) && wlink().FmtData.u.dos.dynamic) {
         oldsect = nullptr;
         oldflist = nullptr;
         cmd_flags() &= ~Flag::auto_section;   // merge old area with this.
     } else {
-        oldsect = CurrSect;
+        oldsect = wlink().CurrSect;
         oldflist = state().current_file_list;
         section* sect = OvlNewSection();
-        if (LinkFlags & LF_ANY_DBI_FLAG) {
+        if (wlink().LinkFlags & LF_ANY_DBI_FLAG) {
             DBISectInit(sect);
         }
         NewArea(sect);
         sect->relocs = SECT_ALREADY_MADE;
-        CurrSect = sect;
+        wlink().CurrSect = sect;
         state().current_file_list = &sect->files;
     }
     ovl_level()++;
     while (process_one(Sections, Sep::none)) {
     }
-    if ((ovl_level() == 0) || !FmtData.u.dos.dynamic) {
+    if ((ovl_level() == 0) || !wlink().FmtData.u.dos.dynamic) {
         state().current_file_list = oldflist;
-        CurrSect = oldsect;
+        wlink().CurrSect = oldsect;
     }
     return true;
 }

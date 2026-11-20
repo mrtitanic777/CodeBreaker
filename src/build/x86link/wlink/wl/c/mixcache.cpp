@@ -41,6 +41,7 @@
 #include <cstdio>
 #include <cstring>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "fileio.h"
 #include "objio.h"
 #include "objcache.h"
@@ -126,9 +127,9 @@ bool CacheOpen( const file_list *file )
         }
     }
     if( (infile->status & INSTAT_SET_CACHE) == 0 ) {
-        if( LinkFlags & LF_CACHE_FLAG ) {
+        if( wlink().LinkFlags & LF_CACHE_FLAG ) {
             infile->status |= INSTAT_FULL_CACHE;
-        } else if( LinkFlags & LF_NOCACHE_FLAG ) {
+        } else if( wlink().LinkFlags & LF_NOCACHE_FLAG ) {
             infile->status |= INSTAT_PAGE_CACHE;
         } else {
             if( infile->status & INSTAT_LIBRARY ) {
@@ -197,7 +198,7 @@ void *CachePermRead( const file_list *file, unsigned long pos, size_t len )
     CacheState &st = state();
     if( st.Multipage ) {
         result = static_cast<char *>( MemReallocSafe( buf, len ) );
-        TokBuff = static_cast<char *>( MemAllocSafe( TokSize ) );
+        wlink().TokBuff = static_cast<char *>( MemAllocSafe( wlink().TokSize ) );
         st.Multipage = false;           // indicate that last read is permanent.
     } else {
         result = static_cast<char *>( MemAllocSafe( len ) );
@@ -245,14 +246,14 @@ void *CacheRead( const file_list *file, unsigned long pos, size_t len )
     if( !st.Multipage ) {
         result = cache[startnum] + offset;
     } else {
-        if( TokSize < len ) {
-            TokSize = __ROUND_UP_SIZE_SECTOR( len );
-            TokBuff = static_cast<char *>( MemReallocSafe( TokBuff, TokSize ) );
+        if( wlink().TokSize < len ) {
+            wlink().TokSize = __ROUND_UP_SIZE_SECTOR( len );
+            wlink().TokBuff = static_cast<char *>( MemReallocSafe( wlink().TokBuff, wlink().TokSize ) );
         }
         amtread = kCachePageSize - offset;
-        std::memcpy( TokBuff, cache[startnum] + offset, amtread );
+        std::memcpy( wlink().TokBuff, cache[startnum] + offset, amtread );
         len -= amtread;
-        result = TokBuff + amtread;
+        result = wlink().TokBuff + amtread;
         for( ;; ) {
             startnum++;
             if( len <= kCachePageSize ) {
@@ -264,7 +265,7 @@ void *CacheRead( const file_list *file, unsigned long pos, size_t len )
                 result += kCachePageSize;
             }
         }
-        result = TokBuff;
+        result = wlink().TokBuff;
     }
     return result;
 }
@@ -313,11 +314,11 @@ bool DumpObjCache( void )
 /******************************/
 // find and dump an object file cache.
 {
-    for( infilelist *infile = CachedFiles; infile != nullptr; infile = infile->next ) {
+    for( infilelist *infile = wlink().CachedFiles; infile != nullptr; infile = infile->next ) {
         if( infile->status & INSTAT_PAGE_CACHE ) {
-            if( CurrMod == nullptr
-              || CurrMod->u1.source == nullptr
-              || CurrMod->u1.source->infile != infile ) {
+            if( wlink().CurrMod == nullptr
+              || wlink().CurrMod->u1.source == nullptr
+              || wlink().CurrMod->u1.source->infile != infile ) {
                 if( DumpFileCache( infile, true ) ) {
                     return true;
                 }

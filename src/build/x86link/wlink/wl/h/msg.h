@@ -74,7 +74,4 @@ extern unsigned CalcMsgNum( unsigned );
 
 #define MAX_MSG_SIZE 512
 
-extern unsigned_32      MaxErrors;
-extern byte             MsgFlags[];
-extern bool             BannerPrinted;
 extern const char       *MsgStrings[];

@@ -33,8 +33,6 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern infilelist       *CachedFiles;
-extern infilelist       *CachedLibFiles;
 
 extern infilelist       *AllocFileEntry( const char *, const path_entry * );
 extern infilelist       *AllocUniqueFileEntry( const char *, const path_entry * );

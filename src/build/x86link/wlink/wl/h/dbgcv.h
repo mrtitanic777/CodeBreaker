@@ -50,5 +50,3 @@ extern void     CVFini( section * );
 extern void     CVWriteDebugTypeMisc( const char *filename );
 extern void     CVWrite( void );
 
-extern unsigned_32      CVSize;
-extern unsigned_32      CVDebugDirEntryPos;

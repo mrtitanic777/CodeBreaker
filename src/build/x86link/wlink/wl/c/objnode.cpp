@@ -39,6 +39,7 @@
 #include <string.h>
 #include <array>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "distrib.h"
 #include "wcomdef.h"
 #include "strtab.h"
@@ -64,10 +65,6 @@ struct nodearray {
     std::array<char *, MAX_NUM_NODES> array;    // the array.
 };
 
-nodearray_handle    ExtNodes;   // ptr to obj file import list
-nodearray_handle    SegNodes;   // ptr to obj file segment list
-nodearray_handle    GrpNodes;   // ptr to obj file group list
-nodearray_handle    NameNodes;  // ptr to obj file lname list
 
 namespace {
 
@@ -91,10 +88,10 @@ nodearray_handle MakeArray( unsigned size )
 void InitNodes( void )
 /***************************/
 {
-    GrpNodes = MakeArray( sizeof( grpnode ) );
-    SegNodes = MakeArray( sizeof( segnode ) );
-    ExtNodes = MakeArray( sizeof( extnode ) );
-    NameNodes = MakeArray( sizeof( list_of_names * ) );
+    wlink().GrpNodes = MakeArray( sizeof( grpnode ) );
+    wlink().SegNodes = MakeArray( sizeof( segnode ) );
+    wlink().ExtNodes = MakeArray( sizeof( extnode ) );
+    wlink().NameNodes = MakeArray( sizeof( list_of_names * ) );
 }
 
 namespace {
@@ -114,10 +111,10 @@ void BurnNodeArray( nodearray_handle list )
 void BurnNodes( void )
 /***************************/
 {
-    BurnNodeArray( GrpNodes );
-    BurnNodeArray( SegNodes );
-    BurnNodeArray( ExtNodes );
-    BurnNodeArray( NameNodes );
+    BurnNodeArray( wlink().GrpNodes );
+    BurnNodeArray( wlink().SegNodes );
+    BurnNodeArray( wlink().ExtNodes );
+    BurnNodeArray( wlink().NameNodes );
 }
 
 void *FindNode( nodearray_handle list, unsigned index )
@@ -169,9 +166,9 @@ mod_entry *NewModEntry( void )
 {
     mod_entry           *entry;
 
-    entry = static_cast<mod_entry *>( CarveZeroAlloc( CarveModEntry ) );
+    entry = static_cast<mod_entry *>( CarveZeroAlloc( wlink().CarveModEntry ) );
 #ifdef _EXE
-    if( LinkFlags & LF_STRIP_CODE ) {
+    if( wlink().LinkFlags & LF_STRIP_CODE ) {
         InitArcList( entry );
     }
 #endif
@@ -181,7 +178,7 @@ mod_entry *NewModEntry( void )
 void FreeModEntry( mod_entry *mod )
 /****************************************/
 {
-    CarveFree( CarveModEntry, mod );
+    CarveFree( wlink().CarveModEntry, mod );
 }
 
 void FreeNodes( nodearray_handle nodes )
@@ -235,8 +232,8 @@ void IterateNodelist( nodearray_handle list, void (*fn)(void *, void *),
 void ReleaseNames( void )
 /******************************/
 {
-    IterateNodelist( NameNodes, ReleaseNamelist, nullptr );
-    FreeNodes( NameNodes );
+    IterateNodelist( wlink().NameNodes, ReleaseNamelist, nullptr );
+    FreeNodes( wlink().NameNodes );
 }
 
 namespace {
@@ -249,9 +246,9 @@ void CollapseLazy( void *node, void * )
     if( IS_SYM_A_REF( curr->entry ) && !curr->isweak ) {
         ClearSymUnion( curr->entry );
         SET_SYM_TYPE( curr->entry, SYM_REGULAR );
-        if( LinkState & LS_SEARCHING_LIBRARIES ) {
+        if( wlink().LinkState & LS_SEARCHING_LIBRARIES ) {
             curr->entry->info &= ~SYM_CHECKED;
-            LinkState |= LS_LIBRARIES_ADDED;    // force another pass thru libs
+            wlink().LinkState |= LS_LIBRARIES_ADDED;    // force another pass thru libs
         }
     }
 }
@@ -261,7 +258,7 @@ void CollapseLazy( void *node, void * )
 void CollapseLazyExtdefs( void )
 /*************************************/
 {
-    IterateNodelist( ExtNodes, CollapseLazy, nullptr );
+    IterateNodelist( wlink().ExtNodes, CollapseLazy, nullptr );
 }
 
 namespace {
@@ -304,7 +301,7 @@ void *IterateFindValue( nodearray_handle list, Match matches )
 extnode *FindExtHandle( orl_symbol_handle sym_handle )
 /****************************************************/
 {
-    return static_cast<extnode *>( IterateFindValue( ExtNodes, [sym_handle]( const char *curr ) {
+    return static_cast<extnode *>( IterateFindValue( wlink().ExtNodes, [sym_handle]( const char *curr ) {
         return reinterpret_cast<const extnode *>( curr )->handle == sym_handle;
     } ) );
 }
@@ -314,8 +311,8 @@ segdata *AllocSegData( void )
 {
     segdata *sdata;
 
-    sdata = static_cast<segdata *>( CarveZeroAlloc( CarveSegData ) );
-    sdata->o.mod = CurrMod;
+    sdata = static_cast<segdata *>( CarveZeroAlloc( wlink().CarveSegData ) );
+    sdata->o.mod = wlink().CurrMod;
     return sdata;
 }
 
@@ -323,7 +320,7 @@ segdata *AllocSegData( void )
 void FreeSegData( void *sdata )
 /*****************************/
 {
-    CarveFree( CarveSegData, sdata );
+    CarveFree( wlink().CarveSegData, sdata );
 }
 
 list_of_names *MakeListName( char *name, size_t len )
@@ -341,6 +338,6 @@ list_of_names *MakeListName( char *name, size_t len )
 unsigned long BadObjFormat( void )
 /***************************************/
 {
-    LnkMsg( FTL+MSG_BAD_OBJECT, "s", CurrMod->u1.source->infile->name );
+    LnkMsg( FTL+MSG_BAD_OBJECT, "s", wlink().CurrMod->u1.source->infile->name );
     return 0;
 }

@@ -40,6 +40,7 @@
     #include <process.h>
 #endif
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "ring.h"
 #include "pcobj.h"
 #include "newmem.h"
@@ -112,8 +113,6 @@ LoadFileState &loadFileState()
 
 }
 
-seg_leader      *StackSegPtr;
-startinfo       StartInfo;
 
 // the "`" will be an "a" when processed.
 static constexpr std::string_view TEMPFNAME = "IMP02112.xx`";
@@ -167,9 +166,9 @@ static void SetupImpLib( void )
     ImpLib.buffer = nullptr;
     ImpLib.module_name = nullptr;
     ImpLib.didone = false;
-    if( FmtData.make_implib ) {
-        if( FmtData.make_impfile ) {
-            ImpLib.fname = MemStrdupSafe( FmtData.implibname );
+    if( wlink().FmtData.make_implib ) {
+        if( wlink().FmtData.make_impfile ) {
+            ImpLib.fname = MemStrdupSafe( wlink().FmtData.implibname );
             ImpLib.handle = QOpenRW( ImpLib.fname );
         } else {
             ImpLib.handle = openTempFile( &ImpLib.fname );
@@ -188,8 +187,8 @@ static void SetupImpLib( void )
              * - get base file name with extension
              * - preserves the case of name
              */
-            fname = GetBaseName( Root->outfile->fname, 0, &namelen );
-            if( FmtData.type & MK_NE ) {
+            fname = GetBaseName( wlink().Root->outfile->fname, 0, &namelen );
+            if( wlink().FmtData.type & MK_NE ) {
                 if( namelen > 8 ) {
                     namelen = 8;
                 }
@@ -201,7 +200,7 @@ static void SetupImpLib( void )
             }
             ImpLib.module_name_len = namelen;
             ImpLib.module_name = static_cast<char *>( MemAllocSafe( namelen ) );
-            if( FmtData.type & (MK_NE | MK_OS2_FLAT | MK_WIN_VXD) ) {
+            if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_WIN_VXD) ) {
                 /*
                  * upper-case module name
                  */
@@ -228,12 +227,12 @@ static void DoCVPack( void )
     int         retval;
     const char  *name;
 
-    if( (LinkFlags & LF_CVPACK_FLAG)
-      && (LinkState & LS_LINK_ERROR) == 0 ) {
-        if( SymFileName != nullptr ) {
-            name = SymFileName;
+    if( (wlink().LinkFlags & LF_CVPACK_FLAG)
+      && (wlink().LinkState & LS_LINK_ERROR) == 0 ) {
+        if( wlink().SymFileName != nullptr ) {
+            name = wlink().SymFileName;
         } else {
-            name = Root->outfile->fname;
+            name = wlink().Root->outfile->fname;
         }
         retval = static_cast<int>( spawnlp( P_WAIT, CVPACK_EXE, CVPACK_EXE, "/nologo",
                           name, nullptr ) );
@@ -249,7 +248,7 @@ static void OpenOutFiles( void )
 {
     outfilelist   *fnode;
 
-    for( fnode = OutFiles; fnode != nullptr; fnode = fnode->next ) {
+    for( fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next ) {
         OpenBuffFile( fnode );
     }
 }
@@ -259,7 +258,7 @@ static void CloseOutFiles( void )
 {
     outfilelist     *fnode;
 
-    for( fnode = OutFiles; fnode != nullptr; fnode = fnode->next ) {
+    for( fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next ) {
         if( fnode->handle != NIL_FHANDLE ) {
             CloseBuffFile( fnode );
         }
@@ -308,76 +307,76 @@ static void finiLoad( void )
      * This must be first of all
      */
 #ifdef _RAW
-    if( FmtData.output_raw ) {
+    if( wlink().FmtData.output_raw ) {
         BinOutput();    // apply to all formats and override native output
         return;
-    } else if( FmtData.output_hex ) {
+    } else if( wlink().FmtData.output_hex ) {
         HexOutput();    // apply to all formats and override native output
         return;
-    } else if( FmtData.type & MK_RAW ) {
+    } else if( wlink().FmtData.type & MK_RAW ) {
         FiniRawLoadFile();
         return;
     }
 #endif
     /*******************************************************************/
 #ifdef _EXE
-    if( FmtData.type & MK_DOS ) {
+    if( wlink().FmtData.type & MK_DOS ) {
         FiniDOSLoadFile();
         return;
     }
 #endif
 #ifdef _OS2
   #if 0
-    if( (FmtData.type & (MK_NE | MK_OS2_FLAT))
-      && (LinkState & LS_HAVE_PPC_CODE) ) {
+    if( (wlink().FmtData.type & (MK_NE | MK_OS2_FLAT))
+      && (wlink().LinkState & LS_HAVE_PPC_CODE) ) {
         // development temporarly on hold:
         FiniELFLoadFile();
         return;
     }
   #endif
-    if( FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
+    if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
         FiniOS2FlatLoadFile();
         return;
-    } else if( FmtData.type & MK_PE ) {
+    } else if( wlink().FmtData.type & MK_PE ) {
         FiniPELoadFile();
         return;
-    } else if( FmtData.type & MK_NE ) {
+    } else if( wlink().FmtData.type & MK_NE ) {
         FiniOS2LoadFile();
         return;
     }
 #endif
 #ifdef _PHARLAP
-    if( FmtData.type & MK_PHAR_LAP ) {
+    if( wlink().FmtData.type & MK_PHAR_LAP ) {
         FiniPharLapLoadFile();
         return;
     }
 #endif
 #ifdef _NOVELL
-    if( FmtData.type & MK_NOVELL ) {
+    if( wlink().FmtData.type & MK_NOVELL ) {
         FiniNovellLoadFile();
         return;
     }
 #endif
 #ifdef _DOS16M
-    if( FmtData.type & MK_DOS16M ) {
+    if( wlink().FmtData.type & MK_DOS16M ) {
         Fini16MLoadFile();
         return;
     }
 #endif
 #ifdef _QNX
-    if( FmtData.type & MK_QNX ) {
+    if( wlink().FmtData.type & MK_QNX ) {
         FiniQNXLoadFile();
         return;
     }
 #endif
 #ifdef _ELF
-    if( FmtData.type & MK_ELF ) {
+    if( wlink().FmtData.type & MK_ELF ) {
         FiniELFLoadFile();
         return;
     }
 #endif
 #ifdef _RDOS
-    if( FmtData.type & MK_RDOS ) {
+    if( wlink().FmtData.type & MK_RDOS ) {
         FiniRdosLoadFile();
         return;
     }
@@ -389,7 +388,7 @@ void FiniLoadFile( void )
  * terminate writing of load file
  */
 {
-    CurrSect = Root;
+    wlink().CurrSect = wlink().Root;
     FreeSavedRelocs();
     OpenOutFiles();
     SetupImpLib();
@@ -409,7 +408,7 @@ static seg_leader *FindStack( section *sect )
             return static_cast<seg_leader *>( RingFirst( class_->segs ) );
         }
     }
-    if( (LinkState & LS_DOSSEG_FLAG) == 0 ) {
+    if( (wlink().LinkState & LS_DOSSEG_FLAG) == 0 ) {
         seg = nullptr;
         for( class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
             while( (seg = static_cast<seg_leader *>( RingStep( class_->segs, seg ) )) != nullptr ) {
@@ -429,11 +428,11 @@ static seg_leader *StackSegment( void )
 {
     seg_leader  *seg;
 
-    seg = FindStack( Root );
+    seg = FindStack( wlink().Root );
     if( seg == nullptr ) {
 #ifdef _EXE
-        if( FmtData.type & MK_OVERLAYS ) {
-            seg = FindStack( NonSect );
+        if( wlink().FmtData.type & MK_OVERLAYS ) {
+            seg = FindStack( wlink().NonSect );
         }
 #endif
     }
@@ -445,22 +444,22 @@ void GetStkAddr( void )
  * Find the address of the stack
  */
 {
-    if( (FmtData.type & MK_NOVELL) == 0
-      && !FmtData.dll ) {
-        if( StackSegPtr != nullptr ) {
-            StackAddr.seg = StackSegPtr->seg_addr.seg;
-            StackAddr.off = StackSegPtr->seg_addr.off + StackSegPtr->size;
+    if( (wlink().FmtData.type & MK_NOVELL) == 0
+      && !wlink().FmtData.dll ) {
+        if( wlink().StackSegPtr != nullptr ) {
+            wlink().StackAddr.seg = wlink().StackSegPtr->seg_addr.seg;
+            wlink().StackAddr.off = wlink().StackSegPtr->seg_addr.off + wlink().StackSegPtr->size;
         } else {
 #ifdef _OS2
-            if( (FmtData.type & MK_WIN_NE)
-              && (LinkFlags & LF_STK_SIZE_FLAG) ) {
+            if( (wlink().FmtData.type & MK_WIN_NE)
+              && (wlink().LinkFlags & LF_STK_SIZE_FLAG) ) {
                 PhoneyStack();
             } else {
 #endif
-                if( (FmtData.type & (MK_COM | MK_PE | MK_QNX | MK_ELF | MK_RDOS)) == 0 ) {
+                if( (wlink().FmtData.type & (MK_COM | MK_PE | MK_QNX | MK_ELF | MK_RDOS)) == 0 ) {
                     LnkMsg( WRN+MSG_STACK_NOT_FOUND, nullptr );
-                    StackAddr.seg = 0;
-                    StackAddr.off = 0;
+                    wlink().StackAddr.seg = 0;
+                    wlink().StackAddr.off = 0;
                 }
 #ifdef _OS2
             }
@@ -475,7 +474,7 @@ static class_entry *LocateBSSClass( void )
     class_entry *class_;
     section     *sect;
 
-    sect = (Root->areas == nullptr) ? Root : NonSect;
+    sect = (wlink().Root->areas == nullptr) ? wlink().Root : wlink().NonSect;
     for( class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         if( stricmp( class_->name.u.ptr, BSSClassName ) == 0 ) {
             return( class_ );
@@ -494,7 +493,7 @@ static void DefABSSSym( const char *name )
       || (sym->info & SYM_LINK_GEN) ) {
         sym->info |= SYM_DEFINED | SYM_LINK_GEN;
 #ifdef _EXE
-        if( FmtData.type & MK_OVERLAYS ) {
+        if( wlink().FmtData.type & MK_OVERLAYS ) {
             sym->u.d.ovlstate |= OVL_NO_VECTOR | OVL_FORCE;
         }
 #endif
@@ -529,8 +528,8 @@ static void CheckBSSInStart( symbol *sym, const char *name )
     symbol      *chk;
 
     chk = nullptr;
-    if( StartInfo.mod != nullptr ) {
-        chk = static_cast<symbol *>( Ring2Lookup( StartInfo.mod->publist, CompSymPtr, sym ) );
+    if( wlink().StartInfo.mod != nullptr ) {
+        chk = static_cast<symbol *>( Ring2Lookup( wlink().StartInfo.mod->publist, CompSymPtr, sym ) );
     }
     if( chk == nullptr ) {
         LnkMsg( ERR+MSG_RESERVED_SYM_DEFINED, "s", name );
@@ -552,7 +551,7 @@ static void DefBSSStartSize( const char *name, class_entry *class_ )
         sym->p.seg = static_cast<segdata *>( RingFirst( seg->pieces ) );
         sym->addr = seg->seg_addr;
         ConvertToFrame( &sym->addr, seg->group->addr.seg, ( (seg->info & SEGINF_USE_32) == 0 ) );
-    } else if( LinkState & LS_DOSSEG_FLAG ) {
+    } else if( wlink().LinkState & LS_DOSSEG_FLAG ) {
         CheckBSSInStart( sym, name );
     }
 }
@@ -576,7 +575,7 @@ static void DefBSSEndSize( const char *name, class_entry *class_ )
         sym->p.seg = static_cast<segdata *>( RingLast( seg->pieces ) );
         SET_SYM_ADDR( sym, seg->seg_addr.off + seg->size, seg->seg_addr.seg );
         ConvertToFrame( &sym->addr, seg->group->addr.seg, ( (seg->info & SEGINF_USE_32) == 0 ) );
-    } else if( LinkState & LS_DOSSEG_FLAG ) {
+    } else if( wlink().LinkState & LS_DOSSEG_FLAG ) {
         CheckBSSInStart( sym, name );
     }
 }
@@ -610,34 +609,34 @@ void SetStkSize( void )
  * stack segment size in the clib is smaller, hence the complex logic.
  */
 {
-    StackSegPtr = StackSegment();
-    if( FmtData.dll ) {
-        StackSize = 0;  // DLLs don't have their own stack
+    wlink().StackSegPtr = StackSegment();
+    if( wlink().FmtData.dll ) {
+        wlink().StackSize = 0;  // DLLs don't have their own stack
     } else {
-        if( LinkFlags & LF_STK_SIZE_FLAG ) {
-            if( StackSize < 0x200 ) {
+        if( wlink().LinkFlags & LF_STK_SIZE_FLAG ) {
+            if( wlink().StackSize < 0x200 ) {
                 LnkMsg( WRN+MSG_STACK_SMALL, "d", 0x200 );
             }
 #ifdef _OS2
         } else {
-            if( FmtData.type & MK_PE ) {
-                StackSize = DefStackSizePE();
-                LinkFlags |= LF_STK_SIZE_FLAG;
+            if( wlink().FmtData.type & MK_PE ) {
+                wlink().StackSize = DefStackSizePE();
+                wlink().LinkFlags |= LF_STK_SIZE_FLAG;
             }
 #endif
         }
     }
-    if( StackSegPtr != nullptr ) {
-        if( LinkFlags & LF_STK_SIZE_FLAG ) {
-            if( (FmtData.type & MK_NOVELL) == 0 ) {
-                StackSegPtr->size = StackSize;
+    if( wlink().StackSegPtr != nullptr ) {
+        if( wlink().LinkFlags & LF_STK_SIZE_FLAG ) {
+            if( (wlink().FmtData.type & MK_NOVELL) == 0 ) {
+                wlink().StackSegPtr->size = wlink().StackSize;
             }
         } else {
-            if( !FmtData.dll
-              && StackSegPtr->size >= 0x200 ) {
-                StackSize = StackSegPtr->size;
+            if( !wlink().FmtData.dll
+              && wlink().StackSegPtr->size >= 0x200 ) {
+                wlink().StackSize = wlink().StackSegPtr->size;
             } else {
-                StackSegPtr->size = StackSize;
+                wlink().StackSegPtr->size = wlink().StackSize;
             }
         }
     }
@@ -646,7 +645,7 @@ void SetStkSize( void )
 void ClearStartAddr( void )
 /*************************/
 {
-    memset( &StartInfo, 0, sizeof( startinfo ) );
+    memset( &wlink().StartInfo, 0, sizeof( startinfo ) );
 }
 
 void SetStartSym( const char *name )
@@ -654,23 +653,23 @@ void SetStartSym( const char *name )
 {
     size_t      namelen;
 
-    if( StartInfo.type != START_UNDEFED ) {
-        if( StartInfo.type == START_IS_SYM ) {
+    if( wlink().StartInfo.type != START_UNDEFED ) {
+        if( wlink().StartInfo.type == START_IS_SYM ) {
             namelen = strlen( name );
-            if( namelen != strlen( StartInfo.targ.sym->name.u.ptr )
-              || (*CmpNRtn)( StartInfo.targ.sym->name.u.ptr, name, namelen ) != 0 ) {
-                LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS_BY, "12", StartInfo.targ.sym->name.u.ptr, name );
+            if( namelen != strlen( wlink().StartInfo.targ.sym->name.u.ptr )
+              || (*CmpNRtn)( wlink().StartInfo.targ.sym->name.u.ptr, name, namelen ) != 0 ) {
+                LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS_BY, "12", wlink().StartInfo.targ.sym->name.u.ptr, name );
             }
         } else {
-            LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", StartInfo.mod->u1.source->infile->name, StartInfo.mod->name );
+            LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", wlink().StartInfo.mod->u1.source->infile->name, wlink().StartInfo.mod->name );
         }
     } else {
-        StartInfo.targ.sym = RefISymbol( name );
-        StartInfo.targ.sym->info |= SYM_1_DCE_REF;
-        StartInfo.type = START_IS_SYM;
-        StartInfo.mod = CurrMod;
-        if( LinkFlags & LF_STRIP_CODE ) {
-            DataRef( StartInfo.targ.sym );
+        wlink().StartInfo.targ.sym = RefISymbol( name );
+        wlink().StartInfo.targ.sym->info |= SYM_1_DCE_REF;
+        wlink().StartInfo.type = START_IS_SYM;
+        wlink().StartInfo.mod = wlink().CurrMod;
+        if( wlink().LinkFlags & LF_STRIP_CODE ) {
+            DataRef( wlink().StartInfo.targ.sym );
         }
     }
 }
@@ -682,48 +681,48 @@ void GetStartAddr( void )
     int         deltaseg;
 
 #ifdef _NOVELL
-    if( FmtData.type & MK_NOVELL ) {
+    if( wlink().FmtData.type & MK_NOVELL ) {
         return;
     }
 #endif
     addoff = true;
-    switch( StartInfo.type ) {
+    switch( wlink().StartInfo.type ) {
     case START_UNDEFED:         // NOTE: the possible fall through
         addoff = false;
-        if( !FmtData.dll ) {
-            if( Groups == nullptr
-              || (FmtData.type & MK_ELF) ) {
-                StartInfo.addr.seg = 0;
-                StartInfo.addr.off = 0;
+        if( !wlink().FmtData.dll ) {
+            if( wlink().Groups == nullptr
+              || (wlink().FmtData.type & MK_ELF) ) {
+                wlink().StartInfo.addr.seg = 0;
+                wlink().StartInfo.addr.off = 0;
             } else {
-                StartInfo.addr = Groups->addr;
+                wlink().StartInfo.addr = wlink().Groups->addr;
             }
-            LnkMsg( WRN+MSG_NO_START_ADDR, "a", &StartInfo.addr );
+            LnkMsg( WRN+MSG_NO_START_ADDR, "a", &wlink().StartInfo.addr );
         }
         break;
     case START_IS_SDATA:
-        StartInfo.addr = StartInfo.targ.sdata->u.leader->seg_addr;
-        StartInfo.addr.off += StartInfo.targ.sdata->a.delta;
+        wlink().StartInfo.addr = wlink().StartInfo.targ.sdata->u.leader->seg_addr;
+        wlink().StartInfo.addr.off += wlink().StartInfo.targ.sdata->a.delta;
         /* if startaddr is not in first segment and segment is part of */
         /* a group, adjust seg + off relative to start of group        */
         /* instead of start of seg. This allows far call optimization to work*/
-        if( (StartInfo.targ.sdata->u.leader->seg_addr.seg > 0)
-          && (StartInfo.targ.sdata->u.leader->group != nullptr) ) {
-            deltaseg = StartInfo.targ.sdata->u.leader->seg_addr.seg
-              - StartInfo.targ.sdata->u.leader->group->addr.seg;
+        if( (wlink().StartInfo.targ.sdata->u.leader->seg_addr.seg > 0)
+          && (wlink().StartInfo.targ.sdata->u.leader->group != nullptr) ) {
+            deltaseg = wlink().StartInfo.targ.sdata->u.leader->seg_addr.seg
+              - wlink().StartInfo.targ.sdata->u.leader->group->addr.seg;
             if( (deltaseg > 0)
-              && (deltaseg <= StartInfo.targ.sdata->u.leader->seg_addr.seg) ) {
-                StartInfo.addr.seg -= deltaseg;
-                StartInfo.addr.off += 16 * deltaseg - StartInfo.targ.sdata->u.leader->group->addr.off;
+              && (deltaseg <= wlink().StartInfo.targ.sdata->u.leader->seg_addr.seg) ) {
+                wlink().StartInfo.addr.seg -= deltaseg;
+                wlink().StartInfo.addr.off += 16 * deltaseg - wlink().StartInfo.targ.sdata->u.leader->group->addr.off;
             }
         }
         break;
     case START_IS_SYM:
-        StartInfo.addr = StartInfo.targ.sym->addr;
+        wlink().StartInfo.addr = wlink().StartInfo.targ.sym->addr;
         break;
     }
     if( addoff ) {
-        StartInfo.addr.off += StartInfo.off;
+        wlink().StartInfo.addr.off += wlink().StartInfo.off;
     }
 }
 
@@ -734,9 +733,9 @@ offset CalcGroupSize( group_entry *group )
 {
     offset size;
 
-    if(( group == DataGroup )
-      && ( FmtData.dgroupsplitseg != nullptr )) {
-        size = FmtData.dgroupsplitseg->seg_addr.off - group->addr.off - FmtData.bsspad;
+    if(( group == wlink().DataGroup )
+      && ( wlink().FmtData.dgroupsplitseg != nullptr )) {
+        size = wlink().FmtData.dgroupsplitseg->seg_addr.off - group->addr.off - wlink().FmtData.bsspad;
         DbgAssert( size >= group->size );
     } else {
         size = group->totalsize;
@@ -751,12 +750,12 @@ offset CalcSplitSize( void )
 {
     offset size;
 
-    if( FmtData.dgroupsplitseg == nullptr ) {
+    if( wlink().FmtData.dgroupsplitseg == nullptr ) {
         return( 0 );
     } else {
-        size = DataGroup->totalsize - (FmtData.dgroupsplitseg->seg_addr.off - DataGroup->addr.off);
-        if( StackSegPtr != nullptr ) {
-            size -= StackSize;
+        size = wlink().DataGroup->totalsize - (wlink().FmtData.dgroupsplitseg->seg_addr.off - wlink().DataGroup->addr.off);
+        if( wlink().StackSegPtr != nullptr ) {
+            size -= wlink().StackSize;
         }
         return( size );
     }
@@ -793,8 +792,8 @@ void OrderGroups( bool (*lessthan)(addr_type *, addr_type *) )
     addr_type       *low_addr;
     addr_type       *group_addr;
 
-    first_group = Groups;
-    last_group = &Groups;
+    first_group = wlink().Groups;
+    last_group = &wlink().Groups;
     while( first_group != nullptr ) {
         low_addr = &first_group->addr;
         low_group = nullptr;
@@ -831,7 +830,7 @@ bool WriteGroup( group_entry *group )
     repos = false;
     if( group->size != 0 ) {
         sect = group->section;
-        CurrSect = sect;
+        wlink().CurrSect = sect;
         finfo = sect->outfile;
         file_loc = GROUP_FILE_LOC( group );
         if( file_loc > finfo->file_loc ) {
@@ -841,7 +840,7 @@ bool WriteGroup( group_entry *group )
             repos = true;
         }
 #ifdef _EXE
-        if( FmtData.type & MK_OVERLAYS ) {
+        if( wlink().FmtData.type & MK_OVERLAYS ) {
             OvlSetTableLoc( group, file_loc );
         }
 #endif
@@ -867,10 +866,10 @@ unsigned_32 MemorySize( void )
     section             *sect;
     areasect            *area;
 
-    if( FmtData.type & MK_REAL_MODE ) {
-        start = MK_REAL_ADDR( Root->sect_addr.seg, Root->sect_addr.off );
-        end = start + Root->size;
-        for( area = Root->areas; area != nullptr; area = area->next ) {
+    if( wlink().FmtData.type & MK_REAL_MODE ) {
+        start = MK_REAL_ADDR( wlink().Root->sect_addr.seg, wlink().Root->sect_addr.off );
+        end = start + wlink().Root->size;
+        for( area = wlink().Root->areas; area != nullptr; area = area->next ) {
             for( sect = area->sections; sect != nullptr; sect = sect->next ) {
                 curr = MK_REAL_ADDR( sect->sect_addr.seg, sect->sect_addr.off ) + sect->size;
                 if( curr > end ) {
@@ -881,7 +880,7 @@ unsigned_32 MemorySize( void )
         return( end - start );
     }
 #endif
-    return( Root->size );
+    return( wlink().Root->size );
 }
 
 unsigned_32 AppendToLoadFile( const char *name )
@@ -915,7 +914,7 @@ unsigned_32 AppendToLoadFile( const char *name )
 // the wlib option that names the machine of the import library
 static const char *wlibMachineOption( void )
 {
-    switch( LinkState & LS_HAVE_MACHTYPE_MASK ) {
+    switch( wlink().LinkState & LS_HAVE_MACHTYPE_MASK ) {
     case LS_HAVE_ALPHA_CODE:
         return( "-ia" );
     case LS_HAVE_MIPS_CODE:
@@ -941,7 +940,7 @@ static void ExecWlib( void )
     cmdline = "-c -b -n -q -pa ";
     cmdline += wlibMachineOption();
     cmdline += " \"";
-    cmdline += FmtData.implibname;
+    cmdline += wlink().FmtData.implibname;
     cmdline += "\" @\"";
     cmdline += ImpLib.fname;
     cmdline += '"';
@@ -955,7 +954,7 @@ static void ExecWlib( void )
     atfname = '@';
     atfname += ImpLib.fname;
     retval = static_cast<int>( spawnlp( P_WAIT, WLIB_EXE, WLIB_EXE, "-c", "-b", "-n", "-q", "-pa",
-                  wlibMachineOption(), FmtData.implibname, atfname.c_str(), nullptr ) );
+                  wlibMachineOption(), wlink().FmtData.implibname, atfname.c_str(), nullptr ) );
     if( retval == -1 ) {
         PrintIOError( ERR+MSG_CANT_EXECUTE, "12", WLIB_EXE );
     }
@@ -975,16 +974,16 @@ void BuildImpLib( void )
 {
     implibinfo  &ImpLib = loadFileState().implib;
 
-    if( LinkState & LS_LINK_ERROR )
+    if( wlink().LinkState & LS_LINK_ERROR )
         return;
-    if( FmtData.make_implib ) {
+    if( wlink().FmtData.make_implib ) {
         if( ImpLib.handle != NIL_FHANDLE ) {
             if( ImpLib.bufsize > 0 ) {
                 FlushImpBuffer();
             }
             QClose( ImpLib.handle, ImpLib.fname );
             ImpLib.handle = NIL_FHANDLE;
-            if( !FmtData.make_impfile ) {
+            if( !wlink().FmtData.make_impfile ) {
                 if( ImpLib.didone ) {
                     ExecWlib();
                 }
@@ -996,7 +995,7 @@ void BuildImpLib( void )
         }
         MemFree( ImpLib.fname );
         ImpLib.fname = nullptr;
-        MemFree( FmtData.implibname );
+        MemFree( wlink().FmtData.implibname );
     }
 }
 
@@ -1027,7 +1026,7 @@ void AddImpLibEntry( const char *intname, const char *extname, ordinal_t ordinal
     LoadFileState   &state = loadFileState();
     implibinfo      &ImpLib = state.implib;
 
-    if( FmtData.make_implib
+    if( wlink().FmtData.make_implib
       && ImpLib.handle != NIL_FHANDLE ) {
         std::string &buff = state.entry;
 
@@ -1069,11 +1068,11 @@ unsigned_32 CopyToLoad( f_handle handle, const char *name )
     unsigned_32     wrote;
 
     wrote = 0;
-    amt_read = QRead( handle, TokBuff, TokSize, name );
+    amt_read = QRead( handle, wlink().TokBuff, wlink().TokSize, name );
     while( amt_read != 0 && amt_read != IOERROR ) {
-        WriteLoad( TokBuff, amt_read );
+        WriteLoad( wlink().TokBuff, amt_read );
         wrote += amt_read;
-        amt_read = QRead( handle, TokBuff, TokSize, name );
+        amt_read = QRead( handle, wlink().TokBuff, wlink().TokSize, name );
     }
     return( wrote );
 }
@@ -1224,12 +1223,12 @@ void FreeOutFiles( void )
     outfilelist     *fnode;
 
     CloseOutFiles();
-    for( fnode = OutFiles; fnode != nullptr; fnode = OutFiles ) {
-        if( LinkState & LS_LINK_ERROR ) {
+    for( fnode = wlink().OutFiles; fnode != nullptr; fnode = wlink().OutFiles ) {
+        if( wlink().LinkState & LS_LINK_ERROR ) {
             QDelete( fnode->fname );
         }
         MemFree( fnode->fname );
-        OutFiles = fnode->next;
+        wlink().OutFiles = fnode->next;
         MemFree( fnode );
     }
 }
@@ -1237,7 +1236,7 @@ void FreeOutFiles( void )
 static void *SetToFillChar( void *dest, const void *data, size_t size )
 /*********************************************************************/
 {
-    memset( dest, FmtData.FillChar, size );
+    memset( dest, wlink().FmtData.FillChar, size );
     return( const_cast<void *>( data ) );
 }
 
@@ -1309,7 +1308,7 @@ void PadLoad( size_t size )
  * pad out load file with zeros
  */
 {
-    PadBuffFile( CurrSect->outfile, size );
+    PadBuffFile( wlink().CurrSect->outfile, size );
 }
 
 void WriteLoad( const void *buff, size_t size )
@@ -1319,7 +1318,7 @@ void WriteLoad( const void *buff, size_t size )
 {
     outfilelist         *outfile;
 
-    outfile = CurrSect->outfile;
+    outfile = wlink().CurrSect->outfile;
     if( outfile->buffer != nullptr ) {
         WriteBuffer( static_cast<const char *>( buff ), size, outfile, CopyData );
     } else {
@@ -1382,7 +1381,7 @@ void SeekLoad( unsigned long offset )
 {
     outfilelist         *outfile;
 
-    outfile = CurrSect->outfile;
+    outfile = wlink().CurrSect->outfile;
     if( outfile->buffer != nullptr
       && ( outfile->origin + offset ) < outfile->bufpos ) {
         FlushBuffFile( outfile );
@@ -1399,7 +1398,7 @@ void SeekEndLoad( unsigned long offset )
 {
     outfilelist         *outfile;
 
-    outfile = CurrSect->outfile;
+    outfile = wlink().CurrSect->outfile;
     if( outfile->buffer != nullptr
       && offset > 0 ) {
         FlushBuffFile( outfile );
@@ -1412,10 +1411,10 @@ void SeekEndLoad( unsigned long offset )
 unsigned long PosLoad( void )
 /***************************/
 {
-    if( CurrSect->outfile->buffer != nullptr ) {
-        return( CurrSect->outfile->bufpos - CurrSect->outfile->origin );
+    if( wlink().CurrSect->outfile->buffer != nullptr ) {
+        return( wlink().CurrSect->outfile->bufpos - wlink().CurrSect->outfile->origin );
     } else {
-        return( QPos( CurrSect->outfile->handle ) - CurrSect->outfile->origin );
+        return( QPos( wlink().CurrSect->outfile->handle ) - wlink().CurrSect->outfile->origin );
     }
 }
 
@@ -1435,7 +1434,7 @@ void InitBuffFile( outfilelist *outfile, char *filename, bool executable )
 void SetOriginLoad( unsigned long origin )
 /****************************************/
 {
-    CurrSect->outfile->origin = origin;
+    wlink().CurrSect->outfile->origin = origin;
 }
 
 void OpenBuffFile( outfilelist *outfile )

@@ -196,7 +196,7 @@ struct fmt_nov_data {
 // so we don't have to allocate any memory for imports which are not
 // referenced, make them initially point to some other aribtrary non-zero place
 
-#define DUMMY_IMPORT_PTR    (void *)&FmtData.u.nov
+#define DUMMY_IMPORT_PTR    (void *)&wlink().FmtData.u.nov
 
 // linker specific QNX 4.0 data
 

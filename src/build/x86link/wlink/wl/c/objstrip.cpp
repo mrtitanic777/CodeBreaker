@@ -34,6 +34,7 @@
 #include <cstring>
 #include <string>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "objstrip.h"
 #include "run_state.hpp"
 
@@ -155,8 +156,8 @@ void DataRef( symbol * sym )
 /*********************************/
 /* symbol referenced from data, so make sure it is included */
 {
-    if( (LinkState & LS_HAVE_PPC_CODE)
-      && (FmtData.type & MK_PE) ) {
+    if( (wlink().LinkState & LS_HAVE_PPC_CODE)
+      && (wlink().FmtData.type & MK_PE) ) {
         std::string s = std::string( ".." ) + sym->name.u.ptr;
 
         sym = SymOp( ST_FIND, s.c_str(), s.size() );

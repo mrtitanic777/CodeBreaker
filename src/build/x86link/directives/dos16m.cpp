@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "cmdline.h"
@@ -24,7 +25,7 @@ bool ProcBuffer() {
     if (value < _1K || value > _32K) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "BUFFER");
     } else {
-        FmtData.u.d16m.buffer = value;
+        wlink().FmtData.u.d16m.buffer = value;
     }
     return true;
 }
@@ -39,16 +40,16 @@ bool ProcGDTSize() {
     if (value > 0x10000) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "GDTSIZE");
     } else {
-        FmtData.u.d16m.gdtsize = --value;
+        wlink().FmtData.u.d16m.gdtsize = --value;
     }
     return true;
 }
 
 bool ProcRelocs() {
-    if (FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
+    if (wlink().FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
         LnkMsg(WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
     }
-    LinkState |= LS_MAKE_RELOCS;
+    wlink().LinkState |= LS_MAKE_RELOCS;
     return true;
 }
 
@@ -62,7 +63,7 @@ bool ProcSelStart() {
     if (value >= 0x10000 || value < D16M_USER_SEL) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "SELSTART");
     } else {
-        FmtData.u.d16m.selstart = value;
+        wlink().FmtData.u.d16m.selstart = value;
     }
     return true;
 }
@@ -74,18 +75,18 @@ bool ProcExtended() {
     if (value >= 0x10000) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "EXTENDED");
     } else {
-        FmtData.u.d16m.extended = value;
+        wlink().FmtData.u.d16m.extended = value;
     }
     return true;
 }
 
 bool ProcExpName() {
     if (!have_equals(Want::file_name)) return false;
-    if (FmtData.u.d16m.exp_name != nullptr) {
-        MemFree(FmtData.u.d16m.exp_name);
+    if (wlink().FmtData.u.d16m.exp_name != nullptr) {
+        MemFree(wlink().FmtData.u.d16m.exp_name);
     }
     const std::string_view text = reader().text();
-    FmtData.u.d16m.exp_name = FileName(text.data(), text.size(), E_PROTECT, true);   // just keep the name around for now.
+    wlink().FmtData.u.d16m.exp_name = FileName(text.data(), text.size(), E_PROTECT, true);   // just keep the name around for now.
     return true;
 }
 
@@ -95,8 +96,8 @@ bool ProcDataSize() {
     if (value > _64K) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "DATASIZE");
     } else {
-        FmtData.u.d16m.datasize = __ROUND_UP_SIZE_TO_PARA(value);
-        FmtData.u.d16m.flags |= DATASIZE_SPECD;
+        wlink().FmtData.u.d16m.datasize = __ROUND_UP_SIZE_TO_PARA(value);
+        wlink().FmtData.u.d16m.flags |= DATASIZE_SPECD;
     }
     return true;
 }
@@ -114,48 +115,48 @@ constexpr Entry MainOptions[] = {
 // ---- "RUntime" Directive
 
 bool ProcKeyboard() {
-    FmtData.u.d16m.options |= OPT_KEYBOARD;
+    wlink().FmtData.u.d16m.options |= OPT_KEYBOARD;
     return true;
 }
 
 bool ProcOverload() {
-    FmtData.u.d16m.options |= OPT_OVERLOAD;
+    wlink().FmtData.u.d16m.options |= OPT_OVERLOAD;
     return true;
 }
 
 bool ProcInt10() {
-    FmtData.u.d16m.options |= OPT_INT10;
+    wlink().FmtData.u.d16m.options |= OPT_INT10;
     return true;
 }
 
 bool ProcInit00() {
-    FmtData.u.d16m.options |= OPT_INIT00;
+    wlink().FmtData.u.d16m.options |= OPT_INIT00;
     return true;
 }
 
 bool ProcInitFF() {
-    FmtData.u.d16m.options |= OPT_INITFF;
+    wlink().FmtData.u.d16m.options |= OPT_INITFF;
     return true;
 }
 
 bool ProcRotate() {
-    FmtData.u.d16m.options |= OPT_ROTATE;
+    wlink().FmtData.u.d16m.options |= OPT_ROTATE;
     return true;
 }
 
 bool ProcSelectors() {
     // force selectors to be assigned at load time.
-    FmtData.u.d16m.options |= OPT_AUTO;
+    wlink().FmtData.u.d16m.options |= OPT_AUTO;
     return true;
 }
 
 bool ProcAuto() {
     // force selectors to be assigned at load time, and force relocs as well.
-    if (FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
+    if (wlink().FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
         LnkMsg(WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
     }
-    FmtData.u.d16m.options |= OPT_AUTO;
-    LinkState |= LS_MAKE_RELOCS;
+    wlink().FmtData.u.d16m.options |= OPT_AUTO;
+    wlink().LinkState |= LS_MAKE_RELOCS;
     return true;
 }
 
@@ -173,22 +174,22 @@ constexpr Entry RunOptions[] = {
 // ---- "MEmory" Directive
 
 bool ProcTryExtended() {
-    FmtData.u.d16m.strategy = MPreferExt;
+    wlink().FmtData.u.d16m.strategy = MPreferExt;
     return true;
 }
 
 bool ProcTryLow() {
-    FmtData.u.d16m.strategy = MPreferLow;
+    wlink().FmtData.u.d16m.strategy = MPreferLow;
     return true;
 }
 
 bool ProcForceExtended() {
-    FmtData.u.d16m.strategy = MForceExt;
+    wlink().FmtData.u.d16m.strategy = MForceExt;
     return true;
 }
 
 bool ProcForceLow() {
-    FmtData.u.d16m.strategy = MForceLow;
+    wlink().FmtData.u.d16m.strategy = MForceLow;
     return true;
 }
 
@@ -202,16 +203,16 @@ constexpr Entry Strategies[] = {
 // ---- "TRansparent" Directive
 
 bool ProcTStack() {
-    FmtData.u.d16m.flags |= TRANS_STACK;
+    wlink().FmtData.u.d16m.flags |= TRANS_STACK;
     return true;
 }
 
 bool ProcTData() {
-    if (FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
+    if (wlink().FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
         LnkMsg(WRN + LOC + LINE + MSG_TRANS_RELOCS_NEEDED, nullptr);
     }
-    FmtData.u.d16m.flags |= TRANS_DATA;
-    LinkState |= LS_MAKE_RELOCS;
+    wlink().FmtData.u.d16m.flags |= TRANS_DATA;
+    wlink().LinkState |= LS_MAKE_RELOCS;
     return true;
 }
 
@@ -223,30 +224,30 @@ constexpr Entry TransTypes[] = {
 }  // namespace
 
 void SetD16MFmt() {
-    LinkState &= ~LS_MAKE_RELOCS;   // assume none being produced.
-    FmtData.def_ext = E_PROTECT;
-    FmtData.u.d16m.options = 0;
-    FmtData.u.d16m.flags = 0;
-    FmtData.u.d16m.strategy = MNoStrategy;
-    FmtData.u.d16m.buffer = 0;
-    FmtData.u.d16m.gdtsize = 0xFFFF;   // 64 K - 1.
-    FmtData.u.d16m.selstart = D16M_USER_SEL;
-    FmtData.u.d16m.extended = 0x7FFF;
-    FmtData.u.d16m.datasize = 0x1000;
-    FmtData.u.d16m.exp_name = nullptr;
-    FmtData.u.d16m.stub = nullptr;
+    wlink().LinkState &= ~LS_MAKE_RELOCS;   // assume none being produced.
+    wlink().FmtData.def_ext = E_PROTECT;
+    wlink().FmtData.u.d16m.options = 0;
+    wlink().FmtData.u.d16m.flags = 0;
+    wlink().FmtData.u.d16m.strategy = MNoStrategy;
+    wlink().FmtData.u.d16m.buffer = 0;
+    wlink().FmtData.u.d16m.gdtsize = 0xFFFF;   // 64 K - 1.
+    wlink().FmtData.u.d16m.selstart = D16M_USER_SEL;
+    wlink().FmtData.u.d16m.extended = 0x7FFF;
+    wlink().FmtData.u.d16m.datasize = 0x1000;
+    wlink().FmtData.u.d16m.exp_name = nullptr;
+    wlink().FmtData.u.d16m.stub = nullptr;
 }
 
 void FreeD16MFmt() {
-    MemFree(FmtData.u.d16m.exp_name);
-    MemFree(FmtData.u.d16m.stub);
+    MemFree(wlink().FmtData.u.d16m.exp_name);
+    MemFree(wlink().FmtData.u.d16m.stub);
 }
 
 void CmdD16MFini() {
-    if (FmtData.u.d16m.exp_name == nullptr && exe_name() != nullptr) {
+    if (wlink().FmtData.u.d16m.exp_name == nullptr && exe_name() != nullptr) {
         size_t base_name_len;
         const char* base_name = GetBaseName(exe_name(), strlen(exe_name()), &base_name_len);
-        FmtData.u.d16m.exp_name = FileName(base_name, base_name_len, E_PROTECT, true);
+        wlink().FmtData.u.d16m.exp_name = FileName(base_name, base_name_len, E_PROTECT, true);
     }
 }
 
@@ -255,10 +256,10 @@ bool Proc16MOptions() {
 }
 
 bool Proc16MNoRelocs() {
-    if (LinkState & LS_MAKE_RELOCS) {
+    if (wlink().LinkState & LS_MAKE_RELOCS) {
         LnkMsg(WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
     } else {
-        FmtData.u.d16m.flags |= FORCE_NO_RELOCS;
+        wlink().FmtData.u.d16m.flags |= FORCE_NO_RELOCS;
     }
     return true;
 }
@@ -272,7 +273,7 @@ bool Proc16MMemory() {
 }
 
 bool Proc16MTransparent() {
-    if (FmtData.u.d16m.flags & TRANS_SPECD) {
+    if (wlink().FmtData.u.d16m.flags & TRANS_SPECD) {
         LnkMsg(WRN + LOC + LINE + MSG_OPTION_MULTIPLY_DEFD, "s", "transparent");
         return true;
     }

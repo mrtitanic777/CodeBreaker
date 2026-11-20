@@ -37,6 +37,7 @@
     #include <malloc.h>     /* necessary for _heapshrink() */
 #endif
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "fileio.h"
 #include "idedll.h"
 #include "idedrv.h"
@@ -226,7 +227,7 @@ unsigned IDEAPI IDEGetVersion( void )
 void IDEAPI IDEStopRunning( void )
 /********************************/
 {
-    LinkState |= LS_STOP_WORKING | LS_LINK_ERROR;
+    wlink().LinkState |= LS_STOP_WORKING | LS_LINK_ERROR;
 }
 
 void IDEAPI IDEFreeHeap( void )
@@ -269,7 +270,7 @@ int IDEAPI IDERunYourSelf( IDEDllHdl hdl, const char * opts, IDEBool *fatalerr )
     /* unused parameters */ (void)hdl;
 
     LinkMainLine( opts );
-    *fatalerr = (LinkState & LS_LINK_ERROR) != 0;
+    *fatalerr = (wlink().LinkState & LS_LINK_ERROR) != 0;
     return( *fatalerr );
 }
 
@@ -286,6 +287,6 @@ int IDEAPI IDERunYourSelfArgv( IDEDllHdl hdl, int argc, char **argv, IDEBool *fa
 #endif
 
     LinkMainLine( nullptr );
-    *fatalerr = (LinkState & LS_LINK_ERROR) != 0;
+    *fatalerr = (wlink().LinkState & LS_LINK_ERROR) != 0;
     return( *fatalerr );
 }

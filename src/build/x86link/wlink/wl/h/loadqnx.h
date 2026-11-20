@@ -39,7 +39,7 @@
 #define QNX_RES_FILE    0x0080
 #define QNX_FLAG_MASK   0x007F
 
-#define QNX_SELECTOR( num ) (((num) << 3) | 4 | FmtData.u.qnx.priv_level)
+#define QNX_SELECTOR( num ) (((num) << 3) | 4 | wlink().FmtData.u.qnx.priv_level)
 
 #define QNX_SEL_NUM(selector) ((selector) >> 3)
 

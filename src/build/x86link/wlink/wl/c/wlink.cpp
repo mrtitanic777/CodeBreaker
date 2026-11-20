@@ -38,6 +38,7 @@
     #include <malloc.h>
 #endif
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "run_state.hpp"
 #include "fileio.h"
 #include "objpass2.h"
@@ -116,9 +117,9 @@ static void PreAddrCalcFormatSpec( void )
  */
 {
 #ifdef _OS2
-    if( FmtData.type & (MK_PE | MK_WIN_VXD | MK_NE | MK_OS2_FLAT) ) {
+    if( wlink().FmtData.type & (MK_PE | MK_WIN_VXD | MK_NE | MK_OS2_FLAT) ) {
   #if 0
-        if( (FmtData.type & (MK_NE | MK_OS2_FLAT)) && (LinkState & LS_HAVE_PPC_CODE) ) {
+        if( (wlink().FmtData.type & (MK_NE | MK_OS2_FLAT)) && (wlink().LinkState & LS_HAVE_PPC_CODE) ) {
             // Development temporarly on hold:
             // ChkOS2ElfData();
         } else {
@@ -128,17 +129,17 @@ static void PreAddrCalcFormatSpec( void )
         SetOS2SegFlags();
   #endif
     }
-    if( FmtData.type & MK_PE ) {
+    if( wlink().FmtData.type & MK_PE ) {
         ChkPEData();
     }
 #endif
 #ifdef _NOVELL
-    if( FmtData.type & MK_NOVELL ) {
+    if( wlink().FmtData.type & MK_NOVELL ) {
         FindExportedSyms();
     }
 #endif
 #ifdef _PHARLAP
-    if( FmtData.type & MK_PHAR_LAP ) {
+    if( wlink().FmtData.type & MK_PHAR_LAP ) {
         CheckPharLapData();
     }
 #endif
@@ -150,9 +151,9 @@ static void PostAddrCalcFormatSpec( void )
  */
 {
 #ifdef _OS2
-    if( FmtData.type & (MK_PE | MK_WIN_VXD | MK_NE | MK_OS2_FLAT) ) {
+    if( wlink().FmtData.type & (MK_PE | MK_WIN_VXD | MK_NE | MK_OS2_FLAT) ) {
   #if 0
-        if( (FmtData.type & (MK_NE | MK_OS2_FLAT)) && (LinkState & LS_HAVE_PPC_CODE) ) {
+        if( (wlink().FmtData.type & (MK_NE | MK_OS2_FLAT)) && (wlink().LinkState & LS_HAVE_PPC_CODE) ) {
             // Development temporarly on hold:
             //PrepareOS2Elf();
         } else {
@@ -164,17 +165,17 @@ static void PostAddrCalcFormatSpec( void )
         ChkOS2Exports();
   #endif
     }
-    if( FmtData.type & MK_PE ) {
+    if( wlink().FmtData.type & MK_PE ) {
         AllocPETransferTable();
     }
 #endif
 #ifdef _ELF
-    if( FmtData.type & MK_ELF ) {
+    if( wlink().FmtData.type & MK_ELF ) {
         ChkElfData();
     }
 #endif
 #ifdef _QNX
-    if( FmtData.type & MK_QNX ) {
+    if( wlink().FmtData.type & MK_QNX ) {
         SetQNXSegFlags();
         SetQNXGroupFlags();
     }
@@ -186,21 +187,21 @@ static void ResetMisc( void )
  * Linker support initialization.
  */
 {
-    LinkFlags = LF_REDEFS_OK | LF_FAR_CALLS_FLAG;
-    LinkState = LS_MAKE_RELOCS;
-    AbsGroups = nullptr;
-    DataGroup = nullptr;
-    IDataGroup = nullptr;
-    OutFiles = nullptr;
-    ObjLibFiles = nullptr;
-    LibModules = nullptr;
-    Groups = nullptr;
-    SET_ADDR_UNDEFINED( CurrLoc );
-    CurrMod = nullptr;
-    StackSize = DEF_STACK_SIZE;
+    wlink().LinkFlags = LF_REDEFS_OK | LF_FAR_CALLS_FLAG;
+    wlink().LinkState = LS_MAKE_RELOCS;
+    wlink().AbsGroups = nullptr;
+    wlink().DataGroup = nullptr;
+    wlink().IDataGroup = nullptr;
+    wlink().OutFiles = nullptr;
+    wlink().ObjLibFiles = nullptr;
+    wlink().LibModules = nullptr;
+    wlink().Groups = nullptr;
+    SET_ADDR_UNDEFINED( wlink().CurrLoc );
+    wlink().CurrMod = nullptr;
+    wlink().StackSize = DEF_STACK_SIZE;
     /* CodeBreaker: the stack address of the link before stayed (a .COM link after an EXE then warned W1087) */
-    StackAddr.seg = 0;
-    StackAddr.off = 0;
+    wlink().StackAddr.seg = 0;
+    wlink().StackAddr.off = 0;
     ResetSym();
 }
 
@@ -211,21 +212,21 @@ static void DoDefaultSystem( void )
  * system block
  */
 {
-    if( (LinkState & LS_FMT_DECIDED) == 0 ) {
-        if( LinkState & LS_FMT_SEEN_64BIT ) {
+    if( (wlink().LinkState & LS_FMT_DECIDED) == 0 ) {
+        if( wlink().LinkState & LS_FMT_SEEN_64BIT ) {
             HintFormat( MK_64BIT );
-        } else if( LinkState & LS_FMT_SEEN_32BIT ) {
+        } else if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
             HintFormat( MK_32BIT );
         } else {
             HintFormat( MK_16BIT | MK_QNX );
         }
-        if( (LinkState & LS_FMT_DECIDED) == 0 ) {
-            if( LinkState & LS_FMT_SPECIFIED ) {
+        if( (wlink().LinkState & LS_FMT_DECIDED) == 0 ) {
+            if( wlink().LinkState & LS_FMT_SPECIFIED ) {
                 LnkMsg( FTL+MSG_AMBIG_FORMAT, nullptr );
             }
-            if( LinkState & LS_FMT_SEEN_64BIT ) {
+            if( wlink().LinkState & LS_FMT_SEEN_64BIT ) {
                 ExecSystem( "64bit" );
-            } else if( LinkState & LS_FMT_SEEN_32BIT ) {
+            } else if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
                 ExecSystem( "386" );
             } else {
                 ExecSystem( "286" ); /* no 386 obj's after this */
@@ -238,9 +239,9 @@ static void FindLibPaths( void )
 /******************************/
 {
     AddFmtLibPaths();
-    if( LinkState & LS_FMT_SEEN_64BIT ) {
+    if( wlink().LinkState & LS_FMT_SEEN_64BIT ) {
         AddLibPathsToEnd( GetEnvString( "LIBX64" ) );
-    } else if( LinkState & LS_FMT_SEEN_32BIT ) {
+    } else if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
         AddLibPathsToEnd( GetEnvString( "LIB386" ) );
     } else {
         AddLibPathsToEnd( GetEnvString( "LIB286" ) );
@@ -250,7 +251,7 @@ static void FindLibPaths( void )
          */
         HintFormat( MK_16BIT );
     }
-    AddLibPathsToEndList( LibPath );
+    AddLibPathsToEndList( wlink().LibPath );
 }
 
 static void ResetSubSystems( void )
@@ -284,7 +285,7 @@ static void ResetSubSystems( void )
     ResetLoadFile();
     ResetAddr();
     ResetToc();
-    Root = NewSection();
+    wlink().Root = NewSection();
 }
 
 void InitSubSystems( void )
@@ -311,7 +312,7 @@ static void CleanSubSystems( void )
     FreeOutFiles();
     MapFini();
     BurnSystemList();
-    FreeList( UsrLibPath );
+    FreeList( wlink().UsrLibPath );
     CloseSpillFile();
     CleanTraces();
     FreePaths();
@@ -341,7 +342,7 @@ static void SetSegments( void )
 // postponed until now.
 {
 #ifdef _DOS16M
-    if( FmtData.type & MK_DOS16M ) {
+    if( wlink().FmtData.type & MK_DOS16M ) {
         MakeDos16PM();
     }
 #endif
@@ -375,12 +376,12 @@ static void DoLink( const char *cmdline )
     ProcObjFiles(); /* ObjPass1 */
     CheckErr();
     DoDefaultSystem();
-    if( LinkState & LS_LIBRARIES_ADDED ) {
+    if( wlink().LinkState & LS_LIBRARIES_ADDED ) {
         FindLibPaths();
-        LinkState |= LS_SEARCHING_LIBRARIES;
+        wlink().LinkState |= LS_SEARCHING_LIBRARIES;
         ResolveUndefined();
-        LinkState &= ~LS_SEARCHING_LIBRARIES;
-        LinkState |= LS_GENERATE_LIB_LIST;
+        wlink().LinkState &= ~LS_SEARCHING_LIBRARIES;
+        wlink().LinkState |= LS_GENERATE_LIB_LIST;
     }
     ProcLocalImports();
     DecideFormat();
@@ -402,7 +403,7 @@ static void DoLink( const char *cmdline )
     GetStartAddr();
     PostAddrCalcFormatSpec();
 #ifdef _RDOS
-    if( FmtData.type & MK_RDOS ) {
+    if( wlink().FmtData.type & MK_RDOS ) {
         GetRdosSegs();
     }
 #endif

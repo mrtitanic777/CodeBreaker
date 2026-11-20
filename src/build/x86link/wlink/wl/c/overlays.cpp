@@ -31,6 +31,7 @@
 
 
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "newmem.h"
 #include "dbgcomm.h"
 #include "dbgall.h"
@@ -47,19 +48,19 @@
 static void OvlNumASect( section *sect )
 /**************************************/
 {
-    sect->ovlref = OvlSectNum++;
+    sect->ovlref = wlink().OvlSectNum++;
 }
 
 void OvlNumberSections( void )
 /****************************/
 {
-    if( FmtData.u.dos.distribute ) {
+    if( wlink().FmtData.u.dos.distribute ) {
         DistribNumberSections();
     }
     /* OvlSectNum value 0 is reserved for Root */
     /* Overlayed sections start at 1 */
-    OvlSectNum = 1;
-    WalkAreas( Root->areas, OvlNumASect );
+    wlink().OvlSectNum = 1;
+    WalkAreas( wlink().Root->areas, OvlNumASect );
 }
 
 void OvlSetSegments( void )
@@ -75,7 +76,7 @@ static void FillOutPtr( section *sect )
         if( sect->parent != nullptr ) {
             sect->outfile = sect->parent->outfile;  //same file as ancestor.
         } else {
-            sect->outfile = Root->outfile;
+            sect->outfile = wlink().Root->outfile;
         }
     }
 }
@@ -83,7 +84,7 @@ static void FillOutPtr( section *sect )
 void OvlFillOutFilePtrs( void )
 /*****************************/
 {
-    WalkAreas( Root->areas, FillOutPtr );
+    WalkAreas( wlink().Root->areas, FillOutPtr );
 }
 
 void OvlTryDefVector( symbol *sym )
@@ -108,7 +109,7 @@ void OvlTryUseVector( symbol *sym, extnode *newnode )
 static void PSection( section *sect )
 /***********************************/
 {
-    CurrSect = sect;
+    wlink().CurrSect = sect;
     PModList( sect->mods );
 }
 
@@ -116,7 +117,7 @@ void OvlPass2( void )
 /*******************/
 {
     OvlEmitVectors();
-    WalkAreas( Root->areas, PSection );
+    WalkAreas( wlink().Root->areas, PSection );
 }
 
 #endif

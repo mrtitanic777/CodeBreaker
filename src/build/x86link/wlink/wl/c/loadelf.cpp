@@ -60,6 +60,7 @@ String table for sections
 
 #include <string.h>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "exeelf.h"
 #include "loadelf.h"
 #include "loadelf2.h"
@@ -99,7 +100,7 @@ ElfState& state()
  * separate elf file at the end */
 bool injectElfDebug()
 {
-    return SymFileName == nullptr && (LinkFlags & LF_DWARF_DBI_FLAG) != 0;
+    return wlink().SymFileName == nullptr && (wlink().LinkFlags & LF_DWARF_DBI_FLAG) != 0;
 }
 
 }  // namespace
@@ -115,16 +116,16 @@ static void InitSections( ElfHdr *hdr )
     hdr->i.secstr = num++;
     hdr->eh.e_shstrndx = hdr->i.secstr;
     hdr->i.grpbase = num;
-    hdr->i.grpnum = NumGroups;
-    if( FmtData.dgroupsplitseg != nullptr ) {
+    hdr->i.grpnum = wlink().NumGroups;
+    if( wlink().FmtData.dgroupsplitseg != nullptr ) {
         hdr->i.grpnum++;
-        if( StackSegPtr != nullptr ) {
+        if( wlink().StackSegPtr != nullptr ) {
             hdr->i.grpnum++;
         }
     }
     num += hdr->i.grpnum;
     hdr->i.relbase = num;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( group->g.reloclist != nullptr ) {
             hdr->i.relnum++;
         }
@@ -138,7 +139,7 @@ static void InitSections( ElfHdr *hdr )
     }
     hdr->i.dbgbegin = num;
     num += hdr->i.dbgnum;
-    num += FmtData.u.elf.extrasects;
+    num += wlink().FmtData.u.elf.extrasects;
     hdr->eh.e_shnum = num;
     hdr->sh_size = sizeof( Elf32_Shdr ) * hdr->eh.e_shnum;
     hdr->sh = static_cast<Elf32_Shdr *>( MemAllocSafe( hdr->sh_size ) );
@@ -157,11 +158,11 @@ static void SetHeaders( ElfHdr *hdr )
     hdr->eh.e_ident[EI_DATA] = ELFDATA2LSB;
 #endif
     hdr->eh.e_ident[EI_VERSION] = EV_CURRENT;
-    hdr->eh.e_ident[EI_OSABI] = FmtData.u.elf.abitype;
-    hdr->eh.e_ident[EI_ABIVERSION] = FmtData.u.elf.abiversion;
+    hdr->eh.e_ident[EI_OSABI] = wlink().FmtData.u.elf.abitype;
+    hdr->eh.e_ident[EI_ABIVERSION] = wlink().FmtData.u.elf.abiversion;
     memset( &hdr->eh.e_ident[EI_PAD], 0, EI_NIDENT - EI_PAD );
     hdr->eh.e_type = ET_EXEC;
-    switch( LinkState & LS_HAVE_MACHTYPE_MASK ) {
+    switch( wlink().LinkState & LS_HAVE_MACHTYPE_MASK ) {
     case LS_HAVE_ALPHA_CODE:
         hdr->eh.e_machine = EM_ALPHA;
         break;
@@ -182,23 +183,23 @@ static void SetHeaders( ElfHdr *hdr )
         break;
     }
     hdr->eh.e_version = EV_CURRENT;
-    if( StartInfo.type == START_UNDEFED ) {
+    if( wlink().StartInfo.type == START_UNDEFED ) {
         hdr->eh.e_entry = 0;
     } else {
-        hdr->eh.e_entry = FindLinearAddr2( &StartInfo.addr );
+        hdr->eh.e_entry = FindLinearAddr2( &wlink().StartInfo.addr );
     }
     hdr->eh.e_flags = 0;
     hdr->eh.e_ehsize = sizeof( Elf32_Ehdr );
     hdr->eh.e_phentsize = sizeof( Elf32_Phdr );
     hdr->eh.e_shentsize = sizeof( Elf32_Shdr );
-    hdr->eh.e_phnum = NumGroups + state().NumPhdr;
+    hdr->eh.e_phnum = wlink().NumGroups + state().NumPhdr;
     hdr->eh.e_phoff = sizeof( Elf32_Ehdr );
     hdr->ph_size = sizeof( Elf32_Phdr ) * hdr->eh.e_phnum;
     hdr->ph = static_cast<Elf32_Phdr *>( MemAllocSafe( hdr->ph_size ) );
     if( state().NumPhdr ) {
         hdr->ph->p_type = PT_PHDR;
         hdr->ph->p_offset = sizeof( Elf32_Ehdr );
-        hdr->ph->p_vaddr = sizeof( Elf32_Ehdr ) + FmtData.base;
+        hdr->ph->p_vaddr = sizeof( Elf32_Ehdr ) + wlink().FmtData.base;
         hdr->ph->p_paddr = 0;
         hdr->ph->p_filesz = hdr->ph_size;
         hdr->ph->p_memsz = hdr->ph_size;
@@ -218,7 +219,7 @@ unsigned GetElfHeaderSize( void )
 {
     unsigned        size;
 
-    size = sizeof( Elf32_Ehdr ) + sizeof( Elf32_Phdr ) * ( NumGroups + state().NumPhdr );
+    size = sizeof( Elf32_Ehdr ) + sizeof( Elf32_Phdr ) * ( wlink().NumGroups + state().NumPhdr );
     return( __ROUND_UP_SIZE_PAGE( size ) );
 }
 
@@ -257,12 +258,12 @@ static void SetGroupHeaders( group_entry *group, offset off, Elf32_Phdr *ph,
         sh->sh_flags |= SHF_EXECINSTR;
         ph->p_flags |= PF_X;
     }
-    sh->sh_addr = ph->p_vaddr = group->linear + FmtData.base;
+    sh->sh_addr = ph->p_vaddr = group->linear + wlink().FmtData.base;
     ph->p_type = PT_LOAD;
     ph->p_filesz = sh->sh_size = group->size;
     ph->p_memsz = group->totalsize;
-    if( group == DataGroup && StackSegPtr != nullptr ) {
-        ph->p_memsz -= StackSize;
+    if( group == wlink().DataGroup && wlink().StackSegPtr != nullptr ) {
+        ph->p_memsz -= wlink().StackSize;
     }
     sh->sh_link = SHN_UNDEF;
     sh->sh_info = 0;
@@ -270,7 +271,7 @@ static void SetGroupHeaders( group_entry *group, offset off, Elf32_Phdr *ph,
     sh->sh_entsize = 0;
     ph->p_offset = sh->sh_offset = off;
     ph->p_paddr = 0;
-    ph->p_align = FmtData.objalign;
+    ph->p_align = wlink().FmtData.objalign;
 }
 
 static void InitBSSSect( Elf32_Shdr *sh, offset off, offset size, offset start )
@@ -309,23 +310,23 @@ static void WriteELFGroups( ElfHdr *hdr )
     sh = hdr->sh + hdr->i.grpbase;
     ph = hdr->ph + state().NumPhdr;
     off = hdr->curr_off;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         SetGroupHeaders( group, off, ph, sh );
         WriteGroupLoad( group, false );
-        off = OffsetAlign( off + group->size, FmtData.objalign );
+        off = OffsetAlign( off + group->size, wlink().FmtData.objalign );
         sh->sh_name = AddSecName( hdr, GroupSecName( group ) );
         sh++;
-        if( group == DataGroup && FmtData.dgroupsplitseg != nullptr ) {
+        if( group == wlink().DataGroup && wlink().FmtData.dgroupsplitseg != nullptr ) {
             sh->sh_name = AddSecName( hdr, ".bss" );
-            linear = ph->p_vaddr + __ROUND_UP_SIZE( ph->p_filesz, FmtData.objalign );
+            linear = ph->p_vaddr + __ROUND_UP_SIZE( ph->p_filesz, wlink().FmtData.objalign );
             InitBSSSect( sh, off, CalcSplitSize(), linear );
-            linear = __ROUND_UP_SIZE( linear + sh->sh_size, FmtData.objalign);
+            linear = __ROUND_UP_SIZE( linear + sh->sh_size, wlink().FmtData.objalign);
             sh++;
-            if( StackSegPtr != nullptr ) {
+            if( wlink().StackSegPtr != nullptr ) {
                 sh->sh_name = AddSecName( hdr, ".stack" );
-                InitBSSSect( sh, off, StackSize, linear );
+                InitBSSSect( sh, off, wlink().StackSize, linear );
                 sh++;
             }
         }
@@ -354,7 +355,7 @@ static void WriteRelocsSections( ElfHdr *hdr )
 
     currgrp = hdr->i.grpbase;
     sh = hdr->sh + hdr->i.relbase;
-    for( group = Groups; group != nullptr; group = group->next ) {
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         reloclist = group->g.reloclist;
         if( reloclist != nullptr ) {
             sh->sh_offset = hdr->curr_off;
@@ -380,12 +381,12 @@ void FiniELFLoadFile( void )
 {
     ElfHdr          hdr;
 
-    if( FmtData.dll )
+    if( wlink().FmtData.dll )
         state().NumPhdr = 1;
 
     SetHeaders( &hdr );
 #if 0
-    if( (LinkState & LS_HAVE_PPC_CODE) && (FmtData.type & (MK_NE | MK_OS2_FLAT)) ) {
+    if( (wlink().LinkState & LS_HAVE_PPC_CODE) && (wlink().FmtData.type & (MK_NE | MK_OS2_FLAT)) ) {
         // Development temporarly on hold
         // BuildOS2Imports(); // Build .got section
     }
@@ -426,33 +427,33 @@ void ChkElfData( void )
     group_entry     *group;
     symbol          *sym;
 
-    NumExports = NumImports = 0;
-    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
+    wlink().NumExports = wlink().NumImports = 0;
+    for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
         if( IsSymElfImported( sym ) ) {
-            NumImports++;
+            wlink().NumImports++;
         } else if( IsSymElfExported( sym ) ) {
             if( (sym->info & SYM_DEFINED) == 0 ) {
                 LnkMsg( ERR+MSG_EXP_SYM_NOT_FOUND, "s", sym->name );
             }
-            NumExports++;
+            wlink().NumExports++;
         }
     }
     InitStringTable( &state().SymStrTab, false );
     AddCharStringTable( &state().SymStrTab, '\0' );
-    state().ElfSymTab = CreateElfSymTable( NumImports + NumExports + NumGroups, &state().SymStrTab );
-    for( group = Groups; group != nullptr; group = group->next ) {
+    state().ElfSymTab = CreateElfSymTable( wlink().NumImports + wlink().NumExports + wlink().NumGroups, &state().SymStrTab );
+    for( group = wlink().Groups; group != nullptr; group = group->next ) {
         if( group->totalsize != 0 ) {
             AddSymElfSymTable( state().ElfSymTab, group->sym );
         }
     }
     /* process local symbols */
-    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
+    for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
         if( IsSymElfImpExp( sym ) && (sym->info & SYM_STATIC) ) {
             AddSymElfSymTable( state().ElfSymTab, sym );
         }
     }
     /* process global symbols */
-    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
+    for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
         if( IsSymElfImpExp( sym ) && (sym->info & SYM_STATIC) == 0 ) {
             AddSymElfSymTable( state().ElfSymTab, sym );
         }

@@ -34,6 +34,7 @@
 #include <cstddef>
 #include <cstring>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "reloc.h"
 #include "fileio.h"
 #include "spillio.h"
@@ -61,9 +62,7 @@ inline std::size_t used_size( const reloc_info_struct *block )
 
 }  // namespace
 
-unsigned        FmtRelocSize;
 #ifdef _QNX
-reloc_info      FloatFixups;
 #endif
 
 static bool     SpillAreas( AREASECT *area, bool (*rtn)( section * ) );
@@ -72,7 +71,7 @@ void ResetReloc( void )
 /*********************/
 {
 #ifdef _QNX
-    FloatFixups = nullptr;
+    wlink().FloatFixups = nullptr;
 #endif
 }
 
@@ -156,7 +155,7 @@ void WriteReloc( group_entry *group, offset off, void *reloc, size_t size )
 #ifdef _OS2
     unsigned        idx;
 
-    if( FmtData.type & MK_PE ) {
+    if( wlink().FmtData.type & MK_PE ) {
         reloc_info  *reloclist_array;
         reloc_info  *reloclist_head;
 
@@ -171,7 +170,7 @@ void WriteReloc( group_entry *group, offset off, void *reloc, size_t size )
         group->section->relocs++;
         return;
     }
-    if( FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
+    if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
         os2_reloc_header    *pagelist_array;
         reloc_info          *reloclist_head;
 
@@ -200,14 +199,14 @@ void WriteReloc( group_entry *group, offset off, void *reloc, size_t size )
         group->section->relocs++;
         return;
     }
-    if( FmtData.type & MK_NE ) {
+    if( wlink().FmtData.type & MK_NE ) {
         DoWriteReloc( &group->g.reloclist, reloc, size );
         group->section->relocs++;
         return;
     }
 #endif
 #ifdef _ELF
-    if( FmtData.type & MK_ELF ) {
+    if( wlink().FmtData.type & MK_ELF ) {
         DoWriteReloc( &group->g.reloclist, reloc, size );
         group->section->relocs++;
         return;
@@ -221,7 +220,7 @@ void WriteReloc( group_entry *group, offset off, void *reloc, size_t size )
 void WriteQNXFloatReloc( qnx_reloc_item *item )
 /*********************************************/
 {
-    DoWriteReloc( &FloatFixups, item, sizeof( *item ) );
+    DoWriteReloc( &wlink().FloatFixups, item, sizeof( *item ) );
 }
 
 void WriteQNXLinearReloc( group_entry *group, qnx_linear_item *item )
@@ -258,7 +257,7 @@ bool TraverseOS2RelocList( group_entry *group, bool (*fn)(reloc_info) )
     unsigned        numpages;
 
     numpages = OSF_PAGE_COUNT( group->totalsize );
-    if( FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
+    if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
         os2_reloc_header    *pagelist_array;
 
         pagelist_array = group->g.pagelist_array;
@@ -293,24 +292,24 @@ static void FreeGroupRelocs( group_entry *group )
     /* unused parameters */ (void)group;
 #endif
 
-    if( (LinkState & LS_MAKE_RELOCS) == 0 ) {
+    if( (wlink().LinkState & LS_MAKE_RELOCS) == 0 ) {
         return;
     }
 #ifdef _OS2
-    if( FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
+    if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
         TraverseOS2RelocList( group, FreeRelocList );
         if( group->g.reloclist_array != nullptr ) {
             MemFree( group->g.reloclist_array );
         }
         return;
     }
-    if( FmtData.type & MK_NE ) {
+    if( wlink().FmtData.type & MK_NE ) {
         FreeRelocList( group->g.reloclist );
         return;
     }
 #endif
 #if defined( _ELF ) || defined( _QNX )
-    if( FmtData.type & (MK_QNX | MK_ELF) ) {
+    if( wlink().FmtData.type & (MK_QNX | MK_ELF) ) {
         FreeRelocList( group->g.reloclist );
     }
 #endif
@@ -323,19 +322,19 @@ void FreeRelocInfo( void )
 {
     group_entry     *group;
 
-    if( (LinkState & LS_MAKE_RELOCS) == 0 )
+    if( (wlink().LinkState & LS_MAKE_RELOCS) == 0 )
         return;
-    if( FmtData.type & (MK_ELF | MK_OS2_FLAT | MK_WIN_VXD | MK_PE | MK_NE | MK_QNX) ) {
-        for( group = Groups; group != nullptr; group = group->next ) {
+    if( wlink().FmtData.type & (MK_ELF | MK_OS2_FLAT | MK_WIN_VXD | MK_PE | MK_NE | MK_QNX) ) {
+        for( group = wlink().Groups; group != nullptr; group = group->next ) {
             FreeGroupRelocs( group );
         }
-    } else if( Root != nullptr ) {
+    } else if( wlink().Root != nullptr ) {
         WalkAllSects( FreeRelocListSect );
     }
 #ifdef _QNX
-    if( FmtData.type & MK_QNX ) {
-        FreeRelocList( FloatFixups );
-        FreeRelocListSect( Root );
+    if( wlink().FmtData.type & MK_QNX ) {
+        FreeRelocList( wlink().FloatFixups );
+        FreeRelocListSect( wlink().Root );
     }
 #endif
 }
@@ -370,8 +369,8 @@ unsigned DumpMaxRelocList( reloc_info *reloclist_head, unsigned max )
             break;
         if( size ) {
             if( reloclist->loc.spilled ) {
-                SpillRead( reloclist->loc.u.spill, 0, TokBuff, size );
-                WriteLoad( TokBuff, size );
+                SpillRead( reloclist->loc.u.spill, 0, wlink().TokBuff, size );
+                WriteLoad( wlink().TokBuff, size );
             } else {
                 WriteLoad( reloclist->loc.u.addr, size );
             }
@@ -424,8 +423,8 @@ unsigned WalkRelocList( reloc_info *reloclist_head, bool (*fn)( void *data, size
         const std::size_t size = used_size( reloclist );
         if( size ) {
             if( reloclist->loc.spilled ) {
-                SpillRead( reloclist->loc.u.spill, 0, TokBuff, size );
-                quit = fn( TokBuff, size, ctx );
+                SpillRead( reloclist->loc.u.spill, 0, wlink().TokBuff, size );
+                quit = fn( wlink().TokBuff, size, ctx );
             } else {
                 quit = fn( reloclist->loc.u.addr, size, ctx );
             }
@@ -440,48 +439,48 @@ void SetRelocSize( void )
 /***********************/
 {
 #ifdef _OS2
-    if( FmtData.type & ( MK_NE | MK_OS2_FLAT | MK_WIN_VXD ) ) {
-        FmtRelocSize = sizeof( os2_reloc_item );
+    if( wlink().FmtData.type & ( MK_NE | MK_OS2_FLAT | MK_WIN_VXD ) ) {
+        wlink().FmtRelocSize = sizeof( os2_reloc_item );
         return;
     }
-    if( FmtData.type & MK_PE ) {
-        FmtRelocSize = sizeof( pe_reloc_item );
+    if( wlink().FmtData.type & MK_PE ) {
+        wlink().FmtRelocSize = sizeof( pe_reloc_item );
         return;
     }
 #endif
 #ifdef _NOVELL
-    if( FmtData.type & MK_NOVELL ) {
-        FmtRelocSize = sizeof( nov_reloc_item );
+    if( wlink().FmtData.type & MK_NOVELL ) {
+        wlink().FmtRelocSize = sizeof( nov_reloc_item );
         return;
     }
 #endif
 #ifdef _PHARLAP
-    if( FmtData.type & MK_PHAR_REX ) {
-        FmtRelocSize = sizeof( rex_reloc_item );
+    if( wlink().FmtData.type & MK_PHAR_REX ) {
+        wlink().FmtRelocSize = sizeof( rex_reloc_item );
         return;
     }
-    if( FmtData.type & MK_PHAR_MULTISEG ) {
-        FmtRelocSize = sizeof( pms_reloc_item );
+    if( wlink().FmtData.type & MK_PHAR_MULTISEG ) {
+        wlink().FmtRelocSize = sizeof( pms_reloc_item );
         return;
     }
 #endif
 #ifdef _QNX
-    if( FmtData.type & MK_QNX ) {
-        FmtRelocSize = sizeof( qnx_reloc_item );
+    if( wlink().FmtData.type & MK_QNX ) {
+        wlink().FmtRelocSize = sizeof( qnx_reloc_item );
         return;
     }
 #endif
 #ifdef _ELF
-    if( FmtData.type & MK_ELF ) {
+    if( wlink().FmtData.type & MK_ELF ) {
         /*
          * elf_reloc_item contains pointer to symbol which gets
          * converted later on into index into symbol table
          */
-        FmtRelocSize = sizeof( elf_reloc_item );
+        wlink().FmtRelocSize = sizeof( elf_reloc_item );
         return;
     }
 #endif
-    FmtRelocSize = sizeof( dos_addr );
+    wlink().FmtRelocSize = sizeof( dos_addr );
 }
 
 static bool SpillRelocList( reloc_info reloclist )
@@ -540,31 +539,31 @@ bool SwapOutRelocs( void )
 {
     group_entry     *group;
 
-    if( (LinkState & LS_FMT_DECIDED) == 0 )
+    if( (wlink().LinkState & LS_FMT_DECIDED) == 0 )
         return( false );
-    if( FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
-        for( group = Groups; group != nullptr; group = group->next ) {
+    if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
+        for( group = wlink().Groups; group != nullptr; group = group->next ) {
             if( TraverseOS2RelocList( group, SpillRelocList ) ) {
                 return( true );
             }
         }
-    } else if( FmtData.type & (MK_NE | MK_QNX) ) {
-        for( group = Groups; group != nullptr; group = group->next ) {
+    } else if( wlink().FmtData.type & (MK_NE | MK_QNX) ) {
+        for( group = wlink().Groups; group != nullptr; group = group->next ) {
             if( SpillRelocList( group->g.reloclist ) ) {
                 return( true );
             }
         }
 #ifdef _QNX
-        if( FmtData.type & MK_QNX ) {
-            if( SpillRelocList( FloatFixups ) )
+        if( wlink().FmtData.type & MK_QNX ) {
+            if( SpillRelocList( wlink().FloatFixups ) )
                 return( true );
-            return( SpillSectRelocList( Root ) );
+            return( SpillSectRelocList( wlink().Root ) );
         }
 #endif
     } else {
-        if( SpillSectRelocList( Root ) )
+        if( SpillSectRelocList( wlink().Root ) )
             return( true );
-        if( SpillAreas( Root->areas, SpillSectRelocList ) ) {
+        if( SpillAreas( wlink().Root->areas, SpillSectRelocList ) ) {
             return( true );
         }
     }

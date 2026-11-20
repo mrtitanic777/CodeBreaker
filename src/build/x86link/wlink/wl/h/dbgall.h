@@ -33,7 +33,6 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern char         *SymFileName;
 
 extern void         DBIInit( void );
 extern void         DBISectInit( section * );

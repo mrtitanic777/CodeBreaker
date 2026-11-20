@@ -108,21 +108,6 @@ typedef struct {
 
 /* data and functions used for permanent data structure storage */
 
-extern stringtable      PermStrings;
-extern stringtable      PrefixStrings;  /* these are NetWare prefix strings of which there could possibly be several */
-extern carve_t          CarveLeader;
-extern carve_t          CarveModEntry;
-extern carve_t          CarveDLLInfo;
-extern carve_t          CarveExportInfo;
-extern carve_t          CarveSymbol;
-extern carve_t          CarveSegData;
-extern carve_t          CarveClass;
-extern carve_t          CarveGroup;
-extern char             *IncFileName;
-extern incgroupdef      *IncGroupDefs;
-extern group_entry      **IncGroups;
-extern libnamelist      *SavedUserLibs;
-extern libnamelist      *SavedDefLibs;
 
 extern void     ResetPermData( void );
 extern void     CleanPermData( void );

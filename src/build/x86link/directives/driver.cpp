@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "cmdline.h"
@@ -73,29 +74,29 @@ constexpr PossibleFormat possible_formats[] = {
 // The format the types still possible make (all of them within one entry's), or none.
 const PossibleFormat* decided_format() {
     for (const PossibleFormat& f : possible_formats) {
-        if ((~f.bits & FmtData.type) == 0) return &f;
+        if ((~f.bits & wlink().FmtData.type) == 0) return &f;
     }
     return nullptr;
 }
 
 // What parsing a command file needs set up (wlink's ResetCmdFile).
 void reset_command() {
-    std::memset(&FmtData, 0, sizeof(FmtData));
+    std::memset(&wlink().FmtData, 0, sizeof(wlink().FmtData));
     state().sys_blocks = nullptr;
-    FmtData.def_ext = E_LOAD;
+    wlink().FmtData.def_ext = E_LOAD;
     exe_name() = nullptr;
     cmd_flags() = Flag::unnamed;
-    ObjPath = nullptr;
-    FmtData.base = NO_BASE_SPEC;
-    FmtData.objalign = NO_BASE_SPEC;
-    FmtData.type = MK_ALL;
-    FmtData.def_seg_flags = SEG_PMODE_DPL_3;
-    FmtData.Hshift = 12;   // (may want another value for some 32-bit segmented modes)
-    FmtData.FillChar = 0;  // (the default fill for a segment's alignment)
+    wlink().ObjPath = nullptr;
+    wlink().FmtData.base = NO_BASE_SPEC;
+    wlink().FmtData.objalign = NO_BASE_SPEC;
+    wlink().FmtData.type = MK_ALL;
+    wlink().FmtData.def_seg_flags = SEG_PMODE_DPL_3;
+    wlink().FmtData.Hshift = 12;   // (may want another value for some 32-bit segmented modes)
+    wlink().FmtData.FillChar = 0;  // (the default fill for a segment's alignment)
     SetSegMask();
-    CurrSect = Root;
-    state().current_file_list = &Root->files;
-    DBIFlag = static_cast<dbi_flags>(0);   // (only global information by default)
+    wlink().CurrSect = wlink().Root;
+    state().current_file_list = &wlink().Root->files;
+    wlink().DBIFlag = static_cast<dbi_flags>(0);   // (only global information by default)
 }
 
 // The command asks for help: `?`, `-?` or `/?` first, or nothing at all (taken).
@@ -139,9 +140,9 @@ void parse_command() {
 }
 
 void init_format(void (*set)()) {
-    if (LinkState & LS_FMT_INITIALIZED) return;
+    if (wlink().LinkState & LS_FMT_INITIALIZED) return;
     if (set != nullptr) set();
-    LinkState |= LS_FMT_INITIALIZED;
+    wlink().LinkState |= LS_FMT_INITIALIZED;
 }
 
 void clean_system_list(bool burn) {
@@ -191,8 +192,8 @@ namespace dx = cb::x86link::directives;
 void InitCmdFile() { dx::begin_link(); }   // (each run of the linker: nothing an earlier run read stays)
 
 void SetSegMask() {
-    FmtData.SegShift = 16 - FmtData.Hshift;
-    FmtData.SegMask = (1 << FmtData.SegShift) - 1;
+    wlink().FmtData.SegShift = 16 - wlink().FmtData.Hshift;
+    wlink().FmtData.SegMask = (1 << wlink().FmtData.SegShift) - 1;
 }
 
 char* GetNextLink() {
@@ -214,8 +215,8 @@ int DoBuffCmdParse(const char* cmd) {
 }
 
 void FreePaths() {
-    FreeList(ObjPath);
-    ObjPath = nullptr;
+    FreeList(wlink().ObjPath);
+    wlink().ObjPath = nullptr;
     if (char*& name = dx::exe_name(); name != nullptr) {
         MemFree(name);
         name = nullptr;
@@ -252,7 +253,7 @@ void DoCmdFile(const char* fname) {
         Suicide();
     }
     GetExtraCommands();
-    if ((LinkState & LS_FMT_DECIDED) == 0) {   // the formats this host decides on by itself
+    if ((wlink().LinkState & LS_FMT_DECIDED) == 0) {   // the formats this host decides on by itself
 #if defined(__QNX__)
         HintFormat(MK_OS2 | MK_QNX);
 #elif defined(__LINUX__) || defined(__BSD__)
@@ -266,23 +267,23 @@ void DoCmdFile(const char* fname) {
 #endif
     } else {   // one type of those still possible: the lowest
         for (auto possible = static_cast<exe_format>(1); possible != 0; possible = static_cast<exe_format>(possible * 2)) {
-            if (FmtData.type & possible) {
-                FmtData.type = possible;
+            if (wlink().FmtData.type & possible) {
+                wlink().FmtData.type = possible;
                 break;
             }
         }
     }
-    if ((FmtData.type & (MK_NOVELL | MK_DOS)) && (LinkFlags & LF_INC_LINK_FLAG)) {
+    if ((wlink().FmtData.type & (MK_NOVELL | MK_DOS)) && (wlink().LinkFlags & LF_INC_LINK_FLAG)) {
         LnkMsg(FTL + MSG_FORMAT_BAD_OPTION, "s", "incremental");
     }
 #ifdef _NOVELL
-    if (FmtData.type & MK_NOVELL) dx::CmdNovFini();
+    if (wlink().FmtData.type & MK_NOVELL) dx::CmdNovFini();
 #endif
 #ifdef _DOS16M
-    if (FmtData.type & MK_DOS16M) dx::CmdD16MFini();
+    if (wlink().FmtData.type & MK_DOS16M) dx::CmdD16MFini();
 #endif
 #ifdef _EXE
-    if (FmtData.type & MK_OVERLAYS) {
+    if (wlink().FmtData.type & MK_OVERLAYS) {
         dx::CmdOvlFini();
         AddObjLib("wovl.lib", LIB_PRIORITY_MIN);   // (overlays use wovl.lib)
     }
@@ -294,87 +295,87 @@ void DoCmdFile(const char* fname) {
     }
     const size_t namelen = std::strlen(name);
     if (namelen > 0) {
-        if (MapFName == nullptr && (MapFlags & MAP_FLAG)) MapFName = FileName(name, namelen, E_MAP, true);
+        if (wlink().MapFName == nullptr && (wlink().MapFlags & MAP_FLAG)) wlink().MapFName = FileName(name, namelen, E_MAP, true);
         const bool separate_symbols = dx::any(dx::cmd_flags() & dx::Flag::separate_symbols);
-        if (SymFileName == nullptr &&
-            (separate_symbols || ((FmtData.type & MK_COM) && (LinkFlags & LF_ANY_DBI_FLAG)) ||
-             ((FmtData.type & MK_ELF) && (LinkFlags & (LF_OLD_DBI_FLAG | LF_CV_DBI_FLAG))) ||
-             ((FmtData.type & MK_RAW) && (LinkFlags & LF_ANY_DBI_FLAG)))) {
-            SymFileName = FileName(name, namelen, E_SYM, true);
+        if (wlink().SymFileName == nullptr &&
+            (separate_symbols || ((wlink().FmtData.type & MK_COM) && (wlink().LinkFlags & LF_ANY_DBI_FLAG)) ||
+             ((wlink().FmtData.type & MK_ELF) && (wlink().LinkFlags & (LF_OLD_DBI_FLAG | LF_CV_DBI_FLAG))) ||
+             ((wlink().FmtData.type & MK_RAW) && (wlink().LinkFlags & LF_ANY_DBI_FLAG)))) {
+            wlink().SymFileName = FileName(name, namelen, E_SYM, true);
         }
-        if (FmtData.make_implib && FmtData.implibname == nullptr) {
-            FmtData.implibname = FileName(name, namelen, FmtData.make_impfile ? E_LBC : E_LIBRARY, true);
+        if (wlink().FmtData.make_implib && wlink().FmtData.implibname == nullptr) {
+            wlink().FmtData.implibname = FileName(name, namelen, wlink().FmtData.make_impfile ? E_LBC : E_LIBRARY, true);
         }
     }
-    if (MapFName == nullptr) MapFlags = static_cast<mapflag>(0);   // (no map: none of its options)
+    if (wlink().MapFName == nullptr) wlink().MapFlags = static_cast<mapflag>(0);   // (no map: none of its options)
     CheckTraces();
     r.finish();
     PruneSystemList();
 #ifdef _EXE
-    if (FmtData.type & MK_OVERLAYS) OvlNumberSections();
+    if (wlink().FmtData.type & MK_OVERLAYS) OvlNumberSections();
 #endif
     DBIInit();
 }
 
 void SetFormat() {
     if (dx::any(dx::cmd_flags() & dx::Flag::no_extension)) {
-        FmtData.def_ext = E_NONE;
+        wlink().FmtData.def_ext = E_NONE;
 #ifdef _RAW
-    } else if (FmtData.output_hex) {   // (hex or raw output: their extension)
-        FmtData.def_ext = E_HEX;
-    } else if (FmtData.output_raw) {
-        FmtData.def_ext = E_BIN;
+    } else if (wlink().FmtData.output_hex) {   // (hex or raw output: their extension)
+        wlink().FmtData.def_ext = E_HEX;
+    } else if (wlink().FmtData.output_raw) {
+        wlink().FmtData.def_ext = E_BIN;
 #endif
     }
     char*& name = dx::exe_name();
-    char* fname = FileName(name, std::strlen(name), FmtData.def_ext, dx::any(dx::cmd_flags() & dx::Flag::unnamed));
+    char* fname = FileName(name, std::strlen(name), wlink().FmtData.def_ext, dx::any(dx::cmd_flags() & dx::Flag::unnamed));
     MemFree(name);
-    Root->outfile = dx::NewOutFile(fname);
+    wlink().Root->outfile = dx::NewOutFile(fname);
     name = nullptr;
 #ifdef _EXE
-    if (FmtData.type & MK_OVERLAYS) OvlFillOutFilePtrs();   // (every output file not named)
+    if (wlink().FmtData.type & MK_OVERLAYS) OvlFillOutFilePtrs();   // (every output file not named)
 #endif
-    if (MapFile != nullptr) {
-        WriteMapLnkMsg(MSG_EXE_NAME, "s", Root->outfile->fname);
+    if (wlink().MapFile != nullptr) {
+        WriteMapLnkMsg(MSG_EXE_NAME, "s", wlink().Root->outfile->fname);
         WriteMapLnkMsg(MSG_CREATE_EXE, "f");
     }
 #ifdef _QNX
-    if (FmtData.type & MK_QNX) dx::CmdQNXFini();
+    if (wlink().FmtData.type & MK_QNX) dx::CmdQNXFini();
 #endif
     SetRelocSize();
 }
 
 void AddFmtLibPaths() {
-    if ((LinkState & LS_FMT_DECIDED) == 0) return;
+    if ((wlink().LinkState & LS_FMT_DECIDED) == 0) return;
     if (const dx::PossibleFormat* f = dx::decided_format()) AddLibPathsToEnd(GetEnvString(f->lib_var_name));
 }
 
 bool HintFormat(exe_format hint) {
-    if ((hint & FmtData.type) == 0) return false;
-    FmtData.type &= hint;
-    if (LinkState & LS_FMT_DECIDED) return true;
+    if ((hint & wlink().FmtData.type) == 0) return false;
+    wlink().FmtData.type &= hint;
+    if (wlink().LinkState & LS_FMT_DECIDED) return true;
     const dx::PossibleFormat* f = dx::decided_format();
     if (f == nullptr) {
 #ifdef _OS2
         // Windows, OS/2 1.x and 2.x, PE and VxD want the same structure
-        if ((~(MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) & FmtData.type) == 0) dx::init_format(dx::SetOS2Fmt);
+        if ((~(MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) & wlink().FmtData.type) == 0) dx::init_format(dx::SetOS2Fmt);
 #endif
         return true;
     }
     dx::init_format(f->set);
-    LinkState |= LS_FMT_DECIDED;
-    if (LinkState & LS_SEARCHING_LIBRARIES) AddFmtLibPaths();
+    wlink().LinkState |= LS_FMT_DECIDED;
+    if (wlink().LinkState & LS_SEARCHING_LIBRARIES) AddFmtLibPaths();
     return true;
 }
 
 void DecideFormat() {
-    if (LinkState & LS_FMT_DECIDED) return;
-    exe_format possible = FmtData.type;
+    if (wlink().LinkState & LS_FMT_DECIDED) return;
+    exe_format possible = wlink().FmtData.type;
     exe_format allowed = MK_OS2_NE | MK_OS2_LX;
-    if ((LinkState & LS_FMT_SEEN_IMPORT_CMT) == 0) allowed = ~allowed;
+    if ((wlink().LinkState & LS_FMT_SEEN_IMPORT_CMT) == 0) allowed = ~allowed;
     if ((possible & allowed) != 0) possible &= allowed;
     HintFormat(possible);
-    if ((LinkState & LS_FMT_DECIDED) == 0) {
+    if ((wlink().LinkState & LS_FMT_DECIDED) == 0) {
         char rc_buff[RESOURCE_MAX_SIZE];
         Msg_Get(MSG_FORMAT_NOT_DECIDED, rc_buff);
         LnkMsg(FTL + MSG_INTERNAL, "s", rc_buff);
@@ -382,7 +383,7 @@ void DecideFormat() {
 }
 
 void FreeFormatStuff() {
-    if ((LinkState & LS_FMT_DECIDED) == 0) return;
+    if ((wlink().LinkState & LS_FMT_DECIDED) == 0) return;
     if (const dx::PossibleFormat* f = dx::decided_format(); f != nullptr && f->free != nullptr) f->free();
 }
 
@@ -405,15 +406,15 @@ void AddLibPaths(const char* path_list, size_t len, bool add_to_front) {
     }
     *p = '\0';
     if (add_to_front) {
-        newpath->next = UsrLibPath;
-        UsrLibPath = newpath;
+        newpath->next = wlink().UsrLibPath;
+        wlink().UsrLibPath = newpath;
     } else {
-        AppendList(reinterpret_cast<void**>(&UsrLibPath), newpath);
+        AppendList(reinterpret_cast<void**>(&wlink().UsrLibPath), newpath);
     }
-    if (UsrLibPath == newpath) {   // the first: every file that searches the library path now searches it
-        for (const file_list* file = ObjLibFiles; file != nullptr; file = file->next) file->infile->path_list = UsrLibPath;
-        for (const file_list* file = Root->files; file != nullptr; file = file->next) {
-            if (file->infile->status & INSTAT_USE_LIBPATH) file->infile->path_list = UsrLibPath;
+    if (wlink().UsrLibPath == newpath) {   // the first: every file that searches the library path now searches it
+        for (const file_list* file = wlink().ObjLibFiles; file != nullptr; file = file->next) file->infile->path_list = wlink().UsrLibPath;
+        for (const file_list* file = wlink().Root->files; file != nullptr; file = file->next) {
+            if (file->infile->status & INSTAT_USE_LIBPATH) file->infile->path_list = wlink().UsrLibPath;
         }
     }
 }
@@ -427,7 +428,7 @@ void AddLibPathsToEndList(const char* path_list) {
     const size_t len = std::strlen(path_list);
     auto* newpath = static_cast<path_entry*>(MemAllocSafe(sizeof(path_entry) + len));
     std::strcpy(newpath->name, path_list);
-    AppendList(reinterpret_cast<void**>(&UsrLibPath), newpath);
+    AppendList(reinterpret_cast<void**>(&wlink().UsrLibPath), newpath);
 }
 
 void ExecSystem(const char* name) {

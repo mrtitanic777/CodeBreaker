@@ -1,6 +1,7 @@
 // build/x86link/directives/elf.cpp -- ELF's directives: `format elf dll`, `option` for it, `import`, `export`, `module`
 // and `runtime` (the ABI) (a port of wlink's cmdelf.c).
 #include "build/x86link/directives/formats.hpp"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 
 #ifdef _ELF
 
@@ -28,12 +29,12 @@ namespace {
 bool ProcExtraSections() {
     std::uint32_t value;
     if (!get_number(value)) return false;
-    FmtData.u.elf.extrasects = value;
+    wlink().FmtData.u.elf.extrasects = value;
     return true;
 }
 
 bool ProcExportAll() {
-    FmtData.u.elf.exportallsyms = true;
+    wlink().FmtData.u.elf.exportallsyms = true;
     return true;
 }
 
@@ -67,34 +68,34 @@ bool GetELFExport() {
 
 bool GetELFModule() {
     const std::string_view t = reader().text();
-    AddNameTable(t.data(), t.size(), false, &FmtData.u.elf.exp.module);
+    AddNameTable(t.data(), t.size(), false, &wlink().FmtData.u.elf.exp.module);
     return true;
 }
 
 // ---- "RUntime" directive
 
 void ParseABITypeAndVersion() {
-    FmtData.u.elf.abitype = 0;
-    FmtData.u.elf.abiversion = 0;
+    wlink().FmtData.u.elf.abitype = 0;
+    wlink().FmtData.u.elf.abiversion = 0;
     Version v;
     v.major = 255;   // required limits, 0 = no limit
     v.minor = 255;
     v.revision = 0;
     v.what = "ABIVER";
     if (get_version(v, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
-        FmtData.u.elf.abitype = v.major;
-        FmtData.u.elf.abiversion = v.minor;
+        wlink().FmtData.u.elf.abitype = v.major;
+        wlink().FmtData.u.elf.abiversion = v.minor;
     }
 }
 
 void ParseABIVersion(const std::string& message) {
     if (!reader().get(Sep::equals, Want::normal)) return;
-    FmtData.u.elf.abiversion = 0;
+    wlink().FmtData.u.elf.abiversion = 0;
     std::uint16_t version;
     if (number16(version) != Number::ok || version > 255) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", message.c_str());
     } else {
-        FmtData.u.elf.abiversion = version;
+        wlink().FmtData.u.elf.abiversion = version;
     }
 }
 
@@ -104,31 +105,31 @@ bool ProcELFRNumber() {
 }
 
 bool ProcELFRSVR4() {
-    FmtData.u.elf.abitype = ELFOSABI_NONE;
+    wlink().FmtData.u.elf.abitype = ELFOSABI_NONE;
     ParseABIVersion("SVR4");
     return true;
 }
 
 bool ProcELFRNetBSD() {
-    FmtData.u.elf.abitype = ELFOSABI_NETBSD;
+    wlink().FmtData.u.elf.abitype = ELFOSABI_NETBSD;
     ParseABIVersion("NETBSD");
     return true;
 }
 
 bool ProcELFRLinux() {
-    FmtData.u.elf.abitype = ELFOSABI_LINUX;
+    wlink().FmtData.u.elf.abitype = ELFOSABI_LINUX;
     ParseABIVersion("LINUX");
     return true;
 }
 
 bool ProcELFRSolrs() {
-    FmtData.u.elf.abitype = ELFOSABI_SOLARIS;
+    wlink().FmtData.u.elf.abitype = ELFOSABI_SOLARIS;
     ParseABIVersion("SOLARIS");
     return true;
 }
 
 bool ProcELFRFBSD() {
-    FmtData.u.elf.abitype = ELFOSABI_FREEBSD;
+    wlink().FmtData.u.elf.abitype = ELFOSABI_FREEBSD;
     ParseABIVersion("FREEBSD");
     return true;
 }
@@ -145,7 +146,7 @@ constexpr Entry RunOptions[] = {
 // ---- "Format" directive
 
 bool ProcELFDLL() {
-    FmtData.dll = true;
+    wlink().FmtData.dll = true;
     return true;
 }
 
@@ -156,12 +157,12 @@ constexpr Entry ELFFormats[] = {
 }  // namespace
 
 void SetELFFmt() {
-    FmtData.def_ext = E_ELF;
-    FmtData.u.elf.exp.export_ = nullptr;
-    FmtData.u.elf.exp.module = nullptr;
-    FmtData.u.elf.extrasects = 0;
-    FmtData.u.elf.abitype = 0;
-    FmtData.u.elf.abiversion = 0;
+    wlink().FmtData.def_ext = E_ELF;
+    wlink().FmtData.u.elf.exp.export_ = nullptr;
+    wlink().FmtData.u.elf.exp.module = nullptr;
+    wlink().FmtData.u.elf.extrasects = 0;
+    wlink().FmtData.u.elf.abitype = 0;
+    wlink().FmtData.u.elf.abiversion = 0;
 }
 
 void FreeELFFmt() {
@@ -179,12 +180,12 @@ bool ProcELFAlignment() {
         if (lessone == 0) break;                             // until we are at a power of 2
         value = lessone;
     }
-    FmtData.objalign = value;
+    wlink().FmtData.objalign = value;
     return true;
 }
 
 bool ProcELFNoRelocs() {
-    LinkState &= ~LS_MAKE_RELOCS;
+    wlink().LinkState &= ~LS_MAKE_RELOCS;
     return true;
 }
 

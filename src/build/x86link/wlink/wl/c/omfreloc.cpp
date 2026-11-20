@@ -31,6 +31,7 @@
 
 
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "newmem.h"
 #include "virtmem.h"
 #include "reloc.h"
@@ -87,12 +88,12 @@ static void GetFrame( unsigned method, frame_spec *frame )
 
     switch( method ) {
     case FRAME_SEG:
-        snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
+        snode = static_cast<segnode *>( FindNode( wlink().SegNodes, GetIdx() ) );
         frame->u.sdata = snode->entry;
         frame->type = FIX_FRAME_SEG;
         break;
     case FRAME_GRP:
-        group = static_cast<grpnode *>( FindNode( GrpNodes, GetIdx() ) );
+        group = static_cast<grpnode *>( FindNode( wlink().GrpNodes, GetIdx() ) );
         if( group->entry == nullptr ) {
             frame->type = FIX_FRAME_FLAT;
         } else {
@@ -101,7 +102,7 @@ static void GetFrame( unsigned method, frame_spec *frame )
         }
         break;
     case FRAME_EXT:
-        ext = static_cast<extnode *>( FindNode( ExtNodes, GetIdx() ) );
+        ext = static_cast<extnode *>( FindNode( wlink().ExtNodes, GetIdx() ) );
         if( IS_SYM_IMPORTED( ext->entry ) ) {
             frame->type = FIX_FRAME_TARG;
         } else {
@@ -110,8 +111,8 @@ static void GetFrame( unsigned method, frame_spec *frame )
         }
         break;
     case FRAME_ABS:
-        frame->u.abs = MGET_LE_U16_UN( ObjBuff );
-        ObjBuff += sizeof( unsigned_16 );
+        frame->u.abs = MGET_LE_U16_UN( wlink().ObjBuff );
+        wlink().ObjBuff += sizeof( unsigned_16 );
         frame->type = FIX_FRAME_ABS;
         break;
     case FRAME_LOC:
@@ -134,23 +135,23 @@ static void GetTarget( unsigned method, target_spec *target )
 
     switch( method ) {
     case TARGET_SEG:
-        snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
+        snode = static_cast<segnode *>( FindNode( wlink().SegNodes, GetIdx() ) );
         target->u.sdata = snode->entry;
         target->type = FIX_TARGET_SEG;
         break;
     case TARGET_GRP:
-        group = static_cast<grpnode *>( FindNode( GrpNodes, GetIdx() ) );
+        group = static_cast<grpnode *>( FindNode( wlink().GrpNodes, GetIdx() ) );
         target->u.group = group->entry;
         target->type = FIX_TARGET_GRP;
         break;
     case TARGET_EXT:
-        ext = static_cast<extnode *>( FindNode( ExtNodes, GetIdx() ) );
+        ext = static_cast<extnode *>( FindNode( wlink().ExtNodes, GetIdx() ) );
         target->u.sym = ext->entry;
         target->type = FIX_TARGET_EXT;
         break;
     case TARGET_ABS:
-        target->u.abs = MGET_LE_U16_UN( ObjBuff );
-        ObjBuff += sizeof( unsigned_16 );
+        target->u.abs = MGET_LE_U16_UN( wlink().ObjBuff );
+        wlink().ObjBuff += sizeof( unsigned_16 );
         target->type = FIX_TARGET_ABS;
         break;
     }
@@ -168,14 +169,14 @@ void DoRelocs( void )
     frame_spec  frame;
     target_spec target;
 
-    if( ObjFormat & OBJ_FMT_IGNORE_FIXUPP )
+    if( wlink().ObjFormat & OBJ_FMT_IGNORE_FIXUPP )
         return;
-    if( ObjFormat & OBJ_FMT_IS_LIDATA ) {
+    if( wlink().ObjFormat & OBJ_FMT_IS_LIDATA ) {
         LnkMsg( WRN+LOC_REC+MSG_REL_IN_LIDATA, nullptr );
         return;
     }
     do {
-        typ = *ObjBuff++;
+        typ = *wlink().ObjBuff++;
         if( typ & FIXUPP_FIXUP ) {
             /*
              * fixup
@@ -198,14 +199,14 @@ void DoRelocs( void )
                 fixtype = FIX_HIGH_OFFSET_8;
                 break;
             case LOC_OFFSET_LOADER:
-                if( ObjFormat & OBJ_FMT_EASY_OMF ) {
+                if( wlink().ObjFormat & OBJ_FMT_EASY_OMF ) {
                     fixtype = FIX_OFFSET_32;                    /* Pharlap only */
                 } else {
                     fixtype = FIX_OFFSET_16 | FIX_LOADER_RES;   /* OMF standard */
                 }
                 break;
             case LOC_PHARLAP_BASE_OFFSET_32:
-                if( ObjFormat & OBJ_FMT_EASY_OMF ) {
+                if( wlink().ObjFormat & OBJ_FMT_EASY_OMF ) {
                     fixtype = FIX_BASE_OFFSET_32;               /* Pharlap only */
                 }
                 break;
@@ -224,8 +225,8 @@ void DoRelocs( void )
             if( fixtype && (typ & FIXUPP_MBIT) == 0 ) {
                 fixtype |= FIX_REL;
             }
-            location = ((typ & 3) << 8) + *ObjBuff++;
-            typ = *ObjBuff++;
+            location = ((typ & 3) << 8) + *wlink().ObjBuff++;
+            typ = *wlink().ObjBuff++;
             /*
              * frame processing
              */
@@ -247,12 +248,12 @@ void DoRelocs( void )
              */
             addend = 0;
             if( (typ & FIXDAT_PBIT) == 0 ) {
-                if( ObjFormat & OBJ_FMT_32BIT_REC ) {
-                    addend = MGET_LE_U32_UN( ObjBuff );
-                    ObjBuff += sizeof( unsigned_32 );
+                if( wlink().ObjFormat & OBJ_FMT_32BIT_REC ) {
+                    addend = MGET_LE_U32_UN( wlink().ObjBuff );
+                    wlink().ObjBuff += sizeof( unsigned_32 );
                 } else {
-                    addend = MGET_LE_U16_UN( ObjBuff );
-                    ObjBuff += sizeof( unsigned_16 );
+                    addend = MGET_LE_U16_UN( wlink().ObjBuff );
+                    wlink().ObjBuff += sizeof( unsigned_16 );
                 }
             }
             StoreFixup( location, fixtype, &frame, &target, addend );
@@ -268,7 +269,7 @@ void DoRelocs( void )
                 GetTarget( (typ >> 2) & 3, &state.TargThreads[typ & 3] );
             }
         }
-    } while( ObjBuff < EOObjRec );
+    } while( wlink().ObjBuff < wlink().EOObjRec );
 }
 
 static void StoreBakPat( segdata *sdata, byte loctype )
@@ -278,13 +279,13 @@ static void StoreBakPat( segdata *sdata, byte loctype )
     unsigned            len;
     bakpat_list         *bkptr;
 
-    len = EOObjRec - ObjBuff;
+    len = wlink().EOObjRec - wlink().ObjBuff;
     bkptr = (bakpat_list *)(MemAllocSafe( sizeof( bakpat_list ) + len - 1 ));
     bkptr->len = len;
     bkptr->loctype = loctype;
     bkptr->sdata = sdata;   /* We don't know the data offset yet. */
-    bkptr->is32bit = (ObjFormat & OBJ_FMT_32BIT_REC) != 0;
-    memcpy( bkptr->data, ObjBuff, len );
+    bkptr->is32bit = (wlink().ObjFormat & OBJ_FMT_32BIT_REC) != 0;
+    memcpy( bkptr->data, wlink().ObjBuff, len );
     AppendList( reinterpret_cast<void **>( &st().BakPats ), bkptr );
 }
 
@@ -295,10 +296,10 @@ void ProcBakpat( void )
     segnode             *snode;
     byte                loctype;
 
-    snode = static_cast<segnode *>( FindNode( SegNodes, GetIdx() ) );
+    snode = static_cast<segnode *>( FindNode( wlink().SegNodes, GetIdx() ) );
     if( snode->info & SEGINF_DEAD )
         return;
-    loctype = *ObjBuff++;
+    loctype = *wlink().ObjBuff++;
     StoreBakPat( snode->entry, loctype );
 }
 
@@ -368,7 +369,7 @@ void ProcNbkpat( void )
     symbol              *sym;
     byte                loctype;
 
-    loctype = *ObjBuff++;
+    loctype = *wlink().ObjBuff++;
     symname = FindName( GetIdx() );
     sym = RefISymbol( symname->name );
     if( !IS_SYM_COMDAT( sym ) )         /* can't handle these otherwise */

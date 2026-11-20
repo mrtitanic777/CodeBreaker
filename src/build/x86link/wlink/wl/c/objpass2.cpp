@@ -32,6 +32,7 @@
 
 #include <string.h>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "newmem.h"
 #include "virtmem.h"
 #include "obj2supp.h"
@@ -48,7 +49,6 @@
 #include "objpass2.h"
 
 
-lobject_data            CurrRec;
 
 void ObjPass2( void )
 /**************************/
@@ -57,31 +57,31 @@ void ObjPass2( void )
     DEBUG(( DBG_BASE, "ObjPass2()" ));
     IncP2Start();
     WalkAllSects( DBIP2Start );
-    CurrSect = Root;/*  TAI */
-    PModList( Root->mods );
+    wlink().CurrSect = wlink().Root;/*  TAI */
+    PModList( wlink().Root->mods );
 #ifdef _EXE
-    if( FmtData.type & MK_OVERLAYS ) {
+    if( wlink().FmtData.type & MK_OVERLAYS ) {
         OvlPass2();
     }
-    if( (FmtData.type & MK_OVERLAYS)
-      && FmtData.u.dos.distribute ) {
+    if( (wlink().FmtData.type & MK_OVERLAYS)
+      && wlink().FmtData.u.dos.distribute ) {
         DistribProcMods();
     } else {
 #endif
-        CurrSect = Root;
-        PModList( LibModules );
+        wlink().CurrSect = wlink().Root;
+        PModList( wlink().LibModules );
 #ifdef _EXE
     }
 #endif
-    if( MapFile != nullptr ) {
+    if( wlink().MapFile != nullptr ) {
         WriteMapTracedSyms();
     }
     PrintUndefinedSyms();
-    if( LinkState & LS_UNDEFED_SYM_ERROR ) {
-        LinkState |= LS_LINK_ERROR;
+    if( wlink().LinkState & LS_UNDEFED_SYM_ERROR ) {
+        wlink().LinkState |= LS_LINK_ERROR;
     }
 #ifdef _EXE
-    if( FmtData.type & MK_OVERLAYS ) {
+    if( wlink().FmtData.type & MK_OVERLAYS ) {
         OvlSetStartAddr();
     }
 #endif
@@ -104,8 +104,8 @@ void PModule( mod_entry *obj )
     if( (obj->flags_mod & MOD_NEED_PASS_2) == 0 )
         return;
     DEBUG(( DBG_BASE, "2 : processing module %s", obj->name ));
-    CurrMod = obj;
-    IterateModRelocs( CurrMod->relocs, CurrMod->sizerelocs, IncExecRelocs );
+    wlink().CurrMod = obj;
+    IterateModRelocs( wlink().CurrMod->relocs, wlink().CurrMod->sizerelocs, IncExecRelocs );
     DoBakPats();
     DBIGenModule();
     CheckStop();
@@ -120,16 +120,16 @@ bool LoadObj( segdata *seg )
     if( ( leader == nullptr )
       || DBISkip( leader ) )
         return( false );
-    CurrRec.seg = seg;
+    wlink().CurrRec.seg = seg;
     if( leader->group == nullptr ) {
-        CurrRec.addr = leader->seg_addr;
+        wlink().CurrRec.addr = leader->seg_addr;
 #ifdef DEVBUILD
         LnkMsg( WRN+MSG_INTERNAL, "s", "null leader group found" );
 #endif
     } else {
-        CurrRec.addr = leader->group->addr;
-        CurrRec.addr.off += SEG_GROUP_DELTA( leader );
+        wlink().CurrRec.addr = leader->group->addr;
+        wlink().CurrRec.addr.off += SEG_GROUP_DELTA( leader );
     }
-    CurrRec.addr.off += seg->a.delta;
+    wlink().CurrRec.addr.off += seg->a.delta;
     return( true );
 }

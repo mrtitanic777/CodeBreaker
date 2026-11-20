@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "reloc.h"
 #include "objnode.h"
 #include "overlays.h"
@@ -70,7 +71,7 @@ static void FreeClasses( class_entry *class_ )
     for( ; class_ != nullptr; class_ = next ) {
         next = class_->next;
         RingWalk( class_->segs, FreeLeader );
-        CarveFree( CarveClass, class_ );
+        CarveFree( wlink().CarveClass, class_ );
     }
 }
 
@@ -123,7 +124,7 @@ static void FreeSections( section *sect )
     for( ; sect != nullptr; sect = next ) {
         next = sect->next;
         FreeFiles( sect->files );
-        if( (LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+        if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
             FreeMods( sect->mods );
             FreeClasses( sect->classes );
         }
@@ -169,35 +170,35 @@ void CleanLinkStruct( void )
 /*********************************/
 /* free all structures */
 {
-    if( Root == nullptr )
+    if( wlink().Root == nullptr )
         return;  /* haven't finished initializing */
     BurnLibs();
-    FreeFiles( ObjLibFiles );
-    FreeFiles( Root->files );
-    ObjLibFiles = nullptr;
-    Root->files = nullptr;
-    if( (LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        FreeMods( LibModules );
+    FreeFiles( wlink().ObjLibFiles );
+    FreeFiles( wlink().Root->files );
+    wlink().ObjLibFiles = nullptr;
+    wlink().Root->files = nullptr;
+    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+        FreeMods( wlink().LibModules );
     }
-    if( SymFileName != nullptr ) {
-        MemFree( SymFileName );
+    if( wlink().SymFileName != nullptr ) {
+        MemFree( wlink().SymFileName );
     }
-    if( FmtData.osname != nullptr ) {
-        MemFree( FmtData.osname );
+    if( wlink().FmtData.osname != nullptr ) {
+        MemFree( wlink().FmtData.osname );
     }
-    if( FmtData.resource != nullptr ) {
-        MemFree( FmtData.resource );
+    if( wlink().FmtData.resource != nullptr ) {
+        MemFree( wlink().FmtData.resource );
     }
     FreeRelocInfo();
-    FreeGroups( Groups );
-    FreeGroups( AbsGroups );
-    Groups = nullptr;
-    AbsGroups = nullptr;
-    FreeSections( Root );
+    FreeGroups( wlink().Groups );
+    FreeGroups( wlink().AbsGroups );
+    wlink().Groups = nullptr;
+    wlink().AbsGroups = nullptr;
+    FreeSections( wlink().Root );
     DBICleanup();
-    Root = nullptr;
+    wlink().Root = nullptr;
 #ifdef _EXE
-    if( FmtData.type & MK_DOS ) {
+    if( wlink().FmtData.type & MK_DOS ) {
         FreeOverlaySupp();
     }
 #endif
@@ -220,16 +221,16 @@ void FreeSegFlags( seg_flags_struct *curr )
 void FreeObjInfo( void )
 /*****************************/
 {
-    FreeNodes( ExtNodes );
-    FreeNodes( SegNodes );
-    FreeNodes( GrpNodes );
+    FreeNodes( wlink().ExtNodes );
+    FreeNodes( wlink().SegNodes );
+    FreeNodes( wlink().GrpNodes );
 }
 
 static void FreeAGroup( group_entry *group )
 /******************************************/
 /* free all memory associated with group */
 {
-    CarveFree( CarveGroup, group );
+    CarveFree( wlink().CarveGroup, group );
 }
 
 void FreeGroups( group_entry *group )

@@ -31,6 +31,7 @@
 
 #include <cstring>
 #include "linkstd.h"
+#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "pcobj.h"
 #include "objpass1.h"
 #include "objpass2.h"
@@ -84,7 +85,7 @@ static void DistribNumASect( section *sect )
 {
     DistribState    &d = distrib();
 
-    d.SectOvlTab[OvlSectNum++] = sect;
+    d.SectOvlTab[wlink().OvlSectNum++] = sect;
 }
 
 void DistribNumberSections( void )
@@ -92,12 +93,12 @@ void DistribNumberSections( void )
 {
     DistribState    &d = distrib();
 
-    d.SectOvlTab = static_cast<section **>( MemAllocSafe( sizeof( section * ) * ( OvlSectNum + 1 ) ) );
+    d.SectOvlTab = static_cast<section **>( MemAllocSafe( sizeof( section * ) * ( wlink().OvlSectNum + 1 ) ) );
     /* OvlSectNum value 0 is reserved for Root */
     /* Overlayed sections start at 1 */
-    OvlSectNum = 0;
-    DistribNumASect( Root );
-    WalkAreas( Root->areas, DistribNumASect );
+    wlink().OvlSectNum = 0;
+    DistribNumASect( wlink().Root );
+    WalkAreas( wlink().Root->areas, DistribNumASect );
 }
 
 void ResetDistribSupp( void )
@@ -164,9 +165,9 @@ void InitArcList( mod_entry *mod )
  * set up the mod_entry arcdata field for dead code elimination
  */
 {
-    if( (FmtData.type & MK_OVERLAYS)
-      && FmtData.u.dos.distribute
-      && (LinkState & LS_SEARCHING_LIBRARIES) ) {
+    if( (wlink().FmtData.type & MK_OVERLAYS)
+      && wlink().FmtData.u.dos.distribute
+      && (wlink().LinkState & LS_SEARCHING_LIBRARIES) ) {
     } else {
         mod->u2.arclist = static_cast<arcdata *>( _PermAlloc( offsetof( arcdata, arcs ) ) );
     }
@@ -185,7 +186,7 @@ static void MarkDead( void *_seg )
     if( seg->iscode ) {
         seg->isdead = true;
     } else {
-        if( FmtData.type & MK_PE ) {
+        if( wlink().FmtData.type & MK_PE ) {
             char *segname = seg->u.leader->segname.u.ptr;
             if( ( strcmp( segname, CoffPDataSegName ) == 0 )
               || ( strcmp( segname, CoffReldataSegName ) == 0 ) ) {
@@ -217,8 +218,8 @@ static void KillUnrefedSyms( void *_sym )
         } else {
             sym->info |= SYM_DEAD;
         }
-        if( LinkFlags & LF_SHOW_DEAD ) {
-            if( MapFile != nullptr ) {
+        if( wlink().LinkFlags & LF_SHOW_DEAD ) {
+            if( wlink().MapFile != nullptr ) {
                 WriteMapLnkMsg( MSG_SYMBOL_DEAD, "S", sym );
             }
         }
@@ -242,16 +243,16 @@ void DistribSetSegments( void )
 {
     DistribState    &d = distrib();
 
-    if( (LinkFlags & LF_STRIP_CODE) == 0 )
+    if( (wlink().LinkFlags & LF_STRIP_CODE) == 0 )
         return;
-    LinkState &= ~LS_CAN_REMOVE_SEGMENTS;
-    ObjFormat |= OBJ_FMT_DEBUG_COMENT;
-    if( (FmtData.type & MK_OVERLAYS)
-      && FmtData.u.dos.distribute ) {
+    wlink().LinkState &= ~LS_CAN_REMOVE_SEGMENTS;
+    wlink().ObjFormat |= OBJ_FMT_DEBUG_COMENT;
+    if( (wlink().FmtData.type & MK_OVERLAYS)
+      && wlink().FmtData.u.dos.distribute ) {
         MemFree( d.ArcList );
         d.ArcList = nullptr;
     }
-    if( LinkFlags & LF_STRIP_CODE ) {
+    if( wlink().LinkFlags & LF_STRIP_CODE ) {
         WalkMods( DefineOvlSegments );
     }
 #if 0           // NYI: distributing libraries completely broken.
@@ -261,36 +262,36 @@ void DistribSetSegments( void )
     mod_entry       **currmod;
     unsigned        num_segdefs;
 
-    if( (FmtData.type & MK_OVERLAYS)
-      && FmtData.u.dos.distribute ) {
+    if( (wlink().FmtData.type & MK_OVERLAYS)
+      && wlink().FmtData.u.dos.distribute ) {
         for( index = 1; index <= d.CurrModHandle; index++ ) {
             mod = d.ModTable[index];
-            CurrMod = mod;
+            wlink().CurrMod = mod;
             ovlref = mod->u2.arclist->ovlref;
             if( ovlref == NO_ARCS_YET ) {       // only data referenced
-                CurrSect = Root;
+                wlink().CurrSect = wlink().Root;
             } else {
-                CurrSect = d.SectOvlTab[ovlref];
+                wlink().CurrSect = d.SectOvlTab[ovlref];
             }
             DefModSegments( mod );
             mod->x.next = nullptr;
-            for( currmod = &CurrSect->u.dist_mods; *currmod != nullptr; ) {
+            for( currmod = &wlink().CurrSect->u.dist_mods; *currmod != nullptr; ) {
                 currmod = &((*currmod)->x.next);
             }
             *currmod = mod;
-            mod->n.sect = CurrSect;
+            mod->n.sect = wlink().CurrSect;
         }
     }
     FixGroupProblems();
     FindRedefs();
-    if( (FmtData.type & MK_OVERLAYS)
-      && FmtData.u.dos.distribute ) {
+    if( (wlink().FmtData.type & MK_OVERLAYS)
+      && wlink().FmtData.u.dos.distribute ) {
         MemFree( d.SectOvlTab );
         d.SectOvlTab = nullptr;
     }
 #endif
-    if( (FmtData.type & MK_OVERLAYS)
-      && FmtData.u.dos.distribute ) {
+    if( (wlink().FmtData.type & MK_OVERLAYS)
+      && wlink().FmtData.u.dos.distribute ) {
         MemFree( d.SectOvlTab );
         d.SectOvlTab = nullptr;
     }
@@ -323,7 +324,7 @@ void DistribProcMods( void )
 
     for( index = 1; index <= d.CurrModHandle; index++ ) {
         mod = d.ModTable[index];
-        CurrSect = mod->u.sect;
+        wlink().CurrSect = mod->u.sect;
         PModule( mod );
     }
 }
@@ -391,8 +392,8 @@ void DefDistribSym( symbol *sym )
     segdata     *seg;
 
     if( sym->info & SYM_REFERENCED ) {
-        arclist = CurrMod->u2.arclist;
-        if( CurrMod->flags_mod & MOD_FIXED ) {
+        arclist = wlink().CurrMod->u2.arclist;
+        if( wlink().CurrMod->flags_mod & MOD_FIXED ) {
             seg = sym->p.seg;
             if( seg->iscode ) {      // if code..
                 NewRefVector( sym, sym->u.d.ovlref, arclist->ovlref );
@@ -420,12 +421,12 @@ static void AddArc( dist_arc arc )
 
     arcdata     *arclist;
 
-    arclist = CurrMod->u2.arclist;
+    arclist = wlink().CurrMod->u2.arclist;
     if( arclist->numarcs >= d.ArcListMaxLen ) {
         arclist = static_cast<arcdata *>( MemAllocSafe( offsetof( arcdata, arcs ) + 2 * d.ArcListMaxLen * sizeof( dist_arc ) ) );
         memcpy( arclist, d.ArcList, offsetof( arcdata, arcs ) + d.ArcListMaxLen * sizeof( dist_arc ) );
         MemFree( d.ArcList );
-        CurrMod->u2.arclist = arclist;
+        wlink().CurrMod->u2.arclist = arclist;
         d.ArcList = arclist;
         d.ArcListMaxLen *= 2;
     }
@@ -441,7 +442,7 @@ static bool NotAnArc( dist_arc arc )
     unsigned    index;
     arcdata     *arclist;
 
-    arclist = CurrMod->u2.arclist;
+    arclist = wlink().CurrMod->u2.arclist;
     for( index = arclist->numarcs; index-- > 0; ) {
         if( arclist->arcs[index].test == arc.test ) {
             return( false );
@@ -621,12 +622,12 @@ void DistribIndirectCall( symbol *sym )
     arcdata         *arclist;
     overlay_ref     save_ovlref;
 
-    arclist = CurrMod->u2.arclist;
+    arclist = wlink().CurrMod->u2.arclist;
     save_ovlref = arclist->ovlref;
     arclist->ovlref = 0;                // make sure current module isn't
-    CurrMod->flags_mod |= MOD_VISITED;    // visited
+    wlink().CurrMod->flags_mod |= MOD_VISITED;    // visited
     DoRefGraph( 0, d.ModTable[sym->u.d.modnum] );
-    CurrMod->flags_mod &= ~MOD_VISITED;
+    wlink().CurrMod->flags_mod &= ~MOD_VISITED;
     arclist->ovlref = save_ovlref;
     sym->u.d.ovlstate |= OVL_REF;
     sym->u.d.ovlref = 0;                // make sure current symbol put in root.

@@ -35,7 +35,6 @@
 
 #ifdef _EXE
 
-extern unsigned_32  OvlTabOffset;
 
 extern void         FiniDOSLoadFile( void );
 

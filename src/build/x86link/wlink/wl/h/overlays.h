@@ -35,10 +35,6 @@
 
 #ifdef _EXE
 
-extern seg_leader       *OvlSeg;
-extern unsigned_16      OvlAreaSize;
-extern overlay_ref      OvlSectNum;
-extern list_of_names    *OvlClasses;
 
 /* in ovlsupp.c */
 
