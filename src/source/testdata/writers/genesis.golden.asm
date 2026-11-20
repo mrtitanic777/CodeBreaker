@@ -1,103 +1,103 @@
 ; demo.asm -- written by CodeBreaker from demo.md
 ; "TEST CARTRIDGE" / "TEST CARTRIDGE", GM 00000000-00, 4 KB ROM
+; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)
 
-VDP_CTRL         equ $C00004
+.equ VDP_CTRL, 0xc00004
 
-        org $0
-        dc.l $00FF0000  ; initial stack pointer
-        dc.l reset  ; reset
-        dc.l $00000000  ; bus_error
-        dc.l $00000000  ; address_error
-        dc.l $00000000  ; illegal_instruction
-        dc.l $00000000  ; zero_divide
-        dc.l $00000000  ; chk
-        dc.l $00000000  ; trapv
-        dc.l $00000000  ; privilege
-        dc.l $00000000  ; trace
-        dc.l $00000000  ; line_a
-        dc.l $00000000  ; line_f
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000  ; spurious
-        dc.l $00000000  ; level1
-        dc.l $00000000  ; external
-        dc.l $00000000  ; level3
-        dc.l $00000000  ; hblank
-        dc.l $00000000  ; level5
-        dc.l vblank  ; vblank
-        dc.l $00000000  ; level7
-        dc.l $00000000  ; trap0
-        dc.l $00000000  ; trap1
-        dc.l $00000000  ; trap2
-        dc.l $00000000  ; trap3
-        dc.l $00000000  ; trap4
-        dc.l $00000000  ; trap5
-        dc.l $00000000  ; trap6
-        dc.l $00000000  ; trap7
-        dc.l $00000000  ; trap8
-        dc.l $00000000  ; trap9
-        dc.l $00000000  ; trap10
-        dc.l $00000000  ; trap11
-        dc.l $00000000  ; trap12
-        dc.l $00000000  ; trap13
-        dc.l $00000000  ; trap14
-        dc.l $00000000  ; trap15
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.l $00000000
-        dc.b "SEGA MEGA DRIVE "  ; system
-        dc.b "(C)TEST 2026.NOV"  ; copyright
-        dc.b "TEST CARTRIDGE                                  "  ; domestic name
-        dc.b "TEST CARTRIDGE                                  "  ; overseas name
-        dc.b "GM 00000000-00"  ; serial and version
-        dc.b $12,$34  ; checksum
-        dc.b "J               "  ; devices
-        dc.b $00,$00,$00,$00,$00,$00,$0F,$FF  ; ROM start and end
-        dc.b $00,$FF,$00,$00,$00,$FF,$FF,$FF  ; RAM start and end
-        dc.b "            "  ; backup RAM
-        dc.b "            "  ; modem
-        dc.b "                                        "  ; notes
-        dc.b "JUE             "  ; regions
+        .org 0x0
+        .long 0x00ff0000  ; initial stack pointer
+        .long reset  ; reset
+        .long 0x00000000  ; bus_error
+        .long 0x00000000  ; address_error
+        .long 0x00000000  ; illegal_instruction
+        .long 0x00000000  ; zero_divide
+        .long 0x00000000  ; chk
+        .long 0x00000000  ; trapv
+        .long 0x00000000  ; privilege
+        .long 0x00000000  ; trace
+        .long 0x00000000  ; line_a
+        .long 0x00000000  ; line_f
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000  ; spurious
+        .long 0x00000000  ; level1
+        .long 0x00000000  ; external
+        .long 0x00000000  ; level3
+        .long 0x00000000  ; hblank
+        .long 0x00000000  ; level5
+        .long vblank  ; vblank
+        .long 0x00000000  ; level7
+        .long 0x00000000  ; trap0
+        .long 0x00000000  ; trap1
+        .long 0x00000000  ; trap2
+        .long 0x00000000  ; trap3
+        .long 0x00000000  ; trap4
+        .long 0x00000000  ; trap5
+        .long 0x00000000  ; trap6
+        .long 0x00000000  ; trap7
+        .long 0x00000000  ; trap8
+        .long 0x00000000  ; trap9
+        .long 0x00000000  ; trap10
+        .long 0x00000000  ; trap11
+        .long 0x00000000  ; trap12
+        .long 0x00000000  ; trap13
+        .long 0x00000000  ; trap14
+        .long 0x00000000  ; trap15
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .long 0x00000000
+        .ascii "SEGA MEGA DRIVE "  ; system
+        .ascii "(C)TEST 2026.NOV"  ; copyright
+        .ascii "TEST CARTRIDGE                                  "  ; domestic name
+        .ascii "TEST CARTRIDGE                                  "  ; overseas name
+        .ascii "GM 00000000-00"  ; serial and version
+        .byte 0x12,0x34  ; checksum
+        .ascii "J               "  ; devices
+        .byte 0x00,0x00,0x00,0x00,0x00,0x00,0x0f,0xff  ; ROM start and end
+        .byte 0x00,0xff,0x00,0x00,0x00,0xff,0xff,0xff  ; RAM start and end
+        .ascii "            "  ; backup RAM
+        .ascii "            "  ; modem
+        .ascii "                                        "  ; notes
+        .ascii "JUE             "  ; regions
 
 reset:
-        MOVE.W #$80,(VDP_CTRL).L
-        JSR (sub_000220).L
+        move.w #0x80,(VDP_CTRL).l
+        jsr sub_000220.l
 L_00020E:
-        BRA.S L_00020E
-        dcb.b 16,$FF
+        bra.b L_00020E
+        .space 16, 0xff
 
 sub_000220:
-        MOVEA.L #D_000400,A0
-        RTS
-        dcb.b 216,$FF
+        movea.l #D_000400,A0
+        rts
+        .space 216, 0xff
 
 vblank:
-        RTE
-        dcb.b 254,$FF
+        rte
+        .space 254, 0xff
 D_000400:
-        dc.b "SCORE LEVEL LIVE"
-        dc.b $53
-        dcb.b 3055,$FF
+        .ascii "SCORE LEVEL LIVES"
+        .space 3055, 0xff

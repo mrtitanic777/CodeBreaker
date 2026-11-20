@@ -268,6 +268,9 @@ public:
     virtual const Insn* code_at(std::uint32_t offset, std::uint32_t address) const = 0;
     virtual std::uint32_t size(const Insn& insn) const = 0;
     virtual std::string text(const Insn& insn) const = 0;
+    // A line that stands ahead of the instruction's own when the assembler's state must change for it (`.context m16=1`), or empty. Called once
+    // per instruction written, in the order of the lines.
+    virtual std::string prelude(const Insn& /*insn*/) { return {}; }
     virtual std::vector<std::string> data_lines(ByteView data) const = 0;
     // What stands at a place of its own (a header field, the vectors): write it (after `flush`) and say how many bytes it took,
     // or answer 0.
@@ -303,6 +306,7 @@ void emit(translate::l2::Assembly& out, std::uint32_t start, std::uint32_t end, 
         }
         if (const Insn* insn = listing.code_at(offset, addr)) {
             flush();
+            if (const std::string before = listing.prelude(*insn); !before.empty()) out.append("        " + before);
             out.append("        " + listing.text(*insn));
             offset += listing.size(*insn);
         } else {

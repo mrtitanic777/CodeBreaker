@@ -5,11 +5,12 @@
 #include <format>
 #include <unordered_map>
 
-#include "build/m6502_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m6502.hpp"
+#include "knowledge/package.hpp"
 #include "source/isa.hpp"
+#include "source/m6502_source.hpp"
 
 namespace cb::source::nes_writer {
 
@@ -66,15 +67,14 @@ public:
         if (it == code_.end()) return nullptr;
         const m6502::Insn& insn = it->second;
         if (offset + insn.size > bank_.offset + bank_.size || (vectors_here_ && address + insn.size > kVectorsAt)) return nullptr;
+        at_offset_ = offset, at_address_ = address;   // (text() of this instruction follows)
         return &insn;
     }
     std::uint32_t size(const m6502::Insn& insn) const override { return insn.size; }
-    std::string text(const m6502::Insn& insn) const override { return m6502::text(insn, names_); }
-    std::vector<std::string> data_lines(ByteView data) const override {
-        std::vector<std::string> lines;
-        for (std::size_t i = 0; i < data.size(); i += 16) lines.push_back("        .byte " + byte_list(data.subspan(i, std::min<std::size_t>(16, data.size() - i))));
-        return lines;
+    std::string text(const m6502::Insn& insn) const override {
+        return m6502_source::code(m6502_source::Cpu::M6502, ByteView(rom_.prg).subspan(at_offset_, insn.size), at_address_, names_);   // (the description's text, the names put in)
     }
+    std::vector<std::string> data_lines(ByteView data) const override { return m6502_source::data_lines(data); }
     // The last six bytes of the bank that holds them are the vectors.
     std::uint32_t special(std::uint32_t, std::uint32_t address, const iw::Flush& flush) override {
         if (!vectors_here_ || address != kVectorsAt) return 0;
@@ -83,19 +83,20 @@ public:
         std::vector<std::string> words;
         for (const std::uint32_t at : {std::uint32_t{v.nmi}, std::uint32_t{v.reset}, std::uint32_t{v.irq}}) {
             const auto named = labels_.find(at);
-            words.push_back(named != labels_.end() ? named->second : std::format("${:04X}", at));
+            words.push_back(named != labels_.end() ? named->second : std::format("0x{:04x}", at));
         }
-        out_.append("        .word " + text::join(words, ", "));
+        out_.append("        .half " + text::join(words, ","));
         return 6;
     }
 
     static std::string byte_list(ByteView data) {
         std::vector<std::string> items;
-        for (const std::uint8_t b : data) items.push_back(std::format("${:02X}", b));
-        return text::join(items, ", ");
+        for (const std::uint8_t b : data) items.push_back(std::format("0x{:02x}", b));
+        return text::join(items, ",");
     }
 
 private:
+    mutable std::uint32_t at_offset_ = 0, at_address_ = 0;   // (the instruction code_at() last gave: its PRG offset, the address it is shown at)
     translate::l2::Assembly& out_;
     const formats::nes::Rom& rom_;
     const Bank& bank_;
@@ -107,30 +108,11 @@ private:
 
 bool absolute_mode(m6502::Mode mode) { return mode == m6502::Mode::Abs || mode == m6502::Mode::Abx || mode == m6502::Mode::Aby; }
 
-// The ld65 configuration: where each segment of the source loads.
-std::string link_config(const formats::nes::Rom& rom, const std::vector<Bank>& banks) {
-    std::vector<std::string> cfg = {"MEMORY {", "    HEADER: start = $0000, size = $0010, fill = yes, file = %O;"};
-    if (!rom.trainer.empty()) cfg.push_back("    TRAINER: start = $7000, size = $0200, fill = yes, file = %O;");
-    for (const Bank& b : banks) cfg.push_back(std::format("    PRG{}: start = ${:04X}, size = ${:04X}, fill = yes, file = %O;", b.segment.substr(4), b.base, b.size));
-    if (!rom.chr.empty()) cfg.push_back(std::format("    CHR: start = $0000, size = ${:04X}, fill = yes, file = %O;", rom.chr.size()));
-    cfg.insert(cfg.end(), {"}", "SEGMENTS {", "    HEADER: load = HEADER, type = ro;"});
-    if (!rom.trainer.empty()) cfg.push_back("    TRAINER: load = TRAINER, type = ro;");
-    for (const Bank& b : banks) cfg.push_back(std::format("    {}: load = PRG{}, type = ro;", b.segment, b.segment.substr(4)));
-    if (!rom.chr.empty()) cfg.push_back("    CHARS: load = CHR, type = ro;");
-    cfg.push_back("}");
-    return text::join(cfg, "\n") + "\n";
-}
-
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x2000, "PPUCTRL"},    {0x2001, "PPUMASK"},   {0x2002, "PPUSTATUS"}, {0x2003, "OAMADDR"},    {0x2004, "OAMDATA"},
-        {0x2005, "PPUSCROLL"},  {0x2006, "PPUADDR"},   {0x2007, "PPUDATA"},   {0x4000, "SQ1_VOL"},    {0x4001, "SQ1_SWEEP"},
-        {0x4002, "SQ1_LO"},     {0x4003, "SQ1_HI"},    {0x4004, "SQ2_VOL"},   {0x4005, "SQ2_SWEEP"},  {0x4006, "SQ2_LO"},
-        {0x4007, "SQ2_HI"},     {0x4008, "TRI_LINEAR"}, {0x400A, "TRI_LO"},   {0x400B, "TRI_HI"},     {0x400C, "NOISE_VOL"},
-        {0x400E, "NOISE_LO"},   {0x400F, "NOISE_HI"},  {0x4010, "DMC_FREQ"},  {0x4011, "DMC_RAW"},    {0x4012, "DMC_START"},
-        {0x4013, "DMC_LEN"},    {0x4014, "OAMDMA"},    {0x4015, "SND_CHN"},   {0x4016, "JOY1"},       {0x4017, "JOY2"}};
+    // config/knowledge/nes/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("nes", "hardware");
     return table;
 }
 
@@ -185,16 +167,18 @@ iw::Written write(const formats::nes::Rom& rom, std::string_view file_name, cons
                                      std::format("; mapper {}, {} KB PRG, {} KB CHR, {} mirroring{}", rom.mapper, rom.prg.size() / 1024,
                                                  rom.chr.size() / 1024, formats::nes::to_string(rom.mirroring),
                                                  rom.battery ? ", battery-backed RAM" : ""),
+                                     "; (6502 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu 6502 --sleigh`; the file is the cartridge's bytes in order)",
                                      ""};
-    for (const std::uint32_t a : used_registers) head.push_back(std::format("{:<10} = ${:04X}", hardware().at(a), a));
+    for (const std::uint32_t a : used_registers) head.push_back(m6502_source::equ(hardware().at(a), a, 4));
     if (!used_registers.empty()) head.push_back("");
-    head.push_back(".segment \"HEADER\"");
+    head.push_back("; header");
     head.push_back("        .byte " + NesListing::byte_list(ByteView(rom.header).first(std::min<std::size_t>(16, rom.header.size()))));
     head.push_back("");
-    translate::l2::Assembly out(head, "ca65", std::string(file_name));
+    translate::l2::Assembly out(head, "sleigh-6502", std::string(file_name));
     if (!rom.trainer.empty()) {
-        out.append(".segment \"TRAINER\"");
-        out.append("        .byte " + NesListing::byte_list(rom.trainer));
+        out.append("; trainer");
+        out.append("        .org 0x7000");
+        out.extend(m6502_source::data_lines(rom.trainer));
         out.append("");
     }
 
@@ -204,31 +188,27 @@ iw::Written write(const formats::nes::Rom& rom, std::string_view file_name, cons
 
     for (const Bank& b : bank_list) {
         out.part(b.segment, "segment", std::nullopt, b.size);
-        out.append(std::format(".segment \"{}\"", b.segment));
+        out.append(std::format("; {}", b.segment));
+        out.append(std::format("        .org 0x{:04x}", b.base));
         NesListing listing(out, rom, b, code, labels, names_for_text);
         iw::emit<m6502::Insn>(out, b.offset, b.offset + b.size, labels, functions, listing);
         out.append("");
     }
     if (!rom.chr.empty()) {
-        fs::write_file(folder / (stem + ".chr"), rom.chr);
         out.part("CHARS", "segment", std::nullopt, rom.chr.size());
-        out.append(".segment \"CHARS\"");
-        out.append(std::format("        .incbin \"{}.chr\"", stem));
+        out.append("; CHR");
+        out.append("        .org 0x0000");
+        out.extend(m6502_source::data_lines(rom.chr));
         out.append("");
     }
     const std::string source = iw::text(out) + "\n";
-    const std::string config = link_config(rom, bank_list);
-    const std::filesystem::path config_path = folder / (stem + ".cfg");
-    fs::write_file(config_path, as_bytes(config));
 
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), rom.prg.size());
-    r.config = config_path;
     Bytes original = rom.header;
     original.insert(original.end(), rom.trainer.begin(), rom.trainer.end());
     original.insert(original.end(), rom.prg.begin(), rom.prg.end());
     original.insert(original.end(), rom.chr.begin(), rom.chr.end());
-    const build::m6502_asm::Assembler assembler(isa::m6502_encoder());
-    iw::assembled(r, [&] { return assembler.build(source, config, folder); }, original, folder / (stem + ".built.nes"));
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, source, folder); }, original, folder / (stem + ".built.nes"));
     return r;
 }
 

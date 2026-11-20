@@ -4,10 +4,18 @@
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "emulate/lynx.hpp"
+#include "source/atari2600_writer.hpp"
+#include "source/atari5200_writer.hpp"
 #include "source/gb_writer.hpp"
+#include "source/lynx_writer.hpp"
+#include "source/pce_writer.hpp"
+#include "source/snes_writer.hpp"
 #include "source/genesis_writer.hpp"
 #include "source/coleco_writer.hpp"
 #include "source/gba_writer.hpp"
+#include "source/jaguar_writer.hpp"
+#include "source/n64_writer.hpp"
 #include "source/msx_writer.hpp"
 #include "source/ps1_writer.hpp"
 #include "source/sms_writer.hpp"
@@ -50,12 +58,54 @@ CB_TEST("source.writers.homebrew.z80_family", [] {
     rebuild("coleco-240p/suitecv.rom", 1, coleco_writer::reconstruct);
 });
 
+// (the 6502 family's, through the 6502, 65C02, HuC6280 and 65816 descriptions: the Atari 2600 and 5200, the Lynx, the PC Engine and the SNES --
+// the SNES's register widths ride on `.context` lines. The NES and the Atari 7800 have no program here: their tests write one of their own.)
+CB_TEST("source.writers.homebrew.m6502_family", [] {
+    const auto a2600 = [](const std::filesystem::path& f, const std::filesystem::path& d) { return atari2600_writer::reconstruct(f, d); };
+    rebuild("atari2600-flappyboot/boot.bin", 1, a2600);
+    rebuild("atari2600-kibalchish/kibalchish_NTSC.a26", 1, a2600);
+    rebuild("atari2600-legendary-spear/LegendarySpear_NTSC.bin", 1, a2600);
+    rebuild("atari2600-pipes/pipe2600.bin", 2, a2600);
+    rebuild("atari5200/culomin5200.a52", 1, [](const std::filesystem::path& f, const std::filesystem::path& d) { return atari5200_writer::reconstruct(f, d); });
+    const auto lynx = [](const std::filesystem::path& f, const std::filesystem::path& d) {
+        return lynx_writer::reconstruct(f, d, [](formats::lynx::Program& p) {
+            const emulate::lynx::Boot b = emulate::lynx::boot(p);
+            p.set_loaded(b.segments, b.entries);
+        });
+    };
+    for (const char* name : {"brk.o", "demo01.o", "boing.o", "mines2.o", "overlay.lnx"}) rebuild(std::string("lynx/") + name, 0, lynx);
+    const auto pce = [](const std::filesystem::path& f, const std::filesystem::path& d) { return pce_writer::reconstruct(f, d); };
+    rebuild("pce/dshadoff-pce-mouse-test/pce_mouse.pce", 1, pce);
+    for (const char* name : {"BALL", "SAMPLE1"}) rebuild(std::string("pce/langel-pce-dev-kit/") + name + ".PCE", 1, pce);
+    const auto snes = [](const std::filesystem::path& f, const std::filesystem::path& d) { return snes_writer::reconstruct(f, d); };
+    for (const char* name : {"gothicvania", "hello-world-region"}) rebuild(std::string("snes/donth77-snes-homebrew/") + name + ".sfc", 1, snes);
+    for (const char* name : {"simple_sprite", "controller", "breakout", "hirom_demo", "rpg"})
+        rebuild(std::string("snes/opensnes-examples/extracted/opensnes-examples_v0.55.0/examples/bin/") + name + ".sfc", 1, snes);
+});
+
 CB_TEST("source.writers.homebrew.game_boy_color", [] { rebuild("gb-ucity/ucity.gbc", 25, gb_writer::reconstruct); });
 
 // (the ZX Spectrum's: a tape's code block, written with the Spectrum's names)
 CB_TEST("source.writers.homebrew.zx_spectrum", [] { rebuild("zx-icarus/Icarus.tap", 50, zx_writer::reconstruct); });
 
-CB_TEST("source.writers.homebrew.genesis", [] { rebuild("genesis-2048/rom.bin", 38, genesis_writer::reconstruct); });
+// (the 68000 and MIPS consoles' source is the processor's SLEIGH description's text, built again through its assembler: each program must come back byte for byte)
+CB_TEST("source.writers.homebrew.genesis", [] {
+    rebuild("genesis-2048/rom.bin", 38, genesis_writer::reconstruct);
+    rebuild("genesis-retailclerk89/RetailClerk89_2020-09-01.bin", 10, genesis_writer::reconstruct);
+});
+
+CB_TEST("source.writers.homebrew.jaguar", [] {
+    rebuild("jaguar/jag_ball.j64", 1, jaguar_writer::reconstruct);
+    rebuild("jaguar/jag_ball.cof", 1, jaguar_writer::reconstruct);
+    rebuild("jaguar/yarc.j64", 1, jaguar_writer::reconstruct);
+});
+
+CB_TEST("source.writers.homebrew.nintendo_64", [] {
+    rebuild("n64/sblobber64/sblobber64.z64", 5, n64_writer::reconstruct);
+    rebuild("n64/peterlemon/CPUTest_CPU_DADD_CPUDADD.N64", 1, n64_writer::reconstruct);
+    rebuild("n64/peterlemon/HelloWorld_32BPP_HelloWorldRDP320x240_HelloWorldRDP32BPP320X240.N64", 1, n64_writer::reconstruct);
+    rebuild("n64/peterlemon/CP1_Fractal_32BPP_320X240_Julia_Double_Julia32BPP320X240.N64", 1, n64_writer::reconstruct);
+});
 
 // (the PlayStation's: PS-X EXEs built with GCC and PSn00bSDK, and hand-written assembly with its data, each rebuilt from its source)
 CB_TEST("source.writers.homebrew.playstation", [] {

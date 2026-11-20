@@ -1,12 +1,11 @@
 // cb-unity: alone
-// The Atari 5200 writer over a small program written byte by byte: the source it writes, built again by CodeBreaker's dasm-syntax assembler, is the file.
+// The Atari 5200 writer over a small program written byte by byte: the source it writes, built again by the 6502's SLEIGH description, is the file.
 
 #include "source/atari5200_writer.hpp"
 
-#include "build/dasm_asm.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
-#include "source/isa.hpp"
+#include "source/m6502_source.hpp"
 
 namespace cb::source::atari5200_writer {
 namespace {
@@ -34,8 +33,8 @@ CB_TEST("source.atari5200_writer.the_program_comes_back_as_source_that_builds_th
     CB_CHECK_EQ(r.image_bytes, 0x4000u);
     CB_CHECK_EQ(r.code_bytes, 13u + 9u);
     const std::string s = fs::read_text(r.source);
-    for (const char* want : {"        processor 6502", "COLBK      = $C01A", "VCOUNT     = $D40B", "WSYNC      = $D40A", "        ORG $8000", "        STA COLBK",
-                             "        JSR sub_8020", "        LDA VCOUNT", "        STA WSYNC", "        JMP L_8002", "        .byte $00, $FF", "        .word start"}) {
+    for (const char* want : {".equ COLBK, 0xc01a", ".equ VCOUNT, 0xd40b", ".equ WSYNC, 0xd40a", "        .org 0x8000", "        STA COLBK",
+                             "        JSR sub_8020", "        LDA VCOUNT", "        STA WSYNC", "        JMP L_8002", "        .byte 0x00,0xff", "        .half start"}) {
         CB_CHECK(s.find(want) != std::string::npos);
     }
 });
@@ -44,13 +43,12 @@ CB_TEST("source.atari5200_writer.an_edited_source_builds_a_different_file", [] {
     fs::ScopedTempDir dir("cb_a5200_edit");
     const image_writer::Written r = write(formats::atari5200::parse(program()), "demo.a52", dir.path());
     std::string s = fs::read_text(r.source);
-    const std::size_t at = s.find("LDA #$0E");
+    const std::size_t at = s.find("LDA #0xe\n");
     CB_CHECK(at != std::string::npos);
-    s.replace(at, 8, "LDA #$0F");
-    const build::dasm_asm::Assembler assembler(isa::m6502_encoder());
+    s.replace(at, 8, "LDA #0xf");
     Bytes expected = program();
     expected[3] = 0x0F;
-    CB_CHECK(assembler.build(s, dir.path()) == expected);
+    CB_CHECK(m6502_source::assemble(m6502_source::Cpu::M6502, s, dir.path()) == expected);
 });
 
 }  // namespace cb::source::atari5200_writer

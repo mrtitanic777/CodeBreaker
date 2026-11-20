@@ -6,11 +6,11 @@
 #include <format>
 #include <set>
 
-#include "build/m68k_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m68k.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 #include "source/z80_writer.hpp"
 
 namespace cb::source::neogeo_writer {
@@ -26,7 +26,6 @@ constexpr std::uint32_t kWindow = static_cast<std::uint32_t>(ng::kRomWindow);
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr iw::Spelling kData{"D_", 6};
-const iw::DataSyntax kSyntax{.bytes = "dc.b", .fill = "dcb.b", .fill_separator = ","};
 
 // A field of the header at $100: where it is, how long, what it holds.
 struct HeaderField {
@@ -81,8 +80,8 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return insn.length; }
-    std::string text(const m68k::Insn& insn) const override { return m68k::text(insn, names_); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::string text(const m68k::Insn& insn) const override { return risc_source::m68k_code(insn, names_); }   // (the description's text, the names put in)
+    std::vector<std::string> data_lines(ByteView data) const override { return risc_source::data_lines(data); }
     // The header's fields, each as data with its name: a text field as its text, a number as a word or a long.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
         const HeaderField* field = header_field(offset);
@@ -91,13 +90,13 @@ public:
         const ByteView bytes = rom_.subspan(offset, field->length);
         std::string line;
         if (offset == 0x100) {
-            line = "        dc.b \"" + std::string(as_text(bytes)) + "\"";
+            line = "        .ascii \"" + std::string(as_text(bytes)) + "\"";
         } else if (field->length == 2 || field->length == 4) {
             std::uint32_t v = 0;
             for (const std::uint8_t b : bytes) v = v << 8 | b;
-            line = std::format("        {} ${:0{}X}", field->length == 2 ? "dc.w" : "dc.l", v, field->length * 2);
+            line = std::format("        {} 0x{:0{}x}", field->length == 2 ? ".half" : ".long", v, field->length * 2);
         } else {
-            line = std::format("        dc.b ${:02X}", bytes[0]);
+            line = std::format("        .byte 0x{:02x}", bytes[0]);
         }
         out_.append(iw::commented({line}, field->what).front());
         return field->length;
@@ -221,8 +220,9 @@ iw::Written write(const formats::neogeo::Rom& rom, std::string_view file_name, c
     std::vector<std::string> head = {
         std::format("; {}.asm -- written by CodeBreaker from {}", stem, base_name),
         std::format("; Neo Geo, NGH {:04X}, {} KB P-ROM ({})", rom.header.ngh, data.size() / 1024, formats::neogeo::layout_text(rom.layout)), ""};
-    translate::l2::Assembly out(head, "asm68k", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(std::format("{:<20} equ ${:06X}", hardware().at(a), a));
+    head.insert(head.end() - 1, "; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)");
+    translate::l2::Assembly out(head, "sleigh-m68k", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(risc_source::equ(hardware().at(a), a, 6));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -230,35 +230,31 @@ iw::Written write(const formats::neogeo::Rom& rom, std::string_view file_name, c
 
     // the vector table: 64 longs
     out.part("vectors", "vector table", std::nullopt, 0x100);
-    out.append("        org $0");
+    out.append("        .org 0x0");
     for (unsigned i = 0; i < 64; ++i) {
         const std::uint32_t v = static_cast<std::uint32_t>(data[i * 4]) << 24 | static_cast<std::uint32_t>(data[i * 4 + 1]) << 16 |
                                 static_cast<std::uint32_t>(data[i * 4 + 2]) << 8 | data[i * 4 + 3];
-        std::string target = std::format("${:08X}", v);
+        std::string target = std::format("0x{:08x}", v);
         if (i != 0) {
             if (const auto named = labels.find(v); named != labels.end()) target = named->second;
         }
         const std::string what = i == 0 ? "initial stack pointer" : i == 1 ? "reset" : formats::neogeo::vector_name(i);
-        out.append("        dc.l " + target + (what.empty() ? std::string() : "  ; " + what));
+        out.append("        .long " + target + (what.empty() ? std::string() : "  ; " + what));
     }
     NeoGeoListing listing(out, data, code, names_for_text);
     iw::emit<m68k::Insn>(out, kHeaderFrom, first, labels, functions, listing);
     if (second > kWindow) {
         out.append("");
-        out.append("        org $200000   ; the bank window: the P-ROM's second megabyte");
+        out.append("        .org 0x200000   ; the bank window: the P-ROM's second megabyte");
         iw::emit<m68k::Insn>(out, kWindow, second, {}, {}, listing);
     }
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), data.size());
-    const build::m68k_asm::Assembler assembler(isa::m68k_encoder());
     iw::assembled(
         r,
         [&] {   // the first megabyte from address 0, the second from the window: the P-ROM's order
-            Bytes image = assembler.build(source);
-            Bytes joined(image.begin(), image.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(image.size(), kWindow)));
-            if (image.size() > ng::kBankAt) joined.insert(joined.end(), image.begin() + ng::kBankAt, image.end());
-            return joined;
+            return risc_source::assemble("m68k", source, folder);   // (the window's bytes follow the first megabyte's)
         },
         data.first(second), folder / (stem + ".built.p1"));
     if (data.size() > second) {

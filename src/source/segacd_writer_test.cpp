@@ -44,15 +44,15 @@ CB_TEST("source.segacd_writer.the_golden_names_what_the_code_touches", [] {
     // their names, the SP's entries as functions.
     const std::string text = golden("segacd.golden.asm");
     for (const char* line :
-         {"GA_MEMMODE_LO      equ $A12003", "GA_COMFLAG_SUB     equ $A1200F", "CDBIOS             equ $005F22", "        org $0   ; the boot header",
-          "        dc.b \"SEGADISCSYSTEM  \"  ; disc ID", "        dc.l $00000800  ; IP: start on the disc", "        dc.l $00001000  ; SP: start on the disc",
-          "        dc.b \"SEGA MEGA DRIVE \"  ; system type", "security:", "        BRA.W ip_start", "ip_start:", "        MOVE.B #$1,(GA_MEMMODE_LO).L",
-          "        BSR.S sub_FF0610", "        JMP ($00200000).L", "sub_FF0610:", "        TST.B (GA_COMFLAG_SUB).L", "sp_init:", "        MOVEQ #1,D0",
-          "        JSR (CDBIOS).L", "sp_main:", "sp_int2:", "        RTE"}) {
+         {".equ GA_MEMMODE_LO, 0xa12003", ".equ GA_COMFLAG_SUB, 0xa1200f", ".equ CDBIOS, 0x005f22", "        .org 0x0   ; the boot header",
+          "        .ascii \"SEGADISCSYSTEM  \"  ; disc ID", "        .long 0x00000800  ; IP: start on the disc", "        .long 0x00001000  ; SP: start on the disc",
+          "        .ascii \"SEGA MEGA DRIVE \"  ; system type", "security:", "        bra.w ip_start", "ip_start:", "        move.b #0x1,(GA_MEMMODE_LO).l",
+          "        bsr.b sub_FF0610", "        jmp 0x200000.l", "sub_FF0610:", "        tst.b (GA_COMFLAG_SUB).l", "sp_init:", "        moveq 0x1,D0",
+          "        jsr CDBIOS.l", "sp_main:", "sp_int2:", "        rte"}) {
         CB_CHECK(text.find(line) != std::string::npos);
     }
-    CB_CHECK(text.find("org $FF0000") != std::string::npos);
-    CB_CHECK(text.find("org $6000") != std::string::npos);
+    CB_CHECK(text.find(".org 0xff0000") != std::string::npos);
+    CB_CHECK(text.find(".org 0x6000") != std::string::npos);
 });
 
 CB_TEST("source.segacd_writer.a_raw_image_is_written_from_its_system_area", [] {

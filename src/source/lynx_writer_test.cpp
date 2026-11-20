@@ -1,4 +1,4 @@
-// The Lynx writer: a cartridge and a BS93 object come back as ca65 source that builds the same file.
+// The Lynx writer: a cartridge and a BS93 object come back as source (the 65C02's SLEIGH description) that builds the same file.
 #include "source/lynx_writer.hpp"
 
 #include <algorithm>
@@ -6,10 +6,9 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
-#include "build/m6502_asm.hpp"
 #include "emulate/lynx.hpp"
 #include "formats/lynx_test_image.hpp"
-#include "source/isa_65xx.hpp"
+#include "source/m6502_source.hpp"
 
 namespace cb::source::lynx_writer {
 namespace {
@@ -40,16 +39,15 @@ CB_TEST("source.lynx_writer.a_cartridge_comes_back_as_source_that_builds_the_sam
     CB_CHECK_EQ(r.code_bytes, 16u);   // LDA STA JSR JMP, then STZ INC RTS; the stray byte between is data
     CB_CHECK_EQ(r.image_bytes, file.size());
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(has_line(source, "SPRCTL0    = $FC80"));
-    CB_CHECK(has_line(source, "SPRGO      = $FC91"));
+    CB_CHECK(has_line(source, ".equ SPRCTL0, 0xfc80"));
+    CB_CHECK(has_line(source, ".equ SPRGO, 0xfc91"));
     CB_CHECK(has_line(source, "STA SPRCTL0"));
     CB_CHECK(has_line(source, "JSR sub_040C"));
     CB_CHECK(has_line(source, "STZ SPRGO"));
-    CB_CHECK(has_line(source, "INC a"));
+    CB_CHECK(has_line(source, "INC A"));
     CB_CHECK(has_line(source, "start:"));
-    CB_CHECK(has_line(source, ".segment \"SEG0\""));
-    const std::string config = fs::read_text(*r.config);
-    CB_CHECK(config.find("SEG0: start = $0400, size = $0011") != std::string::npos);
+    CB_CHECK(has_line(source, ".org 0x0400"));   // (the segment, at the RAM address the loader copies it to)
+    CB_CHECK(!r.config);
 });
 
 CB_TEST("source.lynx_writer.a_cartridge_without_a_booter_is_all_data", [] {
@@ -71,7 +69,7 @@ CB_TEST("source.lynx_writer.a_bs93_object_is_its_header_its_body_and_what_follow
     CB_CHECK(r.linked && r.same);
     CB_CHECK((r.functions == image_writer::Functions{{0x0400, "start"}, {0x040C, "sub_040C"}}));
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(source.find(".segment \"TRAILER\"") != std::string::npos);
+    CB_CHECK(source.find("; TRAILER (file offset 0x") != std::string::npos);
 });
 
 CB_TEST("source.lynx_writer.an_edited_source_builds_a_different_file", [] {
@@ -82,10 +80,10 @@ CB_TEST("source.lynx_writer.an_edited_source_builds_a_different_file", [] {
     CB_CHECK(r.same);
     // the source can be edited and rebuilt: INC A becomes DEC A (a different byte, same size)
     std::string source = fs::read_text(r.source);
-    const std::size_t at = source.find("INC a");
+    const std::size_t at = source.find("INC A");
     CB_CHECK(at != std::string::npos);
-    source.replace(at, 5, "DEC a");
-    const Bytes rebuilt = build::m6502_asm::Assembler(isa::m65sc02_encoder()).build(source, fs::read_text(*r.config), dir.path());
+    source.replace(at, 5, "DEC A");
+    const Bytes rebuilt = m6502_source::assemble(m6502_source::Cpu::M65C02, source, dir.path());
     CB_CHECK_EQ(rebuilt.size(), file.size());
     CB_CHECK_EQ(rebuilt[10 + 15], 0x3A);   // DEC A
     CB_CHECK_EQ(rebuilt[10 + 16], 0x60);

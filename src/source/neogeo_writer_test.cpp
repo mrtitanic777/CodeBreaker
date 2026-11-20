@@ -77,14 +77,14 @@ CB_TEST("source.neogeo_writer.the_golden_names_what_the_code_touches", [] {
     // the callbacks' jumps in the header.
     const std::string text = golden("neogeo.golden.asm");
     for (const char* line :
-         {"REG_VRAMADDR         equ $3C0000", "CREDIT_CHECK         equ $C00450", "        org $0", "        dc.l $0010F300  ; initial stack pointer",
-          "        dc.l $00C00402  ; reset", "        dc.l vblank  ; vblank", "        dc.b \"NEO-GEO\"  ; magic", "        dc.w $0123  ; NGH number",
-          "        dc.l $00000200  ; Japan settings", "        JMP (user).L", "        JMP (demo_end).L", "user:", "        JSR (CREDIT_CHECK).L", "        MOVE.W #$7,(REG_VRAMADDR).L",
-          "security:", "player_start:", "demo_end:", "        BSR.W user", "vblank:", "        RTE"}) {
+         {".equ REG_VRAMADDR, 0x3c0000", ".equ CREDIT_CHECK, 0xc00450", "        .org 0x0", "        .long 0x0010f300  ; initial stack pointer",
+          "        .long 0x00c00402  ; reset", "        .long vblank  ; vblank", "        .ascii \"NEO-GEO\"  ; magic", "        .half 0x0123  ; NGH number",
+          "        .long 0x00000200  ; Japan settings", "        jmp user.l", "        jmp demo_end.l", "user:", "        jsr CREDIT_CHECK.l", "        move.w #0x7,(REG_VRAMADDR).l",
+          "security:", "player_start:", "demo_end:", "        bsr.w user", "vblank:", "        rte"}) {
         CB_CHECK(text.find(line) != std::string::npos);
     }
     std::size_t longs = 0;
-    for (const std::string_view line : text::lines(text)) longs += line.starts_with("        dc.l ") ? 1 : 0;
+    for (const std::string_view line : text::lines(text)) longs += line.starts_with("        .long ") ? 1 : 0;
     CB_CHECK_EQ(longs, 64u + 6u);   // the vector table, and the header's program size, backup RAM, settings (three) and security code
 });
 
@@ -106,7 +106,7 @@ CB_TEST("source.neogeo_writer.the_second_megabyte_is_written_at_the_bank_window"
     CB_CHECK(r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK_EQ(r.image_bytes, 0x180000u);
-    CB_CHECK(fs::read_text(r.source).find("        org $200000") != std::string::npos);
+    CB_CHECK(fs::read_text(r.source).find("        .org 0x200000") != std::string::npos);
     CB_CHECK(fs::read_file(*r.built) == big);
 });
 
@@ -128,7 +128,7 @@ CB_TEST("source.neogeo_writer.a_shared_handler_is_the_catch_all_and_a_missing_ca
     CB_CHECK(r.same);
     CB_CHECK_EQ(r.functions.at(0x500), "exception");
     CB_CHECK(!r.functions.contains(0x410) || r.functions.at(0x410) != "player_start");
-    CB_CHECK(fs::read_text(r.source).find("        dc.l exception  ; vblank") != std::string::npos);
+    CB_CHECK(fs::read_text(r.source).find("        .long exception  ; vblank") != std::string::npos);
 });
 
 CB_TEST("source.neogeo_writer.a_file_with_no_header_is_refused", [] {

@@ -33,7 +33,6 @@ void rebuild(std::string_view relative, std::size_t functions_at_least) {
     if (const auto keep = fs::get_env("CB_LYNX_KEEP"); keep && !keep->empty()) {   // (look at what was written)
         fs::make_dirs(fs::from_text(*keep));
         fs::write_file(fs::from_text(*keep) / (std::string(relative) + ".s"), fs::read_file(r.source));
-        fs::write_file(fs::from_text(*keep) / (std::string(relative) + ".cfg"), fs::read_file(*r.config));
     }
     CB_CHECK_EQ(r.notes.empty() ? std::string(relative) : r.notes.front(), std::string(relative));   // (why it did not rebuild, when it did not)
     CB_CHECK(r.linked);

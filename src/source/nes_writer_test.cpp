@@ -59,25 +59,28 @@ CB_TEST("source.nes_writer.the_program_comes_back_as_source_that_builds_the_same
     CB_CHECK_EQ(r.image_bytes, 0x4000u);   // the PRG
     CB_CHECK(r.source == dir.path() / "demo.s");
     CB_CHECK(r.built && fs::read_file(*r.built) == image);
-    CB_CHECK(fs::read_file(dir.path() / "demo.chr") == chr_bank());   // the CHR beside the source, which names it
+    CB_CHECK(!r.config);   // (the description's source is the whole cartridge: no linker configuration, no CHR file beside it)
+    CB_CHECK(!std::filesystem::exists(dir.path() / "demo.chr"));
 
     // the head: the hardware by name, labels at the targets, the first name a vector gives
     const std::vector<std::string> lines = lines_of(r.source);
     const std::vector<std::string> head = {
         "; demo.s -- written by CodeBreaker from demo.nes",
         "; mapper 0, 16 KB PRG, 8 KB CHR, horizontal mirroring",
+        "; (6502 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu 6502 --sleigh`; the file is the cartridge's bytes in order)",
         "",
-        "PPUCTRL    = $2000",
-        "PPUSTATUS  = $2002",
+        ".equ PPUCTRL, 0x2000",
+        ".equ PPUSTATUS, 0x2002",
         "",
-        ".segment \"HEADER\"",
-        "        .byte $4E, $45, $53, $1A, $01, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00",
+        "; header",
+        "        .byte 0x4e,0x45,0x53,0x1a,0x01,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00",
         "",
-        ".segment \"BANK0\"",
+        "; BANK0",
+        "        .org 0xc000",
         "",
         "reset:",
         "        SEI",
-        "        LDA #$00",
+        "        LDA #0x0",
         "        STA PPUCTRL",
         "L_C006:",
         "        JSR sub_C00C",
@@ -86,7 +89,7 @@ CB_TEST("source.nes_writer.the_program_comes_back_as_source_that_builds_the_same
         "sub_C00C:",
         "        LDA PPUSTATUS",
         "        BPL sub_C00C",
-        "        LDA D_C020,x",   // an absolute operand that names a line's start gets that line's label
+        "        LDA D_C020,X",   // an absolute operand that names a line's start gets that line's label
         "        RTS",
         "",
         "nmi:",
@@ -94,26 +97,16 @@ CB_TEST("source.nes_writer.the_program_comes_back_as_source_that_builds_the_same
         "",
         "irq:",
         "        RTI",
-        "        .byte $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF",
+        "        .byte 0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff",
         "D_C020:",
-        "        .byte $53, $43, $4F, $52, $45, $01, $02, $03, $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF"};
+        "        .ascii \"SCORE\""};
     CB_CHECK(lines.size() > head.size());
     CB_CHECK(std::equal(head.begin(), head.end(), lines.begin()));
-    // the tail: the last six bytes of the bank as the vectors, then the CHR taken in from its own file
-    const std::vector<std::string> tail = {"        .byte $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF",
-                                           "        .word nmi, reset, irq",
-                                           "",
-                                           ".segment \"CHARS\"",
-                                           "        .incbin \"demo.chr\"",
-                                           ""};
-    CB_CHECK(lines.size() >= tail.size() && std::equal(tail.begin(), tail.end(), lines.end() - static_cast<std::ptrdiff_t>(tail.size())));
-
-    // the linker configuration says where each segment goes
-    CB_CHECK(r.config && *r.config == dir.path() / "demo.cfg");
-    CB_CHECK_EQ(fs::read_text(*r.config),
-                "MEMORY {\n    HEADER: start = $0000, size = $0010, fill = yes, file = %O;\n    PRG0: start = $C000, size = $4000, fill = yes, file = %O;\n"
-                "    CHR: start = $0000, size = $2000, fill = yes, file = %O;\n}\n"
-                "SEGMENTS {\n    HEADER: load = HEADER, type = ro;\n    BANK0: load = PRG0, type = ro;\n    CHARS: load = CHR, type = ro;\n}\n");
+    // the tail: the last six bytes of the bank as the vectors, then the CHR as data from address 0
+    const auto vectors = std::find(lines.begin(), lines.end(), "        .half nmi,reset,irq");
+    CB_CHECK(vectors != lines.end());
+    CB_CHECK(std::find(vectors, lines.end(), "; CHR") != lines.end());
+    CB_CHECK(std::find(vectors, lines.end(), "        .org 0x0000") != lines.end());
 });
 
 CB_TEST("source.nes_writer.writing_twice_gives_the_same_source", [] {
@@ -129,13 +122,10 @@ CB_TEST("source.nes_writer.a_cartridge_without_chr_or_with_a_trainer", [] {
     const Bytes image = ines(prg_bank(), Bytes{}, 0, true);
     const image_writer::Written r = write(formats::nes::parse(image), "plain.nes", dir.path());
     CB_CHECK(r.same);
-    CB_CHECK(!std::filesystem::exists(dir.path() / "plain.chr"));   // no CHR: no file, no segment
+    CB_CHECK(!std::filesystem::exists(dir.path() / "plain.chr"));   // no CHR: no file, no part
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(source.find("CHARS") == std::string::npos);
-    CB_CHECK(source.find(".segment \"TRAINER\"") != std::string::npos);   // the trainer is written ahead of the PRG, and the build brings it back
-    const std::string config = fs::read_text(*r.config);
-    CB_CHECK(config.find("TRAINER: start = $7000, size = $0200") != std::string::npos);
-    CB_CHECK(config.find("CHR:") == std::string::npos);
+    CB_CHECK(source.find("; CHR") == std::string::npos);
+    CB_CHECK(source.find("; trainer\n        .org 0x7000") != std::string::npos);   // the trainer is written ahead of the PRG, and the build brings it back
     CB_CHECK(fs::read_file(*r.built) == image);
 });
 
@@ -161,12 +151,11 @@ CB_TEST("source.nes_writer.a_banked_cartridge_is_written_one_segment_a_bank", []
     const image_writer::Written r = write(formats::nes::parse(image), "banked.nes", dir.path());
     CB_CHECK(r.same);
     const std::string source = fs::read_text(r.source);
-    for (const char* bank : {"BANK0", "BANK1", "BANK2", "BANK3"}) CB_CHECK(source.find(std::format(".segment \"{}\"", bank)) != std::string::npos);
-    CB_CHECK(source.find("        .word nmi, reset, irq") != std::string::npos);   // only the bank at the top has the vectors
+    for (const char* bank : {"BANK0", "BANK1", "BANK2", "BANK3"}) CB_CHECK(source.find(std::format("; {}\n        .org 0x", bank)) != std::string::npos);
+    CB_CHECK(source.find("; BANK3\n        .org 0xc000") != std::string::npos);   // (the fixed bank at the top)
+    CB_CHECK(source.find("; BANK1\n        .org 0x8000") != std::string::npos);
+    CB_CHECK(source.find("        .half nmi,reset,irq") != std::string::npos);   // only the bank at the top has the vectors
     CB_CHECK_EQ(r.functions.size(), 4u);
-    const std::string config = fs::read_text(*r.config);
-    CB_CHECK(config.find("PRG3: start = $C000, size = $4000") != std::string::npos);
-    CB_CHECK(config.find("PRG1: start = $8000, size = $4000") != std::string::npos);
 });
 
 CB_TEST("source.nes_writer.a_file_that_is_not_a_cartridge_is_refused", [] {
@@ -182,7 +171,6 @@ CB_TEST("source.nes_writer.reconstruct_reads_the_file_and_names_the_output_for_i
     const image_writer::Written r = reconstruct(dir.path() / "Game One.nes", dir.path() / "out");
     CB_CHECK(r.same);
     CB_CHECK(r.source == dir.path() / "out" / "Game One.s");
-    CB_CHECK(std::filesystem::exists(dir.path() / "out" / "Game One.cfg"));
 });
 
 CB_TEST("source.nes_writer.the_registers_are_the_documented_ones", [] {

@@ -5,11 +5,11 @@
 #include <format>
 #include <set>
 
-#include "build/dasm_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m6502.hpp"
 #include "source/isa.hpp"
+#include "source/m6502_source.hpp"
 
 namespace cb::source::atari7800_writer {
 
@@ -117,17 +117,20 @@ public:
 
     std::uint8_t byte(std::uint32_t offset) const override { return rom_.data[offset]; }
     std::uint32_t address(std::uint32_t offset) const override { return flow_address(stretch_.bank, stretch_.base + offset - stretch_.offset); }
-    const m6502::Insn* code_at(std::uint32_t offset, std::uint32_t) const override {
+    const m6502::Insn* code_at(std::uint32_t offset, std::uint32_t address) const override {
         const auto it = code_.find(offset);
         if (it == code_.end()) return nullptr;
         if (offset + it->second.size > stretch_.offset + stretch_.size) return nullptr;
         if (offset + it->second.size > rom_.data.size() - 6 && offset < rom_.data.size()) return nullptr;   // (the vectors are data)
+        at_offset_ = offset, at_address_ = address & 0xFFFF;   // (text() of this instruction follows)
         return &it->second;
     }
     std::uint32_t size(const m6502::Insn& insn) const override { return insn.size; }
-    std::string text(const m6502::Insn& insn) const override { return m6502::dasm_text(insn, writes(insn.mnemonic) ? write_names_ : read_names_); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, {".byte", "ds.b", ","}); }
-    std::string label_line(const std::string& name) const override { return name; }
+    std::string text(const m6502::Insn& insn) const override {   // (the description's text, the names put in)
+        return m6502_source::code(m6502_source::Cpu::M6502, ByteView(rom_.data).subspan(at_offset_, insn.size), at_address_,
+                                  writes(insn.mnemonic) ? write_names_ : read_names_);
+    }
+    std::vector<std::string> data_lines(ByteView data) const override { return m6502_source::data_lines(data); }
 
     // The last six bytes of the ROM are the vectors.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
@@ -137,13 +140,14 @@ public:
         std::vector<std::string> words;
         for (const std::uint32_t at : {std::uint32_t{v.nmi}, std::uint32_t{v.reset}, std::uint32_t{v.irq}}) {
             const auto named = labels_.find(flow_address(at >= 0xC000 ? rom_.fixed_bank() : stretch_.bank, at));
-            words.push_back(named != labels_.end() ? named->second : std::format("${:04X}", at));
+            words.push_back(named != labels_.end() ? named->second : std::format("0x{:04x}", at));
         }
-        out_.append("        .word " + text::join(words, ", "));
+        out_.append("        .half " + text::join(words, ","));
         return 6;
     }
 
 private:
+    mutable std::uint32_t at_offset_ = 0, at_address_ = 0;   // (the file offset of the instruction code_at() last gave, and the address it is shown at)
     translate::l2::Assembly& out_;
     const formats::atari7800::Rom& rom_;
     const Stretch& stretch_;
@@ -234,19 +238,16 @@ iw::Written write(const formats::atari7800::Rom& rom, std::string_view file_name
 
     std::vector<std::string> head = {std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                      header_note(rom),
-                                     "; assemble with dasm:  dasm " + stem + ".asm -f3 -o" + stem + ".a78",
-                                     "",
-                                     "        processor 6502",
+                                     "; (6502 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu 6502 --sleigh`; the file is the header, then each stretch in order)",
                                      ""};
     for (const auto& [value, set] : equates) {
-        for (const std::string& name : set) head.push_back(value > 0xFF ? std::format("{:<10} = ${:04X}", name, value) : std::format("{:<10} = ${:02X}", name, value));
+        for (const std::string& name : set) head.push_back(m6502_source::equ(name, value, value > 0xFF ? 4 : 2));
     }
     if (!equates.empty()) head.push_back("");
-    translate::l2::Assembly out(head, "dasm", std::string(file_name));
+    translate::l2::Assembly out(head, "sleigh-6502", std::string(file_name));
     out.part("HEADER", "segment", std::nullopt, formats::atari7800::kHeaderSize);
-    out.append("        ORG $0000");
-    out.append("        RORG $0000");
-    out.extend(iw::commented(iw::data_lines(rom.header, {".byte", "ds.b", ","}), "the A78 header"));
+    out.append("        .org 0x0000");
+    out.extend(iw::commented(m6502_source::data_lines(rom.header), "the A78 header"));
     out.append("");
 
     for (const Stretch& s : parts) {
@@ -269,8 +270,8 @@ iw::Written write(const formats::atari7800::Rom& rom, std::string_view file_name
             write_names[at & 0xFFFF] = label;
         }
         out.part(banked ? std::format("BANK{}", s.bank) : std::string("ROM"), "segment", std::nullopt, s.size);
-        out.append(std::format("        ORG ${:04X}", formats::atari7800::kHeaderSize + s.offset));
-        out.append(std::format("        RORG ${:04X}", s.base));
+        out.append(std::format("; file offset 0x{:04x}", formats::atari7800::kHeaderSize + s.offset));
+        out.append(std::format("        .org 0x{:04x}", s.base));
         A7800Listing listing(out, rom, s, code, labels, read_names, write_names);
         iw::emit<m6502::Insn>(out, s.offset, s.offset + s.size, labels, functions, listing);
         out.append("");
@@ -279,8 +280,7 @@ iw::Written write(const formats::atari7800::Rom& rom, std::string_view file_name
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
     Bytes original = rom.header;
     original.insert(original.end(), rom.data.begin(), rom.data.end());
-    const build::dasm_asm::Assembler assembler(isa::m6502_encoder());
-    iw::assembled(r, [&] { return assembler.build(source, folder); }, original, folder / (stem + ".built.a78"));
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, source, folder); }, original, folder / (stem + ".built.a78"));
     return r;
 }
 

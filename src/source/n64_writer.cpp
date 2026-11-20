@@ -10,11 +10,11 @@
 #include <tuple>
 #include <unordered_map>
 
-#include "build/mips_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/mips.hpp"
 #include "source/isa_r4300.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::n64_writer {
 
@@ -375,7 +375,7 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
         const std::optional<std::string> name = name_of(u.address);
         if (!name) continue;
         immediate[u.at] = "%lo(" + *name + ")";
-        HighHalf candidate{u.address, u.ori, u.ori ? "(" + *name + " >> 16)" : "%hi(" + *name + ")"};
+        HighHalf candidate{u.address, u.ori, u.ori ? "%up(" + *name + ")" : "%hi(" + *name + ")"};
         const auto it = high_half.find(u.lui);
         if (it == high_half.end() || std::tie(candidate.ori, candidate.address) < std::tie(it->second.ori, it->second.address)) high_half[u.lui] = std::move(candidate);
     }
@@ -398,13 +398,13 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
     else if (rom.checksums_match()) crc_note = "CRCs match the program's";
     else crc_note = std::format("CRCs do not match the program's ({:08X} {:08X}); kept as they are", sums->first, sums->second);
     std::vector<std::string> head = {
-        std::format("# {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("# Nintendo 64 ROM \"{}\" ({}{}), {}: entry 0x{:08X}, program at 0x{:08X} ({} bytes), {} functions", h.name, h.game_code, h.country, formats::n64::order_text(rom.order), h.entry,
+        std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
+        std::format("; Nintendo 64 ROM \"{}\" ({}{}), {}: entry 0x{:08X}, program at 0x{:08X} ({} bytes), {} functions", h.name, h.game_code, h.country, formats::n64::order_text(rom.order), h.entry,
                     base, text.size(), functions.size()),
-        std::format("# boot code {}; {}", formats::n64::cic_text(rom.cic), crc_note),
-        std::format("# this source is the ROM in the console's byte order (.z64){}", rom.order == formats::n64::ByteOrder::Z64 ? "" : "; the rebuilt file is made in the file's own order"),
-        ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
+        std::format("; boot code {}; {}", formats::n64::cic_text(rom.cic), crc_note),
+        std::format("; this source is the ROM in the console's byte order (.z64){}", rom.order == formats::n64::ByteOrder::Z64 ? "" : "; the rebuilt file is made in the file's own order"),
+        "; (MIPS syntax as the processor's SLEIGH description writes it: build with `assemble --cpu r4300 --sleigh`)", ""};
+    translate::l2::Assembly out(head, "sleigh-r4300", std::string(file_name));
     out.append("        .set noreorder");
     out.append("        .set noat");
     out.append("");
@@ -417,7 +417,7 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
     const WordNames word_name{&labels};
     const auto field_word = [&](std::size_t at, std::string_view what, bool address) {
         const std::uint32_t v = word_at(file, at);
-        out.append(std::format("        .word {}    # {}", address ? word_name(v) : hex8(v), what));
+        out.append(std::format("        .word {}    ; {}", address ? word_name(v) : hex8(v), what));
     };
     field_word(0x00, "PI bus configuration", false);
     field_word(0x04, "clock rate", false);
@@ -428,19 +428,19 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
     const auto field_bytes = [&](std::size_t at, std::size_t n, std::string_view what) {
         const ByteView part = file.subspan(at, n);
         if (std::ranges::all_of(part, [](std::uint8_t b) { return b == 0; })) {
-            out.append(std::format("        .space {}    # {}", n, what));
+            out.append(std::format("        .space {}    ; {}", n, what));
         } else if (std::ranges::all_of(part, printable)) {
-            out.append(std::format("        .ascii \"{}\"    # {}", as_text(part), what));
+            out.append(std::format("        .ascii \"{}\"    ; {}", as_text(part), what));
         } else {
-            out.append(byte_row(part) + "    # " + std::string(what));
+            out.append(byte_row(part) + "    ; " + std::string(what));
         }
     };
     field_bytes(0x18, 8, "reserved");
     field_bytes(0x20, 20, "name");
     field_bytes(0x34, 7, "reserved");
-    out.append(std::format("        .byte 0x{:02X}    # category", file[0x3B]));
+    out.append(std::format("        .byte 0x{:02X}    ; category", file[0x3B]));
     field_bytes(0x3C, 2, "game code");
-    out.append(std::format("        .byte 0x{:02X}, 0x{:02X}    # country, version", file[0x3E], file[0x3F]));
+    out.append(std::format("        .byte 0x{:02X}, 0x{:02X}    ; country, version", file[0x3E], file[0x3F]));
 
     // the boot code, as data
     out.part("boot", "boot code (IPL3)", std::nullopt, formats::n64::kBootSize - formats::n64::kHeaderSize);
@@ -466,8 +466,13 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
     for (const auto& [a, label] : labels) names_for_text[a] = label;
 
     const auto text_of = [&](const N64Insn& p) {
+        // the description's text, a branch or call by its label, an address half by its expression
         const auto it = immediate.find(p.insn.pc);
-        return it == immediate.end() ? dm::text(p.insn, names_for_text) : dm::text(p.insn, names_for_text, it->second);
+        std::map<std::uint32_t, std::string> by_value;
+        std::vector<std::uint32_t> operands;
+        if (p.insn.target)
+            if (const auto named = names_for_text.find(*p.insn.target); named != names_for_text.end()) by_value[*p.insn.target] = named->second, operands.push_back(*p.insn.target);
+        return risc_source::code("r4300", text.subspan(p.insn.pc - base, 4), p.insn.pc, by_value, operands, it == immediate.end() ? std::string() : it->second);
     };
     std::size_t off = 0;
     while (off < text.size()) {
@@ -509,10 +514,9 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    const build::mips_asm::Assembler assembler(isa::r4300_encoder(), build::mips_asm::ByteOrder::Big);
     const std::string built_name = stem + ".built" + std::string(formats::n64::order_text(rom.order));
     iw::assembled(
-        r, [&] { return formats::n64::Rom::convert(assembler.build(source), formats::n64::ByteOrder::Z64, rom.order); }, rom.in_order(), folder / built_name, "ROM");
+        r, [&] { return formats::n64::Rom::convert(risc_source::assemble("r4300", source, folder), formats::n64::ByteOrder::Z64, rom.order); }, rom.in_order(), folder / built_name, "ROM");
     return r;
 }
 

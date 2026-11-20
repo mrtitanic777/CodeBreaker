@@ -6,11 +6,12 @@
 #include <format>
 #include <set>
 
-#include "build/m68k_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m68k.hpp"
+#include "knowledge/package.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::genesis_writer {
 
@@ -24,7 +25,6 @@ constexpr std::uint32_t kHeaderFrom = 0x100;
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr iw::Spelling kData{"D_", 6};
-const iw::DataSyntax kSyntax{.bytes = "dc.b", .fill = "dcb.b", .fill_separator = ","};
 
 // A field of the header at $100: where it is, how long, what it holds.
 struct HeaderField {
@@ -67,6 +67,13 @@ private:
     ByteView rom_;
 };
 
+// The addresses an instruction's operands name (absolute, PC-relative, long immediates), and how each is named.
+struct Reference {
+    std::uint32_t value;
+    bool immediate;
+};
+std::vector<Reference> references(const m68k::Insn& insn);
+
 class GenesisListing final : public iw::Listing<m68k::Insn> {
 public:
     GenesisListing(translate::l2::Assembly& out, ByteView rom, const std::map<std::uint32_t, m68k::Insn>& code, const decompile::AddressLabels& names)
@@ -79,17 +86,17 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return insn.length; }
-    std::string text(const m68k::Insn& insn) const override { return m68k::text(insn, names_); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::string text(const m68k::Insn& insn) const override { return risc_source::m68k_code(insn, names_); }   // (the description's text, the names put in)
+    std::vector<std::string> data_lines(ByteView data) const override { return risc_source::data_lines(data); }
     // The header's fields, each as data with its name; a text field as its text.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
         const HeaderField* field = header_field(offset);
         if (!field) return 0;
         flush();
         const ByteView bytes = rom_.subspan(offset, field->length);
-        const bool plain = std::ranges::all_of(bytes, [](std::uint8_t b) { return b >= 32 && b < 127 && b != 0x22; });
-        const std::vector<std::string> lines = plain ? std::vector<std::string>{"        dc.b \"" + std::string(as_text(bytes)) + "\""}
-                                                     : iw::data_lines(bytes, kSyntax);
+        const bool plain = std::ranges::all_of(bytes, [](std::uint8_t b) { return b >= 32 && b < 127 && b != 0x22 && b != 0x5C && b != 0x3B; });
+        const std::vector<std::string> lines = plain ? std::vector<std::string>{"        .ascii \"" + std::string(as_text(bytes)) + "\""}
+                                                     : risc_source::data_lines(bytes);
         out_.extend(iw::commented(lines, field->what));
         return field->length;
     }
@@ -101,11 +108,6 @@ private:
     const decompile::AddressLabels& names_;
 };
 
-// The addresses an instruction's operands name (absolute, PC-relative, long immediates), and how each is named.
-struct Reference {
-    std::uint32_t value;
-    bool immediate;
-};
 std::vector<Reference> references(const m68k::Insn& insn) {
     std::vector<Reference> out;
     for (const m68k::Op& o : insn.operands()) {
@@ -126,11 +128,8 @@ std::vector<Reference> references(const m68k::Insn& insn) {
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0xC00000, "VDP_DATA"},   {0xC00004, "VDP_CTRL"},   {0xC00008, "VDP_HVCOUNTER"}, {0xC00011, "PSG"},        {0xA00000, "Z80_RAM"},
-        {0xA04000, "YM2612"},     {0xA10001, "IO_VERSION"}, {0xA10003, "IO_DATA1"},      {0xA10005, "IO_DATA2"},   {0xA10007, "IO_DATA3"},
-        {0xA10009, "IO_CTRL1"},   {0xA1000B, "IO_CTRL2"},   {0xA1000D, "IO_CTRL3"},      {0xA11100, "Z80_BUSREQ"}, {0xA11200, "Z80_RESET"},
-        {0xA14000, "TMSS"},       {0xA130F1, "SRAM_CTRL"}};
+    // config/knowledge/genesis/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("genesis", "hardware");
     return table;
 }
 
@@ -186,8 +185,9 @@ iw::Written write(const formats::genesis::Rom& rom, std::string_view file_name, 
         std::format("; \"{}\" / \"{}\", {}, {} KB ROM{}", h.domestic_name, h.overseas_name, h.serial, data.size() / 1024,
                     rom.smd ? ", from an .smd dump" : ""),
         ""};
-    translate::l2::Assembly out(head, "asm68k", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(std::format("{:<16} equ ${:06X}", hardware().at(a), a));
+    head.insert(head.end() - 1, "; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)");
+    translate::l2::Assembly out(head, "sleigh-m68k", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(risc_source::equ(hardware().at(a), a, 6));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -195,24 +195,23 @@ iw::Written write(const formats::genesis::Rom& rom, std::string_view file_name, 
 
     // the vector table: 64 longs
     out.part("vectors", "vector table", std::nullopt, 0x100);
-    out.append("        org $0");
+    out.append("        .org 0x0");
     for (unsigned i = 0; i < 64; ++i) {
         const std::uint32_t v = static_cast<std::uint32_t>(data[i * 4]) << 24 | static_cast<std::uint32_t>(data[i * 4 + 1]) << 16 |
                                 static_cast<std::uint32_t>(data[i * 4 + 2]) << 8 | data[i * 4 + 3];
-        std::string target = std::format("${:08X}", v);
+        std::string target = std::format("0x{:08x}", v);
         if (i != 0) {
             if (const auto named = labels.find(v); named != labels.end()) target = named->second;
         }
         const std::string what = i == 0 ? "initial stack pointer" : i == 1 ? "reset" : formats::genesis::vector_name(i);
-        out.append("        dc.l " + target + (what.empty() ? std::string() : "  ; " + what));
+        out.append("        .long " + target + (what.empty() ? std::string() : "  ; " + what));
     }
     GenesisListing listing(out, data, code, names_for_text);
     iw::emit<m68k::Insn>(out, kHeaderFrom, limit, labels, functions, listing);
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), data.size());
-    const build::m68k_asm::Assembler assembler(isa::m68k_encoder());
-    iw::assembled(r, [&] { return assembler.build(source); }, data, folder / (stem + ".built.md"));
+    iw::assembled(r, [&] { return risc_source::assemble("m68k", source, folder); }, data, folder / (stem + ".built.md"));
     return r;
 }
 

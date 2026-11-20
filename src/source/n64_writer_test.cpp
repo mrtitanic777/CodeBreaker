@@ -45,31 +45,31 @@ CB_TEST("source.n64_writer.the_source_says_what_the_rom_holds", [] {
     cb::fs::write_file(dir.path() / "game.z64", nt::test_rom());
     const string text = source_of(nw::reconstruct(dir.path() / "game.z64", dir.path() / "out"));
     // the header, field by field
-    CB_CHECK(contains(text, ".word 0x80371240    # PI bus configuration"));
-    CB_CHECK(contains(text, ".word entry    # entry point"));
-    CB_CHECK(contains(text, "# CRC1"));
+    CB_CHECK(contains(text, ".word 0x80371240    ; PI bus configuration"));
+    CB_CHECK(contains(text, ".word entry    ; entry point"));
+    CB_CHECK(contains(text, "; CRC1"));
     CB_CHECK(contains(text, "CRCs not checked"));   // the test ROM is shorter than the megabyte the CRCs cover: they are kept as they are
-    CB_CHECK(contains(text, ".ascii \"N64 LANE TEST       \"    # name"));
-    CB_CHECK(contains(text, ".ascii \"NT\"    # game code"));
+    CB_CHECK(contains(text, ".ascii \"N64 LANE TEST       \"    ; name"));
+    CB_CHECK(contains(text, ".ascii \"NT\"    ; game code"));
     // the boot code is data, with its text found in it
     CB_CHECK(contains(text, "IPL3 STAND-IN FOR THE TESTS"));
     // the program: addresses the code builds are labels or hardware names, the instructions are the R4300's
     CB_CHECK(contains(text, ".org 0x80001000"));
     CB_CHECK(contains(text, "entry:"));
-    CB_CHECK(contains(text, "daddiu $sp, $sp, -32"));
-    CB_CHECK(contains(text, "sd $ra, 24($sp)"));
-    CB_CHECK(contains(text, "lui $a0, %hi(D_"));
-    CB_CHECK(contains(text, "lui $t0, %hi(MI_INTR_MASK)"));
-    CB_CHECK(contains(text, "lw $t1, %lo(MI_INTR_MASK)($t0)"));
+    CB_CHECK(contains(text, "daddiu sp, sp, -0x20"));
+    CB_CHECK(contains(text, "sd ra, 0x18(sp)"));
+    CB_CHECK(contains(text, "lui a0, %hi(D_"));
+    CB_CHECK(contains(text, "lui t0, %hi(MI_INTR_MASK)"));
+    CB_CHECK(contains(text, "lw t1, %lo(MI_INTR_MASK)(t0)"));
     CB_CHECK(contains(text, ".equ MI_INTR_MASK, 0xA430000C"));
     CB_CHECK(contains(text, "VI_ORIGIN"));
     CB_CHECK(contains(text, "PI_STATUS"));
-    CB_CHECK(contains(text, "bnel $t4, $zero, L_"));
-    CB_CHECK(contains(text, "lwc1 $f0, %lo(D_"));
-    CB_CHECK(contains(text, "add.s $f2, $f0, $f0"));
+    CB_CHECK(contains(text, "bnel t4, zero, L_"));
+    CB_CHECK(contains(text, "lwc1 f0, %lo(D_"));
+    CB_CHECK(contains(text, "add.S f2, f0, f0"));
     CB_CHECK(contains(text, "bc1fl L_"));
     CB_CHECK(contains(text, "eret"));
-    CB_CHECK(contains(text, "dsll32 $v0, $a0, 4"));
+    CB_CHECK(contains(text, "dsll32 v0, a0, 0x4"));
     // the data: the string, the table of the four functions as labels, the word that is no instruction, the run of zeros
     CB_CHECK(contains(text, ".asciz \"HELLO, NINTENDO 64\""));
     CB_CHECK(contains(text, ".word 0x3F800000, entry, sub_"));
@@ -92,7 +92,7 @@ CB_TEST("source.n64_writer.a_v64_and_an_n64_file_rebuild_in_their_own_byte_order
         CB_CHECK(cb::fs::read_file(*r.built) == nt::test_rom(order));
         const string text = source_of(r);
         CB_CHECK(contains(text, "the rebuilt file is made in the file's own order"));
-        CB_CHECK(contains(text, ".word 0x80371240    # PI bus configuration"));   // the source is the console's order whatever the file's
+        CB_CHECK(contains(text, ".word 0x80371240    ; PI bus configuration"));   // the source is the console's order whatever the file's
     }
 });
 
@@ -131,5 +131,5 @@ CB_TEST("source.n64_writer.an_edited_program_is_not_the_original", [] {
     const cb::source::image_writer::Written b = nw::reconstruct(dir.path() / "b.z64", dir.path() / "out_b");
     CB_CHECK(a.same && b.same);
     CB_CHECK(cb::fs::read_file(*a.built) != cb::fs::read_file(*b.built));
-    CB_CHECK(contains(source_of(b), "dsll32 $v0, $a0, 5"));
+    CB_CHECK(contains(source_of(b), "dsll32 v0, a0, 0x5"));
 });

@@ -5,11 +5,12 @@
 #include <format>
 #include <set>
 
-#include "build/dasm_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m6502.hpp"
+#include "knowledge/package.hpp"
 #include "source/isa.hpp"
+#include "source/m6502_source.hpp"
 
 namespace cb::source::atari2600_writer {
 
@@ -103,19 +104,20 @@ public:
     std::uint32_t address(std::uint32_t offset) const override {
         return flow_address(bank_, rom_.window + static_cast<std::uint32_t>(offset - bank_ * rom_.bank_size));
     }
-    const m6502::Insn* code_at(std::uint32_t offset, std::uint32_t) const override {
+    const m6502::Insn* code_at(std::uint32_t offset, std::uint32_t address) const override {
         const auto it = code_.find(offset);
         if (it == code_.end()) return nullptr;
         const std::uint32_t end = static_cast<std::uint32_t>((bank_ + 1) * rom_.bank_size);
         if (offset + it->second.size > end - 4) return nullptr;   // (the vectors are data)
+        at_offset_ = offset, at_address_ = address & 0xFFFF;   // (text() of this instruction follows)
         return &it->second;
     }
     std::uint32_t size(const m6502::Insn& insn) const override { return insn.size; }
-    std::string text(const m6502::Insn& insn) const override {
-        return m6502::dasm_text(insn, writes(insn.mnemonic) ? write_names_ : read_names_);
+    std::string text(const m6502::Insn& insn) const override {   // (the description's text, the names put in)
+        return m6502_source::code(m6502_source::Cpu::M6502, ByteView(rom_.data).subspan(at_offset_, insn.size), at_address_,
+                                  writes(insn.mnemonic) ? write_names_ : read_names_);
     }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, {".byte", "ds.b", ","}); }
-    std::string label_line(const std::string& name) const override { return name; }
+    std::vector<std::string> data_lines(ByteView data) const override { return m6502_source::data_lines(data); }
 
     // The last four bytes of a bank are the vectors.
     std::uint32_t special(std::uint32_t offset, std::uint32_t address, const iw::Flush& flush) override {
@@ -125,14 +127,15 @@ public:
         std::vector<std::string> words;
         for (const std::uint32_t at : {std::uint32_t{v.reset}, std::uint32_t{v.irq}}) {
             const auto named = labels_.find(flow_address(bank_, at));
-            words.push_back(named != labels_.end() ? named->second : std::format("${:04X}", at));
+            words.push_back(named != labels_.end() ? named->second : std::format("0x{:04x}", at));
         }
-        out_.append("        .word " + text::join(words, ", "));
+        out_.append("        .half " + text::join(words, ","));
         (void)address;
         return 4;
     }
 
 private:
+    mutable std::uint32_t at_offset_ = 0, at_address_ = 0;   // (the file offset of the instruction code_at() last gave, and the window address it is shown at)
     translate::l2::Assembly& out_;
     const formats::atari2600::Rom& rom_;
     std::size_t bank_;
@@ -147,27 +150,18 @@ bool absolute_mode(m6502::Mode mode) { return mode == m6502::Mode::Abs || mode =
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& tia_write() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x00, "VSYNC"},  {0x01, "VBLANK"}, {0x02, "WSYNC"},  {0x03, "RSYNC"},  {0x04, "NUSIZ0"}, {0x05, "NUSIZ1"}, {0x06, "COLUP0"}, {0x07, "COLUP1"},
-        {0x08, "COLUPF"}, {0x09, "COLUBK"}, {0x0A, "CTRLPF"}, {0x0B, "REFP0"},  {0x0C, "REFP1"},  {0x0D, "PF0"},    {0x0E, "PF1"},    {0x0F, "PF2"},
-        {0x10, "RESP0"},  {0x11, "RESP1"},  {0x12, "RESM0"},  {0x13, "RESM1"},  {0x14, "RESBL"},  {0x15, "AUDC0"},  {0x16, "AUDC1"},  {0x17, "AUDF0"},
-        {0x18, "AUDF1"},  {0x19, "AUDV0"},  {0x1A, "AUDV1"},  {0x1B, "GRP0"},   {0x1C, "GRP1"},   {0x1D, "ENAM0"},  {0x1E, "ENAM1"},  {0x1F, "ENABL"},
-        {0x20, "HMP0"},   {0x21, "HMP1"},   {0x22, "HMM0"},   {0x23, "HMM1"},   {0x24, "HMBL"},   {0x25, "VDELP0"}, {0x26, "VDELP1"}, {0x27, "VDELBL"},
-        {0x28, "RESMP0"}, {0x29, "RESMP1"}, {0x2A, "HMOVE"},  {0x2B, "HMCLR"},  {0x2C, "CXCLR"}};
+    // config/knowledge/atari2600/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari2600", "tia_write");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& tia_read() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x00, "CXM0P"},  {0x01, "CXM1P"},  {0x02, "CXP0FB"}, {0x03, "CXP1FB"}, {0x04, "CXM0FB"}, {0x05, "CXM1FB"}, {0x06, "CXBLPF"},
-        {0x07, "CXPPMM"}, {0x08, "INPT0"},  {0x09, "INPT1"},  {0x0A, "INPT2"},  {0x0B, "INPT3"},  {0x0C, "INPT4"},  {0x0D, "INPT5"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari2600", "tia_read");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& riot() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x280, "SWCHA"}, {0x281, "SWACNT"}, {0x282, "SWCHB"},  {0x283, "SWBCNT"},  {0x284, "INTIM"},
-        {0x285, "TIMINT"}, {0x294, "TIM1T"}, {0x295, "TIM8T"},  {0x296, "TIM64T"},  {0x297, "T1024T"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari2600", "riot");
     return table;
 }
 
@@ -220,15 +214,13 @@ iw::Written write(const formats::atari2600::Rom& rom, std::string_view file_name
     std::vector<std::string> head = {std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                      std::format("; Atari 2600, {} bytes, bank switching {}, {} bank{}", rom.data.size(), formats::atari2600::to_string(rom.scheme),
                                                  rom.bank_count(), banked ? "s" : ""),
-                                     "; assemble with dasm:  dasm " + stem + ".asm -f3 -o" + stem + ".a26",
-                                     "",
-                                     "        processor 6502",
+                                     "; (6502 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu 6502 --sleigh`; each bank is written at the address the 6507 sees it)",
                                      ""};
     for (const auto& [value, set] : equates) {
-        for (const std::string& name : set) head.push_back(value > 0xFF ? std::format("{:<10} = ${:04X}", name, value) : std::format("{:<10} = ${:02X}", name, value));
+        for (const std::string& name : set) head.push_back(m6502_source::equ(name, value, value > 0xFF ? 4 : 2));
     }
     if (!equates.empty()) head.push_back("");
-    translate::l2::Assembly out(head, "dasm", std::string(file_name));
+    translate::l2::Assembly out(head, "sleigh-6502", std::string(file_name));
 
     // the names of the registers and the labels by address, per bank, for the instruction text (a label wins)
     for (std::size_t b = 0; b < rom.bank_count(); ++b) {
@@ -249,8 +241,8 @@ iw::Written write(const formats::atari2600::Rom& rom, std::string_view file_name
             write_names[static_cast<std::uint16_t>(at & 0xFFFF)] = label;
         }
         out.part(std::format("BANK{}", b), "segment", std::nullopt, rom.bank_size);
-        out.append(std::format("        ORG ${:04X}", b * rom.bank_size));
-        out.append(std::format("        RORG ${:04X}", rom.window));
+        out.append(std::format("; bank {} (file offset 0x{:04x})", b, b * rom.bank_size));
+        out.append(std::format("        .org 0x{:04x}", rom.window));
         A2600Listing listing(out, rom, b, code, labels, read_names, write_names);
         iw::emit<m6502::Insn>(out, static_cast<std::uint32_t>(b * rom.bank_size), static_cast<std::uint32_t>((b + 1) * rom.bank_size), labels, functions,
                               listing);
@@ -258,8 +250,7 @@ iw::Written write(const formats::atari2600::Rom& rom, std::string_view file_name
     }
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    const build::dasm_asm::Assembler assembler(isa::m6502_encoder());
-    iw::assembled(r, [&] { return assembler.build(source, folder); }, rom.data, folder / (stem + ".built.a26"));
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, source, folder); }, rom.data, folder / (stem + ".built.a26"));
     return r;
 }
 

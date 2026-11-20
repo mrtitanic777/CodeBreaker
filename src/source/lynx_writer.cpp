@@ -7,11 +7,11 @@
 #include <map>
 #include <set>
 
-#include "build/m6502_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m6502.hpp"
 #include "source/isa_65xx.hpp"
+#include "source/m6502_source.hpp"
 
 namespace cb::source::lynx_writer {
 
@@ -23,7 +23,6 @@ namespace {
 
 constexpr iw::Spelling kSub{"sub_", 4};
 constexpr iw::Spelling kLocal{"L_", 4};
-const iw::DataSyntax kData{".byte", ".res", ", "};
 
 bool absolute_mode(m6502::Mode mode) { return mode == m6502::Mode::Abs || mode == m6502::Mode::Abx || mode == m6502::Mode::Aby; }
 
@@ -104,34 +103,27 @@ public:
 
     std::uint8_t byte(std::uint32_t offset) const override { return program_.file[offset]; }
     std::uint32_t address(std::uint32_t offset) const override { return piece_.address + offset - piece_.offset; }
-    const m6502::Insn* code_at(std::uint32_t offset, std::uint32_t) const override {
+    const m6502::Insn* code_at(std::uint32_t offset, std::uint32_t address) const override {
         if (!flow_.shown_at(piece_, offset)) return nullptr;
         const auto it = code_.find(offset);
         if (it == code_.end() || offset + it->second.size > piece_.offset + piece_.size) return nullptr;
+        at_offset_ = offset, at_address_ = address;   // (text() of this instruction follows)
         return &it->second;
     }
     std::uint32_t size(const m6502::Insn& insn) const override { return insn.size; }
-    std::string text(const m6502::Insn& insn) const override { return m6502::text(insn, names_); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kData); }
+    std::string text(const m6502::Insn& insn) const override {   // (the 65C02 description's text, the names put in)
+        return m6502_source::code(m6502_source::Cpu::M65C02, ByteView(program_.file).subspan(at_offset_, insn.size), at_address_, names_);
+    }
+    std::vector<std::string> data_lines(ByteView data) const override { return m6502_source::data_lines(data); }
 
 private:
+    mutable std::uint32_t at_offset_ = 0, at_address_ = 0;   // (the file offset of the instruction code_at() last gave, and the address it is shown at)
     const lynx::Program& program_;
     const Piece& piece_;
     const LynxFlow& flow_;
     const std::map<std::uint32_t, m6502::Insn>& code_;
     const decompile::AddressLabels& names_;
 };
-
-std::string link_config(const std::vector<Piece>& pieces) {
-    std::vector<std::string> cfg = {"MEMORY {"};
-    for (const Piece& p : pieces) {
-        cfg.push_back(std::format("    {}: start = ${:04X}, size = ${:04X}, fill = yes, file = %O;", p.area, p.kind == Piece::Kind::Code ? p.address : 0, p.size));
-    }
-    cfg.insert(cfg.end(), {"}", "SEGMENTS {"});
-    for (const Piece& p : pieces) cfg.push_back(std::format("    {}: load = {}, type = ro;", p.area, p.area));
-    cfg.push_back("}");
-    return text::join(cfg, "\n") + "\n";
-}
 
 std::string header_comment(const lynx::Program& p) {
     if (p.kind == lynx::Kind::Bs93) {
@@ -182,11 +174,11 @@ iw::Written write(const lynx::Program& program, std::string_view file_name, cons
                                          ? std::format("; Atari Lynx cartridge \"{}\" ({}): {} encrypted first-stage block(s), {} loaded segment(s)", program.name, program.manufacturer,
                                                        program.encrypted_blocks, program.segments.size())
                                          : std::format("; Atari Lynx BS93 object: {} bytes at ${:04X}", program.block_length - lynx::kBs93Header, program.load_address),
-                                     "; the file in order: each segment below is a stretch of it; code is linked at the RAM address its loader copies it to", "",
-                                     "        .setcpu \"65SC02\"", ""};
-    for (const std::uint32_t a : used_registers) head.push_back(std::format("{:<10} = ${:04X}", lynx::registers().at(a), a));
+                                     "; the file in order: each segment below is a stretch of it; code is written at the RAM address its loader copies it to",
+                                     "; (65C02 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu 65c02 --sleigh`)", ""};
+    for (const std::uint32_t a : used_registers) head.push_back(m6502_source::equ(lynx::registers().at(a), a, 4));
     if (!used_registers.empty()) head.push_back("");
-    translate::l2::Assembly out(head, "ca65", std::string(file_name));
+    translate::l2::Assembly out(head, "sleigh-65c02", std::string(file_name));
 
     decompile::AddressLabels names_for_text;   // the registers and the labels: a label wins
     for (const std::uint32_t a : used_registers) names_for_text[a] = lynx::registers().at(a);
@@ -194,11 +186,12 @@ iw::Written write(const lynx::Program& program, std::string_view file_name, cons
 
     for (const Piece& piece : pieces) {
         out.part(piece.area, "segment", std::nullopt, piece.size);
-        out.append(std::format(".segment \"{}\"", piece.area));
+        out.append(std::format("; {} (file offset 0x{:04x})", piece.area, piece.offset));
         if (piece.kind == Piece::Kind::Header) {
             out.append(header_comment(program));
-            out.extend(iw::data_lines(ByteView(program.file).subspan(piece.offset, piece.size), kData));
+            out.extend(m6502_source::data_lines(ByteView(program.file).subspan(piece.offset, piece.size)));
         } else if (piece.kind == Piece::Kind::Code) {
+            out.append(std::format("        .org 0x{:04x}", piece.address));
             iw::Names mine;   // the labels of the addresses this segment shows
             for (const auto& [a, label] : labels) {
                 if (a < lynx::kRamEnd && a >= piece.address && a < piece.address + piece.size && flow.shown_at(piece, piece.offset + (a - piece.address))) mine[a] = label;
@@ -210,22 +203,17 @@ iw::Written write(const lynx::Program& program, std::string_view file_name, cons
                 out.append(std::format("; the boot ROM's first stage: {} count byte and {} encrypted block(s) of {} bytes, decrypted to ${:04X}", 1, program.encrypted_blocks,
                                        lynx::kEncryptedBlock, lynx::kStage1Address));
             }
-            out.extend(iw::data_lines(ByteView(program.file).subspan(piece.offset, piece.size), kData));
+            out.extend(m6502_source::data_lines(ByteView(program.file).subspan(piece.offset, piece.size)));
         }
         out.append("");
     }
     const std::string source = iw::text(out) + "\n";
-    const std::string config = link_config(pieces);
-    const std::filesystem::path config_path = folder / (stem + ".cfg");
-    fs::write_file(config_path, as_bytes(config));
 
     std::size_t code_total = 0;
     for (const auto& entry : code) code_total += entry.second.size;
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, code_total, program.file.size());
-    r.config = config_path;
-    const build::m6502_asm::Assembler assembler(isa::m65sc02_encoder());
     const std::string extension = program.kind == lynx::Kind::Cartridge ? ".built.lnx" : ".built.o";
-    iw::assembled(r, [&] { return assembler.build(source, config, folder); }, program.file, folder / (stem + extension));
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M65C02, source, folder); }, program.file, folder / (stem + extension));
     return r;
 }
 

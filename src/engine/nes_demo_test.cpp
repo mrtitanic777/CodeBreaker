@@ -257,7 +257,7 @@ CB_TEST("engine.nes_demo.the_source_rebuilds_the_cartridge", [] {
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     const std::string text = cb::fs::read_text(r.source);
-    for (const char* want : {"reset:", "nmi:", "JSR sub_C04F", "BIT PPUSTATUS", "STA PPUADDR", "LDA D_C077,x", ".word nmi, reset, irq"})
+    for (const char* want : {"reset:", "nmi:", "JSR sub_C04F", "BIT PPUSTATUS", "STA PPUADDR", "LDA D_C077,X", ".half nmi,reset,irq"})
         CB_CHECK(text.find(want) != std::string::npos);
 });
 

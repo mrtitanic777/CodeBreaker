@@ -7,11 +7,11 @@
 #include <format>
 #include <set>
 
-#include "build/m68k_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m68k.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::jaguar_writer {
 
@@ -24,7 +24,6 @@ namespace {
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr iw::Spelling kData{"D_", 6};
-const iw::DataSyntax kSyntax{.bytes = "dc.b", .fill = "dcb.b", .fill_separator = ","};
 
 // Flow runs through the segments at even addresses.
 class JaguarFlow final : public iw::CodeModel<m68k::Insn> {
@@ -66,22 +65,22 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return insn.length; }
-    std::string text(const m68k::Insn& insn) const override { return m68k::text(insn, names_); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::string text(const m68k::Insn& insn) const override { return risc_source::m68k_code(insn, names_); }   // (the description's text, the names put in)
+    std::vector<std::string> data_lines(ByteView data) const override { return risc_source::data_lines(data); }
 
     // A cartridge's boot signature and its header: the flags long and the start address.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
         if (program_.kind != jag::Kind::Cartridge) return 0;
         if (offset == 0) {
             flush();
-            out_.extend(iw::commented(iw::data_lines(ByteView(program_.file).first(jag::kHeaderAt), kSyntax), "the boot signature"));
+            out_.extend(iw::commented(risc_source::data_lines(ByteView(program_.file).first(jag::kHeaderAt)), "the boot signature"));
             return static_cast<std::uint32_t>(jag::kHeaderAt);
         }
         if (offset == jag::kHeaderAt) {
             flush();
-            out_.append(std::format("        dc.l ${:08X}  ; header flags", program_.header_flags));
+            out_.append(std::format("        .long 0x{:08x}  ; header flags", program_.header_flags));
             const auto named = labels_.find(program_.entry);
-            out_.append("        dc.l " + (named != labels_.end() ? named->second : std::format("${:08X}", program_.entry)) + "  ; start address");
+            out_.append("        .long " + (named != labels_.end() ? named->second : std::format("0x{:08x}", program_.entry)) + "  ; start address");
             return 8;
         }
         return 0;
@@ -118,13 +117,16 @@ std::vector<Reference> references(const m68k::Insn& insn) {
     return out;
 }
 
-// What the assembled image (from address 0) makes of the file: a cartridge is the bytes from $800000; a COFF is the original with each section's bytes replaced.
+// What the assembled image makes of the file: the segments' bytes follow one another in the order of their addresses (the order they are written in); a
+// cartridge is those bytes, a COFF is the original with each section's bytes replaced.
 Bytes rebuilt_file(const jag::Program& program, const Bytes& image) {
     Bytes out = program.file;
-    const auto copy = [&](const jag::Segment& s) {
-        for (std::uint32_t i = 0; i < s.size; ++i) out[s.offset + i] = s.address + i < image.size() ? image[s.address + i] : 0;
-    };
-    for (const jag::Segment& s : program.segments) copy(s);
+    std::vector<jag::Segment> order = program.segments;
+    std::sort(order.begin(), order.end(), [](const jag::Segment& a, const jag::Segment& b) { return a.address < b.address; });
+    std::size_t at = 0;
+    for (const jag::Segment& s : order) {
+        for (std::uint32_t i = 0; i < s.size; ++i, ++at) out[s.offset + i] = at < image.size() ? image[at] : 0;
+    }
     return out;
 }
 
@@ -184,8 +186,9 @@ iw::Written write(const jag::Program& program, std::string_view file_name, const
     std::vector<std::string> head = {std::format("; {}.asm -- written by CodeBreaker from {}", stem, base_name),
                                      std::format("; Atari Jaguar {}, {} bytes, start ${:06X}", cartridge ? "cartridge" : "COFF executable", program.file.size(), program.entry),
                                      ""};
-    translate::l2::Assembly out(head, "asm68k", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(std::format("{:<16} equ ${:06X}", hardware().at(a), a));
+    head.insert(head.end() - 1, "; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)");
+    translate::l2::Assembly out(head, "sleigh-m68k", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(risc_source::equ(hardware().at(a), a, 6));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -195,7 +198,7 @@ iw::Written write(const jag::Program& program, std::string_view file_name, const
     std::sort(order.begin(), order.end(), [](const jag::Segment& a, const jag::Segment& b) { return a.address < b.address; });
     for (const jag::Segment& s : order) {
         out.part(s.name.empty() ? "segment" : s.name, "segment", std::nullopt, s.size);
-        out.append(std::format("        org ${:06X}", s.address));
+        out.append(std::format("        .org 0x{:06x}", s.address));
         JaguarListing listing(out, program, s, code, labels, names_for_text);
         iw::emit<m68k::Insn>(out, s.offset, s.offset + s.size, labels, functions, listing);
         out.append("");
@@ -203,9 +206,8 @@ iw::Written write(const jag::Program& program, std::string_view file_name, const
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), program.file.size());
-    const build::m68k_asm::Assembler assembler(isa::m68k_encoder());
     const std::string extension = cartridge ? ".j64" : ".cof";
-    iw::assembled(r, [&] { return rebuilt_file(program, assembler.build(source)); }, program.file, folder / (stem + ".built" + extension));
+    iw::assembled(r, [&] { return rebuilt_file(program, risc_source::assemble("m68k", source, folder)); }, program.file, folder / (stem + ".built" + extension));
     return r;
 }
 

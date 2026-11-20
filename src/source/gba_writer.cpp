@@ -10,11 +10,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "build/arm_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/arm.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::gba_writer {
 
@@ -294,20 +294,20 @@ void header_field(translate::l2::Assembly& out, ByteView rom, std::size_t at, st
 // The header from $04 to $BF, field by field.
 void header_lines(translate::l2::Assembly& out, const gba::Rom& rom) {
     const ByteView b = rom.data;
-    out.append("        @ the Nintendo logo");
+    out.append("        ; the Nintendo logo");
     for (std::size_t at = 4; at < 0xA0; at += 12) out.append(byte_row(b.subspan(at, 12)));
-    out.append("        @ the title");
+    out.append("        ; the title");
     header_field(out, b, 0xA0, 12);
-    out.append("        @ the game code and the maker code");
+    out.append("        ; the game code and the maker code");
     header_field(out, b, 0xAC, 4);
     header_field(out, b, 0xB0, 2);
-    out.append(std::format("        .byte 0x{:02X}    @ the fixed value", b[0xB2]));
-    out.append(std::format("        .byte 0x{:02X}    @ the main unit code", b[0xB3]));
-    out.append(std::format("        .byte 0x{:02X}    @ the device type", b[0xB4]));
+    out.append(std::format("        .byte 0x{:02X}    ; the fixed value", b[0xB2]));
+    out.append(std::format("        .byte 0x{:02X}    ; the main unit code", b[0xB3]));
+    out.append(std::format("        .byte 0x{:02X}    ; the device type", b[0xB4]));
     if (std::ranges::all_of(b.subspan(0xB5, 7), [](std::uint8_t v) { return v == 0; })) out.append("        .space 7");
     else out.append(byte_row(b.subspan(0xB5, 7)));
-    out.append(std::format("        .byte 0x{:02X}    @ the software version", b[0xBC]));
-    out.append(std::format("        .byte 0x{:02X}    @ the header checksum", b[0xBD]));
+    out.append(std::format("        .byte 0x{:02X}    ; the software version", b[0xBC]));
+    out.append(std::format("        .byte 0x{:02X}    ; the header checksum", b[0xBD]));
     if (std::ranges::all_of(b.subspan(0xBE, 2), [](std::uint8_t v) { return v == 0; })) out.append("        .space 2");
     else out.append(byte_row(b.subspan(0xBE, 2)));
 }
@@ -454,25 +454,27 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
             if (const auto t = value_text(v)) word_names[a] = *t;
     }
 
-    // the text of each instruction, kept only when it assembles back to the instruction's bytes
-    decompile::AddressLabels address_labels;
-    decompile::NameLabels name_values;
-    for (const auto& [a, n] : labels) {
-        address_labels[a] = n;
-        name_values[n] = a;
-    }
-    for (const auto& [n, v] : equates) name_values[n] = v;
+    // the text of each instruction: the description's, with the branch's label put in, kept only when it assembles back to the instruction's bytes
     std::set<std::uint32_t> as_data;   // the instructions whose text would not assemble to their bytes
     std::map<std::uint32_t, std::string> instruction_text;
     for (const auto& [key, g] : code) {
-        std::string t = da::text(g.insn, address_labels);
-        bool same = false;
-        try {
-            const Bytes built = da::assemble(t, key, name_values);
-            same = built.size() == g.insn.length && std::equal(built.begin(), built.end(), g.insn.raw.begin());
-        } catch (const Error&) {
+        const char* cpu = g.insn.thumb() ? "thumb" : "arm";
+        const std::optional<std::string> said = risc_source::described(cpu, g.insn.bytes(), g.insn.pc);
+        std::string t;
+        if (said) {
+            std::map<std::uint32_t, std::string> by_value;
+            std::vector<std::uint32_t> operands;
+            if (g.insn.target) {
+                const std::uint32_t real = *g.insn.target & ~1u;
+                if (const auto named = labels.find(real); named != labels.end()) by_value[real] = named->second, operands.push_back(real);
+            }
+            if (const auto word = literal_address(g.insn))   // (a PC-relative load names the word it reads)
+                if (const auto named = labels.find(*word); named != labels.end()) by_value[*word] = named->second, operands.push_back(*word);
+            t = risc_source::code(cpu, g.insn.bytes(), g.insn.pc, by_value, operands);
+        } else {
+            as_data.insert(key);
+            t = risc_source::read_text(cpu, g.insn.bytes(), g.insn.pc).value_or("?");
         }
-        if (!same) as_data.insert(key);
         instruction_text[key] = std::move(t);
     }
 
@@ -489,12 +491,10 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
     // the source ----------------------------------------------------------------------------------------------------------------
     const gba::Header& h = rom.header;
     std::vector<std::string> head = {
-        std::format("@ {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("@ Game Boy Advance cartridge \"{}\" ({}): entry 0x{:08X}, {} bytes, {} functions", h.title, h.game_code, base, image.size(), functions.size()), ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
-    out.append("        .syntax unified");
-    out.append("        .cpu arm7tdmi");
-    out.append("");
+        std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
+        std::format("; Game Boy Advance cartridge \"{}\" ({}): entry 0x{:08X}, {} bytes, {} functions", h.title, h.game_code, base, image.size(), functions.size()),
+        "; (ARM syntax as the processor's SLEIGH description writes it: build with `assemble --cpu arm --sleigh`; `.context TMode=1` is Thumb)", ""};
+    translate::l2::Assembly out(head, "sleigh-arm", std::string(file_name));
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
     out.part("rom", "cartridge", std::nullopt);
@@ -538,7 +538,7 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
             const int wanted = insn.thumb() ? 1 : 0;
             if (as_data.contains(key)) {
                 // the bits, in pieces small enough to put a label between (an instruction another path of the code overlaps)
-                const std::string comment = "  @ " + instruction_text.at(key);
+                const std::string comment = "  ; " + instruction_text.at(key);
                 unsigned step = insn.length;
                 for (unsigned k = 1; k < insn.length; ++k)
                     if (labels.contains(addr + k)) step = std::min(step, k % 2 ? 1u : 2u);
@@ -548,15 +548,15 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
                     const auto raw16 = [&](unsigned at) { return static_cast<unsigned>(insn.raw[at] | insn.raw[at + 1] << 8); };
                     std::string line;
                     if (step == 1) line = std::format("        .byte 0x{:02X}", insn.raw[k]);
-                    else if (step == 2) line = std::format("        .hword 0x{:04X}", raw16(k));
-                    else if (insn.length == 2) line = std::format("        .hword 0x{:04X}", raw16(0));
-                    else if (insn.thumb()) line = std::format("        .hword 0x{:04X}, 0x{:04X}", raw16(0), raw16(2));
+                    else if (step == 2) line = std::format("        .half 0x{:04X}", raw16(k));
+                    else if (insn.length == 2) line = std::format("        .half 0x{:04X}", raw16(0));
+                    else if (insn.thumb()) line = std::format("        .half 0x{:04X}, 0x{:04X}", raw16(0), raw16(2));
                     else line = std::format("        .word 0x{:08X}", insn.word);
                     out.append(k == 0 ? line + comment : line);
                 }
             } else {
                 if (mode != wanted) {
-                    out.append(wanted ? "        .thumb" : "        .arm");
+                    out.append(wanted ? "        .context TMode=1" : "        .context TMode=0");
                     mode = wanted;
                 }
                 out.append("        " + instruction_text.at(key));
@@ -576,8 +576,7 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image.size());
-    const build::arm_asm::Assembler assembler(isa::arm_encoder());
-    iw::assembled(r, [&] { return assembler.build(source); }, image, folder / (stem + ".built.gba"), "ROM");
+    iw::assembled(r, [&] { return risc_source::assemble("arm", source, folder); }, image, folder / (stem + ".built.gba"), "ROM");
     return r;
 }
 

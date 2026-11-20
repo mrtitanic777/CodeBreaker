@@ -103,15 +103,15 @@ CB_TEST("source.genesis_writer.the_golden_names_what_the_code_touches", [] {
     // a long immediate that is the start of a line is a data label, a loop to itself a local label.
     const std::string text = golden("genesis.golden.asm");
     for (const char* line :
-         {"VDP_CTRL         equ $C00004", "        org $0", "        dc.l $00FF0000  ; initial stack pointer", "        dc.l reset  ; reset", "        dc.l vblank  ; vblank",
-          "        dc.l $00000000  ; bus_error", "        dc.b \"SEGA MEGA DRIVE \"  ; system", "        dc.b $12,$34  ; checksum", "reset:",
-          "        MOVE.W #$80,(VDP_CTRL).L", "        JSR (sub_000220).L", "L_00020E:", "        BRA.S L_00020E", "sub_000220:",
-          "        MOVEA.L #D_000400,A0", "vblank:", "        RTE", "D_000400:"}) {
+         {".equ VDP_CTRL, 0xc00004", "        .org 0x0", "        .long 0x00ff0000  ; initial stack pointer", "        .long reset  ; reset", "        .long vblank  ; vblank",
+          "        .long 0x00000000  ; bus_error", "        .ascii \"SEGA MEGA DRIVE \"  ; system", "        .byte 0x12,0x34  ; checksum", "reset:",
+          "        move.w #0x80,(VDP_CTRL).l", "        jsr sub_000220.l", "L_00020E:", "        bra.b L_00020E", "sub_000220:",
+          "        movea.l #D_000400,A0", "vblank:", "        rte", "D_000400:"}) {
         CB_CHECK(text.find(line) != std::string::npos);
     }
-    // sixty-four longs between `org $0` and the header, whatever they hold
+    // sixty-four longs between `.org 0x0` and the header, whatever they hold
     std::size_t longs = 0;
-    for (const std::string_view line : text::lines(text)) longs += line.starts_with("        dc.l ") ? 1 : 0;
+    for (const std::string_view line : text::lines(text)) longs += line.starts_with("        .long ") ? 1 : 0;
     CB_CHECK_EQ(longs, 64u);
 });
 
@@ -125,8 +125,8 @@ CB_TEST("source.genesis_writer.a_handler_many_vectors_share_is_the_catch_all", [
     CB_CHECK(r.same);
     CB_CHECK_EQ(r.functions.at(0x300), "exception");
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(source.find("        dc.l exception  ; bus_error") != std::string::npos);
-    CB_CHECK(source.find("        dc.l exception  ; vblank") != std::string::npos);
+    CB_CHECK(source.find("        .long exception  ; bus_error") != std::string::npos);
+    CB_CHECK(source.find("        .long exception  ; vblank") != std::string::npos);
 });
 
 CB_TEST("source.genesis_writer.a_handler_one_vector_names_takes_its_name_and_the_reset_wins_a_shared_one", [] {

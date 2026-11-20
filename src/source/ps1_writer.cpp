@@ -9,11 +9,11 @@
 #include <tuple>
 #include <unordered_map>
 
-#include "build/mips_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/mips.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::ps1_writer {
 
@@ -362,7 +362,7 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
         const std::optional<std::string> name = name_of(u.address);
         if (!name) continue;
         immediate[u.at] = "%lo(" + *name + ")";
-        HighHalf candidate{u.address, u.ori, u.ori ? "(" + *name + " >> 16)" : "%hi(" + *name + ")"};
+        HighHalf candidate{u.address, u.ori, u.ori ? "%up(" + *name + ")" : "%hi(" + *name + ")"};
         const auto it = high_half.find(u.lui);
         if (it == high_half.end() || std::tie(candidate.ori, candidate.address) < std::tie(it->second.ori, it->second.address)) high_half[u.lui] = std::move(candidate);
     }
@@ -380,10 +380,10 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
     // the source ----------------------------------------------------------------------------------------------------------------
     const formats::psx::Header& h = exe.header;
     std::vector<std::string> head = {
-        std::format("# {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("# PlayStation executable: entry 0x{:08X}, program at 0x{:08X} ({} bytes), {} functions", h.pc0, base, text.size(), functions.size()),
-        ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
+        std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
+        std::format("; PlayStation executable: entry 0x{:08X}, program at 0x{:08X} ({} bytes), {} functions", h.pc0, base, text.size(), functions.size()),
+        "; (MIPS syntax as the processor's SLEIGH description writes it: build with `assemble --cpu mips --sleigh`)", ""};
+    translate::l2::Assembly out(head, "sleigh-mips", std::string(file_name));
     out.append("        .set noreorder");
     out.append("        .set noat");
     out.append("");
@@ -396,7 +396,7 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
     const WordNames word_name{&labels};
     const auto field_word = [&](std::size_t at, std::string_view what, bool address) {
         const std::uint32_t v = word_at(file, at);
-        out.append(std::format("        .word {}    # {}", address ? word_name(v) : hex8(v), what));
+        out.append(std::format("        .word {}    ; {}", address ? word_name(v) : hex8(v), what));
     };
     out.append("        .ascii \"PS-X EXE\"");
     if (std::ranges::all_of(file.subspan(8, 8), [](std::uint8_t b) { return b == 0; })) out.append("        .space 8");
@@ -433,8 +433,13 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
     for (const auto& [a, label] : labels) names_for_text[a] = label;
 
     const auto text_of = [&](const PsInsn& p) {
+        // the description's text, a branch or call by its label, an address half by its expression
         const auto it = immediate.find(p.insn.pc);
-        return it == immediate.end() ? dm::text(p.insn, names_for_text) : dm::text(p.insn, names_for_text, it->second);
+        std::map<std::uint32_t, std::string> by_value;
+        std::vector<std::uint32_t> operands;
+        if (p.insn.target)
+            if (const auto named = names_for_text.find(*p.insn.target); named != names_for_text.end()) by_value[*p.insn.target] = named->second, operands.push_back(*p.insn.target);
+        return risc_source::code("mips", text.subspan(p.insn.pc - base, 4), p.insn.pc, by_value, operands, it == immediate.end() ? std::string() : it->second);
     };
     std::size_t off = 0;
     while (off < text.size()) {
@@ -462,8 +467,7 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), exe.data.size());
-    const build::mips_asm::Assembler assembler(isa::mips_encoder());
-    iw::assembled(r, [&] { return assembler.build(source); }, exe.data, folder / (stem + ".built.exe"), "executable");
+    iw::assembled(r, [&] { return risc_source::assemble("mips", source, folder); }, exe.data, folder / (stem + ".built.exe"), "executable");
     return r;
 }
 

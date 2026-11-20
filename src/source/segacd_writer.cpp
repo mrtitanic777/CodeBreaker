@@ -6,12 +6,12 @@
 #include <format>
 #include <set>
 
-#include "build/m68k_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m68k.hpp"
 #include "source/genesis_writer.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::segacd_writer {
 
@@ -24,7 +24,6 @@ namespace {
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr iw::Spelling kData{"D_", 6};
-const iw::DataSyntax kSyntax{.bytes = "dc.b", .fill = "dcb.b", .fill_separator = ","};
 constexpr std::uint32_t kPaddingAt = 0x100000;   // where the assembler is told to put the bytes between the programs (not an address either CPU uses)
 constexpr std::uint32_t kPaddingStep = 0x10000;
 
@@ -98,8 +97,8 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return insn.length; }
-    std::string text(const m68k::Insn& insn) const override { return m68k::text(insn, names_); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::string text(const m68k::Insn& insn) const override { return risc_source::m68k_code(insn, names_); }   // (the description's text, the names put in)
+    std::vector<std::string> data_lines(ByteView data) const override { return risc_source::data_lines(data); }
     // The boot header's fields, each as data with its name.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
         if (offset >= sc::kSecurityAt) return 0;
@@ -110,13 +109,13 @@ public:
         std::string line;
         const bool plain = std::ranges::all_of(bytes, [](std::uint8_t b) { return b >= 32 && b < 127 && b != 0x22; });
         if (field->kind == Kind::Text && plain) {
-            line = "        dc.b \"" + std::string(as_text(bytes)) + "\"";
+            line = "        .ascii \"" + std::string(as_text(bytes)) + "\"";
         } else if (field->kind == Kind::Word || field->kind == Kind::Long) {
             std::uint32_t v = 0;
             for (const std::uint8_t b : bytes) v = v << 8 | b;
-            line = std::format("        {} ${:0{}X}", field->kind == Kind::Word ? "dc.w" : "dc.l", v, field->length * 2);
+            line = std::format("        {} 0x{:0{}x}", field->kind == Kind::Word ? ".half" : ".long", v, field->length * 2);
         } else {
-            out_.extend(iw::commented(iw::data_lines(bytes, kSyntax), field->what));
+            out_.extend(iw::commented(risc_source::data_lines(bytes), field->what));
             return field->length;
         }
         out_.append(iw::commented({line}, field->what).front());
@@ -248,8 +247,9 @@ iw::Written write(const formats::segacd::Disc& disc, std::string_view file_name,
         std::format("; Sega CD \"{}\" / \"{}\", {}: the system area ({} KB) of a {}-byte-sector image", h.domestic_name, h.overseas_name, h.serial, boot.size() / 1024,
                     disc.sector_size),
         ""};
-    translate::l2::Assembly out(head, "asm68k", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(std::format("{:<18} equ ${:06X}", hardware().at(a), a));
+    head.insert(head.end() - 1, "; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)");
+    translate::l2::Assembly out(head, "sleigh-m68k", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(risc_source::equ(hardware().at(a), a, 6));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -258,22 +258,21 @@ iw::Written write(const formats::segacd::Disc& disc, std::string_view file_name,
     DiscListing listing(out, boot, blocks, code, names_for_text);
     for (const Block& b : blocks) {
         out.part(std::format("block_{:04X}", b.begin), std::string(b.title), std::nullopt, std::uint64_t{b.end - b.begin});
-        out.append(std::format("        org ${:X}   ; {}", b.base, b.title));
+        out.append(std::format("        .org 0x{:x}   ; {}", b.base, b.title));
         iw::emit<m68k::Insn>(out, b.begin, b.end, labels, functions, listing);
         out.append("");
     }
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, main_flow), boot.size());
-    const build::m68k_asm::Assembler assembler(isa::m68k_encoder());
     iw::assembled(
         r,
         [&] {   // each block back at its disc offset
-            const Bytes image = assembler.build(source);
+            const Bytes image = risc_source::assemble("m68k", source, folder);
             Bytes joined(boot.size(), 0);
+            std::size_t at = 0;   // (the assembled blocks follow one another, whatever address each was assembled at)
             for (const Block& b : blocks) {
-                for (std::uint32_t i = b.begin; i < b.end; ++i) {
-                    const std::size_t at = std::size_t{b.base} + (i - b.begin);
+                for (std::uint32_t i = b.begin; i < b.end; ++i, ++at) {
                     if (at < image.size()) joined[i] = image[at];
                 }
             }

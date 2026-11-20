@@ -1,74 +1,75 @@
 ; demo.asm -- written by CodeBreaker from demo.iso
 ; Sega CD "TEST DISC" / "TEST DISC", GM 00000000-00: the system area (32 KB) of a 2048-byte-sector image
+; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)
 
-CDBIOS             equ $005F22
-GA_MEMMODE_LO      equ $A12003
-GA_COMFLAG_SUB     equ $A1200F
+.equ CDBIOS, 0x005f22
+.equ GA_MEMMODE_LO, 0xa12003
+.equ GA_COMFLAG_SUB, 0xa1200f
 
-        org $0   ; the boot header
-        dc.b "SEGADISCSYSTEM  "  ; disc ID
-        dc.b "TESTCDGAME "  ; volume name
-        dc.b $00
-        dc.w $0100  ; volume version
-        dc.w $0001  ; volume type
-        dc.b "TESTCDGAME "  ; system name
-        dc.b $00,$00,$00,$00,$00
-        dc.l $00000800  ; IP: start on the disc
-        dc.l $00000200  ; IP: size
-        dc.l $00000000  ; IP: entry offset
-        dc.l $00000000  ; IP: work RAM size
-        dc.l $00001000  ; SP: start on the disc
-        dc.l $00000400  ; SP: size
-        dc.l $00000000  ; SP: entry offset
-        dc.l $00000000  ; SP: work RAM size
-        dcb.b 176,$00
-        dc.b "SEGA MEGA DRIVE "  ; system type
-        dc.b "(C)TEST 2026.NOV"  ; copyright
-        dc.b "TEST DISC                                       "  ; domestic name
-        dc.b "TEST DISC                                       "  ; overseas name
-        dc.b "GM 00000000-00"  ; serial and version
-        dc.b $00,$00
-        dc.b "J               "  ; devices
-        dcb.b 80,$00
-        dc.b "E               "  ; regions
+        .org 0x0   ; the boot header
+        .ascii "SEGADISCSYSTEM  "  ; disc ID
+        .ascii "TESTCDGAME "  ; volume name
+        .byte 0x00
+        .half 0x0100  ; volume version
+        .half 0x0001  ; volume type
+        .ascii "TESTCDGAME "  ; system name
+        .byte 0x00,0x00,0x00,0x00,0x00
+        .long 0x00000800  ; IP: start on the disc
+        .long 0x00000200  ; IP: size
+        .long 0x00000000  ; IP: entry offset
+        .long 0x00000000  ; IP: work RAM size
+        .long 0x00001000  ; SP: start on the disc
+        .long 0x00000400  ; SP: size
+        .long 0x00000000  ; SP: entry offset
+        .long 0x00000000  ; SP: work RAM size
+        .space 176, 0x00
+        .ascii "SEGA MEGA DRIVE "  ; system type
+        .ascii "(C)TEST 2026.NOV"  ; copyright
+        .ascii "TEST DISC                                       "  ; domestic name
+        .ascii "TEST DISC                                       "  ; overseas name
+        .ascii "GM 00000000-00"  ; serial and version
+        .byte 0x00,0x00
+        .ascii "J               "  ; devices
+        .space 80, 0x00
+        .ascii "E               "  ; regions
 
-        org $FF0000   ; the main CPU's program: the security code and the IP, loaded at $FF0000
+        .org 0xff0000   ; the main CPU's program: the security code and the IP, loaded at $FF0000
 
 security:
-        BRA.W ip_start
-        dcb.b 1532,$00
+        bra.w ip_start
+        .space 1532, 0x00
 
 ip_start:
-        MOVE.B #$1,(GA_MEMMODE_LO).L
-        BSR.S sub_FF0610
-        JMP ($00200000).L
+        move.b #0x1,(GA_MEMMODE_LO).l
+        bsr.b sub_FF0610
+        jmp 0x200000.l
 
 sub_FF0610:
-        TST.B (GA_COMFLAG_SUB).L
-        BNE.S sub_FF0610
-        RTS
-        dcb.b 486,$00
+        tst.b (GA_COMFLAG_SUB).l
+        bne.b sub_FF0610
+        rts
+        .space 486, 0x00
 
-        org $100000   ; bytes of the system area no program runs
-        dcb.b 1536,$00
+        .org 0x100000   ; bytes of the system area no program runs
+        .space 1536, 0x00
 
-        org $6000   ; the sub CPU's program (the SP), loaded at $6000 of PRG-RAM
-        dc.b "MAIN-SUBCPU"
-        dcb.b 16,$00
-        dc.b $20,$00,$00,$00,$00,$00,$08,$00,$12,$00,$14,$00,$00
+        .org 0x6000   ; the sub CPU's program (the SP), loaded at $6000 of PRG-RAM
+        .ascii "MAIN-SUBCPU"
+        .space 16, 0x00
+        .byte 0x20,0x00,0x00,0x00,0x00,0x00,0x08,0x00,0x12,0x00,0x14,0x00,0x00
 
 sp_init:
-        MOVEQ #1,D0
-        JSR (CDBIOS).L
-        RTS
+        moveq 0x1,D0
+        jsr CDBIOS.l
+        rts
 
 sp_main:
-        BRA.S sp_main
+        bra.b sp_main
 
 sp_int2:
-        RTE
-        dcb.b 970,$00
+        rte
+        .space 970, 0x00
 
-        org $110000   ; bytes of the system area no program runs
-        dcb.b 27648,$00
+        .org 0x110000   ; bytes of the system area no program runs
+        .space 27648, 0x00
 
