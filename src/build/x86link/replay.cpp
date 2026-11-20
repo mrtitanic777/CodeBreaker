@@ -42,9 +42,15 @@ Bytes without_link_time(Bytes image) {
     auto u32 = [&](std::size_t at) -> std::uint32_t {
         return at + 4 <= image.size() ? image[at] | image[at + 1] << 8 | image[at + 2] << 16 | static_cast<std::uint32_t>(image[at + 3]) << 24 : 0;
     };
-    if (image.size() < 0x40 || image[0] != 'M' || image[1] != 'Z') return image;
-    const std::size_t pe = u32(0x3C);
-    if (pe + 24 + 68 > image.size() || image[pe] != 'P' || image[pe + 1] != 'E' || image[pe + 2] != 0 || image[pe + 3] != 0) return image;
+    if (image.size() < 0x40) return image;
+    // (behind an MZ stub, or at the start: `option nostub`)
+    const bool stub = image[0] == 'M' && image[1] == 'Z';
+    if (!stub && !(image[0] == 'P' && image[1] == 'E')) return image;
+    const std::size_t pe = stub ? u32(0x3C) : 0;
+    // (PE, or PL: Phar Lap TNT's PE, `format windows nt tnt`)
+    if (pe + 24 + 68 > image.size() || image[pe] != 'P' || (image[pe + 1] != 'E' && image[pe + 1] != 'L') || image[pe + 2] != 0 ||
+        image[pe + 3] != 0)
+        return image;
     for (std::size_t i = 0; i < 4; ++i) {
         image[pe + 8 + i] = 0;         // TimeDateStamp
         image[pe + 24 + 64 + i] = 0;   // CheckSum
@@ -132,6 +138,9 @@ Outcome one(const stdfs::path& case_dir, const stdfs::path& blobs, const stdfs::
         const stdfs::path theirs = case_dir / "out" / out.at("file").get<std::string>();
         if (!stdfs::is_regular_file(mine, ec)) {
             why.push_back(as + " not written");
+        } else if (lower(as).ends_with(".ilk")) {
+            // an incremental link's state file: wlink.exe's own runs differ in it (it keeps heap addresses and times), so it
+            // is enough that it is written
         } else if (lower(as).ends_with(".map")) {   // a map names the folders: compared with them mapped back
             if (messages(map.backward(fs::read_text(mine))) != messages(fs::read_text(theirs))) why.push_back(as + " differs");
         } else if (without_link_time(fs::read_file(mine)) != without_link_time(fs::read_file(theirs))) {

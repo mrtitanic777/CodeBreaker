@@ -97,6 +97,7 @@ bool InitMsg( void )
     WriteStdOutInfo( NO_RES_MESSAGE "\n", ERR, NULL );
     return( false );
 #elif defined( CB_WLINK_MSG_TABLE )
+    BannerPrinted = false;   /* CodeBreaker: each link in the process prints its banner, as wlink.exe does */
     msgShift = 0;
     return( true );
 #else

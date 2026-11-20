@@ -105,3 +105,33 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    constants pointed at by `const char *`; the command tables' empty flags `CF_NONE`. `cb/cbcxx.h`, force-included,
    gives enumerations C's arithmetic (`|=`, `&`, `++` ...). The source is now the starting point of each module's
    refactoring; `work/x86link/vendor.py` copies OpenWatcom's C and is no longer how these files are made.
+
+   **4b: real typed C++ (Logan, 2026-11-20: "wlink should be REAL typed C++").** C compiled as C++ is the starting
+   point only. Each module becomes idiomatic typed C++ (the rules above, docs/CPP rules): `std::string` and
+   `std::string_view` for text, containers for lists and tables, `enum class` with flag operators where C had int flags,
+   RAII for files and memory, errors returned to the caller instead of `longjmp`/`exit`, and no mutable globals.
+
+   *The proof, widened first.* The gate's 47 captured links use few directives, so a directive corpus was made
+   (`test-inputs/x86link/directives`, git-ignored; made by work/x86link4/dircorpus.py): every `system` of wlink.lnk, all
+   26 formats, and every option and directive of the grammar `wlink ?` prints, each linked once by OpenWatcom's own
+   wlink.exe: 1,930 cases. The in-process linker is the same on 1,748; the other 182 are listed in
+   `build/x86link/testdata/directives_known.txt`, with why: state an earlier link in the same process left (ELF and QNX
+   headers, PE fields; each case is the same alone) and memory not cleared (CodeView padding, a map line). These are bugs
+   of wlink's globals, and the typed rewrite is to empty the list. `x86link.replay.the_directive_corpus_is_the_same_but_
+   the_known_cases` fails on any case not listed that differs, and names a listed case that has become the same. Two
+   wlink bugs found on the way: `debug watcom` (every format) and `option incremental` (11 formats) crash wlink.exe
+   itself (work/x86link4/dircorpus/crashes.txt); the typed linker is to report them as errors instead. Fixed on the way:
+   each link in the process now prints its banner (wlink kept `BannerPrinted` across links).
+
+   *The order.*
+   1. **The state of a link** (`link.hpp`): every global wlink keeps (LinkFlags, LinkState, FmtData, the object and
+      library lists, the symbol table's roots, the message state, the directive parser's) moves into one `Link`, one
+      per run, reached by the C code through `current()` while it is still C-shaped. The known list should shrink
+      most here: what leaked between links has nowhere to stay.
+   2. **The directive reader** (`directives/reader`): the command sources (the command line, @files, environment
+      variables, system blocks) as a stack of owned buffers, a `Token` of `std::string_view` text with its source and
+      line, backup and restore. It replaces cmdutils' `Token`, `GetToken*`, `NewCommandSource`, `RestoreParser`.
+   3. **The directive language** (`directives/`): the 344 table rows as typed tables (`std::string_view` keyword, its
+      handler, the formats it is valid for), the matching (`ProcOne`, `MatchOne`) and the handlers of cmdall, cmdline and
+      each format's file, writing typed `Options` in the `Link` rather than FmtData's union.
+   4. Then the object reader, symbols, layout, fixups and each format, as the table above, each against both corpora.
