@@ -12,6 +12,7 @@ typedef unsigned char xunknown1; typedef unsigned short xunknown2; typedef unsig
 typedef unsigned char undefined; typedef unsigned char undefined1; typedef unsigned short undefined2;
 typedef unsigned long undefined4; typedef unsigned char bool; typedef unsigned long float4;
 typedef int2 __cdecl code();                    /* (a convention named: Watcom's own would pass the arguments in registers) */
+typedef int4 __cdecl code4();                   /* a call through a pointer whose DX:AX the caller keeps (a far pointer, a long) */
 typedef int2 __stdcall code_callee_pops();      /* a call through a pointer whose callee removes its arguments */
 #define true 1
 uint2 codebreaker_ss(void);
@@ -20,6 +21,22 @@ uint2 codebreaker_ds(void);
 #pragma aux codebreaker_ds = "mov ax,ds" value [ax] modify exact [ax];
 uint2 codebreaker_cs(void);
 #pragma aux codebreaker_cs = "mov ax,cs" value [ax] modify exact [ax];
+/* a register as the function was entered with it (no code: what the register holds where the call is, the first thing the
+   function does) -- a value the decompiler read from the caller, `in_DX`, `unaff_SI` */
+uint2 codebreaker_ax(void);
+#pragma aux codebreaker_ax = value [ax] modify exact [];
+uint2 codebreaker_bx(void);
+#pragma aux codebreaker_bx = value [bx] modify exact [];
+uint2 codebreaker_cx(void);
+#pragma aux codebreaker_cx = value [cx] modify exact [];
+uint2 codebreaker_dx(void);
+#pragma aux codebreaker_dx = value [dx] modify exact [];
+uint2 codebreaker_si(void);
+#pragma aux codebreaker_si = value [si] modify exact [];
+uint2 codebreaker_di(void);
+#pragma aux codebreaker_di = value [di] modify exact [];
+uint2 codebreaker_es(void);
+#pragma aux codebreaker_es = "mov ax,es" value [ax] modify exact [ax];
 /* the stack pointer as the function was entered (where its return address is): with the
    function's frame (BP pushed, then BP = SP) that is BP+2 */
 uint2 codebreaker_entry_sp(void);
