@@ -1,0 +1,23 @@
+{
+ "cbk": 1,
+ "platform": "sms",
+ "domain": "registers",
+ "about": "Master System and Game Gear: the I/O ports (Z80 io space) and the mapper registers (written into RAM space)",
+ "source": {"what": "Sega Master System hardware documentation (SMS Power), as source/sms_writer.cpp held them (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+  {"id": "MEMORY_CONTROL", "kind": "register", "table": "ports", "space": "io", "address": "0x3E", "name": "MEMORY_CONTROL", "width": 1},
+  {"id": "IO_CONTROL", "kind": "register", "table": "ports", "space": "io", "address": "0x3F", "name": "IO_CONTROL", "width": 1},
+  {"id": "VCOUNTER", "kind": "register", "table": "ports", "space": "io", "address": "0x7E", "name": "VCOUNTER", "width": 1},
+  {"id": "PSG", "kind": "register", "table": "ports", "space": "io", "address": "0x7F", "name": "PSG", "width": 1},
+  {"id": "VDP_DATA", "kind": "register", "table": "ports", "space": "io", "address": "0xBE", "name": "VDP_DATA", "width": 1},
+  {"id": "VDP_CONTROL", "kind": "register", "table": "ports", "space": "io", "address": "0xBF", "name": "VDP_CONTROL", "width": 1},
+  {"id": "JOYPAD_1", "kind": "register", "table": "ports", "space": "io", "address": "0xDC", "name": "JOYPAD_1", "width": 1},
+  {"id": "JOYPAD_2", "kind": "register", "table": "ports", "space": "io", "address": "0xDD", "name": "JOYPAD_2", "width": 1},
+  {"id": "GG_START", "kind": "register", "table": "game_gear_ports", "space": "io", "address": "0x00", "name": "GG_START", "width": 1},
+  {"id": "GG_STEREO", "kind": "register", "table": "game_gear_ports", "space": "io", "address": "0x06", "name": "GG_STEREO", "width": 1},
+  {"id": "MAPPER_CONTROL", "kind": "register", "table": "mapper", "space": "cpu", "address": "0xFFFC", "name": "MAPPER_CONTROL", "width": 1},
+  {"id": "MAPPER_SLOT0", "kind": "register", "table": "mapper", "space": "cpu", "address": "0xFFFD", "name": "MAPPER_SLOT0", "width": 1},
+  {"id": "MAPPER_SLOT1", "kind": "register", "table": "mapper", "space": "cpu", "address": "0xFFFE", "name": "MAPPER_SLOT1", "width": 1},
+  {"id": "MAPPER_SLOT2", "kind": "register", "table": "mapper", "space": "cpu", "address": "0xFFFF", "name": "MAPPER_SLOT2", "width": 1}
+ ]
+}

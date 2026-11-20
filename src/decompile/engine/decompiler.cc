@@ -415,11 +415,12 @@ struct Proto {
   bool noreturn = false;
 };
 // A structure (`T <Name> <hexSize> <hexOffset>:<type>:<field> ...`) and a global variable
-// (`G <hexVA> <type> <name>`): data-types the code does not state, named and laid out as the
-// describer knows them. A field or global's <type> is the grammar of ProtoType.
+// (`G <hexVA> <type> <name> [<space>]`): data-types the code does not state, named and laid out as the
+// describer knows them. A field or global's <type> is the grammar of ProtoType. <space> names the
+// processor's address space the address is in (the Z80's `io`: a port); the data space when absent.
 struct FieldDef { int offset; std::string spec, name; };
 struct StructDef { std::string name; int size; std::vector<FieldDef> fields; };
-struct GlobalDef { uint64_t va; std::string spec, name; };
+struct GlobalDef { uint64_t va; std::string spec, name, space; };
 // A call through a pointer (a driver's dispatch table, a callback): what it is passed, as the
 // code pushed it -- the callee is not known, so the analysis cannot tell what it takes.
 struct CallSite { uint64_t site; uint64_t func; int pop; std::string model; };
@@ -893,7 +894,20 @@ void setUp(Analysis& a, const Description& d) {
   for (const auto& g : d.globals) {               // (named and typed: the analysis keeps them)
     Datatype* t = resolveType(m, g.spec);
     if (t == nullptr) throw LowlevelError("global " + g.name + ": unknown type " + g.spec);
-    glb->addSymbol(g.name, t, Address(m.getDefaultDataSpace(), (uintb)g.va), Address());
+    AddrSpace* where = m.getDefaultDataSpace();
+    if (!g.space.empty()) {                       // (another of the processor's spaces, by its name in any case)
+      where = nullptr;
+      for (int4 i = 0; i < m.numSpaces() && where == nullptr; ++i) {
+        AddrSpace* s = m.getSpace(i);
+        if (s == nullptr || s->getName().size() != g.space.size()) continue;
+        bool same = true;
+        for (size_t k = 0; k < g.space.size(); ++k)
+          same = same && std::tolower((unsigned char)s->getName()[k]) == std::tolower((unsigned char)g.space[k]);
+        if (same) where = s;
+      }
+      if (where == nullptr) throw LowlevelError("global " + g.name + ": no address space " + g.space);
+    }
+    glb->addSymbol(g.name, t, Address(where, (uintb)g.va), Address());
   }
   for (const auto& x : d.externs) {
     Address ea(code, (uintb)x.va);
@@ -2539,7 +2553,7 @@ int main(int argc, char** argv) {
           std::fprintf(stderr, "FAIL: bad G line: %s\n", line.c_str());
           return 1;
         }
-        d.globals.push_back({strtoull(f[1].c_str(), nullptr, 16), f[2], f[3]});
+        d.globals.push_back({strtoull(f[1].c_str(), nullptr, 16), f[2], f[3], f.size() > 4 ? f[4] : std::string()});
       }
     }
     d.spans = spans;

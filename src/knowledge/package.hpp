@@ -34,6 +34,8 @@
 // `win16_memory`) instead of reaching for a process-wide base.
 #pragma once
 
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -75,6 +77,16 @@ std::string bare_name(std::string_view name);
 
 class Knowledge;
 
+// A hardware register of a console, as its `registers` description says.
+struct HardwareRegister {
+    std::string name;       // the hardware documentation's name
+    std::string table;      // the group it is in ("ports", "io", "tia_write")
+    std::string space;      // what the address means: "cpu" (the processor's memory) or "io" (a port, the Z80's io space)
+    std::uint32_t address = 0;
+    int width = 1;          // bytes
+    std::map<std::string, std::string> names;   // spellings by dialect
+};
+
 // The checkout's own knowledge, opened at the first ask (the base the engine's steps read when none is handed to them: the
 // checkout is $CB_CHECKOUT_ROOT, else the one the running program belongs to; the base file is $CB_KNOWLEDGE_DB, else
 // build/knowledge.v2.sqlite).
@@ -110,6 +122,12 @@ public:
     std::optional<Value> entry(std::string_view platform, std::string_view domain, std::string_view id);
     // Every entry of a domain by id, in the file's order (a step reading it reads the whole domain).
     Rows entries(std::string_view platform, std::string_view domain);
+    // The hardware registers of a platform (its `registers` domain): the entries of kind register, in the file's order. `table`
+    // picks one group of them (a register entry's `table`: "ports", "io", "tia_write"; empty: all).
+    std::vector<HardwareRegister> hardware_registers(std::string_view platform, std::string_view table = {});
+    // The same as {address: name}. `dialect` asks for a spelling (the entry's `names`, {"rgbds": "rLCDC"}); the register's own
+    // name when it has none for it.
+    std::map<std::uint32_t, std::string> hardware_names(std::string_view platform, std::string_view table = {}, std::string_view dialect = {});
     // The domains a platform has description files for, in order of name.
     std::vector<std::string> domains(std::string_view platform);
     // Every description file checked against the schema: header, kinds, ids, shapes.

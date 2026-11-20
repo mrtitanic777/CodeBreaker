@@ -154,3 +154,31 @@ CB_TEST("knowledge.describe.the_dispatch_names_moved_here", [] {
     CB_CHECK(std::find(reads.begin(), reads.end(), Read{"dos", "services", "21.3D"}) != reads.end());
     CB_CHECK(std::find(reads.begin(), reads.end(), Read{"vxd", "messages", "*"}) != reads.end());
 });
+
+CB_TEST("knowledge.describe.the_console_registers_moved_here", [] {
+    fs::ScopedTempDir dir{"cb-knowledge-describe"};
+    Store store{dir.path() / "k.sqlite", DataFolders::under(checkout())};
+    Knowledge kb(store);
+    // the counts the writers' tables had
+    CB_CHECK_EQ(kb.hardware_names("sms", "ports").size(), 8u);
+    CB_CHECK_EQ(kb.hardware_names("sms", "game_gear_ports").size(), 2u);
+    CB_CHECK_EQ(kb.hardware_names("sms", "mapper").size(), 4u);
+    CB_CHECK_EQ(kb.hardware_names("gb", "io").size(), 55u);
+    CB_CHECK_EQ(kb.hardware_names("gb", "mbc").size(), 4u);
+    CB_CHECK_EQ(kb.hardware_names("genesis", "hardware").size(), 17u);
+    CB_CHECK_EQ(kb.hardware_names("nes", "hardware").size(), 30u);
+    CB_CHECK_EQ(kb.hardware_names("atari2600", "tia_write").size(), 45u);
+    CB_CHECK_EQ(kb.hardware_names("atari2600", "tia_read").size(), 14u);
+    CB_CHECK_EQ(kb.hardware_names("atari2600", "riot").size(), 10u);
+    // the names, and a dialect's spelling
+    CB_CHECK_EQ(kb.hardware_names("sms", "ports").at(0xBF), "VDP_CONTROL");
+    CB_CHECK_EQ(kb.hardware_names("gb", "io", "rgbds").at(0xFF40), "rLCDC");
+    CB_CHECK_EQ(kb.hardware_names("gb", "io").at(0xFF40), "LCDC");
+    CB_CHECK_EQ(kb.hardware_names("genesis", "hardware").at(0xC00004), "VDP_CTRL");
+    CB_CHECK_EQ(kb.hardware_names("atari2600", "tia_write").at(0x02), "WSYNC");
+    CB_CHECK_EQ(kb.hardware_names("atari2600", "tia_read").at(0x02), "CXP0FB");
+    // the Z80's ports are in its io space, the others' registers in the processor's memory
+    for (const HardwareRegister& r : kb.hardware_registers("sms", "ports")) CB_CHECK_EQ(r.space, "io");
+    for (const HardwareRegister& r : kb.hardware_registers("sms", "mapper")) CB_CHECK_EQ(r.space, "cpu");
+    CB_CHECK(kb.hardware_registers("no-such-machine").empty());
+});

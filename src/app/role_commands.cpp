@@ -42,6 +42,7 @@
 #include "engine/lane_kit_internal.hpp"
 #include "engine/lane_registry.hpp"
 #include "formats/code_scan.hpp"
+#include "knowledge/package.hpp"
 #include "source/isa.hpp"
 #include "source/processors.hpp"
 #include "ui/mcp_server.hpp"
@@ -428,6 +429,25 @@ const RomMap* rom_map(std::string_view lane) {
     return nullptr;
 }
 
+// The machine's hardware registers as the description's global lines (`G <address> <type> <name> [<space>]`), named as the
+// knowledge base's registers (config/knowledge/<lane>/registers.json) name them, in the space they are in (a Z80 port: `io`). An
+// address the machine's tables give two names (the 2600's TIA answers reads and writes differently) is left unnamed.
+std::string register_globals(std::string_view lane, const stdfs::path& file) {
+    knowledge::Knowledge& kb = knowledge::standard();
+    std::string text;
+    std::map<std::pair<std::string, std::uint32_t>, int> seen;
+    const std::vector<knowledge::HardwareRegister> registers = kb.hardware_registers(lane);
+    const bool game_gear = text::lower(fs::to_text(file.extension())) == ".gg";
+    for (const knowledge::HardwareRegister& r : registers) ++seen[{r.space, r.address}];
+    std::set<std::string> used;
+    for (const knowledge::HardwareRegister& r : registers) {
+        if (r.table == "game_gear_ports" && !game_gear) continue;
+        if (seen[{r.space, r.address}] != 1 || !used.insert(r.name).second) continue;
+        text += std::format("G\t{:x}\t{}x\t{}{}\n", r.address, r.width, r.name, r.space == "cpu" ? std::string() : "\t" + r.space);
+    }
+    return text;
+}
+
 // A console program to C through the one decompiler: its functions found by the one decoder (its processor's description), the
 // description the decompiler reads written beside it, each function's C.
 int decompile_console(const stdfs::path& file, std::string_view lane, const px::Processor& cpu, const std::optional<stdfs::path>& out) {
@@ -456,6 +476,7 @@ int decompile_console(const stdfs::path& file, std::string_view lane, const px::
     std::string description = std::format("arch\t{}\nbytes\t{:x}\t{}\t{:x}\t{:x}\n", cpu.language, map->base, fs::to_text(stdfs::absolute(file)), map->offset, size);
     for (const std::uint32_t f : functions)
         if (f >= space.begin && f < space.end) description += std::format("F\t{:x}\tsub_{:04X}\t-1\n", f, f);
+    description += register_globals(lane, file);
     const stdfs::path described = work / "description.txt";
     fs::write_text(described, description);
     engine::LaneKit kit(config::current());

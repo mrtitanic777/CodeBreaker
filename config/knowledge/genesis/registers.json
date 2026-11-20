@@ -1,0 +1,26 @@
+{
+ "cbk": 1,
+ "platform": "genesis",
+ "domain": "registers",
+ "about": "Mega Drive / Genesis: the VDP, PSG, YM2612, Z80 bus, I/O ports and cartridge registers (68000 address space)",
+ "source": {"what": "Sega hardware documentation, as source/genesis_writer.cpp held them (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+  {"id": "VDP_DATA", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xC00000", "name": "VDP_DATA", "width": 4},
+  {"id": "VDP_CTRL", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xC00004", "name": "VDP_CTRL", "width": 4},
+  {"id": "VDP_HVCOUNTER", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xC00008", "name": "VDP_HVCOUNTER", "width": 2},
+  {"id": "PSG", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xC00011", "name": "PSG", "width": 1},
+  {"id": "Z80_RAM", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA00000", "name": "Z80_RAM", "width": 1},
+  {"id": "YM2612", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA04000", "name": "YM2612", "width": 1},
+  {"id": "IO_VERSION", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA10001", "name": "IO_VERSION", "width": 1},
+  {"id": "IO_DATA1", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA10003", "name": "IO_DATA1", "width": 1},
+  {"id": "IO_DATA2", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA10005", "name": "IO_DATA2", "width": 1},
+  {"id": "IO_DATA3", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA10007", "name": "IO_DATA3", "width": 1},
+  {"id": "IO_CTRL1", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA10009", "name": "IO_CTRL1", "width": 1},
+  {"id": "IO_CTRL2", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA1000B", "name": "IO_CTRL2", "width": 1},
+  {"id": "IO_CTRL3", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA1000D", "name": "IO_CTRL3", "width": 1},
+  {"id": "Z80_BUSREQ", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA11100", "name": "Z80_BUSREQ", "width": 2},
+  {"id": "Z80_RESET", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA11200", "name": "Z80_RESET", "width": 2},
+  {"id": "TMSS", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA14000", "name": "TMSS", "width": 4},
+  {"id": "SRAM_CTRL", "kind": "register", "table": "hardware", "space": "cpu", "address": "0xA130F1", "name": "SRAM_CTRL", "width": 1}
+ ]
+}

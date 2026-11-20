@@ -240,6 +240,43 @@ std::optional<Value> Knowledge::entry(std::string_view platform_name, std::strin
 
 Rows Knowledge::entries(std::string_view platform_name, std::string_view domain) { return table(platform_name, domain); }
 
+std::vector<HardwareRegister> Knowledge::hardware_registers(std::string_view platform_name, std::string_view table_name) {
+    const auto text = [](const Value& v, std::string_view key) -> std::string {
+        const Value* field = v.get(key);
+        const std::string* t = field != nullptr ? field->text() : nullptr;
+        return t != nullptr ? *t : std::string();
+    };
+    std::vector<HardwareRegister> out;
+    for (const auto& [id, entry] : entries(platform_name, "registers")) {
+        if (text(entry, "kind") != "register") continue;
+        HardwareRegister r;
+        r.table = text(entry, "table");
+        if (!table_name.empty() && r.table != table_name) continue;
+        const std::optional<std::uint64_t> address = hex_value(text(entry, "address"));
+        if (!address) continue;
+        r.address = static_cast<std::uint32_t>(*address);
+        r.name = text(entry, "name");
+        if (r.name.empty()) r.name = id;
+        r.space = text(entry, "space");
+        if (r.space.empty()) r.space = "cpu";
+        if (const Value* w = entry.get("width"); w != nullptr && w->integer()) r.width = static_cast<int>(*w->integer());
+        if (const Value* n = entry.get("names"); n != nullptr && n->map() != nullptr)
+            for (const auto& [dialect, spelling] : *n->map())
+                if (spelling.text() != nullptr) r.names[dialect] = *spelling.text();
+        out.push_back(std::move(r));
+    }
+    return out;
+}
+
+std::map<std::uint32_t, std::string> Knowledge::hardware_names(std::string_view platform_name, std::string_view table_name, std::string_view dialect) {
+    std::map<std::uint32_t, std::string> out;
+    for (const HardwareRegister& r : hardware_registers(platform_name, table_name)) {
+        const auto spelling = r.names.find(std::string(dialect));
+        out.try_emplace(r.address, spelling != r.names.end() ? spelling->second : r.name);
+    }
+    return out;
+}
+
 std::vector<std::string> Knowledge::domains(std::string_view platform_name) {
     const std::string p = platform(platform_name);
     std::vector<std::string> out;

@@ -8,6 +8,7 @@
 
 #include "core/fs.hpp"
 #include "decompile/z80.hpp"
+#include "knowledge/package.hpp"
 #include "source/isa.hpp"
 #include "source/z80_source.hpp"
 
@@ -80,19 +81,18 @@ private:
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& ports() {
-    static const std::map<std::uint32_t, std::string> table = {{0x3E, "MEMORY_CONTROL"}, {0x3F, "IO_CONTROL"}, {0x7E, "VCOUNTER"}, {0x7F, "PSG"},
-                                                               {0xBE, "VDP_DATA"},       {0xBF, "VDP_CONTROL"}, {0xDC, "JOYPAD_1"}, {0xDD, "JOYPAD_2"}};
+    // config/knowledge/sms/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("sms", "ports");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& game_gear_ports() {
-    static const std::map<std::uint32_t, std::string> table = {{0x00, "GG_START"}, {0x06, "GG_STEREO"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("sms", "game_gear_ports");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& mapper_registers() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0xFFFC, "MAPPER_CONTROL"}, {0xFFFD, "MAPPER_SLOT0"}, {0xFFFE, "MAPPER_SLOT1"}, {0xFFFF, "MAPPER_SLOT2"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("sms", "mapper");
     return table;
 }
 
