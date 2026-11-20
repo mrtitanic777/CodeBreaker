@@ -1,0 +1,33 @@
+# atari7800.fmt -- Atari 7800 cartridges with the A78 header (.a78): 128 bytes (a version, "ATARI7800" at byte 1, the title,
+# the ROM size, the cartridge type, the controllers, TV system and save device), then the ROM: a linear 4-48 KB image
+# at the top of the address space, or the 16 KB banks of a SuperGame board.
+
+format atari7800
+endian be
+
+struct File {
+    assert $size >= 128 : "too short for an A78 header"
+    header : Header
+    rom    : bytes($size - 128)
+
+    let rom_size  = $size - 128
+    let supergame = (header.cart_type & 2) != 0 && rom_size > 3 * 0x4000
+    assert header.declared_size <= rom_size : "the ROM is cut short"
+    assert supergame ? (rom_size % 0x4000 == 0 && rom_size <= 8 * 0x4000)
+                     : (rom_size >= 0x1000 && rom_size <= 3 * 0x4000 && rom_size % 0x1000 == 0) : "the ROM is not 4 KB to 48 KB, nor the 16 KB banks of a SuperGame board"
+    let base = supergame ? 0 : 0x10000 - rom_size     # where the first byte of a linear ROM sits
+}
+
+struct Header {
+    version       : u8
+    magic         : str(9) == "ATARI7800"
+    reserved      : bytes(7)
+    title         : str(32)
+    declared_size : u32          # $31
+    cart_type     : u16
+    controller1   : u8
+    controller2   : u8
+    tv            : u8
+    save          : u8
+    reserved2     : bytes(69)
+}

@@ -1,0 +1,55 @@
+# snes.fmt -- Super Nintendo cartridges (.sfc, .smc) with a copier's 512-byte header already taken off. The 64-byte internal
+# header is at $7FC0 (LoROM) or $FFC0 (HiROM); neither place is marked, so each is scored on how much it reads like one
+# (the complement and checksum add to $FFFF, the map byte agrees with the place, a printable title, a reset vector in the
+# upper half, a plausible ROM size) and the better one wins, the LoROM place on a tie. `best` must reach 6.
+
+format snes
+endian le
+
+struct File {
+    assert $size >= 0x8000 : "smaller than a cartridge (32 KB)"
+    let has_lo = $size >= 0x7FC0 + 64
+    let has_hi = $size >= 0xFFC0 + 64
+    lo @ 0x7FC0 : Header if has_lo
+    hi @ 0xFFC0 : Header if has_hi
+    let lo_score = has_lo ? lo.score : -1
+    let hi_score = has_hi ? hi.score : -1
+    let is_hirom = hi_score > lo_score          # 1 HiROM, 0 LoROM
+    let best     = is_hirom ? hi_score : lo_score
+    assert best >= 6 : "no internal header: neither $7FC0 nor $FFC0 reads as one"
+    let header_offset = is_hirom ? 0xFFC0 : 0x7FC0
+}
+
+struct Vectors {
+    cop    : u16
+    brk    : u16
+    abort  : u16
+    nmi    : u16
+    reset  : u16
+    irq    : u16
+}
+
+struct Header {
+    title         : str(21)
+    map_mode      : u8
+    chipset       : u8
+    rom_size_code : u8
+    ram_size_code : u8
+    country       : u8
+    developer     : u8
+    version       : u8
+    complement    : u16
+    checksum      : u16
+    reserved      : bytes(4)
+    native        : Vectors          # COP BRK ABORT NMI IRQ (RESET is not used in native mode)
+    reserved2     : bytes(4)
+    emulation     : Vectors          # COP ABORT NMI RESET IRQ/BRK (the BRK slot holds nothing)
+
+    let hirom = $start == 0xFFC0
+    let score = (((complement + checksum) & 0xFFFF) == 0xFFFF) * 4
+              + (((map_mode & 1) != 0) == hirom) * 2
+              + ((map_mode & 0xE0) == 0x20)
+              + (printable($start, 21) == 21 ? 2 : (printable($start, 21) >= 16 ? 1 : 0))
+              + (emulation.reset >= 0x8000 && emulation.reset != 0xFFFF) * 2
+              + (rom_size_code <= 0x0D)
+}

@@ -1,0 +1,39 @@
+# lynx.fmt -- Atari Lynx programs: a cartridge image (.lnx: a 64-byte "LYNX" header, then the cartridge, whose first byte
+# counts the encrypted boot blocks) or a BS93 object (.o, .lyx: a load address and a block length, "BS93" at byte 6, the
+# program).
+
+format lynx
+endian le
+
+struct File {
+    let is_cartridge = $size >= 64 && peek32(0) == 0x584E594C
+    let bs93_length  = (peek8(4) << 8) | peek8(5)
+    let is_bs93      = !is_cartridge && $size >= 10 && peek32(6) == 0x33395342 && bs93_length >= 10 && bs93_length <= $size
+    assert is_cartridge || is_bs93 : "not a Lynx cartridge image (LYNX) or a BS93 object"
+    let encrypted_count = (is_cartridge && $size > 64) ? 0x100 - peek8(64) : 0   # the boot blocks the cartridge claims
+    if is_cartridge {
+        cart : Cart
+    } else {
+        object : Object
+    }
+}
+
+struct Cart {
+    magic       : str(4) == "LYNX"
+    bank0_block : u16          # the block size of bank 0 in bytes (1024 for a 256 KB cart)
+    bank1_block : u16
+    version     : u16
+    name        : str(32)
+    manufacturer : str(16)
+    rotation    : u8           # 0 none, 1 left, 2 right
+    audin       : u8
+    eeprom      : u8
+    spare       : bytes(3)
+}
+
+struct Object {
+    unknown       : u16
+    load_address  : u16be
+    block_length  : u16be
+    magic         : str(4) == "BS93"
+}

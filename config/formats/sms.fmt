@@ -1,0 +1,29 @@
+# sms.fmt -- Sega Master System, Game Gear and SG-1000 ROMs (.sms, .gg, .sg, .sc), with a copier's 512-byte header already
+# taken off. The header "TMR SEGA" sits at $7FF0, $3FF0 or $1FF0 (the first of them that has the signature); the
+# SG-1000 and some homebrew have none, so `header` is only there when one was found.
+
+format sms
+endian le
+
+struct File {
+    let at7 = $size >= 0x7FF0 + 16 && peek32(0x7FF0) == 0x20524D54 && peek32(0x7FF4) == 0x41474553
+    let at3 = $size >= 0x3FF0 + 16 && peek32(0x3FF0) == 0x20524D54 && peek32(0x3FF4) == 0x41474553
+    let at1 = $size >= 0x1FF0 + 16 && peek32(0x1FF0) == 0x20524D54 && peek32(0x1FF4) == 0x41474553
+    let found = at7 || at3 || at1
+    let at    = at7 ? 0x7FF0 : (at3 ? 0x3FF0 : 0x1FF0)
+    header @ at : Header if found
+}
+
+struct Header {
+    signature : str(8) == "TMR SEGA"
+    reserved  : u16
+    checksum  : u16
+    product0  : u8               # the product code: BCD, low byte first
+    product1  : u8
+    product2  : u8               # its high nibble is the code's top digit, its low nibble the version
+    region_size : u8             # the high nibble: the region, the low nibble: the ROM size
+
+    let region  = region_size >> 4
+    let size_code = region_size & 15
+    let version = product2 & 15
+}

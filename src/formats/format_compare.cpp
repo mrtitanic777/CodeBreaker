@@ -7,43 +7,13 @@
 #include "core/error.hpp"
 #include "core/text.hpp"
 #include "formats/dos.hpp"
+#include "formats/format_compare_kit.hpp"
 #include "formats/ne.hpp"
 #include "formats/nes.hpp"
 #include "formats/pe.hpp"
 
 namespace cb::formats::engine {
-namespace {
 
-constexpr std::size_t kKeptMismatches = 40;
-
-class Checker {
-public:
-    explicit Checker(Comparison& c) : c_(c) {}
-
-    void eq(std::string_view field, std::uint64_t engine, std::uint64_t reader) {
-        ++c_.compared;
-        if (engine != reader) add(field, std::format("{} (0x{:x})", engine, engine), std::format("{} (0x{:x})", reader, reader));
-    }
-    void eq_text(std::string_view field, const std::string& engine, const std::string& reader) {
-        ++c_.compared;
-        if (engine != reader) add(field, "\"" + engine + "\"", "\"" + reader + "\"");
-    }
-    void eq_bytes(std::string_view field, ByteView engine, ByteView reader) {
-        ++c_.compared;
-        if (!equal_bytes(engine, reader)) add(field, std::format("{} bytes", engine.size()), std::format("{} bytes (differ)", reader.size()));
-    }
-    void add(std::string_view field, std::string engine, std::string reader) {
-        ++c_.mismatch_count;
-        if (c_.mismatches.size() < kKeptMismatches) c_.mismatches.push_back({std::string(field), std::move(engine), std::move(reader)});
-    }
-
-private:
-    Comparison& c_;
-};
-
-std::uint64_t u(const Node& n, std::string_view path) { return n.get(path).value; }
-
-// The bytes the tree names, written onto zeros, equal the file's bytes at those places.
 bool covered_equal(const Tree& tree) {
     const Bytes out = write(tree, true);
     bool ok = out.size() == tree.source.size();
@@ -56,6 +26,10 @@ bool covered_equal(const Tree& tree) {
     });
     return ok;
 }
+
+namespace {
+
+std::uint64_t u(const Node& n, std::string_view path) { return n.get(path).value; }
 
 std::string trim_zeros(const std::string& s) {
     std::size_t n = s.size();
@@ -279,6 +253,7 @@ Comparison compare(const Registry& registry, std::string_view format, ByteView d
     Comparison c;
     c.format = std::string(format);
     c.file_size = data.size();
+    if (compare_console(c, registry, format, data)) return c;
     Checker k(c);
 
     std::optional<nes::Rom> rom;

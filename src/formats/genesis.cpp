@@ -9,6 +9,7 @@
 #include "core/fs.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 #include "formats/sega32x.hpp"
 #include "formats/segacd.hpp"
@@ -27,9 +28,11 @@ bool is_sega(ByteView data, std::size_t at) {
     return data.size() >= at + 4 && std::memcmp(data.data() + at, "SEGA", 4) == 0;
 }
 
-std::string field(ByteView h, std::size_t at, std::size_t n) {
-    return std::string(text::trim(text::from_latin1(h.subspan(at, n))));
+std::string field(const engine::Node& header, std::string_view name) {
+    return std::string(text::trim(text::from_latin1(as_bytes(header.get(name).text))));
 }
+
+std::uint32_t word(const engine::Node& header, std::string_view name) { return static_cast<std::uint32_t>(header.u(name)); }
 
 }  // namespace
 
@@ -111,30 +114,21 @@ Rom parse(ByteView data, std::string_view extension) {
                            text::iequals(extension, ".smd"));
     if (rom.smd) rom.data = deinterleave_smd(data);
     else rom.data.assign(data.begin(), data.end());
-    if (rom.data.size() < kMinSize) throw FormatError(kReader, 0, "too short for a Genesis cartridge");
 
-    const ByteView h = rom.data;
+    const engine::Tree tree = engine::read_builtin(kReader, rom.data);   // config/formats/genesis.fmt
+    const engine::Node& h = tree.root.get("header");
     rom.header = {
-        .system = field(h, 0x100, 16), .copyright = field(h, 0x110, 16), .domestic_name = field(h, 0x120, 48),
-        .overseas_name = field(h, 0x150, 48), .serial = field(h, 0x180, 14), .devices = field(h, 0x190, 16),
-        .region = field(h, 0x1F0, 3)};
-    io::ByteReader r(h, kReader);
-    r.seek(0x18E);
-    rom.header.checksum = r.u16_be();
-    r.seek(0x1A0);
-    rom.header.rom_start = r.u32_be();
-    rom.header.rom_end = r.u32_be();
-    rom.header.ram_start = r.u32_be();
-    rom.header.ram_end = r.u32_be();
+        .system = field(h, "system"), .copyright = field(h, "copyright"), .domestic_name = field(h, "domestic_name"),
+        .overseas_name = field(h, "overseas_name"), .serial = field(h, "serial"),
+        .checksum = static_cast<std::uint16_t>(h.u("checksum")), .devices = field(h, "devices"), .rom_start = word(h, "rom_start"), .rom_end = word(h, "rom_end"),
+        .ram_start = word(h, "ram_start"), .ram_end = word(h, "ram_end"), .region = field(h, "region")};
 
-    r.seek(0);
-    std::array<std::uint32_t, 64> longs{};
-    for (std::uint32_t& l : longs) l = r.u32_be();
-    rom.initial_ssp = longs[0];
-    rom.reset = longs[1];
-    for (unsigned n = 0; n < longs.size(); ++n) {
+    const engine::Node& longs = tree.root.get("vectors");
+    rom.initial_ssp = static_cast<std::uint32_t>(longs.children[0].value);
+    rom.reset = static_cast<std::uint32_t>(longs.children[1].value);
+    for (unsigned n = 0; n < longs.children.size(); ++n) {
         std::string name = vector_name(n);
-        const std::uint32_t v = longs[n];
+        const std::uint32_t v = static_cast<std::uint32_t>(longs.children[n].value);
         if (!name.empty() && v < rom.data.size() && v % 2 == 0 && v >= kFirstProgramAddress) {
             rom.vectors.push_back({std::move(name), v});
         }

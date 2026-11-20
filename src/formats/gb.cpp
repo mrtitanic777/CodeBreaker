@@ -6,6 +6,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::gb {
@@ -19,7 +20,6 @@ namespace {
 
 constexpr std::string_view kReader = "gb";
 constexpr std::size_t kLogoAt = 0x104;
-constexpr std::size_t kTitleAt = 0x134;
 constexpr std::size_t kMinProbeSize = 0x8000;
 constexpr std::size_t kPowerOnRom = 0x8000;   // banks 0 and 1
 
@@ -51,10 +51,6 @@ std::string_view mbc_name(std::uint8_t type) {
         case 0xFF: return "HuC1";
         default: return {};
     }
-}
-
-bool logo_at(ByteView data) {
-    return data.size() >= kLogoAt + kLogo.size() && std::equal(kLogo.begin(), kLogo.end(), data.begin() + kLogoAt);
 }
 
 }  // namespace
@@ -89,28 +85,20 @@ std::vector<std::uint32_t> Rom::functions(const Decoder& decode) const {
 }
 
 Rom parse(ByteView data) {
-    if (data.size() < kHeaderEnd) throw FormatError(kReader, 0, "too short for a Game Boy cartridge");
+    const engine::Tree tree = engine::read_builtin(kReader, data);   // config/formats/gb.fmt
+    const engine::Node& h = tree.root.get("header");
     Rom rom;
     rom.data.assign(data.begin(), data.end());
-    const Bytes& h = rom.data;
-    rom.logo_ok = logo_at(h);
-    switch (h[0x143]) {
-        case 0x80: rom.color = ColorSupport::Also; break;
-        case 0xC0: rom.color = ColorSupport::Only; break;
-        default: rom.color = ColorSupport::None; break;
-    }
+    rom.logo_ok = equal_bytes(engine::bytes_of(tree, h.get("logo")), kLogo);
+    rom.color = static_cast<ColorSupport>(h.u("color"));
     // The title field is 16 bytes at $0134; a Color cartridge takes its last bytes for the manufacturer code and
-    // the flag, which leaves 11.
-    const std::size_t title_end = rom.color == ColorSupport::None ? 0x143 : 0x13F;
-    ByteView field = ByteView(h).subspan(kTitleAt, title_end - kTitleAt);
-    const auto nul = std::find(field.begin(), field.end(), std::uint8_t{0});
-    rom.title = std::string(text::trim(text::from_latin1(field.first(static_cast<std::size_t>(nul - field.begin())))));
-    rom.sgb = h[0x146] == 0x03;
-    rom.cartridge_type = h[0x147];
-    rom.header_checksum = h[0x14D];
-    std::uint8_t x = 0;
-    for (std::size_t i = kTitleAt; i < 0x14D; ++i) x = static_cast<std::uint8_t>(x - h[i] - 1);
-    rom.header_checksum_ok = x == h[0x14D];
+    // the flag, which leaves 11 (the description gives the length).
+    const std::string& field = h.get("title").text;
+    rom.title = std::string(text::trim(text::from_latin1(as_bytes(std::string_view(field).substr(0, field.find('\0'))))));
+    rom.sgb = h.u("sgb") != 0;
+    rom.cartridge_type = static_cast<std::uint8_t>(h.u("cartridge_type"));
+    rom.header_checksum = static_cast<std::uint8_t>(h.u("header_checksum"));
+    rom.header_checksum_ok = h.u("computed_checksum") == rom.header_checksum;
     return rom;
 }
 

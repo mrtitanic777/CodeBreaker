@@ -19,9 +19,12 @@
 // enum or flags: the tree shows the names), `== a | b` (magic), `size(n)` (the field takes exactly n bytes: its
 // contents may not read past them, the cursor moves past all n), `if expr` (the field is only there when true).
 // Statements: `let name = expr` (a computed value, not in the file), `if expr { ... } else { ... }`,
-// `assert expr`. Expressions are C's: names of earlier fields (and of the enclosing structures' fields), a.b, a[i],
+// `assert expr` (or `assert expr : "what is wrong"`: the words of the error). Expressions are C's: names of earlier fields (and of the enclosing structures' fields), a.b, a[i],
 // $pos (the cursor), $start (where this structure starts), $end, $remaining, $size (the file), _root, _parent,
-// _index, min(a,b) max(a,b) align(v,a) count(array). `use name` brings in another description's structures.
+// _index, min(a,b) max(a,b) align(v,a) count(array), peek8(o) peek16(o) peek32(o) peek16be(o) peek32be(o) (the file's
+// raw bytes at an offset, -1 outside it: a header that sits at one of several places), sum8(o,n) (the n raw bytes at
+// offset o added: a header checksum) and printable(o,n) (how many of them are printable ASCII). `use name` brings in
+// another description's structures.
 //
 // The tree keeps every field's offset and size. write() puts the values back: onto the bytes that were read (so what
 // the description does not cover stays as it was; an unmodified tree gives the same bytes), or, with
@@ -80,6 +83,9 @@ struct Tree {
     Node root;
     Bytes source;   // the bytes that were read: what write() writes onto
 };
+
+// The file's bytes a Bytes / Str / Int node covers (a view into tree.source; edits are not applied).
+inline ByteView bytes_of(const Tree& tree, const Node& node) { return ByteView(tree.source).subspan(node.offset, node.size); }
 
 // Every node, depth first, with its path.
 void walk(const Node& node, const std::function<void(const std::string& path, const Node&)>& visit,

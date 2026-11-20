@@ -1,0 +1,32 @@
+# gba.fmt -- Game Boy Advance cartridges (.gba): the 192-byte header the BIOS checks before it jumps to the first
+# instruction. The mark every cartridge carries is $96 at $B2.
+
+format gba
+endian le
+
+struct File {
+    assert $size >= 0xC0 : "shorter than the 192-byte header"
+    assert $size <= 0x2000000 : "larger than the 32 MB the console maps"
+    assert peek8(0xB2) == 0x96 : "not a Game Boy Advance ROM (no $96 at $B2)"
+    header : Header
+}
+
+struct Header {
+    entry_word    : u32                # $00: one ARM instruction, a branch conventionally
+    logo          : bytes(156)         # $04: the BIOS compares it with its own copy
+    title         : str(12)            # $A0
+    game_code     : str(4)             # $AC
+    maker_code    : str(2)             # $B0
+    fixed         : u8                 # $B2: the mark every cartridge carries
+    unit_code     : u8
+    device_type   : u8
+    reserved      : bytes(7)
+    version       : u8                 # $BC
+    complement    : u8                 # $BD
+    reserved2     : bytes(2)
+
+    # an ARM B or BL (any condition but the never-condition) says where it goes: bits 27-25 are 101
+    let is_branch  = (entry_word & 0x0E000000) == 0x0A000000 && (entry_word >> 28) != 0xF
+    let entry      = (0x08000008 + (((entry_word & 0xFFFFFF) ^ 0x800000) - 0x800000) * 4) & 0xFFFFFFFF
+    let computed_complement = (0 - (0x19 + sum8(0xA0, 29))) & 0xFF   # $A0..$BC
+}

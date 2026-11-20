@@ -239,6 +239,7 @@ struct Stmt {
     enum class K { Field, Let, If, Assert } k = K::Field;
     FieldDef field;
     std::string let_name;
+    std::string message;   // an Assert's own words for a failure (`assert expr : "text"`)
     ExprP expr;
     std::vector<Stmt> body, else_body;
     std::uint32_t line = 0;
@@ -471,6 +472,11 @@ private:
             next();
             s.k = Stmt::K::Assert;
             s.expr = expr(true);
+            if (punct(":") && peek(1).t == T::Text) {
+                next();
+                s.message = peek().s;
+                next();
+            }
         } else if (word("if") && !punct(":", 1) && !punct("@", 1)) {
             next();
             s.k = Stmt::K::If;
@@ -825,8 +831,30 @@ private:
                     if (!v.ref) fail(here, "count of a number");
                     return {s64(v.ref->children.size()), nullptr};
                 }
+                if (f.starts_with("peek")) {   // peek8 peek16 peek32 (little-endian), peek16be peek32be: the file's raw bytes at an offset, -1 outside it
+                    if (e.kids.size() != 1) fail(here, f + " takes one argument (an offset)");
+                    const std::int64_t at = num(e.kids[0]);
+                    const bool be = f.ends_with("be");
+                    const std::string_view bits = std::string_view(f).substr(4, f.size() - 4 - (be ? 2 : 0));
+                    const unsigned width = bits == "8" ? 1 : bits == "16" ? 2 : bits == "32" ? 4 : 0;
+                    if (width == 0) fail(here, "unknown function " + f);
+                    if (at < 0 || u(at) > data_.size() || width > data_.size() - u(at)) return {-1, nullptr};
+                    std::int64_t v = 0;
+                    for (unsigned k = 0; k < width; ++k) v |= static_cast<std::int64_t>(data_[u(at) + k]) << (8 * (be ? width - 1 - k : k));
+                    return {v, nullptr};
+                }
                 if (e.kids.size() != 2) fail(here, f + " takes two arguments");
                 const std::int64_t a = num(e.kids[0]), b = num(e.kids[1]);
+                if (f == "sum8" || f == "printable") {   // over the n raw bytes at offset a (the part outside the file counts as zeros)
+                    if (a < 0 || b < 0) fail(here, f + " of a negative range");
+                    std::int64_t sum = 0;
+                    for (std::int64_t k = 0; k < b; ++k) {
+                        const std::uint64_t at = u(a) + u(k);
+                        const unsigned byte = at < data_.size() ? data_[at] : 0;
+                        sum += f == "sum8" ? static_cast<std::int64_t>(byte) : (byte >= 0x20 && byte < 0x7F ? 1 : 0);
+                    }
+                    return {sum, nullptr};
+                }
                 if (f == "min") return {std::min(a, b), nullptr};
                 if (f == "max") return {std::max(a, b), nullptr};
                 if (f == "align") {
@@ -877,7 +905,8 @@ private:
                 }
                 case Stmt::K::If: run(num(s.expr, c) ? s.body : s.else_body, self, sc); break;
                 case Stmt::K::Assert:
-                    if (!num(s.expr, c)) fail(*sc.pos, "an assertion of the description does not hold (line " + std::to_string(s.line) + ")");
+                    if (!num(s.expr, c))
+                        fail(*sc.pos, s.message.empty() ? "an assertion of the description does not hold (line " + std::to_string(s.line) + ")" : s.message);
                     break;
             }
         }

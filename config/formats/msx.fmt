@@ -1,0 +1,21 @@
+# msx.fmt -- MSX cartridges (.rom, .mx1, .mx2): "AB" and four addresses (INIT, STATEMENT, DEVICE, TEXT) at the start of page 1
+# ($4000): the image's first byte when the cartridge starts there, or its byte $4000 when it fills pages 0-2 from $0000.
+
+format msx
+endian le
+
+struct File {
+    let at_start = peek16(0) == 0x4241                                    # "AB"
+    let at_page1 = $size > 0x4000 && peek16(0x4000) == 0x4241
+    assert at_start || at_page1 : "no MSX cartridge header"
+    let at = at_start ? 0 : 0x4000
+    header @ at : Header
+}
+
+struct Header {
+    magic     : str(2) == "AB"
+    init      : u16
+    statement : u16
+    device    : u16
+    text      : u16
+}

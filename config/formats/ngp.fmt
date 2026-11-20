@@ -1,0 +1,24 @@
+# ngp.fmt -- SNK Neo Geo Pocket / Pocket Color cartridges (.ngp, .ngc, .npc): the ROM that sits at $200000; the first 64 bytes
+# are the header the BIOS reads. 64 bytes to 4 MB, the SNK licence text, a start address inside the ROM.
+
+format ngp
+endian le
+
+struct File {
+    assert $size >= 64 && $size <= 0x400000 : "not a Neo Geo Pocket cartridge (64 bytes to 4 MB)"
+    header : Header
+}
+
+struct Header {
+    licence     : str(28) == "COPYRIGHT BY SNK CORPORATION" | " LICENSED BY SNK CORPORATION"
+    start       : u32           # the program's start address, normally inside the header's own ROM ($2000xx)
+    catalog     : u16
+    sub_catalog : u8
+    system      : u8            # $00 monochrome, $10 colour
+    title       : str(12)       # space padded
+    reserved    : bytes(16)
+
+    assert start >= 0x200000 && start - 0x200000 < $size : "the start address is outside the ROM"
+    let licensed = peek8(0) == 0x20
+    let colour   = system == 0x10
+}

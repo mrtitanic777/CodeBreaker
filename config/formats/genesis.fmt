@@ -1,0 +1,27 @@
+# genesis.fmt -- Sega Mega Drive / Genesis cartridges as the 68000 sees them (an .smd dump is de-interleaved first): 64
+# exception vectors (longs) at $0, the header at $100-$1FF. Programs begin at $200.
+
+format genesis
+endian be
+
+struct File {
+    assert $size >= 0x200 : "too short for a Genesis cartridge"
+    vectors  @ 0 : u32[64]            # the stack pointer, reset, then the exception vectors
+    header   @ 0x100 : Header
+}
+
+struct Header {
+    system        : str(16)           # "SEGA MEGA DRIVE", "SEGA GENESIS" ...
+    copyright     : str(16)
+    domestic_name : str(48)
+    overseas_name : str(48)
+    serial        : str(14)
+    checksum      : u16               # what the header holds: the sum of the words from $200
+    devices       : str(16)
+    rom_start     : u32
+    rom_end       : u32
+    ram_start     : u32
+    ram_end       : u32
+    support       : bytes(0x1F0 - 0x1B0)    # the extra-memory and modem fields
+    region        : str(3)
+}

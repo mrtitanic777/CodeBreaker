@@ -32,7 +32,10 @@ struct Comparison {
     bool agree() const { return reader_accepts == engine_accepts && mismatch_count == 0; }
 };
 
-// format: "mz", "pe", "ne" or "ines" (the description must be in the registry).
+// Every format compare() knows, in the order format_check goes through them.
+const std::vector<std::string>& compared_formats();
+
+// format: one of compared_formats() (the description must be in the registry).
 Comparison compare(const Registry& registry, std::string_view format, ByteView data);
 
 }  // namespace cb::formats::engine

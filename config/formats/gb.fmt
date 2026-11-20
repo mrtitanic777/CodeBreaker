@@ -1,0 +1,34 @@
+# gb.fmt -- Game Boy and Game Boy Color cartridges (.gb, .gbc): the header at $0100-$014F (the entry, Nintendo's logo, the
+# title, the Color and Super Game Boy flags, the cartridge type, the sizes, the header and global checksums).
+# A Color cartridge takes the title's last four bytes for the manufacturer code and the flag, which leaves 11.
+
+format gb
+endian le
+
+struct File {
+    assert $size >= 0x150 : "too short for a Game Boy cartridge"
+    header @ 0x100 : Header
+}
+
+struct Header {
+    let color = peek8(0x143) == 0x80 ? 1 : (peek8(0x143) == 0xC0 ? 2 : 0)   # 0 none, 1 also, 2 only
+
+    entry           : bytes(4)
+    logo            : bytes(48)                    # the boot ROM compares it with Nintendo's
+    title           : str(color == 0 ? 15 : 11)    # $134
+    manufacturer    : bytes(color == 0 ? 0 : 4)
+    cgb_flag        : u8                           # $143: $80 Color-compatible, $C0 Color only
+    new_licensee    : u16
+    sgb_flag        : u8                           # $146: $03 Super Game Boy support
+    cartridge_type  : u8
+    rom_size_code   : u8
+    ram_size_code   : u8
+    destination     : u8
+    old_licensee    : u8
+    version         : u8
+    header_checksum : u8
+    global_checksum : u16be
+
+    let sgb               = sgb_flag == 3
+    let computed_checksum = (0 - sum8(0x134, 25) - 25) & 0xFF   # the boot ROM's: x = x - byte - 1 over $134-$14C
+}

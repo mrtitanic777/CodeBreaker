@@ -5,6 +5,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::intv {
@@ -106,23 +107,18 @@ Rom parse(ByteView d, bool raw) {
         if (!r.entry()) throw FormatError(kReader, 8, "the header at $5000 does not point at a program");
         return r;
     }
-    if (d.size() < 3 + 2 + 512 + 2 || d[0] != 0xA8 || d[1] == 0 || static_cast<std::uint8_t>(~d[1]) != d[2]) throw FormatError(kReader, 0, "not an Intellicart .rom file (the header is $A8, N, ~N)");
-    std::size_t p = 3;
-    for (unsigned k = 0; k < d[1]; ++k) {
-        if (p + 2 > d.size() || d[p + 1] < d[p]) throw FormatError(kReader, p, "a segment's page range is wrong");
+    const engine::Tree tree = engine::read_builtin(kReader, d);   // config/formats/intv.fmt: the segment table
+    for (const engine::Node& seg : tree.root.get("segments").children) {
         Segment s;
-        s.start = static_cast<std::uint32_t>(d[p]) << 8;
-        const std::size_t words = (static_cast<std::size_t>(d[p + 1]) - d[p] + 1) * 256;
-        p += 2;
-        if (p + words * 2 + 2 > d.size()) throw FormatError(kReader, p, "a segment is cut short");
-        s.words.reserve(words);
-        for (std::size_t i = 0; i < words; ++i) s.words.push_back(be16(d, p + 2 * i));
-        p += words * 2;
-        s.crc = be16(d, p);
-        p += 2;
+        s.start = static_cast<std::uint32_t>(seg.u("first_page")) << 8;
+        const ByteView words = engine::bytes_of(tree, seg.get("words"));
+        s.words.reserve(words.size() / 2);
+        for (std::size_t i = 0; i < words.size(); i += 2) s.words.push_back(be16(words, i));
+        s.crc = static_cast<std::uint16_t>(seg.u("crc"));
         r.segments.push_back(std::move(s));
     }
-    r.tail.assign(d.begin() + static_cast<std::ptrdiff_t>(p), d.end());
+    const ByteView tail = engine::bytes_of(tree, tree.root.get("tail"));
+    r.tail.assign(tail.begin(), tail.end());
     return r;
 }
 

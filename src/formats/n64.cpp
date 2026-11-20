@@ -8,6 +8,7 @@
 #include "core/crypto.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::n64 {
@@ -22,12 +23,6 @@ std::uint32_t be32(ByteView d, std::size_t at) {
 
 std::uint32_t swap_pairs(std::uint32_t w) { return (w & 0xFF00FF00u) >> 8 | (w & 0x00FF00FFu) << 8; }
 std::uint32_t reverse_bytes(std::uint32_t w) { return swap_pairs(w) << 16 | swap_pairs(w) >> 16; }
-
-std::string trimmed(ByteView d, std::size_t at, std::size_t n) {
-    std::string s(reinterpret_cast<const char*>(d.data()) + at, n);
-    while (!s.empty() && (s.back() == ' ' || s.back() == '\0')) s.pop_back();
-    return s;
-}
 
 struct CicEntry {
     std::uint32_t crc32;
@@ -165,23 +160,24 @@ std::vector<std::uint32_t> Rom::functions(const Decoder& decode) const {
 Rom parse(ByteView file) {
     const std::optional<ByteOrder> order = order_of(file);
     if (!order) throw FormatError(kReader, 0, "not a Nintendo 64 ROM (no $80371240 at the start in any byte order)");
-    if (file.size() < kBootSize) throw FormatError(kReader, 0, "shorter than the boot code ($1000 bytes)");
     Rom rom;
     rom.order = *order;
     rom.data = Rom::convert(file, *order, ByteOrder::Z64);
-    const ByteView d(rom.data);
+    const engine::Tree tree = engine::read_builtin(kReader, rom.data);   // config/formats/n64.fmt (the .z64 order)
+    const engine::Node& n = tree.root.get("header");
     Header& h = rom.header;
-    h.pi_config = be32(d, 0);
-    h.clock_rate = be32(d, 4);
-    h.entry = be32(d, 8);
-    h.release = be32(d, 0xC);
-    h.crc1 = be32(d, 0x10);
-    h.crc2 = be32(d, 0x14);
-    h.name = trimmed(d, 0x20, 20);
-    h.category = static_cast<char>(d[0x3B]);
-    h.game_code = std::string(reinterpret_cast<const char*>(d.data()) + 0x3C, 2);
-    h.country = static_cast<char>(d[0x3E]);
-    h.version = d[0x3F];
+    h.pi_config = static_cast<std::uint32_t>(n.u("pi_config"));
+    h.clock_rate = static_cast<std::uint32_t>(n.u("clock_rate"));
+    h.entry = static_cast<std::uint32_t>(n.u("entry"));
+    h.release = static_cast<std::uint32_t>(n.u("release"));
+    h.crc1 = static_cast<std::uint32_t>(n.u("crc1"));
+    h.crc2 = static_cast<std::uint32_t>(n.u("crc2"));
+    h.name = n.get("name").text;
+    while (!h.name.empty() && (h.name.back() == ' ' || h.name.back() == '\0')) h.name.pop_back();
+    h.category = static_cast<char>(n.u("category"));
+    h.game_code = n.get("game_code").text;
+    h.country = static_cast<char>(n.u("country"));
+    h.version = static_cast<std::uint8_t>(n.u("version"));
     rom.boot_crc32 = crypto::crc32(rom.boot_code());
     for (const CicEntry& c : kCics)
         if (c.crc32 == rom.boot_crc32) rom.cic = c.cic;

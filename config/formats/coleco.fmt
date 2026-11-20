@@ -1,0 +1,22 @@
+# coleco.fmt -- ColecoVision cartridges (.col, .rom, .bin): up to 32 KB, as they sit from $8000. The header is $AA $55 (the
+# BIOS shows its title screen) or $55 $AA (it does not), then five addresses: the sprite name table, the sprite order table,
+# the work buffer, the controller map and the start; the title text follows at $24.
+
+format coleco
+endian le
+
+struct File {
+    assert $size >= 0x24 : "no ColecoVision cartridge header"
+    header : Header
+}
+
+struct Header {
+    magic        : u16be == 0xAA55 | 0x55AA
+    sprite_names : u16
+    sprite_order : u16
+    work_buffer  : u16
+    controllers  : u16
+    start        : u16
+
+    let title_screen = magic == 0xAA55
+}

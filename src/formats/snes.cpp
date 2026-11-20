@@ -4,6 +4,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::snes {
@@ -11,27 +12,12 @@ namespace cb::formats::snes {
 namespace {
 
 constexpr std::string_view kReader = "snes";
-constexpr int kAccepted = 6;   // the lowest score a header place needs
 
 std::size_t copier_size_of(std::uint64_t size) { return size % kLoRomBank == kCopierHeaderSize && size > kCopierHeaderSize ? kCopierHeaderSize : 0; }
 
-std::uint16_t word_of(ByteView h, std::size_t at) { return static_cast<std::uint16_t>(h[at] | h[at + 1] << 8); }
-
-// How well the 64 bytes at a header place read as an internal header for `mapping`.
-int score(ByteView h, Mapping mapping) {
-    int s = 0;
-    if (static_cast<std::uint16_t>(word_of(h, 0x1C) + word_of(h, 0x1E)) == 0xFFFF) s += 4;
-    const std::uint8_t map = h[0x15];
-    if (((map & 1) != 0) == (mapping == Mapping::HiRom)) s += 2;
-    if ((map & 0xE0) == 0x20) s += 1;
-    int printable = 0;
-    for (std::size_t i = 0; i < 21; ++i) printable += h[i] >= 0x20 && h[i] < 0x7F;
-    if (printable == 21) s += 2;
-    else if (printable >= 16) s += 1;
-    const std::uint16_t reset = word_of(h, 0x3C);
-    if (reset >= 0x8000 && reset != 0xFFFF) s += 2;
-    if (h[0x17] <= 0x0D) s += 1;
-    return s;
+Vectors vectors_of(const engine::Node& v) {
+    auto at = [&](std::string_view name) { return static_cast<std::uint16_t>(v.u(name)); };
+    return {at("cop"), at("brk"), at("abort"), at("nmi"), at("reset"), at("irq")};
 }
 
 }  // namespace
@@ -61,36 +47,29 @@ std::uint32_t Rom::address_of(std::uint32_t offset, bool high) const {
 
 Rom parse(ByteView file) {
     const std::size_t copier = copier_size_of(file.size());
-    if (file.size() < copier + kLoRomBank) throw FormatError(kReader, 0, std::format("{} bytes is smaller than a cartridge (32 KB)", file.size()));
     Rom rom;
     rom.copier_header.assign(file.begin(), file.begin() + static_cast<std::ptrdiff_t>(copier));
     rom.data.assign(file.begin() + static_cast<std::ptrdiff_t>(copier), file.end());
-    int best = -1;
-    for (const auto& [place, mapping] : {std::pair{kLoRomHeader, Mapping::LoRom}, std::pair{kHiRomHeader, Mapping::HiRom}}) {
-        if (place + kInternalHeaderSize > rom.data.size()) continue;
-        const int s = score(ByteView(rom.data).subspan(place, kInternalHeaderSize), mapping);
-        if (s > best) {
-            best = s;
-            rom.mapping = mapping;
-            rom.header_offset = place;
-        }
-    }
-    if (best < kAccepted) throw FormatError(kReader, copier + kLoRomHeader, "no internal header: neither $7FC0 nor $FFC0 reads as one");
-    const ByteView h = ByteView(rom.data).subspan(rom.header_offset, kInternalHeaderSize);
-    rom.title.assign(reinterpret_cast<const char*>(h.data()), 21);
+    // config/formats/snes.fmt scores the two places the internal header can be and says which one wins (or fails).
+    const engine::Tree tree = engine::read_builtin(kReader, rom.data);
+    const bool hirom = tree.root.u("is_hirom") != 0;
+    rom.mapping = hirom ? Mapping::HiRom : Mapping::LoRom;
+    rom.header_offset = static_cast<std::uint32_t>(tree.root.u("header_offset"));
+    const engine::Node& h = tree.root.get(hirom ? "hi" : "lo");
+    rom.title = h.get("title").text;
     while (!rom.title.empty() && (rom.title.back() == ' ' || rom.title.back() == '\0')) rom.title.pop_back();
-    rom.map_mode = h[0x15];
-    rom.chipset = h[0x16];
-    rom.rom_size_code = h[0x17];
-    rom.ram_size_code = h[0x18];
-    rom.country = h[0x19];
-    rom.developer = h[0x1A];
-    rom.version = h[0x1B];
-    rom.complement = word_of(h, 0x1C);
-    rom.checksum = word_of(h, 0x1E);
+    rom.map_mode = static_cast<std::uint8_t>(h.u("map_mode"));
+    rom.chipset = static_cast<std::uint8_t>(h.u("chipset"));
+    rom.rom_size_code = static_cast<std::uint8_t>(h.u("rom_size_code"));
+    rom.ram_size_code = static_cast<std::uint8_t>(h.u("ram_size_code"));
+    rom.country = static_cast<std::uint8_t>(h.u("country"));
+    rom.developer = static_cast<std::uint8_t>(h.u("developer"));
+    rom.version = static_cast<std::uint8_t>(h.u("version"));
+    rom.complement = static_cast<std::uint16_t>(h.u("complement"));
+    rom.checksum = static_cast<std::uint16_t>(h.u("checksum"));
     rom.checksum_ok = static_cast<std::uint16_t>(rom.complement + rom.checksum) == 0xFFFF;
-    rom.native = {word_of(h, 0x24), word_of(h, 0x26), word_of(h, 0x28), word_of(h, 0x2A), word_of(h, 0x2C), word_of(h, 0x2E)};
-    rom.emulation = {word_of(h, 0x34), word_of(h, 0x36), word_of(h, 0x38), word_of(h, 0x3A), word_of(h, 0x3C), word_of(h, 0x3E)};
+    rom.native = vectors_of(h.get("native"));
+    rom.emulation = vectors_of(h.get("emulation"));
     return rom;
 }
 
@@ -101,16 +80,13 @@ Rom read(const std::filesystem::path& path) {
 
 bool probe(const std::filesystem::path& path) {
     if (!has_extension(path, {".sfc", ".smc", ".swc", ".fig"})) return false;
-    const std::optional<std::uint64_t> size = size_of(path);
-    if (!size) return false;
-    const std::size_t copier = copier_size_of(*size);
-    if (*size < copier + kLoRomBank) return false;
-    for (const auto& [place, mapping] : {std::pair{kLoRomHeader, Mapping::LoRom}, std::pair{kHiRomHeader, Mapping::HiRom}}) {
-        if (copier + place + kInternalHeaderSize > *size) continue;
-        const std::optional<Bytes> h = read_prefix(path, copier + place, kInternalHeaderSize);
-        if (h && h->size() == kInternalHeaderSize && score(*h, mapping) >= kAccepted) return true;
+    try {
+        const fs::MappedFile file(path);
+        (void)parse(file.view());   // a header the description scores well enough
+        return true;
+    } catch (const Error&) {
+        return false;
     }
-    return false;
 }
 
 const std::map<std::uint32_t, std::string>& registers() {

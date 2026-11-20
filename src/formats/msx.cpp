@@ -6,6 +6,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::msx {
@@ -29,23 +30,15 @@ Program parse(ByteView data) {
     }
     // The header is at the start of page 1 ($4000): the image's first byte when the cartridge starts there, or its
     // byte $4000 when it fills pages 0-2 from $0000 (48 KB: msx-wrally).
-    std::size_t at = 0;
-    std::uint32_t origin = 0x4000;
-    if (ab_at(data, 0)) {
-        at = 0;
-    } else if (data.size() > kPage && ab_at(data, kPage)) {
-        at = kPage;
-        origin = 0x0000;
-    } else {
-        throw FormatError(kReader, 0, "no MSX cartridge header");
-    }
-    io::ByteReader r(data, kReader);
-    r.seek(at + 2);
+    const engine::Tree tree = engine::read_builtin(kReader, data);   // config/formats/msx.fmt finds the "AB" at $0000 or $4000
+    const engine::Node& h = tree.root.get("header");
+    const std::size_t at = h.offset;
+    std::uint32_t origin = at == 0 ? 0x4000 : 0x0000;
     Program p;
-    p.header.init = r.u16();
-    p.header.statement = r.u16();
-    p.header.device = r.u16();
-    p.header.text = r.u16();
+    p.header.init = static_cast<std::uint16_t>(h.u("init"));
+    p.header.statement = static_cast<std::uint16_t>(h.u("statement"));
+    p.header.device = static_cast<std::uint16_t>(h.u("device"));
+    p.header.text = static_cast<std::uint16_t>(h.u("text"));
     if (at == 0 && p.header.init != 0 && p.header.init < 0x4000) {
         origin = 0x0000;
     } else if (at == 0 && p.header.init >= 0x8000 && data.size() <= kPage) {

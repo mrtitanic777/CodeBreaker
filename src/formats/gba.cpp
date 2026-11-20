@@ -4,6 +4,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::gba {
@@ -30,9 +31,9 @@ std::uint32_t word_at(ByteView b, std::size_t at) {
 // An ARM branch (B or BL, any condition but the never-condition): bits 27-25 are 101.
 bool is_branch(std::uint32_t w) { return (w & 0x0E000000) == 0x0A000000 && (w >> 28) != 0xF; }
 
-std::string text_field(ByteView b, std::size_t at, std::size_t n) {
-    std::string s;
-    for (std::size_t i = 0; i < n; ++i) s += static_cast<char>(b[at + i]);
+// A text field of the header, trailing zeros removed.
+std::string text_field(const engine::Node& header, std::string_view name) {
+    std::string s = header.get(name).text;
     while (!s.empty() && s.back() == '\0') s.pop_back();
     return s;
 }
@@ -55,26 +56,22 @@ std::vector<std::uint32_t> Rom::functions(const Decoder& decode) const {
 }
 
 Rom parse(ByteView data) {
-    if (data.size() < kHeaderSize) throw FormatError(kReader, 0, "shorter than the 192-byte header");
-    if (data.size() > kMaxRom) throw FormatError(kReader, 0, "larger than the 32 MB the console maps");
-    if (data[kFixedAt] != kFixedValue) throw FormatError(kReader, kFixedAt, "not a Game Boy Advance ROM (no $96 at $B2)");
+    const engine::Tree tree = engine::read_builtin(kReader, data);   // config/formats/gba.fmt
+    const engine::Node& d = tree.root.get("header");
     Rom rom;
     rom.data.assign(data.begin(), data.end());
     Header& h = rom.header;
-    h.entry_word = word_at(data, 0);
-    if (is_branch(h.entry_word)) {
-        const std::int32_t offset = static_cast<std::int32_t>(h.entry_word << 8) >> 6;   // the 24 bits, times four
-        h.entry = static_cast<std::uint32_t>(kRomBase + 8 + offset);
-    }
-    h.logo_ok = std::equal(kLogo.begin(), kLogo.end(), data.begin() + 4);
-    h.title = text_field(data, 0xA0, 12);
-    h.game_code = text_field(data, 0xAC, 4);
-    h.maker_code = text_field(data, 0xB0, 2);
-    h.unit_code = data[0xB3];
-    h.device_type = data[0xB4];
-    h.version = data[0xBC];
-    h.complement = data[0xBD];
-    h.computed_complement = header_complement(data);
+    h.entry_word = static_cast<std::uint32_t>(d.u("entry_word"));
+    if (d.u("is_branch")) h.entry = static_cast<std::uint32_t>(d.u("entry"));
+    h.logo_ok = equal_bytes(engine::bytes_of(tree, d.get("logo")), kLogo);
+    h.title = text_field(d, "title");
+    h.game_code = text_field(d, "game_code");
+    h.maker_code = text_field(d, "maker_code");
+    h.unit_code = static_cast<std::uint8_t>(d.u("unit_code"));
+    h.device_type = static_cast<std::uint8_t>(d.u("device_type"));
+    h.version = static_cast<std::uint8_t>(d.u("version"));
+    h.complement = static_cast<std::uint8_t>(d.u("complement"));
+    h.computed_complement = static_cast<std::uint8_t>(d.u("computed_complement"));
     return rom;
 }
 

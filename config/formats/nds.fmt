@@ -1,0 +1,53 @@
+# nds.fmt -- Nintendo DS cartridges (.nds): the 512-byte header (titles, the ARM9 and ARM7 binaries, the file name and
+# allocation tables, the overlay tables, the banner, the Nintendo logo and the two checksums). The logo checksum $CF56 at
+# $15C is the mark every cartridge carries.
+
+format nds
+endian le
+
+struct File {
+    assert $size >= 0x200 : "shorter than the 512-byte header"
+    assert $size <= 0x20000000 : "larger than 512 MB"
+    assert peek16(0x15C) == 0xCF56 : "not a Nintendo DS ROM (the logo checksum $CF56 is not at $15C)"
+    header : Header
+}
+
+struct Binary {
+    rom_offset  : u32
+    entry       : u32
+    ram_address : u32
+    size_bytes  : u32
+}
+
+struct Header {
+    title        : str(12)
+    game_code    : str(4)
+    maker_code   : str(2)
+    unit_code    : u8
+    seed         : u8
+    capacity     : u8
+    reserved     : bytes(8)
+    region       : u8
+    version      : u8
+    autostart    : u8
+    arm9         : Binary
+    arm7         : Binary
+    fnt_offset   : u32
+    fnt_size     : u32
+    fat_offset   : u32
+    fat_size     : u32
+    ovl9_offset  : u32
+    ovl9_size    : u32
+    ovl7_offset  : u32
+    ovl7_size    : u32
+    port_settings : bytes(8)
+    banner_offset : u32
+    reserved2     : bytes(20)
+    used_size     : u32           # $80
+    header_size   : u32
+    reserved3     : bytes(56)
+    logo          : bytes(156)    # $C0: the same bitmap as the Game Boy Advance's
+    logo_crc      : u16           # $15C: $CF56
+    header_crc    : u16           # $15E: CRC-16 of $000-$15D
+    reserved4     : bytes(160)
+}

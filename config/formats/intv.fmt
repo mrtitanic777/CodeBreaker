@@ -1,0 +1,24 @@
+# intv.fmt -- Intellicart .rom files for the Intellivision: $A8, the segment count N, its complement ~N, then each segment
+# (the first and last 256-word page, the words big-endian, a CRC-16), then whatever follows. (A raw .int file is the
+# words at $5000 with no structure to describe.)
+
+format intv
+endian be
+
+struct File {
+    assert $size >= 3 + 2 + 512 + 2 : "not an Intellicart .rom file (too short)"
+    magic    : u8 == 0xA8
+    count    : u8
+    inverse  : u8
+    assert count != 0 && ((~count) & 0xFF) == inverse : "not an Intellicart .rom file (the header is $A8, N, ~N)"
+    segments : Segment[count]
+    tail     : bytes($remaining)
+}
+
+struct Segment {
+    first_page : u8
+    last_page  : u8
+    assert last_page >= first_page : "a segment's page range is wrong"
+    words      : bytes((last_page - first_page + 1) * 512)    # (last - first + 1) pages of 256 words
+    crc        : u16
+}

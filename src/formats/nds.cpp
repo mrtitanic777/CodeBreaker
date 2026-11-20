@@ -6,6 +6,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/gba.hpp"
 #include "formats/probe.hpp"
 
@@ -22,14 +23,15 @@ std::uint32_t word_at(ByteView b, std::size_t at) {
 }
 std::uint16_t half_at(ByteView b, std::size_t at) { return static_cast<std::uint16_t>(b[at] | b[at + 1] << 8); }
 
-std::string text_field(ByteView b, std::size_t at, std::size_t n) {
-    std::string s;
-    for (std::size_t i = 0; i < n; ++i) s += static_cast<char>(b[at + i]);
+std::string text_field(const engine::Node& header, std::string_view name) {   // a text field of the header, trailing zeros removed
+    std::string s = header.get(name).text;
     while (!s.empty() && s.back() == '\0') s.pop_back();
     return s;
 }
 
-Binary binary_at(ByteView b, std::size_t at) { return {word_at(b, at), word_at(b, at + 4), word_at(b, at + 8), word_at(b, at + 12)}; }
+std::uint32_t word_of(const engine::Node& header, std::string_view name) { return static_cast<std::uint32_t>(header.u(name)); }
+
+Binary binary_of(const engine::Node& b) { return {word_of(b, "rom_offset"), word_of(b, "entry"), word_of(b, "ram_address"), word_of(b, "size_bytes")}; }
 
 // The file names the FNT gives, by file id: "dir/sub/name". Anything out of bounds ends that directory; a directory is visited once.
 std::map<std::uint32_t, std::string> file_names(ByteView rom, std::uint32_t fnt_offset, std::uint32_t fnt_size) {
@@ -134,37 +136,36 @@ std::vector<Region> Rom::regions() const {
 }
 
 Rom parse(ByteView data) {
-    if (data.size() < kHeaderSize) throw FormatError(kReader, 0, "shorter than the 512-byte header");
-    if (data.size() > kMaxRom) throw FormatError(kReader, 0, "larger than 512 MB");
-    if (half_at(data, kLogoCrcAt) != kLogoCrc) throw FormatError(kReader, kLogoCrcAt, "not a Nintendo DS ROM (the logo checksum $CF56 is not at $15C)");
+    const engine::Tree tree = engine::read_builtin(kReader, data);   // config/formats/nds.fmt
+    const engine::Node& n = tree.root.get("header");
     Rom rom;
     rom.data.assign(data.begin(), data.end());
     Header& h = rom.header;
-    h.title = text_field(data, 0, 12);
-    h.game_code = text_field(data, 0x0C, 4);
-    h.maker_code = text_field(data, 0x10, 2);
-    h.unit_code = data[0x12];
-    h.seed = data[0x13];
-    h.capacity = data[0x14];
-    h.region = data[0x1D];
-    h.version = data[0x1E];
-    h.autostart = data[0x1F];
-    h.arm9 = binary_at(data, 0x20);
-    h.arm7 = binary_at(data, 0x30);
-    h.fnt_offset = word_at(data, 0x40);
-    h.fnt_size = word_at(data, 0x44);
-    h.fat_offset = word_at(data, 0x48);
-    h.fat_size = word_at(data, 0x4C);
-    h.ovl9_offset = word_at(data, 0x50);
-    h.ovl9_size = word_at(data, 0x54);
-    h.ovl7_offset = word_at(data, 0x58);
-    h.ovl7_size = word_at(data, 0x5C);
-    h.banner_offset = word_at(data, 0x68);
-    h.used_size = word_at(data, 0x80);
-    h.header_size = word_at(data, 0x84);
-    h.logo_ok = std::equal(gba::kLogo.begin(), gba::kLogo.end(), data.begin() + kLogoAt);
-    h.logo_crc = half_at(data, kLogoCrcAt);
-    h.header_crc = half_at(data, kHeaderCrcAt);
+    h.title = text_field(n, "title");
+    h.game_code = text_field(n, "game_code");
+    h.maker_code = text_field(n, "maker_code");
+    h.unit_code = static_cast<std::uint8_t>(n.u("unit_code"));
+    h.seed = static_cast<std::uint8_t>(n.u("seed"));
+    h.capacity = static_cast<std::uint8_t>(n.u("capacity"));
+    h.region = static_cast<std::uint8_t>(n.u("region"));
+    h.version = static_cast<std::uint8_t>(n.u("version"));
+    h.autostart = static_cast<std::uint8_t>(n.u("autostart"));
+    h.arm9 = binary_of(n.get("arm9"));
+    h.arm7 = binary_of(n.get("arm7"));
+    h.fnt_offset = word_of(n, "fnt_offset");
+    h.fnt_size = word_of(n, "fnt_size");
+    h.fat_offset = word_of(n, "fat_offset");
+    h.fat_size = word_of(n, "fat_size");
+    h.ovl9_offset = word_of(n, "ovl9_offset");
+    h.ovl9_size = word_of(n, "ovl9_size");
+    h.ovl7_offset = word_of(n, "ovl7_offset");
+    h.ovl7_size = word_of(n, "ovl7_size");
+    h.banner_offset = word_of(n, "banner_offset");
+    h.used_size = word_of(n, "used_size");
+    h.header_size = word_of(n, "header_size");
+    h.logo_ok = equal_bytes(engine::bytes_of(tree, n.get("logo")), gba::kLogo);
+    h.logo_crc = static_cast<std::uint16_t>(n.u("logo_crc"));
+    h.header_crc = static_cast<std::uint16_t>(n.u("header_crc"));
     h.computed_header_crc = crc16(data.subspan(0, kHeaderCrcAt));
     return rom;
 }

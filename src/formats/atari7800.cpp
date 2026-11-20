@@ -7,6 +7,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::atari7800 {
@@ -62,30 +63,24 @@ std::vector<std::uint32_t> Rom::functions(const Decoder& decode) const {
 }
 
 Rom parse(ByteView data) {
-    if (!has_magic(data)) throw FormatError(kReader, 0, "not an A78 header (no ATARI7800 at byte 1)");
+    const engine::Tree tree = engine::read_builtin(kReader, data);   // config/formats/atari7800.fmt
+    const engine::Node& d = tree.root;
+    const engine::Node& h = d.get("header");
     Rom rom;
     rom.header.assign(data.begin(), data.begin() + kHeaderSize);
-    rom.version = data[0];
-    rom.title.assign(reinterpret_cast<const char*>(data.data()) + 17, 32);
+    rom.version = static_cast<std::uint8_t>(h.u("version"));
+    rom.title = h.get("title").text;
     while (!rom.title.empty() && (rom.title.back() == '\0' || rom.title.back() == ' ')) rom.title.pop_back();
-    rom.declared_size = static_cast<std::uint32_t>(data[49] << 24 | data[50] << 16 | data[51] << 8 | data[52]);
-    rom.cart_type = static_cast<std::uint16_t>(data[53] << 8 | data[54]);
-    rom.controller1 = data[55];
-    rom.controller2 = data[56];
-    rom.tv = data[57];
-    rom.save = data[58];
-    rom.data.assign(data.begin() + kHeaderSize, data.end());
-    const std::size_t size = rom.data.size();
-    if (rom.declared_size > size) throw FormatError(kReader, kHeaderSize, std::format("the ROM is cut short ({} of {} bytes)", size, rom.declared_size));
-    rom.supergame = (rom.cart_type & kTypeSuperGame) != 0 && size > 3 * kBankSize;
-    if (rom.supergame) {
-        if (size % kBankSize != 0 || size > 8 * kBankSize) throw FormatError(kReader, kHeaderSize, std::format("{} bytes is not 16 KB banks of a SuperGame board", size));
-    } else {
-        if (size < 0x1000 || size > 3 * kBankSize || size % 0x1000 != 0) {
-            throw FormatError(kReader, kHeaderSize, std::format("{} bytes is not a ROM of 4 KB to 48 KB, or a SuperGame board's", size));
-        }
-        rom.base = static_cast<std::uint32_t>(0x10000 - size);
-    }
+    rom.declared_size = static_cast<std::uint32_t>(h.u("declared_size"));
+    rom.cart_type = static_cast<std::uint16_t>(h.u("cart_type"));
+    rom.controller1 = static_cast<std::uint8_t>(h.u("controller1"));
+    rom.controller2 = static_cast<std::uint8_t>(h.u("controller2"));
+    rom.tv = static_cast<std::uint8_t>(h.u("tv"));
+    rom.save = static_cast<std::uint8_t>(h.u("save"));
+    const ByteView body = engine::bytes_of(tree, d.get("rom"));
+    rom.data.assign(body.begin(), body.end());
+    rom.supergame = d.u("supergame") != 0;   // (the description holds the size rules)
+    rom.base = static_cast<std::uint32_t>(d.u("base"));
     const Bytes mem = rom.memory(0);
     rom.vectors = {word_of(mem, 0xFFFA), word_of(mem, 0xFFFC), word_of(mem, 0xFFFE)};
     return rom;

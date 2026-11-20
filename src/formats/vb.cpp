@@ -6,6 +6,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::vb {
@@ -25,8 +26,7 @@ bool holds_code(ByteView slot) {
     return hw != 0x0000 && hw != 0xFFFF && opcode != 0x1B && opcode != 0x32 && opcode != 0x36;
 }
 
-std::string text_of(ByteView field) {
-    std::string s(reinterpret_cast<const char*>(field.data()), field.size());
+std::string text_of(std::string s) {
     while (!s.empty() && (s.back() == ' ' || s.back() == '\0')) s.pop_back();
     return s;
 }
@@ -51,15 +51,14 @@ std::vector<Rom::Entry> Rom::entries() const {
 }
 
 Rom parse(ByteView d) {
-    if (!size_ok(d.size())) throw FormatError(kReader, 0, std::format("{} bytes is not a Virtual Boy cartridge (a power of two from 16 KB to 16 MB)", d.size()));
-    if (!holds_code(d.subspan(d.size() - 0x10, 16))) throw FormatError(kReader, d.size() - 0x10, "the reset slot holds no code");
+    const engine::Tree tree = engine::read_builtin(kReader, d);   // config/formats/vb.fmt
+    const engine::Node& h = tree.root.get("header");
     Rom r;
     r.data.assign(d.begin(), d.end());
-    const ByteView h = d.subspan(d.size() - 0x220, 0x20);
-    r.header.title = text_of(h.first(20));
-    r.header.maker = text_of(h.subspan(25, 2));
-    r.header.game_code = text_of(h.subspan(27, 4));
-    r.header.version = h[31];
+    r.header.title = text_of(h.get("title").text);
+    r.header.maker = text_of(h.get("maker").text);
+    r.header.game_code = text_of(h.get("game_code").text);
+    r.header.version = static_cast<std::uint8_t>(h.u("version"));
     return r;
 }
 

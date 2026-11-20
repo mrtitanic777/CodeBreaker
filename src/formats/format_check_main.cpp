@@ -1,6 +1,6 @@
 // format_check -- the format engine's proof program (formats/format_engine). For each file it reads the file through the
 // descriptions of config/formats, prints the generic tree (with --tree) and diffs it, field by field, against the
-// hand-written reader of the same format (mz: dos.cpp, pe: pe.cpp, ne: ne.cpp, ines: nes.cpp).
+// hand-written reader of the same format (mz: dos.cpp, pe: pe.cpp, ne: ne.cpp, ines: nes.cpp, the console headers: gb.cpp ...).
 //
 //   format_check [--formats DIR] [--tree] [--max N] [--quiet] FILE-OR-FOLDER...
 //
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
                 for (const std::string& n : names) std::printf("%s ", n.c_str());
                 std::printf("\n");
             }
-            for (const std::string& format : {std::string("mz"), std::string("pe"), std::string("ne"), std::string("ines")}) {
+            for (const std::string& format : eng::compared_formats()) {
                 if (!reg.has(format)) continue;
                 const eng::Comparison c = eng::compare(reg, format, data);
                 Tally& t = tally[format];

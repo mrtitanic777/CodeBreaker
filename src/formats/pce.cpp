@@ -5,6 +5,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::pce {
@@ -22,13 +23,6 @@ std::size_t header_size_of(std::uint64_t size) {
 }
 
 bool whole_banks(std::uint64_t size, std::size_t header) { return size > header && (size - header) % kBankSize == 0; }
-
-Vectors vectors_of(ByteView first_bank) {
-    return {word_of(first_bank, kBankSize - 10), word_of(first_bank, kBankSize - 8), word_of(first_bank, kBankSize - 6),
-            word_of(first_bank, kBankSize - 4), word_of(first_bank, kBankSize - 2)};
-}
-
-bool reset_in_top_page(const Vectors& v) { return v.reset >= kResetBase; }
 
 }  // namespace
 
@@ -49,13 +43,15 @@ std::optional<std::uint8_t> Rom::at(std::uint32_t physical, std::uint32_t offset
 }
 
 Rom parse(ByteView data) {
-    const std::size_t header = header_size_of(data.size());
-    if (!whole_banks(data.size(), header)) throw FormatError(kReader, 0, std::format("{} bytes is not whole 8 KB banks (with or without a 512-byte header)", data.size()));
+    const engine::Tree tree = engine::read_builtin(kReader, data);   // config/formats/pce.fmt
+    const engine::Node& d = tree.root;
     Rom rom;
-    rom.header.assign(data.begin(), data.begin() + static_cast<std::ptrdiff_t>(header));
-    rom.data.assign(data.begin() + static_cast<std::ptrdiff_t>(header), data.end());
-    rom.vectors = vectors_of(rom.bank(0));
-    if (!reset_in_top_page(rom.vectors)) throw FormatError(kReader, header + kBankSize - 2, std::format("the RESET vector ${:04X} is not in $E000-$FFFF", rom.vectors.reset));
+    const ByteView copier = engine::bytes_of(tree, d.get("copier")), banks = engine::bytes_of(tree, d.get("banks"));
+    rom.header.assign(copier.begin(), copier.end());
+    rom.data.assign(banks.begin(), banks.end());
+    const engine::Node& v = d.get("vectors");
+    rom.vectors = {static_cast<std::uint16_t>(v.u("irq2")), static_cast<std::uint16_t>(v.u("irq1")), static_cast<std::uint16_t>(v.u("timer")),
+                   static_cast<std::uint16_t>(v.u("nmi")), static_cast<std::uint16_t>(v.u("reset"))};
     return rom;
 }
 

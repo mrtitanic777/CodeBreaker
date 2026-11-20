@@ -11,6 +11,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::lynx {
@@ -112,10 +113,8 @@ std::optional<Bytes> decrypt_block(ByteView block, int& accumulator) {
     return plain;
 }
 
-std::string text_field(ByteView data, std::size_t at, std::size_t length) {
-    std::string s;
-    for (std::size_t i = 0; i < length && data[at + i] != 0; ++i) s.push_back(static_cast<char>(data[at + i]));
-    return s;
+std::string text_field(const engine::Node& header, std::string_view name) {   // up to the first NUL
+    return header.str(name);
 }
 
 }  // namespace
@@ -186,40 +185,36 @@ std::vector<std::uint32_t> Program::functions(const Decoder& decode) const {
 }
 
 Program parse(ByteView data) {
+    const engine::Tree tree = engine::read_builtin(kReader, data);   // config/formats/lynx.fmt: a cartridge or a BS93 object
     Program p;
     p.file.assign(data.begin(), data.end());
-    if (is_cartridge(data)) {
+    if (tree.root.u("is_cartridge")) {
+        const engine::Node& h = tree.root.get("cart");
         p.kind = Kind::Cartridge;
-        io::ByteReader r(data, kReader);
-        r.seek(4);
-        p.bank0_block = r.u16();
-        p.bank1_block = r.u16();
-        p.version = r.u16();
-        p.name = text_field(data, 10, 32);
-        p.manufacturer = text_field(data, 42, 16);
-        p.rotation = data[58];
-        p.audin = data[59];
-        p.eeprom = data[60];
+        p.bank0_block = static_cast<std::uint16_t>(h.u("bank0_block"));
+        p.bank1_block = static_cast<std::uint16_t>(h.u("bank1_block"));
+        p.version = static_cast<std::uint16_t>(h.u("version"));
+        p.name = text_field(h, "name");
+        p.manufacturer = text_field(h, "manufacturer");
+        p.rotation = static_cast<std::uint8_t>(h.u("rotation"));
+        p.audin = static_cast<std::uint8_t>(h.u("audin"));
+        p.eeprom = static_cast<std::uint8_t>(h.u("eeprom"));
         const ByteView cart = data.subspan(kHeaderSize);
-        if (!cart.empty()) {
-            const std::size_t count = 0x100u - cart[0];
-            if (count >= 1 && count <= kMaxEncryptedBlocks && cart.size() >= 1 + count * kEncryptedBlock) {
-                p.stage1 = decrypt_blocks(cart.subspan(1), count);
-                if (!p.stage1.empty()) p.encrypted_blocks = static_cast<std::uint32_t>(count);
-            }
+        const std::size_t count = tree.root.u("encrypted_count");   // the first byte of the cartridge counts the encrypted blocks
+        if (count >= 1 && count <= kMaxEncryptedBlocks && cart.size() >= 1 + count * kEncryptedBlock) {
+            p.stage1 = decrypt_blocks(cart.subspan(1), count);
+            if (!p.stage1.empty()) p.encrypted_blocks = static_cast<std::uint32_t>(count);
         }
         return p;
     }
-    if (is_bs93(data)) {
-        p.kind = Kind::Bs93;
-        p.load_address = static_cast<std::uint16_t>((data[2] << 8) | data[3]);
-        p.block_length = static_cast<std::uint16_t>((data[4] << 8) | data[5]);
-        const std::uint32_t body = p.block_length - kBs93Header;
-        p.segments = {{kBs93Header, p.load_address, body}};
-        p.entries = {p.load_address};
-        return p;
-    }
-    throw FormatError(kReader, 0, "not a Lynx cartridge image (LYNX) or a BS93 object");
+    const engine::Node& h = tree.root.get("object");
+    p.kind = Kind::Bs93;
+    p.load_address = static_cast<std::uint16_t>(h.u("load_address"));
+    p.block_length = static_cast<std::uint16_t>(h.u("block_length"));
+    const std::uint32_t body = p.block_length - kBs93Header;
+    p.segments = {{kBs93Header, p.load_address, body}};
+    p.entries = {p.load_address};
+    return p;
 }
 
 Program read(const std::filesystem::path& path) {

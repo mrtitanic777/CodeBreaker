@@ -9,6 +9,7 @@
 #include "core/fs.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::sms {
@@ -16,10 +17,8 @@ namespace cb::formats::sms {
 namespace {
 
 constexpr std::string_view kReader = "sms";
-constexpr std::array<std::uint32_t, 3> kHeaderAt = {0x7FF0, 0x3FF0, 0x1FF0};
 constexpr std::size_t kCopierHeader = 512;
 constexpr std::size_t kSlotsSize = 0xC000;   // pages 0-2; $C000 up is RAM
-constexpr char kSignature[] = "TMR SEGA";
 
 struct Region {
     System system;
@@ -54,26 +53,23 @@ std::optional<std::uint32_t> size_of_code(unsigned code) {
     }
 }
 
-std::optional<Header> find_header(ByteView data) {
-    for (std::uint32_t at : kHeaderAt) {
-        if (data.size() < std::size_t{at} + 16 || std::memcmp(data.data() + at, kSignature, 8) != 0) continue;
-        const ByteView h = data.subspan(at, 16);
-        const unsigned region = h[15] >> 4;
-        const unsigned size = h[15] & 0x0F;
-        Header out;
-        out.at = at;
-        out.checksum = static_cast<std::uint16_t>(h[10] | (h[11] << 8));
-        // The product code: BCD, low byte first, its top digit in the high nibble of byte 14.
-        const std::string code = std::format("{:X}{:02X}{:02X}", h[14] >> 4, h[13], h[12]);
-        const std::size_t first = code.find_first_not_of('0');
-        out.product = first == std::string::npos ? "0" : code.substr(first);
-        out.version = h[14] & 0x0F;
-        const std::optional<Region> r = region_of(region);
-        out.region = r ? std::string(r->name) : "?";
-        out.size = size_of_code(size);
-        return out;
-    }
-    return std::nullopt;
+// The header the description found ($7FF0, $3FF0 or $1FF0: config/formats/sms.fmt), if any.
+std::optional<Header> find_header(const Bytes& data) {
+    const engine::Tree tree = engine::read_builtin(kReader, data);
+    const engine::Node* n = tree.root.find("header");
+    if (n == nullptr) return std::nullopt;
+    Header out;
+    out.at = static_cast<std::uint32_t>(n->offset);
+    out.checksum = static_cast<std::uint16_t>(n->u("checksum"));
+    // The product code: BCD, low byte first, its top digit in the high nibble of byte 14.
+    const std::string code = std::format("{:X}{:02X}{:02X}", n->u("product2") >> 4, n->u("product1"), n->u("product0"));
+    const std::size_t first = code.find_first_not_of('0');
+    out.product = first == std::string::npos ? "0" : code.substr(first);
+    out.version = static_cast<std::uint8_t>(n->u("version"));
+    const std::optional<Region> r = region_of(static_cast<unsigned>(n->u("region")));
+    out.region = r ? std::string(r->name) : "?";
+    out.size = size_of_code(static_cast<unsigned>(n->u("size_code")));
+    return out;
 }
 
 }  // namespace

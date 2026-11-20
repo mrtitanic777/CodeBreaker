@@ -5,6 +5,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::ngp {
@@ -18,8 +19,6 @@ bool has_licence(ByteView d) {
     const std::string_view text = as_text(d.first(28));
     return text == "COPYRIGHT BY SNK CORPORATION" || text == " LICENSED BY SNK CORPORATION";
 }
-
-std::uint32_t le32(ByteView d, std::size_t at) { return d[at] | d[at + 1] << 8 | d[at + 2] << 16 | static_cast<std::uint32_t>(d[at + 3]) << 24; }
 
 }  // namespace
 
@@ -52,20 +51,19 @@ const std::map<std::uint32_t, std::string>& hardware() {
 }
 
 Rom parse(ByteView d) {
-    if (d.size() < kHeaderSize || d.size() > kMaxSize) throw FormatError(kReader, 0, std::format("{} bytes is not a Neo Geo Pocket cartridge (64 bytes to 4 MB)", d.size()));
-    if (!has_licence(d)) throw FormatError(kReader, 0, "the file does not start with the SNK licence text");
+    const engine::Tree tree = engine::read_builtin(kReader, d);   // config/formats/ngp.fmt
+    const engine::Node& n = tree.root.get("header");
     Rom r;
     r.data.assign(d.begin(), d.end());
     Header& h = r.header;
-    h.licensed = d[0] == ' ';
-    h.start = le32(d, 0x1C);
-    h.catalog = static_cast<std::uint16_t>(d[0x20] | d[0x21] << 8);
-    h.sub_catalog = d[0x22];
-    h.colour = d[0x23] == 0x10;
-    std::string title(reinterpret_cast<const char*>(d.data() + 0x24), 12);
+    h.licensed = n.u("licensed") != 0;
+    h.start = static_cast<std::uint32_t>(n.u("start"));
+    h.catalog = static_cast<std::uint16_t>(n.u("catalog"));
+    h.sub_catalog = static_cast<std::uint8_t>(n.u("sub_catalog"));
+    h.colour = n.u("colour") != 0;
+    std::string title = n.get("title").text;
     while (!title.empty() && (title.back() == ' ' || title.back() == '\0')) title.pop_back();
     h.title = title;
-    if (h.start < kRomBase || h.start - kRomBase >= d.size()) throw FormatError(kReader, 0x1C, std::format("the start address {:06X} is outside the ROM", h.start));
     return r;
 }
 

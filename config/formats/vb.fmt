@@ -1,0 +1,21 @@
+# vb.fmt -- Nintendo Virtual Boy cartridges (.vb, .vboy): a power of two from 16 KB to 16 MB, the header 0x220 bytes
+# before the end of the file, the reset vector in the last 16 bytes (it must hold code: not $0000 or $FFFF padding, and not
+# one of the three opcodes the V810 does not define).
+
+format vb
+endian le
+
+struct File {
+    assert $size >= 0x4000 && $size <= 0x1000000 && ($size & ($size - 1)) == 0 : "not a Virtual Boy cartridge (a power of two from 16 KB to 16 MB)"
+    reset_slot @ $size - 0x10 : u16
+    assert reset_slot != 0 && reset_slot != 0xFFFF && (reset_slot >> 10) != 0x1B && (reset_slot >> 10) != 0x32 && (reset_slot >> 10) != 0x36 : "the reset slot holds no code"
+    header @ $size - 0x220 : Header
+}
+
+struct Header {
+    title     : str(20)
+    reserved  : bytes(5)
+    maker     : str(2)
+    game_code : str(4)
+    version   : u8
+}

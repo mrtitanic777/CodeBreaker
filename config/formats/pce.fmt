@@ -1,0 +1,22 @@
+# pce.fmt -- PC Engine / TurboGrafx-16 HuCards (.pce, .tg16, .sgx): whole 8 KB banks, with a 512-byte copier header in
+# front when the size says so. The interrupt vectors are the last ten bytes of bank 0; RESET must point into $E000-$FFFF.
+
+format pce
+endian le
+
+struct File {
+    let header_size = ($size % 0x2000 == 512 && $size > 512) ? 512 : 0
+    assert $size > header_size && ($size - header_size) % 0x2000 == 0 : "not whole 8 KB banks (with or without a 512-byte header)"
+    copier  : bytes(header_size)
+    banks   : bytes($size - header_size)
+    vectors @ header_size + 0x2000 - 10 : Vectors
+    assert vectors.reset >= 0xE000 : "the RESET vector is not in $E000-$FFFF"
+}
+
+struct Vectors {
+    irq2  : u16         # also BRK
+    irq1  : u16         # the VDC
+    timer : u16
+    nmi   : u16
+    reset : u16
+}

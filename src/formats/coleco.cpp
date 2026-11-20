@@ -6,6 +6,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::coleco {
@@ -17,7 +18,6 @@ constexpr std::size_t kVectors = 0x0C;       // the first vector's offset: RST $
 constexpr std::size_t kNmi = 0x21;
 constexpr std::size_t kTitle = 0x24;
 
-bool has_header(ByteView d) { return d.size() >= kTitle && ((d[0] == 0xAA && d[1] == 0x55) || (d[0] == 0x55 && d[1] == 0xAA)); }
 
 // Does a vector hold something the BIOS may jump to: a JMP, a RET, RETI or RETN?
 bool used(ByteView d, std::size_t at) {
@@ -32,16 +32,15 @@ Program parse(ByteView data) {
     if (data.size() > kMaxSize) {
         throw UnsupportedError(kReader, 0, std::format("a {} KB cartridge switches banks (a mapper), not read yet", data.size() / 1024));
     }
-    if (!has_header(data)) throw FormatError(kReader, 0, "no ColecoVision cartridge header");
-    io::ByteReader r(data, kReader);
-    r.seek(2);
+    const engine::Tree tree = engine::read_builtin(kReader, data);   // config/formats/coleco.fmt
+    const engine::Node& h = tree.root.get("header");
     Program p;
-    p.header.title_screen = data[0] == 0xAA;
-    p.header.sprite_names = r.u16();
-    p.header.sprite_order = r.u16();
-    p.header.work_buffer = r.u16();
-    p.header.controllers = r.u16();
-    p.header.start = r.u16();
+    p.header.title_screen = h.u("title_screen") != 0;
+    p.header.sprite_names = static_cast<std::uint16_t>(h.u("sprite_names"));
+    p.header.sprite_order = static_cast<std::uint16_t>(h.u("sprite_order"));
+    p.header.work_buffer = static_cast<std::uint16_t>(h.u("work_buffer"));
+    p.header.controllers = static_cast<std::uint16_t>(h.u("controllers"));
+    p.header.start = static_cast<std::uint16_t>(h.u("start"));
     for (std::size_t i = kTitle; i < data.size() && i < kTitle + 0x40 && data[i] >= 0x20 && data[i] < 0x7F; ++i) p.header.title.push_back(static_cast<char>(data[i]));
     p.image.assign(data.begin(), data.end());
     const std::uint32_t end = kOrigin + static_cast<std::uint32_t>(data.size());

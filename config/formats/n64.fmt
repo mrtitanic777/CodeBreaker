@@ -1,0 +1,27 @@
+# n64.fmt -- Nintendo 64 ROMs in .z64 byte order (as the console reads them: 80 37 12 40). A .v64 (byte pairs swapped) or
+# .n64 (words reversed) dump is put in this order first. The header is 64 bytes, the boot code (IPL3) fills the rest of
+# the first 4 KB.
+
+format n64
+endian be
+
+struct File {
+    assert $size >= 0x1000 : "shorter than the boot code ($1000 bytes)"
+    header : Header
+}
+
+struct Header {
+    pi_config  : u32 == 0x80371240     # the PI bus configuration the console loads
+    clock_rate : u32
+    entry      : u32
+    release    : u32
+    crc1       : u32
+    crc2       : u32
+    reserved   : bytes(8)
+    name       : str(20)
+    reserved2  : bytes(7)
+    category   : u8
+    game_code  : str(2)
+    country    : u8
+    version    : u8
+}
