@@ -1,13 +1,12 @@
-// cb/translate/native_l2.hpp -- the L2 core library (native/l2: cbl2.dll) as a typed client: the C back end, the L2 node
+// cb/translate/native_l2.hpp -- the L2 core library (cb/translate/l2, the library cb_l2) as a typed client: the C back end, the L2 node
 // model's reader and writer, and the schema check, which the library does, asked through its one entry point.
 //
-// The library is a C++ program of its own with a C interface -- `l2_call(name, arguments, ...)` -- that takes the arguments
-// of an entry point as a JSON array and answers a JSON value. It can be loaded from the DLL (`Library::load`) or, in a
-// program that has its sources linked in, handed its two functions (`Library(&l2_call, &l2_free)`); either way this is the
-// one place that knows the protocol. Everything else is typed: each entry point is a method, its arguments are what the
+// The library is linked into the program and has one C entry point -- `l2_call(name, arguments, ...)` -- that takes the
+// arguments of an entry point as a JSON array and answers a JSON value. `Library::builtin()` hands over its two functions
+// (a test may hand its own: `Library(call, free)`); this is the one place that knows the protocol. Everything else is typed: each entry point is a method, its arguments are what the
 // library reads, its result a struct, its failure an exception.
 //
-//     Library lib = Library::load(Library::default_dll(checkout));
+//     const Library lib = Library::builtin();
 //     std::string c = lib.function(doc, moved);                   // C text of one L2 function document
 //     ModuleNames names = lib.module_names32(doc);
 //
@@ -21,7 +20,6 @@
 // Errors. A failure the library reports is a LibraryError carrying the library's own word for it (`type()`: "KeyError",
 // "ValueError", "TypeError", "IndexError", "AttributeError" or another); a node the C back end does not write is Declined
 // (and Cpp17Declined for the C++17 back end's), so a caller that tries a back end and falls back to another catches those.
-// A library that is not there, or is another version, is NotFoundError / IoError / UnsupportedError from the loader.
 #pragma once
 
 #include <cstddef>
@@ -119,7 +117,7 @@ struct Validation {
 
 // ---- the library ----------------------------------------------------------------------------------------------------
 
-// l2_call and l2_free of native/l2/src/api.cc.
+// l2_call and l2_free of cb/translate/l2/src/api.cc.
 using CallFn = int (*)(const char* name, const char* arguments, std::size_t length, char** out, std::size_t* out_length);
 using FreeFn = void (*)(char* result);
 
@@ -128,10 +126,8 @@ class Library {
 public:
     Library(CallFn call, FreeFn release);
 
-    // Load cbl2.dll. NotFoundError for a missing file, IoError when it will not load, UnsupportedError for another version.
-    static Library load(const std::filesystem::path& dll);
-    // Where the DLL is built: <checkout>/native/l2/build/bin/cbl2.dll, or in `folder` (the `l2_bin` setting) when given.
-    static std::filesystem::path default_dll(const std::filesystem::path& checkout, const std::filesystem::path& folder = {});
+    // The library linked into this program (cb_l2): its own l2_call and l2_free.
+    static Library builtin();
 
     // One entry point, arguments already a JSON array and its answer as text: (status, text). Status 0 is success; any other
     // is an error whose text is the JSON {"type", "message", "facts"?}.

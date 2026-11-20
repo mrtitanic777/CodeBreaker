@@ -86,11 +86,7 @@ std::string cap_check_tool(const std::string& tool) {
     }
     if (tool == "cxx") return judge_cs_cpp::find_cxx("") ? std::string() : "a C++17 compiler (g++, clang++ or Visual Studio's cl)";
     if (tool == "python") return cap_has_python() ? std::string() : "Python";
-    if (tool == "l2") {
-        stdfs::path dll = native_l2::Library::default_dll(config::current().checkout_root());
-        if (const auto env = fs::get_env("CB_L2_DLL")) dll = fs::from_text(*env);
-        return cap_is_file(dll) ? std::string() : "the L2 library (tools\\build_native.cmd l2)";
-    }
+    if (tool == "l2") return std::string();   // (the L2 library is linked in)
     return tool;
 }
 

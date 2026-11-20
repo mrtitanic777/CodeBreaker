@@ -1,11 +1,10 @@
 // cb/translate/native_l2_cases_test.cpp -- what the C back end writes (the C back end proper, the survival rules of L2, and the
 // 16-bit frame rules), asked of the library through its wire.
 //
-// testdata/c_backend_cases.json holds, for each case, every call made of cbl2.dll -- the entry point, the arguments as the library
+// testdata/c_backend_cases.json holds, for each case, every call made of the L2 library -- the entry point, the arguments as the library
 // reads them (documents whole, nothing held from an earlier call), and the answer. The checked-in answers were reviewed against the
 // rules they state (far/near passes, frames through SS, pieces, buffers, selector structures, interrupts, heading rules,
-// prototypes, struct fields ...). Each test here asks the library the same questions again and holds its answers to those. They need
-// cbl2.dll (cmake --build native/l2/build --target cbl2, or CB_L2_DLL naming it); without it they say so and pass.
+// prototypes, struct fields ...). Each test here asks the library the same questions again and holds its answers to those.
 #include <cstdlib>
 #include <iostream>
 #include <map>
@@ -25,14 +24,7 @@ struct L2caseRecord {
 
 const cb::translate::native_l2::Library* l2cases_library() {
     static const std::optional<cb::translate::native_l2::Library> lib = []() -> std::optional<cb::translate::native_l2::Library> {
-        std::filesystem::path dll = cb::translate::native_l2::Library::default_dll(cb::testing::data_path("../.."));
-        if (const auto env = cb::fs::get_env("CB_L2_DLL")) dll = cb::fs::from_text(*env);
-        std::error_code ec;
-        if (!std::filesystem::is_regular_file(dll, ec)) {
-            std::cerr << "native_l2 case tests: " << dll.string() << " is not built; skipped\n";
-            return std::nullopt;
-        }
-        return cb::translate::native_l2::Library::load(dll);
+        return cb::translate::native_l2::Library::builtin();
     }();
     return lib ? &*lib : nullptr;
 }

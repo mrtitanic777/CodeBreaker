@@ -402,11 +402,7 @@ decompile::describe::Knowledge& KitEnvironment::knowledge() {
 
 const translate::native_l2::Library& KitEnvironment::library() {
     std::lock_guard hold(impl_->lock);
-    if (!impl_->library) {
-        const std::optional<stdfs::path> folder = impl_->config.path("l2_bin");
-        impl_->library = translate::native_l2::Library::load(
-            translate::native_l2::Library::default_dll(impl_->config.checkout_root(), folder.value_or(stdfs::path())));
-    }
+    if (!impl_->library) impl_->library = translate::native_l2::Library::builtin();
     return *impl_->library;
 }
 

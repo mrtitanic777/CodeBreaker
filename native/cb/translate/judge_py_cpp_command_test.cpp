@@ -1,5 +1,5 @@
 // cb-unity: alone (test helpers named for this module)
-// Tests of `judge-py-cpp`: the command's shape, and, where the machine has a C++ compiler, a `python` and the built cbl2.dll, every module of
+// Tests of `judge-py-cpp`: the command's shape, and, where the machine has a C++ compiler and a `python`, every module of
 // the Python corpus (tests/translate/corpus/python) judged by running CPython beside its C++17 translation.
 #include "cb/translate/judge_py_cpp_command.hpp"
 
@@ -41,10 +41,8 @@ CB_TEST("translate.judge_py_cpp.the_command_is_named_and_documented", [] {
 // Each corpus module: every run_* function lowers, the module is written, compiled, and each answer equals CPython's.
 CB_TEST("translate.judge_py_cpp.the_python_corpus_agrees", [] {
     const auto cxx = cb::translate::judge_cs_cpp::find_cxx("");
-    const stdfs::path dll = cb::translate::native_l2::Library::default_dll(cb::testing::data_path("../.."));
-    std::error_code ec;
-    if (!cxx || !jpct_python_present() || !stdfs::is_regular_file(dll, ec)) {
-        std::cerr << "judge-py-cpp tests: no C++ compiler, python or cbl2.dll; skipped\n";
+    if (!cxx || !jpct_python_present()) {
+        std::cerr << "judge-py-cpp tests: no C++ compiler or python; skipped\n";
         return;
     }
     const stdfs::path corpus = cb::testing::data_path("../../tests/translate/corpus/python");
@@ -60,6 +58,7 @@ CB_TEST("translate.judge_py_cpp.the_python_corpus_agrees", [] {
         const jpc::Score s = jpc::judge_module(jpct_environment(), *cxx, f, work);
         if (!s.agrees.value_or(false)) std::cerr << name << ": " << s.detail << "\n";
         CB_CHECK(s.agrees.value_or(false));
+        std::error_code ec;
         stdfs::remove_all(work, ec);
     }
 });

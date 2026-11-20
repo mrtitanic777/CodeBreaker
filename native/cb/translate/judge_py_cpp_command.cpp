@@ -93,16 +93,9 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
         return score;
     }
 
-    // 2. the back end: native/l2's C++17 emitter
+    // 2. the back end: the L2 library's C++17 emitter (translate/l2, linked in)
     namespace nl = cb::translate::native_l2;
-    stdfs::path dll = nl::Library::default_dll(checkout);
-    if (const auto env = fs::get_env("CB_L2_DLL")) dll = fs::from_text(*env);
-    std::optional<nl::Library> lib;
-    try {
-        lib = nl::Library::load(dll);
-    } catch (const Error& e) {
-        throw ToolError("cbl2", 0, "", std::string("judge-py-cpp needs cbl2.dll (tools\\build_native.cmd l2): ") + e.what());
-    }
+    const std::optional<nl::Library> lib = nl::Library::builtin();
     backends::cpp17::UnitText unit_text;
     try {
         unit_text = backends::cpp17::write_unit(*lib, *module->unit);

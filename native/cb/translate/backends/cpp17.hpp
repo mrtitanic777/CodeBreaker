@@ -2,11 +2,11 @@
 // the source language's rules chosen by the unit's language (Unit.lang): 'python' on py.hpp's semantics, 'java' (or none) on
 // data/translate/runtime/cpp17/jrt.hpp; 'csharp' is written by csharp_cpp17.hpp (its own runtime, csrt.hpp), 'c' and 'cpp' have a place and decline until their rules are written.
 //
-// The back end itself is the L2 core library (native/l2, cbl2.dll; docs/NATIVE.md step 5): it reads L2 documents and writes the text.
+// The back end itself is the L2 core library (translate/l2, the library cb_l2; docs/NATIVE.md step 5): it reads L2 documents and writes the text.
 // This module hands it what it reads -- the typed tree as its L2 document, the modern forms C++17 has no word for lowered first -- and
 // gives the text back:
 //
-//     native_l2::Library lib = native_l2::Library::load(...);
+//     const native_l2::Library lib = native_l2::Library::builtin();
 //     UnitText m = write_unit(lib, unit);                          // a Python module (the Python front end): header, source, the
 //                                                                  // line span of each function's body
 //     std::string c = program(lib, arena, units);                  // a whole Java program from L2

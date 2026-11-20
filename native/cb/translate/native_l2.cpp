@@ -5,8 +5,8 @@
 #include <mutex>
 #include <nlohmann/json.hpp>
 
-#include "cb/core/dynlib.hpp"
 #include "cb/core/json.hpp"
+#include "l2api.h"   // translate/l2/include: the library's entry point
 
 namespace cb::translate::native_l2 {
 namespace {
@@ -77,7 +77,6 @@ std::string wire_doc(const Json& doc, const std::string* extra = nullptr) {
 struct Library::Impl {
     CallFn call = nullptr;
     FreeFn release = nullptr;
-    std::shared_ptr<DynLib> dll;   // keeps the DLL loaded as long as any handle is
     std::mutex lock;
     std::string schema;            // the schema the library was last told
 };
@@ -87,20 +86,9 @@ Library::Library(CallFn call, FreeFn release) : impl_(std::make_shared<Impl>()) 
     impl_->release = release;
 }
 
-Library Library::load(const std::filesystem::path& dll) {
-    auto lib = std::make_shared<DynLib>(DynLib::load(dll));
-    const auto version = lib->function<int (*)()>("l2_version");
-    if (version() != kLibraryVersion) throw UnsupportedError("native_l2", 0, dll.string() + " is another version: rebuild native/l2");
-    Library out(lib->function<CallFn>("l2_call"), lib->function<FreeFn>("l2_free"));
-    out.impl_->dll = std::move(lib);
-    return out;
-}
-
-std::filesystem::path Library::default_dll(const std::filesystem::path& checkout, const std::filesystem::path& folder) {
-    const std::string name = DynLib::file_name_for("cbl2");   // cbl2.dll, libcbl2.so
-    if (!folder.empty()) return folder / name;
-    // (Windows builds in native/l2/build, Linux in native/l2/build-linux: the two caches are not the same folder's)
-    return checkout / "native" / "l2" / (std::filesystem::path::preferred_separator == '\\' ? "build" : "build-linux") / "bin" / name;
+Library Library::builtin() {
+    if (l2_version() != kLibraryVersion) throw UnsupportedError("native_l2", 0, "the linked L2 library is another version");
+    return Library(&l2_call, &l2_free);
 }
 
 std::pair<int, std::string> Library::call_raw(std::string_view name, std::string_view arguments_json) const {

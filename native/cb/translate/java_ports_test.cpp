@@ -8,8 +8,7 @@
 //   platform layer review   the platform layer's C++ (JavaString.h, JavaRT.h, Save360.reference.cpp, GL11.reference.cpp): read, and compiled by g++
 //   arrays assigned null and the PC platform are in the last tests.
 //   the C++17 back end (2): Modern.java as a whole C++17 program run beside the JVM, and Tally.java through the transpiler as C++17 beside C++03,
-//       compiled with -fsyntax-only (the rest is translate.cpp17.* / translate.jmodel.* / translate.desugar.*). They need a JDK and g++;
-//       the first also cbl2.dll (native/l2/build, or CB_L2_DLL).
+//       compiled with -fsyntax-only (the rest is translate.cpp17.* / translate.jmodel.* / translate.desugar.*). They need a JDK and g++.
 //
 // A conversion reads the profile it asks for (none by default); no profile is active between tests.
 #include <algorithm>
@@ -1362,11 +1361,7 @@ public class Tally {
 
 const translate::native_l2::Library* jpo_l2() {
     static const std::optional<translate::native_l2::Library> lib = []() -> std::optional<translate::native_l2::Library> {
-        stdfs::path dll = translate::native_l2::Library::default_dll(testing::data_path("../.."));
-        if (const auto env = fs::get_env("CB_L2_DLL")) dll = fs::from_text(*env);
-        std::error_code ec;
-        if (!stdfs::is_regular_file(dll, ec)) return std::nullopt;
-        return translate::native_l2::Library::load(dll);
+        return translate::native_l2::Library::builtin();
     }();
     return lib ? &*lib : nullptr;
 }
@@ -1382,10 +1377,6 @@ std::string jpo_text_of(const process::ProcessResult& r) {
 CB_TEST("java.cpp17.the_program_runs_as_the_jvm_runs_it", [] {
     if (!jpo_ready("cpp17-run") || !jpo_tool_runs("g++", "--version")) return;
     const translate::native_l2::Library* lib = jpo_l2();
-    if (lib == nullptr) {
-        std::cerr << "cpp17-run: cbl2.dll is not built; skipped\n";
-        return;
-    }
     fs::ScopedTempDir work("cb-java-modern");
     const stdfs::path src = work.path() / "src";
     fs::write_text(src / "Modern.java", jpo_modern);

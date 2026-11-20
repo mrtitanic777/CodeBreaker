@@ -1,9 +1,8 @@
 // Tests of the C++17 back end's client (cpp17), on real programs: the units the Java front end lowers (the cpp03 corpus's and this
 // module's own, as L2) written as a whole program, and a module of the Python front end (the semantics snippet) written as header, source and function spans. The expected text is the checked-in
 // goldens (testdata/cpp17); the back end itself is the L2 core library
-// (native/l2, cbl2.dll), so what these check is what this module adds: the units as documents, the modern forms lowered first,
-// the language a unit without one gets, the folders, the errors. They need the DLL (cmake --build native/l2/build --target
-// cbl2, or CB_L2_DLL naming it); without it they say so and pass.
+// (translate/l2, linked in), so what these check is what this module adds: the units as documents, the modern forms lowered
+// first, the language a unit without one gets, the folders, the errors.
 //
 // The decline is the library's Cpp17Declined (message as the library words it); the
 // folders are found from the checkout the program belongs to, not from the source file's place.
@@ -27,14 +26,7 @@ using cb::Json;
 
 const nl::Library* library() {
     static const std::optional<nl::Library> lib = []() -> std::optional<nl::Library> {
-        std::filesystem::path dll = cb::translate::native_l2::Library::default_dll(cb::testing::data_path("../.."));
-        if (const auto env = cb::fs::get_env("CB_L2_DLL")) dll = cb::fs::from_text(*env);
-        std::error_code ec;
-        if (!std::filesystem::is_regular_file(dll, ec)) {
-            std::cerr << "cpp17 tests: " << dll.string() << " is not built; skipped\n";
-            return std::nullopt;
-        }
-        return nl::Library::load(dll);
+        return nl::Library::builtin();
     }();
     return lib ? &*lib : nullptr;
 }

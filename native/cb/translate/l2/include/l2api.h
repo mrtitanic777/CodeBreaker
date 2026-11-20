@@ -1,5 +1,5 @@
-/* l2api.h -- the C interface of cbl2.dll (native/l2): the L2 core and the C back end, called by
- * codebreaker/translate/native_l2.py through ctypes.
+/* l2api.h -- the one entry point of the L2 core library (cb/translate/l2, the library cb_l2): the L2 core and the
+ * back ends, called in-process by cb::translate::native_l2::Library::builtin().
  *
  *   int l2_call(const char* fn, const char* in, size_t inlen, char** out, size_t* outlen);
  *
@@ -13,15 +13,8 @@
 #define CBL2_API_H
 #include <stddef.h>
 
-#ifdef _WIN32
-#ifdef CBL2_EXPORTS
-#define CBL2_API __declspec(dllexport)
-#else
-#define CBL2_API __declspec(dllimport)
-#endif
-#else
+/* (a static library linked into codebreaker.exe: nothing is exported or imported) */
 #define CBL2_API
-#endif
 
 #ifdef __cplusplus
 extern "C" {

@@ -280,9 +280,11 @@ target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decomp
 # app/window_*: docs/CPP_DESIGN.md section 9).
 # pyfront: the Python parser the translator's Python front end reads programs with (translate/frontends/python/pyfront).
 include("${CMAKE_CURRENT_LIST_DIR}/translate/frontends/python/pyfront/CMakeLists.txt")
+# l2: the L2 core library (the node model, the C and C++17 back ends) the translator and the decompiler call (translate/l2).
+include("${CMAKE_CURRENT_LIST_DIR}/translate/l2/CMakeLists.txt")
 
 cb_area(translate)
-target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java cb_verify)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
+target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_l2 cb_java cb_verify)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 

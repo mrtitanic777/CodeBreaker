@@ -1,8 +1,8 @@
 // cb/translate/backends/c.hpp -- what the C back end decides, as data: the hub's back end that writes an L2 function document
 // as C in the decompiler's own dialect (docs/IR_UNIFICATION.md, step 2).
 //
-// The decompiler's PrintL2 writes each function as L2. The writer that turns it back into C is the L2 core library (native/l2,
-// cbl2.dll, asked through translate/native_l2: `Library::function`, `module`, `type_text` ...); it writes the decompiler's type
+// The decompiler's PrintL2 writes each function as L2. The writer that turns it back into C is the L2 core library (translate/l2,
+// linked in, asked through translate/native_l2: `Library::function`, `module`, `type_text` ...); it writes the decompiler's type
 // names (int2, uint4, xunknown2, code), its calling-convention words (__cdecl16far, __stdcall) and hexadecimal past 9, so what it
 // writes goes through the decompiler's c_text passes as the decompiler's own C does, and is compiled and judged the same way.
 //

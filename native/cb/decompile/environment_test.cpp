@@ -300,7 +300,7 @@ CB_TEST("decompile.environment.proof_decompile_as_recorded", [] {
     }();
     knowledge::Store store(fs::from_text(where) / "knowledge.sqlite", knowledge::DataFolders::under(main.checkout_root()));
     knowledge::Knowledge kb(store, symbols::prototypes::HeaderFolders::standard(build::watcom::OpenWatcom::from_settings(main.text("openwatcom")).root(), reference));
-    const translate::native_l2::Library library = translate::native_l2::Library::load(translate::native_l2::Library::default_dll(main.checkout_root()));
+    const translate::native_l2::Library library = translate::native_l2::Library::builtin();
     const std::unique_ptr<CorpusEnvironment> environment = CorpusEnvironment::over_knowledge(corpus, library, kb);
     decompiler::Context context;
     context.settings = decompiler::Settings::from_config(main);

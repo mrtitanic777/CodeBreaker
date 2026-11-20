@@ -1,7 +1,6 @@
-// Tests of the typed client of the L2 core library. The library itself (native/l2, cbl2.dll) is a separate program that has
-// its own tests; these check what this client adds -- the protocol, the answers' shapes, the errors -- on inputs whose answers
-// are the C back end's rules (PrintC's: a rule per case). They need the DLL
-// (cmake --build native/l2/build --target cbl2, or CB_L2_DLL naming it); without it they say so and pass.
+// Tests of the typed client of the L2 core library. The library itself (translate/l2, linked in) has its own tests
+// (l2_tests, cpp17_tests); these check what this client adds -- the protocol, the answers' shapes, the errors -- on inputs
+// whose answers are the C back end's rules (PrintC's: a rule per case).
 //
 // Design notes: the library's errors are LibraryError (Declined, Cpp17Declined) carrying the library's own word; the arguments'
 // tagged forms ({"$t"}, {"$s"}, {"$d"}) are passed as the Json they are; the schema is told to the library once per distinct text.
@@ -25,14 +24,7 @@ using cb::Json;
 // The library, or null (with a note on stderr) when it is not built.
 const nl::Library* library() {
     static const std::optional<nl::Library> lib = []() -> std::optional<nl::Library> {
-        std::filesystem::path dll = cb::translate::native_l2::Library::default_dll(cb::testing::data_path("../.."));
-        if (const auto env = cb::fs::get_env("CB_L2_DLL")) dll = cb::fs::from_text(*env);
-        std::error_code ec;
-        if (!std::filesystem::is_regular_file(dll, ec)) {
-            std::cerr << "native_l2 tests: " << dll.string() << " is not built; skipped\n";
-            return std::nullopt;
-        }
-        return nl::Library::load(dll);
+        return nl::Library::builtin();
     }();
     return lib ? &*lib : nullptr;
 }
@@ -95,13 +87,6 @@ const std::vector<std::string>& moved_all() {
 
 }  // namespace
 
-CB_TEST("translate.native_l2.loading", [] {
-    CB_CHECK_THROWS_AS(cb::NotFoundError, nl::Library::load(cb::testing::data_path("translate/testdata/no_such_cbl2.dll")));
-    const std::string repo = cb::testing::rooted("repo"), bin = cb::testing::rooted("bin"), name = cb::DynLib::file_name_for("cbl2");
-    const std::string build = std::filesystem::path::preferred_separator == '/' ? "build-linux" : "build";
-    CB_CHECK_EQ(nl::Library::default_dll(repo).generic_string(), repo + "/native/l2/" + build + "/bin/" + name);
-    CB_CHECK_EQ(nl::Library::default_dll(repo, bin).generic_string(), bin + "/" + name);
-});
 
 CB_TEST("translate.native_l2.numbers_in_their_natural_base", [] {
     const nl::Library* lib = library();
