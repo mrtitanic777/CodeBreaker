@@ -12,7 +12,8 @@ struct Result : cbd_result {
     std::string msg;
     std::wstring fname;
     Bytes con;
-    std::vector<uint64_t> blk, cl;
+    std::vector<uint64_t> blk, cl, wt;
+    Bytes wd;
 };
 }  // namespace
 
@@ -85,6 +86,11 @@ CBD_API cbd_result *cbd_run(const cbd_args *a) {
         run.S.dpmi_limit = a->dpmi_limit;
         run.S.drive = a->drive;
         run.S.debug = a->debug != 0;
+        run.watch = a->watch;
+        run.watch_near = a->watch_near != 0;
+        if (a->watch_max > 0) run.watch_max = a->watch_max;
+        if (a->watch_ds_bytes > 0) run.watch_ds_bytes = a->watch_ds_bytes;
+        run.watch_dumps = a->watch_dumps;
         try {
             run.go();
             r->status = CBD_OK;
@@ -103,6 +109,8 @@ CBD_API cbd_result *cbd_run(const cbd_args *a) {
             r->cl.push_back(uint64_t(kv.second));
         }
         r->steps = run.n;
+        r->wt = run.watched;
+        r->wd = run.watch_bytes;
         r->load_seg = run.load;
     } catch (std::exception &e) {
         r->status = CBD_OTHER;
@@ -116,6 +124,10 @@ CBD_API cbd_result *cbd_run(const cbd_args *a) {
     r->nblocks = int64_t(r->blk.size());
     r->calls = r->cl.data();
     r->ncalls = int64_t(r->cl.size() / 2);
+    r->watched = r->wt.data();
+    r->nwatched = int64_t(r->wt.size() / CBD_WATCH_STRIDE);
+    r->dumps = r->wd.data();
+    r->ndumps = int64_t(r->wd.size());
     return r;
 }
 

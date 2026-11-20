@@ -346,7 +346,7 @@ void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& librar
     for (std::string& line : d.lines) {
         if (!line.starts_with("F\t")) continue;
         const std::vector<std::string_view> f = text::split(line, '\t');
-        if (f.size() != 5 || (f[3] != "0" && f[3] != "-1")) continue;   // (a function whose return removes its arguments says so already)
+        if ((f.size() != 5 && f.size() != 6) || (f[3] != "0" && f[3] != "-1")) continue;   // (a function whose return removes its arguments says so already)
         const std::optional<std::int64_t> va = text::parse_int<std::int64_t>(f[1], 16);
         const auto w = va ? words.find(*va) : words.end();
         if (w == words.end() || w->second.second == 0) continue;   // (no words: nothing to say -- an empty list is "not known")
@@ -355,7 +355,8 @@ void lanes_dos_arguments(describe::DosDescription& d, const std::set<Va>& librar
         // them pass and then each its own: `...` (the most any passes, given to all, has the others pass words they never pushed)
         std::vector<std::string> sizes(w->second.first, "2");
         if (w->second.first != w->second.second) sizes.emplace_back("...");
-        line = std::format("F\t{}\t{}\t0\t{}\t\t{}", f[1], f[2], f[4], text::join(sizes, ","));
+        // (the result: four bytes, when describe_dos found them)
+        line = std::format("F\t{}\t{}\t0\t{}\t{}\t{}", f[1], f[2], f[4], f.size() == 6 ? f[5] : std::string_view(), text::join(sizes, ","));
     }
     d.write();
 }

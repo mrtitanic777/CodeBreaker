@@ -18,6 +18,11 @@ namespace {
 
 bool ctd_word(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; }
 bool ctd_hex(char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; }
+// A type without the `__near` the decompiler gives a real-mode program's 2-byte pointers (`xunknown2 __near` -> `xunknown2`).
+std::string_view ctd_near_off(std::string_view type) {
+    constexpr std::string_view kNear = " __near";
+    return type.ends_with(kNear) ? type.substr(0, type.size() - kNear.size()) : type;
+}
 
 std::string_view ctd_trim(std::string_view s) {
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())) != 0) s.remove_prefix(1);
@@ -145,6 +150,7 @@ std::string ctd_declared(std::string_view declaration) {
 // knows the size of.
 std::size_t ctd_words(std::string_view type) {
     type = ctd_trim(type);
+    if (type.ends_with("__near *")) return 1;   // (a real-mode program's 2-byte pointer: an offset in the data segment)
     if (type.ends_with('*')) return 2;
     for (const std::string_view two : {"int4", "uint4", "xunknown4", "long", "unsigned long", "float4"})
         if (type == two) return 2;
@@ -152,6 +158,119 @@ std::size_t ctd_words(std::string_view type) {
                                        "xunknown1", "char", "unsigned char"})
         if (type == one) return 1;
     return 0;
+}
+
+// The bytes a local of this type takes in the frame, 0 for one this does not know.
+std::size_t ctd_bytes(std::string_view type) {
+    type = ctd_trim(type);
+    if (type.ends_with("__near *")) return 2;
+    if (type.ends_with('*')) return 4;
+    for (const std::string_view b1 : {"char", "bool", "int1", "uint1", "xunknown1", "unsigned char"})
+        if (type == b1) return 1;
+    for (const std::string_view b2 : {"int2", "uint2", "xunknown2", "int", "unsigned", "short", "unsigned short"})
+        if (type == b2) return 2;
+    for (const std::string_view b4 : {"int4", "uint4", "xunknown4", "long", "unsigned long", "float4", "float"})
+        if (type == b4) return 4;
+    for (const std::string_view b8 : {"int8", "uint8", "xunknown8", "float8", "double"})
+        if (type == b8) return 8;
+    return 0;
+}
+
+// A function's stack locals as the one frame they are in the original, when the function takes the address of one (`&uStack_6`
+// handed to the long-multiply helper, which writes four bytes there: uStack_6 and the word after it, uStack_4) or reads two of
+// them as one (`_piStack_a`): the decompiler names each local by its place (xStack_6: 6 bytes below the return address), and a
+// compiler is free to put separate locals anywhere, so every one of them is written as its place in one array laid out as the
+// original's frame. C1's sub_184A1 read a long split into two words the compiler had not put side by side.
+struct CtdFrame {
+    std::string body;                 // the body, its locals' declarations replaced by the frame's
+    std::string defines;              // `#define uStack_6 (*(uint2 *)&codebreaker_frame[0])` ... before the function
+    std::vector<std::string> names;   // the locals now in the frame (#undef after it); empty: the body as it was
+};
+
+// The stack and data segment registers a function reads as it was given them (`int2 unaff_SS;`, then `CONCAT22(unaff_SS,
+// (int2)&uStack_6)`: a far pointer to a local): a declaration alone left them whatever the frame held, so they start as the
+// registers' values -- which no Microsoft C function changes (DS is DGROUP, SS the stack) -- `codebreaker_ss()`, `codebreaker_ds()`.
+std::string ctd_segment_registers(const std::string& body) {
+    std::string out;
+    for (const std::string_view line : text::lines(body)) {
+        const std::string_view t = ctd_trim(line);
+        std::string_view reg;
+        if (line.starts_with("  ") && t.ends_with(" unaff_SS;")) reg = "ss";
+        if (line.starts_with("  ") && t.ends_with(" unaff_DS;")) reg = "ds";
+        if (!reg.empty() && t.find_first_of("=(*[") == std::string_view::npos) {
+            const std::string_view type = ctd_trim(t.substr(0, t.size() - 10));
+            out += std::format("  {} unaff_{} = ({})codebreaker_{}();\n", type, text::upper(std::string(reg)), type, reg);
+            continue;
+        }
+        out += line;
+        out += '\n';
+    }
+    if (!body.ends_with('\n') && !out.empty()) out.pop_back();
+    return out;
+}
+
+CtdFrame ctd_stack_frame(const std::string& body, bool joins_local) {
+    CtdFrame out{body, {}, {}};
+    bool taken = joins_local;
+    for (std::size_t k = body.find('&'); k != std::string::npos && !taken; k = body.find('&', k + 1)) {
+        if ((k + 1 < body.size() && body[k + 1] == '&') || (k > 0 && body[k - 1] == '&')) continue;
+        std::size_t e = k + 1;
+        while (e < body.size() && ctd_word(body[e])) ++e;
+        const std::string_view id(body.data() + k + 1, e - k - 1);
+        const std::size_t at = id.find("Stack_");
+        taken = at != std::string_view::npos && at + 6 < id.size();
+    }
+    if (!taken) return out;
+    struct Local { std::string name, type, decl; std::size_t offset = 0, bytes = 0, count = 0; };
+    std::vector<Local> locals;
+    for (const std::string_view line : text::lines(body)) {
+        const std::string_view t = ctd_trim(line);
+        if (!line.starts_with(' ') || !t.ends_with(';') || t.find_first_of("=(") != std::string_view::npos || t.starts_with("return ")) continue;
+        std::string_view d = t.substr(0, t.size() - 1);
+        std::size_t count = 0;
+        if (d.ends_with(']')) {   // `xunknown1 auStack_10 [8]`
+            const std::size_t open = d.rfind('[');
+            if (open == std::string_view::npos) continue;
+            count = static_cast<std::size_t>(std::strtoul(std::string(d.substr(open + 1, d.size() - open - 2)).c_str(), nullptr, 0));
+            d = ctd_trim(d.substr(0, open));
+            if (count == 0) return out;
+        }
+        const std::string name = ctd_declared(d);
+        const std::size_t at = name.find("Stack_");
+        if (at == std::string::npos || at + 6 >= name.size()) continue;
+        const std::string_view hex = std::string_view(name).substr(at + 6);
+        if (!std::all_of(hex.begin(), hex.end(), ctd_hex)) continue;
+        const std::string type(ctd_trim(d.substr(0, d.size() - name.size())));
+        const std::size_t bytes = ctd_bytes(type);
+        if (bytes == 0) return out;   // (a type this does not know the size of: the frame is not laid out)
+        locals.push_back({name, type, std::string(line), static_cast<std::size_t>(std::stoul(std::string(hex), nullptr, 16)), bytes, count});
+    }
+    if (locals.empty()) return out;
+    std::size_t deepest = 0;
+    for (const Local& l : locals) deepest = std::max(deepest, l.offset);
+    std::size_t size = 0;
+    for (const Local& l : locals) size = std::max(size, deepest - l.offset + l.bytes * std::max<std::size_t>(l.count, 1));
+    for (const Local& l : locals) {
+        const std::size_t index = deepest - l.offset;
+        out.defines += l.count ? std::format("\n#define {} (({} *)&codebreaker_frame[{}])", l.name, l.type, index)
+                               : std::format("\n#define {} (*({} *)&codebreaker_frame[{}])", l.name, l.type, index);
+        out.names.push_back(l.name);
+    }
+    std::string b;
+    bool placed = false;
+    for (const std::string_view line : text::lines(body)) {
+        const bool local = std::any_of(locals.begin(), locals.end(), [&](const Local& l) { return l.decl == line; });
+        if (local) {
+            if (!placed) b += std::format("  uint1 codebreaker_frame[{}];   /* the locals as the original's frame holds them */\n", size);
+            placed = true;
+            continue;
+        }
+        b += line;
+        b += '\n';
+    }
+    if (!body.ends_with('\n') && !b.empty()) b.pop_back();
+    out.body = std::move(b);
+    return out;
 }
 
 // Each call in `body` of a function of `merged` that passes its words one by one (as many arguments as the words of its
@@ -407,7 +526,7 @@ std::string ctd_far(std::string_view s, const std::map<std::string, std::string>
             const bool whole = !rest.empty() && (rest.front() == '(' ? ctd_close(rest, 0) == rest.size()
                                                                      : std::all_of(rest.begin(), rest.end(), [](char c) { return ctd_word(c); }));
             if (cast.ends_with('*') && cast.find('(') == std::string_view::npos && ctd_trim(cast.substr(0, cast.size() - 1)).find('*') == std::string_view::npos) {
-                type = std::string(ctd_trim(cast.substr(0, cast.size() - 1)));
+                type = std::string(ctd_near_off(ctd_trim(cast.substr(0, cast.size() - 1))));   // (the offset's own near-ness is the pointer's no more)
                 if (whole) offset = offset.substr(close + 1);
             }
         }
@@ -606,7 +725,7 @@ std::string ctd_globals(std::string_view s, std::map<std::uint32_t, CtdGlobal>& 
         if (close == std::string_view::npos) break;
         const std::string_view cast = ctd_trim(s.substr(k + 2, close - k - 2));
         if (!cast.ends_with('*')) continue;
-        const std::string_view type = ctd_trim(cast.substr(0, cast.size() - 1));
+        const std::string_view type = ctd_near_off(ctd_trim(cast.substr(0, cast.size() - 1)));   // (`(T __near *)0x5cd4` is the same word)
         if (type.empty() || type.find_first_of("*( ") != std::string_view::npos) continue;
         std::size_t e = close + 1;
         if (s.substr(e, 2) != "0x") continue;
@@ -614,7 +733,7 @@ std::string ctd_globals(std::string_view s, std::map<std::uint32_t, CtdGlobal>& 
         const std::size_t digits = e;
         while (e < s.size() && ctd_hex(s[e])) ++e;
         if (e == digits || e - digits > 4 || (e < s.size() && (ctd_word(s[e]) || s[e] == '.'))) continue;
-        if (k > 0 && (ctd_word(s[k - 1]) || s[k - 1] == ')')) continue;   // (a product, not a read)
+        if (k > 0 && ctd_word(s[k - 1])) continue;   // (a product, not a read; after a `)` it is a read: C multiplies no pointer)
         const std::uint32_t address = static_cast<std::uint32_t>(std::stoul(std::string(s.substr(digits, e - digits)), nullptr, 16));
         CtdGlobal& g = globals[address];
         if (g.types[std::string(type)]++ == 0) g.first_seen.emplace_back(type);
@@ -674,7 +793,11 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     std::vector<CtdFunction> fns;
     for (const std::string_view line : text::lines(text)) {
         if (ctd_signature(line)) {
-            fns.push_back({std::string(ctd_trim(line)), {}});
+            // (a comparison's result is a word in Microsoft C -- `mov ax, 1` / `sub ax, ax` -- not the decompiler's one-byte
+            // bool, which left AH whatever it held: C1's sub_171C6)
+            std::string signature(ctd_trim(line));
+            if (signature.starts_with("bool ")) signature = "int2 " + signature.substr(5);
+            fns.push_back({std::move(signature), {}});
         } else if (fns.empty()) {
             pre += line;
             pre += '\n';
@@ -706,7 +829,7 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         // T *var; then var->f_8 / var->field_0x8; T var; then var.f_8
         std::map<std::string, std::string> typed;
         for (const auto& [var, type] : ctd_pointees(f))
-            if (type.starts_with("s_")) typed[var] = type;
+            if (type.starts_with("s_")) typed[var] = std::string(ctd_near_off(type));   // (`s_X __near *v`: the structure s_X)
         for (const std::string_view line : text::lines(f.body)) {
             const std::string_view t = ctd_trim(line);
             if (t.starts_with("s_") && t.ends_with(';') && t.find_first_of("*=(") == std::string_view::npos) {
@@ -740,6 +863,7 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
             if (star == std::string::npos) continue;
             std::string type = whole.substr(k + 2, star - k - 2);
             if (type.ends_with(" __far")) type.resize(type.size() - 6);
+            type = std::string(ctd_near_off(type));
             if (type.find_first_of(" ()") != std::string::npos) continue;
             const std::size_t end = ctd_close(whole, k);
             if (whole.compare(end, 2, "->") == 0) field_at(whole, end + 2, type);
@@ -1085,9 +1209,28 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         for (const std::string_view id : ctd_identifiers(f.body))
             if (id.size() >= 2 && id.starts_with('_') && declared.contains(std::string(id.substr(1))) && !declared.contains(std::string(id)))
                 joined.insert(std::string(id));
-        for (const std::string& j : joined) out += "\n#define " + j + " (*(xunknown2 **)&" + j.substr(1) + ")";
-        out += "\n" + f.signature + "\n" + f.body;
+        bool joins_local = false;
+        for (const std::string& j : joined) joins_local = joins_local || j.find("Stack_") != std::string::npos;
+        const CtdFrame frame = ctd_stack_frame(ctd_segment_registers(f.body), joins_local);
+        r.frames += frame.names.empty() ? 0 : 1;
+        // (the pointer's type as the body gives it, `_a1 = (char *)CONCAT22(a2,...)`: read through as a word, `*_a1 == '\0'`
+        // compared two bytes where the original compared one -- C1's strchr, sub_18CE7)
+        auto joined_type = [&](const std::string& j) -> std::string {
+            const std::string assign = j + " = (";
+            for (std::size_t k = f.body.find(assign); k != std::string::npos; k = f.body.find(assign, k + 1)) {
+                if (k > 0 && ctd_word(f.body[k - 1])) continue;
+                const std::size_t close = f.body.find(')', k + assign.size());
+                if (close == std::string::npos) break;
+                const std::string_view cast = ctd_trim(std::string_view(f.body).substr(k + assign.size(), close - k - assign.size()));
+                if (cast.ends_with('*') && !cast.ends_with("__near *") && cast.find_first_of("()") == std::string_view::npos) return std::string(cast);
+            }
+            return "xunknown2 *";
+        };
+        for (const std::string& j : joined) out += "\n#define " + j + " (*(" + joined_type(j) + "*)&" + j.substr(1) + ")";
+        out += frame.defines;
+        out += "\n" + f.signature + "\n" + frame.body;
         for (const std::string& j : joined) out += "#undef " + j + "\n";
+        for (const std::string& n : frame.names) out += "#undef " + n + "\n";
         if (!file_of.empty()) {
             if (!file_texts.contains(here)) file_order.push_back(here);
             file_texts[here] += out.substr(text_at);
@@ -1095,6 +1238,12 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     }
     while (!out.empty() && (out.back() == '\n' || out.back() == ' ')) out.pop_back();
     out += '\n';
+    // (a far pointer made from a near one's offset is far: `int2 __near __far *` is `int2 __far *`)
+    auto far_not_near = [](std::string& s) {
+        for (std::size_t k = s.find(" __near __far"); k != std::string::npos; k = s.find(" __near __far", k)) s.erase(k, 7);
+    };
+    far_not_near(out);
+    for (auto& [name, t] : file_texts) far_not_near(t);
     result.text = std::move(out);
     if (!file_of.empty()) result.files = ctd_source_files(common, file_order, file_texts, layout.stem.empty() ? "program" : layout.stem, file_notes);
     return result;

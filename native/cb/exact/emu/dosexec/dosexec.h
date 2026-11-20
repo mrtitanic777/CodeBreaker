@@ -138,6 +138,12 @@ struct Run {
     int PSP = 0x100, TOP = 0xA000;
     MemFS *fs = nullptr;
     Settings S;
+    uint64_t watch = 0;                          // a function to watch (image offset; 0: none)
+    bool watch_near = false;
+    int64_t watch_max = 200, watch_ds_bytes = 0x10000, watch_dumps = 0;
+    Bytes watch_bytes;                           // the kept DS bytes
+    std::vector<uint64_t> watched;               // CBD_WATCH_STRIDE words per call
+    std::vector<size_t> watch_open;              // the calls not yet returned (their records' offsets)
 
     // the machine
     uc_engine *uc = nullptr;

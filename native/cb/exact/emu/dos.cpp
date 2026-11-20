@@ -428,6 +428,11 @@ Result Executive::run(const RunSpec& spec) const {
     a.drive = i.limits.drive;
     a.fast_limit = i.limits.fast_limit;
     a.dpmi_limit = i.limits.dpmi_limit;
+    a.watch = spec.watch;
+    a.watch_near = spec.watch_near;
+    a.watch_max = spec.watch_max;
+    a.watch_ds_bytes = spec.watch_ds_bytes;
+    a.watch_dumps = spec.watch_dumps;
 
     struct HandedOver {   // the MemFS in the executive's own shape, freed whatever happens
         const Impl& impl;
@@ -473,6 +478,25 @@ Result Executive::run(const RunSpec& spec) const {
     out.console.assign(r->console, r->console + r->nconsole);
     out.blocks.insert(r->blocks, r->blocks + r->nblocks);
     for (std::int64_t k = 0; k + 1 < r->ncalls * 2; k += 2) out.calls[r->calls[k]] = r->calls[k + 1];
+    for (std::int64_t k = 0; k < r->nwatched; ++k) {
+        const std::uint64_t* w = r->watched + k * CBD_WATCH_STRIDE;
+        WatchedCall c;
+        c.return_address = w[0];
+        for (std::size_t j = 0; j < 8; ++j) c.args[j] = static_cast<std::uint16_t>(w[2 + j]);
+        c.ds_in = static_cast<std::uint16_t>(w[10]);
+        c.ds_in_hash = w[11];
+        c.returned = w[12] != 0;
+        c.ax = static_cast<std::uint16_t>(w[13]);
+        c.dx = static_cast<std::uint16_t>(w[14]);
+        c.ds = static_cast<std::uint16_t>(w[15]);
+        c.ds_hash = w[16];
+        c.flags = static_cast<std::uint16_t>(w[17]);
+        for (std::size_t j = 0; j < 64; ++j) c.ds_parts[j] = static_cast<std::uint32_t>(w[18 + j]);
+        const auto n = static_cast<std::size_t>(spec.watch_ds_bytes);
+        if (w[82] != 0 && w[82] - 1 + n <= static_cast<std::uint64_t>(r->ndumps)) c.ds_in_bytes.assign(r->dumps + w[82] - 1, r->dumps + w[82] - 1 + n);
+        if (w[83] != 0 && w[83] - 1 + n <= static_cast<std::uint64_t>(r->ndumps)) c.ds_bytes.assign(r->dumps + w[83] - 1, r->dumps + w[83] - 1 + n);
+        out.watched.push_back(c);
+    }
     out.steps = static_cast<std::uint64_t>(r->steps);
     out.load_seg = static_cast<std::uint32_t>(r->load_seg);
     return out;

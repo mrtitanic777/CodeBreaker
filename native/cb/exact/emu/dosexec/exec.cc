@@ -790,8 +790,71 @@ static void hook_block(uc_engine *, uint64_t addr, uint32_t, void *user) {
     }
 }
 
+static uint64_t fnv64(const uint8_t *p, size_t n) {
+    uint64_t h = 1469598103934665603ull;
+    for (size_t k = 0; k < n; ++k) h = (h ^ p[k]) * 1099511628211ull;
+    return h;
+}
+
+// The watched function: at its entry the call's return address and arguments; at that return, what it left.
+static void watch_step(Run &r, uint64_t addr) {
+    const uint64_t ss = r.R(UC_X86_REG_SS), sp = r.R(UC_X86_REG_SP), stack = ss * 16 + sp;
+    auto ds_bytes = [&](uint64_t ds, const uint8_t *&p, size_t &n) {
+        const uint64_t at = ds * 16;
+        n = at < RAM ? size_t(std::min<uint64_t>(uint64_t(r.watch_ds_bytes), RAM - at)) : 0;
+        p = r.ram.data() + (at < RAM ? at : 0);
+    };
+    auto keep = [&](const uint8_t *p, size_t n, uint64_t &where) {
+        where = r.watch_bytes.size() + 1;
+        r.watch_bytes.insert(r.watch_bytes.end(), p, p + n);
+        r.watch_bytes.resize(where - 1 + size_t(r.watch_ds_bytes), 0);
+    };
+    if (!r.watch_open.empty()) {
+        const size_t at = r.watch_open.back();
+        if (addr == r.watched[at] && stack == r.watched[at + 1]) {
+            r.watch_open.pop_back();
+            uint64_t *w = r.watched.data() + at;
+            const uint64_t ds = r.R(UC_X86_REG_DS);
+            const uint8_t *p;
+            size_t n;
+            ds_bytes(ds, p, n);
+            w[12] = 1;
+            w[13] = r.R(UC_X86_REG_AX);
+            w[14] = r.R(UC_X86_REG_DX);
+            w[15] = ds;
+            w[16] = fnv64(p, n);
+            w[17] = r.R(UC_X86_REG_EFLAGS) & 0xFFFF;
+            for (size_t c = 0; c < 64; ++c) w[18 + c] = fnv64(p + n * c / 64, n * (c + 1) / 64 - n * c / 64) & 0xFFFFFFFFu;
+            if (w[82]) keep(p, n, w[83]);
+            return;
+        }
+    }
+    if (addr != uint64_t(r.load) * 16 + r.watch || int64_t(r.watched.size() / CBD_WATCH_STRIDE) >= r.watch_max) return;
+    if (stack + 4 + 16 >= RAM) return;
+    const size_t at = r.watched.size();
+    r.watched.resize(at + CBD_WATCH_STRIDE, 0);
+    uint64_t *w = r.watched.data() + at;
+    const uint64_t ip = r.ram[stack] | r.ram[stack + 1] << 8, cs = r.ram[stack + 2] | r.ram[stack + 3] << 8;
+    const uint64_t ret = r.watch_near ? r.R(UC_X86_REG_CS) * 16 + ip : cs * 16 + ip, args = stack + (r.watch_near ? 2 : 4);
+    w[0] = ret;
+    w[1] = args;
+    for (size_t k = 0; k < 8; ++k) w[2 + k] = r.ram[args + 2 * k] | r.ram[args + 2 * k + 1] << 8;
+    const uint64_t ds = r.R(UC_X86_REG_DS);
+    const uint8_t *p;
+    size_t n;
+    ds_bytes(ds, p, n);
+    w[10] = ds;
+    w[11] = fnv64(p, n);
+    if (int64_t(at / CBD_WATCH_STRIDE) < r.watch_dumps) keep(p, n, w[82]);
+    r.watch_open.push_back(at);
+}
+
 static void hook_code(uc_engine *, uint64_t addr, uint32_t, void *user) {
     Run &r = *static_cast<Run *>(user);
+    if (r.watch) {
+        try { watch_step(r, addr); } catch (...) {}
+        if (!r.trace_calls) return;
+    }
     uint8_t b0;
     if (addr < RAM) b0 = r.ram[size_t(addr)];
     else if (UC.mem_read(r.uc, addr, &b0, 1) != UC_ERR_OK) return;
@@ -858,7 +921,7 @@ struct Watchdog {                                      // one timer for a whole 
 }  // namespace
 
 void Run::go() {
-    fast = fast && !trace_calls;                       // (fast and not instrument ... and not trace_calls)
+    fast = fast && !trace_calls && !watch;             // (fast and not instrument ... and not trace_calls)
     Bytes b = fs ? fs->read(exe) : disk_read(exe);
     if (!(b.size() >= 2 && ((b[0] == 'M' && b[1] == 'Z') || (b[0] == 'Z' && b[1] == 'M'))))
         throw PyErr{CBD_ASSERT, 0, "not an MZ executable", L""};
@@ -964,7 +1027,7 @@ void Run::go() {
     bool use_watchdog = fast && host;
     double limit = std::max(S.fast_limit, S.dpmi_limit);
     if (use_watchdog) timeout = 0;
-    if (trace_calls) {
+    if (trace_calls || watch) {
         e = UC.hook_add(uc, &h3, UC_HOOK_CODE, (void *)hook_code, this, 1, 0);
         if (e != UC_ERR_OK) throw uc_error(e);
     }

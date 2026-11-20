@@ -28,6 +28,7 @@
 // place).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -190,6 +191,24 @@ struct RunSpec {
     bool fast = false;                   // no hook on every basic block: the blocks are not counted or kept; a run that does not end is stopped by the time limit
     bool dpmi = false;                   // a DPMI host is built for the run
     MemFS* files = nullptr;              // the files the run sees: none is the disk itself
+    std::uint64_t watch = 0;             // a function (image offset) whose every call is recorded (Result::watched); 0: none
+    bool watch_near = false;             // it returns with RET (the default: RETF)
+    int watch_max = 200;                 // the calls recorded
+    int watch_ds_bytes = 0x10000;        // the bytes of DS hashed at each return
+    int watch_dumps = 0;                 // the first calls whose DS bytes are kept (WatchedCall::ds_in_bytes / ds_bytes)
+};
+
+// One call of the watched function.
+struct WatchedCall {
+    std::uint64_t return_address = 0;          // linear
+    std::array<std::uint16_t, 8> args{};       // the first argument words
+    std::uint16_t ds_in = 0;
+    std::uint64_t ds_in_hash = 0;
+    bool returned = false;
+    std::uint16_t ax = 0, dx = 0, ds = 0, flags = 0;
+    std::uint64_t ds_hash = 0;
+    std::array<std::uint32_t, 64> ds_parts{};  // the hash of each 1/64 of the hashed DS bytes: where they differ
+    Bytes ds_in_bytes, ds_bytes;               // DS's bytes at entry and at return (RunSpec::watch_dumps)
 };
 
 struct Result {
@@ -199,6 +218,7 @@ struct Result {
     std::uint32_t load_seg = 0;                                // the segment the program was loaded at
     std::uint64_t steps = 0;                                   // basic blocks executed
     std::map<std::uint64_t, std::uint64_t> calls;              // address -> how many times it was called (trace_calls)
+    std::vector<WatchedCall> watched;                          // the watched function's calls, in order (RunSpec::watch)
 };
 
 // What the executive is run under.

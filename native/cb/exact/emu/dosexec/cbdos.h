@@ -52,7 +52,18 @@ typedef struct cbd_args {
     double fast_limit;             /* dos.FAST_LIMIT */
     double dpmi_limit;             /* DOSRUN_DPMI_LIMIT */
     void *fs;                      /* a cbd_fs, or NULL: the disk itself */
+    uint64_t watch;                /* a function's image offset to watch (0: none): each call's record in the result */
+    int32_t watch_near;            /* it returns with RET, not RETF */
+    int32_t watch_max;             /* the calls recorded (0: 200) */
+    int32_t watch_ds_bytes;        /* the bytes of DS hashed at each return (0: 64 KB) */
+    int32_t watch_dumps;           /* the first calls whose DS bytes are kept, at entry and at return */
 } cbd_args;
+
+/* One watched call, CBD_WATCH_STRIDE words: [0] the return address (linear), [1] the stack pointer after it (linear),
+   [2..9] the first 8 argument words, [10] DS at entry, [11] DS's hash at entry, [12] 1 when it returned, [13] AX, [14] DX,
+   [15] DS, [16] DS's hash, [17] the flags, [18..81] the hash of each 1/64 of the hashed DS bytes (all at its return),
+   [82] / [83] where its DS bytes at entry / at return start in `dumps` plus 1 (0: not kept). */
+#define CBD_WATCH_STRIDE 84
 
 typedef struct cbd_result {
     int32_t status;                /* CBD_OK or why it raised */
@@ -69,6 +80,10 @@ typedef struct cbd_result {
     int32_t load_seg;
     const uint64_t *calls;         /* (address, count) pairs (trace_calls) */
     int64_t ncalls;
+    const uint64_t *watched;       /* the watched calls, CBD_WATCH_STRIDE words each */
+    int64_t nwatched;
+    const uint8_t *dumps;          /* the kept DS bytes (cbd_args.watch_dumps) */
+    int64_t ndumps;
 } cbd_result;
 
 CBD_API int cbd_version(void);

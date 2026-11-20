@@ -261,6 +261,8 @@ void PrintC::emitSymbolScope(const Symbol *symbol)
 /// Store off array sizes for printing after the identifier
 /// \param ct is the data-type to push
 /// \param noident is \b true if an identifier will not be pushed as part of the declaration
+bool print_near_pointers16 = false;
+
 void PrintC::pushTypeStart(const Datatype *ct,bool noident)
 
 {
@@ -285,7 +287,10 @@ void PrintC::pushTypeStart(const Datatype *ct,bool noident)
   }
   else {
     pushOp(tok,(const PcodeOp *)0);
-    pushAtom(Atom(ct->getDisplayName(),typetoken,EmitMarkup::type_color,ct));
+    // (a 2-byte pointer to the base type, in a real-mode program: `T __near *`)
+    bool near16 = print_near_pointers16 && typestack.size() >= 2 &&
+                  typestack[typestack.size()-2]->getMetatype() == TYPE_PTR && typestack[typestack.size()-2]->getSize() == 2;
+    pushAtom(Atom(near16 ? ct->getDisplayName() + " __near" : ct->getDisplayName(),typetoken,EmitMarkup::type_color,ct));
   }
   for(int4 i=typestack.size()-2;i>=0;--i) {
     ct = typestack[i];

@@ -224,6 +224,60 @@ CB_TEST("decompile.c_text_dos.a_local_read_through_a_cast_is_a_pointer_and_one_n
     CB_CHECK(ctdt_has(r.text, "  xunknown2 *xStack_6;\n"));   // (`(T *)*x` is a cast and a read, not a product)
 });
 
+CB_TEST("decompile.c_text_dos.a_data_segment_word_read_after_a_cast_is_the_global", [] {
+    // (in the large model a bare (T *)0x2564 is the far pointer 0000:2564, not the data segment's word: C1's putc wrote
+    // through what low memory held there)
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void)\n\n{\n  int2 x;\n  \n"
+        "  x = (int2)((uint4)*(xunknown4 *)0x2564 >> 0x10) + (int2)*(xunknown4 *)0x2564;\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "x = (int2)((uint4)g_2564 >> 0x10) + (int2)g_2564;"));
+    CB_CHECK(!ctdt_has(r.text, "(xunknown4 *)0x2564;"));
+});
+
+CB_TEST("decompile.c_text_dos.a_comparisons_result_is_a_word", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "bool __cdecl16far sub_00100(int2 a1)\n\n{\n  \n  return 0xee3U < (uint2)a1;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "int2 __cdecl16far sub_00100(int2 a1)\n"));
+    CB_CHECK(!ctdt_has(r.text, "bool __cdecl16far"));
+});
+
+CB_TEST("decompile.c_text_dos.two_arguments_read_as_one_pointer_point_at_what_the_body_says", [] {
+    // (strchr: `_a1 = (char *)...`, then `*_a1 == '\0'` -- one byte, not the word an xunknown2 pointer reads)
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "int4 __cdecl16far sub_00100(int2 a1,int2 a2)\n\n{\n  \n"
+        "  while (*_a1 != '\\0') {\n    _a1 = (char *)CONCAT22(a2,(char __near *)(a1 + 1));\n  }\n"
+        "  return CONCAT22(a2,a1);\n}\n";
+    CB_CHECK(ctdt_has(compilable(text, "").text, "#define _a1 (*(char **)&a1)"));
+});
+
+CB_TEST("decompile.c_text_dos.a_function_that_takes_a_locals_address_keeps_the_originals_frame", [] {
+    // (the long-multiply helper writes four bytes at &uStack_6: uStack_6 and uStack_4 must be side by side, low word first)
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "int4 __cdecl16far sub_00100(int2 a1)\n\n{\n  uint2 uStack_6;\n  uint2 uStack_4;\n  int2 unaff_SS;\n  \n"
+        "  uStack_6 = 0;\n  uStack_4 = 0;\n  sub_00200((void *)CONCAT22(unaff_SS,(int2)&uStack_6),a1);\n"
+        "  return CONCAT22(uStack_4,uStack_6);\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "#define uStack_6 (*(uint2 *)&codebreaker_frame[0])"));
+    CB_CHECK(ctdt_has(r.text, "#define uStack_4 (*(uint2 *)&codebreaker_frame[2])"));
+    CB_CHECK(ctdt_has(r.text, "  uint1 codebreaker_frame[4];"));
+    CB_CHECK(!ctdt_has(r.text, "  uint2 uStack_6;"));
+    CB_CHECK(ctdt_has(r.text, "#undef uStack_6"));
+    CB_CHECK_EQ(r.report.frames, std::size_t{1});
+    // (the stack segment, as the function was given it: the far pointer to the local is SS's)
+    CB_CHECK(ctdt_has(r.text, "  int2 unaff_SS = (int2)codebreaker_ss();"));
+    // (no address taken: the locals stay as they are)
+    const std::string plain =
+        "/* T.EXE */\n\n"
+        "int2 __cdecl16far sub_00100(void)\n\n{\n  uint2 uStack_6;\n  \n  uStack_6 = 1;\n  return uStack_6;\n}\n";
+    CB_CHECK(ctdt_has(compilable(plain, "").text, "  uint2 uStack_6;"));
+});
+
 CB_TEST("decompile.c_text_dos.the_compilers_stack_probe_is_not_the_sources", [] {
     const std::string text =
         "/* T.EXE */\n\n"

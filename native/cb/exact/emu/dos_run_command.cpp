@@ -44,6 +44,11 @@ int run(const cli::Args& a) {
     spec.workdir = dir;
     spec.command_tail = tail;
     spec.trace_calls = a.flag("trace-calls");
+    if (const auto w = a.value("watch")) spec.watch = std::stoull(*w, nullptr, 16);
+    spec.watch_near = a.flag("watch-near");
+    if (const auto n = a.value("watch-calls")) spec.watch_max = std::stoi(*n);
+    const std::optional<std::string> dump = a.value("watch-dump");
+    if (dump) spec.watch_dumps = a.value("watch-dumps") ? std::stoi(*a.value("watch-dumps")) : 8;
     spec.files = &files;
     const dos::Result r = opened.executive->run(spec);
 
@@ -76,6 +81,30 @@ int run(const cli::Args& a) {
         for (const auto& [address, n] : r.calls) calls[std::format("{:05X}", address)] = n;
         out["calls"] = calls;
     }
+    if (spec.watch != 0) {
+        nlohmann::json calls = nlohmann::json::array();
+        for (const dos::WatchedCall& c : r.watched) {
+            nlohmann::json one = {{"ret", std::format("{:05X}", c.return_address)}, {"args", c.args},
+                                  {"ds_in", std::format("{:04X}:{:016X}", c.ds_in, c.ds_in_hash)}, {"returned", c.returned}};
+            if (c.returned) {
+                one["ax"] = std::format("{:04X}", c.ax);
+                one["dx"] = std::format("{:04X}", c.dx);
+                one["flags"] = std::format("{:04X}", c.flags);
+                one["ds"] = std::format("{:04X}:{:016X}", c.ds, c.ds_hash);
+                one["ds_parts"] = c.ds_parts;
+            }
+            calls.push_back(one);
+        }
+        out["watch"] = calls;
+        if (dump) {   // (each kept call: its DS bytes at entry, then at return; a call not kept or not returned has none)
+            Bytes all;
+            for (const dos::WatchedCall& c : r.watched) {
+                all.insert(all.end(), c.ds_in_bytes.begin(), c.ds_in_bytes.end());
+                all.insert(all.end(), c.ds_bytes.begin(), c.ds_bytes.end());
+            }
+            fs::write_file(fs::from_text(*dump), all);
+        }
+    }
     const std::string text = out.dump(1);
     if (const auto file = a.value("out")) fs::write_text(fs::from_text(*file), text);
     else cb::out("{}\n", text);
@@ -92,6 +121,11 @@ cli::Command command() {
         {cli::Option{"--dir", "", "its drive C: (default: the current folder); it is only read", cli::Arg::Value, "DIR"},
          cli::Option{"--save", "", "write the files it made or changed into this folder", cli::Arg::Value, "DIR"},
          cli::Option{"--trace-calls", "", "count the calls of each address"},
+         cli::Option{"--watch", "", "record each call of the function at this image offset (hex): its arguments, and AX, DX, flags and DS at its return", cli::Arg::Value, "ADDR"},
+         cli::Option{"--watch-near", "", "the watched function returns with RET (default: RETF)"},
+         cli::Option{"--watch-calls", "", "how many of its calls to record (default 200)", cli::Arg::Value, "N"},
+         cli::Option{"--watch-dump", "", "write DS's 64 KB at entry and at return of the first watched calls here", cli::Arg::Value, "FILE"},
+         cli::Option{"--watch-dumps", "", "how many calls --watch-dump keeps (default 8)", cli::Arg::Value, "N"},
          cli::Option{"--out", "", "write the report (JSON) here instead of printing it", cli::Arg::Value, "FILE"},
          cli::Positional{"program", "the DOS program (.exe or .com)"},
          cli::Positional{"args", "its command line", false, true}},

@@ -334,6 +334,146 @@ LeDescription describe_le(const formats::le::Module& module, std::string_view na
 
 // ---- DOS programs (MZ) -----------------------------------------------------------------------------------------------
 
+namespace {
+
+bool dos_touches_dx(const std::vector<std::uint16_t>& regs) {
+    return std::any_of(regs.begin(), regs.end(), [](std::uint16_t r) {
+        const std::string n = register_name16(r);
+        return n == "dx" || n == "dl" || n == "dh" || n == "edx";
+    });
+}
+
+}  // namespace
+
+// The functions that return four bytes, DX:AX (a long, a far pointer): by their own instructions (result_bytes), or because a
+// caller reads DX straight after calling one, before anything sets it -- a compiler reads DX after a call only for a result
+// that long (C1's sub_0758D: `sub ax, ax / cdq` on one way, a far pointer on the others). Only four is said: two or none
+// is left to the decompiler, which finds those itself. Without it a far pointer came back as its offset alone, 0000:AX.
+static std::map<Va, std::int64_t> dos_four_byte_results(const formats::dos::Program& program, const analyze::dos_functions::Analysis& found) {
+    std::map<Va, std::int64_t> out;
+    std::map<std::uint32_t, Code16> segments;   // the 64 KB from each code segment's base
+    auto segment = [&](std::uint32_t cs) -> const Code16& {
+        auto it = segments.find(cs);
+        if (it == segments.end()) {
+            const std::size_t from = cs >= program.base ? std::min<std::size_t>(cs - program.base, program.image.size()) : 0;
+            const std::size_t n = std::min<std::size_t>(0x10000, program.image.size() - from);
+            it = segments.emplace(cs, Code16(Bytes(program.image.begin() + static_cast<std::ptrdiff_t>(from),
+                                                   program.image.begin() + static_cast<std::ptrdiff_t>(from + n)))).first;
+        }
+        return it->second;
+    };
+    // (a compiler's function keeps a frame, `push bp / mov bp, sp` (55 8B EC): hand-written code -- the floating-point
+    // emulator's -- passes and returns in whatever registers it likes, DX among them, and is not C)
+    auto compiled = [&](const analyze::dos_functions::Function& fn) {
+        const std::size_t at = fn.address >= program.base ? fn.address - program.base : program.image.size();
+        return at + 3 <= program.image.size() && program.image[at] == 0x55 && program.image[at + 1] == 0x8B && program.image[at + 2] == 0xEC;
+    };
+    if (found.functions.empty()) return out;
+    for (auto f = found.functions.begin(); f != found.functions.end(); ++f) {
+        const analyze::dos_functions::Function& fn = f->second;
+        if (fn.cs > fn.address || fn.address - fn.cs >= 0x10000) continue;
+        const Code16& code = segment(fn.cs);
+        const std::int64_t start = fn.address - fn.cs;
+        const auto next = std::next(f);
+        std::int64_t end = fn.size ? start + fn.size : code.size();
+        if (next != found.functions.end() && next->first > fn.address) end = std::min<std::int64_t>(end, next->first - fn.cs);
+        end = std::min(end, code.size());
+        if (end <= start) continue;
+        if (compiled(fn) && result_bytes(code, start, end) == 4) out[f->first] = 4;
+        // its calls whose result it reads in DX
+        const std::vector<Insn> ins = code.decode(start, end, true);
+        for (std::size_t k = 0; k + 1 < ins.size(); ++k) {
+            const Insn& i = ins[k];
+            std::optional<Va> target;
+            if (i.mn == "call" && i.imm_first() && i.operands.size() == 1) target = fn.cs + static_cast<Va>(i.first_imm() & 0xFFFF);
+            else if (i.mn == "lcall" && i.operands.size() == 2 && i.operands[0].kind == OperandKind::Immediate && i.operands[1].kind == OperandKind::Immediate)
+                target = static_cast<Va>(i.operands[0].imm & 0xFFFF) * 16 + static_cast<Va>(i.operands[1].imm & 0xFFFF);
+            if (!target || !found.functions.contains(static_cast<std::uint32_t>(*target)) ||
+                !compiled(found.functions.at(static_cast<std::uint32_t>(*target))))
+                continue;
+            bool set_before = false;   // (DX the caller set itself just before may be its own, kept)
+            for (std::size_t q = k >= 6 ? k - 6 : 0; q < k; ++q)
+                if (ins[q].regs_ok && dos_touches_dx(ins[q].regs_write)) set_before = true;
+            if (set_before) continue;
+            for (std::size_t q = k + 1; q < ins.size() && q < k + 8; ++q) {
+                const Insn& p = ins[q];
+                if (!p.regs_ok || p.in_group(kGroupJump) || p.in_group(kGroupCall) || p.in_group(kGroupRet) || p.mn == "int") break;
+                if (p.mn == "push" && p.op_str == "dx" && q + 1 < ins.size() && ins[q + 1].mn == "push" && ins[q + 1].op_str == "ax") {
+                    out[*target] = 4;   // (pushed as a pair: a far pointer or a long handed on)
+                    break;
+                }
+                if (p.mn == "push" && p.op_str == "dx") break;   // (saved, not read)
+                if (dos_touches_dx(p.regs_read)) {
+                    out[*target] = 4;
+                    break;
+                }
+                if (dos_touches_dx(p.regs_write)) break;
+            }
+        }
+    }
+    return out;
+}
+
+// The program's bytes as the decompiler is to read them: each `mov ax, N / call _chkstk` -- Microsoft C's stack probe, which
+// makes the frame's N bytes of locals itself (`pop cx / pop dx / mov bx, sp / sub bx, ax / ... / mov sp, bx`) -- as what it
+// does to the stack, `sub sp, N` (and NOPs to the call's end). The decompiler cannot know a callee moves SP by AX: it put the
+// locals above the stack pointer, where the next call's return address overwrote them (C1's `[bp - 4]` read back as "CS").
+// The probe's check that the stack is big enough is the compiler's, not the source's (c_text_dos drops the call as well).
+static Bytes dos_image_for_decompiler(const formats::dos::Program& program) {
+    Bytes image = program.image;
+    const auto at = [&](std::uint64_t linear) -> std::optional<std::size_t> {
+        if (linear < program.base || linear - program.base >= image.size()) return std::nullopt;
+        return static_cast<std::size_t>(linear - program.base);
+    };
+    const auto probe_far = [&](std::size_t k) {   // pop cx / pop dx / mov bx, sp / sub bx, ax
+        static constexpr std::uint8_t kFar[] = {0x59, 0x5A, 0x8B, 0xDC, 0x2B, 0xD8};
+        return k + sizeof kFar <= image.size() && std::equal(std::begin(kFar), std::end(kFar), image.begin() + static_cast<std::ptrdiff_t>(k));
+    };
+    const auto probe_near = [&](std::size_t k) {   // pop cx / mov bx, sp / sub bx, ax (the small and medium models' near probe)
+        static constexpr std::uint8_t kNear[] = {0x59, 0x8B, 0xDC, 0x2B, 0xD8};
+        return k + sizeof kNear <= image.size() && std::equal(std::begin(kNear), std::end(kNear), image.begin() + static_cast<std::ptrdiff_t>(k));
+    };
+    for (std::size_t k = 0; k + 5 <= image.size(); ++k) {   // xor ax, ax / call rel16: no locals -- the call goes, AX stays 0
+        if (!((image[k] == 0x33 || image[k] == 0x31) && image[k + 1] == 0xC0 && image[k + 2] == 0xE8)) continue;
+        const auto rel = static_cast<std::int16_t>(image[k + 3] | image[k + 4] << 8);
+        const std::int64_t target = static_cast<std::int64_t>(k) + 5 + rel;
+        if (target < 0 || !probe_near(static_cast<std::size_t>(target))) continue;
+        image[k + 2] = image[k + 3] = image[k + 4] = 0x90;
+        k += 4;
+    }
+    for (std::size_t k = 0; k + 6 <= image.size(); ++k) {   // mov ax, imm16 / call rel16
+        if (image[k] != 0xB8 || image[k + 3] != 0xE8) continue;
+        const auto rel = static_cast<std::int16_t>(image[k + 4] | image[k + 5] << 8);
+        const std::int64_t target = static_cast<std::int64_t>(k) + 6 + rel;   // (within the segment: the image offset moves with IP)
+        if (target < 0 || !probe_near(static_cast<std::size_t>(target))) continue;
+        const std::uint8_t sub_sp[] = {0x81, 0xEC, image[k + 1], image[k + 2], 0x90, 0x90};   // sub sp, N / nop x2
+        std::copy(std::begin(sub_sp), std::end(sub_sp), image.begin() + static_cast<std::ptrdiff_t>(k));
+        k += 5;
+    }
+    for (std::size_t k = 0; k + 8 <= image.size(); ++k) {
+        if (image[k] != 0xB8 || image[k + 3] != 0x9A) continue;   // mov ax, imm16 / lcall off:seg
+        const std::uint32_t off = image[k + 4] | image[k + 5] << 8, seg = image[k + 6] | image[k + 7] << 8;
+        // (the segment word as the image holds it: relocated, or relative to the load module)
+        std::optional<std::size_t> target = at(static_cast<std::uint64_t>(seg) * 16 + off);
+        if (!target || !probe_far(*target)) target = at(program.base + static_cast<std::uint64_t>(seg) * 16 + off);
+        if (!target || !probe_far(*target)) continue;
+        const std::uint8_t lo = image[k + 1], hi = image[k + 2];
+        const std::uint8_t sub_sp[] = {0x81, 0xEC, lo, hi, 0x90, 0x90, 0x90, 0x90};   // sub sp, N / nop x4
+        std::copy(std::begin(sub_sp), std::end(sub_sp), image.begin() + static_cast<std::ptrdiff_t>(k));
+        k += 7;
+    }
+    for (std::size_t k = 0; k + 7 <= image.size(); ++k) {   // xor ax, ax / lcall off:seg: no locals -- the call goes
+        if (!((image[k] == 0x33 || image[k] == 0x31) && image[k + 1] == 0xC0 && image[k + 2] == 0x9A)) continue;
+        const std::uint32_t off = image[k + 3] | image[k + 4] << 8, seg = image[k + 5] | image[k + 6] << 8;
+        std::optional<std::size_t> target = at(static_cast<std::uint64_t>(seg) * 16 + off);
+        if (!target || !probe_far(*target)) target = at(program.base + static_cast<std::uint64_t>(seg) * 16 + off);
+        if (!target || !probe_far(*target)) continue;
+        std::fill(image.begin() + static_cast<std::ptrdiff_t>(k + 2), image.begin() + static_cast<std::ptrdiff_t>(k + 7), std::uint8_t{0x90});
+        k += 6;
+    }
+    return image;
+}
+
 // Describe a real-mode program to the decompiler.
 //
 // The reader (formats/dos) gives the bytes as they sit in memory -- unpacked when the file stores them packed, a .COM behind
@@ -345,7 +485,7 @@ DosDescription describe_dos(const formats::dos::Program& program, const std::fil
     if (!program.ds) throw UnsupportedError(kDos, 0, "the program sets no data segment");
     auto found = std::make_shared<const analyze::dos_functions::Analysis>(analyze::dos_functions::discover(program));
     const std::filesystem::path blob = native_path(outdir / "image_dos.bin");
-    fs::write_file(blob, program.image);
+    fs::write_file(blob, dos_image_for_decompiler(program));
     std::vector<std::string> lines;
     lines.push_back("arch\t" + std::string(kArchDos));
     for (const formats::dos::Span& span : program.spans)
@@ -353,10 +493,11 @@ DosDescription describe_dos(const formats::dos::Program& program, const std::fil
     lines.push_back("reg\tDS\t" + hx(*program.ds));
     DosDescription d;
     d.path = outdir / "description.txt";
+    const std::map<Va, std::int64_t> four = dos_four_byte_results(program, *found);
     for (const auto& [va, fn] : found->functions) {   // (ascending addresses)
         d.names[va] = fn.name;
-        lines.push_back(std::format("F\t{}\t{}\t{}\t{}{}", hx(fn.address), fn.name, fn.removes, fn.removes > 0 ? "__stdcall16" : "__cdecl16",
-                                    analyze::dos_functions::name_of(fn.distance)));
+        lines.push_back(std::format("F\t{}\t{}\t{}\t{}{}{}", hx(fn.address), fn.name, fn.removes, fn.removes > 0 ? "__stdcall16" : "__cdecl16",
+                                    analyze::dos_functions::name_of(fn.distance), four.contains(va) ? "\t4" : ""));
     }
     std::int64_t k = 0;
     for (const formats::dos::Span& span : program.spans) d.spans[++k] = {span.address, span.length};
