@@ -85,7 +85,7 @@ can look like "Setup's graphical screen"; the VM runs without paging (CR0 = 11h)
 physical.
 
 **Next:** these are scratch scripts today (`gdbwatch`, `gdbdiv`, `walkbp`, `trymini` in the
-session scratchpad). They belong in `native/cb/verify` as commands:
+session scratchpad). They belong in `src/verify` as commands:
 `watch`, `catch`, `trace`, plus the snapshot gate (3.4).
 
 ## 5. How we worked
@@ -102,8 +102,8 @@ session scratchpad). They belong in `native/cb/verify` as commands:
 
 ## Where each fix lives
 
-- Function facts: `native/cb/decompile/describe.cpp` (pops, thunks, result sizes, `callers_say`)
-- Origin (asm or C): `native/cb/analyze/origin.cpp`
-- C text: `native/cb/decompile/c_text_*.cpp`; Ghidra core: `native/cb/decompile/engine/core/cpp/varmap.cc`
-- Frames: `native/cb/build/asm16.cpp`; link order, gates, caches: `native/cb/build` (the module build)
-- Checks: `native/cb/verify/gate16/isolated16.cpp`, `contract16.cpp`, `setup16.cpp`
+- Function facts: `src/decompile/describe.cpp` (pops, thunks, result sizes, `callers_say`)
+- Origin (asm or C): `src/analyze/origin.cpp`
+- C text: `src/decompile/c_text_*.cpp`; Ghidra core: `src/decompile/engine/core/cpp/varmap.cc`
+- Frames: `src/build/asm16.cpp`; link order, gates, caches: `src/build` (the module build)
+- Checks: `src/verify/gate16/isolated16.cpp`, `contract16.cpp`, `setup16.cpp`

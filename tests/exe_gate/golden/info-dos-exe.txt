@@ -1,6 +1,6 @@
 exit: 0
 --- stdout
-<repo>/native/cb/formats/testdata/setver.exe  (MZ, 18939 bytes)
+<repo>/src/formats/testdata/setver.exe  (MZ, 18939 bytes)
 
 summary:
   format          MZ

@@ -1,6 +1,6 @@
 exit: 0
 --- stdout
-<repo>/native/cb/formats/testdata/bios.vxd  (LE, 21429 bytes)
+<repo>/src/formats/testdata/bios.vxd  (LE, 21429 bytes)
 
 summary:
   format          LE

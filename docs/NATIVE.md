@@ -1,15 +1,15 @@
 # CodeBreaker in C++: the plan
 
 > Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
-> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> Python-side mechanisms they describe, are now native C++ under `src` (same area names, `.cpp`); commands read
 > `codebreaker <command>`. The design stands; see README.md for the current layout.
-> Note (2026-11-19): the native folders merged into `native/cb`, and the engines this log builds as DLLs (cbengine,
+> Note (2026-11-19): the native folders merged into `src`, and the engines this log builds as DLLs (cbengine,
 > cbl2, cbformats, cbsymbols, cbanalyze, cbinvert, cbdos, pyfront, xex.exe) are static libraries linked into
-> `codebreaker.exe` by the one build (`cmake -S native -B state/cxx/cb -G Ninja`, or `toolsuild_native.cmd`), so the
-> per-folder `cmake -S native/<x>` commands, the `<x>_bin` settings and the `CB_*_DLL` variables below are gone. The
-> paths below name where the code is now (the old `native/l2` is `native/cb/translate/l2`, `native/dosexec` is
-> `native/cb/exact/emu/dosexec`, `native/xex` is `native/cb/formats/xex`, `native/pyfront` is
-> `native/cb/translate/frontends/python/pyfront`, the rest are `native/cb/<name>`); the DLL names and the commands
+> `codebreaker.exe` by the one build (`cmake -S src -B build -G Ninja`, or `toolsuild_native.cmd`), so the
+> per-folder `cmake -S src/<x>` commands, the `<x>_bin` settings and the `CB_*_DLL` variables below are gone. The
+> paths below name where the code is now (the old `native/l2` is `src/translate/l2`, `native/dosexec` is
+> `src/exact/emu/dosexec`, `native/xex` is `src/formats/xex`, `native/pyfront` is
+> `src/translate/frontends/python/pyfront`, the rest are `src/<name>`); the DLL names and the commands
 > marked "then" are what the log's steps built and ran at the time.
 
 Decided by Logan, 2026-10-30: CodeBreaker's own code is C++ wherever it can be. This reverses
@@ -38,9 +38,9 @@ output's folder was a setting (`<name>_bin`), as `decompiler_bin` is.
 
 ## Step 1 (done): the 32-bit run recorder -- `native/tracer`
 
-> **Moved (2026-11-11, docs/CPP_DESIGN.md).** The recorder's sources are `native/cb/emulate/tracer/` (api.cc ->
-> api.cpp and so on), part of `cb_emulate`, and `cbtrace.dll` is the `cbtrace` target of `native/cb/CMakeLists.txt`
-> (`tools\build_cb.cmd`; it lands in `state/cxx/cb/bin`, the `tracer_bin` default). The typed C++ face of the 32-bit
+> **Moved (2026-11-11, docs/CPP_DESIGN.md).** The recorder's sources are `src/emulate/tracer/` (api.cc ->
+> api.cpp and so on), part of `cb_emulate`, and `cbtrace.dll` is the `cbtrace` target of `src/CMakeLists.txt`
+> (`tools\build_cb.cmd`; it lands in `build`, the `tracer_bin` default). The typed C++ face of the 32-bit
 > recorder is `cb/emulate/native_trace.hpp`; the C interface stays for the ports that still reach it through it.
 > Below, `native/tracer` is that folder.
 
@@ -81,7 +81,7 @@ branch decode per module hash and address), so even a cache's effect on later ru
 **The switch.** `CB_NATIVE_TRACE` (default 1; 0 = the Python hooks). Without the built DLL the
 Python hooks run (native_trace.why_not() says why). Build:
 
-    tools\build_cb.cmd            (cbtrace.dll in state\cxx\cb\bin; was: cmake -S native/tracer ...)
+    tools\build_cb.cmd            (cbtrace.dll in build; was: cmake -S src/tracer ...)
 
 **The gate** (harness kept outside the repo, in state/work/native-trace2). Every function's (verdict,
 reason, limits, detail) with the switch off and on, fresh CB_STATE, CB_NO_FP_CACHE=1, the same
@@ -294,9 +294,9 @@ and the NE writer setting 2000h.
 The 16-bit recorded-system context path has no record-level case of its own in test_native_trace
 (prelude runs do), only the judge's.
 
-## Step 6 (gated): the engine and the store -- `native/cb/engine`
+## Step 6 (gated): the engine and the store -- `src/engine`
 
-**What moved.** `cbengine.dll` (native/cb/engine; C interface cbengine.h; ctypes in
+**What moved.** `cbengine.dll` (src/engine; C interface cbengine.h; ctypes in
 codebreaker/engine/native_engine.py), on SQLite's C API directly:
 
 - the program database (facts.py's Database): the fact, blob and about tables in the same schema,
@@ -327,7 +327,7 @@ date by Python's table builders (reads._fresh); what a value IS (facts.encode/de
 JSON, a pickle). An exception a step raises comes out of the C++ run as itself, with its kind
 (a LookupError is still one to the staleness check).
 
-**SQLite.** The SQLite 3.54.1 amalgamation is vendored in native/cb/third_party/sqlite (from
+**SQLite.** The SQLite 3.54.1 amalgamation is vendored in src/third_party/sqlite (from
 sqlite.org, its SHA3-256 checked against the one published; public domain; downloaded with Logan's
 go-ahead, 2026-10-31) and compiled into cbengine.dll statically: the build needs nothing outside
 the project and no SQLite DLL is shipped beside it.
@@ -336,7 +336,7 @@ the project and no SQLite DLL is shipped beside it.
 `CB_NATIVE_ENGINE`, read when a database, a store or a knowledge base was opened; without the built
 DLL opening one now raises (native_engine.why_not() says why). Build:
 
-    (then, before 2026-11-19: cmake -S native/engine -B native/engine/build -G Ninja; now the one build builds it)
+    (then, before 2026-11-19: cmake -S src/engine -B native/engine/build -G Ninja; now the one build builds it)
 
 **The gate** (harness outside the repository, state/work/native-engine: gate.py, drive.py). `measure`
 of eight modules from an empty state folder (the same folder path both times, so a path a fact
@@ -410,7 +410,7 @@ test_plumbing 17, tools/check_imports 557.
 Every step above can be written by hand. The engine is the other road: CodeBreaker's own
 core idea -- reconstruct readable source and prove it behaves as the original -- turned on
 CodeBreaker. `codebreaker/translate/frontends/python` lowers Python into L2 with types it infers
-over the whole package, the C++17 back end (C++: `native/cb/translate/l2/src/cpp17_python.cc`, through the shim
+over the whole package, the C++17 back end (C++: `src/translate/l2/src/cpp17_python.cc`, through the shim
 `backends/cpp17.py`) writes C++17 over `config/translate/runtime/cpp17/py.hpp`
 (docs/history/PYTHON_FRONTEND.md says how, and what is refused). A function either becomes C++ that
 reads as written by hand -- int64_t, structs, py::list, C++'s own operators where the intervals
@@ -509,7 +509,7 @@ several kinds (they want hand-written structs or variants chosen by a person), a
 Unicorn or Capstone's Python bindings. The engine is worth running on every module before it is
 moved by hand: what it translates is gated and done, and its refusal list is the hand-port's to-do.
 
-### The engine in C++, piece 1: the Python parser -- `native/cb/translate/frontends/python/pyfront`
+### The engine in C++, piece 1: the Python parser -- `src/translate/frontends/python/pyfront`
 
 All of CodeBreaker is to be C++ (2026-10-31), so the engine above is being rewritten in C++,
 and that rewrite can then port the rest of CodeBreaker. Its first piece is a complete
@@ -537,7 +537,7 @@ in the tests all match, as do Lib/test's `badsyntax_*` files, message text inclu
 `pyfront_grammar` runs 301 grammar cases against dumps CPython made once. The gate script is
 `state/work/pyfront/gate.py`, and Python is used only as its oracle.
 
-**The API the next pieces consume** (native/cb/translate/frontends/python/pyfront/README.md has the full version):
+**The API the next pieces consume** (src/translate/frontends/python/pyfront/README.md has the full version):
 
 - `pyfront::parse(bytes, filename)` returns a `pyfront::Module` (or a `SyntaxError`), and
   `pyfront::dump(module)` returns the canonical text.
@@ -550,7 +550,7 @@ in the tests all match, as do Lib/test's `badsyntax_*` files, message text inclu
   stage can key side tables on node addresses without copying the tree.
 - The C ABI is in `pyfront/pyfront.h` (`pyfront.dll`).
 
-**Left for the inference + lowering stage** (piece 2, on the native L2 core in native/cb/translate/l2):
+**Left for the inference + lowering stage** (piece 2, on the native L2 core in src/translate/l2):
 1. A scope pass: names to their bindings (module, class, function, comprehension), with
    `global`/`nonlocal` and the attributes each class and its instances gain.
 2. Whole-package type inference as `codebreaker/translate/frontends/python` does it today:
@@ -628,11 +628,11 @@ process pools, csv and json: parameter hints do not move them (8 hints on knowle
 functions). The engine carries computation -- format readers, decoders, text helpers; glue is
 cheaper to write by hand. CTest: 10 suites, 87 checks (+ `dynamic`, `backend`).
 
-## Step 5 (now first): the L2 core and the C back end -- `native/cb/translate/l2`
+## Step 5 (now first): the L2 core and the C back end -- `src/translate/l2`
 
 Logan, 2026-10-31: "All of it needs to be C++." The translator's core moves first: the L2 tree, and the
 C back end on it, so decompile -> C is native end to end (the decompiler already builds L2 in C++,
-PrintL2). `native/cb/translate/l2` (CMake + Ninja, VS 18 toolset) builds two static libraries and one DLL:
+PrintL2). `src/translate/l2` (CMake + Ninja, VS 18 toolset) builds two static libraries and one DLL:
 
 - **`l2core`** -- the L2 core (`src/value.hpp`, `src/json.hpp`, `src/l2.hpp`): what the translator back
   ends (C++03, C++17, Java, C#) and the porting engine's lowering sit on;
@@ -640,7 +640,7 @@ PrintL2). `native/cb/translate/l2` (CMake + Ninja, VS 18 toolset) builds two sta
 - **`cbl2.dll`** -- the C interface (`include/l2api.h`: `l2_call(fn, json_args) -> json_result`), loaded by
   codebreaker/translate/native_l2.py through ctypes.
 
-    (then: cmake -S native/l2 -B native/l2/build -G Ninja; now the one build builds `cb_l2`, with `l2_tests` and `cpp17_tests` on request)
+    (then: cmake -S src/l2 -B native/l2/build -G Ninja; now the one build builds `cb_l2`, with `l2_tests` and `cpp17_tests` on request)
 
 ### The core's C++ API (for the back ends and the porting engine)
 
@@ -687,7 +687,7 @@ tests made or read (`pytest tests/translate`, recorded at l2.from_json / to_json
 Validation: jsonschema took 155.6 s for the 332 sampled documents, the native check 5.4 s (x29). The
 round trip is about even through the shim (its JSON both ways dominates); in C++, between C++ callers,
 there is no JSON at all. tests/translate/test_native_l2_core.py holds both cores to each other on
-documents of every kind; native/cb/translate/l2's CTest (`l2_tests`) holds the core to Python's json, str and repr.
+documents of every kind; src/translate/l2's CTest (`l2_tests`) holds the core to Python's json, str and repr.
 
 ### The C back end -- `l2c` (gated, on by default)
 
@@ -704,7 +704,7 @@ are carried over as written on a port of Python's `re` (`pyre.cc`, now the core'
 
 **What stayed Python.** c_text's module assembly (compilable16, compilable32, compilable_powerpc: the
 glue that calls the writer); struct_text.plan (its analysis is analyze.structures over analyze.image,
-the loaders step's -- native/cb/formats is there to build on); the passes before the writer that read a
+the loaders step's -- src/formats is there to build on); the passes before the writer that read a
 16-bit function's instructions, asm_blocks, frame16 and shape16 (CB_ASM_BLOCKS / CB_FRAME16, off by
 default; an uncommitted capstone wrapper for them waits in the worktree).
 
@@ -754,17 +754,17 @@ caller_frame_slots, names_used, heading_facts each about a tenth), the layouts a
 
 **Left.** The module assembly (c_text) and struct_text.plan into C++, after which nothing crosses the
 shim per function; asm_blocks / frame16 / shape16 (off by default). (The Python writer: deleted, 2026-11-04.)
-## Step 4 (six readers moved and their Python deleted; the rest of formats/ to go): formats and loaders -- `native/cb/formats`
+## Step 4 (six readers moved and their Python deleted; the rest of formats/ to go): formats and loaders -- `src/formats`
 
 Logan, 2026-10-31: "All of it needs to be C++." The file-format readers of codebreaker/formats/
-are moving into one library, `formats.dll` (native/cb/formats; setting `formats_bin`, default
-native/cb/formats/build/bin):
+are moving into one library, `formats.dll` (src/formats; setting `formats_bin`, default
+src/formats/build/bin):
 
-    (then: cmake -S native/formats -B native/formats/build -G Ninja, with its own ctest; now part of the one build)
+    (then: cmake -S src/formats -B native/formats/build -G Ninja, with its own ctest; now part of the one build)
 
 **The design.** Each reader is plain C++ over the file's bytes -- `pe/pe.h` (pe::Image),
 `ne/ne.h` (ne::Module), `le/le.h` (le::Image, le::W3, the writer in le/image.cc), `dos/dos.h`,
-`omf/omf.h`, and for XEX native/cb/formats/xex's own parser compiled in (reader.cmake) -- with structs a C++
+`omf/omf.h`, and for XEX src/formats/xex's own parser compiled in (reader.cmake) -- with structs a C++
 caller can use as they are. Every read goes through `core/bytes.h`, which keeps Python's rules
 (a slice comes back short, `data[i]` raises IndexError, unpack_from raises struct.error with
 Python's own message, a negative offset counts from the end), so a damaged file fails here
@@ -786,7 +786,7 @@ through open_pe), so callers change nothing. **Switch:** `CB_NATIVE_FORMATS` (al
 `CB_NATIVE_FORMATS_<READER>` (PE, NE, LE, DOS, OMF, XEX); default on for the six gated readers
 (native.READERS_ON); `0` falls back to Python; without the DLL Python runs (native.why_not()).
 
-**The gate** (native/cb/formats/gate.py): every file of every corpus through the reader with its
+**The gate** (src/formats/gate.py): every file of every corpus through the reader with its
 switch off and on; every attribute of every object and every method's answer (with probes:
 RVAs, offsets, each segment's relocations, each object's bytes, every member of a container,
 write_image of read_image, embedded and boot-image modules, both run_movers settings ...),
@@ -831,7 +831,7 @@ xex_imports/xex_edit, the console ROM readers (gb, genesis, sms, nes, msx, zx) a
 
 ### 2026-11-04 (evening): the six readers' Python deleted
 
-**The Fallbacks closed.** Counted over the whole corpus with the gate (native/cb/formats/gate.py
+**The Fallbacks closed.** Counted over the whole corpus with the gate (src/formats/gate.py
 now lists every Fallback reason it meets and fails on any), the only one ever reached was
 `dos.read: a program whose unpacker runs in the emulator` (10 files). That is now C++:
 dos/unpack.cc is emulate/unpack.py on Unicorn's C API (core/uc.h, the very unicorn.dll Python's
@@ -883,13 +883,13 @@ native library (l2, engine, tracer, formats, dosexec) built from this branch's o
 ### 2026-11-05: group 2 -- detect, zx, lzx, cab, media -- in C++, their Python deleted
 
 New in formats.dll: `detect/detect.cc` (signatures, lanes, the DOS header, identify), `zx/zx.cc`
-(.sna, .z80 v1/v2/128K, .tap), `lzx/lzx.cc` (LZXD and the XEX block chain, SHA-1 by native/cb/formats/xex's
+(.sna, .z80 v1/v2/128K, .tap), `lzx/lzx.cc` (LZXD and the XEX block chain, SHA-1 by src/formats/xex's
 crypto; `lzx.h` for the C++ readers that hold LZX, xnb next), `cab/cab.cc` (headers, stored /
 MSZIP / Quantum folders across a set's cabinets, extract with the files' times, write) and
 `media/media.cc` (FAT12/16/32 with long names, the partition table and logical drives, ISO-9660
 with Joliet and raw sectors, El Torito's floppy, put()); core/codecs.cc (cp437, utf-16-be,
 utf-8 with "replace" by CPython's rule) and file helpers in core/files (sizes, folders, writes,
-times, ntpath's abspath/dirname/join). MSZIP uses zlib 1.3.1, the copy native/cb/decompile/engine carries
+times, ntpath's abspath/dirname/join). MSZIP uses zlib 1.3.1, the copy src/decompile/engine carries
 (its static library `cbf_zlib`, crc32 in core/zcrc32.c). native.py gained `RAISES` (a reader's
 own exception: cab.CabError) and zlib.error, FileNotFoundError, PermissionError, RecursionError.
 
@@ -931,7 +931,7 @@ XboxMCP use none of the five.
 
 ### 2026-11-05: group 3 -- fonts, resources, inspect, pe_functions, powerpc_image, xex_edit -- in C++
 
-New in formats.dll (`native/cb/formats/win/`): `fonts.cc` (the .FNT header, the glyph table, glyph and
+New in formats.dll (`src/formats/win/`): `fonts.cc` (the .FNT header, the glyph table, glyph and
 render), `resources.cc` (strings, dialog, menu, accelerators, version, icon/cursor groups and the
 .ico/.cur and .bmp makers, type libraries, the 16-bit resource table), `powerpc_image.cc` (the
 function table both ways and the layout whose entries point at code, import stubs, register
@@ -989,7 +989,7 @@ source/pe_writer.py, verify/authored/match.py (function_spans), recompile/discov
 
 ### 2026-11-05: group 4 (in part) -- the Xbox containers and assets, gfx, xnb -- in C++, their Python deleted
 
-`native/cb/formats/xbox/`: `discs.cc` (byte devices kept in a table so a gigabyte image is streamed: a file, a
+`src/formats/xbox/`: `discs.cc` (byte devices kept in a table so a gigabyte image is streamed: a file, a
 Games-on-Demand folder de-interleaved, a CSO / CCI image; the XDVDFS walk / read / build_xdvdfs; GoD's part layout, header
 and NXE install transform; CSO / CCI read and write; LZ4 raw blocks), `assets.cc` (XACT sound banks, XBE, XUIZ, XDBF),
 `graphics.cc` (the 360 texture layout and DXT decode, XPR, Scaleform GFx movies, XNA content), `pyfmt.h` (Python's bytes repr,
@@ -1028,16 +1028,16 @@ moving to the automatic engine, a dynamic mode in native/pyengine.  Nothing belo
 the gates, harvest.py and orig copies in state/work/formats-native4/ are its check.)
 
 - Group 4 left: **effect.py** (the D3DX effect reader: a Parameter / State / Pass / Technique object model over
-  `_typedef` / `_value` / `_state`; native/cb/formats/xbox would return a nested dict and the classes would be built from it,
+  `_typedef` / `_value` / `_state`; src/formats/xbox would return a nested dict and the classes would be built from it,
   _copy's shared-member identity checked), **heavyiron.py** (parse -> a dict tree, the writer patching offsets, textures
-  through Pillow), **stfs.py** (530 lines; resign needs RSA modpow: native/cb/formats/xex/src/crypto has SHA-1 and AES, no big
+  through Pillow), **stfs.py** (530 lines; resign needs RSA modpow: src/formats/xex/src/crypto has SHA-1 and AES, no big
   integers), **fatx.py** (760, the reader / writer / carver), **zar.py** (1,030), **volumes.py** (the media adapters: glue
   over the above, move it last).  Also not in the user's list but in the same folder: bink, chd, nand, pck, shader,
   system_ui, xma, xur, xwb.
 - Group 5 (formats/xbox/crypto/, ALL of it, each C++ port keeping its upstream attribution and license, ATTRIBUTION.md
   updated, tests/test_xbox_crypto.py in the gate) is not started: XeCrypt.py (1,277 lines of RC4 / RSA / SHA / HMAC /
   DES on top of cryptography), MemCrypto, shadowboot (853), nand_tool, xcp_dumper, build_lib, harness, xsm3, lzx (653: the
-  vendored copy; native/cb/formats/lzx has the core) and the small tools.  SHA-1 / AES-128 are in native/cb/formats/xex/src/crypto
+  vendored copy; src/formats/lzx has the core) and the small tools.  SHA-1 / AES-128 are in src/formats/xex/src/crypto
   (xex::crypto, linked into formats.dll).
 - The method (the same for each): harvest.py's list, a gate that runs the orig copy (mk_orig.py writes it from git HEAD,
   pointing the other xbox imports at their orig copies) against the shim on every input and on damaged copies, ask() for
@@ -1055,7 +1055,7 @@ moves when the Capstone detail (operands) is wanted in C++.
 
 ### The C++17 back end -- `l2cpp17` (2026-10-31)
 
-One back end per target language, in C++: the translator's C++17 back end is `native/cb/translate/l2/src/cpp17_*.cc`
+One back end per target language, in C++: the translator's C++17 back end is `src/translate/l2/src/cpp17_*.cc`
 (the static library `l2cpp17`, in cbl2.dll), and it replaced both Python C++17 back ends
 (backends/cpp17.py's emitter and backends/cpp17_java.py, deleted). One emitter (`cpp17::Emitter`: the
 block, the if/else-if chain, while, the range-for and its structured bindings, `auto`, lambdas and
@@ -1099,7 +1099,7 @@ Writing all 556 modules of codebreaker/ takes 1.9 s through the shim. CTest `cpp
 rules' choice, a Python module and a Java program to the gate's text; tests/translate (the MSVC
 semantics test, the java_modern programs beside the JVM) judge it compiled and run.
 
-## Step 7, first piece (gated, on): the DOS executive -- `native/cb/exact/emu/dosexec`
+## Step 7, first piece (gated, on): the DOS executive -- `src/exact/emu/dosexec`
 
 exact/emu/dos.py `run()` (the real-mode DOS executive: PSP, the MCB arena in guest RAM, MZ load and
 relocation, INT 20h/21h -- console, files by handle and by FCB over a MemFS or the disk, memory,
@@ -1190,15 +1190,15 @@ Kept, and why:
   (958). Deleted with Logan's yes (2026-11-04) after the merge; git history keeps them. `score16` and `exact` are commands in
   __main__'s table missing from its listing.
 
-## Step 8, first pieces (on, Python deleted): symbols/ -- `native/cb/symbols`
+## Step 8, first pieces (on, Python deleted): symbols/ -- `src/symbols`
 
 codebreaker/symbols/ and codebreaker/analyze/ (about 9,900 lines) are being ported by hand, module
-by module, into `cbsymbols.dll` (native/cb/symbols; C interface cbsymbols.h: one call, `cbs_ask(question,
+by module, into `cbsymbols.dll` (src/symbols; C interface cbsymbols.h: one call, `cbs_ask(question,
 text as UTF-32)`, the answer as JSON in ASCII with `\u` escapes, so Python's str values come back
 exactly). The shim is codebreaker/symbols/native.py (`native.ask`); the folder is the setting
-`symbols_bin` (default native/cb/symbols/build/bin). Build:
+`symbols_bin` (default src/symbols/build/bin). Build:
 
-    (then: cmake -S native/symbols -B native/symbols/build -G Ninja; now part of the one build)
+    (then: cmake -S src/symbols -B native/symbols/build -G Ninja; now part of the one build)
 
 Each module was gated before its Python went, so there is no fallback and no switch: without the
 DLL the questions raise (native.why_not() says why). Gate harnesses: state/work/analyze-native/.
@@ -1225,7 +1225,7 @@ rest. What was learned:
 - analyze/image is the keystone: call_graph, conventions, classes, structures, dispatch, globals
   and strings all take its `Image` (functions and instructions from the native decompiler, the
   module's spans, pointers and imports). Porting any of them alone means marshalling the whole
-  image across ctypes per call; port image first (into native/cb/symbols or a native/cb/analyze beside
+  image across ctypes per call; port image first (into src/symbols or a src/analyze beside
   it, reading the decompiler's output and the formats DLL directly), then the passes over it.
 - The symbols/ modules left are mostly glue around JSON tables, the corpus and the formats readers
   (ordinals, driver_services, runtime_library, api_arguments); their computing cores (an import
@@ -1235,10 +1235,10 @@ rest. What was learned:
 - The method that worked: a corpus-wide harvest of real inputs plus random truncations of each,
   compared whole (JSON dumps, order included), before the Python is deleted.
 
-## Step 8, analyze/: the image and its passes -- `native/cb/analyze` (2026-11-05)
+## Step 8, analyze/: the image and its passes -- `src/analyze` (2026-11-05)
 
-`cbanalyze.dll` (native/cb/analyze; C interface cbanalyze.h; shim codebreaker/analyze/native.py; folder
-setting `analyze_bin`, default native/cb/analyze/build/bin; built by `tools\build_native.cmd analyze`).
+`cbanalyze.dll` (src/analyze; C interface cbanalyze.h; shim codebreaker/analyze/native.py; folder
+setting `analyze_bin`, default src/analyze/build/bin; built by `tools\build_native.cmd analyze`).
 Like native/tracer it is compiled against the headers Python's `capstone` package carries and links
 no Capstone: at run time it calls the very capstone.dll Python loaded (5.0.x), so every
 instruction's mnemonic, operand text, operands and register sets are the ones Python's had.
@@ -1313,7 +1313,7 @@ What was learned, for whoever (or whatever) ports the rest:
   files.txt; callers.py REGEX greps the other repositories and this tree). The sample takes about
   5 minutes, the whole list about 50.
 
-## Step 8, first piece: the compiler models -- `native/cb/invert` (2026-11-04)
+## Step 8, first piece: the compiler models -- `src/invert` (2026-11-04)
 
 codebreaker/invert/ (the models that read 16-bit functions back into the source their compiler
 was given: early_c, msc6, msc6_registers, msvc2, msvc2_forward, msvc2_registers, flow16, run;
@@ -1359,7 +1359,7 @@ byte-level readers msc6_function.invert_cleanup, msc6_walk.invert and msc6_templ
 (msc6_small.cc).  **Capstone:** cs.cc loads the capstone.dll of Python's `capstone` 5.0.7 package
 by path (cbinv_init, called by the shim with `<package>/lib/capstone.dll`; CMake reads the package's
 include/ through `python -c "import capstone"`), so every mnemonic and operand text is the one the
-Python saw; native/cb/decompile/engine's Capstone 4.0.2 is not used.  pyutil.h makes the Python behaviours
+Python saw; src/decompile/engine's Capstone 4.0.2 is not used.  pyutil.h makes the Python behaviours
 the text depends on exact: int(x, 0) / int(x, 16) with their ValueError (a `[bp + si]` operand made
 the Python raise, and so does the C++), "%x", chr() as UTF-8, split/partition, and small cursors
 standing for each regular expression; the exception kinds the Python raised (IndexError,
@@ -1434,8 +1434,8 @@ called in C++, no shim text for the CFG) and the text passes (_tidy, _strip_tail
 _dead_regs, _fold_ladders, _fold_goto_or, _fold_longs, _fold_shortcircuit, _dead_store_recover,
 detect_copies, to_c) are early_c.cc + early_c_walk.inc + early_c_text.cc (cbinv_early_c).  What
 made it exact:
-- **Python's re:** every pattern is the Python's, run by native/cb/translate/l2's pyre (compiled into
-  cbinvert.dll from native/cb/translate/l2/src: pyre.cc, pystr.cc, value.cc).  Patterns built from the data
+- **Python's re:** every pattern is the Python's, run by src/translate/l2's pyre (compiled into
+  cbinvert.dll from src/translate/l2/src: pyre.cc, pystr.cc, value.cc).  Patterns built from the data
   (re.escape of a statement's left side, `\bgoto L_x;`) are compiled uncached.
 - **str identity:** `s.ax is not old` decides retlive, so a register value is an ecu::Str (a
   shared object): literals and one-character strings are one object (CPython's interned constants
@@ -1493,8 +1493,8 @@ order is trusted; the order below is what is known today.
 | 2 | **The 16-bit tracer and the driver runner** | emulate/windows16.py `trace_function16` (the Win16 lane's judge), emulate/driver.py `run` (VxD and other flat ring-0 code) | the same per-instruction and per-memory callbacks as step 1; USER's gate made 18 M register reads and 22 M memory reads for 81 functions (fast_uc.py) | the same DLL: a 16-bit recorder (segments, far calls, the NE import thunks, ports) and the flat driver runner, beside step 1's |
 | 3 | **The path explorer** (done, above) | -- | -- | the shadow inside the recorder (shadow.cc); the tracers' Python hooks deleted |
 | 4 | **Formats and loaders** | formats/ (PE, NE, LE, MZ, OMF, XEX ...), formats/pe_functions.py carving | reading and carving whole images in Python, per process, every run of a tool | a loader library (one per format, the decompiler's loaders reused) giving the same facts |
-| 5 | **The L2 passes and the C back end** | the L2 tree passes and the C writer in Python, after the native decompiler | tree walks over every function, every build | into native/cb/decompile/engine: L2 built and rewritten there, C written there; Python reads the result |
-| 6 | **The engine and the store** (gated: "Step 6" above) | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | native/cb/engine: SQLite's C API directly, the engine's scheduler in C++; left: the steps themselves |
+| 5 | **The L2 passes and the C back end** | the L2 tree passes and the C writer in Python, after the native decompiler | tree walks over every function, every build | into src/decompile/engine: L2 built and rewritten there, C written there; Python reads the result |
+| 6 | **The engine and the store** (gated: "Step 6" above) | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | src/engine: SQLite's C API directly, the engine's scheduler in C++; left: the steps themselves |
 | 7 | **Build orchestration** | build/ (OpenWatcom, MASM, period compilers under DOSBox-X) | process starts and file handling around the compilers | a C++ driver: one process starts the compilers and gathers their output; the in-process DOS executive is done ("Step 7, first piece" above) |
 | 8 | **The rest** | everything else that computes | -- | case by case; the glue (CLI, terminal UI, MCP) stays Python |
 
@@ -1521,7 +1521,7 @@ gate (isolated16) 1,126; decompile 766; contract16 255; C objects and the rest ~
 starts: wcc 7,656 (two per C function: the compile and the -zs flow check; one start costs
 0.14-0.28 s here even on an empty file), wasm 1,889 (for 13,832 pieces asked), decompiler 82.
 **MASM in the DOS executive: 0 sessions** -- the 16-bit Windows lane assembles with OpenWatcom's
-wasm; native/cb/exact/emu/dosexec is not on this path, so its batch mode and a post-load snapshot cannot move
+wasm; src/exact/emu/dosexec is not on this path, so its batch mode and a post-load snapshot cannot move
 these numbers. wcc refuses a second source (E1139) and wasm crashes on one (0xC0000005): neither
 batches without changing OpenWatcom.
 

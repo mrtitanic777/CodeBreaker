@@ -6,7 +6,7 @@ platform provides today, file by file, checked against the code (2026-11-14); th
 worked walk-through of the Game Boy lane); then the registration object (section 6): a lane is one plug-in, registered in one
 place, and the shared lists (platform enum, probes, `info` text, extensions, lane kit chains) iterate the registry.
 
-Paths are under `native/cb/` unless they start with `docs/`. See also `docs/PLATFORM_DESCRIPTOR.md` (why the platform
+Paths are under `src/` unless they start with `docs/`. See also `docs/PLATFORM_DESCRIPTOR.md` (why the platform
 is one record) and `docs/PLATFORMS.md`.
 
 ## 1. The pieces

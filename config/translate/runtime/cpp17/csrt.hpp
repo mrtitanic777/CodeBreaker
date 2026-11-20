@@ -1,4 +1,4 @@
-// csrt.hpp -- the C# library in C++17, for whole programs written by native/cb/translate/backends/csharp_cpp17.
+// csrt.hpp -- the C# library in C++17, for whole programs written by src/translate/backends/csharp_cpp17.
 //
 // The object model (docs/TRANSLATOR_DESIGN.md, "C# -> C++17"):
 //   * a C# class is a C++ struct held through cs::Ref<T> (std::shared_ptr): reference counting in place of the collector (a cycle of

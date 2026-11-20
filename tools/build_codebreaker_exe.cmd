@@ -1,36 +1,23 @@
 @echo off
-rem build_codebreaker_exe.cmd [OUT] -- THE program: codebreaker.exe, every command of CodeBreaker on native/cb, no Python behind it
+rem build_codebreaker_exe.cmd -- THE program: codebreaker.exe, every command of CodeBreaker on src, no Python behind it
 rem (with no command it is the Windows app: app/window_win.cpp).
 rem
-rem     tools\build_codebreaker_exe.cmd          builds target `codebreaker` in state\cxx\cb (the tree tools\build_cb.cmd builds, so the
-rem                                              objects are shared) and installs it, with the DLLs it loads, as
-rem                                              state\cxx\codebreaker\build\codebreaker.exe -- the path .mcp.json and
-rem                                              tools\gate.cmd use
-rem     tools\build_codebreaker_exe.cmd OUT      installs into OUT instead
+rem     tools\build_codebreaker_exe.cmd          builds target `codebreaker` in build\ (the tree tools\build_cb.cmd builds, so the
+rem                                              objects are shared): build\codebreaker.exe, with the DLLs it loads and the
+rem                                              programs it starts (decompiler.exe, pcodecheck.exe) beside it -- the path
+rem                                              .mcp.json and tools\gate.cmd use
 rem
-rem Needs MSVC, CMake, Ninja. CB_BUILD_JOBS limits the build (default half the cores). A running codebreaker.exe (the background service, an
-rem MCP server) cannot be overwritten but can be renamed: it is moved aside and the new one written; old ones are deleted once nothing runs them.
+rem Needs MSVC, CMake, Ninja. CB_BUILD_JOBS limits the build (default every core). A running codebreaker.exe (the background service,
+rem an MCP server) cannot be overwritten but can be renamed: the build moves it aside before it links (tools\replace_running.cmd).
 setlocal
 call "%~dp0disk_guard.cmd" || exit /b 1
 set ROOT=%~dp0..
-set B=%ROOT%\state\cxx\cb
-set OUT=%1
-if "%OUT%"=="" set OUT=%ROOT%\state\cxx\codebreaker\build
+set B=%ROOT%\build
 set JOBS=%CB_BUILD_JOBS%
-if "%JOBS%"=="" set /a JOBS=%NUMBER_OF_PROCESSORS% / 2
-if %JOBS% LSS 1 set JOBS=1
+if "%JOBS%"=="" set JOBS=%NUMBER_OF_PROCESSORS%
 if not defined VCINSTALLDIR set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
 if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
-if not exist "%B%\build.ninja" cmake -S "%ROOT%\native" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
-cmake --build "%B%" --target codebreaker -j %JOBS% || exit /b 1
-if not exist "%OUT%" mkdir "%OUT%"
-del /q "%OUT%\codebreaker.old-*.exe" >nul 2>&1
-if exist "%OUT%\codebreaker.exe" (
-  2>nul (>>"%OUT%\codebreaker.exe" call ) || move /y "%OUT%\codebreaker.exe" "%OUT%\codebreaker.old-%RANDOM%%RANDOM%.exe" >nul
-)
-copy /y "%B%\bin\codebreaker.exe" "%OUT%\codebreaker.exe" >nul || exit /b 1
-for %%D in (unicorn capstone libz3) do copy /y "%B%\bin\%%D.dll" "%OUT%\" >nul
-rem the decompiler engine's programs, which the program starts from beside itself
-for %%P in (decompiler pcodecheck) do copy /y "%B%\bin\%%P.exe" "%OUT%\" >nul
-echo installed %OUT%\codebreaker.exe
+if not exist "%B%\build.ninja" cmake -S "%ROOT%\src" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
+cmake --build "%B%" --target codebreaker decompiler pcodecheck -j %JOBS% || exit /b 1
+echo built %B%\codebreaker.exe
 exit /b 0

@@ -1,10 +1,10 @@
 # CodeBreaker as an MCP server
 
-`codebreaker mcp` (native/cb/ui/mcp_*.cpp) is CodeBreaker as an MCP server, so an
+`codebreaker mcp` (src/ui/mcp_*.cpp) is CodeBreaker as an MCP server, so an
 assistant such as Claude Code can take binaries apart with CodeBreaker's own tools: what a file
 is, its headers, its code instruction by instruction, what refers to what, the reconstructed C and
 its verdict, and two builds side by side. 34 tools, one resource and one prompt. Tests:
-native/cb/ui/mcp_server_test.cpp and mcp_services_test.cpp.
+src/ui/mcp_server_test.cpp and mcp_services_test.cpp.
 
 ## Connecting
 
@@ -15,7 +15,7 @@ Code starts the server itself, over stdio, one copy per session.
 - Everywhere else, register it for the user (it is in `~/.claude.json` already on Logan's machine):
 
   ```
-  claude mcp add --scope user codebreaker -- C:/path/to/CodeBreaker/state/cxx/codebreaker/build/codebreaker.exe mcp
+  claude mcp add --scope user codebreaker -- C:/path/to/CodeBreaker/build/codebreaker.exe mcp
   ```
 
   This works from any folder: `codebreaker.exe` finds the corpus, Converted/ and state/ from the

@@ -6,10 +6,10 @@ what existing commands do or what they write.
 ## 1. Bring the version up to date
 
 - `CHANGELOG.md`: rename **Unreleased** to the new version and date, and start a new empty **Unreleased** above it.
-- `native/cb/app/codebreaker.rc`: `FILEVERSION`, `PRODUCTVERSION` and the two version strings (the version of `codebreaker.exe`).
-- The MCP server's version: `native/cb/ui/mcp_symbols.cpp` (`services.version`), and the goldens that record it
-  (`native/cb/ui/testdata/mcp_python.golden.json`, `tests/exe_gate/golden/mcp-session.txt`) and the two tests
-  that check it (`native/cb/ui/mcp_server_test.cpp`, `native/cb/ui/mcp_services_test.cpp`).
+- `src/app/codebreaker.rc`: `FILEVERSION`, `PRODUCTVERSION` and the two version strings (the version of `codebreaker.exe`).
+- The MCP server's version: `src/ui/mcp_symbols.cpp` (`services.version`), and the goldens that record it
+  (`src/ui/testdata/mcp_python.golden.json`, `tests/exe_gate/golden/mcp-session.txt`) and the two tests
+  that check it (`src/ui/mcp_server_test.cpp`, `src/ui/mcp_services_test.cpp`).
 - README.md: the version note under the first screenshot.
 
 Commit these as one change.
@@ -25,7 +25,7 @@ tools\gate.cmd
 ```
 
 The gate must end with every suite passing. The milestone regression boots Windows 95 from the rebuilt modules; it
-tests only the Windows 95 build path (native/cb/build, decompile, emulate/windows16*, verify/gate16, config/build and
+tests only the Windows 95 build path (src/build, decompile, emulate/windows16*, verify/gate16, config/build and
 the OpenWatcom toolchain). Run only what covers code that changed since its last proof: nothing, if that path is
 unchanged since the last release or since its last proven run; `all15 --runs 1` for small changes there that were not
 proven yet; the full set below (about three hours) when a change to that path has not been proven at all:

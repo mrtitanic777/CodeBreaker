@@ -195,12 +195,12 @@ that it notices.
 
 | Layer | Where | What lives there |
 |---|---|---|
-| Interfaces | `native/cb/app`, `native/cb/ui` | the command table, the Windows app (`window_*`) and its conversion pipeline (`convert`), the MCP server (32 tools), the service |
+| Interfaces | `src/app`, `src/ui` | the command table, the Windows app (`window_*`) and its conversion pipeline (`convert`), the MCP server (32 tools), the service |
 | The path | `formats` → `symbols`, `analyze` → `decompile` → `source`, `port`, `exact` → `build` → `emulate`, `compare`, `verify` | reconstruct, rebuild, judge, record |
 | Lanes | `recompile`, `xna`, `java`, `translate`, `platforms`, `invert` | Xbox 360 recompilation, XNA ports, Java, the translator, platform descriptions, compiler inversion |
 | Engine | `engine`, `store`, `knowledge`, `coverage`, `jobs`, `core`, `base` | incremental engine and program database, function store, knowledge base, scoreboards, jobs, the C++ foundation |
 
-`native/cb` alone is about 505,000 lines of C++ across 26 areas, with 5,450 unit tests.
+`src` alone is about 505,000 lines of C++ across 26 areas, with 5,450 unit tests.
 
 ---
 
@@ -272,7 +272,7 @@ tools\build_codebreaker_exe.cmd
 
 The first builds the one native tree (the program, the decompiler and `pcodecheck`, the trace tool); the
 second installs the program with the decompiler beside it. The engines (L2, the format, XEX and DOS libraries) are linked
-into `codebreaker.exe`. The program is installed as `state\cxx\codebreaker\build\codebreaker.exe` (add that folder to `PATH`). Copy
+into `codebreaker.exe`. The program is installed as `build\codebreaker.exe` (add that folder to `PATH`). Copy
 `settings.example.json` to `settings.json` and point it at your corpus and tools, then:
 
 ```bash
@@ -329,10 +329,10 @@ Nine verbs, one program. Each works out what to do from what you give it (a file
 ## Repository layout
 
 ```
-native/cb/                    the program: 26 areas of C++20 and its third-party code (see the system map)
-native/cb/decompile/engine/   SLEIGH processor specs and the decompiler core
-native/cb/translate/l2/       L2, the typed intermediate form, and its back ends
-native/cb/recompile/          the Xbox 360 recompiler and runtime (x360, xenonrecomp, rexglue)
+src/                    the program: 26 areas of C++20 and its third-party code (see the system map)
+src/decompile/engine/   SLEIGH processor specs and the decompiler core
+src/translate/l2/       L2, the typed intermediate form, and its back ends
+src/recompile/          the Xbox 360 recompiler and runtime (x360, xenonrecomp, rexglue)
 data/               tables CodeBreaker reads: API maps, symbol tables, runtimes for translated code
 targets/            programs being taken back to source, with their research notes
 tests/              everything for testing: the command cases and goldens, fixtures
@@ -340,7 +340,7 @@ tools/              build, gate and packaging scripts (package_release.cmd makes
 docs/               design notes, platform map, tested software, diagrams
 ```
 
-Unit tests sit beside the code they test (`*_test.cpp` and `testdata/` folders under `native/`). None of
+Unit tests sit beside the code they test (`*_test.cpp` and `testdata/` folders under `src/`). None of
 the test material ships: the release package holds only the program and what it reads at run time, and
 the source archives leave the tests out. Original binaries, toolchains and generated output are kept
 outside version control ([docs/NOT_IN_REPO.md](docs/NOT_IN_REPO.md)).

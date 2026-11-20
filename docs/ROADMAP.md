@@ -30,7 +30,7 @@ model of the machine for the judge, and source that rebuilds byte for byte.
 A title goes from disc or package to a PC build that plays, in one command, with input, audio and graphics working.
 
 1. A playability report per title: what the headless check sees (frames, unimplemented imports, the first stop).
-2. Close the gaps the report names in the Xbox 360 runtime (native/cb/recompile/x360), title by title, starting with Minecraft.
+2. Close the gaps the report names in the Xbox 360 runtime (src/recompile/x360), title by title, starting with Minecraft.
 3. Packaging: the built game as a folder that runs anywhere (its assets, its runtime), and the drop-in flow.
 
 ## 4. The universal translator, every front end to every back end
@@ -66,7 +66,7 @@ reads the evidence packets and proposes names for the other 95% is the next step
 `codebreaker` builds and runs on Linux (x86-64; GCC and Clang) as it does on Windows: the same commands, the same
 tests, the same results. About 87 source files call the Windows API directly today, 13 of them in `core`.
 
-1. A portable layer in `native/cb/core`: processes and pipes, files and paths, file locks, loading the engine
+1. A portable layer in `src/core`: processes and pipes, files and paths, file locks, loading the engine
    libraries, environment, console text, time; a Windows and a POSIX implementation behind one interface.
 2. Every other area moved onto that layer (no Windows calls outside `core` and the Windows-only lanes' tools).
 3. The engines (L2, formats, DOS, XEX, decompiler) and the third-party libraries (Unicorn, Capstone, Z3)

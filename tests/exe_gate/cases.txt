@@ -1,14 +1,14 @@
-# The command cases of cb_exe_gate (native/cb/app/exe_gate_main.cpp, run by tools\gate.cmd): codebreaker.exe is run on each line and
+# The command cases of cb_exe_gate (src/app/exe_gate_main.cpp, run by tools\gate.cmd): codebreaker.exe is run on each line and
 # its exit code, stdout and the files it leaves in {out} are compared with tests/exe_gate/golden/<name>.txt. Every command of the
-# table in native/cb/app/commands_catalog.inc has two to four cases here (usage, a real run, an error); `app` and `boot-floppy` are the exceptions:
+# table in src/app/commands_catalog.inc has two to four cases here (usage, a real run, an error); `app` and `boot-floppy` are the exceptions:
 # `app` is the window (its smoke is the screenshot step of tools\gate.cmd, not a command line), and `boot-floppy` rebuilds the whole Setup floppy
 # (80 s). Goldens were recorded from the exe that ran the translated Python for the commands not yet native (2026-11-13), then each
 # command's output was read: where a native command differs from the Python only in wording, the golden is re-recorded after review
 # (`tools\gate.cmd --update --filter NAME`), and that diff is what a reviewer reads.
 #
-# Inputs are small real files kept in the repository (native/cb/*/testdata, tests/fixtures, tests/exe_gate/in) and, for what only
+# Inputs are small real files kept in the repository (src/*/testdata, tests/fixtures, tests/exe_gate/in) and, for what only
 # exists on the owner's machine, the Win95 corpus (@needs=corpus) and the Xbox 360 games folder (@needs=games: skipped when absent).
-fmt = {repo}/native/cb/formats/testdata
+fmt = {repo}/src/formats/testdata
 td = {repo}/tests/exe_gate/in
 
 # --- what a file is: info, names, identify, decompile, analyze -------------------------------------------------------------------
@@ -64,7 +64,7 @@ media-list-img: media list {fmt}/media/old.img
 media-extract: media extract {fmt}/iso9660/mini_setup.iso {out}
 disc-list: disc --list {fmt}/iso9660/mini_setup.iso
 disc-extract: disc --extract {fmt}/iso9660/mini_setup.iso {out}
-disc-make: disc {repo}/native/cb/build/testdata/disc/tree {out}/made.iso @sizeonly=.iso
+disc-make: disc {repo}/src/build/testdata/disc/tree {out}/made.iso @sizeonly=.iso
 disc-usage: disc
 fonts-list: fonts {fmt}/fonts/vgafix.fon
 fonts-show: fonts {fmt}/fonts/vgafix.fon --show Hello

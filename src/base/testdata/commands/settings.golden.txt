@@ -1,0 +1,41 @@
+settings: <ROOT>/settings.json
+  -- build_cache      (not set)
+     cache_max_gb     3
+  -- converted        (not set)
+     corpora          win95=corp95, win98=corp98
+  !! corpus           <ROOT>/corp95
+  -- decompiler_bin   (not set)
+  -- design           (not set)
+  -- dosbox_x         (not set)
+  -- host_cxx         (not set)
+  -- ilspycmd         (not set)
+  -- java             (not set)
+  -- java_libs        (not set)
+  -- java_overlays    (not set)
+  -- masm             (not set)
+  -- msbuild          (not set)
+  !! msc6             <ROOT>/missing-dir
+  -- msvc152          (not set)
+  ok openwatcom       <ROOT>/wc
+  -- period_compiler  (not set)
+  -- powerpc_lib      (not set)
+  ok powerpc_tools    <ROOT>/tools/ppc
+  !! ppc_binutils     <ROOT>/toolchains/powerpc-binutils
+  !! retromcp         <ROOT>/src/java/retromcp/build/libs/retromcp.jar
+     service_idle_minutes 5
+  ok state            <ROOT>/state
+     struct_recovery  all
+     target           win98
+     threads          4
+  !! tracer_bin       <ROOT>/build
+  -- visual_studio    (not set)
+  -- win95_boot       (not set)
+  -- win95_installed_hd (not set)
+  -- win95_setup_iso  (not set)
+  -- work_folder      (not set)
+  -- xbox360_crypto_bin (not set)
+  -- xbox360_keys     (not set)
+  -- xbox360_sdk      (not set)
+  -- xenix_c          (not set)
+  -- xna_overlays     (not set)
+ok = found, !! = set but not there, -- = not set (optional unless a command asks for it)

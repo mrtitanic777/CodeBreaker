@@ -93,7 +93,7 @@ changes: Tempest (its stop, the XMP playlist, is fixed).
 Called during the checks: `InterlockedPopEntrySList` (105,707 calls, Catherine; implemented), `MmSetAddressProtect` (594, MW3;
 implemented), `XamInputGetCapabilitiesEx`, `NtQueueApcThread`, `MmCreateKernelStack`, `XamLrcLogError` (open).
 
-## What was implemented (native/cb/recompile/x360)
+## What was implemented (src/recompile/x360)
 
 - A thread's stack pointer starts 0x100 below the top of its stack (`kernel::kInitialStackOffset`): thread functions store
   up to 0xC4 bytes above their own frame. Audio, NIC, XInputd and title-end threads too. UNO, WALL-E, Top Spin 2 faulted at once.
@@ -135,7 +135,7 @@ Re-checked after each fix (`--check 120`, one project at a time, deleted after).
 | Regression set | | Minecraft, Hexic HD, Marble Blast Ultra, WALL-E, PAC-MAN CE, Defender, UNO Rush, Zuma, MW3: 6600/5400 frames as before |
 
 What changed:
-- **Recompiler** (`native/cb/recompile/xenonrecomp`): a `.pdata` entry that is all zeros (begin address 0) is no longer a function, and a zero word
+- **Recompiler** (`src/recompile/xenonrecomp`): a `.pdata` entry that is all zeros (begin address 0) is no longer a function, and a zero word
   between functions is padding, not a one-word function. Small Arms and Happy Wars had 450,000 `.long 0x0` functions and a `sub_0` per
   padding entry. Every title has fewer functions now (Minecraft 59,753 to 43,128, Defender 14,752 to 10,025) and all of the above
   still play. The golden of `recompile.command.the_xbox_360_project_matches_the_golden` (LoganMinecraftTest: 8744 to 5861
@@ -226,7 +226,7 @@ The 54 entries again (`--check 120`, one project at a time, deleted after), with
 
 40 of the 54 entries run the whole check with no stop (frames 1800-6600; Cloning Clyde and Catherine are CPU-bound at 20 frames a second); round 2 had 31, round 1 24. 3 are not recompilable titles.
 
-### Implemented in round 3 (native/cb/recompile/x360)
+### Implemented in round 3 (src/recompile/x360)
 
 - **64-bit render targets**: `16_16_16_16_FLOAT` in the EDRAM output merger (two dwords a pixel with x doubled, a pitch of twice the tiles
   in `xe_om_poly_back.y`), as resolve source (converted to `k_16_16_16_16_FLOAT`) and for the colour clear (two dwords). Also render targets
@@ -334,7 +334,7 @@ are re-run by hand (below).
    waits for a compile, a draw whose shaders are not ready is skipped (first run only: the manifest and `shader_cache/` start the next run with
    everything compiled). The HLSL itself was not made smaller: with DXC it no longer is the limit.
 2. **L4D2.** The round-4 import-stub fix links. Three things stood in the way: an XEX whose import-name table has stray bytes in its padding
-   (the engine DLLs: the name after `xboxkrnl.exe` read as `\`, so the module's variable imports of `vstdlib` found no library; `native/cb/formats/xex`
+   (the engine DLLs: the name after `xboxkrnl.exe` read as `\`, so the module's variable imports of `vstdlib` found no library; `src/formats/xex`
    reads the table at its 4-byte-aligned offsets now, as XenonRecomp's reader always did), `FscGetCacheElementCount` (still unimplemented and
    skipped by the check), and render target format 1: **`8_8_8_8_GAMMA` in the output merger** (the 8_8_8_8 dword holds gamma-encoded RGB; the
    shader's linear colour is converted on store and back for blending, with the piecewise-linear curve of slopes 1/4, 1/2, 1, 2; the CPU

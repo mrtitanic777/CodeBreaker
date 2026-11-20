@@ -12,22 +12,22 @@ setting for one run.
 |---|---|---|
 | The original binaries | `../Windows95/design/corpus/files` | `corpus`, `corpora` |
 | The SDK and DDK of the time (headers, debug symbols, MASM 6.11c, the thunk compiler) | `../Windows95/design/reference` | `reference` (default: the corpus's design folder) |
-| OpenWatcom (builds and judges reconstructions) | `toolchains/open-watcom-v2/rel` | `openwatcom` |
+| OpenWatcom (builds and judges reconstructions) | `toolchains/openwatcom/rel` | `openwatcom` |
 | DOSBox-X (runs the DOS compilers, assemblers and linkers) | `toolchains/dosbox-x/bin/x64/Release/dosbox-x.exe` | `dosbox_x` |
-| Microsoft C 6.0a | `toolchains/period/compilers/msc-6.0a` | `msc6` |
-| Visual C++ 1.52c (Microsoft C/C++ 8, LINK 5.60, RC) | `toolchains/period/compilers/msvc-1.52c` | `msvc152` |
-| Visual C++ 2.0 (the 32-bit compiler of 1994) | `toolchains/period/compilers/msvc-2.0/BIN` | `period_compiler` |
-| Visual C++ 4.0's C runtime libraries (LIBC, LIBCMT, MSVCRT: only to learn runtime signatures from, `identify --learn`) | `toolchains/period/compilers/msvc-4.0/LIB` | (named on the command line) |
-| The Windows 3.1 DLL kit (lean MDLLCEW.LIB, LIBW.LIB, LIBENTRY.OBJ) | `toolchains/period/libs/win31-kit` | (found there) |
-| Microsoft C 2.03 (MC1, MC2) | `binaries/latticec/oracle16` | `kits`: `msc203` |
-| MASM (BIN, INC, LIB) | `toolchains/masmroot` | `masm` |
+| Microsoft C 6.0a | `toolchains/microsoft/compilers/msc-6.0a` | `msc6` |
+| Visual C++ 1.52c (Microsoft C/C++ 8, LINK 5.60, RC) | `toolchains/microsoft/compilers/msvc-1.52c` | `msvc152` |
+| Visual C++ 2.0 (the 32-bit compiler of 1994) | `toolchains/microsoft/compilers/msvc-2.0/BIN` | `period_compiler` |
+| Visual C++ 4.0's C runtime libraries (LIBC, LIBCMT, MSVCRT: only to learn runtime signatures from, `identify --learn`) | `toolchains/microsoft/compilers/msvc-4.0/LIB` | (named on the command line) |
+| The Windows 3.1 DLL kit (lean MDLLCEW.LIB, LIBW.LIB, LIBENTRY.OBJ) | `toolchains/microsoft/libs/win31-kit` | (found there) |
+| Microsoft C 2.03 (MC1, MC2) | `test-inputs/latticec/oracle16` | `kits`: `msc203` |
+| MASM (BIN, INC, LIB) | `toolchains/masm` | `masm` |
 | The XENIX C compiler of Microsoft's 1984 tools (its files; the LINK/LIB reconstruction it is compared with: the `xenix_c` kit's folder) | | `kits`: `xenix86`; `xenix_c` |
 | PowerPC compiler, linker and runtime | | `powerpc_tools`, `powerpc_lib` |
 | A C++ compiler for judging transpiled Java (g++) | `C:/msys64/mingw64/bin/g++.exe` (or g++ on PATH) | `host_cxx` |
 | Java (a JDK 8+: java and javac), to decompile a jar and to run classes beside their translation | `JAVA_HOME`, or `java` on PATH | `java` |
 | RetroMCP CLI jar (RetroMCP-Java + Vineflower; MIT / Apache-2.0) | | `retromcp` |
 | Visual Studio with clang-cl (builds XenonRecomp and recompiled Xbox 360 titles) | the newest install vswhere finds | `visual_studio` |
-| PowerPC binutils that know VMX128 (the recompiler's instruction tests) | `toolchains/binutils-ppc` | `ppc_binutils` |
+| PowerPC binutils that know VMX128 (the recompiler's instruction tests) | `toolchains/powerpc-binutils` | `ppc_binutils` |
 | The Xbox 360 SDK (XDK), for the Java transpiler's console target | `C:/Program Files (x86)/Microsoft Xbox 360 SDK` | `xbox360_sdk` |
 | MSBuild, to build a transpiled game's Visual Studio project | | `msbuild` |
 | Per-project hand fixes laid over transpiled Java | `state/java/overlays` | `java_overlays` |
@@ -72,4 +72,4 @@ runs delete their disk copies; `codebreaker tidy-state` shows it part by part an
 what is stale (README: What is kept, and how big it gets). The reconstructed Windows 95
 source is written into the Windows 95 tree (`../Windows95`), where it is kept and curated.
 
-The native decompiler is built from `native/cb/decompile/engine` by the one build into `state/cxx/cb/bin`, beside `codebreaker.exe` (the optional setting `decompiler_bin` points elsewhere); the build output is not tracked.
+The native decompiler is built from `src/decompile/engine` by the one build into `build`, beside `codebreaker.exe` (the optional setting `decompiler_bin` points elsewhere); the build output is not tracked.

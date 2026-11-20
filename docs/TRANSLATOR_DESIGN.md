@@ -1,7 +1,7 @@
 # The translator: any language in, any language out
 
 > Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
-> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> Python-side mechanisms they describe, are now native C++ under `src` (same area names, `.cpp`); commands read
 > `codebreaker <command>`. The design stands; see README.md for the current layout.
 
 The request (2026-10-19): "I want to be able to convert all kinds of code", then: "I wanna be able to
@@ -215,7 +215,7 @@ Each target language has **one** back end, and every front end pairs with it: an
 forms: declarations, statements, expressions, its idioms) plus one rule set per source language, chosen
 by the unit's `Unit.lang` -- what the source's arithmetic, integers, strings, collection order and
 construction mean in the target, and which runtime holds the rest. The C++17 back end is the model, and
-it is C++ (native/cb/translate/l2/src/cpp17_*.cc, library `cb_l2` (cbl2.dll until 2026-11-19), since 2026-10-31; docs/NATIVE.md step 5): `Emitter`
+it is C++ (src/translate/l2/src/cpp17_*.cc, library `cb_l2` (cbl2.dll until 2026-11-19), since 2026-10-31; docs/NATIVE.md step 5): `Emitter`
 writes the block, the if/else-if chain, while, the range-for (with a structured binding), `auto`,
 lambdas and immediately invoked ones, `std::make_shared`, `std::optional` for every source; the Python
 rules (`cpp17_python.cc`, py.hpp: int64_t where the range is proved, floor division and modulo signs,
@@ -346,7 +346,7 @@ number of working pairs.
    sequences the operands into temporaries); without it every world differed from Java's for the same
    seed, on the 360 as well. Still to do: the C++17 back end proper, Boehm GC, modern Java front-end
    features.)
-   (Progress 2026-10-31: **the C++17 back end proper for Java**, two ways in (since the same day one back end with the Python front end's, in C++: native/cb/translate/l2/src/cpp17_java.cc; the transpiler's bodies are cpp03.Bodies17).
+   (Progress 2026-10-31: **the C++17 back end proper for Java**, two ways in (since the same day one back end with the Python front end's, in C++: src/translate/l2/src/cpp17_java.cc; the transpiler's bodies are cpp03.Bodies17).
    *Inside the transpiler* (`convert(..., cpp_std='C++17')`): cpp17.Bodies, cpp03's Writer with the C++17
    forms -- a for-each over a container as a range-for, a switch expression as an immediately invoked
    lambda, `auto` where the initialiser spells the type, nullptr against pointers (the runtime's value
@@ -462,7 +462,7 @@ throws, the Java lane's J2X-GAP); a program whose run reaches a gap is refused w
 **Judge** (`codebreaker/translate/judge_native_jvm.py`, `python tools/judge_c_java.py [c|cpp|roundtrip]`):
 the original built with clang `-O0` and run; the translation compiled with javac and run; stdout, stderr
 and exit code compared ("\r\n" as "\n"). Verdicts: equivalent, divergent, refused, no-compile,
-no-original. Corpus (the manifest is retired; the C++ programs and RoundTrip.java are kept in `native/cb/translate/frontends/clang/testdata/`) -- Logan's CodingTeacher C course, the MS C
+no-original. Corpus (the manifest is retired; the C++ programs and RoundTrip.java are kept in `src/translate/frontends/clang/testdata/`) -- Logan's CodingTeacher C course, the MS C
 compiler project's K&R test programs (printf, fp, diff, diff300; bdos output as putchar), the MSC 3.00
 verify inputs, tiny-AES-c's test, zlib's `enough.c`, Reko's C subjects; for C++, Reko's
 LocalStackVariables and eight classic programs written for the corpus (`testdata/cpp/`, two of them meant to
@@ -518,7 +518,7 @@ references is never freed; dereferencing a null reference is undefined, not `Nul
 **The judge.** `codebreaker judge-cs-cpp [--cxx gcc|clang|msvc|PATH] [--keep] [--l2] [--work DIR] [FILE.cs|DIR ...]` (default: the C# corpus,
 `tests/translate/corpus/csharp`, one program per file) lowers each program, writes it, compiles it with the host compiler, runs it beside the
 C# program (csc and the installed runtime) and compares standard output and exit code. `--keep` leaves the working folder (Roslyn dumps,
-`cpp/<Program>.cpp`, both runs' output); `--l2` writes the IR. Its tests are `translate.judge_cs_cpp.*` (`native/cb/translate/judge_cs_cpp_command_test.cpp`).
+`cpp/<Program>.cpp`, both runs' output); `--l2` writes the IR. Its tests are `translate.judge_cs_cpp.*` (`src/translate/judge_cs_cpp_command_test.cpp`).
 
 **Scoreboard** (2026-11-14; `lowers` = no Unsupported node, `writes` = the back end declined nothing, `compiles` = built with `-std=c++17`
 (g++ 15, clang 22 of Visual Studio, MSVC 14.51), `agrees` = same output and exit code as the C# on .NET 9):
@@ -641,7 +641,7 @@ unit test `translate.judge_py_cpp.the_python_corpus_agrees`.
 
 ## Asking the hub what it can do (2026-11-18): the capability API
 
-A window or a command line must never hold a table of language pairs. It asks the translator: `native/cb/translate/capability.hpp`
+A window or a command line must never hold a table of language pairs. It asks the translator: `src/translate/capability.hpp`
 answers, for an input, which target languages are supported and, for each that is not, a short reason.
 
 ```

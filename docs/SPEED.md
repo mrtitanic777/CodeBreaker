@@ -3,7 +3,7 @@
 Measured 2026-11-14 with `codebreaker measure <module>` in a fresh state folder (cold), then again at once (warm).
 The machine was shared with other work (16 threads, about 60% busy), so times are good to roughly +-20%.
 `measure` already prints the stage split: `(Ns: decompile, build, judge)`. `CB_PROFILE=1` adds a table of the
-32-bit judge's stages on stderr (native/cb/verify/stage_timer.hpp; off by default, one cached bool when off).
+32-bit judge's stages on stderr (src/verify/stage_timer.hpp; off by default, one cached bool when off).
 A judging worker process prints its own table.
 
 ## Workloads
@@ -74,7 +74,7 @@ Cause found (micro-benchmarks against Unicorn alone, then counters in the tracer
   instruction hook, flushed all translated code and started again. In msacm32.dll 40% of the runs were such runs
   (most of them calls into nothing that stop after about 30 instructions), each costing 4-8 ms.
 
-Changes (all in native/cb/emulate, none in core):
+Changes (all in src/emulate, none in core):
 1. `native_trace::HookHost` (kept by each machine): the hooks stay on the engine between runs while the runs ask for
    the same set; the per-run state is the host's one object, made new for each run. Plain runs: 4-5 ms -> 0.15-0.6 ms.
 2. The instruction hook stays on too, unarmed (`code_armed`), and a run that has to go one instruction at a time arms
@@ -117,7 +117,7 @@ open. The 1-2.5 s warm re-run (decompile only) is the remaining cost of an uncha
 
 `codebreaker reach --judge` on a console program is `codebreaker measure` of it, and for the console lanes that is the source writer:
 discover the code, write the assembly, assemble it again, compare with the original. `CB_PROFILE=1` now times the stages of the 3DS,
-Switch and MIPS (PSP, PS2) writers (`n3ds.*`, `switch.*`, `mips.*` in native/cb/source). The proof harness is
+Switch and MIPS (PSP, PS2) writers (`n3ds.*`, `switch.*`, `mips.*` in src/source). The proof harness is
 `cb_tests_source --filter source.writers_speed` with `CB_WRITER_SPEED_FILES=a;b` and `CB_WRITER_SPEED_OUT=<folder>`: one line per
 file with the writer's seconds and the SHA-256 of the source and of the rebuilt file, to diff before and after.
 

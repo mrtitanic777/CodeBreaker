@@ -36,10 +36,10 @@ inline const std::map<std::string, std::string>& defaults() {
     static const std::map<std::string, std::string> d = {
         {"corpus", "..\\Windows95\\design\\corpus\\files"}, {"openwatcom", ""},
         {"decompiler_bin", "native\\decompiler\\build\\bin"}, {"xex_bin", "native\\xex\\build\\bin"},
-        {"tracer_bin", "state\\cxx\\cb\\bin"}, {"formats_bin", "native\\formats\\build\\bin"},
+        {"tracer_bin", "build"}, {"formats_bin", "native\\formats\\build\\bin"},
         {"engine_bin", "native\\engine\\build\\bin"}, {"dosexec_bin", "native\\dosexec\\build\\bin"},
         {"symbols_bin", "native\\symbols\\build\\bin"}, {"invert_bin", "native\\invert\\build\\bin"},
-        {"analyze_bin", "native\\analyze\\build\\bin"}, {"ppc_binutils", "toolchains\\binutils-ppc"},
+        {"analyze_bin", "native\\analyze\\build\\bin"}, {"ppc_binutils", "toolchains\\powerpc-binutils"},
         {"converted", "Converted"}, {"nasm", "native\\nasm\\build\\bin\\nasm.exe"},
         {"retromcp", "native\\retromcp\\build\\libs\\retromcp.jar"}, {"state", "state"}, {"target", "win95"},
         {"threads", ""}, {"struct_recovery", "all"}};

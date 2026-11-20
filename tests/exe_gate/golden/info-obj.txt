@@ -1,6 +1,6 @@
 exit: 0
 --- stdout
-<repo>/native/cb/formats/testdata/fastadd.obj  (OMF object, 505 bytes)
+<repo>/src/formats/testdata/fastadd.obj  (OMF object, 505 bytes)
 
 summary:
   format     OMF object

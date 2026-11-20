@@ -33,7 +33,7 @@ tools\build_codebreaker_exe.cmd
 
 Copy `settings.example.json` to `settings.json` and point it at your tools; `codebreaker settings` shows what was
 found. Copyrighted inputs (original binaries, period compilers) are never in the repository: see
-[docs/NOT_IN_REPO.md](docs/NOT_IN_REPO.md). Tests that need them look in `binaries/test-inputs/` or in checkouts beside
+[docs/NOT_IN_REPO.md](docs/NOT_IN_REPO.md). Tests that need them look in `test-inputs/` or in checkouts beside
 this one, and skip themselves when they are not there.
 
 CodeBreaker's changes to OpenWatcom are on the `codebreaker` branch of
@@ -41,8 +41,8 @@ CodeBreaker's changes to OpenWatcom are on the `codebreaker` branch of
 
 ## Making a change
 
-- **C++ only, idiomatic and typed.** CodeBreaker is C++20 in `native/cb` and has no Python at all (the window is Win32 with Direct2D, in `native/cb/app/window_*`).
-  New code uses the portable layer in `native/cb/core` (`cb::fs`, `cb::process`, `cb::dynlib`,
+- **C++ only, idiomatic and typed.** CodeBreaker is C++20 in `src` and has no Python at all (the window is Win32 with Direct2D, in `src/app/window_*`).
+  New code uses the portable layer in `src/core` (`cb::fs`, `cb::process`, `cb::dynlib`,
   ...), not the Windows API directly, so it can build on Linux too.
 - **Every compiler.** Code must compile with MSVC (warnings are errors), clang-cl and GCC. CI builds all three.
 - **Tests beside the code.** A change comes with `*_test.cpp` tests next to the code it changes; inputs go in a

@@ -3,20 +3,20 @@
 A `.xex` wraps a PowerPC PE image -- the basefile -- in a header of its own: the image is
 compressed (LZX, or in blocks) and usually encrypted with a per-title key, and the libraries its
 imports come from are named in the header rather than in the image. CodeBreaker's XEX engine
-(`native/cb/formats/xex`, the library `cb_xex`, C++) reads, converts, patches and re-signs it.
+(`src/formats/xex`, the library `cb_xex`, C++) reads, converts, patches and re-signs it.
 
 ## On CodeBreaker's path
 
 Any command takes a `.xex` where it takes a module: `corpus.retail` / `corpus.resolve` hand every
-stage the basefile instead (`native/cb/formats/xex.cpp`), extracted once under
+stage the basefile instead (`src/formats/xex.cpp`), extracted once under
 `state/unpacked/xex/<name>-<hash>.exe` with the header beside it (`.json`). From there it is a
-PowerPC image like any other (`native/cb/verify/lanes/powerpc.cpp`): decompiled, rebuilt, run beside the original.
+PowerPC image like any other (`src/verify/lanes/powerpc.cpp`): decompiled, rebuilt, run beside the original.
 
 What the header adds over the basefile alone:
 
 - **Import libraries.** The image numbers its imports by library (`import0_ord_16`); the header
   says which library each number is. `codebreaker module` names the calls from it
-  (`native/cb/source/module_writer.cpp`, `symbols/console_ordinals.json`) instead of assuming
+  (`src/source/module_writer.cpp`, `symbols/console_ordinals.json`) instead of assuming
   kernel-then-system-library.
 - **Static libraries.** What the image was built with, with versions (D3D9, LIBCMT, XAPILIB, the
   linker): the SDK and toolchain, for identifying runtime and SDK code.
@@ -30,10 +30,10 @@ toolsuild_native.cmd cb
 The engine is a library linked into `codebreaker.exe`; there is no separate `xex.exe` and no setting for one.
 `codebreaker xex <command>` runs its command line in-process.
 The parsing and the basefile (`xex_file`, `basefile`, LZX decoding, the crypto) are the reader,
-`native/cb/formats/xex/reader.cmake`: compiled into the library `cb_xex`, and into the recompiled-game
-runtime (`native/cb/recompile/x360/runtime_lib`), whose loader (`runtime/src/xex.cpp`) has no parser of its own.
+`src/formats/xex/reader.cmake`: compiled into the library `cb_xex`, and into the recompiled-game
+runtime (`src/recompile/x360/runtime_lib`), whose loader (`runtime/src/xex.cpp`) has no parser of its own.
 `test_lzxenc` and `test_sign` are hand-run byte-identity harnesses against samples kept outside
-the repository (`native/cb/formats/xex/_re/`, gitignored).
+the repository (`src/formats/xex/_re/`, gitignored).
 
 ## Commands
 
@@ -91,5 +91,5 @@ Recorded nowhere else:
   LZX path writes the base image at the new header size; both only show when a patch changes the
   header size.
 
-Copies of games and system files never enter the repository (`native/cb/formats/xex/.gitignore`).
-MIT -- `native/cb/formats/xex/LICENSE`.
+Copies of games and system files never enter the repository (`src/formats/xex/.gitignore`).
+MIT -- `src/formats/xex/LICENSE`.

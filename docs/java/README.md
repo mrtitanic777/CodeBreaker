@@ -41,7 +41,7 @@ every CodeBreaker job does.
 | Tool | What it does |
 |---|---|
 | `convert` | a Java source tree as C++ (`--platform`, `--cpp-std`, `--mc-version` to decompile first) |
-| `decompile` | a Minecraft version as Java source, through RetroMCP's engine (`native/cb/java/retromcp`) |
+| `decompile` | a Minecraft version as Java source, through RetroMCP's engine (`src/java/retromcp`) |
 | `report`, `worklist` | the crash-class report; compile the output and list the files that fail |
 | `signatures` | signatures.md: every class's fields and methods, Java type to C++ type |
 | `scan-project`, `scaffold`, `apimap` | one-folder project resolver; skeletons in other languages; the API-mapping registry |
@@ -57,6 +57,6 @@ every CodeBreaker job does.
 No game code (no decompiled `net.minecraft.*` tree), no game assets and no platform-SDK headers,
 libraries or documentation. The transpiler works on Java source you supply, the asset tools on
 files you own, and the console build on an SDK installed on this machine (settings.json
-`xbox360_sdk`); those inputs live in the gitignored `binaries/java/` (`original_java`,
+`xbox360_sdk`); those inputs live in the gitignored `test-inputs/java/` (`original_java`,
 `PlatformSDKs`, `overlays`). Third-party class and API names appear as data, so they can be
 recognised and translated.

@@ -1,7 +1,7 @@
 # One IR, in layers: the decompiler and the translator share a hub
 
 > Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
-> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> Python-side mechanisms they describe, are now native C++ under `src` (same area names, `.cpp`); commands read
 > `codebreaker <command>`. The design stands; see README.md for the current layout.
 
 Design note, 2026-10-19. Applies to docs/TRANSLATOR_DESIGN.md (branch `design-multilang`) and
@@ -111,7 +111,7 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
 1. **PrintIR bodies.** Statements and expressions of the structured function as L2, from the same
    markup PrintC walks, behind `CB_L2=1`. Done when every function of the golden corpus gives a
    document `l2.validate` accepts.
-   **Done 2026-10-27.** `PrintL2` in `native/cb/decompile/engine/decompiler.cc` is PrintC with its output
+   **Done 2026-10-27.** `PrintL2` in `src/decompile/engine/decompiler.cc` is PrintC with its output
    discarded: its block emitters build If/While/For/DoWhile/Switch/Goto/Labeled statements, and each
    expression is rebuilt as a tree from the core's expression stack through two hooks (fork change
    C19, `placeOp`/`placeAtom`), so the tree has PrintC's casts, fields, indexing and negated

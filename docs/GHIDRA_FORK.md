@@ -1,7 +1,7 @@
-# The Ghidra fork: where `native/cb/decompile/engine` came from, and what we changed
+# The Ghidra fork: where `src/decompile/engine` came from, and what we changed
 
 The native decompiler is Ghidra's decompiler core, vendored as source, driven by our
-`native/cb/decompile/engine/decompiler.cc`. This file records exactly which upstream version each part
+`src/decompile/engine/decompiler.cc`. This file records exactly which upstream version each part
 came from and every local change, so the fork can be rebased onto a newer Ghidra and each
 change judged on its own (kept, sent upstream, or dropped).
 

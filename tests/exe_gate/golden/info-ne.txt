@@ -1,6 +1,6 @@
 exit: 0
 --- stdout
-<repo>/native/cb/formats/testdata/lzexpand.dll  (NE, 9936 bytes)
+<repo>/src/formats/testdata/lzexpand.dll  (NE, 9936 bytes)
 
 summary:
   format          NE

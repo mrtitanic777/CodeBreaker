@@ -1,6 +1,6 @@
 # x86link — CodeBreaker's own x86 linker
 
-CodeBreaker links the objects its builds make with an engine of its own, `native/cb/build/x86link/`, compiled into
+CodeBreaker links the objects its builds make with an engine of its own, `src/build/x86link/`, compiled into
 `codebreaker.exe`. It replaces OpenWatcom's `wlink`, which CodeBreaker starts as a child process today (about fifteen
 callers: `build/driver`, `build/functions`, `build/module_build16`/`32`, `build/flat_thunk`, the lane kit's Win16, DOS and
 machine lanes, `source/assembly`, `source/vxd/owbuild`). When x86link is complete those callers call it in memory and
@@ -16,7 +16,7 @@ import tables, LE's object pages and fixup records).
 
 The proof is differential, never by eye:
 
-- **The capture corpus.** With `CB_WLINK_CAPTURE=<folder>` set (`native/cb/core/wlink_capture`), every wlink run
+- **The capture corpus.** With `CB_WLINK_CAPTURE=<folder>` set (`src/core/wlink_capture`), every wlink run
   CodeBreaker makes saves its arguments, its link scripts, every object and library it reads (found as wlink finds
   them: as named, then the working folder, each `libpath`, `LIB`, the libpaths of `wlsystem.lnk`), the environment it
   reads, its messages, its exit code and what it wrote. Inputs are kept once, by content (`blobs/<sha1>`), so
@@ -39,8 +39,8 @@ The directives that occur (the corpus lists the rest): `file`, `library`, `libpa
 
 ## The route (Logan, 2026-11-20): OpenWatcom's own source first, then refactor over time
 
-**First, wlink's own C source is compiled into native/cb's one build** as a library (from the fork,
-`toolchains/open-watcom-v2`, `bld/wl`, branch `codebreaker`, and the OpenWatcom libraries it needs) and called in-process
+**First, wlink's own C source is compiled into src's one build** as a library (from the fork,
+`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`, and the OpenWatcom libraries it needs) and called in-process
 through the entry point OpenWatcom already has for its IDE DLL (`wlink.dll`'s `IDEDLL` interface: a link run inside another
 program, its state set up and torn down per run). That makes x86link byte-identical to wlink by construction; the
 corpus replay proves it (and keeps proving it).
@@ -53,9 +53,9 @@ docs/BUILTIN_ENGINES_PLAN.md item 5; their IDE DLLs are `wccd.dll` / `wccd386.dl
 ## Architecture (where the refactoring goes)
 
 wlink's seams are kept, as C++ modules (idiomatic typed C++, docs/CPP rules); each ports wlink's file of the same job
-from the fork (`toolchains/open-watcom-v2`, `bld/wl`, branch `codebreaker`), with wlink's behaviour.
+from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wlink's behaviour.
 
-| Module (`native/cb/build/x86link/`) | wlink source it ports | Job |
+| Module (`src/build/x86link/`) | wlink source it ports | Job |
 |---|---|---|
 | `link.hpp/.cpp` | the globals of `wlink.c`, `linkstd.h` | `Link`: all state of one link (options, symbols, segments, groups, the output) |
 | `directives` | `cmdline.c`, `cmdall.c`, `cmddos.c`, `cmdnt.c`, `cmdos2.c`, `cmd16m.c` and `wlsystem.lnk` | the directive language, `system` blocks |
@@ -84,7 +84,7 @@ from the fork (`toolchains/open-watcom-v2`, `bld/wl`, branch `codebreaker`), wit
 ## Phases
 
 1. The capture hook (done: `core/wlink_capture`), a corpus from a gate run (49 links:
-   `binaries/test-inputs/x86link/gate`), and the replay harness.
+   `test-inputs/x86link/gate`), and the replay harness.
 2. wlink's C source as a library in the one build, run in-process through its IDE entry point; every case byte-identical.
 3. Every caller on the in-process linker; `wlink.exe` is no longer started.
 4. The refactoring, module by module (the table above), each re-proven on the corpus: the directives, the OMF reader (onto

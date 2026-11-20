@@ -1,4 +1,4 @@
-# Which areas of native/cb each command's code starts in (cb_exe_gate --changed, tools\gate.cmd --changed; native/cb/app/gate_changed.hpp).
+# Which areas of src each command's code starts in (cb_exe_gate --changed, tools\gate.cmd --changed; src/app/gate_changed.hpp).
 #
 # A command case runs after a change when the changed area is one of these, or one that their sources include, directly or through another
 # area (the include graph is read from the sources: it is never written here). So list the area where the command's own code lives, not

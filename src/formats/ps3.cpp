@@ -1,0 +1,267 @@
+// cb-unity: alone
+#include "formats/ps3.hpp"
+
+#include <zlib.h>
+
+#include <algorithm>
+#include <cstring>
+#include <format>
+
+#include "core/error.hpp"
+#include "core/fs.hpp"
+#include "formats/probe.hpp"
+
+namespace cb::formats::ps3 {
+
+namespace {
+
+constexpr std::string_view kReader = "ps3";
+constexpr std::uint32_t kPtLoad = 1, kPtPrxParam = 0x60000002;
+
+std::uint16_t be16(ByteView d, std::size_t at) { return static_cast<std::uint16_t>(d[at] << 8 | d[at + 1]); }
+std::uint32_t be32(ByteView d, std::size_t at) {
+    return static_cast<std::uint32_t>(d[at]) << 24 | static_cast<std::uint32_t>(d[at + 1]) << 16 | static_cast<std::uint32_t>(d[at + 2]) << 8 | d[at + 3];
+}
+std::uint64_t be64(ByteView d, std::size_t at) { return static_cast<std::uint64_t>(be32(d, at)) << 32 | be32(d, at + 4); }
+void put16(Bytes& b, std::size_t at, std::uint32_t v) {
+    b[at] = static_cast<std::uint8_t>(v >> 8);
+    b[at + 1] = static_cast<std::uint8_t>(v);
+}
+void put32(Bytes& b, std::size_t at, std::uint32_t v) {
+    for (int i = 0; i < 4; ++i) b[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (24 - 8 * i));
+}
+void put64(Bytes& b, std::size_t at, std::uint64_t v) {
+    put32(b, at, static_cast<std::uint32_t>(v >> 32));
+    put32(b, at + 4, static_cast<std::uint32_t>(v));
+}
+std::uint32_t align16(std::uint32_t v) { return (v + 15) & ~15u; }
+
+bool is_self(ByteView h) { return h.size() >= 0x60 && h[0] == 'S' && h[1] == 'C' && h[2] == 'E' && h[3] == 0 && be32(h, 4) == 2; }
+bool is_ppc64_elf(ByteView h) {
+    return h.size() >= 64 && h[0] == 0x7F && h[1] == 'E' && h[2] == 'L' && h[3] == 'F' && h[4] == 2 && h[5] == 2 && be16(h, 18) == kMachinePpc64;
+}
+
+Bytes inflate_exact(ByteView in, std::size_t expected, std::size_t at) {
+    Bytes out(expected);
+    z_stream stream;
+    std::memset(&stream, 0, sizeof stream);
+    if (inflateInit(&stream) != Z_OK) throw FormatError(kReader, at, "the inflater could not start");
+    stream.next_in = const_cast<Bytef*>(in.data());
+    stream.avail_in = static_cast<uInt>(in.size());
+    stream.next_out = out.data();
+    stream.avail_out = static_cast<uInt>(out.size());
+    const int r = inflate(&stream, Z_FINISH);
+    const bool whole = r == Z_STREAM_END && stream.total_out == expected;
+    inflateEnd(&stream);
+    if (!whole) throw FormatError(kReader, at, "a compressed segment does not inflate to its size");
+    return out;
+}
+
+struct Phdr {
+    std::uint32_t type, flags;
+    std::uint64_t offset, vaddr, filesz, memsz;
+};
+
+std::string c_string(const Program& p, std::uint64_t address) {
+    std::string out;
+    for (unsigned k = 0; k < 64; ++k) {
+        const auto b = p.read(address + k, 1);
+        if (!b || *b == 0) break;
+        out += static_cast<char>(*b);
+    }
+    return out;
+}
+
+// The imports the PRX parameter names: libstub entries of 0x2C bytes, each with the library's name, its function NIDs and the descriptors of the stubs.
+void read_imports(Program& p, std::uint64_t param) {
+    const auto start = p.read(param + 20, 4), end = p.read(param + 24, 4), magic = p.read(param + 4, 4);
+    if (!start || !end || !magic || *magic != 0x1B434CEC) return;
+    for (std::uint64_t at = *start; at + 0x2C <= *end; at += 0x2C) {
+        const auto size = p.read(at, 1), functions = p.read(at + 6, 2), name = p.read(at + 16, 4), nids = p.read(at + 20, 4), stubs = p.read(at + 24, 4);
+        if (!size || *size < 0x2C || !functions || !name || !nids || !stubs) break;
+        const std::string library = c_string(p, *name);
+        for (unsigned k = 0; k < *functions; ++k) {
+            const auto nid = p.read(*nids + 4ull * k, 4), stub = p.read(*stubs + 4ull * k, 4);
+            if (!nid || !stub) break;
+            Import i;
+            i.library = library;
+            i.nid = static_cast<std::uint32_t>(*nid);
+            i.name = function_name(i.nid);
+            i.descriptor = *stub;
+            p.imports.push_back(std::move(i));
+        }
+    }
+}
+
+Program build(ByteView elf, const std::vector<Phdr>& phdrs, const std::vector<Bytes>& data, bool self) {
+    Program p;
+    p.self = self;
+    p.elf_type = be16(elf, 16);
+    p.os_abi = elf[7];
+    p.abi_version = elf[8];
+    p.entry = be64(elf, 24);
+    p.elf_flags = be32(elf, 48);
+    std::uint64_t param = 0;
+    for (std::size_t k = 0; k < phdrs.size(); ++k) {
+        if (phdrs[k].type == kPtPrxParam) {
+            param = phdrs[k].vaddr;
+            p.prx_param = phdrs[k].vaddr;
+            p.prx_param_size = phdrs[k].filesz;
+        }
+        if (phdrs[k].type != kPtLoad) continue;
+        Segment s;
+        s.image_offset = align16(static_cast<std::uint32_t>(p.image.size()));
+        p.image.resize(s.image_offset, 0);
+        s.size = static_cast<std::uint32_t>(data[k].size());
+        s.address = phdrs[k].vaddr;
+        s.memory_size = phdrs[k].memsz;
+        s.flags = phdrs[k].flags;
+        p.image.insert(p.image.end(), data[k].begin(), data[k].end());
+        p.segments.push_back(s);
+    }
+    if (p.segments.empty()) throw FormatError(kReader, 0, "the program has no loadable segment");
+    if (const auto code = p.read(p.entry, 8)) p.entry_code = *code;
+    if (const auto toc = p.read(p.entry + 8, 8)) p.toc = *toc;
+    if (param != 0) read_imports(p, param);
+    return p;
+}
+
+Program parse_self(ByteView d) {
+    const std::uint64_t elf_at = be64(d, 0x30), phdr_at = be64(d, 0x38), info_at = be64(d, 0x48);
+    if (elf_at + 64 > d.size() || phdr_at > d.size()) throw FormatError(kReader, 0x30, "the SELF's ELF header is outside the file");
+    const ByteView elf = d.subspan(elf_at);
+    if (!is_ppc64_elf(elf)) throw FormatError(kReader, elf_at, "the SELF does not hold a PowerPC64 ELF");
+    const unsigned count = be16(elf, 56);
+    if (phdr_at + 56ull * count > d.size() || info_at + 32ull * count > d.size()) throw FormatError(kReader, phdr_at, "the SELF's tables are outside the file");
+    std::vector<Phdr> phdrs;
+    std::vector<Bytes> data;
+    for (unsigned k = 0; k < count; ++k) {
+        const std::size_t at = phdr_at + 56ull * k;
+        phdrs.push_back({be32(d, at), be32(d, at + 4), be64(d, at + 8), be64(d, at + 16), be64(d, at + 32), be64(d, at + 40)});
+        const std::size_t info = info_at + 32ull * k;
+        const std::uint64_t offset = be64(d, info), length = be64(d, info + 8);
+        const std::uint32_t compressed = be32(d, info + 16), encrypted = be32(d, info + 28);
+        if (phdrs.back().type != kPtLoad || length == 0) {
+            data.emplace_back();
+            continue;
+        }
+        if (encrypted == 1) throw FormatError(kReader, info, "the SELF's segments are encrypted: not handled (CodeBreaker does not decrypt)");
+        if (offset + length > d.size()) throw FormatError(kReader, info, "a segment is outside the file");
+        const ByteView raw = d.subspan(offset, length);
+        data.push_back(compressed == 2 ? inflate_exact(raw, phdrs.back().filesz, offset) : Bytes(raw.begin(), raw.end()));
+    }
+    return build(elf, phdrs, data, true);
+}
+
+Program parse_elf(ByteView d) {
+    const unsigned count = be16(d, 56);
+    const std::uint64_t phoff = be64(d, 32);
+    if (phoff + 56ull * count > d.size()) throw FormatError(kReader, phoff, "the program header table is outside the file");
+    std::vector<Phdr> phdrs;
+    std::vector<Bytes> data;
+    for (unsigned k = 0; k < count; ++k) {
+        const std::size_t at = phoff + 56ull * k;
+        phdrs.push_back({be32(d, at), be32(d, at + 4), be64(d, at + 8), be64(d, at + 16), be64(d, at + 32), be64(d, at + 40)});
+        if (phdrs.back().type != kPtLoad) {
+            data.emplace_back();
+            continue;
+        }
+        if (phdrs.back().offset + phdrs.back().filesz > d.size()) throw FormatError(kReader, at, "a segment is outside the file");
+        data.emplace_back(d.begin() + static_cast<std::ptrdiff_t>(phdrs.back().offset), d.begin() + static_cast<std::ptrdiff_t>(phdrs.back().offset + phdrs.back().filesz));
+    }
+    return build(d, phdrs, data, false);
+}
+
+}  // namespace
+
+std::optional<std::uint32_t> Program::offset_of(std::uint64_t address) const {
+    for (const Segment& s : segments)
+        if (address >= s.address && address - s.address < s.size) return s.image_offset + static_cast<std::uint32_t>(address - s.address);
+    return std::nullopt;
+}
+
+std::optional<std::uint64_t> Program::address_of(std::uint32_t offset) const {
+    for (const Segment& s : segments)
+        if (offset >= s.image_offset && offset - s.image_offset < s.size) return s.address + (offset - s.image_offset);
+    return std::nullopt;
+}
+
+bool Program::in_code(std::uint32_t offset) const {
+    for (const Segment& s : segments)
+        if (s.code() && offset >= s.image_offset && offset - s.image_offset < s.size) return true;
+    return false;
+}
+
+std::optional<std::uint64_t> Program::read(std::uint64_t address, unsigned size) const {
+    const auto at = offset_of(address);
+    if (!at || *at + size > image.size()) return std::nullopt;
+    std::uint64_t v = 0;
+    for (unsigned k = 0; k < size; ++k) v = v << 8 | image[*at + k];
+    return v;
+}
+
+Bytes Program::to_elf(ByteView body) const {
+    const std::size_t count = segments.size() + (prx_param != 0 ? 1 : 0);
+    const std::uint32_t headers = align16(static_cast<std::uint32_t>(64 + 56 * count));
+    Bytes out(headers + body.size(), 0);
+    out[0] = 0x7F;
+    out[1] = 'E';
+    out[2] = 'L';
+    out[3] = 'F';
+    out[4] = 2;
+    out[5] = 2;
+    out[6] = 1;
+    out[7] = os_abi;
+    out[8] = abi_version;
+    put16(out, 16, elf_type);
+    put16(out, 18, kMachinePpc64);
+    put32(out, 20, 1);
+    put64(out, 24, entry);
+    put64(out, 32, 64);
+    put32(out, 48, elf_flags);
+    put16(out, 52, 64);
+    put16(out, 54, 56);
+    put16(out, 56, static_cast<std::uint32_t>(count));
+    for (std::size_t k = 0; k < segments.size(); ++k) {
+        const Segment& s = segments[k];
+        const std::size_t at = 64 + 56 * k;
+        put32(out, at, kPtLoad);
+        put32(out, at + 4, s.flags);
+        put64(out, at + 8, headers + s.image_offset);
+        put64(out, at + 16, s.address);
+        put64(out, at + 24, s.address);
+        put64(out, at + 32, s.size);
+        put64(out, at + 40, s.memory_size);
+        put64(out, at + 48, 0x10000);
+    }
+    if (prx_param != 0) {
+        const std::size_t at = 64 + 56 * segments.size();
+        put32(out, at, kPtPrxParam);
+        put64(out, at + 16, prx_param);
+        put64(out, at + 24, prx_param);
+        put64(out, at + 32, prx_param_size);
+        put64(out, at + 40, prx_param_size);
+        put64(out, at + 48, 1);
+    }
+    std::copy(body.begin(), body.end(), out.begin() + headers);
+    return out;
+}
+
+Program parse(ByteView data) {
+    if (is_self(data)) return parse_self(data);
+    if (is_ppc64_elf(data)) return parse_elf(data);
+    throw FormatError(kReader, 0, "not a PS3 SELF or PowerPC64 ELF");
+}
+
+Program read(const std::filesystem::path& path) {
+    const fs::MappedFile file(path);
+    return parse(file.view());
+}
+
+bool probe(const std::filesystem::path& path) {
+    if (!has_extension(path, {".self", ".elf", ".bin", ".sprx", ".prx"})) return false;
+    const std::optional<Bytes> head = read_prefix(path, 0, 1024);
+    return head && (is_self(*head) || is_ppc64_elf(*head));
+}
+
+}  // namespace cb::formats::ps3

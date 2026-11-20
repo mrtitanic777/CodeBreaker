@@ -1,7 +1,7 @@
 # Fewer gotos: the structuring plan
 
 > Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
-> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> Python-side mechanisms they describe, are now native C++ under `src` (same area names, `.cpp`); commands read
 > `codebreaker <command>`. The design stands; see README.md for the current layout.
 
 docs/CORE_ROADMAP.md, Track 1 item D. C13-C18 (docs/GHIDRA_FORK.md) took the golden corpus from
@@ -11,7 +11,7 @@ C cannot write without a goto unless the code is reshaped first.
 
 ## Where gotos come from
 
-`CollapseStructure` (native/cb/decompile/engine/core/cpp/blockaction.cc) folds the flow graph with its
+`CollapseStructure` (src/decompile/engine/core/cpp/blockaction.cc) folds the flow graph with its
 shape rules -- ruleBlockCat, ruleBlockOr, ruleBlockProperIf, ruleBlockIfElse, ruleBlockWhileDo,
 ruleBlockDoWhile, ruleBlockInfLoop, ruleBlockSwitch, ruleCaseFallthru -- until one block is left.
 When no rule fits, `selectGoto()` marks an edge as a goto and folding goes on. Every goto is born

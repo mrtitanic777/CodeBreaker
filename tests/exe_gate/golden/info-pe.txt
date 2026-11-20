@@ -1,6 +1,6 @@
 exit: 0
 --- stdout
-<repo>/native/cb/formats/testdata/lz32.dll  (PE, 5632 bytes)
+<repo>/src/formats/testdata/lz32.dll  (PE, 5632 bytes)
 
 summary:
   format          PE32

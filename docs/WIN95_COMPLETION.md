@@ -17,9 +17,9 @@ state/build/<m>/module.l2.json                     # the build's own per-functio
 
 The three sets of the roadmap are two sets of modules: **all15** (the 15 MINI.CAB modules), **setup7** (Setup's seven 16-bit
 programs), and **install** = all15 + setup7 = 22 modules (`regress install` builds exactly these two lists, see
-`all15_names()` / `setup_names()` in native/cb/verify/regress.cpp).
+`all15_names()` / `setup_names()` in src/verify/regress.cpp).
 
-Columns (from `Built`, native/cb/build/module.hpp, and `note_assembled`, module_pack.cpp):
+Columns (from `Built`, src/build/module.hpp, and `note_assembled`, module_pack.cpp):
 
 | column | meaning | source |
 |---|---|---|
@@ -233,7 +233,7 @@ sub_1_1260/1268 `mov cx,..; mov dx,..` into one body, which "every way" does not
 
 ### 8. OpenWatcom: no BP frame for a routine whose stack parameters are never read
 
-The source is beside the rel tree (toolchains/open-watcom-v2/bld, built in place by its own makefiles).
+The source is beside the rel tree (toolchains/openwatcom/bld, built in place by its own makefiles).
 Cause: `NeedBPProlog()` (bld/cg/intel/c/x86proc.c) answered "yes" whenever `parms.size != 0`.
 Change: `ScanInstructions()` (which already walks every instruction of the routine before the prologue) records whether any
 instruction other than `OP_PARM_DEF` names a `STACK_PARM` temp (as operand, result, or the base/index of an indexed operand);
@@ -560,7 +560,7 @@ changes for a third function goes back to assembly. Alternatives if that finds n
 isolated16 recorder) and compare the calls it makes from its first divergence; or bisect inside the function by keeping one `case` of its switch as instructions.
 
 Tools and habits learned this run (for the next agent): `bash state/work/locked.sh` for shared builds; `state/work/build_tests.cmd` (cb_tests) and
-`cmake --build state\cxx\cb --target codebreaker` (the exe); run regress on a private copy of the exe (`cp state/cxx/cb/bin/codebreaker.exe *.dll` into your
+`cmake --build build --target codebreaker` (the exe); run regress on a private copy of the exe (`cp build/codebreaker.exe *.dll` into your
 scratch folder) so another session's build cannot replace it; never run two series scripts at once (a stopped task leaves its child running); wait for a free
 decompile slot (state/slots, four for the whole machine: a regress install may queue behind other sessions' decompiles); a regress run prints each module's
 C / asm / gated; `state/build/<m>/module.l2.json` carries each function's recorded reason; `CB_ASM_ONLY` subsets move other functions and are not a reliable bisection.

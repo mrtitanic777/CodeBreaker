@@ -57,7 +57,7 @@ Owner's decision: PC drives **and** USB sticks are storage devices, and packages
 console would have them, so a console's packages (CON / LIVE / PIRS, signed) brought to the PC work, and a stick works
 in both machines. Pieces (each its own job):
 
-1. **STFS library** (`native/cb/recompile/x360/system/stfs/`, shared by both ports): read a package file (header, metadata, the volume
+1. **STFS library** (`src/recompile/x360/system/stfs/`, shared by both ports): read a package file (header, metadata, the volume
    descriptor, hash tables, file table, block chains) as a read-only file system; write: create a package, add /
    replace / delete files, rehash (SHA-1 hash tables up the levels, the header hash at 0x32C..), keep LIVE / PIRS
    packages byte-identical when only copied. **Signing**: copying never re-signs. A CON package created or changed on

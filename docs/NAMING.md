@@ -12,7 +12,7 @@ accepts it, says where it came from and how sure it is, and is proven to leave t
 
 ### Where a function's name comes from
 
-`cb::symbols::names::Namer::of_module` (`native/cb/symbols/names.cpp`) gives every function the first of
+`cb::symbols::names::Namer::of_module` (`src/symbols/names.cpp`) gives every function the first of
 these that has one, and says which (the second column of `codebreaker names <module>`):
 
 | order | source | what it is |
@@ -33,14 +33,14 @@ fills in left out (addresses inside the module, calls and jumps out of the funct
 same wherever the code sits (`names::body_digest`, `bodies32`, `bodies16`). Bodies shorter than 24 bytes or
 with fewer than six instructions of their own are everybody's and have no digest.
 
-The knowledge base (`state/db/knowledge.v2.sqlite`, `native/cb/knowledge/store.cpp`) keeps:
+The knowledge base (`state/db/knowledge.v2.sqlite`, `src/knowledge/store.cpp`) keeps:
 
 * `body(module, addr, hash, name, source)`: a function's body in one module, with the name the module itself
   gives it (an export, a symbol file);
 * `body_name(hash, name, source, ts)`: a name given to a body. It is kept once and read back for every
   module that has the body (`Store::name_body`, `names_from_bodies`). Never dropped.
 
-`store::BodyStore` (`native/cb/store/bodies.hpp`) is the interface the readers use;
+`store::BodyStore` (`src/store/bodies.hpp`) is the interface the readers use;
 `store::KnowledgeBodies` implements it over the knowledge base. Naming a function
 (`Namer::set_name(module, address, name, source)`) writes `body_name` for its digest, so *every module
 holding that body has the name* the next time anyone asks.
@@ -59,7 +59,7 @@ holding that body has the name* the next time anyone asks.
 
 ## 2. Proposed names
 
-A **proposal** is a `store::Proposal` (`native/cb/store/proposals.hpp`):
+A **proposal** is a `store::Proposal` (`src/store/proposals.hpp`):
 
 | field | |
 |---|---|
@@ -129,7 +129,7 @@ Three layers, each checked:
    before the writer applies names (`source/pipeline_module.cpp`); proposals never reach `body_name` until
    accepted.
 2. **Unit test** `symbols.names.accepting_a_name_changes_what_names_shows_and_nothing_the_judge_reads`
-   (`native/cb/symbols/names_test.cpp`), on the real LZEXPAND.DLL and LZ32.DLL: propose, accept every
+   (`src/symbols/names_test.cpp`), on the real LZEXPAND.DLL and LZ32.DLL: propose, accept every
    proposal, and check that the body digests, the facts the analyses read of every function, and the
    decompiler's namer are identical before and after, while `names` changes for exactly the proposed
    functions and says `accepted proposal`.

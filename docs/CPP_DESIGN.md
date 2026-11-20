@@ -1,11 +1,11 @@
 # CodeBreaker in C++: the design every refactor agent follows
 
 > Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
-> Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
+> Python-side mechanisms they describe, are now native C++ under `src` (same area names, `.cpp`); commands read
 > `codebreaker <command>`. The design stands; see README.md for the current layout.
 > Note (2026-11-19): the separate native folders this plan names (`native/formats`, `native/engine`, `native/l2`,
 > `native/dosexec`, `native/x360`, `native/xenonrecomp`, `native/third_party`, `native/pyfront` ...) were merged into
-> `native/cb` (their code lives in the areas of the same names, or under `translate/l2`, `exact/emu/dosexec`,
+> `src` (their code lives in the areas of the same names, or under `translate/l2`, `exact/emu/dosexec`,
 > `recompile/`); the engines are static libraries linked into `codebreaker.exe`, not DLLs. Where a section below
 > says `native/<x>`, read it as the path it had when written.
 
@@ -91,7 +91,7 @@ checked explicitly), unbounded-int arithmetic past 64 bits, the `str` code-point
   Reason: `std::span`, `std::format`, `starts_with`/`ends_with`/`contains`, designated initialisers, `<bit>`,
   `std::jthread`, `<ranges>` where it reads better; MSVC has all of it. C++23 `std::expected` is **not** used;
   `cb::Result<T>` (3.6) is ours so a compiler move never matters.
-- Flags for `native/cb/`: `/std:c++20 /permissive- /utf-8 /EHsc /W4 /WX /Zc:__cplusplus /Zc:char8_t- /bigobj`,
+- Flags for `src/`: `/std:c++20 /permissive- /utf-8 /EHsc /W4 /WX /Zc:__cplusplus /Zc:char8_t- /bigobj`,
   defines `NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE`, static CRT (`/MT`, as the other libraries), `/O2` release.
   `/Zc:char8_t-` keeps `u8` literals as `char` (we store UTF-8 in `std::string`). `/WX` is on from the first
   migrated module: warnings are fixed, not suppressed; a justified `#pragma warning` carries a comment.
@@ -377,8 +377,8 @@ Process      start(const ProcessSpec&);                // streaming: read(), wri
 
 ### 3.13 Naming and file layout
 
-- **Layout:** the new tree is **`native/cb/`**; it mirrors the package areas:
-  `native/cb/core/` (3.2-3.12), `cb/formats/`, `cb/analyze/`, `cb/decompile/`, `cb/translate/`, `cb/emulate/`,
+- **Layout:** the new tree is **`src/`**; it mirrors the package areas:
+  `src/core/` (3.2-3.12), `cb/formats/`, `cb/analyze/`, `cb/decompile/`, `cb/translate/`, `cb/emulate/`,
   `cb/verify/`, `cb/build/`, `cb/exact/`, `cb/java/`, `cb/xna/`, `cb/recompile/`, `cb/engine/`, `cb/knowledge/`,
   `cb/store/`, `cb/jobs/`, `cb/platforms/`, `cb/app/` (commands, service, mcp, terminal, worker, main). Include
   paths are rooted at `native/`: `#include "cb/formats/pe.hpp"`.
@@ -393,7 +393,7 @@ Process      start(const ProcessSpec&);                // streaming: read(), wri
   `enum class` `PascalCase`, template parameters `T`/`Key`. Members `snake_case` without trailing underscore
   for structs; private members of classes `snake_case_`. Headers `#pragma once`, include what you use, no
   `using namespace` in headers. 120-column lines, 4-space indents (the style of the existing native code).
-  `.clang-format` at `native/cb/` pins it.
+  `.clang-format` at `src/` pins it.
 - **Comments:** keep the Python docstring's *prose* as `//` comments above the function (the explanation of why is
   the most valuable thing the port has), drop the typing notes that exist only to explain how a Python value was
   rendered. Header-top comment says what the module is, in two paragraphs at most.
@@ -567,7 +567,7 @@ return (r.exit_code == 0 && fs::is_regular_file(obj)) ? Assembled{obj, log} : As
 ### 6.1 Two worlds, one rule
 
 During the transition both exist: **old** = `native/typed/cpp/codebreaker/...` in namespace `codebreaker::`, over
-`py.hpp`; **new** = `native/cb/...` in namespace `cb::`. They never collide (different namespaces, different
+`py.hpp`; **new** = `src/...` in namespace `cb::`. They never collide (different namespaces, different
 include roots), and the old directory shrinks to nothing: **the migration is finished when
 `native/typed/cpp/codebreaker/` and `native/ported/` are empty.** `git mv`-ing is not used for the module body (it is
 rewritten), so history shows the rewrite as new files and a deletion; the commit message names the module.
@@ -640,7 +640,7 @@ worktree, never kill a process you did not start, one build at a time on the sha
    graph), the module's old harness (`state/work/typed-port/<module>/`: `expected.py`, `expected.txt`).
 2. **Decide the API** on a page: the public functions, the records, who owns what, which errors it raises
    (by section 3.6). The header is written first and is the review target; it contains no `py::`.
-3. **Write the new `.hpp/.cpp`** under `native/cb/<area>/`, keeping the algorithm line for line where it is
+3. **Write the new `.hpp/.cpp`** under `src/<area>/`, keeping the algorithm line for line where it is
    algorithmic, replacing Python-isms per section 5, deleting dead dynamic-typing branches, naming magic numbers.
    Constants are copied from the port, not retyped.
 4. **Regexes** are classified (3.7) and each pattern gets a test case.
@@ -662,7 +662,7 @@ worktree, never kill a process you did not start, one build at a time on the sha
 
 In three steps, each gated by a grep, not a judgment:
 
-1. **Shims go** when `grep -r "py_bridge\|COMPAT(py)" native/cb` is empty and no old header is included: the files in
+1. **Shims go** when `grep -r "py_bridge\|COMPAT(py)" src` is empty and no old header is included: the files in
    `native/typed/cpp/codebreaker/` are deleted module by module as their last consumer is refactored.
 2. **The layer goes** when `grep -rl 'py\(_[a-z]*\)\?\.hpp' native` finds nothing outside `native/pyrt`/`native/pyengine`:
    delete `native/ported/`.
@@ -675,13 +675,13 @@ different question.
 
 ### 7.1 Module tests: C++, in the tree, forever
 
-- `native/cb/<area>/<name>_test.cpp`, all built into one `cb_tests.exe` (a registry of `CB_TEST("formats.pe.exports", [] {...})`
+- `src/<area>/<name>_test.cpp`, all built into one `cb_tests.exe` (a registry of `CB_TEST("formats.pe.exports", [] {...})`
   from `cb/core/testing.hpp`: `CB_CHECK`, `CB_CHECK_EQ`, `CB_CHECK_THROWS_AS(Type, expr)`, a data-file helper, a filter
   `cb_tests --filter formats.pe`, `ctest` integration, XML/JSON result file for the job system). In-tree, ~150
   lines, no gtest download.
 - **Cases come from two places.** (a) *Harvested* from the old harness: `expected.py`'s inputs (from the Python
   suites' own tests, so they are the real assertions) and the outputs it recorded, **reviewed and frozen as golden
-  data** `native/cb/<area>/testdata/<name>.golden.json` (a human decides each case is meaningful; not a blind
+  data** `src/<area>/testdata/<name>.golden.json` (a human decides each case is meaningful; not a blind
   copy). (b) *Written*: boundary and damage cases for any reader (truncated at every structure, offsets past the
   end, counts of 0xFFFFFFFF), the empty input, and every error type the header promises.
 - **Compare normalised**, never textually: `cb/core/semdiff.hpp` (also the `codebreaker semdiff A B` command used by
@@ -731,11 +731,11 @@ suites, sweeps) runs at milestones only (a finished wave), not per module -- the
 
 ## 8. One program: codebreaker.exe from one CMake target, and the Python's retirement
 
-**Target layout** (`native/CMakeLists.txt`, replacing the pyengine-generated project): static libraries per area
+**Target layout** (`src/CMakeLists.txt`, replacing the pyengine-generated project): static libraries per area
 (`cb_core`, `cb_formats`, `cb_analyze`, `cb_decompile`, `cb_translate`, `cb_emulate`, `cb_verify`, `cb_build`,
 `cb_exact`, `cb_java`, `cb_app` ...) so incremental builds touch only what changed, linked into **one executable
-target `codebreaker`** (`native/cb/app/main.cpp`) and one test target `cb_tests` that links the same libraries.
-Vendored third-party code lives in `native/cb/third_party/` (nlohmann, sqlite3, and what section 9 adds) as static libs.
+target `codebreaker`** (`src/app/main.cpp`) and one test target `cb_tests` that links the same libraries.
+Vendored third-party code lives in `src/third_party/` (nlohmann, sqlite3, and what section 9 adds) as static libs.
 Unity batches stay (they cut the cold build) but are applied per library, off for the test target.
 `tools/build_codebreaker_exe.cmd` shrinks to `cmake --build` of this target.
 
@@ -767,11 +767,11 @@ line, which is also how the exe gate stays meaningful.
 ## 9. Decisions (Logan, 2026-11-11)
 
 1. **Unicorn and Capstone: prebuilt DLLs.** The exe ships the release `unicorn.dll` / `capstone.dll` next to itself
-   (in `native/cb/third_party/bin/`), loaded through one loader (`cb::emu::unicorn`, `cb::disasm::capstone`); nothing is
+   (in `src/third_party/bin/`), loaded through one loader (`cb::emu::unicorn`, `cb::disasm::capstone`); nothing is
    read from Python's site-packages. Not built from source.
 2. **Z3: prebuilt `libz3.dll`**, shipped next to the exe the same way.
 3. **The interface is the Windows app, in C++ (2026-11-18).** The terminal UI (`ui/terminal.py`, Textual) was the one Python part and is gone:
-   `codebreaker` with no command is a native Windows 11 window (`native/cb/app/window_*`: Win32, Direct2D, DirectWrite, DWM; no WinUI, .NET, Qt or
+   `codebreaker` with no command is a native Windows 11 window (`src/app/window_*`: Win32, Direct2D, DirectWrite, DWM; no WinUI, .NET, Qt or
    web view) that drives the platform-neutral conversion pipeline `app/convert` on a worker thread; `codebreaker convert FILE` runs the same pipeline
    on the command line. CodeBreaker has no Python.
 4. **PCRE2: not now** (only with profile numbers).
@@ -779,11 +779,11 @@ line, which is also how the exe gate stays meaningful.
 6. **On-disk formats: dropped.** C++-native formats (versioned) replace the Python's pickled caches and repr files;
    existing `state/` caches are rebuilt once. No pickle code in C++.
 7. **C++20** for the new tree.
-8. **Names:** `native/cb/` and namespace `cb::`.
+8. **Names:** `src/` and namespace `cb::`.
 
 ## Appendix A. Reviewer checklist (a refactor is rejected for any of these)
 
-- `#include "py` or `py::` anywhere in `native/cb` (outside `cb/compat`).
+- `#include "py` or `py::` anywhere in `src` (outside `cb/compat`).
 - `std::regex`; a `cb::Regex` built in a function/loop; a regex that is `^[A-Za-z_]\w*$`-style idiom.
 - `std::unordered_map`/`unordered_set` iterated into output, a decision, or a file.
 - An `int64_t` for an address, offset or size without a reason; signed/unsigned mixing silenced with a cast.
@@ -798,10 +798,10 @@ line, which is also how the exe gate stays meaningful.
 
 ## Appendix B. Wave 0 as built (2026-11-11) and the recipe for wave 1
 
-`native/cb/core` exists and `cb_tests` (131 tests, Release and ASan) passes. Build and run: `tools\build_cb.cmd`
+`src/core` exists and `cb_tests` (131 tests, Release and ASan) passes. Build and run: `tools\build_cb.cmd`
 (`asan` for the sanitizer build, `-- --filter core.io` for a subset). Adding a module: drop `x.hpp`, `x.cpp`,
-`x_test.cpp` into `native/cb/<area>/` -- the CMake globs them; a new area is one `cb_area(<dir>)` line in
-`native/cb/CMakeLists.txt`.
+`x_test.cpp` into `src/<area>/` -- the CMake globs them; a new area is one `cb_area(<dir>)` line in
+`src/CMakeLists.txt`.
 
 **Adjustments to the design, and why**
 
@@ -822,18 +822,18 @@ line, which is also how the exe gate stays meaningful.
   would force C++20 and `UNICODE` onto the whole Python-runtime build, so the first shim's own library
   (`pynative_typed`-style, C++20, private) is where `cb_core` joins. The old `tools\build_codebreaker_exe.cmd` is untouched.
   *Wired since:* the generated project (`native/pyengine/src/dyn.cc`, `--dyn-native-typed`) does
-  `add_subdirectory(native/cb cb EXCLUDE_FROM_ALL)` before its own compile options, builds `pynative_typed` at C++20
+  `add_subdirectory(src cb EXCLUDE_FROM_ALL)` before its own compile options, builds `pynative_typed` at C++20
   (py renamed pyt) and links every `CB_AREAS` library into it privately (so C++20 and `UNICODE` stay inside it); the
   whole executable takes the static CRT the cb libraries use. A native module whose port became a header-only shim
-  has no `.cpp`: its glue includes the header. `cbtrace.dll` is the `cbtrace` target of `native/cb`
-  (`tools\build_cb.cmd`, or `tools\build_native.cmd cb` for that part alone; `state/cxx/cb/bin`, the `tracer_bin` default).
-- Third-party headers/DLLs: `native/cb/third_party/README.md` (Capstone is now 5.0.7, not the 4.0.2 the old decompiler
+  has no `.cpp`: its glue includes the header. `cbtrace.dll` is the `cbtrace` target of `src`
+  (`tools\build_cb.cmd`, or `tools\build_native.cmd cb` for that part alone; `build`, the `tracer_bin` default).
+- Third-party headers/DLLs: `src/third_party/README.md` (Capstone is now 5.0.7, not the 4.0.2 the old decompiler
   was written against).
 
 **Recipe for a wave-1 module**
 
 1. Read the old port, the `.py`, the callers; write the header first (no `py::`).
-2. `native/cb/<area>/<name>.hpp/.cpp/_test.cpp`; errors from 3.6; text/bytes/containers from section 3.
+2. `src/<area>/<name>.hpp/.cpp/_test.cpp`; errors from 3.6; text/bytes/containers from section 3.
 3. Use `cb::Regex` only after trying code (3.7); `static const cb::Regex re(R"(...)")`.
 4. Tests: `CB_TEST("area.module.case", [] { CB_CHECK_EQ(a, b); CB_CHECK_THROWS_AS(Type, expr); })`; use
    `testing::CapturedStd` to assert on stdout/stderr and `fs::ScopedTempDir` for files. A macro argument may contain

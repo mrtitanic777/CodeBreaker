@@ -1,7 +1,7 @@
 # STFS packages (CON / LIVE / PIRS)
 
 The Xbox 360's package format: saves, profiles, themes, gamer pictures, Xbox LIVE downloads (Arcade games, add-ons,
-title updates) and the system update's packages. `native/cb/recompile/x360/system/stfs` reads, verifies and writes them:
+title updates) and the system update's packages. `src/recompile/x360/system/stfs` reads, verifies and writes them:
 `stfs/format.h` (the layout, as arithmetic on bytes), `stfs/package.h` (reading), `stfs/builder.h` (writing),
 `stfs/sign.h` (signatures). The dashboard mounts a package as `game:` (kernel/stfs_mount.cpp) and lists dropped
 packages in My Games (kernel/game_import.cpp). Block layout as in Xenia's StfsContainerDevice (BSD-3).

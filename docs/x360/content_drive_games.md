@@ -2,7 +2,7 @@
 
 How a recompiled title must look on the runtime's content drive for the 17559 dashboard's **My Games** to list it.
 Established by running the dashboard (Xbox 360 Dashboard NOTES, sessions 10-11); details of XAM's side are in
-`native/cb/recompile/x360/runtime/src/kernel/xam_content.cpp`.
+`src/recompile/x360/runtime/src/kernel/xam_content.cpp`.
 
 ## What the dashboard lists
 My Games lists **installed content packages**, not titles played. The dash's content manager walks every owner and
@@ -33,7 +33,7 @@ python -I tools/scripts/make_game_package.py content 584111F7 D0000 "Minecraft: 
 
 ## games/ folder (the dashboard port, 2026-10-15)
 Users do not run make_game_package.py: the dashboard's runtime scans `games/` beside its executable at start-up
-(`native/cb/recompile/x360/runtime/src/kernel/game_import.*`). Each `games/<any name>/` holding a `game.ini` is the game
+(`src/recompile/x360/runtime/src/kernel/game_import.*`). Each `games/<any name>/` holding a `game.ini` is the game
 as its port ships it (its release folder) and becomes the package above (the same bytes as make_game_package.py):
 ```
 ; game.ini: key = value, ';' starts a comment, paths relative to the game's folder

@@ -4,7 +4,7 @@ This documents **exactly** how an Xbox 360 STFS `CON ` package is signed by a
 console, where the signing material lives inside a decrypted keyvault
 (`KV_dec.bin`), and how the scheme was reverse-engineered and verified
 byte-exact against genuine hardware-signed packages. It is the reference for
-`native/cb/formats/xbox/stfs.cpp`'s `resign` function.
+`src/formats/xbox/stfs.cpp`'s `resign` function.
 
 Everything here was derived empirically from real data you own (a KV extracted
 with J-Runner + real console-signed saves), not copied from any GPL tool.
@@ -247,7 +247,7 @@ because the cert modulus, like the key, is BnQw-encoded — `_bn(modulus)`, not
 
 ## 5. What `resign` does
 
-`native/cb/formats/xbox/stfs.cpp :: resign_file(package, keyvault, out_path, ResignOptions{bind_console})`:
+`src/formats/xbox/stfs.cpp :: resign_file(package, keyvault, out_path, ResignOptions{bind_console})`:
 
 1. Accept `CON `, `LIVE`, or `PIRS`. If not already CON, **convert to CON**:
    flip the magic to `CON ` and reset the license descriptor at 0x22C to a single
@@ -307,7 +307,7 @@ sign region 0x22C+0x118, `EMSA3(SHA-1)` = PKCS#1 v1.5, 8-byte-swapped signature)
 
 ## 6. Files
 
-- `native/cb/formats/xbox/stfs.cpp` — reader + `pack` + **`resign`** (this document's subject).
+- `src/formats/xbox/stfs.cpp` — reader + `pack` + **`resign`** (this document's subject).
 - XeCrypt (Xbox-360-Crypto, GoobyCorp, BSD-3) — source of the `XECRYPT_KEYVAULT` / `XECRYPT_RSAPRV_1024`
   struct definitions (BSD-3, GoobyCorp). Used here only for offsets; the signing
   is reimplemented dependency-free in `stfs.cpp`.

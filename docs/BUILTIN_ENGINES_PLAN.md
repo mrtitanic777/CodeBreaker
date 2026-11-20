@@ -8,7 +8,7 @@ rest. Nothing here is built yet.
 
 | Separate program | What CodeBreaker uses it for | Called from |
 |---|---|---|
-| `decompiler.exe`, built beside `codebreaker.exe` in `state/cxx/cb/bin` (+ `pcodecheck.exe`, `sleigh.exe`) | every decompilation to C: a module's description in, each function's C and notes out | decompile/decompiler.cpp, emulate (pcodecheck) |
+| `decompiler.exe`, built beside `codebreaker.exe` in `build` (+ `pcodecheck.exe`, `sleigh.exe`) | every decompilation to C: a module's description in, each function's C and notes out | decompile/decompiler.cpp, emulate (pcodecheck) |
 | OpenWatcom `wcc` / `wcc386` | compiling the C CodeBreaker writes (16-bit and 32-bit), the build and check lanes | build/functions, module_build16/32, engine/lane_kit*, engine/win16, verify/gate16 (23 files) |
 | OpenWatcom `wasm` | DOS programs' and VxDs' MASM-style assembly | source/dos_writer, source/vxd |
 | OpenWatcom `wlink` | linking DOS, Win16, Win32 and VxD builds | the same lanes |
@@ -16,8 +16,8 @@ rest. Nothing here is built yet.
 
 ## 1. The decompiler — first, and the smallest step
 
-It is already ours in all but packaging: `native/cb/decompile/engine` is `decompiler.cc` (ours) around a decompiler core
-(`native/cb/decompile/engine/core`, about 190,000 lines of C++, Apache-2.0) built as a library. Making it built-in means linking
+It is already ours in all but packaging: `src/decompile/engine` is `decompiler.cc` (ours) around a decompiler core
+(`src/decompile/engine/core`, about 190,000 lines of C++, Apache-2.0) built as a library. Making it built-in means linking
 that library into `codebreaker.exe` and calling it in memory: the description CodeBreaker writes today becomes a
 structure passed directly, and each function's C comes back as data. No process, no description files on disk.
 

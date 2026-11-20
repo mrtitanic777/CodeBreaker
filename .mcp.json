@@ -2,7 +2,7 @@
   "mcpServers": {
     "codebreaker": {
       "type": "stdio",
-      "command": "${CB_EXE:-C:/Users/mrtit/Documents/GitHub/CodeBreaker/state/cxx/codebreaker/build/codebreaker.exe}",
+      "command": "${CB_EXE:-C:/Users/mrtit/Documents/GitHub/CodeBreaker/build/codebreaker.exe}",
       "args": ["mcp"]
     }
   }

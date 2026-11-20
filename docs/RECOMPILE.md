@@ -12,7 +12,7 @@ Converted\Pac-Man_C.E\Play-Pac_Man_C_E.bat
 
 The title is given as it comes -- a LIVE/CON package (Xbox LIVE Arcade titles, installs), a disc
 image, a Games-on-Demand folder, a folder of its files, or a folder holding any of those (a
-console's `<title id>/000D0000/<package>`): `native/cb/recompile/title.cpp` finds the volume whose
+console's `<title id>/000D0000/<package>`): `src/recompile/title.cpp` finds the volume whose
 top holds `default.xex` (leaving title updates and DLC beside it alone) and unpacks it into the
 project's `assets/` once. The project is `Converted/<title's name>/`. `--build` builds the program
 (four compiles at a time; `CB_BUILD_JOBS` in `Build-<name>.bat`), and `--check [seconds]` also runs
@@ -31,13 +31,13 @@ implement yet, and what stopped it -- the triage for a title nobody has tuned:
 
 Two tools were merged, each giving what it does best:
 
-- **XenonRecomp** (`native/cb/recompile/xenonrecomp`, hedge-dev's, MIT, with the Xbox 360 ports' changes)
+- **XenonRecomp** (`src/recompile/xenonrecomp`, hedge-dev's, MIT, with the Xbox 360 ports' changes)
   translates. Each guest instruction becomes one C++ statement on a `PPCContext`; guest memory
   is one flat big-endian 4 GB space; every function takes the whole context, so any branch
   target can be a function and a branch to it a tail call; a `bctr` through a table becomes a
-  `switch`. `native/cb/recompile/xenon.cpp` builds it (clang-cl, Ninja; setting
+  `switch`. `src/recompile/xenon.cpp` builds it (clang-cl, Ninja; setting
   `visual_studio`) and runs it.
-- **CodeBreaker's analysis** configures it (`native/cb/recompile/config.cpp`): what
+- **CodeBreaker's analysis** configures it (`src/recompile/config.cpp`): what
   XenonRecomp cannot find by itself.
   - Every function `.pdata` leaves out, sized (`discover.cpp`): call targets, code addresses
     stored in the data, addresses the code builds (`lis` + `addi`/`ori`), and leaf functions that
@@ -51,28 +51,28 @@ Two tools were merged, each giving what it does best:
   - The register settings: which registers are locals of each function. The non-volatile ones
     stay in the context: a compiler-generated `__finally` block is called with `bl` and reads its
     parent's `r30`/`r31`.
-- **The runtime** (`native/cb/recompile/x360`, CodeBreaker's Xbox 360 runtime, from the Xbox 360 ports) runs
+- **The runtime** (`src/recompile/x360`, CodeBreaker's Xbox 360 runtime, from the Xbox 360 ports) runs
   the result: the kernel and XAM reimplemented export by export, the Xenos GPU on Direct3D 12,
   XMA audio, input, the file system (the title's folder is `game:`), the system UI.
-  `x360.cmake` builds a title's program; `native/cb/recompile/x360/README.md` lists its switches.
+  `x360.cmake` builds a title's program; `src/recompile/x360/README.md` lists its switches.
 - **Hooks**: XenonRecomp emits every function as `__imp__sub_X` plus a weak `sub_X`, so a host
   function defined as `sub_X` replaces it; `midasm_hook` tables in a title's configuration put
   host code at single instructions.
 - **XEX**: the runtime loads any XEX (encrypted or not, basic or LZX) through CodeBreaker's one
-  XEX reader (`native/cb/formats/xex/reader.cmake`); XenonRecomp reads only unencrypted, basic-compressed
-  files, and `codebreaker xex` (native/cb/formats/xex.cpp) rewrites any XEX that way.
+  XEX reader (`src/formats/xex/reader.cmake`); XenonRecomp reads only unencrypted, basic-compressed
+  files, and `codebreaker xex` (src/formats/xex.cpp) rewrites any XEX that way.
 
-The rexglue SDK's kernel core (`native/cb/recompile/rexglue`) and CodeBreaker's own per-instruction
+The rexglue SDK's kernel core (`src/recompile/rexglue`) and CodeBreaker's own per-instruction
 translator (`powerpc.cpp`, its builders derived from rexglue's code generator) remain:
-`recompile` translates functions on their own (and the `native/cb/recompile` unit tests run them), and
+`recompile` translates functions on their own (and the `src/recompile` unit tests run them), and
 `recompile-project --runtime rexglue` still makes the earlier project form.
 
 ## Checking the translation
 
 `xenon.instruction_tests()` runs Xenia's PowerPC instruction tests (inputs and the outputs
-measured on the console; `native/cb/recompile/xenonrecomp/ppc_tests`) through XenonRecomp: each test is
+measured on the console; `src/recompile/xenonrecomp/ppc_tests`) through XenonRecomp: each test is
 assembled with PowerPC binutils that know VMX128 (setting `ppc_binutils`, default
-`toolchains/binutils-ppc`), recompiled, built and run, with CodeBreaker's own tests beside them
+`toolchains/powerpc-binutils`), recompiled, built and run, with CodeBreaker's own tests beside them
 (`ppc_tests/own`: divides, `frsqrte`, the dashboard's VMX). Today: 162 test files, 0 mismatches; 8 are
 left out because XenonRecomp does not implement their instructions (`lvexx`, `mulhdu`, `rlwnm`,
 `subfme`, `td`, `tdi`, `tw`, `twi`; a title's own recompile reports any it uses).

@@ -6,7 +6,7 @@ messages and party chat. No crossplay with real consoles, so this is our own pro
 implements natively (XFriends*, XPresence*, XMessage*, XParty*, sign-in to Xbox LIVE) are answered from it.
 
 - Server: the owner's own (private, not in Shared since 2026-10-19). Clients only need this document.
-- Client: `native/cb/recompile/x360/system/live/` (C++ library both runtimes build; one connection per running port).
+- Client: `src/recompile/x360/system/live/` (C++ library both runtimes build; one connection per running port).
 
 ## Transport
 TCP, default `127.0.0.1:36074` (a runtime reads its address from its settings). Each message is one JSON object on
@@ -27,7 +27,7 @@ XUIDs are 16 upper-case hex digits; title IDs 8. Times are Unix seconds.
 | `signout` | `user` | |
 | `profile` | `user`, `xuid` | `account`, `profile`: Profile (as that player last signed in or updated it; once others have reviewed the player, `reputation` comes from their reviews: "Player reviews"), `review`: the user's own review of that player (FB_REVIEW_*) or -1 |
 | `profile_update` | `user`, `profile`: Profile without the pictures (`gamerscore`, `motto`, `zone`, `name`, `location`, `bio`) | (kept; the user's friends get a `friend` event, so their consoles read the profile again) |
-| `presence` | `user`, `title_id`, `title` (the title's name), `rich` (rich-presence text, may be ""; formatted by the client from the title's own XUserSetContext / XUserSetPropertyEx values and its XLAST: `native/cb/recompile/x360/system/live/live/presence.h`) | |
+| `presence` | `user`, `title_id`, `title` (the title's name), `rich` (rich-presence text, may be ""; formatted by the client from the title's own XUserSetContext / XUserSetPropertyEx values and its XLAST: `src/recompile/x360/system/live/live/presence.h`) | |
 
 The `hello` reply also carries `livehive`: `{key: string}`, Xbox LIVE's configuration values (XamQueryLiveHive);
 keys it lacks are "not set" for the console. The server keeps them in its data file (`"livehive"`).
@@ -373,4 +373,4 @@ private chats` (a chat is local state; the link carries no chat traffic yet).
 Tests: `tests/ports/test_chat.py` (every op and push, all the errors, mutes, disconnect cleanup, voice routing among chat, party,
 `game` and the default).
 
-Client: `native/cb/recompile/x360/system/live/live/client.h` (Chats, InviteToChat, JoinChat, LeaveChat, SetVoiceChannel); the Guide's Chat: `native/cb/recompile/x360/system/guide/guide/guide.cpp` (GuideChat).
+Client: `src/recompile/x360/system/live/live/client.h` (Chats, InviteToChat, JoinChat, LeaveChat, SetVoiceChannel); the Guide's Chat: `src/recompile/x360/system/guide/guide/guide.cpp` (GuideChat).

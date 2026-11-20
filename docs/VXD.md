@@ -2,10 +2,10 @@
 
 `codebreaker vxd <tool>` holds the tools for Windows 95's virtual device drivers:
 the LE files in `WINDOWS\SYSTEM` (and `IOSUBSYS`) and the W3 bundle `VMM32.VXD`
-(`native/cb/source/vxd/`; `codebreaker vxd` lists them). The source side writes a
+(`src/source/vxd/`; `codebreaker vxd` lists them). The source side writes a
 driver in the driver kit's macro form (`idiom`, `tree`), assembles and links it (`masm`, `link`,
 `from-source`, `owbuild`); `le_writer.build_le` / `build_w3` write a loadable driver straight from
-the recovered disassembly, through `native/cb/formats/le.cpp`'s `write_image`.
+the recovered disassembly, through `src/formats/le.cpp`'s `write_image`.
 
 ## Does Windows start with it? `vxd boot`
 
@@ -25,7 +25,7 @@ What a run does:
 1. Builds each named driver (a corpus file name, extension optional) with `build_le`, and with
    `--vmm32` the corpus `VMM32.VXD` (VMM alone, a W3) with `build_w3`. `--retail` takes the corpus
    files as they are.
-2. Copies the installed disk into a run folder of its own (`state/vxdboot/runs/<tag>_*`, native/cb/base/runs.cpp;
+2. Copies the installed disk into a run folder of its own (`state/vxdboot/runs/<tag>_*`, src/base/runs.cpp;
    a killed run's is swept by the next run once a day old) and writes
    the files into the copy with `formats/media.put` (FAT16/FAT32 in Python: no WSL, no mtools):
    - a driver the corpus keeps in `WINDOWS\SYSTEM` goes to `WINDOWS\SYSTEM\VMM32\NAME.VXD` --

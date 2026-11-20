@@ -34,11 +34,11 @@ jobs:
       - name: codebreaker.exe and the unit tests
         shell: cmd
         run: |
-          cmake -S native -B state\cxx\cb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
-          cmake --build state\cxx\cb --target codebreaker cb_tests -j 4 || exit /b 1
+          cmake -S src -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl || exit /b 1
+          cmake --build build --target codebreaker cb_tests -j 4 || exit /b 1
       - name: Unit tests
         shell: cmd
-        run: state\cxx\cb\bin\cb_tests.exe
+        run: build\cb_tests.exe
 
   clang:
     runs-on: windows-latest
@@ -57,7 +57,7 @@ jobs:
       - name: codebreaker.exe and the unit tests (clang-cl)
         shell: cmd
         run: |
-          cmake -S native -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl "-DCMAKE_CXX_FLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH" || exit /b 1
+          cmake -S src -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl "-DCMAKE_CXX_FLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH" || exit /b 1
           cmake --build build-clang --target codebreaker cb_tests -j 4 || exit /b 1
       - name: Unit tests
         shell: cmd
@@ -82,7 +82,7 @@ jobs:
           install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
       - name: codebreaker.exe and the unit tests (GCC, MinGW-w64)
         run: |
-          cmake -S native -B build-gcc -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake -S src -B build-gcc -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build-gcc --target codebreaker cb_tests -j 4
       - name: Unit tests
         run: ./build-gcc/bin/cb_tests.exe

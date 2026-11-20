@@ -1,6 +1,6 @@
 exit: 1
 --- stdout
-<repo>/native/cb/formats/testdata/choice.com  (not an executable, 5175 bytes)
+<repo>/src/formats/testdata/choice.com  (not an executable, 5175 bytes)
 note: not a format CodeBreaker recognises
 --- files
 --- stderr (not compared)

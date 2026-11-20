@@ -1,11 +1,11 @@
-native/cb/decompile/c_text_consts.inc text eol=lf
-native/cb/**/testdata/** -text
+src/decompile/c_text_consts.inc text eol=lf
+src/**/testdata/** -text
 config/translate/judge_c_java/** text eol=lf
 
 # What a release's source archive leaves out: the tests and their data, and the project's history notes.
 tests/** export-ignore
-native/**/testdata/** export-ignore
-native/**/*_test.cpp export-ignore
-native/**/*_test.cc export-ignore
-native/**/tests/** export-ignore
+src/**/testdata/** export-ignore
+src/**/*_test.cpp export-ignore
+src/**/*_test.cc export-ignore
+src/**/tests/** export-ignore
 docs/history/** export-ignore

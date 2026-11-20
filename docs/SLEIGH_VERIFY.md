@@ -1,13 +1,13 @@
 # The x86 SLEIGH specification, checked instruction by instruction
 
 docs/CORE_ROADMAP.md, Track 1 item A. Every instruction the decompiler reads is turned into
-p-code by the SLEIGH specification (`native/cb/decompile/engine/languages/x86.sla`); if the specification
+p-code by the SLEIGH specification (`src/decompile/engine/languages/x86.sla`); if the specification
 is wrong, every later analysis is built on the wrong meaning. This checks it against a real
 processor's emulator.
 
 ## How
 
-- `native/cb/decompile/engine/pcodecheck` (target `pcodecheck`): runs one instruction's p-code with the
+- `src/decompile/engine/pcodecheck` (target `pcodecheck`): runs one instruction's p-code with the
   core's own emulator (`emulate.cc`) from a given state -- registers, flags, memory -- in 16-bit
   real mode (`segment()` = `base * 16 + offset`, as `x86-16-real.pspec` defines it), and reports
   what it left. A user operation the emulator has no meaning for (`in`, `out`, `int` ...) makes
@@ -18,8 +18,8 @@ processor's emulator.
   p-code; compared: the general and segment registers, the flags (except those Intel leaves
   undefined for that instruction and count), the bytes of memory written, the next instruction.
   The report is written to `state/sleigh_verify.txt`.
-- `native/cb/decompile/engine/languages/src/x86/` holds the specification's source (Ghidra 12.1.3, Apache
-  2.0); `sleigh` (target `sleigh`, built on request into `state/cxx/cb/bin`; the core's own SLEIGH compiler) makes `x86.sla` from
+- `src/decompile/engine/languages/src/x86/` holds the specification's source (Ghidra 12.1.3, Apache
+  2.0); `sleigh` (target `sleigh`, built on request into `build`; the core's own SLEIGH compiler) makes `x86.sla` from
   it. Unchanged, it compiles byte for byte to the `x86.sla` the decompiler shipped with -- once
   the compiler could read a 64-bit constant on Windows (docs/GHIDRA_FORK.md, C10).
 

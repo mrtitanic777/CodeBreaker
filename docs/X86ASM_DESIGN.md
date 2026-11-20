@@ -1,6 +1,6 @@
 # x86asm — CodeBreaker's own x86 assembler
 
-CodeBreaker assembles the x86 sources its writers produce with an engine of its own, `native/cb/build/x86asm/`, compiled
+CodeBreaker assembles the x86 sources its writers produce with an engine of its own, `src/build/x86asm/`, compiled
 into `codebreaker.exe`. It replaces the separate `nasm.exe` (the `native/nasm` fork and the `nasm` setting), which
 CodeBreaker used to start as a child process. When x86asm is complete, `native/nasm` and the setting are deleted.
 
@@ -19,10 +19,10 @@ The proof is differential, never by eye:
   Win95 VxDs (`vxd corpus`, `vxd owbuild`) and the Win16 idioms (`ne-asm sweep`) gave 6,470: the PE/NE/LE/x64/WonderSwan
   writers' flat images, the boot floppy, the Win16 idioms (`--masm -f obj`), the VxD sources (`--masm -f win32`). x86asm
   reproduces all of them byte for byte (the COFF header's time stamp set aside). The cases are kept in
-  `binaries/test-inputs/x86asm/` (git-ignored, beside the other local test inputs): `gate/` (234) is replayed by
+  `test-inputs/x86asm/` (git-ignored, beside the other local test inputs): `gate/` (234) is replayed by
   `cb_tests --filter corpus_replays` wherever it exists, `masm/` (6,236) when `CB_X86ASM_CORPUS` names it. They can no
   longer be captured again -- nasm.exe is gone -- so they are the record x86asm is held to.
-- **NASM's own MASM-mode tests** (`native/cb/build/testdata/masm`: 85 fixtures and their golden bytes, assembled by x86asm).
+- **NASM's own MASM-mode tests** (`src/build/testdata/masm`: 85 fixtures and their golden bytes, assembled by x86asm).
 - `cb_tests` area `x86asm` runs every case through x86asm and compares bytes with the recorded output. A case that
   differs is a bug in x86asm; nothing is ever "close enough".
 
@@ -31,7 +31,7 @@ The proof is differential, never by eye:
 NASM's seams are kept, as C++ modules (idiomatic typed C++, docs/CPP rules): each module is a port of NASM's file of
 the same job, with NASM's behaviour, not a re-imagining of it.
 
-| Module (`native/cb/build/x86asm/`) | NASM source it ports | Job |
+| Module (`src/build/x86asm/`) | NASM source it ports | Job |
 |---|---|---|
 | `types.hpp` | include/nasm.h, insns.h, tables.h, labels.h | tokens, expressions, operands, the instruction, locations, output records |
 | `assembly.hpp/.cpp` | the globals of nasm.c, error.c | `Assembly`: ALL state of one run (options, pass, location, labels, warnings, diagnostics) |
