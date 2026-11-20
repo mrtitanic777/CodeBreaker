@@ -1,3 +1,4 @@
+// cb-unity: alone (a file-scope `namespace m` alias that m6502_test.cpp also makes, in another namespace)
 // decompile/mips_test.cpp -- the R3000A's instructions: every encoding checked against words worked out by hand from the
 // MIPS I instruction formats (R: op rs rt rd sa funct, I: op rs rt imm16, J: op target26) and the GTE's command word
 // (op 0x12 and bit 25, fields in the low 25 bits), the text of each form, the assembler's refusals, and the round trip

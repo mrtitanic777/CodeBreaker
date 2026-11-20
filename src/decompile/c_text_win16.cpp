@@ -11,6 +11,7 @@
 #include "core/parallel.hpp"
 #include "core/text.hpp"
 #include "decompile/c_text_internal.hpp"
+#include "decompile/conventions.hpp"
 
 namespace cb::decompile::c_text {
 
@@ -288,7 +289,7 @@ Module16 compilable16(Services& services, const std::filesystem::path& module, c
     for (const std::vector<std::string>& parts : functions_said) {
         if (parts.size() <= 4) continue;
         distance[parts[2]] = parts[4].ends_with("far") ? std::optional<std::string>("far") : parts[4].ends_with("near") ? std::optional<std::string>("near") : std::nullopt;
-        if (parts[4].starts_with("__stdcall16") || parts[4].starts_with("__cdecl16")) model_of[parts[2]] = parts[4];
+        if (conventions::mentions(parts[4], conventions::Convention::Stdcall) || conventions::mentions(parts[4], conventions::Convention::Cdecl)) model_of[parts[2]] = parts[4];
     }
     std::optional<Va> dgroup;
     if (d.data_segment != 0) dgroup = describe::selector(d.data_segment);
@@ -369,7 +370,9 @@ Module16 compilable16(Services& services, const std::filesystem::path& module, c
         std::optional<ByteView> code;
         if (const auto it = images.find(place.seg); it != images.end()) code = ByteView(it->second);
         const ModuleFacts facts = module_facts16(code, place.off, ends.contains(va) ? ends[va] : place.off, std::nullopt, std::nullopt, dgroup, false, place.seg);
-        const bool far = internal::has(model, "__stdcall16far") || internal::has(model, "__cdecl16far");
+        const std::optional<conventions::Parsed> parsed = conventions::parse(model);
+        const bool far = parsed && parsed->distance == conventions::Distance::Far &&
+                         (parsed->convention == conventions::Convention::Stdcall || parsed->convention == conventions::Convention::Cdecl);
         std::vector<std::string> words{model};
         if (far && facts.exported) words.push_back("__export");
         if (facts.loadds) words.push_back("__loadds");
@@ -379,7 +382,7 @@ Module16 compilable16(Services& services, const std::filesystem::path& module, c
         Heading h;
         h.params = Heading::Params{head, {}};
         h.declaration = head + "();";
-        h.fastcall = internal::has(head, "__fastcall16");
+        h.fastcall = conventions::mentions(head, conventions::Convention::Fastcall);
         found.heading = h;
         found_of[name] = found;
         std::set<std::string> flags;

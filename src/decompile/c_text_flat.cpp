@@ -9,6 +9,7 @@
 #include "core/json.hpp"
 #include "core/text.hpp"
 #include "decompile/c_text_internal.hpp"
+#include "decompile/conventions.hpp"
 #include "translate/l2.hpp"
 
 namespace cb::decompile::c_text {
@@ -247,7 +248,7 @@ Compilable32 compilable32(Services& services, const std::filesystem::path& modul
         std::optional<std::int64_t> pop;
         if (const auto it = got.numbered.find(n); it != got.numbered.end()) pop = it->second.pop;
         else if (const auto bytes = services.argument_bytes(imports.at(n), n)) pop = *bytes;
-        decls.push_back(std::string("int ") + (pop && *pop == 0 ? "__cdecl" : "__stdcall") + " " + n + "();");
+        decls.push_back(std::string("int ") + conventions::name_of(pop && *pop == 0 ? conventions::Convention::Cdecl : conventions::Convention::Stdcall) + " " + n + "();");
     }
     for (const std::string& n : order) {   // each function, declared before any use
         const auto it = declared.find(n);

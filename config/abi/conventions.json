@@ -1,0 +1,14 @@
+{
+  "_comment": "Facts about calling-convention models that the SLEIGH compiler specs cannot carry (the decompiler core throws on an element it does not know inside a <prototype>). Keyed by the model's name in the specs; read by decompile/conventions.cpp.",
+  "models": {
+    "__cdecl": { "decoration": "_%s" },
+    "__stdcall": { "decoration": "_%s@%N" },
+    "__fastcall": { "decoration": "@%s@%N" },
+    "__cdecl16near": { "decoration": "_%s", "compiler_keyword": { "msc6": "_cdecl" } },
+    "__cdecl16far": { "decoration": "_%s", "compiler_keyword": { "msc6": "_cdecl" } },
+    "__stdcall16near": { "decoration": "%s", "compiler_keyword": { "msc6": "_pascal" } },
+    "__stdcall16far": { "decoration": "%s", "compiler_keyword": { "msc6": "_pascal" } },
+    "__fastcall16near": { "decoration": "@%s", "compiler_keyword": { "msc6": "_fastcall" } },
+    "__fastcall16far": { "decoration": "@%s", "compiler_keyword": { "msc6": "_fastcall" } }
+  }
+}

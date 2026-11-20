@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/text.hpp"
+#include "decompile/conventions.hpp"
 
 namespace cb::decompile::c_text_dos {
 
@@ -119,8 +120,7 @@ bool ctd_signature(std::string_view line) {
     if (line.front() == '#' || line.front() == '/' || line.front() == '{' || line.front() == '}') return false;
     const std::string_view t = ctd_trim(line);
     if (t.empty() || t.back() != ')' || t.find(';') != std::string_view::npos) return false;
-    return t.find("__cdecl16") != std::string_view::npos || t.find("__stdcall16") != std::string_view::npos ||
-           t.find("__fastcall16") != std::string_view::npos;
+    return conventions::mentions_16bit(t);
 }
 
 std::string ctd_name(std::string_view signature) {

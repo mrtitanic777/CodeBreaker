@@ -16,6 +16,7 @@
 #include "analyze/report_internal.hpp"
 #include "analyze/resources.hpp"
 #include "analyze/strings.hpp"
+#include "decompile/conventions.hpp"
 #include "analyze/structures.hpp"
 #include "core/crypto.hpp"
 #include "core/error.hpp"
@@ -204,7 +205,8 @@ std::vector<std::string> starts_of(Pipeline& p, ImageKind kind) {
         std::string line = std::format("F\t{:x}\t{}\t{}", va, p.image().function_name(va), pop ? *pop : -1);
         if (kind == ImageKind::Ne) {
             const bool far = fact != facts.end() && fact->second.convention && fact->second.convention->ends_with("far");
-            line += std::format("\t__{}16{}", pop && *pop == 0 ? "cdecl" : "stdcall", far ? "far" : "near");
+            namespace cv = decompile::conventions;
+            line += "\t" + cv::name_of(pop && *pop == 0 ? cv::Convention::Cdecl : cv::Convention::Stdcall, far ? cv::Distance::Far : cv::Distance::Near);
         }
         lines.push_back(std::move(line));
     }

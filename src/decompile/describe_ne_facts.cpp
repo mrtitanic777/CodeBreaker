@@ -5,6 +5,7 @@
 #include <deque>
 
 #include "core/capstone_api.hpp"
+#include "decompile/conventions.hpp"
 #include "decompile/describe_internal.hpp"
 
 namespace cb::decompile::describe {
@@ -624,7 +625,9 @@ std::vector<std::string> call_overrides(const NeDescription& d) {
                 const bool is_far = i.mn == "lcall" || (i.mn == "call" && contains(i.op_str, "dword"));
                 const bool caller_pops = j + 1 < ins.size() && ins[j + 1].mn == "add" && ins[j + 1].op_str.starts_with("sp,");
                 lines.push_back(std::format("O\t{}\t{}\t{}\t{}{}", hx(address(sg, i.address)), hx(va), pushed,
-                                            caller_pops ? "__cdecl16" : "__stdcall16", is_far ? "far" : "near"));
+                                            conventions::name_of(caller_pops ? conventions::Convention::Cdecl : conventions::Convention::Stdcall,
+                                                                 is_far ? conventions::Distance::Far : conventions::Distance::Near),
+                                            ""));
             }
         }
     }
