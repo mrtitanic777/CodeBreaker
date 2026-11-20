@@ -36,58 +36,69 @@
  *
 */
 
+#include <cstddef>
+#include <cstring>
 #include "linkstd.h"
 #include "strtab.h"
 #include "ring.h"
-#include <string.h>
 
 
-#define STR_BLOCK_SIZE   _4K
+namespace {
 
-#define TableNoSplitItems(t)    ((t)->currbase & 1)
-#define GetTableLastBlkStart(t) ((t)->currbase & ~1U)
-#define GetTableLastBlk(t)      ((stringblock *)RingLast((t)->data))
+constexpr std::size_t STR_BLOCK_SIZE = _4K;
+constexpr std::size_t START_UNDEF = static_cast<std::size_t>( -1 );
 
-typedef struct stringblock {
-    STRINGBLOCK *next;
+} // namespace
+
+/* a block of the table: a ring element, then the bytes (the header's STRINGBLOCK) */
+struct stringblock {
+    stringblock *next;
     size_t      size;
     char        data[STR_BLOCK_SIZE];
-} stringblock;
+};
 
-typedef struct {
+namespace {
+
+struct strblkparam {
     write_strtable_fn   *fn;
     void                *info;
-} strblkparam;
+};
 
-static stringblock * AllocNewBlock( stringtable *strtab )
-/*******************************************************/
+/* the low bit of currbase says the table does not split an item over two blocks */
+inline bool TableNoSplitItems( const stringtable *t )
+{
+    return( (t->currbase & 1) != 0 );
+}
+
+inline size_t GetTableLastBlkStart( const stringtable *t )
+{
+    return( t->currbase & ~static_cast<size_t>( 1 ) );
+}
+
+inline stringblock *GetTableLastBlk( const stringtable *t )
+{
+    return( static_cast<stringblock *>( RingLast( t->data ) ) );
+}
+
+stringblock *AllocNewBlock( stringtable *strtab )
+/***********************************************/
 {
     stringblock *blk;
 
-    blk = (stringblock *)(MemAllocSafe( sizeof( stringblock ) ));
-    blk->next = NULL;
+    blk = static_cast<stringblock *>( MemAllocSafe( sizeof( stringblock ) ) );
+    blk->next = nullptr;
     RingAppend( &strtab->data, blk );
     blk->size = 0;
     return( blk );
 }
 
-void InitStringTable( stringtable *strtab, bool dontsplit )
-/*********************************************************/
-{
-    strtab->data = NULL;
-    strtab->currbase = ( dontsplit ) ? 1 : 0;
-    AllocNewBlock( strtab );
-}
-
-static char *AddToStringTable( stringtable *strtab, const void *data, size_t len, bool addnullchar, size_t *offs )
-/****************************************************************************************************************/
+char *AddToStringTable( stringtable *strtab, const void *data, size_t len, bool addnullchar, size_t *offs )
+/*********************************************************************************************************/
 {
     stringblock *blk;
     size_t      diff;
-    char *      dest;
+    char        *dest;
     size_t      start;
-
-#define START_UNDEF ((size_t)-1)
 
     if( addnullchar )
         ++len;
@@ -107,13 +118,13 @@ static char *AddToStringTable( stringtable *strtab, const void *data, size_t len
             } else {
                 memcpy( blk->data + blk->size, data, diff );
                 len -= diff;
-                data = (char *)data + diff;
+                data = static_cast<const char *>( data ) + diff;
             }
         }
         blk->size = STR_BLOCK_SIZE;
         strtab->currbase += STR_BLOCK_SIZE;
     }
-    if( offs != NULL ) {
+    if( offs != nullptr ) {
         if( start == START_UNDEF )
             start = GetTableLastBlkStart( strtab ) + blk->size;
         *offs = start;
@@ -126,16 +137,36 @@ static char *AddToStringTable( stringtable *strtab, const void *data, size_t len
     return( dest );
 }
 
+bool WriteStringData( void *_blk, void *_param )
+/**********************************************/
+{
+    const stringblock   *blk = static_cast<stringblock *>( _blk );
+    const strblkparam   *param = static_cast<strblkparam *>( _param );
+
+    param->fn( param->info, blk->data, blk->size );
+    return( false );
+}
+
+} // namespace
+
+void InitStringTable( stringtable *strtab, bool dontsplit )
+/*********************************************************/
+{
+    strtab->data = nullptr;
+    strtab->currbase = ( dontsplit ) ? 1 : 0;
+    AllocNewBlock( strtab );
+}
+
 void AddCharStringTable( stringtable *strtab, char data )
 /*******************************************************/
 {
-    AddToStringTable( strtab, &data, sizeof( char ), false, NULL );
+    AddToStringTable( strtab, &data, sizeof( char ), false, nullptr );
 }
 
 char *AddStringStringTable( stringtable *strtab, const char *data )
 /*****************************************************************/
 {
-    return( AddToStringTable( strtab, data, strlen( data ) + 1, false, NULL ) );
+    return( AddToStringTable( strtab, data, strlen( data ) + 1, false, nullptr ) );
 }
 
 size_t AddStringStringTableOffs( stringtable *strtab, const char *data )
@@ -150,13 +181,13 @@ size_t AddStringStringTableOffs( stringtable *strtab, const char *data )
 char *AddBufferStringTable( stringtable *strtab, const void *data, size_t len )
 /*****************************************************************************/
 {
-    return( AddToStringTable( strtab, data, len, false, NULL ) );
+    return( AddToStringTable( strtab, data, len, false, nullptr ) );
 }
 
 char *AddSymbolStringTable( stringtable *strtab, const char *data, size_t len )
 /*****************************************************************************/
 {
-    return( AddToStringTable( strtab, data, len, true, NULL ) );
+    return( AddToStringTable( strtab, data, len, true, nullptr ) );
 }
 
 void ZeroStringTable( stringtable *strtab, size_t len )
@@ -170,22 +201,11 @@ void ZeroStringTable( stringtable *strtab, size_t len )
     blk->size += len;
 }
 
-static bool WriteStringData( void *_blk, void *_param )
-/******************************************************/
-{
-    stringblock *blk = (stringblock *)(_blk);
-    strblkparam *param = (strblkparam *)(_param);
-    param->fn( param->info, blk->data, blk->size );
-    return( false );
-}
-
 void WriteStringTable( stringtable *strtab, write_strtable_fn *fn, void *info )
 /*****************************************************************************/
 {
-    strblkparam param;
+    strblkparam param{ fn, info };
 
-    param.fn = fn;
-    param.info = info;
     RingLookup( strtab->data, WriteStringData, &param );
 }
 

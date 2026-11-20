@@ -30,9 +30,13 @@
 ****************************************************************************/
 
 
-#include <string.h>
-#include <time.h>
-#include <ctype.h>
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cstddef>
+#include <cstring>
+#include <ctime>
+#include <string_view>
 #include "linkstd.h"
 #include "exenov.h"
 #include "dbginfo.h"
@@ -44,24 +48,42 @@
 #include "loadfile.h"
 #include "loadnov.h"
 #include "wdbginfo.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
 
 #ifdef _NOVELL
 
-#define DUMMY_THREAD_NAME " LONG"
+namespace {
 
-static unsigned_32  DbgInfoCount;
-static unsigned_32  DbgInfoLen;
-static virt_mem     NovDbgInfo;
-static virt_mem     CurrDbgLoc;
+constexpr std::string_view  DUMMY_THREAD_NAME = " LONG";
+constexpr std::size_t       EXT_NAME_MAX = 255;
+
+// what the Novell load file keeps between the debug passes of one link
+struct NovState {
+    unsigned_32     DbgInfoCount;
+    unsigned_32     DbgInfoLen;
+    virt_mem        NovDbgInfo;
+    virt_mem        CurrDbgLoc;
+};
+
+NovState &state()
+{
+    return cb_wlink::RunState::part<NovState>();
+}
+
+using ExtName = std::array<char, EXT_NAME_MAX + 1>;
+
+}
 
 void ResetLoadNov( void )
 /***********************/
 {
-    DbgInfoCount = 0;
-    DbgInfoLen = 0;
+    NovState &st = state();
+
+    st.DbgInfoCount = 0;
+    st.DbgInfoLen = 0;
 }
 
 static unsigned_32 WriteNovRelocs( fixed_header *header )
@@ -70,29 +92,28 @@ static unsigned_32 WriteNovRelocs( fixed_header *header )
 {
     DumpRelocList( Root->reloclist );
     header->numberOfRelocationFixups = Root->relocs;
-    return( (unsigned_32)Root->relocs * sizeof( nov_reloc_item ) );
+    return( static_cast<unsigned_32>( Root->relocs ) * sizeof( nov_reloc_item ) );
 }
 
-static size_t create_sym_extname( symbol *sym, char *ext_name )
-/*************************************************************/
+static size_t create_sym_extname( symbol *sym, ExtName &ext_name )
+/****************************************************************/
 {
     size_t      len;
-    const char  *src;
 
     len = 0;
     /*
      * netware prefix support
+     * (wlink copies a fixed count in each loop, not stopping at the end of the
+     * string; kept as it was, the prefix filling the buffer up to the '@')
      */
-    src = sym->prefix;
-    if( src != NULL ) {
-        while( len < 255 - 1 ) {
-            ext_name[len++] = *src++;
-        }
+    if( sym->prefix != nullptr ) {
+        std::copy_n( sym->prefix, EXT_NAME_MAX - 1, ext_name.begin() );
+        len = EXT_NAME_MAX - 1;
         ext_name[len++] = '@';
     }
-    src = sym->name.u.ptr;
-    while( len < 255 ) {
-        ext_name[len++] = *src++;
+    if( len < EXT_NAME_MAX ) {
+        std::copy_n( sym->name.u.ptr, EXT_NAME_MAX - len, ext_name.begin() + len );
+        len = EXT_NAME_MAX;
     }
     ext_name[len] = '\0';
     return( len );
@@ -111,18 +132,18 @@ static unsigned_32 WriteNovImports( fixed_header *header )
     unsigned_32     size;
 
     wrote = count = 0;
-    for( sym = HeadSym; sym != NULL; sym = sym->next ) {
+    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
         if( !IS_SYM_IMPORTED( sym ) )
             continue;
         /* so SymFini doesn't try to free it */
         if( sym->p.import_nov == DUMMY_IMPORT_PTR )
-            sym->p.import_nov = NULL;
+            sym->p.import_nov = nullptr;
         nov_imp = sym->p.import_nov;
-        if( nov_imp != NULL ) {
-            char    ext_name[255 + 1];
+        if( nov_imp != nullptr ) {
+            ExtName ext_name;
 
             len = create_sym_extname( sym, ext_name );
-            wrote += WriteLoadU8Name( ext_name, len, false );
+            wrote += WriteLoadU8Name( ext_name.data(), len, false );
 
             if( nov_imp->contents <= MAX_IMP_INTERNAL ) {
                 refs = nov_imp->contents;
@@ -159,16 +180,16 @@ static unsigned_32 WriteNovExports( fixed_header *header )
     size_t          len;
 
     count = wrote = 0;
-    for( export_ = FmtData.u.nov.exp.export_; export_ != NULL; export_ = export_->next ) {
+    for( export_ = FmtData.u.nov.exp.export_; export_ != nullptr; export_ = export_->next ) {
         sym = SymOp( ST_FIND, export_->name.u.ptr, export_->len );
-        if( ( sym == NULL )
+        if( ( sym == nullptr )
           || (sym->info & SYM_DEFINED) == 0 ) {
             LnkMsg( WRN+MSG_EXP_SYM_NOT_FOUND, "s", export_->name.u.ptr );
         } else if( !IS_SYM_IMPORTED( sym ) ) {
-            char    ext_name[255 + 1];
+            ExtName ext_name;
 
             len = create_sym_extname( sym, ext_name );
-            wrote += WriteLoadU8Name( ext_name, len, false );
+            wrote += WriteLoadU8Name( ext_name.data(), len, false );
 
             off = sym->addr.off;
             if( sym->addr.seg == CODE_SEGMENT ) {
@@ -178,7 +199,7 @@ static unsigned_32 WriteNovExports( fixed_header *header )
             wrote += sizeof( unsigned_32 );
             count++;
 
-            AddImpLibEntry( sym->name.u.ptr, ext_name, 0, true );
+            AddImpLibEntry( sym->name.u.ptr, ext_name.data(), 0, true );
         }
     }
     header->numberOfPublics = count;
@@ -193,7 +214,7 @@ static unsigned_32 WriteNovModules( fixed_header *header )
     unsigned_32     wrote;
 
     count = wrote = 0;
-    for( module = FmtData.u.nov.exp.module; module != NULL; module = module->next ) {
+    for( module = FmtData.u.nov.exp.module; module != nullptr; module = module->next ) {
         wrote += WriteLoadU8Name( module->name.u.ptr, module->len, false );
         count++;
     }
@@ -204,52 +225,55 @@ static unsigned_32 WriteNovModules( fixed_header *header )
 void NovDBIAddGlobal( void *_sym )
 /********************************/
 {
-    symbol *sym = (symbol *)(_sym);
+    symbol *sym = static_cast<symbol *>( _sym );
 
     if( !IS_SYM_A_REF( sym )
       && !IS_SYM_ALIAS( sym )
-      && ( sym->p.seg != NULL )
+      && ( sym->p.seg != nullptr )
       && (sym->info & SYM_DEAD) == 0
       && !sym->p.seg->isabs
       && (sym->info & SYM_STATIC) == 0
       && (FmtData.u.nov.flags & DO_NOV_EXPORTS) == 0 ) {
-        DbgInfoLen += sizeof( nov_dbg_info ) + strlen( sym->name.u.ptr );
+        state().DbgInfoLen += sizeof( nov_dbg_info ) + std::strlen( sym->name.u.ptr );
     }
 }
 
 void NovDBIAddrStart( void )
 /**************************/
 {
-    if( DbgInfoLen != 0 ) {
-        NovDbgInfo = AllocStg( DbgInfoLen );
-        CurrDbgLoc = NovDbgInfo;
+    NovState &st = state();
+
+    if( st.DbgInfoLen != 0 ) {
+        st.NovDbgInfo = AllocStg( st.DbgInfoLen );
+        st.CurrDbgLoc = st.NovDbgInfo;
     }
 }
 
 void NovDBIGenGlobal( symbol *sym )
 /*********************************/
 {
+    NovState        &st = state();
     nov_dbg_info    info;
     size_t          len;
 
-    if( ( DbgInfoLen != 0 )
+    if( ( st.DbgInfoLen != 0 )
       && ( (FmtData.u.nov.flags & DO_NOV_REF_ONLY) == 0
       || (sym->info & SYM_REFERENCED) ) ) {
-        DbgInfoCount++;
+        st.DbgInfoCount++;
         if( sym->addr.seg == DATA_SEGMENT ) {
             info.type = DBG_DATA;
         } else {
             info.type = DBG_CODE;
         }
         info.offset = sym->addr.off;
-        len = strlen( sym->name.u.ptr );
+        len = std::strlen( sym->name.u.ptr );
         if( len > 255 )
             len = 255;
-        info.namelen = (unsigned char)len;
-        PutInfo( CurrDbgLoc, &info, sizeof( nov_dbg_info ) );
-        CurrDbgLoc += sizeof( nov_dbg_info );
-        PutInfo( CurrDbgLoc, sym->name.u.ptr, info.namelen );
-        CurrDbgLoc += info.namelen;
+        info.namelen = static_cast<unsigned char>( len );
+        PutInfo( st.CurrDbgLoc, &info, sizeof( nov_dbg_info ) );
+        st.CurrDbgLoc += sizeof( nov_dbg_info );
+        PutInfo( st.CurrDbgLoc, sym->name.u.ptr, info.namelen );
+        st.CurrDbgLoc += info.namelen;
     }
 }
 
@@ -261,16 +285,17 @@ static unsigned_32 WriteNovDBI( fixed_header *header )
     unsigned_32     count;
     unsigned_32     wrote;
     nov_dbg_info    info;
+    NovState        &st = state();
 
-    if( DbgInfoLen > 0 ) {
-        WriteInfoLoad( NovDbgInfo, CurrDbgLoc - NovDbgInfo );
-        header->numberOfDebugRecords = DbgInfoCount;
-        return( CurrDbgLoc - NovDbgInfo );
+    if( st.DbgInfoLen > 0 ) {
+        WriteInfoLoad( st.NovDbgInfo, st.CurrDbgLoc - st.NovDbgInfo );
+        header->numberOfDebugRecords = st.DbgInfoCount;
+        return( st.CurrDbgLoc - st.NovDbgInfo );
     } else if( FmtData.u.nov.flags & DO_NOV_EXPORTS ) {
         count = wrote = 0;
-        for( export_ = FmtData.u.nov.exp.export_; export_ != NULL; export_ = export_->next ) {
+        for( export_ = FmtData.u.nov.exp.export_; export_ != nullptr; export_ = export_->next ) {
             sym = SymOp( ST_FIND, export_->name.u.ptr, export_->len );
-            if( ( sym != NULL )
+            if( ( sym != nullptr )
               && !IS_SYM_IMPORTED( sym ) ) {
                 if( sym->addr.seg == DATA_SEGMENT ) {
                     info.type = DBG_DATA;
@@ -295,17 +320,17 @@ static unsigned_32 WriteMessages( extended_nlm_header *header )
 /* write out the messages file */
 {
     f_handle    handle;
-    unsigned_32 buf[2];
+    std::array<unsigned_32, 2>  buf;
 
     header->messageFileLength = 0;
-    if( FmtData.u.nov.messages != NULL ) {
+    if( FmtData.u.nov.messages != nullptr ) {
         handle = QOpenR( FmtData.u.nov.messages );
         QRead( handle, TokBuff, MSG_FILE_SIGNATURE_LENGTH, FmtData.u.nov.messages );
-        if( memcmp( TokBuff, MSG_FILE_SIGNATURE, MSG_FILE_SIGNATURE_LENGTH ) != 0 ) {
+        if( std::memcmp( TokBuff, MSG_FILE_SIGNATURE, MSG_FILE_SIGNATURE_LENGTH ) != 0 ) {
             LnkMsg( WRN+MSG_INV_MESSAGE_FILE, "s", FmtData.u.nov.messages );
         } else {
             QSeek( handle, LANGUAGE_ID_OFFSET, FmtData.u.nov.messages );
-            QRead( handle, buf, 2 * sizeof( unsigned_32 ), FmtData.u.nov.messages );
+            QRead( handle, buf.data(), sizeof( buf ), FmtData.u.nov.messages );
             header->languageID = buf[0];
             header->messageCount = buf[1];
             QSeek( handle, 0, FmtData.u.nov.messages );
@@ -324,13 +349,13 @@ static unsigned_32 WriteSharedNLM( extended_nlm_header *header, unsigned_32 file
     unsigned_32         size;
 
     size = 0;
-    if( FmtData.u.nov.sharednlm != NULL ) {
+    if( FmtData.u.nov.sharednlm != nullptr ) {
         handle = QOpenR( FmtData.u.nov.sharednlm );
         QRead( handle, TokBuff, sizeof( fixed_header ), FmtData.u.nov.sharednlm );
-        if( memcmp( TokBuff, NLM_SIGNATURE, NLM_SIGNATURE_LENGTH ) != 0 ) {
+        if( std::memcmp( TokBuff, NLM_SIGNATURE, NLM_SIGNATURE_LENGTH ) != 0 ) {
             LnkMsg( WRN+MSG_INV_SHARED_NLM_FILE, "s", FmtData.u.nov.sharednlm );
         } else {
-            sharehdr = (fixed_header *)TokBuff;
+            sharehdr = reinterpret_cast<fixed_header *>( TokBuff );
             header->sharedCodeOffset = sharehdr->codeImageOffset + file_size;
             header->sharedCodeLength = sharehdr->codeImageSize;
             header->sharedDataOffset = sharehdr->dataImageOffset + file_size;
@@ -365,10 +390,10 @@ static void GetProcOffsets( fixed_header *header )
     const char  *name;
 
     header->checkUnloadProcedureOffset = 0;
-    if( FmtData.u.nov.checkfn != NULL ) {
+    if( FmtData.u.nov.checkfn != nullptr ) {
         sym = FindISymbol( FmtData.u.nov.checkfn );
-        if( sym == NULL ) {
-            LnkMsg( WRN+MSG_CHECK_NOT_FOUND, NULL );
+        if( sym == nullptr ) {
+            LnkMsg( WRN+MSG_CHECK_NOT_FOUND, nullptr );
         } else {
             header->checkUnloadProcedureOffset = sym->addr.off;
         }
@@ -379,20 +404,20 @@ static void GetProcOffsets( fixed_header *header )
         name = DEFAULT_PRELUDE_FN_CLIB;
     }
     sym = FindISymbol( name );
-    if( ( sym == NULL )
+    if( ( sym == nullptr )
       || (sym->info & SYM_DEFINED) == 0 ) {
-        LnkMsg( ERR + MSG_START_PROC_NOT_FOUND, NULL );
+        LnkMsg( ERR + MSG_START_PROC_NOT_FOUND, nullptr );
     } else {
         header->codeStartOffset = sym->addr.off;
     }
-    if( FmtData.u.nov.exitfn != NULL ) {
+    if( FmtData.u.nov.exitfn != nullptr ) {
         name = FmtData.u.nov.exitfn;
     } else {
         name = DEFAULT_EXIT_FN_CLIB;
     }
     sym = FindISymbol( name );
-    if( sym == NULL ) {
-        LnkMsg( ERR + MSG_EXIT_PROC_NOT_FOUND, NULL );
+    if( sym == nullptr ) {
+        LnkMsg( ERR + MSG_EXIT_PROC_NOT_FOUND, nullptr );
     } else {
         header->exitProcedureOffset = sym->addr.off;
     }
@@ -409,7 +434,7 @@ static unsigned_32 WriteNovImage( unsigned_32 file_pos, bool docode )
 
     /* write groups.*/
     fnode = Root->outfile;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->addr.seg == CODE_SEGMENT ) {
             iscode = true;
         } else {
@@ -455,8 +480,8 @@ static void NovNameWrite( const char *name )
 /******************************************/
 // write a name to the loadfile in the typical novell fashion
 {
-    if( name != NULL ) {
-        WriteLoadU8Name( name, strlen( name ), false );
+    if( name != nullptr ) {
+        WriteLoadU8Name( name, std::strlen( name ), false );
     } else {
         WriteLoadU8( 0 );
     }
@@ -477,14 +502,14 @@ void FiniNovellLoadFile( void )
     const char          *src;
     size_t              len;
     size_t              len1;
-    struct tm           *currtime;
-    time_t              thetime;
+    const std::tm       *currtime;
+    std::time_t         thetime;
     const char          *pPeriod;
-    char                module_name[NOV_MAX_MODNAME_LEN + 1];
+    std::array<char, NOV_MAX_MODNAME_LEN + 1>   module_name;
     bool                name_trunc;
     const char          *desc;
 
-    memset( &nov_header, 0, sizeof( nov_header ) );
+    nov_header = fixed_header{};
     /*
      * get module name (output file base name without the path)
      */
@@ -501,10 +526,10 @@ void FiniNovellLoadFile( void )
     len = 0;
     src = startname;
     while( len < len1 ) {
-        module_name[len++] = toupper( *(unsigned char *)src++ );
+        module_name[len++] = static_cast<char>( std::toupper( static_cast<unsigned char>( *src++ ) ) );
     }
     if( pPeriod[0] == '.' ) {
-        len1 = strlen( pPeriod );
+        len1 = std::strlen( pPeriod );
         if( len1 > NOV_MAX_EXT_LEN + 1 ) {   /* +1 include period */
             len1 = NOV_MAX_EXT_LEN + 1;
             name_trunc = true;
@@ -512,19 +537,19 @@ void FiniNovellLoadFile( void )
         len1 += len;
         src = pPeriod;
         while( len < len1 ) {
-            module_name[len++] = toupper( *(unsigned char *)src++ );
+            module_name[len++] = static_cast<char>( std::toupper( static_cast<unsigned char>( *src++ ) ) );
         }
     }
     module_name[len] = '\0';
     if( name_trunc ) {
-        LnkMsg( WRN+MSG_INTERNAL_MOD_NAME_DIFF_FROM_FILE, "s", module_name );
+        LnkMsg( WRN+MSG_INTERNAL_MOD_NAME_DIFF_FROM_FILE, "s", module_name.data() );
     }
     /* setup description */
-    if( FmtData.description == NULL ) {
-        desc = module_name;
+    if( FmtData.description == nullptr ) {
+        desc = module_name.data();
         nov_header.descriptionLength = len;
     } else {
-        nov_header.descriptionLength = strlen( FmtData.description );
+        nov_header.descriptionLength = std::strlen( FmtData.description );
         if( nov_header.descriptionLength > MAX_DESCRIPTION_LENGTH ) {
             nov_header.descriptionLength = MAX_DESCRIPTION_LENGTH;
             FmtData.description[MAX_DESCRIPTION_LENGTH] = '\0';
@@ -536,11 +561,11 @@ void FiniNovellLoadFile( void )
     file_size = nov_header.descriptionLength + sizeof( fixed_header )
                 + sizeof( extended_nlm_header ) + 2 * sizeof( unsigned_32 )
                 + NOV_MAX_MODNAME_LEN;
-    if( FmtData.u.nov.screenname != NULL ) {
-        file_size += strlen( FmtData.u.nov.screenname );
+    if( FmtData.u.nov.screenname != nullptr ) {
+        file_size += std::strlen( FmtData.u.nov.screenname );
     }
-    if( FmtData.u.nov.threadname != NULL ) {
-        file_size += strlen( FmtData.u.nov.threadname );
+    if( FmtData.u.nov.threadname != nullptr ) {
+        file_size += std::strlen( FmtData.u.nov.threadname );
     } else {
         file_size += len;
     }
@@ -550,8 +575,8 @@ void FiniNovellLoadFile( void )
             file_size += sizeof( fixed_hdr_2 );
         }
     }
-    if( FmtData.u.nov.copyright != NULL ) {
-        file_size += sizeof( fixed_hdr_3 ) + strlen( FmtData.u.nov.copyright );
+    if( FmtData.u.nov.copyright != nullptr ) {
+        file_size += sizeof( fixed_hdr_3 ) + std::strlen( FmtData.u.nov.copyright );
     }
     SeekLoad( file_size );
     nov_header.codeImageOffset = file_size;
@@ -575,8 +600,8 @@ void FiniNovellLoadFile( void )
     temp = AppendToLoadFile( FmtData.u.nov.customdata );
     nov_header.customDataSize = temp;
     file_size += temp;
-    memset( &ext_header, 0, sizeof( ext_header ) );
-    memcpy( ext_header.stamp, EXTENDED_NLM_SIGNATURE, EXTENDED_NLM_SIGNATURE_LENGTH );
+    ext_header = extended_nlm_header{};
+    std::memcpy( ext_header.stamp, EXTENDED_NLM_SIGNATURE, EXTENDED_NLM_SIGNATURE_LENGTH );
     ext_header.messageFileOffset = file_size;
     file_size += WriteMessages( &ext_header );
     ext_header.helpFileOffset = file_size;
@@ -591,10 +616,10 @@ void FiniNovellLoadFile( void )
     nov_header.debugInfoOffset = file_size;
     file_size += WriteNovDBI( &nov_header );
     DBIWrite();
-    memcpy( nov_header.signature, NLM_SIGNATURE, NLM_SIGNATURE_LENGTH );
+    std::memcpy( nov_header.signature, NLM_SIGNATURE, NLM_SIGNATURE_LENGTH );
     nov_header.version = NLM_VERSION;
-    nov_header.moduleName[0] = (char)len;
-    strncpy( nov_header.moduleName + 1, module_name, len );
+    nov_header.moduleName[0] = static_cast<char>( len );
+    std::copy_n( module_name.begin(), len, nov_header.moduleName + 1 );
     nov_header.uninitializedDataSize = 0; // MemorySize() - image_size;
     GetProcOffsets( &nov_header );
     nov_header.moduleType = FmtData.u.nov.moduletype;
@@ -604,30 +629,30 @@ void FiniNovellLoadFile( void )
     WriteLoad( desc, nov_header.descriptionLength + 1 );
     WriteLoadU32( StackSize );
     WriteLoadU32( 0 );          // reserved.
-    WriteLoad( DUMMY_THREAD_NAME, OLD_THREAD_NAME_LENGTH );
+    WriteLoad( DUMMY_THREAD_NAME.data(), OLD_THREAD_NAME_LENGTH );
     NovNameWrite( FmtData.u.nov.screenname );
-    if( FmtData.u.nov.threadname != NULL ) {
+    if( FmtData.u.nov.threadname != nullptr ) {
         NovNameWrite( FmtData.u.nov.threadname );
     } else {
-        NovNameWrite( module_name );      // use module name as a default
+        NovNameWrite( module_name.data() );      // use module name as a default
     }
     if( FmtData.ver_specified ) {
         if( ( FmtData.major != 0 )
           || ( FmtData.minor != 0 ) ) {
-            memcpy( second_header.versionSignature, VERSION_SIGNATURE, VERSION_SIGNATURE_LENGTH );
+            std::memcpy( second_header.versionSignature, VERSION_SIGNATURE, VERSION_SIGNATURE_LENGTH );
             second_header.majorVersion = FmtData.major;
             second_header.minorVersion = FmtData.minor;
             second_header.revision = FmtData.revision;
-            thetime = time( NULL );
-            currtime = localtime( &thetime );
+            thetime = std::time( nullptr );
+            currtime = std::localtime( &thetime );
             second_header.year = currtime->tm_year + 1900;
             second_header.month = currtime->tm_mon + 1;
             second_header.day = currtime->tm_mday;
             WriteLoad( &second_header, sizeof( second_header ) );
         }
     }
-    if( FmtData.u.nov.copyright != NULL ) {
-        memcpy( third_header.copyrightSignature, COPYRIGHT_SIGNATURE, COPYRIGHT_SIGNATURE_LENGTH);
+    if( FmtData.u.nov.copyright != nullptr ) {
+        std::memcpy( third_header.copyrightSignature, COPYRIGHT_SIGNATURE, COPYRIGHT_SIGNATURE_LENGTH);
         WriteLoad( &third_header, sizeof( third_header ) );
         NovNameWrite( FmtData.u.nov.copyright );
     }
@@ -652,14 +677,14 @@ void AddNovImpReloc( symbol *sym, unsigned_32 offset, bool isrelative, bool isda
     }
     nov_imp = sym->p.import_nov;
     if( nov_imp == DUMMY_IMPORT_PTR ) {
-        nov_imp = (nov_import *)(MemAllocSafe( sizeof( nov_import ) ));
+        nov_imp = static_cast<nov_import *>( MemAllocSafe( sizeof( nov_import ) ) );
         sym->p.import_nov = nov_imp;
         nov_imp->contents = 0;
         nov_imp->u.r.relocs[nov_imp->contents++] = offset;
     } else if( nov_imp->contents < MAX_IMP_INTERNAL ) {
         if( nov_imp->contents == 1 ) {
-            tmp = (nov_import *)(MemAllocSafe( ( MAX_IMP_INTERNAL - 1 ) * sizeof( unsigned_32 ) + sizeof( nov_import ) ));
-            memcpy( tmp, nov_imp, sizeof( nov_import ) );
+            tmp = static_cast<nov_import *>( MemAllocSafe( ( MAX_IMP_INTERNAL - 1 ) * sizeof( unsigned_32 ) + sizeof( nov_import ) ) );
+            std::memcpy( tmp, nov_imp, sizeof( nov_import ) );
             MemFree( nov_imp );
             nov_imp = tmp;
             sym->p.import_nov = nov_imp;
@@ -676,9 +701,9 @@ void AddNovImpReloc( symbol *sym, unsigned_32 offset, bool isrelative, bool isda
         vblock = nov_imp->u.v.num_relocs / IMP_NUM_VIRT;
         voff = nov_imp->u.v.num_relocs % IMP_NUM_VIRT;
         if( voff == 0 ) {
-            if( vblock >= (unsigned)( nov_imp->contents - MAX_IMP_INTERNAL ) * MAX_IMP_VIRT ) {
-                tmp = (nov_import *)(MemAllocSafe( sizeof( nov_import ) - sizeof( unsigned_32 ) + vblock * sizeof( unsigned_32 ) * 2 ));
-                memcpy( tmp, nov_imp, sizeof( nov_import ) - sizeof( unsigned_32 ) + vblock * sizeof( unsigned_32 ) );
+            if( vblock >= static_cast<unsigned>( nov_imp->contents - MAX_IMP_INTERNAL ) * MAX_IMP_VIRT ) {
+                tmp = static_cast<nov_import *>( MemAllocSafe( sizeof( nov_import ) - sizeof( unsigned_32 ) + vblock * sizeof( unsigned_32 ) * 2 ) );
+                std::memcpy( tmp, nov_imp, sizeof( nov_import ) - sizeof( unsigned_32 ) + vblock * sizeof( unsigned_32 ) );
                 MemFree( nov_imp );
                 nov_imp = tmp;
                 nov_imp->contents++;
@@ -698,14 +723,14 @@ void FindExportedSyms( void )
     symbol          *sym;
     debug_info      *dinfo;
 
-    dinfo = (debug_info *)(CurrSect->dbg_info);
+    dinfo = static_cast<debug_info *>( CurrSect->dbg_info );
     if( (FmtData.u.nov.flags & DO_WATCOM_EXPORTS)
-      && ( dinfo != NULL ) ) {
-        for( export_ = FmtData.u.nov.exp.export_; export_ != NULL; export_ = export_->next ) {
+      && ( dinfo != nullptr ) ) {
+        for( export_ = FmtData.u.nov.exp.export_; export_ != nullptr; export_ = export_->next ) {
             sym = SymOp( ST_FIND, export_->name.u.ptr, export_->len );
-            if( ( sym != NULL )
+            if( ( sym != nullptr )
               && !IS_SYM_IMPORTED( sym ) ) {
-                dinfo->global.curr.u.vm_offs += sizeof( v3_gbl_info ) + strlen( sym->name.u.ptr );
+                dinfo->global.curr.u.vm_offs += sizeof( v3_gbl_info ) + std::strlen( sym->name.u.ptr );
             }
         }
     }

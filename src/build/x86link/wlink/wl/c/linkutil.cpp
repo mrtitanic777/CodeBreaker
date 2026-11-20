@@ -35,8 +35,11 @@
 #include <string.h>
 #include <setjmp.h>
 #include <sys/types.h>
+#include <array>
+#include <cstddef>
+#include <string>
+#include <string_view>
 #include "linkstd.h"
-#include "walloca.h"
 #include "pcobj.h"
 #include "newmem.h"
 #include "fileio.h"
@@ -49,45 +52,57 @@
 #include "objio.h"
 #include "mapio.h"
 #include "pathlist.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
 
-typedef void ring_walk_fn( void *);
+namespace {
 
-typedef struct {
-    mods_walk_fn   *cbfn;
-} mods_walk_data;
+/* what a walk over the sections hands to its per-section callback */
+struct mods_walk_data {
+    mods_walk_fn    *cbfn;
+};
 
-typedef struct {
+struct class_walk_data {
     class_walk_fn   *cbfn;
-} class_walk_data;
+};
+
+/* what the file keeps between its calls in one run */
+struct LinkUtilState {
+    seg_leader      *find_seg = nullptr;        /* FindSegment's place: the segment... */
+    class_entry     *find_class = nullptr;      /* ...and its class */
+    jmp_buf         *spawn_stack = nullptr;     /* Spawn's innermost jump target */
+};
+
+LinkUtilState &State()
+{
+    return cb_wlink::RunState::part<LinkUtilState>();
+}
 
 /* Default File Extension array, see ldefext.h */
 
-static const char       *DefExt[] = {
-    #define pick(enum,text) text,
+constexpr std::string_view DefExt[] = {
+    #define pick(enum,text) std::string_view( text ),
     #include "ldefext.h"
     #undef pick
 };
 
-static unsigned char    DefExtLen[] = {
-    #define pick(enum,text) sizeof( text ) - 1,
-    #include "ldefext.h"
-    #undef pick
-};
+constexpr std::size_t MAXDEPTH = sizeof( std::size_t ) * 8;
+
+} // namespace
 
 void WriteNulls( f_handle file, size_t len, const char *name )
 /************************************************************/
 /* copy nulls for uninitialized data */
 {
-    static unsigned NullArray[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+    static const std::array<unsigned, 16> NullArray{};
 
     for( ; len > sizeof( NullArray ); len -= sizeof( NullArray ) ) {
-        QWrite( file, NullArray, sizeof( NullArray ), name );
+        QWrite( file, NullArray.data(), sizeof( NullArray ), name );
     }
     if( len > 0 ) {
-        QWrite( file, NullArray, len, name );
+        QWrite( file, NullArray.data(), len, name );
     }
 }
 
@@ -95,7 +110,7 @@ void CheckErr( void )
 /**************************/
 {
     if( LinkState & ( LS_LINK_ERROR | LS_STOP_WORKING ) ) {
-        if( MapFile != NULL ) {
+        if( MapFile != nullptr ) {
             WriteMapLibsUsed();
         }
         Suicide();
@@ -120,29 +135,24 @@ bool TestBit( byte *array, unsigned num )
 /***********************************************/
 /* return true if the specified bit is on */
 {
-    byte        mask;
+    const byte  mask = static_cast<byte>( 1 << (num % 8) );
 
-    mask = 1 << (num % 8);
-    num /= 8;
-    return( (*( array + num ) & mask) != 0 );
+    return( (array[num / 8] & mask) != 0 );
 }
 
 void ClearBit( byte *array, unsigned num )
 /************************************************/
 /* make sure a bit is turned off */
 {
-    byte        mask;
+    const byte  mask = static_cast<byte>( 1 << (num % 8) );
 
-    mask = 1 << (num % 8);
-    num /= 8;
-    array += num;
-    *array &= ~mask;
+    array[num / 8] &= ~mask;
 }
 
 static void WalkModsList( mod_entry *list, mods_walk_fn *cbfn )
 /*************************************************************/
 {
-    for( ; list != NULL; list = list->u.next ) {
+    for( ; list != nullptr; list = list->u.next ) {
         cbfn( list );
     }
 }
@@ -151,7 +161,7 @@ static void WalkSectModsList( section *sect, void *mods_walk_cb )
 /***************************************************************/
 {
     CurrSect = sect;
-    WalkModsList( sect->mods, ((mods_walk_data *)mods_walk_cb)->cbfn );
+    WalkModsList( sect->mods, static_cast<mods_walk_data *>( mods_walk_cb )->cbfn );
 }
 
 void WalkAllSects( void (*rtn)( section * ) )
@@ -179,9 +189,8 @@ void ParmWalkAllSects( void (*rtn)( section *, void * ), void *parm )
 void WalkMods( mods_walk_fn *cbfn )
 /*********************************/
 {
-    mods_walk_data      mods_walk_cb;
+    mods_walk_data      mods_walk_cb{ cbfn };
 
-    mods_walk_cb.cbfn = cbfn;
     ParmWalkAllSects( WalkSectModsList, &mods_walk_cb );
     CurrSect = Root;
     WalkModsList( LibModules, cbfn );
@@ -190,16 +199,15 @@ void WalkMods( mods_walk_fn *cbfn )
 static void WalkClass( class_entry *class_, class_walk_fn *cbfn )
 /**************************************************************/
 {
-    RingWalk( class_->segs, (ring_walk_fn *)cbfn );
+    /* the ring hands each element over as a void *; the callback takes it as a seg_leader * */
+    RingWalk( class_->segs, reinterpret_cast<ringwalk_fn *>( cbfn ) );
 }
 
 void SectWalkClass( section *sect, class_walk_fn *cbfn )
 /******************************************************/
 {
-    class_entry         *class_;
-
     CurrSect = sect;
-    for( class_ = sect->classes; class_ != NULL; class_ = class_->next ) {
+    for( class_entry *class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         WalkClass( class_, cbfn );
     }
 }
@@ -207,47 +215,43 @@ void SectWalkClass( section *sect, class_walk_fn *cbfn )
 static void _SectWalkClass( section *sect, void *class_walk_cb )
 /**************************************************************/
 {
-    class_entry     *class_;
-
     CurrSect = sect;
-    for( class_ = sect->classes; class_ != NULL; class_ = class_->next ) {
-        WalkClass( class_, ((class_walk_data *)class_walk_cb)->cbfn );
+    for( class_entry *class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
+        WalkClass( class_, static_cast<class_walk_data *>( class_walk_cb )->cbfn );
     }
 }
 
 void WalkLeaders( class_walk_fn *cbfn )
 /*************************************/
 {
-    class_walk_data     class_walk_cb;
+    class_walk_data     class_walk_cb{ cbfn };
 
-    class_walk_cb.cbfn = cbfn;
     ParmWalkAllSects( _SectWalkClass, &class_walk_cb );
 }
 
 seg_leader *FindSegment( section *sect, const char *name )
 /********************************************************/
-/* NOTE: this doesn't work for overlays!
+/* NOTE: this does not work for overlays!
  *
  * sect != NULL then it works as FindFirstSegment
  * sect == NULL then it works as FindNextSegment
  *
  */
 {
-    static seg_leader   *seg = NULL;
-    static class_entry  *class_ = NULL;
+    LinkUtilState   &st = State();
 
-    if( sect != NULL ) {
-        class_ = sect->classes;
-        seg = NULL;
+    if( sect != nullptr ) {
+        st.find_class = sect->classes;
+        st.find_seg = nullptr;
     }
-    for( ; class_ != NULL; class_ = class_->next ) {
-        while( (seg = (seg_leader *)(RingStep( class_->segs, seg ))) != NULL ) {
-            if( stricmp( seg->segname.u.ptr, name ) == 0 ) {
-                return( seg );
+    for( ; st.find_class != nullptr; st.find_class = st.find_class->next ) {
+        while( (st.find_seg = static_cast<seg_leader *>( RingStep( st.find_class->segs, st.find_seg ) )) != nullptr ) {
+            if( stricmp( st.find_seg->segname.u.ptr, name ) == 0 ) {
+                return( st.find_seg );
             }
         }
     }
-    return( seg );
+    return( st.find_seg );
 }
 
 void AppendList( void **in_head, void *newnode )
@@ -257,21 +261,20 @@ void AppendList( void **in_head, void *newnode )
 {
     node    **owner;
 
-    for( owner = (node **)in_head; *owner != NULL; owner = (node **)&(*owner)->next )
+    for( owner = reinterpret_cast<node **>( in_head ); *owner != nullptr; owner = reinterpret_cast<node **>( &(*owner)->next ) )
         /* nothing */;
-    ((node *)newnode)->next = NULL;
-    *owner = (node *)(newnode);
+    static_cast<node *>( newnode )->next = nullptr;
+    *owner = static_cast<node *>( newnode );
 }
 
 void FreeList( void *_curr )
 /**************************/
 /* Free a list of nodes. */
 {
-    node        *curr;
     node        *next;
 
-    for( curr = (node *)(_curr); curr != NULL; curr = next ) {
-        next = (node *)(curr->next);
+    for( node *curr = static_cast<node *>( _curr ); curr != nullptr; curr = next ) {
+        next = static_cast<node *>( curr->next );
         MemFree( curr );
     }
 }
@@ -285,7 +288,7 @@ obj_name_list *AddNameTable( const char *name, size_t len, bool is_mod, obj_name
 
     index = 1;
     off = 1;
-    for( imp = *owner; imp != NULL; imp = imp->next ) {
+    for( imp = *owner; imp != nullptr; imp = imp->next ) {
         if( len == imp->len
           && memcmp( imp->name.u.ptr, name, len ) == 0 )
             break;
@@ -293,9 +296,9 @@ obj_name_list *AddNameTable( const char *name, size_t len, bool is_mod, obj_name
         ++index;
         owner = &imp->next;
     }
-    if( imp == NULL ) {
-        imp = (obj_name_list *)(_PermAlloc( sizeof( obj_name_list ) ));
-        imp->next = NULL;
+    if( imp == nullptr ) {
+        imp = static_cast<obj_name_list *>( _PermAlloc( sizeof( obj_name_list ) ) );
+        imp->next = nullptr;
         imp->len = len;
         imp->name.u.ptr = AddSymbolStringTable( &PermStrings, name, len );
         imp->num = is_mod ? index : off;
@@ -318,7 +321,7 @@ unsigned_16 log2_16( unsigned_16 value )
         if( value & 0x8000 ) {  // done if high bit on
             break;
         }
-        value <<= 1;            // shift left and decrease possible log.
+        value = static_cast<unsigned_16>( value << 1 );     // shift left and decrease possible log.
         log--;
     }
     return( log );
@@ -352,32 +355,29 @@ const char *GetBaseName( const char *namestart, size_t len, size_t *lenp )
 {
     const char  *dotpoint;
     const char  *string;
-    char        ch;
 
     if( len == 0 )
         len = strlen( namestart );
     // ignore path & extension in module name.
-    dotpoint = NULL;
+    dotpoint = nullptr;
     for( string = namestart; len-- > 0; string++ ) {
-        ch = *string;
+        const char ch = *string;
         if( ch == '.' ) {
             dotpoint = string;
             continue;
         }
         if( IS_PATH_SEP( ch ) ) {
             namestart = string + 1;
-            dotpoint = NULL;
+            dotpoint = nullptr;
         }
     }
-    if( dotpoint != NULL ) {
+    if( dotpoint != nullptr ) {
         *lenp = dotpoint - namestart;
     } else {
         *lenp = string - namestart;
     }
     return( namestart );
 }
-
-#define MAXDEPTH        ( sizeof( size_t ) * 8 )
 
 void VMemQSort( virt_mem base, size_t n, size_t width,
                         void (*swapfn)( virt_mem, virt_mem ),
@@ -394,8 +394,8 @@ void VMemQSort( virt_mem base, size_t n, size_t width,
     size_t          i;
     size_t          count;
     size_t          sp;
-    virt_mem        base_stack[MAXDEPTH];
-    size_t          n_stack[MAXDEPTH];
+    std::array<virt_mem, MAXDEPTH>  base_stack;
+    std::array<size_t, MAXDEPTH>    n_stack;
 
     sp = 0;
     for( ; ; ) {
@@ -434,10 +434,6 @@ void VMemQSort( virt_mem base, size_t n, size_t width,
                 if( count != 0 ) {  /* store pivot in right spot */
                     swapfn( base, p2 );
                 }
-#if 0
-                qsort( base, count, size, cmp );
-                qsort( p2 + size, n - count - 1, size, cmp );
-#endif
                 n = n - count - 1;          /* calc. size of right part */
 
                 /* The pivot is at p2. It is in its final position.
@@ -475,118 +471,106 @@ void VMemQSort( virt_mem base, size_t n, size_t width,
     }
 }
 
-static void *SpawnStack;
-
 int Spawn( void (*fn)( void ) )
 /*****************************/
 {
-    void    *save_env;
+    jmp_buf *save_env;
     jmp_buf env;
     int     status;
 
-    save_env = SpawnStack;
-    SpawnStack = env;
+    save_env = State().spawn_stack;
+    State().spawn_stack = &env;
     status = setjmp( env );
     if( status == 0 ) {
         (*fn)();
     }
-    SpawnStack = save_env;  /* unwind */
+    State().spawn_stack = save_env;  /* unwind */
     return( status );
 }
 
 void Suicide( void )
 /******************/
 {
-    if( SpawnStack != NULL ) {
-        longjmp( *(jmp_buf *)SpawnStack, 1 );
+    if( State().spawn_stack != nullptr ) {
+        longjmp( *State().spawn_stack, 1 );
     }
+}
+
+/* the directories a path list (an environment variable) names, as wlink keeps them: one allocation, the elements
+   separated by PATH_LIST_SEP; an empty list when the variable is not set or is empty */
+static char *CopyPathList( const char *path_list )
+{
+    char        *list;
+    char        *p;
+
+    if( path_list != nullptr
+      && *path_list != '\0' ) {
+        list = static_cast<char *>( MemAllocSafe( strlen( path_list ) + 1 ) );
+        p = list;
+        do {
+            if( p != list )
+                *p++ = PATH_LIST_SEP;
+            path_list = GetPathElement( path_list, nullptr, &p );
+        } while( *path_list != '\0' );
+        *p = '\0';
+    } else {
+        list = static_cast<char *>( MemAllocSafe( 1 ) );
+        *list = '\0';
+    }
+    return( list );
 }
 
 void InitEnvVars( void )
 /**********************/
 {
-    const char  *path_list;
-    size_t      len;
-    char        *p;
-
-    if( ExePath == NULL ) {
+    if( ExePath == nullptr ) {
 #if defined( __QNX__ )
-        path_list = "/usr/watcom";
+        const char  *path_list = "/usr/watcom";
 #else
-        path_list = GetEnvString( "PATH" );
+        const char  *path_list = GetEnvString( "PATH" );
 #endif
-        if( path_list != NULL
-          && *path_list != '\0' ) {
-            len = strlen( path_list );
-            ExePath = (char *)(MemAllocSafe( len + 1 ));
-            p = ExePath;
-            do {
-                if( p != ExePath )
-                    *p++ = PATH_LIST_SEP;
-                path_list = GetPathElement( path_list, NULL, &p );
-            } while( *path_list != '\0' );
-            *p = '\0';
-        } else {
-            ExePath = (char *)(MemAllocSafe( 1 ));
-            *ExePath = '\0';
-        }
+        ExePath = CopyPathList( path_list );
     }
-    if( LibPath == NULL ) {
-        path_list = GetEnvString( "LIB" );
-        if( path_list != NULL
-          && *path_list != '\0' ) {
-            len = strlen( path_list );
-            LibPath = (char *)(MemAllocSafe( len + 1 ));
-            p = LibPath;
-            do {
-                if( p != LibPath )
-                    *p++ = PATH_LIST_SEP;
-                path_list = GetPathElement( path_list, NULL, &p );
-            } while( *path_list != '\0' );
-            *p = '\0';
-        } else {
-            LibPath = (char *)(MemAllocSafe( 1 ));
-            *LibPath = '\0';
-        }
+    if( LibPath == nullptr ) {
+        LibPath = CopyPathList( GetEnvString( "LIB" ) );
     }
 }
 
 void FiniEnvVars( void )
 /**********************/
 {
-    if( ExePath != NULL ) {
+    if( ExePath != nullptr ) {
         MemFree( ExePath );
-        ExePath = NULL;
+        ExePath = nullptr;
     }
-    if( LibPath != NULL ) {
+    if( LibPath != nullptr ) {
         MemFree( LibPath );
-        LibPath = NULL;
+        LibPath = nullptr;
     }
 }
 
 f_handle FindPath( const char *name, char *fullname )
 /***************************************************/
 {
-    const char  *path_list;
-    f_handle    file;
-    char        fullpath[PATH_MAX];
+    const char                  *path_list;
+    f_handle                    file;
+    std::array<char, PATH_MAX>  fullpath;
 
-
-    strcpy( fullpath, name );
-    file = QObjOpen( fullpath );
+    strcpy( fullpath.data(), name );
+    file = QObjOpen( fullpath.data() );
     if( file == NIL_FHANDLE
-      && ExePath != NULL ) {
+      && ExePath != nullptr ) {
         for( path_list = ExePath; *path_list != '\0'; ) {
-            strcpy( MakePath( fullpath, &path_list ), name );
-            file = QObjOpen( fullpath );
+            strcpy( MakePath( fullpath.data(), &path_list ), name );
+            file = QObjOpen( fullpath.data() );
             if( file != NIL_FHANDLE ) {
                 break;
             }
         }
     }
     if( file != NIL_FHANDLE
-      && fullname != NULL ) {
-        strcpy( fullname, fullpath );
+      && fullname != nullptr ) {
+        strcpy( fullname, fullpath.data() );
     }
     return( file );
 }
@@ -596,7 +580,7 @@ group_entry *FindGroup( segment seg )
 {
     group_entry *group;
 
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->addr.seg == seg ) {
             break;
         }
@@ -610,7 +594,7 @@ offset FindLinearAddr( addr_type *addr )
     group_entry *group;
 
     group = FindGroup( addr->seg );
-    if( group != NULL ) {
+    if( group != nullptr ) {
         return( addr->off + ( group->linear - group->addr.off ) );
     }
     return( addr->off );
@@ -622,7 +606,7 @@ offset FindLinearAddr2( addr_type *addr )
     group_entry *group;
 
     group = FindGroup( addr->seg );
-    if( group != NULL ) {
+    if( group != nullptr ) {
         return( addr->off + group->linear + FmtData.base );
     }
     return( addr->off );
@@ -633,13 +617,13 @@ file_list *AllocNewFile( member_list *member )
 {
     file_list       *file;
 
-    file = (file_list *)(_PermAlloc( sizeof( file_list ) ));
-    file->next = NULL;
+    file = static_cast<file_list *>( _PermAlloc( sizeof( file_list ) ) );
+    file->next = nullptr;
     file->flags_dbi = DBIFlag;
-    file->flags_file = (file_flags)(0);
-    file->strtab = NULL;
+    file->flags_file = static_cast<file_flags>( 0 );
+    file->strtab = nullptr;
     file->u.member = member;
-    if( member != NULL ) {
+    if( member != nullptr ) {
         file->flags_file |= STAT_HAS_MEMBER;
     }
     return( file );
@@ -653,20 +637,18 @@ char *FileName( const char *buff, size_t len, file_defext etype, bool force )
     char        *ptr;
     size_t      cnt;
     size_t      namelen;
-    char        c;
     size_t      extlen;
 
     for( namptr = buff + len; namptr != buff; --namptr ) {
-        c = namptr[-1];
-        if( IS_PATH_SEP( c ) ) {
+        if( IS_PATH_SEP( namptr[-1] ) ) {
             break;
         }
     }
     namstart = namptr;
     cnt = len - ( namptr - buff );
     if( cnt == 0 ) {
-        DUPSTR_STACK( ptr, buff, len );
-        LnkMsg( FTL+LOC+LINE+MSG_INV_FILENAME, "s", ptr );
+        const std::string name( buff, len );
+        LnkMsg( FTL+LOC+LINE+MSG_INV_FILENAME, "s", name.c_str() );
     }
     namelen = cnt;
     namptr = buff + len - 1;
@@ -698,12 +680,14 @@ char *FileName( const char *buff, size_t len, file_defext etype, bool force )
         if( etype == E_NONE ) {
             ptr = MemToStringSafe( buff, len );
         } else {
-            extlen = DefExtLen[etype];
-            ptr = (char *)(MemAllocSafe( len + 1 + extlen + 1 ));
+            const std::string_view  ext = DefExt[etype];
+
+            extlen = ext.size();
+            ptr = static_cast<char *>( MemAllocSafe( len + 1 + extlen + 1 ) );
             memcpy( ptr, buff, len );
             if( extlen > 0 ) {
                 ptr[len++] = '.';
-                memcpy( ptr + len, DefExt[etype], extlen );
+                memcpy( ptr + len, ext.data(), extlen );
                 len += extlen;
             }
             ptr[len] = '\0';
@@ -715,7 +699,7 @@ char *FileName( const char *buff, size_t len, file_defext etype, bool force )
 static int stricmp_wrapper( const void *s1, const void *s2 )
 /**********************************************************/
 {
-    return( stricmp( (const char *)(s1), (const char *)(s2) ) );
+    return( stricmp( static_cast<const char *>( s1 ), static_cast<const char *>( s2 ) ) );
 }
 
 section *NewSection( void )
@@ -723,22 +707,22 @@ section *NewSection( void )
 {
     section             *sect;
 
-    sect = (section *)(MemAllocSafe( sizeof( section ) ));
-    sect->next = NULL;
-    sect->classes = NULL;
-    sect->orderlist = NULL;
-    sect->areas = NULL;
-    sect->files = NULL;
+    sect = static_cast<section *>( MemAllocSafe( sizeof( section ) ) );
+    sect->next = nullptr;
+    sect->classes = nullptr;
+    sect->orderlist = nullptr;
+    sect->areas = nullptr;
+    sect->files = nullptr;
     sect->modFilesHashed = CreateHTable( 256, StringiHashFunc, stricmp_wrapper, MemAllocSafe, MemFree );
-    sect->mods = NULL;
-    sect->reloclist = NULL;
+    sect->mods = nullptr;
+    sect->reloclist = nullptr;
     SET_ADDR_UNDEFINED( sect->sect_addr );
     sect->ovlref = 0;
-    sect->parent = NULL;
+    sect->parent = nullptr;
     sect->relocs = 0;
     sect->size = 0;
-    sect->outfile = NULL;
-    sect->u.dist_mods = NULL;
-    sect->dbg_info = NULL;
+    sect->outfile = nullptr;
+    sect->u.dist_mods = nullptr;
+    sect->dbg_info = nullptr;
     return( sect );
 }

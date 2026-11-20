@@ -30,13 +30,15 @@
 ****************************************************************************/
 
 
-#include <signal.h>
-#include <setjmp.h>
-#include <stdarg.h>
-#include <ctype.h>
-#include <string.h>
+#include <csignal>
+#include <csetjmp>
+#include <cstdarg>
+#include <cctype>
+#include <array>
+#include <cstring>
 #include "linkstd.h"
 #include "ideentry.h"
+#include "run_state.hpp"
 
 
 #ifdef DEVBUILD
@@ -46,36 +48,53 @@ bool            TrecHit = false;
 long unsigned   SpyWrite = -1;
 unsigned        Debug;
 
-static jmp_buf  lj;
-static int      segViolationCount;
+namespace {
+
+// what debug.cpp keeps for one run of the linker
+struct DebugState {
+    std::jmp_buf    lj;
+    int             segViolationCount = 0;
+    int             currBuff = 0;
+    std::array<std::array<char, 128>, 10>   buff{};
+};
+
+DebugState &dbgstate()
+{
+    return cb_wlink::RunState::part<DebugState>();
+}
+
+}
 
 static void RecordSegViolation( int sig_number )
 {
-    sig_number = sig_number;
-    segViolationCount++;
-    longjmp( lj, 1 );
+    DebugState  &s = dbgstate();
+
+    (void)sig_number;
+    s.segViolationCount++;
+    std::longjmp( s.lj, 1 );
 }
 
 bool CanReadWord( void *p )
 {
-    int     c = segViolationCount;
+    DebugState  &s = dbgstate();
+    int     c = s.segViolationCount;
     int     temp = 0;
     bool    retval;
 
-    signal( SIGSEGV, RecordSegViolation );
-    if( 0 == setjmp( lj ) ) {
-        temp = *(int *)p;   // try to access pointer
+    std::signal( SIGSEGV, RecordSegViolation );
+    if( 0 == setjmp( s.lj ) ) {
+        temp = *static_cast<int *>( p );   // try to access pointer
     } else {
     }
     if( temp != 0 ) {       // fool optimizer to keep temp around
-        *(int *)p = temp;
+        *static_cast<int *>( p ) = temp;
     }
-    if( segViolationCount != c ) {
+    if( s.segViolationCount != c ) {
         retval = false;
     } else {
         retval = true;
     }
-    signal( SIGSEGV, SIG_DFL );
+    std::signal( SIGSEGV, SIG_DFL );
     return( retval );
 }
 
@@ -126,16 +145,15 @@ static void TrecFailCondition( void )
 
 void Trec( const char *str, ... )
 {
-    enum { max=10 };
-    static int  currBuff;
-    static char buff[max][128];
+    constexpr int max = 10;
+    DebugState  &s = dbgstate();
     va_list     args;
 
     TrecCount++;
     va_start( args, str );
-    DoFmtStr( buff[currBuff], 128, str, args );
+    DoFmtStr( s.buff[s.currBuff].data(), 128, str, args );
     va_end( args );
-    currBuff = ( currBuff + 1 ) % max;
+    s.currBuff = ( s.currBuff + 1 ) % max;
 
     TrecFailCondition();
 
@@ -145,9 +163,9 @@ void Trec( const char *str, ... )
 
         FmtStr( buf, 100, "Trec break! Count=%d. Trace history:", TrecCount );
         WriteStdOutWithNL( buf );
-        for( i = currBuff, j = 0; j < max; j++, i = ( i + 1 ) % max ) {
-            if( buff[i] != NULL ) {
-                WriteStdOutWithNL( buff[i] );
+        for( i = s.currBuff, j = 0; j < max; j++, i = ( i + 1 ) % max ) {
+            if( s.buff[i].data() != nullptr ) {
+                WriteStdOutWithNL( s.buff[i].data() );
             }
         }
         LnkFatal( "trec sucess of failure" );
@@ -169,9 +187,10 @@ static void OneLineDumpByte( const unsigned char *p, int size )
 {
     int i;
     int len;
-    enum { max = 80 };
+    constexpr int max = 80;
     int ascii_offset = 60;
-    char buf[max + 1];
+    std::array<char, max + 1> bufa;
+    char *buf = bufa.data();
 
     len = FmtStr( buf, max, "%h ", p );
     for( i = 0; i < size; i++ ) {
@@ -197,7 +216,7 @@ static void OneLineDumpByte( const unsigned char *p, int size )
         if( len >= max - 2 ) {
             break;
         }
-        buf[len++] = isprint( ((unsigned char *)p)[i] ) ? p[i] : '.';
+        buf[len++] = std::isprint( p[i] ) ? p[i] : '.';
     }
     buf[len] = 0;
     WriteStdOutWithNL( buf );
@@ -224,15 +243,16 @@ static void OneLineDumpDWord( const unsigned_32 *p, int byte_size )
 
 void PrintMemDump( const void *p, unsigned long size, DbgDumpType type )
 {
-    const unsigned char *buf = p;
-    static struct {
-        void (*OneLineDump)(const void *, int);
+    const unsigned char *buf = static_cast<const unsigned char *>( p );
+    struct DumpKind {
+        void (*OneLineDump)( const void *, int );
         int max;
-    } MemDump[DUMP_MAX] = {
-        { (void(*)(const void *,int))OneLineDumpByte,  16 },   // DUMP_BYTE
-        { (void(*)(const void *,int))OneLineDumpByte,  16 },   // DUMP_WORD: NYI
-        { (void(*)(const void *,int))OneLineDumpDWord, 4 * 4 } // DUMP_DWORD
     };
+    static const std::array<DumpKind, DUMP_MAX> MemDump = {{
+        { reinterpret_cast<void(*)( const void *, int )>( OneLineDumpByte ),  16 },   // DUMP_BYTE
+        { reinterpret_cast<void(*)( const void *, int )>( OneLineDumpByte ),  16 },   // DUMP_WORD: NYI
+        { reinterpret_cast<void(*)( const void *, int )>( OneLineDumpDWord ), 4 * 4 } // DUMP_DWORD
+    }};
     int max = MemDump[type].max;
 
     for( ; size > max; size -= max ) {

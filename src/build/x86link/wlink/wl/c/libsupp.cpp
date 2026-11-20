@@ -59,7 +59,7 @@ static bool SearchAndProcLibFile( file_list *file, const char *name )
     if( !CacheOpen( file ) )
         return( false );
     lp = SearchLib( file, name );
-    if( lp == NULL ) {
+    if( lp == nullptr ) {
         CacheClose( file, 1 );
         return( false );
     }
@@ -72,7 +72,7 @@ static bool SearchAndProcLibFile( file_list *file, const char *name )
         DistribAddMod( lp, file->ovlref );
     } else {
 #endif
-        for( prev = &LibModules; *prev != NULL; prev = &(*prev)->u.next ) /*  find end of list */
+        for( prev = &LibModules; *prev != nullptr; prev = &(*prev)->u.next ) /*  find end of list */
             /* nothing */;
         *prev = lp;
 #ifdef _EXE
@@ -92,7 +92,7 @@ static bool SearchAndProcLibFile( file_list *file, const char *name )
     return( true );
 }
 
-#define PREFIX_LEN (sizeof( ImportSymPrefix ) - 1)
+static constexpr size_t PREFIX_LEN = sizeof( ImportSymPrefix ) - 1;
 
 bool LibFind( const char *name, bool old_sym )
 /*********************************************/
@@ -103,7 +103,7 @@ bool LibFind( const char *name, bool old_sym )
 
     DEBUG(( DBG_OLD, "LibFind( %s )", name ));
     isimpsym = (FmtData.type & MK_PE) && memcmp( name, ImportSymPrefix, PREFIX_LEN ) == 0;
-    for( file = ObjLibFiles; file != NULL; file = file->next ) {
+    for( file = ObjLibFiles; file != nullptr; file = file->next ) {
         if( file->infile->status & INSTAT_IOERR )
             continue;
         if( old_sym && (file->flags_file & STAT_OLD_LIB) )
@@ -146,7 +146,7 @@ file_list *AddObjLib( const char *name, lib_priority priority )
 
     DEBUG(( DBG_OLD, "Adding Object library name %s", name ));
     /* search for new library position in linked list */
-    for( owner = &ObjLibFiles; (file = *owner) != NULL; owner = &file->next ) {
+    for( owner = &ObjLibFiles; (file = *owner) != nullptr; owner = &file->next ) {
         if( file->priority < priority )
             break;
         /* end search if library already exists with same or a higher priority */
@@ -156,7 +156,7 @@ file_list *AddObjLib( const char *name, lib_priority priority )
     }
     new_owner = owner;
     /* search for library definition with a lower priority */
-    for( ; (file = *owner) != NULL; owner = &file->next ) {
+    for( ; (file = *owner) != nullptr; owner = &file->next ) {
         if( FNAMECMPSTR( file->infile->name.u.ptr, name ) == 0 ) {
             /* remove library entry from linked list */
             *owner = file->next;
@@ -164,8 +164,8 @@ file_list *AddObjLib( const char *name, lib_priority priority )
         }
     }
     /* if we need to add one */
-    if( file == NULL ) {
-        file = AllocNewFile( NULL );
+    if( file == nullptr ) {
+        file = AllocNewFile( nullptr );
         file->infile = AllocUniqueFileEntry( name, UsrLibPath );
         file->infile->status |= INSTAT_LIBRARY | INSTAT_OPEN_WARNING;
         LinkState |= LS_LIBRARIES_ADDED;

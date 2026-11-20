@@ -25,14 +25,13 @@
 *
 *  ========================================================================
 *
-* Description:  Memory management routines for linker.
+* Description:  Linker message output.
 *
 ****************************************************************************/
 
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #if defined( __WATCOMC__ )
     #include <malloc.h>     /* necessary for __(n/f)memneed */
 #endif
@@ -63,7 +62,7 @@ static void PrintLine( void *bogus, const char *buff, size_t len )
 {
     /* unused parameters */ (void)bogus; (void)len;
 
-    WriteStdOutWithNL( (void *)buff );
+    WriteStdOutWithNL( const_cast<char *>( buff ) );
 }
 
 static void PrintAllMem( void )
@@ -79,13 +78,7 @@ static void PrintAllMem( void )
 static bool CacheRelease( void )
 /******************************/
 {
-    bool   freed;
-
-    freed = DumpObjCache();
-    if( !freed ) {
-        freed = DiscardDicts();      /* .. discard dictionarys */
-    }
-    return( freed );
+    return( DumpObjCache() || DiscardDicts() );     /* .. discard dictionarys */
 }
 
 void LnkMemInit( void )
@@ -97,7 +90,7 @@ void LnkMemInit( void )
 #endif
 #ifdef TRMEM
     TrHdl = _trmem_open( malloc, free, realloc, strdup,
-            NULL, PrintLine, _TRMEM_DEF );
+            nullptr, PrintLine, _TRMEM_DEF );
 #endif
 }
 
@@ -113,8 +106,8 @@ void LnkMemFini( void )
 
 static void *check_nomem( void *ptr )
 {
-    if( ptr == NULL ) {
-        LnkMsg( FTL + MSG_NO_DYN_MEM, NULL );       // see note 1 below
+    if( ptr == nullptr ) {
+        LnkMsg( FTL + MSG_NO_DYN_MEM, nullptr );       // see note 1 below
     }
     return( ptr );
 }
@@ -133,7 +126,7 @@ static void *doAlloc( size_t size )
 #else
         ptr = malloc( size );
 #endif
-        if( ptr != NULL
+        if( ptr != nullptr
           || !FreeUpMemory( false ) ) {
             break;
         }
@@ -152,7 +145,7 @@ void *MemAlloc( size_t size )
 #else
     ptr = doAlloc( size );
 #endif
-    if( ptr != NULL )
+    if( ptr != nullptr )
         memset( ptr, 0, size );
     return( ptr );
 }
@@ -186,7 +179,7 @@ static char *doStrdup( const char *str )
 #else
         ptr = strdup( str );
 #endif
-        if( ptr != NULL
+        if( ptr != nullptr
           || !FreeUpMemory( false ) ) {
             break;
         }
@@ -199,9 +192,9 @@ char *MemStrdupSafe( const char *str )
 /************************************/
 {
 #ifdef TRMEM
-    return( check_nomem( doStrdup( str, _TRMEM_WHO( 3 ) ) ) );
+    return( static_cast<char *>( check_nomem( doStrdup( str, _TRMEM_WHO( 3 ) ) ) ) );
 #else
-    return(char *)(( check_nomem( doStrdup( str ) ) ));
+    return( static_cast<char *>( check_nomem( doStrdup( str ) ) ) );
 #endif
 }
 
@@ -225,7 +218,7 @@ static void *doRealloc( void *src, size_t size )
 #else
         ptr = realloc( src, size );
 #endif
-        if( ptr != NULL
+        if( ptr != nullptr
           || !FreeUpMemory( true ) ) {
             break;
         }
@@ -273,9 +266,9 @@ char *MemToStringSafe( const void *mem, size_t size )
     char            *ptr;
 
 #ifdef TRMEM
-    ptr = check_nomem( doAlloc( size + 1, _TRMEM_WHO( 1 ) ) );
+    ptr = static_cast<char *>( check_nomem( doAlloc( size + 1, _TRMEM_WHO( 1 ) ) ) );
 #else
-    ptr = (char *)(check_nomem( doAlloc( size + 1 ) ));
+    ptr = static_cast<char *>( check_nomem( doAlloc( size + 1 ) ) );
 #endif
     memcpy( ptr, mem, size );
     ptr[size] = '\0';

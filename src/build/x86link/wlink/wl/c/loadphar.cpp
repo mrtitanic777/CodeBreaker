@@ -29,7 +29,7 @@
 *
 ****************************************************************************/
 
-#include <string.h>
+#include <cstring>
 #include "linkstd.h"
 #include "exephar.h"
 #include "loadphar.h"
@@ -45,16 +45,36 @@
 
 #ifdef _PHARLAP
 
-#define HEAD_SIZE 0x180
-#define RTP_SIZE  0x080
+namespace {
 
-typedef enum {
-    DR_IS_CODE  = 0x1,
-    DR_IS_APP   = 0x2,
-    DR_IS_USER  = 0x4,
-    DR_BASE     = 0x8,
-    DR_TSS      = 0x10
-} desc_flags;
+constexpr unsigned  HEAD_SIZE = 0x180;
+constexpr unsigned  RTP_SIZE = 0x080;
+
+enum class DescFlags : unsigned {
+    none    = 0,
+    IS_CODE = 0x1,
+    IS_APP  = 0x2,
+    IS_USER = 0x4,
+    BASE    = 0x8,
+    TSS     = 0x10
+};
+
+constexpr DescFlags operator|( DescFlags a, DescFlags b )
+{
+    return static_cast<DescFlags>( static_cast<unsigned>( a ) | static_cast<unsigned>( b ) );
+}
+
+constexpr DescFlags &operator|=( DescFlags &a, DescFlags b )
+{
+    return a = a | b;
+}
+
+constexpr bool has( DescFlags flags, DescFlags f )
+{
+    return ( static_cast<unsigned>( flags ) & static_cast<unsigned>( f ) ) != 0;
+}
+
+}
 
 
 static unsigned_32 WritePharData( unsigned file_pos )
@@ -71,7 +91,7 @@ static unsigned_32 WritePharData( unsigned file_pos )
     fnode->file_loc = file_pos;
     Root->u.file_loc = file_pos;
     Root->sect_addr = Groups->addr;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         repos = WriteGroup( group );
         if( repos ) {
             SeekLoad( fnode->file_loc );
@@ -143,31 +163,31 @@ static void WritePharSimple( unsigned_32 start )
 }
 
 static void WriteDescriptor( unsigned_32 base, unsigned_32 limit,
-                             desc_flags flags )
+                             DescFlags flags )
 /****************************************************************/
 {
     descriptor  desc;
 
     SET_DESC_BASE( desc, base );
     desc.u1.val = 0;
-    if( flags & DR_BASE ) {
+    if( has( flags, DescFlags::BASE ) ) {
         desc.u1.flags_data.writeable = 1;
         desc.u1.flags.present = 1;
     }
-    if( flags & DR_TSS ) {
+    if( has( flags, DescFlags::TSS ) ) {
         desc.u1.flags_sys.type = 1;
 //        desc.u1.flags_sys.gate = 0;
         desc.u1.flags_sys.use32 = 1;
         desc.u1.flags.present = 1;
     }
-    if( flags & DR_IS_CODE ) {
+    if( has( flags, DescFlags::IS_CODE ) ) {
         desc.u1.flags.execute = 1;
     }
-    if( flags & DR_IS_APP ) {
+    if( has( flags, DescFlags::IS_APP ) ) {
         desc.u1.flags.nonsystem = 1;
     }
     desc.u2.val = 0;
-    if( flags & DR_IS_USER ) {
+    if( has( flags, DescFlags::IS_USER ) ) {
         desc.u2.flags.use32 = 1;
     }
     if( limit > 0 )
@@ -187,11 +207,11 @@ static unsigned_32 WritePharSegData( void )
     group_entry *       group;
     unsigned            pos;
     unsigned            size;
-    desc_flags          flags;
+    DescFlags           flags;
 
     DEBUG(( DBG_BASE, "Writing data" ));
     OrderGroups( CompareProtSegments );
-    memset( &tss, 0, sizeof( TSS ) );
+    tss = TSS{};
     tss.eip = StartInfo.addr.off;       // NYI: what about backlink ss0-2 & esp0-2 ?
     tss.esp = StackAddr.off;
     tss.cs = StartInfo.addr.seg;
@@ -199,31 +219,31 @@ static unsigned_32 WritePharSegData( void )
     tss.ds = DataGroup->addr.seg;
     tss.ldt = 0x28;
     WriteLoad( &tss, sizeof( TSS ) );
-    WriteDescriptor( 0, 0, (desc_flags)(0) );                             // NULL GDT entry;
-    WriteDescriptor( 0, sizeof( TSS ), DR_TSS );            // TSS
-    WriteDescriptor( 0, sizeof( TSS ), DR_BASE | DR_IS_APP ); // TSS alias
+    WriteDescriptor( 0, 0, DescFlags::none );                                // nullptr GDT entry;
+    WriteDescriptor( 0, sizeof( TSS ), DescFlags::TSS );  // TSS
+    WriteDescriptor( 0, sizeof( TSS ), DescFlags::BASE | DescFlags::IS_APP ); // TSS alias
     pos = sizeof( TSS );
     size = NUM_GDT_DESCRIPTORS * sizeof( descriptor );
-    WriteDescriptor( pos, size, DR_BASE | DR_IS_APP );      // GDT
+    WriteDescriptor( pos, size, DescFlags::BASE | DescFlags::IS_APP );      // GDT
     pos += size;
     size = NUM_IDT_DESCRIPTORS * sizeof( descriptor );
-    WriteDescriptor( pos, size, DR_BASE | DR_IS_APP );      // IDT
+    WriteDescriptor( pos, size, DescFlags::BASE | DescFlags::IS_APP );      // IDT
     pos += size;
     size = ( NumGroups + 1 ) * sizeof( descriptor );
-    WriteDescriptor( pos, size, DR_BASE );                  // LDT
-    WriteDescriptor( pos, size, DR_BASE | DR_IS_APP );      // LDT alias
-    WriteDescriptor( 0, 0, (desc_flags)(0) );                             // NULL IDT entry;
-    WriteDescriptor( 0, 0, (desc_flags)(0) );                             // NULL LDT entry;
+    WriteDescriptor( pos, size, DescFlags::BASE );                  // LDT
+    WriteDescriptor( pos, size, DescFlags::BASE | DescFlags::IS_APP );      // LDT alias
+    WriteDescriptor( 0, 0, DescFlags::none );                                // nullptr IDT entry;
+    WriteDescriptor( 0, 0, DescFlags::none );                                // nullptr LDT entry;
     pos += size;
-    for( group = Groups; group != NULL; group = group->next ) {
-        flags = DR_BASE | DR_IS_APP | DR_IS_USER;
+    for( group = Groups; group != nullptr; group = group->next ) {
+        flags = DescFlags::BASE | DescFlags::IS_APP | DescFlags::IS_USER;
         if( (group->segflags & SEG_DATA) == 0 ) {
-            flags |= DR_IS_CODE;
+            flags |= DescFlags::IS_CODE;
         }
         WriteDescriptor( pos, group->totalsize, flags );
         pos += group->totalsize;
     }
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         WriteGroupLoad( group, false );
         if( group->totalsize > group->size ) {  // phar lap is stupid
             PadLoad( group->totalsize - group->size );
@@ -239,9 +259,9 @@ static unsigned_32  WriteRTPBlock( void )
     rtpblock        rtpblk;
     unsigned_32     offset;
 
-    if( FmtData.u.phar.breaksym != NULL ) {
+    if( FmtData.u.phar.breaksym != nullptr ) {
         sym = FindISymbol( FmtData.u.phar.breaksym );
-        if( sym == NULL ) {
+        if( sym == nullptr ) {
             LnkMsg( WRN+MSG_BREAKSYM_NOT_FOUND, "s", FmtData.u.phar.breaksym );
             offset = 0;
         } else {
@@ -278,7 +298,7 @@ static unsigned_32 WriteSIT( void )
     sit.base = 0;
     sit.extra = 0;
     sit.base = FmtData.base;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         sit.selector = group->addr.seg;
         sit.extra = group->totalsize - group->size;
         WriteLoad( &sit, sizeof( seg_info_table ) );
@@ -438,7 +458,7 @@ void CheckPharLapData( void )
 /***************************/
 {
     if( (FmtData.type & MK_PHAR_FLAT) && (LinkState & LS_HAVE_16BIT_CODE) && !DirectivesHaveRealBreak() ) {
-        LnkMsg( WRN+MSG_NO_REALBREAK_WITH_16BIT, NULL );
+        LnkMsg( WRN+MSG_NO_REALBREAK_WITH_16BIT, nullptr );
     }
 }
 

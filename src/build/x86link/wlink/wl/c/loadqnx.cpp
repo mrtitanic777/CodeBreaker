@@ -30,8 +30,9 @@
 ****************************************************************************/
 
 
-#include <string.h>
-#include "walloca.h"
+#include <cstring>
+#include <span>
+#include <vector>
 #include "linkstd.h"
 #include "ring.h"
 #include "exeqnx.h"
@@ -44,34 +45,51 @@
 #include "dbgall.h"
 #include "loadfile.h"
 #include "newmem.h"
+#include "run_state.hpp"
 
 
 #ifdef _QNX
 
-#define QNX_MAX_DATA_SIZE (QNX_MAX_REC_SIZE - sizeof( lmf_data ))
-#define VERIFY_END (VERIFY_OFFSET + sizeof( RWEndRec.verify ))
+namespace {
 
-static offset           AmountWritten;
-static bool             InVerifySegment;
-static lmf_rw_end       RWEndRec;
-static group_entry *    CurrGroup;
+constexpr std::size_t   QNX_MAX_DATA_SIZE = QNX_MAX_REC_SIZE - sizeof( lmf_data );
+constexpr std::size_t   VERIFY_END = VERIFY_OFFSET + sizeof( lmf_rw_end::verify );
+
+// where the load file's current group has got to, for one link
+struct QnxState {
+    offset          AmountWritten;
+    bool            InVerifySegment;
+    lmf_rw_end      RWEndRec;
+    group_entry     *CurrGroup;
+};
+
+QnxState &state()
+{
+    return cb_wlink::RunState::part<QnxState>();
+}
+
+using LoadWriter = void (*)( virt_mem, unsigned long );
+using VerifyWriter = void (*)( char *, virt_mem, unsigned long );
+
+}
 
 static void WriteLoadRec( void )
 /******************************/
 {
+    QnxState        &st = state();
     lmf_record      record;
     lmf_data        data;
 
     record.rec_type = LMF_LOAD_REC;
     record.reserved = record.spare = 0;
-    if( CurrGroup->size - AmountWritten > QNX_MAX_DATA_SIZE ){
+    if( st.CurrGroup->size - st.AmountWritten > QNX_MAX_DATA_SIZE ){
         record.data_nbytes = QNX_MAX_REC_SIZE;
     } else {
-        record.data_nbytes = CurrGroup->size - AmountWritten + sizeof( lmf_data );
+        record.data_nbytes = st.CurrGroup->size - st.AmountWritten + sizeof( lmf_data );
     }
     WriteLoad( &record, sizeof( lmf_record ) );
-    data.segment = QNX_SEL_NUM( CurrGroup->addr.seg );
-    data.offset = AmountWritten;
+    data.segment = QNX_SEL_NUM( st.CurrGroup->addr.seg );
+    data.offset = st.AmountWritten;
     WriteLoad( &data, sizeof( lmf_data ) );
 }
 
@@ -89,18 +107,18 @@ static void CopyLoad( virt_mem data, unsigned long length )
     WriteInfoLoad( data, length );
 }
 
-static void WriteQNXInfo( void (*wrfn)(virt_mem, unsigned long), virt_mem data,
-                          unsigned long length )
+static void WriteQNXInfo( LoadWriter wrfn, virt_mem data, unsigned long length )
 /*****************************************************************************/
 {
+    QnxState    &st = state();
     unsigned    bufmod;
     unsigned    adjust;
 
-    bufmod = AmountWritten % QNX_MAX_DATA_SIZE;
+    bufmod = st.AmountWritten % QNX_MAX_DATA_SIZE;
     while(( bufmod + length ) >= QNX_MAX_DATA_SIZE ) {
         adjust = QNX_MAX_DATA_SIZE - bufmod;
         wrfn( data, adjust );
-        AmountWritten += adjust;
+        st.AmountWritten += adjust;
         length -= adjust;
         data += adjust;
         bufmod = 0;
@@ -108,7 +126,7 @@ static void WriteQNXInfo( void (*wrfn)(virt_mem, unsigned long), virt_mem data,
     }
     if( length > 0 ) {
         wrfn( data, length );
-        AmountWritten += length;
+        st.AmountWritten += length;
     }
 }
 
@@ -123,32 +141,32 @@ static void ZeroVerify( char *targ, virt_mem dummy, unsigned long size )
 {
     /* unused parameters */ (void)dummy;
 
-    memset( targ, 0, size );
+    std::memset( targ, 0, size );
 }
 
-static void SetVerifyInfo( void (*wrfn)(char *, virt_mem, unsigned long),
-                           virt_mem data, unsigned long length )
-/************************************************************************/
+static void SetVerifyInfo( VerifyWriter wrfn, virt_mem data, unsigned long length )
+/*********************************************************************************/
 {
+    QnxState    &st = state();
     offset      newstart;
     char *      targ;
 
-    if( AmountWritten + length <= VERIFY_OFFSET )
+    if( st.AmountWritten + length <= VERIFY_OFFSET )
         return;
-    if( AmountWritten >= VERIFY_END )
+    if( st.AmountWritten >= VERIFY_END )
         return;
-    newstart = AmountWritten;
-    if( AmountWritten < VERIFY_OFFSET ) {
-        data += VERIFY_OFFSET - AmountWritten;
+    newstart = st.AmountWritten;
+    if( st.AmountWritten < VERIFY_OFFSET ) {
+        data += VERIFY_OFFSET - st.AmountWritten;
         newstart = VERIFY_OFFSET;
     }
     if( newstart + length >= VERIFY_END ) {
         length = VERIFY_END - newstart;
-        InVerifySegment = false;
+        st.InVerifySegment = false;
     }
-    targ = (char *)(&RWEndRec.verify);
-    if( AmountWritten > VERIFY_OFFSET ) {
-        targ += AmountWritten - VERIFY_OFFSET;
+    targ = reinterpret_cast<char *>( &st.RWEndRec.verify );
+    if( st.AmountWritten > VERIFY_OFFSET ) {
+        targ += st.AmountWritten - VERIFY_OFFSET;
     }
     wrfn( targ, data, length );
 }
@@ -156,22 +174,23 @@ static void SetVerifyInfo( void (*wrfn)(char *, virt_mem, unsigned long),
 static bool WriteSegData( void *_sdata, void *_start )
 /****************************************************/
 {
-    segdata *sdata = (segdata *)(_sdata);
-    unsigned long *start = (unsigned long *)(_start);
+    QnxState &st = state();
+    segdata *sdata = static_cast<segdata *>( _sdata );
+    unsigned long *start = static_cast<unsigned long *>( _start );
     unsigned long newpos;
     long pad;
 
     if( !sdata->isuninit && !sdata->isdead && sdata->length > 0 ) {
         newpos = *start + sdata->a.delta;
-        pad = newpos - AmountWritten;
+        pad = newpos - st.AmountWritten;
         DbgAssert( pad >= 0 );
         if( pad > 0 ) {
-            if( InVerifySegment ) {
+            if( st.InVerifySegment ) {
                 SetVerifyInfo( ZeroVerify, 0, pad );
             }
             WriteQNXInfo( ZeroLoad, 0, pad );
         }
-        if( InVerifySegment ) {
+        if( st.InVerifySegment ) {
             SetVerifyInfo( CopyVerify, sdata->u1.vm_ptr, sdata->length );
         }
         WriteQNXInfo( CopyLoad, sdata->u1.vm_ptr, sdata->length );
@@ -183,26 +202,27 @@ static void DoGroupLeader( void *_seg )
 /*************************************/
 {
     offset      start;
-    seg_leader *seg = (seg_leader *)(_seg);
+    seg_leader *seg = static_cast<seg_leader *>( _seg );
 
     start = SEG_GROUP_DELTA( seg );
     RingLookup( seg->pieces, WriteSegData, &start );
 }
 
-static void WriteQNXGroup( group_entry *group, unsigned_32 *segments )
-/********************************************************************/
+static void WriteQNXGroup( group_entry *group, std::span<unsigned_32> segments )
+/*****************************************************************************/
 {
+    QnxState    &st = state();
     segment     seg;
 
     seg = QNX_SEL_NUM( group->addr.seg );
-    segments[seg] = group->totalsize | ((unsigned_32)group->u.qnxflags << 28);
-    if( StackSegPtr != NULL && group == StackSegPtr->group ) {
+    segments[seg] = group->totalsize | ( static_cast<unsigned_32>( group->u.qnxflags ) << 28 );
+    if( StackSegPtr != nullptr && group == StackSegPtr->group ) {
         segments[seg] -= StackSize;      // stack size gets
     }                                    // added on by QNX loader.
     if( group->size == 0 )
         return;
-    AmountWritten = 0;
-    CurrGroup = group;
+    st.AmountWritten = 0;
+    st.CurrGroup = group;
     WriteLoadRec();
     Ring2Walk( group->leaders, DoGroupLeader );
 }
@@ -224,7 +244,7 @@ static void WriteQNXRelocs( reloc_info reloclist, unsigned lmf_type, unsigned_16
         adjust = 2;
     }
     pos = PosLoad();    /* get current position */
-    while( reloclist != NULL ) {
+    while( reloclist != nullptr ) {
         SeekLoad( pos + sizeof( lmf_record ) );
         if( islinear ) {
             WriteLoad( &seg, sizeof( unsigned_16 ) );
@@ -238,37 +258,38 @@ static void WriteQNXRelocs( reloc_info reloclist, unsigned lmf_type, unsigned_16
     SeekLoad( pos );
 }
 
-static void WriteQNXData( unsigned_32 * segments )
-/************************************************/
+static void WriteQNXData( std::span<unsigned_32> segments )
+/*********************************************************/
 {
+    QnxState &      st = state();
     group_entry *   group;
     lmf_record      record;
     bool            first;
 
     first = true;
-    InVerifySegment = false;
+    st.InVerifySegment = false;
     /* write all read/write segment data */
-    RWEndRec.signature = 0;
-    for( group = Groups; group != NULL; group = group->next ){
+    st.RWEndRec.signature = 0;
+    for( group = Groups; group != nullptr; group = group->next ){
         if( group->u.qnxflags == QNX_READ_WRITE && group->totalsize != 0 ) {
             if( first && group->size >= VERIFY_END ) {
-                InVerifySegment = true;
+                st.InVerifySegment = true;
                 first = false;
             }
             WriteQNXGroup( group, segments );
         }
-        RWEndRec.signature += group->totalsize;
-        RWEndRec.signature <<= 3;
-        RWEndRec.signature ^= 0x32476235;
+        st.RWEndRec.signature += group->totalsize;
+        st.RWEndRec.signature <<= 3;
+        st.RWEndRec.signature ^= 0x32476235;
     }
     record.reserved = record.spare = 0;
     record.rec_type = LMF_RW_END_REC;
-    record.data_nbytes = sizeof( RWEndRec );
+    record.data_nbytes = sizeof( st.RWEndRec );
     WriteLoad( &record, sizeof( lmf_record ) );
-    RWEndRec.verify ^= (unsigned_16) ~0;
-    WriteLoad( &RWEndRec, sizeof( RWEndRec ) );
+    st.RWEndRec.verify ^= static_cast<unsigned_16>( ~0 );
+    WriteLoad( &st.RWEndRec, sizeof( st.RWEndRec ) );
     /* write all read only segment data */
-    for( group = Groups; group != NULL; group = group->next ){
+    for( group = Groups; group != nullptr; group = group->next ){
         if( group->u.qnxflags != QNX_READ_WRITE && group->totalsize != 0 ) {
             WriteQNXGroup( group, segments );
         }
@@ -280,8 +301,8 @@ static void WriteQNXData( unsigned_32 * segments )
 static bool checkGroupFlags( void *_seg, void *_group )
 /*****************************************************/
 {
-    seg_leader      *seg = (seg_leader *)(_seg);
-    group_entry     *group = (group_entry *)(_group);
+    seg_leader      *seg = static_cast<seg_leader *>( _seg );
+    group_entry     *group = static_cast<group_entry *>( _group );
     seg_flags_type  sflags;
 
     sflags = seg->segflags;
@@ -313,7 +334,7 @@ void SetQNXGroupFlags( void )
 {
     group_entry *   group;
 
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->segflags & SEG_DATA ) {
             group->u.qnxflags = QNX_READ_ONLY;      // 1
         } else {
@@ -327,7 +348,7 @@ void SetQNXSegFlags( void )
 /*************************/
 {
     SetSegFlags( FmtData.u.qnx.seg_flags );
-    FmtData.u.qnx.seg_flags = NULL;         // segsegflags frees the list.
+    FmtData.u.qnx.seg_flags = nullptr;         // segsegflags frees the list.
 }
 
 static void WriteQNXResource( void )
@@ -337,13 +358,12 @@ static void WriteQNXResource( void )
     lmf_record      rec;
     f_handle        file;
     lmf_resource    resource;
-    void *          buf;
 
-    if( FmtData.resource != NULL ) {
+    if( FmtData.resource != nullptr ) {
         rec.reserved = 0;
         rec.spare = 0;
         rec.rec_type = LMF_RESOURCE_REC;
-        memset( &resource, 0, sizeof( lmf_resource ) );
+        resource = lmf_resource{};
         if( FmtData.res_name_only ) {
             file = QObjOpen( FmtData.resource );
             if( file == NIL_FHANDLE ) {
@@ -355,16 +375,15 @@ static void WriteQNXResource( void )
                 LnkMsg( WRN+MSG_RESOURCE_TOO_BIG, "s", FmtData.resource );
                 return;
             }
-            buf = MemAllocSafe( len );
+            std::vector<char> buf( len );
             rec.data_nbytes = len + sizeof( lmf_resource );
             WriteLoad( &rec, sizeof( lmf_record ) );
             WriteLoad( &resource, sizeof( lmf_resource ) );
-            QRead( file, buf, len, FmtData.resource );
-            WriteLoad( buf, len );
-            MemFree( buf );
+            QRead( file, buf.data(), len, FmtData.resource );
+            WriteLoad( buf.data(), len );
             QClose( file, FmtData.resource );
         } else {
-            len = strlen( FmtData.resource );
+            len = std::strlen( FmtData.resource );
             FmtData.resource[len] = '\n';
             len++;
             rec.data_nbytes = len + sizeof( lmf_resource );
@@ -378,7 +397,6 @@ static void WriteQNXResource( void )
 void FiniQNXLoadFile( void )
 /*********************************/
 {
-    unsigned_32 *   segments;
     unsigned_16     nbytes;
     lmf_record      record;
     lmf_header      header;
@@ -388,11 +406,11 @@ void FiniQNXLoadFile( void )
     CurrSect = Root;
     if( FmtData.type & MK_QNX_FLAT ) {
         if( FmtData.base < StackSize ) {
-            LnkMsg( WRN+MSG_QNX_BASE_LT_STACK, NULL );
+            LnkMsg( WRN+MSG_QNX_BASE_LT_STACK, nullptr );
         }
     }
     nbytes = NumGroups * sizeof( unsigned_32 );
-    segments = (unsigned_32 *) alloca( nbytes );
+    std::vector<unsigned_32> segments( NumGroups );
     SeekLoad( sizeof( lmf_header ) + nbytes + sizeof( lmf_record ) );
     WriteQNXResource();
     WriteQNXData( segments );
@@ -402,7 +420,7 @@ void FiniQNXLoadFile( void )
     record.rec_type = LMF_IMAGE_END_REC;
     record.data_nbytes = sizeof( trailer );
     WriteLoad( &record, sizeof( lmf_record ) );
-    memset( &trailer, 0, sizeof( trailer ) );
+    trailer = lmf_eof{};
     WriteLoad( &trailer, sizeof( trailer ) );
     DBIWrite();
 
@@ -410,7 +428,7 @@ void FiniQNXLoadFile( void )
     record.rec_type = LMF_HEADER_REC;
     record.data_nbytes = sizeof( lmf_header ) + nbytes;
     WriteLoad( &record, sizeof( lmf_record ) );
-    memset( &header, 0, sizeof( header ) );
+    header = lmf_header{};
     header.version = QNX_VERSION;
     header.cflags = (FmtData.u.qnx.flags | (FmtData.u.qnx.priv_level << QNX_PRIV_SHIFT)) & QNX_FLAG_MASK;
     if( LinkState & LS_FMT_SEEN_32BIT ) {
@@ -432,7 +450,7 @@ void FiniQNXLoadFile( void )
     header.code_index = QNX_SEL_NUM( StartInfo.addr.seg );
     header.stack_index = QNX_SEL_NUM( StackAddr.seg );
     adseg = header.stack_index;
-    if( DataGroup != NULL ) {
+    if( DataGroup != nullptr ) {
         adseg = QNX_SEL_NUM( DataGroup->addr.seg );
     }
     header.heap_index = adseg;  // all in DGROUP.
@@ -442,7 +460,7 @@ void FiniQNXLoadFile( void )
     header.heap_nbytes = FmtData.u.qnx.heapsize;
     header.image_base = FmtData.base;
     WriteLoad( &header, sizeof( lmf_header ) );
-    WriteLoad( segments, nbytes );
+    WriteLoad( segments.data(), nbytes );
 }
 
 unsigned_16 ToQNXSel( unsigned_16 seg )

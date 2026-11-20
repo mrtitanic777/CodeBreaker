@@ -31,7 +31,7 @@
 ****************************************************************************/
 
 
-#include <string.h>
+#include <cstring>
 #include "linkstd.h"
 #include "specials.h"
 #include "fileio.h"
@@ -64,8 +64,11 @@ group_entry     *DBIGroups;
 void ResetDBI( void )
 /*******************/
 {
-    SymFileName = NULL;
-    DBIGroups = NULL;
+    SymFileName = nullptr;
+    DBIGroups = nullptr;
+    // wlink.exe starts each link with this 0 (only a PE link sets it): the DEBUG_TYPE_MISC block of any other format
+    // ends with it (special_purpose), and a PE link earlier in the same process had left its file offset here
+    CVDebugDirEntryPos = 0;
 }
 
 void DBIInit( void )
@@ -121,7 +124,7 @@ void DBIP1Source( const byte *buff, const byte *endbuff )
     }
     ObjFormat |= OBJ_FMT_DEBUG_COMENT;
     if( LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIP1Source( major, minor, (const char *)buff, endbuff - buff );
+        ODBIP1Source( major, minor, reinterpret_cast<const char *>( buff ), endbuff - buff );
     }
 }
 
@@ -135,7 +138,7 @@ section *DBIGetSect( const char *clname )
     } else if( stricmp( clname, _DwarfClass ) == 0 ) {
         return( Root );
     }
-    return( NULL );
+    return( nullptr );
 }
 
 void DBIColClass( class_entry *class_ )
@@ -294,17 +297,17 @@ void DBIAddrInfoScan( seg_leader *seg,
             }
         }
     }
-    prev = (segdata *)(RingStep( seg->pieces, NULL ));
+    prev = static_cast<segdata *>( RingStep( seg->pieces, nullptr ) );
     for( ;; ) {
-        if( prev == NULL )
+        if( prev == nullptr )
             return;
         if( !prev->isdead )
             break;
-        prev = (segdata *)(RingStep( seg->pieces, prev ));
+        prev = static_cast<segdata *>( RingStep( seg->pieces, prev ) );
     }
     initfn( prev, cookie );
     size = 0;
-    for( curr = prev; (curr = (segdata *)(RingStep( seg->pieces, curr ))) != NULL; ) {
+    for( curr = prev; (curr = static_cast<segdata *>( RingStep( seg->pieces, curr ) )) != nullptr; ) {
         if( !curr->isdead ) {
             size += curr->a.delta - prev->a.delta;
             isnewmod = ( ( curr->o.mod != prev->o.mod ) && ( size != 0 ) );
@@ -344,7 +347,7 @@ static void DBIGenLocal( void *sdata )
 // called during pass 2 segment processing
 {
     if( LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIGenLocal( (segdata *)(sdata) );
+        ODBIGenLocal( static_cast<segdata *>( sdata ) );
     }
 }
 
@@ -353,13 +356,13 @@ static void DBIGenLines( mod_entry *mod )
 // called during pass 2 linnum processing
 {
     if( LinkFlags & LF_OLD_DBI_FLAG ) {
-        DBILineWalk( (lineinfo *)(mod->lines), ODBIGenLines );
+        DBILineWalk( static_cast<lineinfo *>( mod->lines ), ODBIGenLines );
     } else if( LinkFlags & LF_DWARF_DBI_FLAG ) {
-        DBILineWalk( (lineinfo *)(mod->lines), DwarfGenLines );
+        DBILineWalk( static_cast<lineinfo *>( mod->lines ), DwarfGenLines );
     } else if( LinkFlags & LF_CV_DBI_FLAG ) {
-        DBILineWalk( (lineinfo *)(mod->lines), CVGenLines );
+        DBILineWalk( static_cast<lineinfo *>( mod->lines ), CVGenLines );
     } else if( LinkFlags & LF_HLL_DBI_FLAG ) {
-        DBILineWalk( (lineinfo *)(mod->lines), HllGenLines);
+        DBILineWalk( static_cast<lineinfo *>( mod->lines ), HllGenLines);
     }
 }
 
@@ -415,12 +418,12 @@ void DBIAddLocal( seg_leader *seg, offset length )
 void DBIModGlobal( void *_sym )
 /*****************************/
 {
-    symbol          *sym = (symbol *)(_sym);
+    symbol          *sym = static_cast<symbol *>( _sym );
 
     if( !IS_SYM_ALIAS( sym )
       && (sym->info & SYM_DEAD) == 0 ) {
         if( IS_SYM_IMPORTED( sym )
-          || ( sym->p.seg != NULL )
+          || ( sym->p.seg != nullptr )
           && !IS_DBG_INFO( sym->p.seg->u.leader )
           && !sym->p.seg->isabs ) {
             DBIAddGlobal( sym );
@@ -471,7 +474,7 @@ void DBIAddLines( segdata *seg, const void *line, size_t size, bool is32bit )
 {
     lineinfo        *info;
 
-    info = (lineinfo *)(_PermAlloc( sizeof( lineinfo ) + size - 1 ));
+    info = static_cast<lineinfo *>( _PermAlloc( sizeof( lineinfo ) + size - 1 ) );
     info->seg = seg;
     info->size = size;
     if( is32bit )
@@ -497,8 +500,10 @@ unsigned DBICalcLineQty( lineinfo *info )
 static bool DoLineWalk( void *info, void *line_walk_cb )
 /******************************************************/
 {
-    if( !((lineinfo *)info)->seg->isdead ) {
-        ((line_walk_data *)line_walk_cb)->cbfn( (lineinfo *)info );
+    lineinfo        *li = static_cast<lineinfo *>( info );
+
+    if( !li->seg->isdead ) {
+        static_cast<line_walk_data *>( line_walk_cb )->cbfn( li );
     }
     return( false );
 }
@@ -619,14 +624,14 @@ void DBIWrite( void )
         return;
     if( LinkFlags & LF_CV_DBI_FLAG ) {
         // write DEBUG_TYPE_MISC: name of file containing the debug info
-        if( SymFileName != NULL ) {
+        if( SymFileName != nullptr ) {
             CVWriteDebugTypeMisc( SymFileName );
         } else {
             CVWriteDebugTypeMisc( Root->outfile->fname );
         }
     }
-    if( SymFileName != NULL ) {
-        save = NULL;
+    if( SymFileName != nullptr ) {
+        save = nullptr;
         InitBuffFile( &symfile, SymFileName, false );
         OpenBuffFile( &symfile );
         save = Root->outfile;

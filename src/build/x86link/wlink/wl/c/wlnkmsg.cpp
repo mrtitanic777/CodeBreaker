@@ -25,19 +25,18 @@
 *
 *  ========================================================================
 *
-* Description:  Linker message output and message resource low-level functions.
+* Description:  Linker message output.
 *
 ****************************************************************************/
 
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <string_view>
 #include <sys/types.h>
-#ifdef __WATCOMC__
-    #include <process.h>
-#endif
 #include "wio.h"
 #include "linkstd.h"
 #include "dbginfo.h"
@@ -49,92 +48,38 @@
 #include "wressetr.h"
 #include "_rcrtns.h"
 #include "posixfp.h"
-#ifdef USE_WRESLIB
-    #include "wresset2.h"
-#elif defined( CB_WLINK_MSG_TABLE )
+#ifdef CB_WLINK_MSG_TABLE
     #include "cbmsgtab.h"   /* CodeBreaker: the messages compiled in (cb/msgtable.c) */
 #else
-    #include <windows.h>
+    #error "wlnkmsg.cpp: CodeBreaker's wlink reads its messages from the compiled-in table (CB_WLINK_MSG_TABLE)"
 #endif
 
 #include "clibint.h"
 #include "clibext.h"
 
 
-#ifdef USE_WRESLIB
-static HANDLE_INFO      hInstance = { 0 };
-#elif !defined( CB_WLINK_MSG_TABLE )
-static HINSTANCE        hInstance;
-#endif
-static unsigned         msgShift;
-
 bool InitMsg( void )
 {
-#ifdef USE_WRESLIB
-    char        msg_buff[RESOURCE_MAX_SIZE];
-  #if defined( IDE_PGM ) || !defined( __WATCOMC__ )
-    char        imageName[_MAX_PATH];
-  #else
-    char        *imageName;
-  #endif
-
-  #if defined( IDE_PGM )
-    _cmdname( imageName );
-  #elif !defined( __WATCOMC__ )
-    get_dllname( imageName, sizeof( imageName ) );
-  #else
-    imageName = _LpDllName;;
-  #endif
-    BannerPrinted = false;
-    hInstance.status = 0;
-    if( OpenResFile( &hInstance, imageName ) ) {
-        msgShift = _WResLanguage() * MSG_LANG_SPACING;
-        if( Msg_Get( MSG_GENERAL_HELP_0, msg_buff ) ) {
-            return( true );
-        }
-    }
-    CloseResFile( &hInstance );
-    WriteStdOutInfo( NO_RES_MESSAGE "\n", ERR, NULL );
-    return( false );
-#elif defined( CB_WLINK_MSG_TABLE )
     BannerPrinted = false;   /* CodeBreaker: each link in the process prints its banner, as wlink.exe does */
-    msgShift = 0;
     return( true );
-#else
-    hInstance = GetModuleHandle( NULL );
-    msgShift = _WResLanguage() * MSG_LANG_SPACING;
-    return( true );
-#endif
 }
 
 bool Msg_Get( int msgid, char *buffer )
 {
-#ifdef USE_WRESLIB
-    if( hInstance.status == 0
-      || WResLoadString( &hInstance, msgid + msgShift, (lpstr)buffer, RESOURCE_MAX_SIZE ) <= 0 ) {
-        buffer[0] = '\0';
-        return( false );
-    }
-#elif defined( CB_WLINK_MSG_TABLE )
     /* as LoadString: at most RESOURCE_MAX_SIZE - 1 characters, then the end */
     const char  *text = cb_wlink_message( msgid );
-    size_t      len;
 
-    if( text == NULL || text[0] == '\0' ) {
+    if( text == nullptr
+      || text[0] == '\0' ) {
         buffer[0] = '\0';
         return( false );
     }
-    len = strlen( text );
-    if( len > RESOURCE_MAX_SIZE - 1 )
-        len = RESOURCE_MAX_SIZE - 1;
-    memcpy( buffer, text, len );
-    buffer[len] = '\0';
-#else
-    if( LoadString( hInstance, msgid + msgShift, buffer, RESOURCE_MAX_SIZE ) <= 0 ) {
-        buffer[0] = '\0';
-        return( false );
-    }
-#endif
+    std::string_view    msg( text );
+
+    if( msg.size() > RESOURCE_MAX_SIZE - 1 )
+        msg = msg.substr( 0, RESOURCE_MAX_SIZE - 1 );
+    msg.copy( buffer, msg.size() );
+    buffer[msg.size()] = '\0';
     return( true );
 }
 
@@ -155,32 +100,31 @@ void Msg_Put_Args(
                                     // NULL or strlen <= 3 (arg_info->arg elements)
     va_list         args )          // Initialized va_list
 {
-    int         argnum = 0;         // Index of argument found
-    int         j;                  // General purpose loop index
-    int         order[3];           // Mapping of args to arg_info->arg
-    char        *percent;           // Position of '%' in message
-    char        types_buff[1 + 3];  // readwrite copy of types
-    char        specifier;          // Character following '%'
-    MSG_ARG     *arginfo;
+    int                 argnum = 0;         // Index of argument found
+    std::array<int, 3>  order{};            // Mapping of args to arg_info->arg
+    char                *percent;           // Position of '%' in message
+    std::array<char, 1 + 3> types_buff;     // readwrite copy of types
+    char                specifier;          // Character following '%'
+    MSG_ARG             *arginfo;
 
-    if( types != NULL ) {
-        strcpy( types_buff, types );
+    if( types != nullptr ) {
+        strcpy( types_buff.data(), types );
                                         // conversions set order[]; digits->s
         percent = message - 2;          // So strchr below can work
-        while( (percent = strchr( percent + 2, '%' )) != NULL ) {
+        while( (percent = strchr( percent + 2, '%' )) != nullptr ) {
             specifier = percent[1];
-            for( j = 0; types_buff[j] != '\0'; j++ ) {  // Match with types
+            for( int j = 0; types_buff[j] != '\0'; j++ ) {  // Match with types
                 if( types_buff[j] == specifier ) {
                     order[j] = argnum;
                     argnum++;
-                    if( isdigit( (unsigned char)specifier ) )          // Digit becomes s
+                    if( isdigit( static_cast<unsigned char>( specifier ) ) )          // Digit becomes s
                         types_buff[j] = percent[1] = 's';
                     break;
                 }
             }
         }
         // Re-order sequential arguments
-        for( j = 0; j < argnum; j++ ) {
+        for( int j = 0; j < argnum; j++ ) {
             arginfo = arg_info->arg + order[j];
             switch( types_buff[j] ) {
             case 's':
@@ -188,10 +132,10 @@ void Msg_Put_Args(
                 break;
             case 'x':
             case 'd':
-                arginfo->int_16 = (signed_16)va_arg( args, unsigned int );
+                arginfo->int_16 = static_cast<signed_16>( va_arg( args, unsigned int ) );
                 break;
             case 'l':
-                arginfo->int_32 = (signed_32)va_arg( args, unsigned long );
+                arginfo->int_32 = static_cast<signed_32>( va_arg( args, unsigned long ) );
                 break;
             case 'A':
             case 'a':
@@ -208,11 +152,7 @@ void Msg_Put_Args(
 
 bool FiniMsg( void )
 {
-#ifdef USE_WRESLIB
-    return( CloseResFile( &hInstance ) );
-#else
     return( true );
-#endif
 }
 
 FILE *res_open( const char *name, wres_open_mode omode )
@@ -226,7 +166,7 @@ FILE *res_open( const char *name, wres_open_mode omode )
     case WRES_OPEN_NEW:
         return( POSIX2FP( open( name, O_BINARY | O_WRONLY | O_CREAT | O_TRUNC, PMODE_RW ) ) );
     case WRES_OPEN_TMP:
-        return( NULL );
+        return( nullptr );
     }
 }
 
@@ -246,16 +186,16 @@ static ssize_t  posix_read( int fildes, void *buffer, size_t nbyte )
     size = 0;
     while( nbyte > 0 ) {
         if( amount > nbyte )
-            amount = (unsigned)nbyte;
+            amount = static_cast<unsigned>( nbyte );
         read_len = _read( fildes, buffer, amount );
-        if( read_len == (unsigned)-1 ) {
-            return( (ssize_t)-1 );
+        if( read_len == static_cast<unsigned>( -1 ) ) {
+            return( static_cast<ssize_t>( -1 ) );
         }
         size += read_len;
         if( read_len != amount ) {
             break;
         }
-        buffer = (char *)buffer + amount;
+        buffer = static_cast<char *>( buffer ) + amount;
         nbyte -= amount;
     }
     return( size );
@@ -282,17 +222,6 @@ size_t res_write( FILE *fp, const void *buf, size_t len )
 bool res_seek( FILE *fp, long amount, int where )
 /***********************************************/
 {
-#ifdef USE_WRESLIB
-    if( fp == hInstance.fp ) {
-        if( where == SEEK_SET ) {
-            return( lseek( FP2POSIX( fp ), amount + WResFileShift, where ) == -1L );
-        } else {
-            return( lseek( FP2POSIX( fp ), amount, where ) == -1L );
-        }
-    }
-#else
-#endif
-
     DbgAssert( where != SEEK_END );
     DbgAssert( !( where == SEEK_CUR && amount < 0 ) );
 
@@ -304,7 +233,7 @@ bool res_seek( FILE *fp, long amount, int where )
             old_pos = PosLoad();
             new_pos = old_pos + amount;
             if( new_pos > old_pos ) {
-                PadLoad( (size_t)amount );
+                PadLoad( static_cast<size_t>( amount ) );
             } else {
                 SeekLoad( new_pos );
             }
@@ -320,12 +249,6 @@ bool res_seek( FILE *fp, long amount, int where )
 long res_tell( FILE *fp )
 /***********************/
 {
-#ifdef USE_WRESLIB
-    if( fp == hInstance.fp ) {
-        return( lseek( FP2POSIX( fp ), 0, SEEK_CUR ) );
-    }
-#else
-#endif
     if( FP2POSIX( fp ) == Root->outfile->handle ) {
         return( PosLoad() );
     }
@@ -337,7 +260,7 @@ bool res_ioerr( FILE *fp, size_t rc )
 {
     /* unused parameters */ (void)fp;
 
-    return( rc == -1 );
+    return( rc == static_cast<size_t>( -1 ) );
 }
 
 WResSetRtns(res_open,res_close,res_read,res_write,res_seek,res_tell,res_ioerr,MemAlloc,MemFree);

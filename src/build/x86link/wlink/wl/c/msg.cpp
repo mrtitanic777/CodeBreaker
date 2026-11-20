@@ -29,10 +29,13 @@
 *
 ****************************************************************************/
 
-
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
+#include <array>
+#include <charconv>
+#include <cstdarg>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <string_view>
 #include "linkstd.h"
 #include "build/x86link/directives/state.hpp"   /* CodeBreaker: where the directives being read are */
 #include "fileio.h"
@@ -41,6 +44,7 @@
 #include "loadfile.h"
 #include "demangle.h"
 #include "rcerrors.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
@@ -51,12 +55,6 @@ const char *MsgStrings[] = {
     #undef pick
 };
 
-static  const char      *LocFile;
-static  const char      *LocMem;
-static  unsigned        LocRec;
-static  MSG_ARG_LIST    MsgArgInfo;
-static  char *          CurrSymName;
-
 #define MSG_ARRAY_SIZE ((MSG_MAX_ERR_MSG_NUM / 8) + 1)
 
 unsigned_32     MaxErrors;
@@ -64,49 +62,66 @@ bool            BannerPrinted;
 
 byte MsgFlags[MSG_ARRAY_SIZE];
 
+namespace {
 
-static int UseArgInfo( void )
-/***************************/
+/* what the message being made knows: where it was found, the arguments it was handed */
+struct MsgState {
+    const char      *loc_file = nullptr;
+    const char      *loc_mem = nullptr;
+    unsigned        loc_rec = 0;
+    MSG_ARG_LIST    arg_info{};
+    char            *curr_sym_name = nullptr;
+};
+
+MsgState &state()
 {
-    return( MsgArgInfo.index >= 0 );
+    return cb_wlink::RunState::part<MsgState>();
 }
 
-static void IncremIndex( void )
-/*****************************/
+constexpr std::string_view hexchar = "0123456789abcdef";
+
+bool use_arg_info( const MsgState &st )
 {
-    MsgArgInfo.index++;
+    return st.arg_info.index >= 0;
 }
+
+constexpr bool is_vowel( int c )
+{
+    return c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u';
+}
+
+}  // namespace
 
 void ResetMsg( void )
 /**************************/
 {
-    LocFile = NULL;
-    LocMem = NULL;
-    LocRec = 0;
-    MsgArgInfo.index = -1;
+    MsgState    &st = state();
+
+    st.loc_file = nullptr;
+    st.loc_mem = nullptr;
+    st.loc_rec = 0;
+    st.arg_info.index = -1;
     memset( MsgFlags, 0xFF, MSG_ARRAY_SIZE );
 }
-
-#define IS_VOWEL(c) (((c)=='a')||((c)=='e')||((c)=='i')||((c)=='o')||((c)=='u'))
 
 static size_t MakeExeTypeString( char *buff, size_t max )
 /*******************************************************/
 /* make up the "an OS/2 executable" string. */
 {
-    char        rc_buff[RESOURCE_MAX_SIZE];
-    exe_format  format;
-    size_t      len;
-    char        *str;
-    size_t      num;
+    std::array<char, RESOURCE_MAX_SIZE> rc_buff;
+    size_t                              len;
+    const char                          *str;
+    size_t                              num;
 
     if( max <= 3 )
         return( 0 );
     len = 1;
     *buff++ = 'a';
-    if( FmtData.osname != NULL ) {
+    if( FmtData.osname != nullptr ) {
         str = FmtData.osname;
     } else {
-        format = FmtData.type;
+        unsigned    format = FmtData.type;
+
         for( ;; ) {
             num = log2_32( format );
             format &= ~( 1U << num );
@@ -114,10 +129,10 @@ static size_t MakeExeTypeString( char *buff, size_t max )
                 break;
             }
         }
-        Msg_Get( MSG_FILE_TYPES_0 + num, rc_buff );
-        str = rc_buff;
+        Msg_Get( MSG_FILE_TYPES_0 + static_cast<int>( num ), rc_buff.data() );
+        str = rc_buff.data();
     }
-    if( IS_VOWEL( tolower( *(unsigned char *)str ) ) ) {
+    if( is_vowel( tolower( static_cast<unsigned char>( *str ) ) ) ) {
         *buff++ = 'n';
         len++;
     }
@@ -129,13 +144,8 @@ static size_t MakeExeTypeString( char *buff, size_t max )
     memcpy( buff, str, num );
     buff += num;
     *buff++ = ' ';
-    if( FmtData.dll ) {
-        Msg_Get( MSG_CREATE_TYPE_DLL, rc_buff );
-        str = rc_buff;
-    } else {
-        Msg_Get( MSG_CREATE_TYPE_EXE, rc_buff );
-        str = rc_buff;
-    }
+    Msg_Get( FmtData.dll ? MSG_CREATE_TYPE_DLL : MSG_CREATE_TYPE_EXE, rc_buff.data() );
+    str = rc_buff.data();
     num = strlen( str );
     len += num;
     if( len > max )
@@ -187,7 +197,7 @@ static size_t fmtAddr( char *dest, size_t len, addr_type *addr, bool offs_32 )
     /* segmented formats 16:16 or 16:32 */
     if( !offs_32
       && (FmtData.type & (MK_DOS | MK_NE | MK_DOS16M | MK_QNX_16 | MK_RDOS_16)) ) {
-        return( FmtStr( dest, len, "%x:%x", addr->seg, (unsigned short)addr->off ) );
+        return( FmtStr( dest, len, "%x:%x", addr->seg, static_cast<unsigned short>( addr->off ) ) );
     } else {
         return( FmtStr( dest, len, "%x:%h", addr->seg, addr->off ) );
     }
@@ -211,6 +221,7 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
  *                  %f  : an executable format name
  ************************************************************************/
 {
+    MsgState        &st = state();
     char            ch;
     char            *dest;
     char            *str;
@@ -218,8 +229,6 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
     unsigned_32     num2;
     size_t          size;
     addr_type       *addr;
-    unsigned int    i;
-    static char     hexchar[] = "0123456789abcdef";
     int             temp;
 
     dest = buff;
@@ -235,9 +244,9 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
             ch = *src++;
             switch( ch ) {
             case 'S' :
-                if( UseArgInfo() ) {
-                    str = MsgArgInfo.arg[MsgArgInfo.index].symb->name.u.ptr;
-                    IncremIndex();
+                if( use_arg_info( st ) ) {
+                    str = st.arg_info.arg[st.arg_info.index].symb->name.u.ptr;
+                    st.arg_info.index++;
                 } else {
                     str = va_arg( args, symbol * )->name.u.ptr;
                 }
@@ -245,21 +254,21 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
                     size = __demangle_l( str, 0, dest, len );
                     if( size > ( len - 1 ) )
                         size = len - 1;
-                    CurrSymName = dest;
+                    st.curr_sym_name = dest;
                 } else {
                     size = strlen( str );
                     if( size > len )
                         size = len;
                     memcpy( dest, str, size );
-                    CurrSymName = str;
+                    st.curr_sym_name = str;
                 }
                 len -= size;
                 dest += size;
                 break;
             case 's' :
-                if( UseArgInfo() ) {
-                    str = MsgArgInfo.arg[MsgArgInfo.index].string;
-                    IncremIndex();
+                if( use_arg_info( st ) ) {
+                    str = st.arg_info.arg[st.arg_info.index].string;
+                    st.arg_info.index++;
                 } else {
                     str = va_arg( args, char * );
                 }
@@ -272,35 +281,35 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
                 break;
             case 't' :
                 str = va_arg( args, char * );
-                num = *src++ - '0';
-                num = num * 10 + *src++ - '0';
+                num = static_cast<unsigned_16>( *src++ - '0' );
+                num = static_cast<unsigned_16>( num * 10 + *src++ - '0' );
                 if( num > len )
-                    num = len;
+                    num = static_cast<unsigned_16>( len );
                 for( ; (*str != '\0') && (num > 0); --num ) {
                     *dest++ = *str++;
                 }
                 while( num-- > 0 ) {
                     *dest++ = ' ';
                 }
-                len -= num;
+                len -= num;     /* (sic: num has wrapped to 0xFFFF here, as in wlink) */
                 break;
             case 'c' :
-                *dest++ = va_arg( args, int );
+                *dest++ = static_cast<char>( va_arg( args, int ) );
                 len--;
                 break;
             case 'x' :
-                if( UseArgInfo() ) {
-                    num = MsgArgInfo.arg[MsgArgInfo.index].int_16;
-                    IncremIndex();
+                if( use_arg_info( st ) ) {
+                    num = st.arg_info.arg[st.arg_info.index].int_16;
+                    st.arg_info.index++;
                 } else {
-                    num = va_arg( args, unsigned int );
+                    num = static_cast<unsigned_16>( va_arg( args, unsigned int ) );
                 }
                 if( len < 4 )
                     return( dest - buff );    //NOTE: premature return
                 dest += 4;
                 len -= 4;
                 str = dest;
-                for( i = 4; i > 0; i-- ) {
+                for( int i = 4; i > 0; i-- ) {
                     *--str = hexchar[num & 0x0f];
                     num >>= 4;
                 }
@@ -312,7 +321,7 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
                 dest += 8;
                 len -= 8;
                 str = dest;
-                for( i = 8; i > 0; i-- ) {
+                for( int i = 8; i > 0; i-- ) {
                     *--str = hexchar[num2 & 0x0f];
                     num2 >>= 4;
                 }
@@ -320,55 +329,55 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
             case 'd' :
                 if( len < 5 )
                     return( dest - buff );    // NOTE: premature return
-                if( UseArgInfo() ) {
-                    num = MsgArgInfo.arg[MsgArgInfo.index].int_16;
-                    IncremIndex();
+                if( use_arg_info( st ) ) {
+                    num = st.arg_info.arg[st.arg_info.index].int_16;
+                    st.arg_info.index++;
                 } else {
-                    num = va_arg( args, unsigned int );
+                    num = static_cast<unsigned_16>( va_arg( args, unsigned int ) );
                 }
-                sprintf( dest, "%u", (unsigned)num );
-                size = strlen( dest );
+                size = static_cast<size_t>( std::to_chars( dest, dest + len, static_cast<unsigned>( num ) ).ptr - dest );
+                dest[size] = '\0';      /* (sprintf ended the number so; the text may stop here) */
                 dest += size;
                 len -= size;
                 break;
             case 'l' :
                 if( len < 10 )
                     return( dest - buff );   //NOTE: premature return
-                if( UseArgInfo() ) {
-                    num2 = MsgArgInfo.arg[MsgArgInfo.index].int_32;
-                    IncremIndex();
+                if( use_arg_info( st ) ) {
+                    num2 = st.arg_info.arg[st.arg_info.index].int_32;
+                    st.arg_info.index++;
                 } else {
                     num2 = va_arg( args, unsigned_32 );
                 }
-                sprintf( dest, "%lu", (unsigned long)num2 );
-                size = strlen( dest );
+                size = static_cast<size_t>( std::to_chars( dest, dest + len, static_cast<unsigned long>( num2 ) ).ptr - dest );
+                dest[size] = '\0';
                 dest += size;
                 len -= size;
                 break;
             case 'a':
             case 'A':
-                if( UseArgInfo() ) {
-                    addr = MsgArgInfo.arg[MsgArgInfo.index].address;
-                    IncremIndex();
+                if( use_arg_info( st ) ) {
+                    addr = st.arg_info.arg[st.arg_info.index].address;
+                    st.arg_info.index++;
                 } else {
                     addr = va_arg( args, addr_type * );
                 }
-                temp = MsgArgInfo.index;
-                MsgArgInfo.index = -1;
+                temp = st.arg_info.index;
+                st.arg_info.index = -1;
                 size = fmtAddr( dest, len, addr, ( ch == 'A' ) );
                 dest += size;
                 len -= size;
-                MsgArgInfo.index = temp;
+                st.arg_info.index = temp;
                 break;
             case 'f':
-                num = MakeExeTypeString( dest, len );
-                dest += num;
-                len -= num;
+                size = MakeExeTypeString( dest, len );
+                dest += size;
+                len -= size;
                 break;
             }
         }
     }
-    MsgArgInfo.index = -1;
+    st.arg_info.index = -1;
     *dest = '\0';
     return( dest - buff );
 }
@@ -376,9 +385,11 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
 void Locator( const char *filename, const char *mem, unsigned rec )
 /*****************************************************************/
 {
-    LocFile = filename;
-    LocMem = mem;
-    LocRec = rec;
+    MsgState    &st = state();
+
+    st.loc_file = filename;
+    st.loc_mem = mem;
+    st.loc_rec = rec;
 }
 
 static void LocateFile( unsigned num )
@@ -392,8 +403,8 @@ static void LocateFile( unsigned num )
         } else {
             rec = 0;
         }
-        if( CurrMod == NULL ) {
-            Locator( DirectiveSourceName(), NULL, 0 );
+        if( CurrMod == nullptr ) {
+            Locator( DirectiveSourceName(), nullptr, 0 );
          } else {
             Locator( CurrMod->u1.source->infile->name.u.ptr, CurrMod->name.u.ptr, rec );
         }
@@ -414,20 +425,20 @@ unsigned CalcMsgNum( unsigned num )
 size_t GetMsgPrefix( unsigned num, char *buff, size_t max_len )
 /*************************************************************/
 {
-    size_t      msgprefixlen;
-    unsigned    class_;
-    char        rc_buff[RESOURCE_MAX_SIZE];
+    size_t                              msgprefixlen;
+    unsigned                            class_;
+    std::array<char, RESOURCE_MAX_SIZE> rc_buff;
 
     msgprefixlen = 0;
     *buff = '\0';
     class_ = num & CLASS_MSK;
     if( class_ >= (WRN & CLASS_MSK) ) {
         if( class_ == (WRN & CLASS_MSK) ) {
-            Msg_Get( MSG_WARNING, rc_buff );
+            Msg_Get( MSG_WARNING, rc_buff.data() );
         } else {
-            Msg_Get( MSG_ERROR, rc_buff );
+            Msg_Get( MSG_ERROR, rc_buff.data() );
         }
-        msgprefixlen = FmtStr( buff, max_len, rc_buff, CalcMsgNum( num ) );
+        msgprefixlen = FmtStr( buff, max_len, rc_buff.data(), CalcMsgNum( num ) );
     }
     return( msgprefixlen );
 }
@@ -436,6 +447,7 @@ static void MessageFini( unsigned num, char *buff, size_t len )
 /*************************************************************/
 {
     unsigned    class_;
+    char        *sym_name = state().curr_sym_name;
 
     class_ = num & CLASS_MSK;
     if( class_ >= (ERR & CLASS_MSK) ) {
@@ -444,13 +456,13 @@ static void MessageFini( unsigned num, char *buff, size_t len )
     if( num & OUT_TERM ) {
         if( (LinkFlags & LF_QUIET_FLAG) == 0 ) {
             WLPrtBanner();
-            WriteStdOutInfo( buff, num, CurrSymName );
+            WriteStdOutInfo( buff, num, sym_name );
         } else if( class_ != (INF & CLASS_MSK) ) {
-            WriteStdOutInfo( buff, num, CurrSymName );
+            WriteStdOutInfo( buff, num, sym_name );
         }
     }
     if( num & OUT_MAP ) {
-        if( MapFile != NULL ) {
+        if( MapFile != nullptr ) {
             WriteMapLnkMsgCallback( num, buff, len );
         }
     }
@@ -463,36 +475,38 @@ static void MessageFini( unsigned num, char *buff, size_t len )
         if( LinkFlags & LF_MAX_ERRORS_FLAG ) {
             MaxErrors--;
             if( MaxErrors == 0 ) {
-                LnkMsg( FTL+MSG_TOO_MANY_ERRORS, NULL );
+                LnkMsg( FTL+MSG_TOO_MANY_ERRORS, nullptr );
             }
         }
     }
 }
 
-static void FileOrder( char rc_buff[], int which_file )
-/*****************************************************/
+static void FileOrder( char *rc_buff, int which_file )
+/****************************************************/
 {
+    MsgState    &st = state();
+
     switch( which_file ) {
     case 1:
-        Msg_Do_Put_Args( rc_buff, &MsgArgInfo, "s", LocFile );
+        Msg_Do_Put_Args( rc_buff, &st.arg_info, "s", st.loc_file );
         break;
     case 2:
-        Msg_Do_Put_Args( rc_buff, &MsgArgInfo, "s", LocMem );
+        Msg_Do_Put_Args( rc_buff, &st.arg_info, "s", st.loc_mem );
         break;
     case 3:
-        Msg_Do_Put_Args( rc_buff, &MsgArgInfo, "12", LocFile, LocMem );
+        Msg_Do_Put_Args( rc_buff, &st.arg_info, "12", st.loc_file, st.loc_mem );
         break;
     case 4:
-        Msg_Do_Put_Args( rc_buff, &MsgArgInfo, "d", LocRec );
+        Msg_Do_Put_Args( rc_buff, &st.arg_info, "d", st.loc_rec );
         break;
     case 5:
-        Msg_Do_Put_Args( rc_buff, &MsgArgInfo, "sd", LocFile, LocRec );
+        Msg_Do_Put_Args( rc_buff, &st.arg_info, "sd", st.loc_file, st.loc_rec );
         break;
     case 6:
-        Msg_Do_Put_Args( rc_buff, &MsgArgInfo, "sd", LocMem, LocRec );
+        Msg_Do_Put_Args( rc_buff, &st.arg_info, "sd", st.loc_mem, st.loc_rec );
         break;
     case 7:
-        Msg_Do_Put_Args( rc_buff, &MsgArgInfo, "12d", LocFile, LocMem, LocRec );
+        Msg_Do_Put_Args( rc_buff, &st.arg_info, "12d", st.loc_file, st.loc_mem, st.loc_rec );
         break;
     }
 }
@@ -508,56 +522,57 @@ void LnkMsg(
  * types is either NULL or the order of interpolated arguments.
  */
 {
-    va_list     args;
-    int         which_file = 0;
-    size_t      len;
-    char        rc_buff[RESOURCE_MAX_SIZE];
-    char        buff[MAX_MSG_SIZE];
+    va_list                             args;
+    int                                 which_file = 0;
+    size_t                              len;
+    std::array<char, RESOURCE_MAX_SIZE> rc_buff;
+    std::array<char, MAX_MSG_SIZE>      buff;
+    MsgState                            &st = state();
 
     if( !TestBit( MsgFlags, num & NUM_MSK ) )
         return;
-    CurrSymName = NULL;
+    st.curr_sym_name = nullptr;
     LocateFile( num );
     len = 0;
-    if( LocFile != NULL ) {
+    if( st.loc_file != nullptr ) {
         which_file += 1;
     }
-    if( LocMem != NULL ) {
+    if( st.loc_mem != nullptr ) {
         which_file += 2;
     }
-    if( LocRec != 0 ) {
+    if( st.loc_rec != 0 ) {
         which_file += 4;
     }
     if( which_file != 0 ) {
         if( DirectiveSourceKind() == DIRECTIVE_SOURCE_SYSTEM ) {
-            Msg_Get( MSG_SYS_BLK, rc_buff );
+            Msg_Get( MSG_SYS_BLK, rc_buff.data() );
             which_file = 1;
         } else if( DirectiveSourceKind() == DIRECTIVE_SOURCE_ENVIRONMENT ) {
-            Msg_Get( MSG_ENVIRON, rc_buff );
+            Msg_Get( MSG_ENVIRON, rc_buff.data() );
             which_file = 1;
         } else {
-            Msg_Get( MSG_FILE_REC_NAME_0 + which_file - 1, rc_buff );
+            Msg_Get( MSG_FILE_REC_NAME_0 + which_file - 1, rc_buff.data() );
         }
-        FileOrder( rc_buff, which_file );
-        len += FmtStr( buff + len, MAX_MSG_SIZE - len, rc_buff );
+        FileOrder( rc_buff.data(), which_file );
+        len += FmtStr( buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
         if( num & LINE ) {
             if( DirectiveSourceKind() == DIRECTIVE_SOURCE_OTHER ) {
-                Msg_Get( MSG_LINE, rc_buff );
-                Msg_Do_Put_Args( rc_buff, &MsgArgInfo, "d", DirectiveLine() );
-                len += FmtStr( buff + len, MAX_MSG_SIZE - len, rc_buff );
+                Msg_Get( MSG_LINE, rc_buff.data() );
+                Msg_Do_Put_Args( rc_buff.data(), &st.arg_info, "d", DirectiveLine() );
+                len += FmtStr( buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
             }
         }
-        LocFile = NULL;
-        LocMem = NULL;
-        LocRec = 0;
+        st.loc_file = nullptr;
+        st.loc_mem = nullptr;
+        st.loc_rec = 0;
     }
 
-    Msg_Get( num & NUM_MSK, rc_buff );
+    Msg_Get( num & NUM_MSK, rc_buff.data() );
     va_start( args, types );
-    Msg_Put_Args( rc_buff, &MsgArgInfo, types, args );
+    Msg_Put_Args( rc_buff.data(), &st.arg_info, types, args );
     va_end( args );
-    len += FmtStr( buff + len, MAX_MSG_SIZE - len, rc_buff );
-    MessageFini( num, buff, len );
+    len += FmtStr( buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
+    MessageFini( num, buff.data(), len );
 }
 
 #ifdef _OS2
@@ -565,16 +580,16 @@ static void HandleRcMsg( unsigned num, va_list args )
 /***************************************************/
 /* getting an error message from resource compiler code */
 {
-    size_t      len;
-    char        rc_buff[RESOURCE_MAX_SIZE];
-    char        buff[MAX_MSG_SIZE];
+    size_t                              len;
+    std::array<char, RESOURCE_MAX_SIZE> rc_buff;
+    std::array<char, MAX_MSG_SIZE>      buff;
 
     num |= ERR;
     len = 0;
-    CurrSymName = NULL;
-    Msg_Get( num & NUM_MSK, rc_buff );
-    len += DoFmtStr( buff + len, MAX_MSG_SIZE - len, rc_buff, args );
-    MessageFini( num, buff, len );
+    state().curr_sym_name = nullptr;
+    Msg_Get( num & NUM_MSK, rc_buff.data() );
+    len += DoFmtStr( buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data(), args );
+    MessageFini( num, buff.data(), len );
 }
 
 void RcWarning( unsigned num, ... )
@@ -643,20 +658,11 @@ void WLPrtBanner( void )
  * print the banner, if it hasn't already been printed
  */
 {
-    const char  *msg;
-
     if( !BannerPrinted ) {
         BannerPrinted = true;
-        msg = MsgStrings[PRODUCT];
-        WriteStdOutInfo( msg, BANNER, NULL );
-        msg = MsgStrings[COPYRIGHT];
-        WriteStdOutInfo( msg, BANNER, NULL );
-        msg = MsgStrings[COPYRIGHT2];
-        WriteStdOutInfo( msg, BANNER, NULL );
-        msg = MsgStrings[TRADEMARK];
-        WriteStdOutInfo( msg, BANNER, NULL );
-        msg = MsgStrings[TRADEMARK2];
-        WriteStdOutInfo( msg, BANNER, NULL );
+        for( int id : { PRODUCT, COPYRIGHT, COPYRIGHT2, TRADEMARK, TRADEMARK2 } ) {
+            WriteStdOutInfo( MsgStrings[id], BANNER, nullptr );
+        }
     }
 }
 
@@ -675,16 +681,14 @@ bool SkipSymbol( symbol * sym )
 int SymAlphaCompare( const void *a, const void *b )
 /********************************************************/
 {
-    symbol      *left;
-    symbol      *right;
-    const char  *leftname;
-    const char  *rightname;
-    size_t      leftsize;
-    size_t      rightsize;
-    int         result;
+    const symbol    *left = *static_cast<symbol *const *>( a );
+    const symbol    *right = *static_cast<symbol *const *>( b );
+    const char      *leftname;
+    const char      *rightname;
+    size_t          leftsize;
+    size_t          rightsize;
+    int             result;
 
-    left = *((symbol **) a);
-    right = *((symbol **) b);
     if( (LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
         __unmangled_name( left->name.u.ptr, 0, &leftname, &leftsize );
         __unmangled_name( right->name.u.ptr, 0, &rightname, &rightsize );
