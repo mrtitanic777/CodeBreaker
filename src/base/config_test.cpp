@@ -25,7 +25,7 @@ CB_TEST("base.config.defaults_without_a_settings_file", [] {
     const cb::fs::ScopedEnv s("CB_STATE", std::nullopt), t("CB_TARGET", std::nullopt), c("CB_CORPUS", std::nullopt);
     const Checkout co;
     const Config cfg = co.load();
-    CB_CHECK_EQ(cfg.text("target"), "win95");
+    CB_CHECK_EQ(cfg.text("target"), "");   // (no built-in target: the work folder names it)
     CB_CHECK_EQ(cfg.text("struct_recovery"), "all");
     CB_CHECK_EQ(cfg.text("not_a_setting"), "");
     CB_CHECK(!cfg.path("openwatcom").has_value());   // no default: not set
@@ -96,7 +96,7 @@ CB_TEST("base.config.corpora_and_products", [] {
     const cb::fs::ScopedEnv t("CB_TARGET", std::nullopt), c("CB_CORPUS", std::nullopt), r("CB_REFERENCE", std::nullopt),
         st("CB_STATE", std::nullopt);
     const std::string old = cb::testing::rooted("old");
-    const Checkout co(R"({"corpus": "files95", "corpora": {"win98": "files98", "win1.0": ")" + old + R"(", "bad": 3},
+    const Checkout co(R"({"target": "win95", "corpus": "files95", "corpora": {"win98": "files98", "win1.0": ")" + old + R"(", "bad": 3},
                           "reference": "ref"})");
     const Config cfg = co.load();
     const auto corpora = cfg.corpora();

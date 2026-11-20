@@ -303,7 +303,7 @@ build::module::Services LaneKit::module_services() {
     };
     s.build_apart = [this](const std::string& module, const std::optional<stdfs::path>& outdir, bool call) { return build_apart(module, outdir, call); };
     s.project_build_folder = [&config](const stdfs::path& file) {
-        return config.checkout_root() / "Converted" / fs::to_text(file.stem()) / "build";
+        return config.converted_root() / fs::to_text(file.stem()) / "build";
     };
     s.workers = [&config] { return static_cast<int>(parallel::workers(config.worker_policy())); };
     s.log = [](std::string_view line) { std::fprintf(stdout, "%.*s\n", static_cast<int>(line.size()), line.data()); };

@@ -35,7 +35,6 @@ constexpr std::array kDefaults{
     Default{"ppc_binutils", "toolchains/powerpc-binutils"},
     Default{"retromcp", "src/java/retromcp/build/libs/retromcp.jar"},
     Default{"threads", ""},
-    Default{"target", "win95"},
     Default{"struct_recovery", "all"},
 };
 
@@ -236,6 +235,12 @@ std::string Config::corpora_text() const {
 // The folder a run keeps what it makes in: setting "state" (the work folder names its own in codebreaker.json), else the work
 // folder's codebreaker/, else <checkout>/work/state (a command run on no target; the program sets CB_STATE beside a file it is
 // given when there is no work folder: app/codebreaker_main.cpp).
+stdfs::path Config::converted_root() const {
+    if (auto c = path("converted")) return *c;
+    if (auto w = work_folder()) return *w / "converted";
+    return root_ / "work" / "converted";
+}
+
 stdfs::path Config::state() const {
     if (auto s = path("state")) return *s;
     if (auto w = work_folder()) return *w / "codebreaker";

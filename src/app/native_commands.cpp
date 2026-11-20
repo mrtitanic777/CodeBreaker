@@ -172,7 +172,8 @@ std::vector<GatheredFile> gather(std::span<const std::string> paths) {
 constexpr std::string_view kCabUsage =
     "usage: codebreaker cab list <file.cab>\n"
     "       codebreaker cab extract <file.cab> <outdir> [names...]\n"
-    "       codebreaker cab create <out.cab> <file-or-folder>... [--store]\n";
+    "       codebreaker cab create <out.cab> <file-or-folder>... [--store]\n"
+    "       codebreaker cab <file.cab | folder>      (a cabinet is extracted beside it; a folder becomes <folder>.cab beside it)\n";
 
 int cab_command(std::span<const std::string> argv) {
     namespace cab = formats::cab;
@@ -217,6 +218,31 @@ int cab_command(std::span<const std::string> argv) {
                 }
             out("extracted {} files to {}\n", done.size(), args[2]);
             return missing ? 1 : 0;
+        }
+        if (args.size() == 1 && args[0] != "list" && args[0] != "extract" && args[0] != "create") {   // the one-input form: whichever way it goes
+            const std::filesystem::path in = std::filesystem::absolute(fs::from_text(args[0])).lexically_normal();
+            if (std::filesystem::is_directory(in)) {
+                const std::filesystem::path target = in.parent_path() / (fs::to_text(in.filename()) + ".cab");
+                const std::vector<GatheredFile> gathered = gather(std::span(args));
+                std::vector<cab::SourceFile> files;
+                for (const GatheredFile& g : gathered) files.push_back({g.name, ByteView(g.data)});
+                cab::WriteOptions options;
+                options.compression = store ? cab::Compression::None : cab::Compression::MsZip;
+                const std::uint64_t size = cab::write(files, target, options);
+                out("wrote {}: {} files, {} bytes\n", fs::to_text(target), files.size(), size);
+                out("Output: {}\n", fs::to_text(target.parent_path()));
+                return 0;
+            }
+            if (std::filesystem::is_regular_file(in)) {
+                const std::filesystem::path target = in.parent_path() / fs::to_text(in.stem());
+                const std::vector<cab::Extracted> done = cab::extract(in, target, std::nullopt);
+                out("extracted {} files to {}\n", done.size(), fs::to_text(target));
+                out("Output: {}\n", fs::to_text(target));
+                return 0;
+            }
+            flush_out();
+            err("cab: no such file or folder: {}\n", args[0]);
+            return 1;
         }
         if (args.size() >= 3 && args[0] == "create") {
             const std::vector<GatheredFile> gathered = gather(std::span(args).subspan(2));
@@ -376,7 +402,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
         build::resources::Environment env;
         env.open_watcom = ft_openwatcom_of(config);
         env.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
-        const std::filesystem::path converted = config.path("converted").value_or(config.checkout_root() / "Converted");
+        const std::filesystem::path converted = config.converted_root();
         env.project = [converted](const std::filesystem::path& binary) { return base::converted::Store(converted).project(binary); };
         return build::resources::command(env);
     });

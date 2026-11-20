@@ -8,7 +8,7 @@ namespace cb::base::tidy_state {
 CommandEnvironment environment_of(const cb::config::Config& configuration) {
     CommandEnvironment e;
     e.layout.state = configuration.state();
-    e.layout.converted = configuration.path("converted").value_or(configuration.checkout_root() / "Converted");
+    e.layout.converted = configuration.converted_root();
     e.cache.cache = cache::settings_of(configuration);
     return e;
 }

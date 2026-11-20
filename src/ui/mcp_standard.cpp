@@ -122,7 +122,7 @@ service::Environment standard_environment(const config::Config& config, const ba
 Services standard_services(const config::Config& config, const base::Corpus& corpus) {
     Services s;
     s.state = config.state();
-    s.converted = config.path("converted").value_or(config.checkout_root() / "Converted");
+    s.converted = config.converted_root();
     s.root = config.checkout_root();
     s.corpus_root = corpus.root();
     s.retail = [&corpus](std::string_view module) { return corpus.retail(module); };

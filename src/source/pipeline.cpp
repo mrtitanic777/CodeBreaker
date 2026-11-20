@@ -47,7 +47,7 @@ const verify::reconstruct::Reconstructor& World::reconstructor() {
 }
 
 base::converted::Store World::converted() const {
-    return base::converted::Store(config_.path("converted").value_or(config_.checkout_root() / "Converted"));
+    return base::converted::Store(config_.converted_root());
 }
 
 std::optional<stdfs::path> World::find(std::string_view module) {

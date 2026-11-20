@@ -86,6 +86,11 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
 1. The capture hook (done: `core/wlink_capture`), a corpus from a gate run (49 links:
    `test-inputs/x86link/gate`), and the replay harness.
 2. wlink's C source as a library in the one build, run in-process through its IDE entry point; every case byte-identical.
+   **Done (2026-11-20):** `src/build/x86link/wlink` (cb_wlink: the objects of wlinkd.dll, copied by work/x86link/vendor.py;
+   messages compiled in, cb/msgtable.c), `x86link.cpp` (the host: the IDE callbacks as wlink.exe's driver has them;
+   WLINK_LNK names <WATCOM>/binnt64/wlink.lnk), `replay.cpp` + `x86link_replay`: 47 of 47 replayable captured links
+   identical (files byte for byte but the PE link time; messages; exit code), 2 not replayable (their captures lack an
+   `option resource` file; captures now keep it). One wlink fix: the reset between links now clears the stack address.
 3. Every caller on the in-process linker; `wlink.exe` is no longer started.
 4. The refactoring, module by module (the table above), each re-proven on the corpus: the directives, the OMF reader (onto
    cb/formats/omf), the symbol passes, the layout and fixups, then each format (DOS, LE, NE, PE).

@@ -207,7 +207,7 @@ set_property(GLOBAL PROPERTY CB_AREAS "")
 # area's library never takes their sources; each is added below with add_subdirectory or compiled by its own rules.
 set(CB_ENGINE_DIRS
   decompile/engine exact/emu/dosexec translate/l2 translate/frontends/python/pyfront formats/xex
-  recompile/x360 recompile/xenonrecomp recompile/rexglue java/retromcp app/memcap third_party)
+  recompile/x360 recompile/xenonrecomp recompile/rexglue java/retromcp app/memcap third_party build/x86link)
 function(cb_area dir)
   file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
   file(GLOB_RECURSE tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
@@ -347,6 +347,23 @@ target_link_libraries(cb_formats PUBLIC cb_core cb_xex cb_zlib)
 # XenonRecomp and XenonAnalyse (recompile/xenonrecomp, CodeBreaker's fork) as libraries: cb::recompile::xenon_engine calls
 # their mains in-process. Their own build (its third-party libraries, its flags); the programs build on request only.
 add_subdirectory(recompile/xenonrecomp "${CMAKE_BINARY_DIR}/xenonrecomp")
+# OpenWatcom's linker from its own source, linked in (build/x86link/wlink; Windows: its file layer is Win32)
+if(WIN32)
+  add_subdirectory(build/x86link/wlink "${CMAKE_BINARY_DIR}/wlink")
+endif()
+# x86link: the linker as CodeBreaker calls it (build/x86link/x86link.cpp), and its proof against the captured links
+# (replay.cpp; the test is replay_test.cpp, and x86link_replay runs it alone: x86link_replay <corpus> <scratch>)
+add_library(cb_x86link STATIC build/x86link/x86link.cpp build/x86link/replay.cpp)
+cb_apply_flags(cb_x86link)
+target_link_libraries(cb_x86link PUBLIC cb_core)
+if(WIN32)
+  target_link_libraries(cb_x86link PRIVATE cb_wlink)
+endif()
+target_link_libraries(cb_build PUBLIC cb_x86link)
+set_property(GLOBAL APPEND PROPERTY CB_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/build/x86link/replay_test.cpp")
+add_executable(x86link_replay EXCLUDE_FROM_ALL build/x86link/replay_main.cpp)
+cb_apply_flags(x86link_replay)
+target_link_libraries(x86link_replay PRIVATE cb_x86link)
 cb_area(recompile)
 target_link_libraries(cb_recompile PRIVATE LibXenonRecomp LibXenonAnalyseMain)
 target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_formats cb_decompile)   # (cb_base: the converted projects of the recompile-project command)

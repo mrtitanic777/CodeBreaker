@@ -47,6 +47,9 @@ Third-party open-source code in this repository, each under its own license:
                                (BSD-3-Clause, Ben Vanik and the Xenia contributors)
   - src/recompile/switches.cpp  the switch-table scanner of the Xbox 360 ports (by the
                                same author as src/recompile/x360)
+  - src/build/x86link/wlink      OpenWatcom's linker (wlink) and the parts of its support libraries it uses (orl, wres,
+                               dwarf, rc, lib_misc, watcom), from the OpenWatcom fork (Sybase Open Watcom Public License
+                               1.0; src/build/x86link/wlink/LICENSE.txt)
   - src/recompile/x360
                                CodeBreaker's Xbox 360 runtime, from the Xbox 360 ports' runtime (by
                                this project's author), with: WMA Pro tables from FFmpeg

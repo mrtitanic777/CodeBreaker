@@ -254,7 +254,7 @@ void LoopBody::findExit(const vector<FlowBlock *> &body)
 /// tail, one way out, into L -- and some other edge out of the loop goes to L too; else null.
 /// (Tried: a region of up to 8 blocks in X's place -- it traded gotos elsewhere, KERNEL32 +4.)
 /// \param body is the loop body (its blocks marked)
-/// eturn L, to be the loop's exit, or null
+/// \return L, to be the loop's exit, or null
 FlowBlock *LoopBody::exitPastStep(const vector<FlowBlock *> &body) const
 
 {

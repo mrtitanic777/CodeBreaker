@@ -4,7 +4,7 @@
 //
 //     const cb::config::Config& c = cb::config::current();     // the checkout this program runs from
 //     c.path("state")                                           // absolute; nullopt when not set
-//     c.text("target")                                          // "win95"
+//     c.text("target")                                          // the work folder's target ("win95"); "" without one
 //     c.products()                                              // what cb::base::Corpus is built from
 //
 // A setting's value is, first, the environment variable CB_<KEY> (upper case) when it is set and not empty; then
@@ -58,6 +58,10 @@ public:
     std::optional<std::filesystem::path> work_folder() const { return path("work_folder"); }
     // The work folder's codebreaker.json (whether or not it is there); nullopt without a work folder.
     std::optional<std::filesystem::path> work_file() const;
+
+    // Where the project folders CodeBreaker makes go (recompile-project, xna, the source pipeline): setting "converted", else
+    // <work folder>/converted, else <checkout>/work/converted. (convert itself writes beside its input when "converted" is not set.)
+    std::filesystem::path converted_root() const;
 
     // The state folder: setting "state", else <work folder>/codebreaker, else <checkout>/work/state; and a path inside it
     // whose folder is created.

@@ -134,6 +134,9 @@ struct Reader {
             } else if ((w == "option" || w == "op") && i + 1 < words.size()) {
                 const std::string o = lower(words[i + 1]);
                 if (o.starts_with("map=")) outputs.push_back(words[i + 1].substr(4));
+                // the resources linked in (option resource=x.res, res=): an input too
+                for (const char* key : {"resource=", "res="})
+                    if (o.starts_with(key)) files.push_back(words[i + 1].substr(std::string_view(key).size()));
             }
         }
     }

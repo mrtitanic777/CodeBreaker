@@ -59,14 +59,14 @@ CB_TEST("base.settings.without_a_settings_file", [] {
     const std::string text = cb::base::settings::describe(config);
     CB_CHECK(text.find("(missing: copy settings.example.json)") != std::string::npos);
     CB_CHECK(text.find("  -- openwatcom       (not set)\n") != std::string::npos);
-    CB_CHECK(text.find("     target           win95\n") != std::string::npos);
+    CB_CHECK(text.find("     target ") == std::string::npos);   // (no built-in target: the work folder names it)
     CB_CHECK(text.find("corpora") == std::string::npos);
 });
 
 CB_TEST("base.settings.an_environment_override_shows", [] {
     cb::fs::ScopedTempDir dir("cbsettings");
     const cb::config::Config config = cb::config::Config::load(dir.path());
-    const cb::fs::ScopedEnv target("CB_TARGET", "win31");
+    const cb::fs::ScopedEnv recovery("CB_STRUCT_RECOVERY", "none");
     const std::string text = cb::base::settings::describe(config);
-    CB_CHECK(text.find("     target           win31\n") != std::string::npos);
+    CB_CHECK(text.find("     struct_recovery  none\n") != std::string::npos);
 });

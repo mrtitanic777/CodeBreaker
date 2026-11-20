@@ -32,7 +32,7 @@ formats::xex::Tools xex_tools(const cb::config::Config& config) {
     return tools;
 }
 
-stdfs::path converted_root(const cb::config::Config& config) { return config.path("converted").value_or(config.checkout_root() / "Converted"); }
+stdfs::path converted_root(const cb::config::Config& config) { return config.converted_root(); }
 
 xenon::Config xenon_config(const cb::config::Config& config) {
     xenon::Config c;

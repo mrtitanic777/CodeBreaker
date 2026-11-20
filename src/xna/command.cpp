@@ -23,7 +23,7 @@ std::optional<stdfs::path> setting_path(const cb::config::Config& config, std::s
 // ffmpeg: the setting, else the program of that name (process::run finds it on PATH).
 std::optional<stdfs::path> ffmpeg_of(const cb::config::Config& config) { return setting_path(config, "ffmpeg").value_or(stdfs::path("ffmpeg")); }
 
-stdfs::path converted_root(const cb::config::Config& config) { return config.path("converted").value_or(config.checkout_root() / "Converted"); }
+stdfs::path converted_root(const cb::config::Config& config) { return config.converted_root(); }
 
 }  // namespace
 
