@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -408,6 +409,16 @@ std::uint64_t write(const stdfs::path& folder, const stdfs::path& out, const Opt
     return total * kSectorSize;
 }
 
+std::string volume_name(std::string_view folder_name) {
+    std::string out;
+    for (const char c : folder_name) {
+        if (out.size() == 32) break;
+        const unsigned char u = static_cast<unsigned char>(c);
+        out += std::isalnum(u) ? static_cast<char>(std::toupper(u)) : '_';
+    }
+    return out.empty() ? std::string("CODEBREAKER") : out;
+}
+
 cli::Command command(const Environment&) {
     cli::Command c;
     c.name = "disc";
@@ -416,7 +427,8 @@ cli::Command command(const Environment&) {
     c.description =
         "  disc <folder> <out.iso> [--volume NAME] [--boot IMG]\n"
         "  disc --list <image.iso>\n"
-        "  disc --extract <image.iso> <outdir>";
+        "  disc --extract <image.iso> <outdir>\n"
+        "  disc <folder | image>      (a folder becomes <folder>.iso beside it; an image's files go into a folder beside it)";
     c.params = {
         cli::Positional{"input", "the folder to write, or with --list or --extract the image"},
         cli::Positional{"output", "the image to write, or with --extract the folder to write the files to", false},
@@ -436,6 +448,22 @@ cli::Command command(const Environment&) {
             }
             if (extract && second && !list) {
                 out("extracted {} files to {}\n", formats::media::extract(fs::from_text(first), fs::from_text(*second)), *second);
+                return kExitOk;
+            }
+            if (!second && !list && !extract) {   // the one-input form: whichever way it goes
+                const std::filesystem::path in = std::filesystem::absolute(fs::from_text(first)).lexically_normal();
+                if (std::filesystem::is_directory(in)) {
+                    const std::filesystem::path target = in.parent_path() / (fs::to_text(in.filename()) + ".iso");
+                    Options options;
+                    options.volume_id = volume_name(fs::to_text(in.filename()));
+                    const std::uint64_t size = write(in, target, options);
+                    out("wrote {}: {} bytes\n", fs::to_text(target), size);
+                    out("Output: {}\n", fs::to_text(target.parent_path()));
+                    return kExitOk;
+                }
+                const std::filesystem::path target = in.parent_path() / fs::to_text(in.stem());
+                out("extracted {} files to {}\n", formats::media::extract(in, target), fs::to_text(target));
+                out("Output: {}\n", fs::to_text(target));
                 return kExitOk;
             }
             if (second && !list && !extract) {

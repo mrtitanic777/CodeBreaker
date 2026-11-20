@@ -1,8 +1,10 @@
-// Tests of the tools behind the window's Tools page (tools.hpp, tools_run.hpp, settings_edit.hpp): every command of the table is a tool with a title, a group and a
-// description (or is named as left out), the argument-spec and usage parsers, search, the validation of a form, the command line it builds, the running of a child.
+// Tests of the tools behind the window's Tools page (tools.hpp, tools_run.hpp, settings_edit.hpp): every command of the table is some tool's command (or is
+// named as left out), every tool is a drop and at most one choice with no typed arguments, the developer tools are hidden unless asked for, the command
+// line a form builds, the result folder a run reports, the work folder's modules, the running of a child.
 #include "app/tools.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <set>
 
 #include "app/commands.hpp"
@@ -14,140 +16,180 @@
 namespace cb::app::tools {
 namespace {
 
-const Arg* tt_arg(const Tool& t, const std::string& label) {
-    for (const Arg& a : t.args)
-        if (a.label == label) return &a;
-    return nullptr;
+// A check that says which tool or command it was about when it fails.
+bool tt_ok(bool ok, const std::string& what) {
+    if (!ok) std::fprintf(stderr, "  (about: %s)\n", what.c_str());
+    return ok;
 }
 
-CB_TEST("app.tools.every_command_is_a_tool_with_a_title_a_group_and_a_description_or_is_left_out", [] {
+CB_TEST("app.tools.every_command_is_some_tools_command_or_is_left_out", [] {
     std::set<std::string> left;
     for (const LeftOut& l : left_out()) {
         left.insert(l.name);
         CB_CHECK(!l.reason.empty());
     }
-    std::set<std::string> titles;
+    std::set<std::string> commands;
+    for (const Tool& t : all()) commands.insert(std::string(t.command()));
     for (const CommandDoc& doc : command_docs()) {
         const std::string name(doc.name);
-        const Tool* t = find(name);
-        if (left.contains(name)) {
-            CB_CHECK(t == nullptr);
-            continue;
-        }
-        CB_CHECK(t != nullptr);
-        if (t == nullptr) continue;
-        CB_CHECK(!t->title.empty() && !t->group.empty() && t->description.size() > 20);
-        CB_CHECK(std::find(groups().begin(), groups().end(), t->group) != groups().end());
-        CB_CHECK(t->description.back() == '.');                 // one plain sentence
-        CB_CHECK(t->title.find("--") == std::string::npos && t->description.find("--") == std::string::npos || name == "java");   // no command-line words in the words
-        CB_CHECK(titles.insert(t->title).second);                // every title is its own
-        CB_CHECK_EQ(t->usage, std::string(doc.synopsis));
+        CB_CHECK(tt_ok(commands.contains(name) != left.contains(name), name));   // a tool's, or left out with the reason: never both, never neither
     }
-    CB_CHECK_EQ(all().size() + left.size(), command_docs().size());
-    // the names the person asked for
-    CB_CHECK_EQ(find("pe-source")->title, "Windows program");
-    CB_CHECK_EQ(find("ne-source")->title, "Windows 3.x program");
-    CB_CHECK_EQ(find("dos-source")->title, "DOS program");
-    CB_CHECK_EQ(find("convert")->title, "Convert to source");
-    CB_CHECK_EQ(find("info")->title, "What is this file?");
-    CB_CHECK_EQ(find("analyze")->title, "Analyze a program");
-    CB_CHECK_EQ(find("names")->title, "Function names");
-    CB_CHECK_EQ(find("decompile")->title, "Decompile to C");
-    CB_CHECK_EQ(find("judge-cs-cpp")->title, "C# to C++");
-    CB_CHECK_EQ(find("judge-py-cpp")->title, "Python to C++");
-    CB_CHECK_EQ(find("judge-c-java")->title, "C to Java");
+    for (const std::string& c : commands) CB_CHECK(tt_ok(find_command_doc(c) != nullptr, c));   // (no tool runs a command the table does not have)
 });
 
-CB_TEST("app.tools.the_list_is_in_the_order_of_its_groups", [] {
+CB_TEST("app.tools.every_tool_is_one_drop_and_at_most_one_choice_with_nothing_typed", [] {
+    std::set<std::string> ids, titles;
+    for (const Tool& t : all()) {
+        CB_CHECK(ids.insert(t.id).second && titles.insert(t.title).second);   // every id and every title is its own
+        CB_CHECK(!t.title.empty() && t.description.size() > 20 && t.description.back() == '.');
+        CB_CHECK(std::find(groups().begin(), groups().end(), t.group) != groups().end());
+        CB_CHECK(tt_ok(t.developer == is_developer_group(t.group), t.id));        // the developer tools are exactly the developer groups'
+        CB_CHECK(tt_ok(t.inputs.size() <= 2, t.id));
+        CB_CHECK(tt_ok(t.inputs.size() < 2 || t.group == "Compare", t.id));       // two inputs only to compare two things
+        CB_CHECK(tt_ok(t.choices.empty() == t.choice_label.empty(), t.id));
+        CB_CHECK(tt_ok(t.choices.empty() || t.choices.size() >= 2, t.id));        // a choice is between buttons
+        CB_CHECK(tt_ok(!t.argv.empty(), t.id));
+        CB_CHECK(t.title.find("--") == std::string::npos && t.description.find("--") == std::string::npos);   // no command-line words in the words
+        // every placeholder of the command line is one the form fills
+        for (const std::string& w : t.argv) {
+            for (std::size_t at = w.find('{'); at != std::string::npos; at = w.find('{', at + 1)) {
+                const std::string key = w.substr(at + 1, w.find('}', at) - at - 1);
+                const bool input2 = key.back() == '2';
+                CB_CHECK(tt_ok(key == "choice" ? !t.choices.empty() : t.inputs.size() >= (input2 ? 2u : 1u), t.id + ": " + key));
+            }
+        }
+    }
+    // the everyday groups, in their order, then the developer ones
+    CB_CHECK(std::vector<std::string>(groups().begin(), groups().begin() + 5) == std::vector<std::string>({"Convert", "Look inside", "Extract", "Build", "Compare"}));
+    CB_CHECK(!is_developer_group("Convert") && is_developer_group("Collection"));
+    // the list is in the order of its groups
     std::size_t last = 0;
     for (const Tool& t : all()) {
         const std::size_t g = static_cast<std::size_t>(std::find(groups().begin(), groups().end(), t.group) - groups().begin());
         CB_CHECK(g >= last);
         last = g;
     }
-    for (const std::string& g : groups())
-        CB_CHECK(std::any_of(all().begin(), all().end(), [&](const Tool& t) { return t.group == g; }));   // no empty group
 });
 
-CB_TEST("app.tools.an_argument_spec_gives_the_fields_of_a_form", [] {
-    const std::vector<Arg> a = parse_spec("F Program; ?F Stub_file --stub; ?B Check_it --check; C Action=list|extract; ?*T Names; ?W More");
-    CB_CHECK(a.size() == 6);
-    CB_CHECK(a[0].kind == ArgKind::File && a[0].required && a[0].label == "Program" && a[0].flag.empty());
-    CB_CHECK(a[1].kind == ArgKind::File && !a[1].required && a[1].flag == "--stub" && a[1].label == "Stub file");
-    CB_CHECK(a[2].kind == ArgKind::Toggle && a[2].flag == "--check" && !a[2].required);
-    CB_CHECK(a[3].kind == ArgKind::Choice && a[3].required && a[3].choices == std::vector<std::string>({"list", "extract"}));
-    CB_CHECK(a[4].list && a[4].kind == ArgKind::Text && !a[4].required);
-    CB_CHECK(a[5].kind == ArgKind::Words);
-    CB_CHECK(parse_spec("").empty());
-    CB_CHECK(parse_spec(";; Z nonsense ;").empty());   // what it cannot read is left out
+CB_TEST("app.tools.the_spec_parsers_read_inputs_and_choices", [] {
+    const std::vector<Input> in = parse_inputs("F Older build; E Game: an .xex, a package; M Module; X nonsense; D Source folder");
+    CB_CHECK_EQ(in.size(), 4u);
+    CB_CHECK(in[0].kind == InputKind::File && in[0].label == "Older build" && in[0].accepts.empty());
+    CB_CHECK(in[1].kind == InputKind::Either && in[1].label == "Game" && in[1].accepts == "an .xex, a package");
+    CB_CHECK(in[2].kind == InputKind::Module && in[3].kind == InputKind::Folder);
+    std::vector<Choice> choices;
+    CB_CHECK_EQ(parse_choices("Platform=PC:pc|Xbox 360:xbox360", choices), "Platform");
+    CB_CHECK(choices.size() == 2 && choices[1].label == "Xbox 360" && choices[1].value == "xbox360");
+    CB_CHECK_EQ(parse_choices("Do=Only look:--dry|Tidy up:", choices), "Do");
+    CB_CHECK(choices.size() == 2 && choices[1].value.empty());
+    CB_CHECK(parse_choices("", choices).empty() && choices.empty());
 });
 
-CB_TEST("app.tools.a_usage_line_gives_the_same_fields", [] {
-    const std::vector<Arg> a = parse_usage("pe-source <program> [--stub F]");
-    CB_CHECK(a.size() == 2);
-    CB_CHECK(a[0].kind == ArgKind::File && a[0].required);
-    CB_CHECK(a[1].flag == "--stub" && a[1].kind == ArgKind::File && !a[1].required);
-    const std::vector<Arg> m = parse_usage("module <name> [--no-verify]");
-    CB_CHECK(m.size() == 2 && m[0].kind == ArgKind::Text && m[1].kind == ArgKind::Toggle && m[1].flag == "--no-verify");
-    const std::vector<Arg> c = parse_usage("media list|extract <image>");
-    CB_CHECK(c.size() == 2 && c[0].kind == ArgKind::Choice && c[0].choices.size() == 2 && c[1].kind == ArgKind::File);
-    const std::vector<Arg> l = parse_usage("driver-services [FILE ...]");
-    CB_CHECK(!l.empty());
-    const std::vector<Arg> d = parse_usage("dos-build <folder> [--against F]");
-    CB_CHECK(d[0].kind == ArgKind::Folder);
-    CB_CHECK(parse_usage("scoreboard").empty());
-    CB_CHECK(parse_usage("cache [--stats|--prune|--clear]").size() == 3);   // (three toggles)
-    // the tools that take their spec from the usage line have one
-    CB_CHECK(!find("pe-source")->args.empty());
-    CB_CHECK(find("pe-source")->args[0].required && find("pe-source")->args[0].kind == ArgKind::File);
+CB_TEST("app.tools.java_to_cpp_is_one_drop_one_choice_and_run", [] {
+    const Tool* t = find("java-port");
+    CB_CHECK(t != nullptr);
+    if (t == nullptr) return;
+    CB_CHECK_EQ(t->title, "Java to C++");
+    CB_CHECK(t->group == "Convert" && !t->developer);
+    CB_CHECK(t->inputs.size() == 1 && t->inputs[0].kind == InputKind::Either);
+    CB_CHECK(t->choice_label == "Platform" && t->choices.size() == 2 && t->choices[0].label == "PC" && t->choices[1].label == "Xbox 360");
+    Values v = empty_values(*t);
+    CB_CHECK_EQ(missing(*t, v).value_or(""), "Java program");   // Run waits for the drop
+    v.inputs[0] = "C:/Games/a1.2.6.jar";
+    CB_CHECK(!missing(*t, v));
+    CB_CHECK(build_argv(*t, v) == std::vector<std::string>({"java", "port", "C:/Games/a1.2.6.jar", "--platform", "pc"}));
+    v.choice = 1;
+    CB_CHECK(build_argv(*t, v) == std::vector<std::string>({"java", "port", "C:/Games/a1.2.6.jar", "--platform", "xbox360"}));
 });
 
-CB_TEST("app.tools.search_matches_the_title_the_command_name_and_the_description", [] {
-    const auto names = [](const std::vector<const Tool*>& v) {
-        std::set<std::string> s;
-        for (const Tool* t : v) s.insert(t->name);
-        return s;
+CB_TEST("app.tools.the_command_line_is_filled_from_the_drop_and_the_choice", [] {
+    {   // output beside the input
+        const Tool* t = find("xbox-disc");
+        Values v = empty_values(*t);
+        v.inputs[0] = "C:/Games/Halo.iso";
+        CB_CHECK(build_argv(*t, v) == std::vector<std::string>({"xbox-disc", "unpack", "C:/Games/Halo.iso", "C:/Games/Halo"}));
+    }
+    {   // two inputs
+        const Tool* t = find("compare");
+        Values v = empty_values(*t);
+        v.inputs[0] = "old.dll";
+        CB_CHECK_EQ(missing(*t, v).value_or(""), "Newer build");
+        v.inputs[1] = "new.dll";
+        CB_CHECK(build_argv(*t, v) == std::vector<std::string>({"compare", "old.dll", "new.dll"}));
+    }
+    {   // a choice whose value is nothing leaves nothing
+        const Tool* t = find("tidy-state");
+        Values v = empty_values(*t);
+        CB_CHECK(build_argv(*t, v) == std::vector<std::string>({"tidy-state", "--dry"}));
+        v.choice = 1;
+        CB_CHECK(build_argv(*t, v) == std::vector<std::string>({"tidy-state"}));
+    }
+    {   // an option whose value is empty goes with it
+        Tool t;
+        t.argv = {"convert", "{1}", "--to", "{choice}"};
+        t.inputs = {{InputKind::File, "Program", ""}};
+        Values v = empty_values(t);
+        v.inputs[0] = "a.exe";
+        CB_CHECK(build_argv(t, v) == std::vector<std::string>({"convert", "a.exe"}));
+    }
+    {   // a tool with nothing to drop runs at once
+        const Tool* t = find("scoreboard");
+        CB_CHECK(!missing(*t, empty_values(*t)) && build_argv(*t, empty_values(*t)) == std::vector<std::string>({"scoreboard"}));
+    }
+    // a drop goes where it fits
+    CB_CHECK(accepts({InputKind::File, "x", ""}, false) && !accepts({InputKind::File, "x", ""}, true));
+    CB_CHECK(accepts({InputKind::Folder, "x", ""}, true) && !accepts({InputKind::Folder, "x", ""}, false));
+    CB_CHECK(accepts({InputKind::Either, "x", ""}, true) && accepts({InputKind::Either, "x", ""}, false));
+    CB_CHECK(!accepts({InputKind::Module, "x", ""}, false));
+});
+
+CB_TEST("app.tools.the_developer_tools_are_hidden_unless_asked_for", [] {
+    const std::vector<const Tool*> everyday = search("", false), every = search("", true);
+    CB_CHECK(every.size() == all().size() && everyday.size() < every.size());
+    for (const Tool* t : everyday) CB_CHECK(tt_ok(!t->developer, t->id));
+    for (const std::string id : {"sweep", "scoreboard", "place", "judge-cs-cpp", "exact", "module", "cache", "regress"}) {
+        const Tool* t = find(id);
+        CB_CHECK(tt_ok(t != nullptr && t->developer, id));
+    }
+    // search: the title, the command and the description, every word, any case
+    const auto ids = [](const std::vector<const Tool*>& found) {
+        std::set<std::string> out;
+        for (const Tool* t : found) out.insert(t->id);
+        return out;
     };
-    CB_CHECK(search("").size() == all().size());
-    CB_CHECK(names(search("pe-source")).contains("pe-source"));                  // the command name
-    CB_CHECK(names(search("Windows program")).contains("pe-source"));            // the title, any case
-    CB_CHECK(names(search("windows PROGRAM")).contains("pe-source"));
-    CB_CHECK(names(search("32-bit windows program back")).contains("pe-source"));              // the description
-    CB_CHECK(names(search("rebuilds prove")).contains("pe-source"));             // every word, in any order
-    CB_CHECK(names(search("python")).contains("judge-py-cpp"));
-    CB_CHECK(search("no such tool anywhere").empty());
-    CB_CHECK(matches(*find("info"), "what is this"));
+    CB_CHECK(ids(search("java", false)).contains("java-port"));
+    CB_CHECK(ids(search("CABINET", false)).contains("cab"));
+    CB_CHECK(!ids(search("scoreboard", false)).contains("scoreboard") && ids(search("scoreboard", true)).contains("scoreboard"));
+    CB_CHECK(search("no such words here", true).empty());
 });
 
-CB_TEST("app.tools.run_waits_for_the_required_fields_and_builds_the_command_line", [] {
-    const Tool& t = *find("pe-source");
-    Values v = empty_values(t);
-    CB_CHECK_EQ(*missing(t, v), "Program");
-    v.text[0] = "   ";
-    CB_CHECK(missing(t, v).has_value());   // blanks are not a value
-    v.text[0] = "C:/Games/PINBALL.EXE";
-    CB_CHECK(!missing(t, v).has_value());
-    CB_CHECK(build_argv(t, v) == std::vector<std::string>({"pe-source", "C:/Games/PINBALL.EXE"}));
-    v.text[1] = "stub.exe";
-    CB_CHECK(build_argv(t, v) == std::vector<std::string>({"pe-source", "C:/Games/PINBALL.EXE", "--stub", "stub.exe"}));
-    // toggles, choices, lists and words
-    const Tool& j = *find("judge-cs-cpp");
-    Values w = empty_values(j);
-    CB_CHECK(!missing(j, w).has_value());   // (everything is optional: judges the corpus)
-    w.text[0] = "gcc";
-    w.text[1] = "1";
-    w.text[4] = "A.cs; B.cs";
-    CB_CHECK(build_argv(j, w) == std::vector<std::string>({"judge-cs-cpp", "--cxx", "gcc", "--keep", "A.cs", "B.cs"}));
-    const Tool& x = *find("xex");
-    Values y = empty_values(x);
-    y.text[0] = "info";
-    y.text[1] = "game.xex";
-    y.text[2] = "--verbose  extra";
-    CB_CHECK(build_argv(x, y) == std::vector<std::string>({"xex", "info", "game.xex", "--verbose", "extra"}));
-    // a required choice starts on its first value
-    CB_CHECK_EQ(empty_values(*find("media")).text[0], "list");
-    CB_CHECK(!missing(*find("scoreboard"), empty_values(*find("scoreboard"))).has_value());
-    CB_CHECK(build_argv(*find("scoreboard"), empty_values(*find("scoreboard"))) == std::vector<std::string>({"scoreboard"}));
+CB_TEST("app.tools.the_result_folder_is_the_output_line_else_the_last_path_that_is_there", [] {
+    fs::ScopedTempDir dir{"cb_tools_result"};
+    const std::filesystem::path out = dir.path() / "game-converted";
+    fs::make_dirs(out);
+    fs::write_text(out / "Game.sln", "x");
+    CB_CHECK(result_folder("wrote things\nOutput: " + fs::to_text(out) + "\n") == out);
+    CB_CHECK(result_folder("  report: " + fs::to_text(out / "Game.sln") + "\n100%  Done\n") == out);           // a file: its folder
+    CB_CHECK(result_folder("extracted 3 files to " + fs::to_text(out) + ".\n") == out);                        // (the sentence's full stop is not the path's)
+    CB_CHECK(result_folder("Output: C:/no/such/folder\n").empty());
+    CB_CHECK(result_folder("nothing here\n").empty());
+});
+
+CB_TEST("app.tools.the_work_folders_modules_are_its_program_files", [] {
+    fs::ScopedTempDir dir{"cb_tools_modules"};
+    fs::make_dirs(dir.path() / "SYSTEM");
+    fs::write_text(dir.path() / "SYSTEM" / "LZ32.DLL", "x");
+    fs::write_text(dir.path() / "kernel32.dll", "x");
+    fs::write_text(dir.path() / "readme.txt", "x");
+    fs::write_text(dir.path() / "SYSTEM" / "lz32.dll.bak", "x");
+    const std::vector<std::string> modules = modules_in(dir.path());
+    CB_CHECK(modules == std::vector<std::string>({"kernel32.dll", "LZ32.DLL"}));
+    CB_CHECK(modules_in(dir.path() / "missing").empty());
+    const std::vector<std::string> many = {"gdi.exe", "kernel32.dll", "krnl386.exe", "lz32.dll", "user.exe"};
+    CB_CHECK(filter_modules(many, "k", 8) == std::vector<std::string>({"kernel32.dll", "krnl386.exe"}));
+    CB_CHECK(filter_modules(many, "EXE", 8) == std::vector<std::string>({"gdi.exe", "krnl386.exe", "user.exe"}));   // (holds it, no name starts with it)
+    CB_CHECK(filter_modules(many, "l", 8).front() == "lz32.dll");                                                   // starting with it first
+    CB_CHECK_EQ(filter_modules(many, "", 2).size(), 2u);
 });
 
 CB_TEST("app.tools.a_percentage_at_the_start_of_a_line_is_the_progress", [] {
@@ -232,6 +274,12 @@ CB_TEST("app.tools.settings_are_rows_a_form_can_edit_and_the_theme_is_remembered
     CB_CHECK(settings::remembered_theme() == settings::Theme::Dark);
     settings::remember_theme(settings::Theme::Light);
     CB_CHECK(settings::remembered_theme() == settings::Theme::Light);
+    // Show developer tools: off at first, kept beside the theme
+    CB_CHECK(!settings::remembered_developer_tools());
+    settings::remember_developer_tools(true);
+    CB_CHECK(settings::remembered_developer_tools() && settings::remembered_theme() == settings::Theme::Light);
+    settings::remember_developer_tools(false);
+    CB_CHECK(!settings::remembered_developer_tools());
 });
 
 }  // namespace

@@ -57,6 +57,11 @@ std::vector<ToolDecl> declare() {
     const std::string kTranspile = "Transpile", kJudge = "Judge and report", kConsole = "Console port",
                       kRewrite = "Rewrites of an emitted tree";
     return {
+        {"port", "the whole job from one input: a .jar, a decompiled game folder or a Java source folder to a built C++ project", kTranspile,
+         {pos("input", "a .jar, a decompiled game folder or a Java source folder"),
+          opt("--platform", "pc (OpenGL/SDL, CMake) or xbox360 (Visual Studio, Content, audio banks, achievements)", "NAME", "pc"),
+          opt("--out", "the solution folder (default <input's folder>/<input's name>-converted)", "DIR")},
+         {{"platform", {"pc", "xbox360"}}}},
         {"convert", "convert a Java source tree to C++", kTranspile,
          {pos("java_dir", "directory of .java source (omit and use --mc-version to decompile a Minecraft version first)", false),
           pos("out_dir", "output directory for the generated .h/.cpp", false),

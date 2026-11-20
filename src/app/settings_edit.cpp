@@ -209,4 +209,36 @@ void remember_theme(Theme theme) {
     }
 }
 
+bool remembered_developer_tools() {
+    try {
+        const stdfs::path file = st_file();
+        std::error_code ec;
+        if (file.empty() || !stdfs::is_regular_file(file, ec)) return false;
+        const Json doc = json::load(file);
+        return doc.is_object() && doc.contains("developer_tools") && doc["developer_tools"].is_boolean() && doc["developer_tools"].get<bool>();
+    } catch (const std::exception&) {
+    }
+    return false;
+}
+
+void remember_developer_tools(bool show) {
+    try {
+        const stdfs::path file = st_file();
+        if (file.empty()) return;
+        Json doc = Json::object();
+        std::error_code ec;
+        if (stdfs::is_regular_file(file, ec)) {
+            try {
+                doc = json::load(file);
+            } catch (const std::exception&) {
+            }
+            if (!doc.is_object()) doc = Json::object();
+        }
+        doc["developer_tools"] = show;
+        fs::make_dirs(file.parent_path());
+        json::save(file, doc);
+    } catch (const std::exception&) {
+    }
+}
+
 }  // namespace cb::app::settings

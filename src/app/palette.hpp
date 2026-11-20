@@ -39,7 +39,7 @@ struct RecentEntry {
 };
 
 // Every item there could be: the tools, then the recent conversions whose folder is still there, then the places.
-std::vector<Item> make_items(const std::vector<tools::Tool>& tools, const std::vector<RecentEntry>& recent);
+std::vector<Item> make_items(const std::vector<tools::Tool>& tools, const std::vector<RecentEntry>& recent, bool developer = true);   // developer: also the developer tools
 
 // One row of the list shown: a section heading, or an item (`item` indexes the items given to search).
 struct Row {

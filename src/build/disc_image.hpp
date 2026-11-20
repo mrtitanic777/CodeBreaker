@@ -50,11 +50,15 @@ std::pair<std::string, std::string> level1_name(std::string_view name, bool is_d
 // IoError when a file cannot be read or the image cannot be written.
 std::uint64_t write(const std::filesystem::path& folder, const std::filesystem::path& out, const Options& options = {});
 
+// The volume name a folder's image gets: its name in capitals, a character ISO 9660 does not allow as '_', at most 32 (CODEBREAKER when empty).
+std::string volume_name(std::string_view folder_name);
+
 struct Environment {};
 
 // `disc <folder> <out.iso> [--volume NAME] [--boot IMG]` writes and prints "wrote <out>: N bytes"; `disc --list <image>` lists the
 // image's volumes with their boot fields; `disc --extract <image> <outdir>` writes its files and prints how many. A refusal (DiscError)
-// or an unreadable file is "disc: <message>" on stderr and exit 1.
+// or an unreadable file is "disc: <message>" on stderr and exit 1. `disc <folder>` alone writes <folder>.iso beside it; `disc <image>` alone extracts it
+// into a folder beside it named after it.
 cli::Command command(const Environment& environment = {});
 
 }  // namespace cb::build::disc_image

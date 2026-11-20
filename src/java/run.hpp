@@ -2,7 +2,7 @@
 //
 //     codebreaker java <tool> [arguments]      (`codebreaker java <tool> --help` for a tool's options)
 //
-//   Transpile       convert, decompile, scaffold, signatures
+//   Transpile       port (the whole job from one input), convert, decompile, scaffold, signatures
 //   Judge, report   report, worklist, bugfix-ledger, apimap
 //   Console port    sdk, platform-config, assets, xact, achievements, project-layout, vcxproj, build, debug
 //   Rewrites of an emitted tree (each also runs by itself in an xbox360 convert)

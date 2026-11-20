@@ -1,6 +1,7 @@
 // Tests of the layout of the rail, the Tools page and the Settings page (window_pages.hpp).
 #include "app/window_pages.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "core/testing.hpp"
@@ -55,6 +56,40 @@ CB_TEST("app.window_pages.the_tools_page_is_a_list_card_and_a_tool_card", [] {
     CB_CHECK(hit_test_tools(t, m, t.form.fields[0].input.x + 4, t.form.fields[0].input.y + 4) == PageHit({Control::Field, 0}));
     CB_CHECK(hit_test_tools(t, m, t.form.fields[0].browse.x + 4, t.form.fields[0].browse.y + 4) == PageHit({Control::FieldBrowse, 0}));
     CB_CHECK(t.form.fields[3].browse.w == 0);   // a choice has no Browse
+});
+
+CB_TEST("app.window_pages.a_tool_is_a_drop_box_a_row_of_choice_buttons_run_and_open_folder", [] {
+    const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
+    Model m = wp_tools_model();
+    FieldItem drop;
+    drop.label = "Java program";
+    drop.kind = 5;
+    drop.accept = 2;   // a file or a folder: two buttons, File... and Folder...
+    m.tool_fields = {drop};
+    m.tool_choice_label = "Platform";
+    m.tool_choices = {"PC", "Xbox 360"};
+    ToolsLayout t = compute_tools_layout(shell, m);
+    const FieldRects& r = t.form.fields[0];
+    CB_CHECK(wp_near(r.input.h, kDropBoxHeight) && wp_near(r.input.w, t.fields_area.w));   // the box is the form's width
+    CB_CHECK(r.browse.w > 0 && r.browse_folder.w > 0 && r.browse.right() < r.browse_folder.x && r.browse_folder.right() < r.input.right());
+    CB_CHECK(hit_test_tools(t, m, r.input.x + 10, r.input.y + 10) == PageHit({Control::FieldBrowse, 0}));          // the whole box browses
+    CB_CHECK(hit_test_tools(t, m, r.browse_folder.x + 4, r.browse_folder.y + 4) == PageHit({Control::FieldBrowseFolder, 0}));
+    CB_CHECK(t.choice_buttons.size() == 2 && t.choice_label.y >= r.input.bottom() && t.choice_buttons[1].x > t.choice_buttons[0].right());
+    CB_CHECK(t.run.y > t.choice_buttons[0].bottom());
+    CB_CHECK(hit_test_tools(t, m, t.choice_buttons[1].x + 4, t.choice_buttons[1].y + 4) == PageHit({Control::ToolChoice, 1}));
+    CB_CHECK(t.open_folder.w == 0);   // no result yet
+    m.tool_result = "C:\\Games\\a1.2.6-converted";
+    t = compute_tools_layout(shell, m);
+    CB_CHECK(t.open_folder.w > 0 && t.open_folder.x > t.run.right() && t.run_note.x > t.open_folder.right());
+    CB_CHECK(hit_test_tools(t, m, t.open_folder.x + 4, t.open_folder.y + 4).control == Control::OpenResult);
+    // Tab: the box's two buttons, the choices, Run, Open folder (a drop box itself is no text field)
+    const std::vector<PageHit> order = focus_order_tools(m);
+    const std::vector<PageHit> want = {{Control::ToolSearch, -1}, {Control::ToolRow, 0}, {Control::FieldBrowse, 0}, {Control::FieldBrowseFolder, 0},
+                                       {Control::ToolChoice, 0}, {Control::ToolChoice, 1}, {Control::Run, -1}, {Control::OpenResult, -1}};
+    CB_CHECK(order.size() >= want.size() && std::equal(want.begin(), want.end(), order.begin()));
+    // a drop box for a file alone has one Browse
+    m.tool_fields[0].accept = 0;
+    CB_CHECK(compute_tools_layout(shell, m).form.fields[0].browse_folder.w == 0);
 });
 
 CB_TEST("app.window_pages.a_form_stacks_its_fields_and_a_switch_has_its_label_beside_it", [] {

@@ -1,60 +1,93 @@
-// app/tools.cpp -- see tools.hpp: the table of tools, the argument-spec and usage parsers, search, form validation and the command line a form builds.
+// app/tools.cpp -- see tools.hpp: the table of tools, the spec parsers, search, the form's check, the command line it builds, the result folder of a
+// run and the work folder's modules.
 #include "app/tools.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <set>
+#include <system_error>
 
-#include "app/commands.hpp"
+#include "core/fs.hpp"
 #include "core/text.hpp"
 
 namespace cb::app::tools {
 
 namespace {
 
+namespace stdfs = std::filesystem;
+
 struct ToolRow {
-    std::string_view name, title, group, description, spec;
+    std::string_view id, title, group, description, inputs, choice, argv;
+    bool developer;
 };
 
 constexpr ToolRow kToolRows[] = {
 #include "tools_catalog.inc"
 };
 
-// The commands of the table that are not tools: the reason each makes no sense as a form.
+// The commands of the table that are no tool's command: why each makes no sense as a drop-and-Run form.
 const std::vector<LeftOut> kLeftOut = {
     {"app", "it is the window itself"},
-    {"dos-run", "it runs a DOS program for scripts and checks, with the program's own command line, not a step people take in the window"},
-    {"nasm", "it is the assembler for scripts and tests, with NASM's own command line, not a step people take in the window"},
     {"mcp", "it is a server that talks to an assistant over its standard input and output, which a form cannot be on the other end of"},
-    {"inspect", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
-    {"extract", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
-    {"check", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
-    {"compare", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
-    {"corpus", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
-    {"lookup", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
-    {"xbox", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},
+    {"nasm", "it is the assembler for scripts and tests, with NASM's own command line"},
+    {"dos-run", "it runs a DOS program with the program's own command line, for scripts and checks"},
+    {"demangle", "it reads a C++ name a person types, not a file (the command line and the assistant tools have it)"},
+    {"dos-interrupts", "it names a service from numbers a person types, not a file (the command line has it)"},
+    {"lookup", "it looks up a name a person types, not a file (the command line has it)"},
+    {"crypto", "its tools each take their own console keys, images and values (the command line has them)"},
+    {"xex-edit", "an edit needs the flags or the address and bytes to change, which are typed (the command line has it)"},
+    {"ne-asm", "its tools each take their own arguments (the command line has them)"},
+    {"media", "Disc images (disc) takes an image apart through the same readers, beside the image"},
+    {"versions", "it is Compare two builds (compare), under the name the command line knows it by now"},
+    {"corpus", "its steps are tools of their own here (Rebuild everything, Watch a rebuild, Scoreboard, Coverage ...)"},
+    {"xbox", "its steps are tools of their own here (Xbox 360 program details, Recompiler configuration ...)"},
 };
 
-constexpr const char* kGroups[] = {"Convert", "Inspect", "Extract", "Build", "Check", "Compare", "Collection", "Look up", "Xbox 360", "Maintenance"};
+constexpr const char* kGroups[] = {"Convert", "Look inside", "Extract", "Build", "Compare", "Source", "Inspect", "Check", "Collection", "Maintenance"};
+constexpr std::size_t kEverydayGroups = 5;
 
 std::string tl_trim(std::string_view s) { return std::string(text::trim(s)); }
 
-std::string tl_label(std::string_view raw) {
-    std::string out(raw);
-    for (char& c : out)
-        if (c == '_' || c == '-') c = ' ';
-    if (!out.empty()) out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
+// {1} {2} {choice} {dir1} {stem1} {name1} {dir2} ... in `word`.
+std::string tl_fill(std::string_view word, const Values& v, const Tool& tool) {
+    std::string out;
+    std::size_t i = 0;
+    while (i < word.size()) {
+        if (word[i] != '{') {
+            out += word[i++];
+            continue;
+        }
+        const std::size_t close = word.find('}', i);
+        if (close == std::string_view::npos) {
+            out += word.substr(i);
+            break;
+        }
+        const std::string key(word.substr(i + 1, close - i - 1));
+        i = close + 1;
+        if (key == "choice") {
+            if (v.choice >= 0 && static_cast<std::size_t>(v.choice) < tool.choices.size()) out += tool.choices[static_cast<std::size_t>(v.choice)].value;
+            continue;
+        }
+        const char n = key.empty() ? '0' : key.back();
+        const std::size_t index = n == '2' ? 1 : 0;
+        const std::string value = index < v.inputs.size() ? tl_trim(v.inputs[index]) : std::string();
+        const std::string base = key.substr(0, key.size() - 1);
+        if (key == "1" || key == "2") {
+            out += value;
+        } else if (!value.empty()) {
+            const stdfs::path p = stdfs::path(fs::from_text(value)).lexically_normal();
+            if (base == "dir") out += fs::to_text(p.parent_path().empty() ? stdfs::path(".") : p.parent_path());
+            else if (base == "stem") out += fs::to_text(p.stem());
+            else if (base == "name") out += fs::to_text(p.filename());
+        }
+    }
     return out;
 }
 
-// A guess at the kind of a value from the word the usage line names it by.
-ArgKind tl_kind_of(std::string_view word) {
-    const std::string w = text::lower(word);
-    for (const char* folder : {"folder", "dir"})
-        if (w.find(folder) != std::string::npos) return ArgKind::Folder;
-    for (const char* file : {"file", "program", "image", "xex", "driver", "binary", "package", "config", "exe", "dll", "toml", ".asm", "path"})
-        if (w.find(file) != std::string::npos) return ArgKind::File;
-    if (w == "f" || w == "out" || w == "ini" || w == "in") return ArgKind::File;
-    return ArgKind::Text;
+bool tl_is_program(const stdfs::path& p) {
+    static const std::set<std::string, std::less<>> kExt = {".exe", ".dll", ".drv", ".vxd", ".386", ".cpl", ".scr", ".sys", ".com", ".ocx", ".acm",
+                                                             ".tsk", ".mod", ".fon", ".xex", ".ax", ".tlb"};
+    return kExt.contains(text::lower(fs::to_text(p.extension())));
 }
 
 }  // namespace
@@ -64,112 +97,46 @@ const std::vector<std::string>& groups() {
     return list;
 }
 
-const std::vector<LeftOut>& left_out() { return kLeftOut; }
-
-std::vector<Arg> parse_spec(std::string_view spec) {
-    std::vector<Arg> args;
-    for (const std::string_view part : text::split(spec, ';')) {
-        std::string_view p = text::trim(part);
-        if (p.empty()) continue;
-        Arg a;
-        a.required = true;
-        while (!p.empty() && (p[0] == '?' || p[0] == '*')) {
-            if (p[0] == '?') a.required = false;
-            if (p[0] == '*') a.list = true;
-            p.remove_prefix(1);
-        }
-        if (p.size() < 2) continue;
-        switch (p[0]) {
-            case 'F': a.kind = ArgKind::File; break;
-            case 'D': a.kind = ArgKind::Folder; break;
-            case 'T': a.kind = ArgKind::Text; break;
-            case 'W': a.kind = ArgKind::Words; break;
-            case 'C': a.kind = ArgKind::Choice; break;
-            case 'B': a.kind = ArgKind::Toggle; break;
-            default: continue;
-        }
-        std::string rest = tl_trim(p.substr(1));
-        const std::size_t flag_at = rest.rfind(" -");
-        if (flag_at != std::string::npos && rest.find(' ', flag_at + 1) == std::string::npos) {
-            a.flag = rest.substr(flag_at + 1);
-            rest = tl_trim(rest.substr(0, flag_at));
-        }
-        if (const std::size_t eq = rest.find('='); eq != std::string::npos) {
-            const std::string choice_text = rest.substr(eq + 1);
-            for (const std::string_view c : text::split(choice_text, '|')) a.choices.emplace_back(c);
-            rest = rest.substr(0, eq);
-        }
-        a.label = tl_label(rest);
-        if (a.kind == ArgKind::Toggle) a.required = false;
-        args.push_back(std::move(a));
-    }
-    return args;
+bool is_developer_group(std::string_view group) {
+    for (std::size_t i = kEverydayGroups; i < std::size(kGroups); ++i)
+        if (group == kGroups[i]) return true;
+    return false;
 }
 
-// Top-level pieces of a usage line after the command name: "<x>", "[...]" (balanced), "a|b", "..." and bare words.
-std::vector<Arg> parse_usage(std::string_view usage) {
-    std::vector<std::string> pieces;
-    std::string current;
-    int depth = 0;
-    for (const char c : usage) {
-        if (c == '[' || c == '<') ++depth;
-        if (c == ']' || c == '>') depth = std::max(0, depth - 1);
-        if (c == ' ' && depth == 0) {
-            if (!current.empty()) pieces.push_back(std::move(current));
-            current.clear();
-        } else {
-            current += c;
+const std::vector<LeftOut>& left_out() { return kLeftOut; }
+
+std::vector<Input> parse_inputs(std::string_view spec) {
+    std::vector<Input> out;
+    for (const std::string_view part : text::split(spec, ';')) {
+        const std::string_view p = text::trim(part);
+        if (p.size() < 3 || p[1] != ' ') continue;
+        Input in;
+        switch (p[0]) {
+            case 'F': in.kind = InputKind::File; break;
+            case 'D': in.kind = InputKind::Folder; break;
+            case 'E': in.kind = InputKind::Either; break;
+            case 'M': in.kind = InputKind::Module; break;
+            default: continue;
         }
+        const std::string rest = tl_trim(p.substr(2));
+        const std::size_t colon = rest.find(':');
+        in.label = tl_trim(rest.substr(0, colon));
+        if (colon != std::string::npos) in.accepts = tl_trim(rest.substr(colon + 1));
+        if (!in.label.empty()) out.push_back(std::move(in));
     }
-    if (!current.empty()) pieces.push_back(std::move(current));
-    std::vector<Arg> args;
-    for (std::size_t i = 1; i < pieces.size(); ++i) {   // (piece 0 is the command)
-        const std::string& piece = pieces[i];
-        if (piece == "..." || piece == "|") {
-            if (!args.empty()) args.back().list = true;
-            continue;
-        }
-        Arg a;
-        std::string inner = piece;
-        a.required = true;
-        if (inner.front() == '[' && inner.back() == ']') {
-            a.required = false;
-            inner = inner.substr(1, inner.size() - 2);
-        }
-        if (inner.size() >= 2 && inner.front() == '<' && inner.back() == '>') inner = inner.substr(1, inner.size() - 2);
-        if (inner.rfind("--", 0) == 0 || inner.rfind('-', 0) == 0) {
-            // [--flag] toggle, [--opt VALUE] option; "--a|--b" is two toggles
-            const std::size_t space = inner.find(' ');
-            const std::string flag = inner.substr(0, space);
-            if (space == std::string::npos) {
-                for (const std::string_view f : text::split(flag, '|')) {
-                    Arg t;
-                    t.kind = ArgKind::Toggle;
-                    t.flag = std::string(f);
-                    t.label = tl_label(f.substr(f.rfind('-') + 1));
-                    args.push_back(std::move(t));
-                }
-                continue;
-            }
-            const std::string value = tl_trim(inner.substr(space + 1));
-            a.flag = flag;
-            a.label = tl_label(flag.substr(flag.rfind('-') + 1));
-            a.kind = tl_kind_of(value);
-            a.required = false;
-            args.push_back(std::move(a));
-            continue;
-        }
-        if (inner.find('|') != std::string::npos && inner.find(' ') == std::string::npos) {
-            a.kind = ArgKind::Choice;
-            for (const std::string_view c : text::split(inner, '|')) a.choices.emplace_back(c);
-            a.label = "Action";
-        } else {
-            a.label = tl_label(inner);
-            a.kind = tl_kind_of(inner);
-        }
-        args.push_back(std::move(a));
+    return out;
+}
+
+std::string parse_choices(std::string_view spec, std::vector<Choice>& out) {
+    out.clear();
+    const std::size_t eq = spec.find('=');
+    if (eq == std::string_view::npos) return {};
+    for (const std::string_view part : text::split(spec.substr(eq + 1), '|')) {
+        const std::size_t colon = part.find(':');
+        if (colon == std::string_view::npos) continue;
+        out.push_back({tl_trim(part.substr(0, colon)), tl_trim(part.substr(colon + 1))});
     }
-    return args;
+    return out.empty() ? std::string() : tl_trim(spec.substr(0, eq));
 }
 
 const std::vector<Tool>& all() {
@@ -179,12 +146,14 @@ const std::vector<Tool>& all() {
             for (const ToolRow& row : kToolRows) {
                 if (row.group != group) continue;
                 Tool t;
-                t.name = std::string(row.name);
+                t.id = std::string(row.id);
                 t.title = std::string(row.title);
                 t.group = std::string(row.group);
                 t.description = std::string(row.description);
-                if (const CommandDoc* doc = find_command_doc(row.name)) t.usage = std::string(doc->synopsis);
-                t.args = row.spec == "=" ? parse_usage(t.usage) : parse_spec(row.spec);
+                t.inputs = parse_inputs(row.inputs);
+                t.choice_label = parse_choices(row.choice, t.choices);
+                for (const std::string_view w : text::split_ws(row.argv)) t.argv.emplace_back(w);
+                t.developer = row.developer;
                 tools.push_back(std::move(t));
             }
         }
@@ -193,76 +162,132 @@ const std::vector<Tool>& all() {
     return list;
 }
 
-const Tool* find(std::string_view name) {
+const Tool* find(std::string_view id) {
     for (const Tool& t : all())
-        if (t.name == name) return &t;
+        if (t.id == id) return &t;
     return nullptr;
 }
 
 bool matches(const Tool& tool, std::string_view query) {
-    const std::string hay = text::lower(tool.title + " " + tool.name + " " + tool.description);
+    const std::string hay = text::lower(tool.title + " " + std::string(tool.command()) + " " + tool.description);
     const std::string wanted = text::lower(query);
     for (const std::string_view word : text::split_ws(wanted))
         if (hay.find(word) == std::string::npos) return false;
     return true;
 }
 
-std::vector<const Tool*> search(std::string_view query) {
+std::vector<const Tool*> search(std::string_view query, bool developer) {
     std::vector<const Tool*> out;
     for (const Tool& t : all())
-        if (matches(t, query)) out.push_back(&t);
+        if ((developer || !t.developer) && matches(t, query)) out.push_back(&t);
     return out;
 }
 
 Values empty_values(const Tool& tool) {
     Values v;
-    for (const Arg& a : tool.args) v.text.push_back(a.kind == ArgKind::Choice && a.required && !a.choices.empty() ? a.choices.front() : std::string());
+    v.inputs.resize(tool.inputs.size());
     return v;
 }
 
 std::optional<std::string> missing(const Tool& tool, const Values& values) {
-    for (std::size_t i = 0; i < tool.args.size(); ++i) {
-        const Arg& a = tool.args[i];
-        const std::string& v = i < values.text.size() ? values.text[i] : std::string();
-        if (a.required && a.kind != ArgKind::Toggle && text::trim(v).empty()) return a.label;
-    }
+    for (std::size_t i = 0; i < tool.inputs.size(); ++i)
+        if (i >= values.inputs.size() || text::trim(values.inputs[i]).empty()) return tool.inputs[i].label;
     return std::nullopt;
 }
 
-std::vector<std::string> split_entries(std::string_view value, bool on_semicolon) {
-    std::vector<std::string> out;
-    if (on_semicolon) {
-        for (const std::string_view e : text::split(value, ';')) {
-            const std::string t = tl_trim(e);
-            if (!t.empty()) out.push_back(t);
+std::vector<std::string> build_argv(const Tool& tool, const Values& values) {
+    std::vector<std::string> argv;
+    for (const std::string& word : tool.argv) {
+        const bool placeholder = word.find('{') != std::string::npos;
+        std::string filled = tl_fill(word, values, tool);
+        if (placeholder && filled.empty()) {   // nothing to say: the option that introduces it goes too
+            if (!argv.empty() && argv.back().starts_with('-') && argv.size() > 1) argv.pop_back();
+            continue;
         }
-    } else {
-        for (const std::string_view e : text::split_ws(value)) out.emplace_back(e);
+        argv.push_back(std::move(filled));
     }
+    return argv;
+}
+
+bool accepts(const Input& input, bool is_folder) {
+    switch (input.kind) {
+        case InputKind::File: return !is_folder;
+        case InputKind::Folder: return is_folder;
+        case InputKind::Either: return true;
+        case InputKind::Module: return false;
+    }
+    return false;
+}
+
+std::filesystem::path result_folder(std::string_view output) {
+    std::error_code ec;
+    const auto folder_of = [&](const stdfs::path& p) -> stdfs::path {
+        if (stdfs::is_directory(p, ec)) return p;
+        if (stdfs::is_regular_file(p, ec)) return p.parent_path();
+        return {};
+    };
+    std::vector<std::string_view> lines = text::split(output, '\n');
+    for (auto it = lines.rbegin(); it != lines.rend(); ++it) {   // "Output: <path>"
+        const std::string_view line = text::trim(*it);
+        if (line.starts_with("Output: ")) {
+            const stdfs::path p = folder_of(fs::from_text(tl_trim(line.substr(8))));
+            if (!p.empty()) return p;
+        }
+    }
+    for (auto it = lines.rbegin(); it != lines.rend(); ++it) {   // the last absolute path that is there
+        const std::string_view line = *it;
+        for (std::size_t i = 0; i + 2 < line.size(); ++i) {
+            const bool drive = std::isalpha(static_cast<unsigned char>(line[i])) && line[i + 1] == ':' && (line[i + 2] == '\\' || line[i + 2] == '/') &&
+                               (i == 0 || !std::isalnum(static_cast<unsigned char>(line[i - 1])));
+            const bool root = line[i] == '/' && (i == 0 || line[i - 1] == ' ') && i + 1 < line.size() && std::isalpha(static_cast<unsigned char>(line[i + 1]));
+            if (!drive && !root) continue;
+            // the longest prefix up to a quote, a parenthesis or the end of the line that is there (a path may hold spaces)
+            std::size_t end = line.size();
+            for (const char stop : {'"', '\'', '(', ')', '\t', ','})
+                if (const std::size_t at = line.find(stop, i); at != std::string_view::npos) end = std::min(end, at);
+            std::string candidate = tl_trim(line.substr(i, end - i));
+            while (!candidate.empty()) {
+                while (!candidate.empty() && (candidate.back() == '.' || candidate.back() == ':' || candidate.back() == ' ')) candidate.pop_back();
+                const stdfs::path p = folder_of(fs::from_text(candidate));
+                if (!p.empty()) return p;
+                const std::size_t space = candidate.rfind(' ');
+                if (space == std::string::npos) break;
+                candidate.resize(space);
+            }
+        }
+    }
+    return {};
+}
+
+std::vector<std::string> modules_in(const std::filesystem::path& root) {
+    std::vector<std::string> out;
+    std::error_code ec;
+    if (root.empty() || !stdfs::is_directory(root, ec)) return out;
+    std::set<std::string> seen;
+    for (stdfs::recursive_directory_iterator it(root, stdfs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec) || !tl_is_program(it->path())) continue;
+        const std::string name = fs::to_text(it->path().filename());
+        if (seen.insert(text::lower(name)).second) out.push_back(name);
+    }
+    std::sort(out.begin(), out.end(), [](const std::string& a, const std::string& b) { return text::lower(a) < text::lower(b); });
     return out;
 }
 
-std::vector<std::string> build_argv(const Tool& tool, const Values& values) {
-    std::vector<std::string> argv = {tool.name};
-    // options first-come in spec order, but positionals keep their order among themselves; an option is written before the positionals that follow it
-    for (std::size_t i = 0; i < tool.args.size(); ++i) {
-        const Arg& a = tool.args[i];
-        const std::string v = i < values.text.size() ? tl_trim(values.text[i]) : std::string();
-        if (a.kind == ArgKind::Toggle) {
-            if (!v.empty()) argv.push_back(a.flag);
-            continue;
-        }
-        if (v.empty()) continue;
-        if (!a.flag.empty()) argv.push_back(a.flag);
-        if (a.kind == ArgKind::Words) {
-            for (std::string& e : split_entries(v, false)) argv.push_back(std::move(e));
-        } else if (a.list) {
-            for (std::string& e : split_entries(v, true)) argv.push_back(std::move(e));
-        } else {
-            argv.push_back(v);
-        }
+std::vector<std::string> filter_modules(const std::vector<std::string>& modules, std::string_view query, std::size_t limit) {
+    const std::string q = text::lower(text::trim(query));
+    std::vector<std::string> first, then;
+    for (const std::string& m : modules) {
+        const std::string l = text::lower(m);
+        if (q.empty() || l.starts_with(q)) first.push_back(m);
+        else if (l.find(q) != std::string::npos) then.push_back(m);
+        if (first.size() >= limit) break;
     }
-    return argv;
+    for (std::string& m : then) {
+        if (first.size() >= limit) break;
+        first.push_back(std::move(m));
+    }
+    if (first.size() > limit) first.resize(limit);
+    return first;
 }
 
 }  // namespace cb::app::tools

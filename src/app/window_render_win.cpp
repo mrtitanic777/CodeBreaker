@@ -278,7 +278,62 @@ void rd_stream(RdDraw& d, const Rect& drop, const Rect& keep_clear) {
     d.rt->PopAxisAlignedClip();
 }
 
-// The fields of a form, clipped to `clip`: labels (a required one marked), text boxes, Browse buttons, drop-downs, switches.
+std::wstring rd_fit_middle(const Painter& painter, const std::wstring& path, float width, float size);   // (below, with the Convert page's)
+
+// A drop box of the Tools page: dashed like the Convert page's drop area (accent while a file is dragged over the window), an icon, and either what to
+// drop (and what it takes) or the file or folder chosen (its name, and its whole path under it); its Browse button(s) inside on the right.
+void rd_drop_box(RdDraw& d, const FieldItem& f, const FieldRects& r, int idx, const Model& m) {
+    const RdPalette& pal = d.pal;
+    ComPtr<ID2D1StrokeStyle> dashes;
+    const float pattern[2] = {3.0f, 2.0f};
+    const D2D1_STROKE_STYLE_PROPERTIES sp = D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_FLAT, D2D1_LINE_JOIN_MITER, 10.0f,
+                                                                        D2D1_DASH_STYLE_CUSTOM, 0.0f);
+    d.painter.d2d()->CreateStrokeStyle(sp, pattern, 2, dashes.put());
+    const bool hot = (m.hot == Control::FieldBrowse && m.hot_index == idx);
+    if (m.dragging) {
+        d.fill(r.input, 8, rd_alpha(pal.accent, 0.12f));
+        d.stroke(r.input, 8, pal.accent, 2.0f);
+    } else {
+        d.fill(r.input, 8, hot ? rd_mix(pal.subtle, pal.text, 0.03f) : pal.subtle);
+        d.stroke(r.input, 8, f.text.empty() ? pal.dash : pal.accent, f.text.empty() ? 2.0f : 1.0f, f.text.empty() ? dashes.get() : nullptr);
+    }
+    const Rect icon{r.input.x + 18, r.input.y + (r.input.h - 36) / 2, 36, 36};
+    d.circle(icon, rd_alpha(pal.accent, 0.14f));
+    const bool folder = f.accept == 1 || f.note == "folder";   // (the window marks a chosen folder)
+    d.glyph(f.text.empty() ? L'\xE898' : folder ? L'\xE8B7' : L'\xE8A5', icon, 18, pal.accent);
+    const float right = (r.browse.w > 0 ? r.browse.x : r.input.right()) - 12;
+    const Rect words{icon.right() + 14, r.input.y + 14, std::max(0.0f, right - icon.right() - 14), r.input.h - 28};
+    if (f.text.empty()) {
+        const wchar_t* what = f.accept == 1 ? L"Drop a folder here" : f.accept == 2 ? L"Drop a file or a folder here" : L"Drop a file here";
+        d.text(what, Rect{words.x, words.y, words.w, 24}, 0, 15, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        d.text(widen(f.hint), Rect{words.x, words.y + 26, words.w, 20}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    } else {
+        std::string name = f.text;
+        while (name.size() > 1 && (name.back() == '\\' || name.back() == '/')) name.pop_back();
+        if (const std::size_t cut = name.find_last_of("\\/"); cut != std::string::npos && cut + 1 < name.size()) name = name.substr(cut + 1);
+        d.text(widen(name), Rect{words.x, words.y, words.w, 24}, 0, 15, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        d.text(rd_fit_middle(d.painter, widen(f.text), words.w, 12), Rect{words.x, words.y + 26, words.w, 20}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    }
+    const auto button = [&](const Rect& b, Control c, const wchar_t* label, wchar_t glyph) {
+        const bool over = m.hot == c && m.hot_index == idx;
+        D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), over ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, over ? 0.035f : 0.0f);
+        d.fill(b, 4, fill);
+        d.stroke(b, 4, pal.stroke2);
+        const float text_w = d.painter.measure(label, 14, false);
+        const float x = b.x + (b.w - 24 - text_w) / 2;
+        d.glyph(glyph, Rect{x, b.y, 16, b.h}, 16, pal.text);
+        d.text(label, Rect{x + 24, b.y, text_w + 4, b.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        if (m.focus == c && m.focus_index == idx) d.stroke(Rect{b.x - 3, b.y - 3, b.w + 6, b.h + 6}, 6, pal.text, 2.0f);
+    };
+    if (r.browse_folder.w > 0) {
+        button(r.browse, Control::FieldBrowse, L"File\x2026", L'\xE8A5');
+        button(r.browse_folder, Control::FieldBrowseFolder, L"Folder\x2026", L'\xE8B7');
+    } else if (r.browse.w > 0) {
+        button(r.browse, Control::FieldBrowse, L"Browse\x2026", L'\xE838');
+    }
+}
+
+// The fields of a form, clipped to `clip`: labels (a required one marked), text boxes, Browse buttons, drop-downs, switches, drop boxes.
 void rd_form(RdDraw& d, const FormLayout& form, const std::vector<FieldItem>& fields, const Rect& clip, const Model& m) {
     const RdPalette& pal = d.pal;
     d.rt->PushAxisAlignedClip(rd_rect(clip), D2D1_ANTIALIAS_MODE_ALIASED);
@@ -288,6 +343,11 @@ void rd_form(RdDraw& d, const FormLayout& form, const std::vector<FieldItem>& fi
         const int idx = static_cast<int>(i);
         const bool focused = m.focus == Control::Field && m.focus_index == idx;
         if (r.label.bottom() < clip.y || r.label.y > clip.bottom()) continue;
+        if (f.kind == 5) {
+            d.text(widen(f.label), r.label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+            rd_drop_box(d, f, r, idx, m);
+            continue;
+        }
         if (f.kind == 4) {
             rd_switch(d, r.input, !f.text.empty(), focused);
             d.text(widen(f.label), r.label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
@@ -302,6 +362,7 @@ void rd_form(RdDraw& d, const FormLayout& form, const std::vector<FieldItem>& fi
             if (focused) d.stroke(Rect{r.input.x - 3, r.input.y - 3, r.input.w + 6, r.input.h + 6}, 6, pal.text, 2.0f);
         } else {
             rd_text_box(d, r.input, widen(f.text), widen(f.hint), focused, focused ? static_cast<int>(widen(f.text.substr(0, static_cast<std::size_t>(std::max(0, m.caret)))).size()) : 0);
+            if (f.kind == 6) d.glyph(L'\xE721', Rect{r.input.right() - 30, r.input.y, 20, r.input.h}, 13, pal.text3);   // (a search)
         }
         if (r.browse.w > 0) {
             const bool hot = m.hot == Control::FieldBrowse && m.hot_index == idx;
@@ -404,6 +465,27 @@ void rd_tools(RdDraw& d, const Layout& l, const Model& m, Painter& painter) {
     d.text(widen(m.tool_title), t.form_title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
     d.text(widen(m.tool_description), t.form_desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_LEADING, true, DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
     rd_form(d, t.form, m.tool_fields, t.form_card, m);
+    // the one choice: a row of buttons, the chosen one filled with the accent
+    if (!t.choice_buttons.empty()) {
+        d.text(widen(m.tool_choice_label), t.choice_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        for (std::size_t i = 0; i < t.choice_buttons.size() && i < m.tool_choices.size(); ++i) {
+            const Rect& b = t.choice_buttons[i];
+            const int idx = static_cast<int>(i);
+            const bool chosen = idx == m.tool_choice;
+            const bool over = m.hot == Control::ToolChoice && m.hot_index == idx;
+            if (chosen) {
+                d.fill(b, 4, over ? rd_mix(pal.accent, pal.dark ? D2D1::ColorF(1, 1, 1) : D2D1::ColorF(0, 0, 0), 0.10f) : pal.accent);
+                d.text(widen(m.tool_choices[i]), b, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.accent_text, DWRITE_TEXT_ALIGNMENT_CENTER);
+            } else {
+                D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), over ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, over ? 0.035f : 0.0f);
+                d.fill(b, 4, fill);
+                d.stroke(b, 4, pal.stroke2);
+                d.text(widen(m.tool_choices[i]), b, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+            }
+            if (m.focus == Control::ToolChoice && m.focus_index == idx) d.stroke(Rect{b.x - 3, b.y - 3, b.w + 6, b.h + 6}, 6, pal.text, 2.0f);
+        }
+    }
+    if (t.open_folder.w > 0) d.button(Control::OpenResult, t.open_folder, L"Open folder", L'\xE838', true);
     // Run (Stop while it runs): the one accent button
     {
         const Rect& r = t.run;

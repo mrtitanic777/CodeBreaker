@@ -57,15 +57,16 @@ int score(std::string_view query, std::string_view text) {
     return total * 10 / static_cast<int>(words.size());
 }
 
-std::vector<Item> make_items(const std::vector<tools::Tool>& tool_list, const std::vector<RecentEntry>& recent) {
+std::vector<Item> make_items(const std::vector<tools::Tool>& tool_list, const std::vector<RecentEntry>& recent, bool developer) {
     std::vector<Item> items;
     for (std::size_t i = 0; i < tool_list.size(); ++i) {
         const tools::Tool& t = tool_list[i];
+        if (t.developer && !developer) continue;   // (hidden unless "Show developer tools" is on)
         Item it;
         it.kind = Kind::Tool;
         it.title = t.title;
         it.note = t.group;
-        it.search = t.name + " " + t.description;
+        it.search = std::string(t.command()) + " " + t.description;
         it.index = static_cast<int>(i);
         items.push_back(std::move(it));
     }

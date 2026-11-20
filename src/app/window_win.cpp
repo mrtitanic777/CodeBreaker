@@ -48,6 +48,7 @@
 #include "app/window_render_win.hpp"
 #include "app/window_shell_win.hpp"
 #include "base/config.hpp"
+#include "base/corpus.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
 #include "core/text.hpp"
@@ -142,33 +143,12 @@ int ww_index_of(const std::vector<LanguageItem>& items, const std::string& id) {
 
 // ---- the Tools and Settings models -------------------------------------------------------------------------------------------------------
 
-int ww_field_kind(const tools::Arg& a) {
-    switch (a.kind) {
-        case tools::ArgKind::File: return 0;
-        case tools::ArgKind::Folder: return 1;
-        case tools::ArgKind::Choice: return 3;
-        case tools::ArgKind::Toggle: return 4;
-        default: return 2;
-    }
-}
-
-std::string ww_field_hint(const tools::Arg& a) {
-    if (a.list) return "Separate entries with ;";
-    switch (a.kind) {
-        case tools::ArgKind::File: return a.required ? "Browse, or type a path or name" : "Optional";
-        case tools::ArgKind::Folder: return a.required ? "Browse, or type a folder" : "Optional";
-        case tools::ArgKind::Words: return "Arguments, separated by spaces";
-        case tools::ArgKind::Text: return a.required ? std::string() : "Optional";
-        default: return {};
-    }
-}
-
 int ww_tool_index(const tools::Tool* t) { return static_cast<int>(t - tools::all().data()); }
 
 // The list as shown: every group that has a tool matching the search, its heading, then the tools (their indexes in tools::all()).
 void ww_fill_tool_rows(Model& m) {
     m.tool_rows.clear();
-    const std::vector<const tools::Tool*> found = tools::search(m.tool_query);
+    const std::vector<const tools::Tool*> found = tools::search(m.tool_query, m.developer_tools);
     for (const std::string& group : tools::groups()) {
         bool heading = false;
         for (const tools::Tool* t : found) {
@@ -191,19 +171,33 @@ void ww_load_tool(Model& m, int tool, const tools::Values& values) {
     const tools::Tool& t = tools::all()[static_cast<std::size_t>(tool)];
     m.tool_title = t.title;
     m.tool_description = t.description;
-    for (std::size_t i = 0; i < t.args.size(); ++i) {
-        const tools::Arg& a = t.args[i];
+    for (std::size_t i = 0; i < t.inputs.size(); ++i) {
+        const tools::Input& in = t.inputs[i];
         FieldItem f;
-        f.label = a.label;
-        f.kind = ww_field_kind(a);
-        f.text = i < values.text.size() ? values.text[i] : std::string();
-        f.choices = a.choices;
-        f.required = a.required;
-        f.hint = ww_field_hint(a);
+        f.label = in.label;
+        f.text = i < values.inputs.size() ? values.inputs[i] : std::string();
+        f.required = true;
+        if (in.kind == tools::InputKind::Module) {
+            f.kind = 6;
+            f.hint = "Type to search the work folder's modules";
+        } else {
+            f.kind = 5;
+            f.accept = in.kind == tools::InputKind::Folder ? 1 : in.kind == tools::InputKind::Either ? 2 : 0;
+            f.hint = in.accepts.empty() ? std::string(f.accept == 1 ? "or Browse for one" : "or Browse for one") : in.accepts;
+            std::error_code ec;
+            if (!f.text.empty() && stdfs::is_directory(fs::from_text(f.text), ec)) f.note = "folder";
+        }
         m.tool_fields.push_back(std::move(f));
     }
+    m.tool_choice_label = t.choice_label;
+    m.tool_choices.clear();
+    for (const tools::Choice& c : t.choices) m.tool_choices.push_back(c.label);
+    m.tool_choice = std::clamp(values.choice, 0, std::max(0, static_cast<int>(t.choices.size()) - 1));
     m.tool_can_run = !tools::missing(t, values).has_value();
 }
+
+// The key the Settings page's "Show developer tools" row is known by (a preference of this window, kept per user beside the theme: no settings.json key).
+constexpr std::string_view kWwDeveloperKey = "#developer_tools";
 
 // The Settings page from the settings: the main view is Theme, the output folder and Keep the computer responsive, and what this computer can
 // convert; Advanced (m.settings_advanced) is every other setting as a path (Browse), a switch or text.
@@ -250,6 +244,9 @@ void ww_fill_settings(Model& m, const std::vector<settings::Row>& rows, settings
             m.setting_keys.push_back(r.key);
         }
     }
+    m.setting_fields.push_back({"Show developer tools", 4, m.developer_tools ? "1" : "", {}, false, "",
+                                "The batch, check and maintenance tools are listed on the Tools page too."});
+    m.setting_keys.push_back(std::string(kWwDeveloperKey));
     for (const settings::Capability& c : settings::capabilities(rows)) m.capabilities.push_back({c.label, c.note, c.ready, c.key, c.folder});
 }
 
@@ -327,6 +324,7 @@ public:
     bool can_take_files() const { return !drag_out_active_ && !(running_ && cancel_); }
     // Files to convert: they start a run, or join the queue of the run under way.
     void add_files(const std::vector<stdfs::path>& files);
+    bool drop_on_tool(const std::vector<stdfs::path>& files);
 
 private:
     static LRESULT CALLBACK proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
@@ -370,12 +368,19 @@ private:
     void run_tool();
     void stop_tool();
     void poll_tool();
-    void browse_field(int index);
+    void browse_field(int index, bool folder_wanted = false);
+    void set_tool_input(int field, const std::string& path);
+    void open_result();
+    const std::vector<std::string>& work_modules();
     std::vector<LanguageItem> field_popup_items() const;
     LanguageList field_popup_list() const;
     void open_field_popup(int index);
     void choose_in_popup(int item);
     void popup_key(WPARAM key);
+    bool popup_is_search() const {   // the open list is a module field's matches (typing goes on into the field)
+        return model_.page == Page::Tools && model_.field_popup >= 0 && static_cast<std::size_t>(model_.field_popup) < model_.tool_fields.size() &&
+               model_.tool_fields[static_cast<std::size_t>(model_.field_popup)].kind == 6;
+    }
     void scroll_page(float x, float y, int lines);
     void cancel_conversion();
     // the queue, Recent, the preview, the drag, the notification (window_convert.hpp, recent.hpp, batch_queue.hpp, window_shell_win.hpp)
@@ -441,7 +446,8 @@ private:
     std::map<int, tools::Values> tool_values_;       // what has been entered, per tool
     std::unique_ptr<tools::Run> run_;                // the tool running now (one at a time)
     int last_run_tool_ = -1;                         // the tool whose run the output belongs to
-    std::string last_output_, last_note_;
+    std::string last_output_, last_note_, last_result_;
+    std::optional<std::vector<std::string>> modules_;   // the work folder's modules (read the first time a module tool needs them)
     bool last_done_ = false;
     int last_percent_ = -1;
     float phase_ = 0;
@@ -521,9 +527,28 @@ HRESULT WwDropTarget::Drop(IDataObject* data, DWORD, POINTL, DWORD* effect) {
     const std::vector<stdfs::path> files = ww_files(data);
     if (!files.empty()) {
         *effect = DROPEFFECT_COPY;
-        app_->add_files(files);
+        if (!app_->drop_on_tool(files)) app_->add_files(files);
     }
     return S_OK;
+}
+
+// A drop while the Tools page shows a tool: the first drop box that takes it gets it (two files on a two-input tool fill both). False: not for the page.
+bool WwApp::drop_on_tool(const std::vector<stdfs::path>& files) {
+    if (model_.page != Page::Tools || model_.tool_selected < 0) return false;
+    const tools::Tool& tool = tools::all()[static_cast<std::size_t>(model_.tool_selected)];
+    std::size_t next = 0;
+    bool any = false;
+    for (std::size_t i = 0; i < tool.inputs.size() && next < files.size(); ++i) {
+        std::error_code ec;
+        const bool folder = stdfs::is_directory(files[next], ec);
+        if (!tools::accepts(tool.inputs[i], folder)) continue;
+        set_tool_input(static_cast<int>(i), fs::to_text(files[next]));
+        ++next;
+        any = true;
+    }
+    if (!any) model_.status_text = tool.inputs.empty() ? tool.title + " takes nothing to drop" : "That is not what " + tool.title + " takes";
+    invalidate();
+    return true;
 }
 
 void WwApp::drag_changed(bool over) {
@@ -564,6 +589,7 @@ int WwApp::run() {
         return 2;
     }
     theme_ = settings::remembered_theme();
+    model_.developer_tools = settings::remembered_developer_tools();
     model_.platforms = convert::platform_summary();
     model_.drop_hint = convert::drop_hint();
     set_language_list(convert::targets_for({}));
@@ -846,7 +872,7 @@ std::string* WwApp::edit_target() {
     std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
     if (static_cast<std::size_t>(model_.focus_index) >= fields.size()) return nullptr;
     FieldItem& f = fields[static_cast<std::size_t>(model_.focus_index)];
-    return f.kind == 0 || f.kind == 1 || f.kind == 2 ? &f.text : nullptr;
+    return f.kind == 0 || f.kind == 1 || f.kind == 2 || f.kind == 6 ? &f.text : nullptr;
 }
 
 void WwApp::set_focus(Control c, int index) {
@@ -865,8 +891,20 @@ void WwApp::edited() {
             model_.tool_scroll = 0;
         } else if (model_.tool_selected >= 0) {
             tools::Values& v = tool_values_[model_.tool_selected];
-            for (std::size_t i = 0; i < model_.tool_fields.size() && i < v.text.size(); ++i) v.text[i] = model_.tool_fields[i].text;
+            for (std::size_t i = 0; i < model_.tool_fields.size() && i < v.inputs.size(); ++i) v.inputs[i] = model_.tool_fields[i].text;
+            v.choice = model_.tool_choice;
             model_.tool_can_run = !tools::missing(tools::all()[static_cast<std::size_t>(model_.tool_selected)], v).has_value();
+            // a module field: what has been typed searches the work folder's modules, and the matches drop down under it
+            if (model_.focus == Control::Field && model_.focus_index >= 0 && static_cast<std::size_t>(model_.focus_index) < model_.tool_fields.size()) {
+                FieldItem& f = model_.tool_fields[static_cast<std::size_t>(model_.focus_index)];
+                if (f.kind == 6) {
+                    f.choices = tools::filter_modules(work_modules(), f.text, 8);
+                    if (f.choices.size() == 1 && text::lower(f.choices.front()) == text::lower(f.text)) f.choices.clear();   // (it is chosen)
+                    model_.field_popup = f.choices.empty() ? -1 : model_.focus_index;
+                    model_.language_hot = 0;
+                    if (f.choices.empty() && work_modules().empty()) model_.status_text = "No modules: the work folder has none (Settings)";
+                }
+            }
         }
     }
     invalidate();
@@ -878,6 +916,17 @@ void WwApp::commit_setting(int field) {
     const FieldItem& f = model_.setting_fields[static_cast<std::size_t>(field)];
     if (static_cast<std::size_t>(field) >= model_.setting_keys.size()) return;
     const std::string& key = model_.setting_keys[static_cast<std::size_t>(field)];
+    if (key == kWwDeveloperKey) {   // Show developer tools: the list follows at once
+        model_.developer_tools = !f.text.empty();
+        settings::remember_developer_tools(model_.developer_tools);
+        if (!model_.developer_tools && model_.tool_selected >= 0 && tools::all()[static_cast<std::size_t>(model_.tool_selected)].developer) {
+            model_.tool_selected = -1;
+            model_.tool_fields.clear();
+        }
+        ww_fill_tool_rows(model_);
+        model_.status_text = model_.developer_tools ? "Developer tools are shown" : "Developer tools are hidden";
+        return;
+    }
     if (key.empty()) {   // the theme
         theme_ = f.text == "Light" ? settings::Theme::Light : f.text == "Dark" ? settings::Theme::Dark : settings::Theme::System;
         settings::remember_theme(theme_);
@@ -992,6 +1041,7 @@ void WwApp::select_tool(int tool) {
     model_.tool_done = this_run && last_done_;
     model_.tool_running = this_run && run_ != nullptr;
     model_.tool_percent = this_run ? last_percent_ : -1;
+    model_.tool_result = this_run ? last_result_ : std::string();
     model_.output_scroll = 0;
     model_.focus = Control::ToolRow;
     model_.focus_index = tool;
@@ -1010,6 +1060,8 @@ void WwApp::run_tool() {
     last_note_ = "Running…";
     last_done_ = false;
     last_percent_ = -1;
+    last_result_.clear();
+    model_.tool_result.clear();
     model_.tool_running = true;
     model_.tool_output.clear();
     model_.tool_note = last_note_;
@@ -1019,6 +1071,7 @@ void WwApp::run_tool() {
     model_.activity = true;
     model_.status_text = "Running " + tool.title;
     SetTimer(hwnd_, kWwRunTimer, 80, nullptr);
+    relayout();
     invalidate();
 }
 
@@ -1039,6 +1092,7 @@ void WwApp::poll_tool() {
     if (!s.running) {
         last_done_ = true;
         last_note_ = !s.failure.empty() ? "Could not start" : s.stopped ? "Stopped" : s.exit_code == 0 ? "Finished" : "Exit code " + std::to_string(s.exit_code);
+        last_result_ = s.failure.empty() && !s.stopped ? fs::to_text(tools::result_folder(s.output)) : std::string();
         run_.reset();
         KillTimer(hwnd_, kWwRunTimer);
         model_.activity = false;
@@ -1050,6 +1104,7 @@ void WwApp::poll_tool() {
         model_.tool_note = last_note_;
         model_.tool_done = last_done_;
         model_.tool_running = run_ != nullptr;
+        model_.tool_result = last_result_;
         model_.tool_phase = phase_ <= 1.0f ? phase_ : 2.0f - phase_;
         model_.output_scroll = 0;
     }
@@ -1058,11 +1113,11 @@ void WwApp::poll_tool() {
 
 // ---- choosing a file or a folder for a field
 
-void WwApp::browse_field(int index) {
+void WwApp::browse_field(int index, bool folder_wanted) {
     std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
     if (index < 0 || static_cast<std::size_t>(index) >= fields.size()) return;
     FieldItem& f = fields[static_cast<std::size_t>(index)];
-    bool folder = f.kind == 1;
+    bool folder = f.kind == 1 || folder_wanted || (f.kind == 5 && f.accept == 1);
     if (!folder && model_.page == Page::Settings) {   // a path setting that names a folder now is chosen as one
         std::error_code ec;
         folder = !f.text.empty() && stdfs::is_directory(fs::from_text(f.text), ec);
@@ -1080,17 +1135,53 @@ void WwApp::browse_field(int index) {
     if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path != nullptr) {
         const std::string chosen = narrow(path);
         CoTaskMemFree(path);
-        // a list field gets the new entry after the ones it has
+        if (f.kind == 5) {
+            set_tool_input(index, chosen);
+            return;
+        }
         std::string& text = f.text;
-        const bool list = model_.page == Page::Tools && model_.tool_selected >= 0 && static_cast<std::size_t>(index) < tools::all()[static_cast<std::size_t>(model_.tool_selected)].args.size() &&
-                          tools::all()[static_cast<std::size_t>(model_.tool_selected)].args[static_cast<std::size_t>(index)].list;
-        text = list && !text.empty() ? text + "; " + chosen : chosen;
+        text = chosen;
         model_.focus = Control::Field;
         model_.focus_index = index;
         model_.caret = static_cast<int>(text.size());
         edited();
         if (model_.page == Page::Settings) commit_setting(index);
     }
+}
+
+// A file or folder for a drop box of the selected tool (browsed or dropped): it is shown, and Run follows.
+void WwApp::set_tool_input(int field, const std::string& path) {
+    if (model_.page != Page::Tools || field < 0 || static_cast<std::size_t>(field) >= model_.tool_fields.size()) return;
+    FieldItem& f = model_.tool_fields[static_cast<std::size_t>(field)];
+    f.text = path;
+    std::error_code ec;
+    f.note = stdfs::is_directory(fs::from_text(path), ec) ? "folder" : "";
+    const Control keep = model_.focus;
+    const int keep_index = model_.focus_index;
+    model_.focus = Control::FieldBrowse;
+    model_.focus_index = field;
+    edited();
+    if (keep == Control::FieldBrowseFolder) model_.focus = keep, model_.focus_index = keep_index;
+    invalidate();
+}
+
+// Open folder: the folder a finished run left its result in, in Explorer.
+void WwApp::open_result() {
+    if (model_.tool_result.empty()) return;
+    ShellExecuteW(hwnd_, L"open", widen(model_.tool_result).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+// The work folder's modules, for a module field: the program files of the selected corpus (none when there is no work folder).
+const std::vector<std::string>& WwApp::work_modules() {
+    if (!modules_) {
+        try {
+            base::Corpus corpus(config::current().products());
+            modules_ = tools::modules_in(corpus.root());
+        } catch (const std::exception&) {
+            modules_ = std::vector<std::string>{};
+        }
+    }
+    return *modules_;
 }
 
 // ---- a form's drop-down
@@ -1190,6 +1281,17 @@ void WwApp::activate_page(Control c, int index) {
             else run_tool();
             break;
         case Control::FieldBrowse: browse_field(index); break;
+        case Control::FieldBrowseFolder: browse_field(index, true); break;
+        case Control::OpenResult: open_result(); break;
+        case Control::ToolChoice:
+            if (model_.tool_selected >= 0 && index >= 0 && index < static_cast<int>(model_.tool_choices.size())) {
+                model_.tool_choice = index;
+                model_.focus = Control::ToolChoice;
+                model_.focus_index = index;
+                tool_values_[model_.tool_selected].choice = index;
+                invalidate();
+            }
+            break;
         case Control::SettingsAdvanced: open_advanced(true); break;
         case Control::SettingsBack: open_advanced(false); break;
         case Control::Locate: locate_tool(index); break;
@@ -1800,7 +1902,7 @@ void WwApp::open_palette() {
         std::error_code ec;
         recents.push_back({e.name, "converted " + recent::when_words(now, e.when, offset), !stdfs::is_directory(fs::from_text(e.folder), ec)});
     }
-    model_.palette_items = palette::make_items(tools::all(), recents);
+    model_.palette_items = palette::make_items(tools::all(), recents, model_.developer_tools);
     model_.palette_query.clear();
     model_.palette_selected = 0;
     model_.palette_open = true;
@@ -2408,7 +2510,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 }
                 return 0;
             }
-            if (wp >= 32 && wp != 127 && model_.field_popup < 0 && edit_target() != nullptr) {
+            if (wp >= 32 && wp != 127 && (model_.field_popup < 0 || popup_is_search()) && edit_target() != nullptr) {
                 const wchar_t unit = static_cast<wchar_t>(wp);
                 if (unit >= 0xD800 && unit <= 0xDBFF) {   // the first half of a surrogate pair waits for the second
                     pending_high_ = unit;
@@ -2548,7 +2650,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 set_page(wp == '1' ? Page::Convert : wp == '2' ? Page::Tools : Page::Settings);
                 return 0;
             }
-            if (model_.field_popup >= 0) {   // a form's open list takes the keys
+            if (model_.field_popup >= 0 && !(popup_is_search() && wp != VK_UP && wp != VK_DOWN && wp != VK_RETURN && wp != VK_ESCAPE)) {   // a form's open list takes the keys
                 popup_key(wp);
                 return 0;
             }
@@ -2705,16 +2807,19 @@ Model ww_model_for(const std::string& state, bool dark) {
         m.page = Page::Tools;
         m.status_text = "Done";
         ww_fill_tool_rows(m);
-        const tools::Tool* t = tools::find("pe-source");
+        const tools::Tool* t = tools::find("java-port");
         tools::Values v = tools::empty_values(*t);
-        v.text[0] = "C:\\Games\\Pinball\\PINBALL.EXE";
+        v.inputs[0] = "C:\\Games\\Minecraft\\a1.2.6.jar";
+        v.choice = 1;
         ww_load_tool(m, ww_tool_index(t), v);
         m.tool_done = true;
         m.tool_percent = 100;
         m.tool_note = "Finished";
+        m.tool_result = "C:\\Games\\Minecraft\\a1.2.6-converted";
         m.tool_output =
-            "reading PINBALL.EXE (PE32, i386, 312 KB)\nfunctions found: 1,284\nwriting pinball.asm, pinball.inc, build.cmd\nassembling with NASM ... linking ...\n"
-            "rebuilt file is identical to the original (312,320 bytes)\nsource: C:\\CodeBreaker\\Converted\\PINBALL\n";
+            "C:\\Games\\Minecraft\\a1.2.6.jar -> C++ for Xbox 360\n  input: a game jar\n  0%  Decompiling Minecraft a1.2.6\n 14%  Converting the Java to C++\n"
+            "  612 class(es) -> 618 header(s), 640 source(s)\n 28%  Writing the platform config and the Visual Studio solution\n 42%  Copying the game's textures and resources into Content\n"
+            " 57%  Making the XACT audio banks\n 71%  Mapping the achievements\n 85%  Building the solution\n  built\n100%  Done\nOutput: C:\\Games\\Minecraft\\a1.2.6-converted\n";
         return m;
     }
     if (state == "settings" || state == "advanced") {

@@ -44,6 +44,20 @@ FormLayout layout_form(const Rect& area, const std::vector<FieldItem>& fields, f
     for (const FieldItem& f : fields) {
         FieldRects r;
         const float note_h = f.note.empty() ? 0.0f : kFieldNoteHeight;
+        if (f.kind == 5) {   // a drop box: the label, then the box with its Browse button (two, File... and Folder..., when it takes either)
+            r.label = {area.x, y, area.w, kFieldLabelHeight};
+            r.input = {area.x, y + kFieldLabelHeight + 6, area.w, kDropBoxHeight};
+            const float bw = f.accept == 2 ? 96.0f : 112.0f;
+            const float by = r.input.y + (kDropBoxHeight - kFieldInputHeight) / 2;
+            r.browse = {r.input.right() - 16 - bw, by, bw, kFieldInputHeight};
+            if (f.accept == 2) {
+                r.browse_folder = r.browse;
+                r.browse = {r.browse_folder.x - 8 - bw, by, bw, kFieldInputHeight};
+            }
+            y += kFieldLabelHeight + 6 + kDropBoxHeight + kFieldGap;
+            out.fields.push_back(r);
+            continue;
+        }
         if (f.kind == 4) {   // a toggle: the switch, then its label (and its note under that)
             r.input = {area.x, y + 4, 40, 20};
             r.label = {area.x + 52, y, std::max(0.0f, area.w - 52), kToggleRowHeight - 4};
@@ -63,6 +77,8 @@ FormLayout layout_form(const Rect& area, const std::vector<FieldItem>& fields, f
     out.content_height = y + scroll - area.y;
     return out;
 }
+
+float choice_button_width(const std::string& label) { return std::max(96.0f, 7.5f * static_cast<float>(label.size()) + 40.0f); }
 
 ToolsLayout compute_tools_layout(const Layout& shell, const Model& m) {
     ToolsLayout t;
@@ -90,8 +106,24 @@ ToolsLayout compute_tools_layout(const Layout& shell, const Model& m) {
     t.fields_area = {t.form_title.x, t.form_desc.bottom() + 8, t.form_title.w, 0};
     t.form = layout_form(t.fields_area, m.tool_fields, 0);
     t.fields_area.h = t.form.content_height;
-    t.run = {t.fields_area.x, t.fields_area.bottom() + 2, 96, 32};
-    t.run_note = {t.run.right() + 12, t.run.y, std::max(0.0f, t.form_title.right() - t.run.right() - 12), 32};
+    float below = t.fields_area.bottom();
+    if (!m.tool_choice_label.empty() && !m.tool_choices.empty()) {   // the choice: its label, then a row of buttons
+        t.choice_label = {t.fields_area.x, below, t.fields_area.w, kFieldLabelHeight};
+        float x = t.fields_area.x;
+        for (const std::string& c : m.tool_choices) {
+            const float w = choice_button_width(c);
+            t.choice_buttons.push_back({x, t.choice_label.bottom() + 6, w, kChoiceButtonHeight});
+            x += w + 8;
+        }
+        below = t.choice_label.bottom() + 6 + kChoiceButtonHeight + kFieldGap;
+    }
+    t.run = {t.fields_area.x, below + 2, 96, 32};
+    float note_x = t.run.right() + 12;
+    if (!m.tool_result.empty() && !m.tool_running) {
+        t.open_folder = {t.run.right() + 8, t.run.y, 136, 32};
+        note_x = t.open_folder.right() + 12;
+    }
+    t.run_note = {note_x, t.run.y, std::max(0.0f, t.form_title.right() - note_x), 32};
     t.bar = {t.fields_area.x, t.run.bottom() + 16, t.form_title.w, 3};
     t.output = {t.fields_area.x, t.bar.bottom() + 10, t.form_title.w, std::max(0.0f, t.form_card.bottom() - 20 - (t.bar.bottom() + 10))};
     return t;
@@ -173,6 +205,8 @@ PageHit pg_hit_form(const FormLayout& form, const std::vector<FieldItem>& fields
     for (std::size_t i = 0; i < form.fields.size() && i < fields.size(); ++i) {
         const FieldRects& r = form.fields[i];
         if (r.browse.w > 0 && r.browse.contains(x, y)) return {Control::FieldBrowse, static_cast<int>(i)};
+        if (r.browse_folder.w > 0 && r.browse_folder.contains(x, y)) return {Control::FieldBrowseFolder, static_cast<int>(i)};
+        if (fields[i].kind == 5 && r.input.contains(x, y)) return {Control::FieldBrowse, static_cast<int>(i)};   // (the whole box opens Browse)
         if (r.input.contains(x, y)) return {Control::Field, static_cast<int>(i)};
         if (fields[i].kind == 4 && r.label.contains(x, y)) return {Control::Field, static_cast<int>(i)};   // (the label of a switch is part of it)
     }
@@ -197,6 +231,9 @@ PageHit hit_test_tools(const ToolsLayout& t, const Model& m, float x, float y) {
     }
     if (m.tool_selected < 0) return {};
     if (t.run.contains(x, y)) return {Control::Run, -1};
+    if (t.open_folder.w > 0 && t.open_folder.contains(x, y)) return {Control::OpenResult, -1};
+    for (std::size_t i = 0; i < t.choice_buttons.size(); ++i)
+        if (t.choice_buttons[i].contains(x, y)) return {Control::ToolChoice, static_cast<int>(i)};
     if (t.output.contains(x, y)) return {Control::OutputPane, -1};
     return pg_hit_form(t.form, m.tool_fields, t.form_card, x, y);
 }
@@ -218,8 +255,9 @@ namespace {
 
 void pg_add_fields(std::vector<PageHit>& order, const std::vector<FieldItem>& fields) {
     for (std::size_t i = 0; i < fields.size(); ++i) {
-        order.push_back({Control::Field, static_cast<int>(i)});
-        if (fields[i].kind == 0 || fields[i].kind == 1) order.push_back({Control::FieldBrowse, static_cast<int>(i)});
+        if (fields[i].kind != 5) order.push_back({Control::Field, static_cast<int>(i)});   // (a drop box is reached by its buttons)
+        if (fields[i].kind == 0 || fields[i].kind == 1 || fields[i].kind == 5) order.push_back({Control::FieldBrowse, static_cast<int>(i)});
+        if (fields[i].kind == 5 && fields[i].accept == 2) order.push_back({Control::FieldBrowseFolder, static_cast<int>(i)});
     }
 }
 
@@ -234,7 +272,10 @@ std::vector<PageHit> focus_order_tools(const Model& m) {
     if (m.tool_selected >= 0) {
         order.push_back({Control::ToolRow, m.tool_selected});
         pg_add_fields(order, m.tool_fields);
+        if (!m.tool_choice_label.empty())
+            for (std::size_t i = 0; i < m.tool_choices.size(); ++i) order.push_back({Control::ToolChoice, static_cast<int>(i)});
         order.push_back({Control::Run, -1});
+        if (!m.tool_result.empty() && !m.tool_running) order.push_back({Control::OpenResult, -1});
     }
     pg_add_rail(order);
     return order;

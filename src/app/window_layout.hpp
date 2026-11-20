@@ -70,6 +70,8 @@ enum class Control {
     None, Plus, Browse, Cancel, TryAnother, OpenFolder, CopyPath, Language, CaptionMinimize, CaptionMaximize, CaptionClose,
     // the navigation rail, and the Tools and Settings pages (window_pages.hpp): a field, a tool or a setting is named by Model::*_index beside the Control
     NavConvert, NavTools, NavSettings, ToolSearch, ToolRow, Field, FieldBrowse, Run, OutputPane,
+    // the Tools page: a button of the tool's one choice (its index), Browse for a folder in a drop box that takes a file or a folder, Open folder
+    ToolChoice, FieldBrowseFolder, OpenResult,
     // the Settings page: the Advanced row, Back from Advanced, and Locate... on a row of what this computer cannot convert yet (its index)
     SettingsAdvanced, SettingsBack, Locate,
     // the Convert page's lists: a recent conversion and its Remove (Model::hot_index is the row), a file of the preview, the code view, the output box
@@ -93,7 +95,8 @@ struct ToolRowItem {
 };
 
 // One field of a form (the selected tool's, or the Settings page's): what the label says, what kind of control it is, what has been entered.
-// kind: 0 file (text + Browse), 1 folder (text + Browse), 2 text, 3 choice (drop-down), 4 toggle ("1" or "").
+// kind: 0 file (text + Browse), 1 folder (text + Browse), 2 text, 3 choice (drop-down), 4 toggle ("1" or ""); the Tools page's two: 5 a drop box (a file
+// or folder dropped on the window or browsed; nothing typed), 6 a module (typing searches the work folder's modules; `choices` are the matches).
 struct FieldItem {
     std::string label;
     int kind = 2;
@@ -102,6 +105,7 @@ struct FieldItem {
     bool required = false;
     std::string hint;                  // grey text in an empty field
     std::string note;                  // one line under the label (a setting's explanation); may be empty
+    int accept = 0;                    // a drop box: 0 a file, 1 a folder, 2 either
 };
 
 // One row of the Settings page's "What this computer can convert": the first says what is ready; each after it is something that needs a tool,
@@ -235,7 +239,12 @@ struct Model {
     int tool_selected = -1;                                     // the selected tool's index in tools::all(); -1 none
     float tool_scroll = 0;                                      // list scroll, DIPs
     std::string tool_title, tool_description;                   // the selected tool
-    std::vector<FieldItem> tool_fields;
+    std::vector<FieldItem> tool_fields;                         // its inputs: drop boxes (kind 5) or a module (kind 6)
+    std::string tool_choice_label;                              // its one choice ("Platform"), shown as buttons; empty: none
+    std::vector<std::string> tool_choices;                      // "PC", "Xbox 360"
+    int tool_choice = 0;                                        // the button chosen
+    std::string tool_result;                                    // the folder a finished run left its result in: Open folder shows it
+    bool developer_tools = false;                               // "Show developer tools": the developer groups are listed
     bool tool_can_run = false;                                  // the required fields are filled in
     bool tool_running = false;
     int tool_percent = -1;                                      // -1: the command prints none (an indeterminate bar); 0..100

@@ -50,4 +50,8 @@ Theme remembered_theme();
 void remember_theme(Theme theme);
 std::string theme_name(Theme theme);   // "System", "Light", "Dark"
 
+// "Show developer tools" (the Tools page's developer and batch tools; off at first), kept per user beside the theme.
+bool remembered_developer_tools();
+void remember_developer_tools(bool show);
+
 }  // namespace cb::app::settings

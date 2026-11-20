@@ -26,6 +26,7 @@
 #include "java/frontend.hpp"
 #include "java/ledger.hpp"
 #include "java/paths.hpp"
+#include "java/port.hpp"
 #include "java/probe.hpp"
 #include "java/production.hpp"
 #include "java/projects/minecraft/achievements.hpp"
@@ -586,12 +587,12 @@ int decompile_tool(const ContextP& ctx, const cli::Args& a) {
 
 // The steps of `convert --project`: the platform config, then the Visual Studio project. Each is best effort -- a missing SDK is reported, never
 // fatal to the conversion.
-void project_steps(const ContextP& ctx, const stdfs::path& out_dir, const cli::Args& a) {
+void project_steps(const ContextP& ctx, const stdfs::path& out_dir, const std::string& platform, const std::optional<std::string>& sdk) {
     namespace pc = console::platform_config;
     try {
         pc::RunOptions options;
-        options.platform = opt_value(a, "platform").value_or("xbox360");
-        options.sdk_hints = ctx->sdk_hints(options.platform, opt_value(a, "sdk"));
+        options.platform = platform;
+        options.sdk_hints = ctx->sdk_hints(options.platform, sdk);
         const pc::RunResult r = pc::run(out_dir, options);
         jt_out(std::format("  project: config emitted ({} file(s), controller binds preserved)", r.written.size()));
     } catch (const console::sdk::SdkNotFoundError& e) {
@@ -679,13 +680,173 @@ int convert_tool(const ContextP& ctx, const cli::Args& a) {
         return kGate;
     }
     jt_out(std::format("Converted {} -> {}", jt_abs(java_dir), jt_abs(out_dir)));
-    if (project) project_steps(ctx, out_dir, a);
+    if (project) project_steps(ctx, out_dir, opt_value(a, "platform").value_or("xbox360"), opt_value(a, "sdk"));
     jt_out(std::format("  target: {} / {} / profile {}", s.platform, s.cpp_std, s.profile.empty() ? "?" : s.profile));
     jt_out(std::format("  parsed={}  headers={}  sources={}", s.parsed, s.headers, s.sources));
     jt_out(std::format("  verify (crash-class rule findings on output): {}", s.rule_findings));
     jt_out(std::format("  ledger events={}  (HIGH={})", s.events, s.high));
     if (s.report) jt_out("  report: " + jt_native(*s.report / "index.md"));
     return kOk;
+}
+
+
+// `port`: the whole job from one input and one choice (java/port.hpp): find or make the Java source, convert it, then everything the platform
+// needs, then build. Each step prints a "NN%  step" line the window's progress bar follows. A step the computer has no tool for (MSBuild, CMake,
+// the XDK's XACTBLD) is skipped and said; a step that fails stops the run.
+int port_tool(const ContextP& ctx, const cli::Args& a) {
+    const std::optional<port::Platform> platform = port::parse_platform(a.value_or("platform", "pc"));
+    if (!platform) {
+        jt_err("ERROR: --platform must be pc or xbox360");
+        return kUsage;
+    }
+    const std::optional<std::string> out_arg = opt_value(a, "out");
+    const port::Plan p = port::plan(fs::from_text(a.required("input")), *platform,
+                                    out_arg ? std::optional<stdfs::path>(fs::from_text(*out_arg)) : std::nullopt);
+    if (!p.problem.empty()) {
+        jt_err("ERROR: " + p.problem);
+        return kUsage;
+    }
+    const std::string platform_id(port::platform_id(*platform));
+    const bool xbox = *platform == port::Platform::Xbox360;
+    jt_out(std::format("{} -> C++ for {}", jt_native(p.input), port::platform_title(*platform)));
+    jt_out(std::format("  input: {}", port::kind_title(p.kind)));
+    for (std::size_t i = 0; i < p.steps.size(); ++i) jt_out(std::format("  {}. {}", i + 1, p.steps[i]));
+    std::size_t step = 0;
+    const auto begin = [&](std::string_view what) {
+        jt_out(std::format("{:>3}%  {}", step * 100 / (p.steps.size() + 1), what));
+        ++step;
+        cb::flush_out();
+    };
+
+    // 1. the Java source
+    stdfs::path java_dir = p.java_src.value_or(stdfs::path{});
+    if (p.kind == port::SourceKind::SourceJar) {
+        begin("Unpacking the Java source");
+        java_dir = p.root / "_source";
+        jt_out(std::format("  {} .java file(s) -> {}", port::extract_java_sources(p.input, java_dir), jt_native(java_dir)));
+    } else if (java_dir.empty()) {
+        begin("Decompiling Minecraft " + p.mc_version);
+        decompile::jar::DecompileOptions options;
+        options.settings = ctx->jar_settings();
+        options.on_output = [](std::string_view line) { jt_out("  " + std::string(line)); };
+        try {
+            java_dir = decompile::jar::decompile(p.mc_version, p.root / "_decompiled", options);
+        } catch (const decompile::jar::DecompileError& e) {
+            jt_err(std::format("ERROR (decompile): {}", e.what()));
+            return kDecompile;
+        }
+    }
+
+    // 2. convert
+    begin("Converting the Java to C++");
+    transpile::Options options;
+    options.platform = platform_id;
+    options.platform_refs = true;
+    if (const std::string configured = ctx->config().text("xbox360_sdk"); !configured.empty()) options.sdk_configured = fs::from_text(configured);
+    if (const auto overlays = ctx->config().path("java_overlays")) options.overlays_root = *overlays;
+    options.mc_version = p.mc_version;
+    transpile::Summary s;
+    try {
+        s = ctx->assembly().convert(java_dir, p.project, options);
+    } catch (const console::sdk::SdkNotFoundError& e) {
+        jt_err(std::format("ERROR (SDK gate): {}", e.what()));
+        return kGate;
+    }
+    jt_out(std::format("  {} class(es) -> {} header(s), {} source(s) in {}", s.parsed, s.headers, s.sources, jt_native(p.project)));
+
+    // 3. the platform config and the solution (Xbox 360)
+    if (xbox) {
+        begin("Writing the platform config and the Visual Studio solution");
+        project_steps(ctx, p.project, platform_id, std::nullopt);
+    }
+
+    // 4. Content
+    if (p.jar) {
+        begin("Copying the game's textures and resources into Content");
+        console::assets::RunOptions as;
+        as.code_dir = p.project;
+        if (xbox) as.bundle_dir = ctx->data().path({"platform", "assets"});
+        as.normalize_png = xbox;
+        const console::assets::RunResult res = console::assets::run(*p.jar, p.project / "Content", as);
+        jt_out(std::format("  {} asset(s) -> {}", res.written.size(), jt_native(p.project / "Content")));
+    }
+
+    int code = kOk;
+    if (xbox) {
+        // 5. audio
+        if (p.resources) {
+            begin("Making the XACT audio banks");
+            try {
+                console::xact::BuildOptions xo;
+                xo.java_dir = java_dir;
+                xo.resources_dir = p.resources;
+                if (const auto info = console::sdk::detect("xbox360", ctx->sdk_hints("xbox360", std::nullopt))) {
+                    xo.sdk_root = info->root();
+                    xo.autorun = true;
+                }
+                xo.log = [](std::string_view line) { jt_out("  " + std::string(line)); };
+                const console::xact::BuildResult built = console::xact::build(demand_of(java_dir), p.project / "Content" / "Audio", xo);
+                jt_out(std::format("  {} cue(s) -> {}{}", built.cues.size(), jt_native(built.xap.parent_path()),
+                                   xo.autorun ? "" : "  (no Xbox 360 SDK: the bank scripts are written, not run)"));
+            } catch (const std::exception& e) {
+                jt_out(std::format("  audio skipped: {}", e.what()));
+            }
+        }
+        // 6. achievements
+        begin("Mapping the achievements");
+        try {
+            mc::achievements::RunOptions ao;
+            ao.lang_file = p.lang;
+            const mc::achievements::RunResult res = mc::achievements::run(p.project, p.project, ao);
+            jt_out(std::format("  {} achievement(s), title id 0x{}", res.count, res.title_id));
+        } catch (const std::exception& e) {
+            jt_out(std::format("  achievements skipped: {}", e.what()));
+        }
+        try {   // the files the steps above added join the project
+            jt_out("  " + console::vcxproj::run(p.project, rules_of(ctx->profiles().active())).summary());
+        } catch (const std::exception& e) {
+            jt_out(std::format("  project file list not refreshed: {}", e.what()));
+        }
+        // 7. build
+        begin("Building the solution");
+        const stdfs::path msbuild = ctx->config().path("msbuild").value_or(stdfs::path{});
+        std::error_code ec;
+        const stdfs::path sln = p.root / (p.name + ".sln");
+        if (msbuild.empty() || !stdfs::is_regular_file(msbuild, ec)) {
+            jt_out("  skipped: MSBuild is not set up (Settings: msbuild)");
+        } else if (!stdfs::is_regular_file(sln, ec)) {
+            jt_out("  skipped: no solution was written (" + jt_native(sln) + ")");
+        } else {
+            cb::flush_out();
+            const process::ProcessResult r = process::run({.argv = {jt_native(msbuild), jt_native(sln), "/m", "/nologo", "/p:Configuration=Release", "/p:Platform=Xbox 360"},
+                                                            .out = process::Capture::Inherit, .err = process::Capture::Inherit});
+            jt_out(r.exit_code == 0 ? std::string("  built") : std::format("  the build FAILED (exit {})", r.exit_code));
+            if (r.exit_code != 0) code = kProblem;
+        }
+    } else {
+        begin("Building with CMake");
+        const stdfs::path build_dir = p.project / "build";
+        bool have_cmake = true;
+        try {
+            have_cmake = process::run({.argv = {"cmake", "--version"}}).exit_code == 0;
+        } catch (const std::exception&) {
+            have_cmake = false;
+        }
+        if (!have_cmake) {
+            jt_out("  skipped: CMake is not installed (the CMakeLists.txt is written; build it with any CMake)");
+        } else {
+            cb::flush_out();
+            process::ProcessResult r = process::run({.argv = {"cmake", "-S", jt_native(p.project), "-B", jt_native(build_dir)},
+                                                    .out = process::Capture::Inherit, .err = process::Capture::Inherit});
+            if (r.exit_code == 0)
+                r = process::run({.argv = {"cmake", "--build", jt_native(build_dir), "--config", "Release"}, .out = process::Capture::Inherit, .err = process::Capture::Inherit});
+            jt_out(r.exit_code == 0 ? std::string("  built") : std::format("  the build FAILED (exit {})", r.exit_code));
+            if (r.exit_code != 0) code = kProblem;
+        }
+    }
+    jt_out("100%  Done");
+    jt_out("Output: " + jt_native(p.root));
+    return code;
 }
 
 }  // namespace
@@ -715,6 +876,7 @@ run::Tools make_tools(const Environment& environment) {
     h["ui-mark"] = [](const cli::Args& a) { return ui_mark_tool(a); };
     h["keybind-mark"] = [](const cli::Args& a) { return keybind_mark_tool(a); };
     h["scan-project"] = [](const cli::Args& a) { return scan_project_tool(a); };
+    h["port"] = [ctx](const cli::Args& a) { return port_tool(ctx, a); };
     return tools;
 }
 

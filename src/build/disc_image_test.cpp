@@ -139,10 +139,22 @@ CB_TEST("build.disc_image.an_image_is_listed_and_extracted_through_the_media_rea
     CB_CHECK(!volumes.empty());
 });
 
+CB_TEST("build.disc_image.one_input_writes_a_folder_beside_itself_or_takes_an_image_apart_beside_itself", [] {
+    DiscWorld w;
+    const std::string wrote = w.run({w.w + "/tree"});   // a folder: <folder>.iso beside it, named after it
+    CB_CHECK(wrote.find("wrote <w>/tree.iso") != std::string::npos && wrote.find("Output: ") != std::string::npos && wrote.ends_with("exit=0\n"));
+    CB_CHECK(std::filesystem::is_regular_file(w.dir.path() / "tree.iso"));
+    const std::string taken = w.run({w.w + "/tree.iso"});   // an image: its files in a folder beside it
+    CB_CHECK(taken.find("to <w>/tree") != std::string::npos && taken.ends_with("exit=0\n"));
+    CB_CHECK(std::filesystem::is_directory(w.dir.path() / "tree"));
+    CB_CHECK_EQ(disc_image::volume_name("My Disc! v1.0"), "MY_DISC__V1_0");
+    CB_CHECK_EQ(disc_image::volume_name(""), "CODEBREAKER");
+    CB_CHECK_EQ(disc_image::volume_name(std::string(40, 'a')).size(), 32u);
+});
+
 CB_TEST("build.disc_image.misuse_is_a_usage_error", [] {
     DiscWorld w;
     // (a UsageError from the handler is mapped to exit 2 by the application)
-    CB_CHECK_THROWS_AS(UsageError, w.run({w.w + "/tree"}));
     CB_CHECK_THROWS_AS(UsageError, w.run({w.w + "/tree", w.w + "/a", "--list"}));
     CB_CHECK_THROWS_AS(UsageError, w.run({"--list", w.w + "/tree", w.w + "/b"}));
     CB_CHECK_THROWS_AS(UsageError, w.run({"--extract", w.w + "/plain.iso"}));

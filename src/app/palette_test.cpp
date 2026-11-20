@@ -8,18 +8,18 @@ namespace {
 
 std::vector<tools::Tool> pl_tools() {
     std::vector<tools::Tool> t(4);
-    t[0].name = "disasm";
+    t[0].argv = {"disasm"};
     t[0].title = "Disassemble a program";
     t[0].group = "Inspect";
     t[0].description = "Turns the code of a program back into assembly.";
-    t[1].name = "disasm-fn";
+    t[1].argv = {"disasm-fn"};
     t[1].title = "Disassemble one function";
     t[1].group = "Inspect";
-    t[2].name = "iso";
+    t[2].argv = {"iso"};
     t[2].title = "Disc image: list and extract";
     t[2].group = "Files";
     t[2].description = "Lists the files of a disc image.";
-    t[3].name = "hexdump";
+    t[3].argv = {"hexdump"};
     t[3].title = "Hex dump";
     t[3].group = "Inspect";
     return t;

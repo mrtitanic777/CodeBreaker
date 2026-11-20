@@ -45,7 +45,7 @@ struct Checkout {
 CB_TEST("java.run.tool_table", [] {
     const auto names = run::tool_names();
     const std::vector<std::string> expected = {
-        "convert", "decompile", "scaffold", "signatures", "report", "worklist", "bugfix-ledger", "apimap", "sdk",
+        "port", "convert", "decompile", "scaffold", "signatures", "report", "worklist", "bugfix-ledger", "apimap", "sdk",
         "platform-config", "assets", "xact", "achievements", "project-layout", "vcxproj", "build", "debug",
         "reflect-factories", "sound-fix", "controller-nav", "render-fix", "applet-ping", "ui-mark", "keybind-mark", "scan-project"};
     CB_CHECK_EQ(names.size(), expected.size());
