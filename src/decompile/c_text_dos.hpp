@@ -47,6 +47,7 @@ struct Report {
     std::size_t pointers = 0;            // four-byte locals the statements dereference, declared as the far pointers they are
     std::size_t stack_probes = 0;        // the compiler's stack probes (_chkstk) left out: not the source's
     std::size_t frames = 0;              // functions whose stack locals are written as the one frame they are (ctd_stack_frame)
+    std::size_t segments_named = 0;      // the program's segment numbers written by name (ctd_segments_by_name)
 };
 
 struct Result {
@@ -70,6 +71,8 @@ struct Layout {
     std::uint32_t base = 0;                                     // the linear address the program is loaded at (its segment 0)
     std::set<std::uint32_t> runtime_segments;                   // the code segments the compiler's library functions are in
     std::string data_segment;                                   // its segment as the code writes it, "0x2a38" (empty: not known)
+    std::set<std::uint32_t> segments;                           // the segments the program names (its relocated words, as the code
+                                                                // writes them, 0x28e9): written by name, not number, in the C
     std::string data;                                           // the data segment's bytes (up to 64 KB): a pointer into it that
                                                                 // starts a string gets the string beside it, `/* "MSC_CMD_FLAGS" */`
     std::map<std::string, std::vector<std::string>> library_pointers;   // a library function -> the C type of each pointer

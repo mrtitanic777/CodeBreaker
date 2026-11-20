@@ -3,7 +3,7 @@ exit: 0
 choice.com: 1062 instructions, 10 (0%) written as bytes; 2809 bytes of data; 1 round; builds back THE SAME
   source: <work>/out/choice.asm
 --- files
-choice.asm 45263 b12f73e475d4cdbdfa20f9a152e2a538ad7e0a87de8e8bd8526ed53a81653842
+choice.asm 45333 28c56a5139d2d2ea5c5640a8300ef6b44287a9fdf08862fa4f1d3e187c02162e
 choice.build.json 93 a70b104f212ec92f24bdbc09e5685fc0a42937868966ef7c06b41836f5f2f737
 choice.com 5175 90905c80ad0ebb995ed42ec0b19672ec25a319f0fb400d697e87215f7002aec2
 choice.lnk 75 76faaeff35724b26363f4eaa53702aaf9432e59c3feec88f43626ab028651e26

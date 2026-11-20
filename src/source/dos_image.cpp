@@ -315,6 +315,10 @@ Source DosImage::source(const std::set<std::uint32_t>* good) const {
         else out.append(std::format("S{:04X} segment {} public use16 'C{:04X}'", s, align, s));
         out.append(std::format("        assume cs:S{:04X}, ds:nothing, es:nothing, ss:nothing", s));
         if (origin_ != 0 && s == 0) out.append(std::format("        org  {}", origin_));
+        // (the segment by name, for the program's C: `FP_SEG(&codebreaker_seg_18e9)` is this segment wherever a build links
+        // it -- the C does not write the original's segment numbers, which move when the C's own code is linked in)
+        out.append(std::format("        public _codebreaker_seg_{:04x}", s));
+        out.append(std::format("_codebreaker_seg_{:04x} label byte", s));
         std::size_t at = std::max(lo + over, s == 0 ? static_cast<std::size_t>(origin_) : std::size_t{0});   // (DOS supplies what is before a .COM file's origin)
         std::vector<std::uint8_t> run;
         const auto flush = [&] {

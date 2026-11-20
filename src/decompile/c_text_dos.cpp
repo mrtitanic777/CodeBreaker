@@ -209,9 +209,67 @@ std::string ctd_segment_registers(const std::string& body) {
     return out;
 }
 
-CtdFrame ctd_stack_frame(const std::string& body, bool joins_local) {
+// The program's segment numbers as the code writes them (0x28e9: the segment at 18E9h in the load module, loaded at 1000h)
+// and what the C writes for each: the data segment is DS (`codebreaker_ds()`: no Microsoft C function changes it), every
+// other one the segment of its assembly's label, `CODEBREAKER_SEG(codebreaker_seg_18e9)`. C1's 0x28e9 and 0x2a38 pointed
+// at the original's memory map, not the build's, once the C's code was linked in before them.
+struct CtdSegments {
+    std::map<std::uint32_t, std::string> names;   // value -> the label (not the data segment)
+    std::optional<std::uint32_t> data;            // the data segment's value
+    std::uint32_t load = 0;                       // the load module's segment
+};
+
+CtdSegments ctd_segment_names(const Layout& layout) {
+    CtdSegments out;
+    out.load = layout.base / 16;
+    if (!layout.data_segment.empty()) out.data = static_cast<std::uint32_t>(std::stoul(layout.data_segment, nullptr, 16));
+    for (const std::uint32_t v : layout.segments)
+        // (not the load module's first segment: its number, 0x1000, is as often a flag -- `& 0x1000` -- as a segment)
+        if (v > out.load && (!out.data || v != *out.data)) out.names[v] = std::format("codebreaker_seg_{:04x}", v - out.load);
+    return out;
+}
+
+// Each whole hex literal that is a segment of the program -- `0x28e9`, or a far pointer's `0x28e913c8` -- by name.
+std::string ctd_segments_by_name(const std::string& s, const CtdSegments& segs, std::size_t& count) {
+    if (segs.names.empty() && !segs.data) return s;
+    auto segment = [&](std::uint32_t v) -> std::optional<std::string> {
+        if (segs.data && v == *segs.data) return std::string("codebreaker_ds()");
+        const auto n = segs.names.find(v);
+        if (n != segs.names.end()) return "CODEBREAKER_SEG(" + n->second + ")";
+        return std::nullopt;
+    };
+    std::string out;
+    std::size_t at = 0;
+    for (std::size_t k = s.find("0x"); k != std::string::npos; k = s.find("0x", k + 2)) {
+        if (k > 0 && (ctd_word(s[k - 1]) || s[k - 1] == '.')) continue;
+        std::size_t e = k + 2;
+        while (e < s.size() && ctd_hex(s[e])) ++e;
+        if (e < s.size() && (ctd_word(s[e]) || s[e] == '.')) continue;   // (0x2a38U, 0x1fL: a number written as one)
+        const std::size_t digits = e - k - 2;
+        if (digits != 4 && digits != 8) continue;
+        // (inside a comment or a string: as it is)
+        const std::size_t line = s.rfind('\n', k);
+        const std::string_view before(s.data() + (line == std::string::npos ? 0 : line + 1), k - (line == std::string::npos ? 0 : line + 1));
+        if (before.find("/*") != std::string_view::npos || before.find("//") != std::string_view::npos ||
+            std::count(before.begin(), before.end(), '"') % 2 != 0 || before.starts_with("#"))
+            continue;
+        const std::uint32_t value = static_cast<std::uint32_t>(std::stoul(s.substr(k + 2, digits), nullptr, 16));
+        std::optional<std::string> named;
+        if (digits == 4) named = segment(value);
+        else if (const auto seg = segment(value >> 16)) named = std::format("CONCAT22({},0x{:x})", *seg, value & 0xFFFF);
+        if (!named) continue;
+        out += s.substr(at, k - at);
+        out += *named;
+        at = e;
+        ++count;
+    }
+    out += s.substr(at);
+    return out;
+}
+
+CtdFrame ctd_stack_frame(const std::string& body, const std::set<std::string>& joined) {
     CtdFrame out{body, {}, {}};
-    bool taken = joins_local;
+    bool taken = std::any_of(joined.begin(), joined.end(), [](const std::string& j) { return j.find("Stack_") != std::string::npos; });
     for (std::size_t k = body.find('&'); k != std::string::npos && !taken; k = body.find('&', k + 1)) {
         if ((k + 1 < body.size() && body[k + 1] == '&') || (k > 0 && body[k - 1] == '&')) continue;
         std::size_t e = k + 1;
@@ -249,7 +307,12 @@ CtdFrame ctd_stack_frame(const std::string& body, bool joins_local) {
     std::size_t deepest = 0;
     for (const Local& l : locals) deepest = std::max(deepest, l.offset);
     std::size_t size = 0;
-    for (const Local& l : locals) size = std::max(size, deepest - l.offset + l.bytes * std::max<std::size_t>(l.count, 1));
+    for (const Local& l : locals) {
+        size = std::max(size, deepest - l.offset + l.bytes * std::max<std::size_t>(l.count, 1));
+        // (`_piStack_6`: piStack_6 and the word after it read as one far pointer -- four bytes from its place: C1's sub_14BBF
+        // wrote them past a frame of two)
+        if (joined.contains("_" + l.name)) size = std::max(size, deepest - l.offset + 4);
+    }
     for (const Local& l : locals) {
         const std::size_t index = deepest - l.offset;
         out.defines += l.count ? std::format("\n#define {} (({} *)&codebreaker_frame[{}])", l.name, l.type, index)
@@ -1173,6 +1236,13 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
                "   and the code reads the result through it: the value kept, and its address given */\n"
                "static double codebreaker_fac_value;\n"
                "#define codebreaker_fac(x) (codebreaker_fac_value = (x), (void *)&codebreaker_fac_value)\n";
+    const CtdSegments segment_names = ctd_segment_names(layout);
+    if (!segment_names.names.empty()) {
+        out += "\n/* the program's other segments, by name: each is the segment its assembly's label begins (the C does not write\n"
+               "   the original's numbers, which move when a build links the C's code in) */\n"
+               "#define CODEBREAKER_SEG(s) ((uint2)((uint4)(void __far *)&(s) >> 16))\n";
+        for (const auto& [value, name] : segment_names.names) out += "extern char __far " + name + ";\n";
+    }
     if (!helpers.empty()) {
         out += "\n";
         for (const std::string& h : helpers) out += "int2 " + h + "();\n";
@@ -1209,9 +1279,7 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         for (const std::string_view id : ctd_identifiers(f.body))
             if (id.size() >= 2 && id.starts_with('_') && declared.contains(std::string(id.substr(1))) && !declared.contains(std::string(id)))
                 joined.insert(std::string(id));
-        bool joins_local = false;
-        for (const std::string& j : joined) joins_local = joins_local || j.find("Stack_") != std::string::npos;
-        const CtdFrame frame = ctd_stack_frame(ctd_segment_registers(f.body), joins_local);
+        const CtdFrame frame = ctd_stack_frame(ctd_segment_registers(f.body), joined);
         r.frames += frame.names.empty() ? 0 : 1;
         // (the pointer's type as the body gives it, `_a1 = (char *)CONCAT22(a2,...)`: read through as a word, `*_a1 == '\0'`
         // compared two bytes where the original compared one -- C1's strchr, sub_18CE7)
@@ -1244,6 +1312,12 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     };
     far_not_near(out);
     for (auto& [name, t] : file_texts) far_not_near(t);
+    const std::size_t body_from = common.size();   // (the header's own lines name the segments; the functions' numbers go)
+    if (body_from <= out.size()) out = out.substr(0, body_from) + ctd_segments_by_name(out.substr(body_from), segment_names, r.segments_named);
+    for (auto& [name, t] : file_texts) {
+        std::size_t ignored = 0;
+        t = ctd_segments_by_name(t, segment_names, ignored);
+    }
     result.text = std::move(out);
     if (!file_of.empty()) result.files = ctd_source_files(common, file_order, file_texts, layout.stem.empty() ? "program" : layout.stem, file_notes);
     return result;

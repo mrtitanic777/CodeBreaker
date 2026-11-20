@@ -9,6 +9,8 @@
 
 S0000 segment para public use16 'C0000'
         assume cs:S0000, ds:nothing, es:nothing, ss:nothing
+        public _codebreaker_seg_0000
+_codebreaker_seg_0000 label byte
 sub_00000:
         push   ax
         push   bx
@@ -1442,6 +1444,8 @@ S0000 ends
 
 S00A9 segment para public use16 'C00A9'
         assume cs:S00A9, ds:nothing, es:nothing, ss:nothing
+        public _codebreaker_seg_00a9
+_codebreaker_seg_00a9 label byte
         mov    dx, 0300h
         db   0E8h, 044h, 0F8h                ; call   02DAh
         mov    ax, 04C01h

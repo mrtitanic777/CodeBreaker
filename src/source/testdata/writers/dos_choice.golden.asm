@@ -10,6 +10,8 @@
 S0000 segment para public use16 'C0000'
         assume cs:S0000, ds:nothing, es:nothing, ss:nothing
         org  256
+        public _codebreaker_seg_0000
+_codebreaker_seg_0000 label byte
 entry:
         jmp    near ptr L_00211
         db   020h, 020h, 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h

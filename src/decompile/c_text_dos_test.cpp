@@ -255,6 +255,37 @@ CB_TEST("decompile.c_text_dos.two_arguments_read_as_one_pointer_point_at_what_th
     CB_CHECK(ctdt_has(compilable(text, "").text, "#define _a1 (*(char **)&a1)"));
 });
 
+CB_TEST("decompile.c_text_dos.the_programs_segments_are_written_by_name", [] {
+    // (C1's 0x28e9 -- the segment at 18E9h of a program loaded at 1000h -- and its data segment 0x2a38: by name, so a build
+    // that links the C's code in before them still points at them)
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(char *a1)\n\n{\n  \n"
+        "  strncpy((char *)0x28e913c8,a1,0x101);\n  *((char __far *)codebreaker_far(0x2a38,(uint2)(0x10))) = 0;\n"
+        "  sub_00200(0x8e0,0x28e9,0x1234);\n  return;\n}\n";
+    Layout layout;
+    layout.base = 0x10000;
+    layout.data_segment = "0x2a38";
+    layout.segments = {0x28e9, 0x2a38};
+    const Result r = compilable(text, "", layout);
+    CB_CHECK(ctdt_has(r.text, "extern char __far codebreaker_seg_18e9;"));
+    CB_CHECK(ctdt_has(r.text, "strncpy((char *)CONCAT22(CODEBREAKER_SEG(codebreaker_seg_18e9),0x13c8),a1,0x101);"));
+    CB_CHECK(ctdt_has(r.text, "codebreaker_far(codebreaker_ds(),(uint2)(0x10))"));
+    CB_CHECK(ctdt_has(r.text, "sub_00200(0x8e0,CODEBREAKER_SEG(codebreaker_seg_18e9),0x1234);"));   // (0x1234 is no segment of it)
+    CB_CHECK_EQ(r.report.segments_named, std::size_t{3});
+});
+
+CB_TEST("decompile.c_text_dos.a_local_read_with_the_word_after_it_has_room_for_both", [] {
+    // (`_piStack_6` is piStack_6 and the word after it, one far pointer: the frame holds four bytes from piStack_6)
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void)\n\n{\n  int2 __near *piStack_6;\n  xunknown2 unaff_DS;\n  \n"
+        "  _piStack_6 = (int2 *)CONCAT22(unaff_DS,(int2 __near *)0x4fd4);\n  *_piStack_6 = 0;\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "  uint1 codebreaker_frame[4];"));
+    CB_CHECK(ctdt_has(r.text, "#define piStack_6 (*(int2 __near * *)&codebreaker_frame[0])"));
+});
+
 CB_TEST("decompile.c_text_dos.a_function_that_takes_a_locals_address_keeps_the_originals_frame", [] {
     // (the long-multiply helper writes four bytes at &uStack_6: uStack_6 and uStack_4 must be side by side, low word first)
     const std::string text =

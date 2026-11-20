@@ -378,6 +378,11 @@ c_text_dos::Layout lanes_dos_layout(const describe::DosDescription& d) {
         if (n > most && linear >= d.base && linear < d.base + static_cast<Va>(image.size())) ds = linear, most = n;
     }
     if (!ds && d.program.ds) ds = static_cast<Va>(*d.program.ds) * 16;
+    for (const std::uint32_t r : d.program.relocations)   // (each word the relocation table marks holds a segment of the program)
+        if (r >= d.base && static_cast<std::size_t>(r - d.base) + 2 <= image.size()) {
+            const std::size_t at = static_cast<std::size_t>(r - d.base);
+            layout.segments.insert(static_cast<std::uint32_t>(image[at] | (image[at + 1] << 8)));
+        }
     if (!ds) return layout;
     if (*ds >= d.base && *ds < d.base + static_cast<Va>(image.size())) {
         const std::size_t from = static_cast<std::size_t>(*ds - d.base);
