@@ -222,6 +222,7 @@ class ValueMapSymbol : public ValueSymbol {
 public:
   ValueMapSymbol(void) {}	// For use with decode
   ValueMapSymbol(const string &nm,PatternValue *pv,const vector<intb> &vt) : ValueSymbol(nm,pv) { valuetable=vt; checkTableFill(); }
+  const vector<intb> &getValueTable(void) const { return valuetable; }	// (accessor for the assembler)
   virtual Constructor *resolve(ParserWalker &walker);
   virtual void getFixedHandle(FixedHandle &hand,ParserWalker &walker) const;
   virtual void print(ostream &s,ParserWalker &walker) const;
@@ -238,6 +239,7 @@ class NameSymbol : public ValueSymbol {
 public:
   NameSymbol(void) {}		// For use with decode
   NameSymbol(const string &nm,PatternValue *pv,const vector<string> &nt) : ValueSymbol(nm,pv) { nametable=nt; checkTableFill(); }
+  const vector<string> &getNameTable(void) const { return nametable; }	// (accessor for the assembler)
   virtual Constructor *resolve(ParserWalker &walker);
   virtual void print(ostream &s,ParserWalker &walker) const;
   virtual symbol_type getType(void) const { return name_symbol; }
@@ -304,6 +306,7 @@ class VarnodeListSymbol : public ValueSymbol {
 public:
   VarnodeListSymbol(void) {}	// For use with decode
   VarnodeListSymbol(const string &nm,PatternValue *pv,const vector<SleighSymbol *> &vt); 
+  const vector<VarnodeSymbol *> &getVarnodeTable(void) const { return varnode_table; }	// (accessor for the assembler)
   virtual Constructor *resolve(ParserWalker &walker);
   virtual void getFixedHandle(FixedHandle &hand,ParserWalker &walker) const;
   virtual int4 getSize(void) const;
@@ -460,6 +463,10 @@ public:
   virtual void decode(Decoder &decoder,SleighBase *trans);
   virtual void apply(ParserWalkerChange &walker) const;
   virtual ContextChange *clone(void) const;
+  PatternExpression *getPatternExpression(void) const { return patexp; }	// (accessors for the assembler)
+  int4 getWordIndex(void) const { return num; }
+  uintm getMask(void) const { return mask; }
+  int4 getShift(void) const { return shift; }
 };
 
 class ContextCommit : public ContextChange {
@@ -510,6 +517,10 @@ public:
   void setSrcIndex(int4 index) {src_index = index;}
   int4 getSrcIndex(void) {return src_index;}
   void addContext(const vector<ContextChange *> &vec) { context = vec; }
+  int4 getNumPrintPieces(void) const { return printpiece.size(); }	// (accessors for the assembler: a piece is literal text, or a newline character and the operand's index as a char from 'A')
+  const string &getPrintPiece(int4 i) const { return printpiece[i]; }
+  int4 getNumContextChanges(void) const { return context.size(); }
+  const ContextChange *getContextChange(int4 i) const { return context[i]; }
   void addOperand(OperandSymbol *sym);
   void addInvisibleOperand(OperandSymbol *sym);
   void addSyntax(const string &syn);
@@ -570,6 +581,7 @@ public:
   ~DecisionNode(void);
   Constructor *resolve(ParserWalker &walker) const;
   void addConstructorPair(const DisjointPattern *pat,Constructor *ct);
+  void collectPatterns(vector<pair<const DisjointPattern *,const Constructor *> > &out) const;	// (every pattern of every leaf, for the assembler)
   void split(DecisionProperties &props);
   void orderPatterns(DecisionProperties &props);
   void encode(Encoder &encoder) const;
@@ -592,6 +604,7 @@ public:
   TokenPattern *buildPattern(ostream &s);
   TokenPattern *getPattern(void) const { return pattern; }
   int4 getNumConstructors(void) const { return construct.size(); }
+  void collectPatterns(vector<pair<const DisjointPattern *,const Constructor *> > &out) const { if (decisiontree != (DecisionNode *)0) decisiontree->collectPatterns(out); }	// (for the assembler)
   Constructor *getConstructor(uintm id) const { return construct[id]; }
   virtual Constructor *resolve(ParserWalker &walker) { return decisiontree->resolve(walker); }
   virtual PatternExpression *getPatternExpression(void) const { throw SleighError("Cannot use subtable in expression"); }

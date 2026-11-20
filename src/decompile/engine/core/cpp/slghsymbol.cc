@@ -2363,6 +2363,15 @@ Constructor *DecisionNode::resolve(ParserWalker &walker) const
   return children[val]->resolve(walker);
 }
 
+void DecisionNode::collectPatterns(vector<pair<const DisjointPattern *,const Constructor *> > &out) const
+
+{
+  for(int4 i=0;i<list.size();++i)
+    out.push_back(pair<const DisjointPattern *,const Constructor *>(list[i].first,list[i].second));
+  for(int4 i=0;i<children.size();++i)
+    children[i]->collectPatterns(out);
+}
+
 void DecisionNode::encode(Encoder &encoder) const
 
 {

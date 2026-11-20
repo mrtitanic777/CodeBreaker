@@ -178,7 +178,7 @@ int compare_readers(const px::Processor& cpu, ByteView code, std::uint64_t base,
 }
 
 int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
-    const Words w = take(args, {"--cpu", "--at", "--count", "--offset", "--base", "--length", "--out", "-o"}, {"--list", "--help", "--sleigh", "--compare"});
+    const Words w = take(args, {"--cpu", "--at", "--count", "--offset", "--base", "--length", "--out", "-o"}, {"--list", "--help", "--sleigh", "--compare", "--source"});
     if (w.flags.contains("--list")) return list_processors();
     if (w.rest.size() != 1 || w.flags.contains("--help")) throw UsageError("disassemble FILE [--at ADDR] [--count N] | disassemble FILE --cpu NAME [--offset N] [--length N] [--base ADDR] [--count N] [--out FILE] | disassemble --list");
     const stdfs::path file = w.rest[0];
@@ -224,6 +224,17 @@ int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
     // --sleigh: through the processor's SLEIGH description (the decompiler core's reader) instead of its own tables
     const bool described = w.flags.contains("--sleigh");
     auto read = [&](const px::Processor& p, ByteView bytes, std::uint64_t at) { return described ? px::read_described(p, bytes, at, count) : p.disassemble(bytes, at, count); };
+    if (w.flags.contains("--source")) {   // source that assembles back to exactly these bytes (assemble --sleigh)
+        const std::size_t off = value(w, "--offset") ? static_cast<std::size_t>(number("--offset", *value(w, "--offset"))) : dos_offset;
+        if (off > data.size()) throw UsageError("--offset is past the end of the file");
+        std::size_t len = data.size() - off;
+        if (auto l = value(w, "--length")) len = std::min<std::size_t>(len, static_cast<std::size_t>(number("--length", *l)));
+        const std::uint64_t b0 = value(w, "--base") ? number("--base", *value(w, "--base")) : dos_base.value_or(off);
+        const std::string text = px::source_described(*cpu, ByteView(data).subspan(off, len), b0);
+        if (out) fs::write_text(*out, text);
+        else out_text(text);
+        return 0;
+    }
     if (w.flags.contains("--compare")) {   // both readers in step: where their instructions differ in length or mnemonic
         const std::size_t off = value(w, "--offset") ? static_cast<std::size_t>(number("--offset", *value(w, "--offset"))) : dos_offset;
         if (off > data.size()) throw UsageError("--offset is past the end of the file");
@@ -250,7 +261,7 @@ int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
 }
 
 int assemble(std::span<const std::string> args) {
-    const Words w = take(args, {"--cpu", "--out", "-o"}, {"--list", "--help"});
+    const Words w = take(args, {"--cpu", "--out", "-o"}, {"--list", "--help", "--sleigh"});
     if (w.flags.contains("--list")) return list_processors();
     if (w.rest.size() != 1 || w.flags.contains("--help")) throw UsageError("assemble SOURCE --cpu NAME [-o OUT]   (assemble --list: the processors; x86 NASM is the default for .asm/.nasm)");
     const stdfs::path src = w.rest[0];
@@ -263,9 +274,12 @@ int assemble(std::span<const std::string> args) {
         else throw UsageError(std::format("which processor is {} for? --cpu NAME (assemble --list)", fs::to_text(src.filename())));
     }
     const px::Processor& cpu = px::find(cpu_name);
-    if (!cpu.assemble) throw UsageError(std::format("{} is read but not yet assembled by CodeBreaker", cpu.name));
+    // --sleigh: through the processor's SLEIGH description (the one assembler), the source in the description's syntax
+    const bool described = w.flags.contains("--sleigh");
+    if (!described && !cpu.assemble) throw UsageError(std::format("{} is read but not yet assembled by CodeBreaker", cpu.name));
     const std::string source = fs::read_text(src);
-    const px::Image image = cpu.assemble(source, src.has_parent_path() ? src.parent_path() : stdfs::path("."));
+    const stdfs::path folder = src.has_parent_path() ? src.parent_path() : stdfs::path(".");
+    const px::Image image = described ? px::assemble_described(cpu, source, folder) : cpu.assemble(source, folder);
     stdfs::path out = src;
     out.replace_extension(".bin");
     if (auto o = value(w, "--out", "-o")) out = *o;

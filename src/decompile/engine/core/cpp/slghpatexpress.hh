@@ -98,6 +98,13 @@ class TokenField : public PatternValue {
 public:
   TokenField(void) {}		// For use with decode
   TokenField(Token *tk,bool s,int4 bstart,int4 bend);
+  bool isBigEndian(void) const { return bigendian; }	// (accessors for the assembler)
+  bool getSignBit(void) const { return signbit; }
+  int4 getBitStart(void) const { return bitstart; }
+  int4 getBitEnd(void) const { return bitend; }
+  int4 getByteStart(void) const { return bytestart; }
+  int4 getByteEnd(void) const { return byteend; }
+  int4 getShift(void) const { return shift; }
   virtual intb getValue(ParserWalker &walker) const;
   virtual TokenPattern genMinPattern(const vector<TokenPattern> &ops) const { return TokenPattern(tok); }
   virtual TokenPattern genPattern(intb val) const;
@@ -117,6 +124,9 @@ public:
   ContextField(bool s,int4 sbit,int4 ebit);
   int4 getStartBit(void) const { return startbit; }
   int4 getEndBit(void) const { return endbit; }
+  int4 getStartByte(void) const { return startbyte; }	// (accessors for the assembler)
+  int4 getEndByte(void) const { return endbyte; }
+  int4 getShift(void) const { return shift; }
   bool getSignBit(void) const { return signbit; }
   virtual intb getValue(ParserWalker &walker) const;
   virtual TokenPattern genMinPattern(const vector<TokenPattern> &ops) const { return TokenPattern(); }
@@ -132,6 +142,7 @@ class ConstantValue : public PatternValue {
 public:
   ConstantValue(void) {}	// For use with decode
   ConstantValue(intb v) { val = v; }
+  intb getConstant(void) const { return val; }	// (accessor for the assembler)
   virtual intb getValue(ParserWalker &walker) const { return val; }
   virtual TokenPattern genMinPattern(const vector<TokenPattern> &ops) const { return TokenPattern(); }
   virtual TokenPattern genPattern(intb v) const { return TokenPattern(val==v); }
@@ -189,6 +200,7 @@ public:
   OperandValue(void) { } // For use with decode
   OperandValue(int4 ind,Constructor *c) { index = ind; ct = c; }
   void changeIndex(int4 newind) { index = newind; }
+  int4 getIndex(void) const { return index; }	// (accessor for the assembler)
   bool isConstructorRelative(void) const;
   const string &getName(void) const;
   virtual TokenPattern genPattern(intb val) const;

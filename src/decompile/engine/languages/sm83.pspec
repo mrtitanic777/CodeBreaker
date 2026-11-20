@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<processor_spec>
+  <programcounter register="PC"/>
+  <default_symbols>
+    <symbol name="RST0" address="ram:0000" entry="true"/>
+    <symbol name="RST1" address="ram:0008" entry="true"/>
+    <symbol name="RST2" address="ram:0010" entry="true"/>
+    <symbol name="RST3" address="ram:0018" entry="true"/>
+    <symbol name="RST4" address="ram:0020" entry="true"/>
+    <symbol name="RST5" address="ram:0028" entry="true"/>
+    <symbol name="RST6" address="ram:0030" entry="true"/>
+    <symbol name="RST7" address="ram:0038" entry="true"/>
+    <symbol name="VBLANK_ISR" address="ram:0040" entry="true"/>
+    <symbol name="LCD_STAT_ISR" address="ram:0048" entry="true"/>
+    <symbol name="TIMER_ISR" address="ram:0050" entry="true"/>
+    <symbol name="SERIAL_ISR" address="ram:0058" entry="true"/>
+    <symbol name="JOYPAD_ISR" address="ram:0060" entry="true"/>
+    <symbol name="ENTRY" address="ram:0100" entry="true"/>
+  </default_symbols>
+</processor_spec>

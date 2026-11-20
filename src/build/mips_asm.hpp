@@ -45,6 +45,12 @@ class Assembler {
 public:
     // The encoder is borrowed and must outlive the assembler.
     explicit Assembler(const Encoder& encoder, ByteOrder order = ByteOrder::Little) : isa_(&encoder), order_(order) {}
+    // `alignment`: what an instruction's address must be a multiple of (4 for the fixed-width processors this layer was written
+    // for; 1 for a processor whose instructions are any number of bytes, such as one of the SLEIGH descriptions)
+    // `comment`: the character a comment starts with ('#' as GNU as writes MIPS; ';' where '#' marks an immediate, as the SLEIGH
+    // descriptions of the 6502, 68000 and ARM write it)
+    Assembler(const Encoder& encoder, ByteOrder order, unsigned alignment, char comment = '#')
+        : isa_(&encoder), order_(order), alignment_(alignment == 0 ? 1 : alignment), comment_(comment) {}
 
     // The file `source` describes. AsmError, with the line, for anything that does not assemble (including an instruction whose size
     // differs between the two passes, and a file past 16 MiB).
@@ -53,10 +59,12 @@ public:
 private:
     const Encoder* isa_;
     ByteOrder order_;
+    unsigned alignment_ = 4;
+    char comment_ = '#';
 };
 
 // `line` with its `#` comment removed (not one inside a string), trimmed at the end.
-std::string_view strip(std::string_view line);
+std::string_view strip(std::string_view line, char comment = '#');
 
 // An instruction's size on the first pass, when a label it names is not defined yet: assembled with every unknown name standing for
 // a nearby address, so the bytes have the size the instruction will have. (Public for the tests.)

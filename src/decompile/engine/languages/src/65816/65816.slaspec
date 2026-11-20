@@ -1,0 +1,3253 @@
+# sleigh specification file for the WDC 65C816 (SNES)
+#
+# Derived from the 6502/65C02 descriptions in ../6502 (Ghidra, Apache-2.0).
+#
+# The accumulator and the index registers are 8 or 16 bits wide by the M and X flags. A SLEIGH
+# disassembler cannot follow a flag at run time, so the widths are context variables:
+#
+#     m16 = 1   the accumulator is 16 bits (the M flag is clear)     default 0: 8 bits
+#     x16 = 1   X and Y are 16 bits       (the X flag is clear)      default 0: 8 bits
+#
+# REP and SEP change them (globalset: from the next instruction on), and the immediate operand
+# of the instructions that follow takes its size from them. The default is the state a program
+# starts in as CodeBreaker's own decoder reads it (8-bit A, X and Y). The E flag (emulation) is
+# modeled as a flag only: XCE exchanges it with the carry, and nothing follows it.
+#
+# Addresses are 24 bits: the program bank PB (the top byte of PC) and the data bank DB.
+
+define endian=little;
+define alignment=1;
+
+define space RAM      type=ram_space      size=3 default;
+define space register type=register_space size=1;
+
+define register offset=0x00 size=2 [ A X Y SP DP ];
+define register offset=0x00 size=1 [ AL AH XL XH YL YH SPL SPH DPL DPH ];
+define register offset=0x10 size=1 [ DB ];
+define register offset=0x20 size=3 [ PC ];
+define register offset=0x20 size=2 [ PCW ];
+define register offset=0x20 size=1 [ PCL PCH PB ];
+define register offset=0x30 size=1 [ N V MF XF D I Z C E ];		# status bits (MF, XF: the M and X flags)
+
+define register offset=0x40 size=4 contextreg;
+
+define context contextreg
+    m16 = (0,0)
+    x16 = (1,1)
+;
+
+# TOKENS
+
+define token opbyte (8)
+    op      = (0,7)
+    aaa     = (5,7)
+    bbb     = (2,4)
+    cc      = (0,1)
+    lo5     = (0,4)
+;
+
+define token data8 (8)
+    imm8    = (0,7)
+    rel     = (0,7) signed
+    repm    = (5,5)
+    repx    = (4,4)
+;
+
+define token data8b (8)
+    imm8b   = (0,7)
+;
+
+define token data16 (16)
+    imm16   = (0,15)
+    rel16   = (0,15) signed
+;
+
+define token data24 (24)
+    imm24   = (0,23)
+;
+
+define pcodeop wait_for_interrupt;	# WAI
+define pcodeop stop_clock;		# STP
+
+macro resultFlags(value) {
+    Z = (value == 0);
+    N = (value s< 0);
+}
+
+# The stack lives in bank 0.
+macro push8(v) {
+    local sa:3 = zext(SP);
+    *:1 sa = v;
+    SP = SP - 1;
+}
+
+macro push16(v) {
+    local sa:3 = zext(SP - 1);
+    *:2 sa = v;
+    SP = SP - 2;
+}
+
+macro pull8(v) {
+    SP = SP + 1;
+    local sa:3 = zext(SP);
+    v = *:1 sa;
+}
+
+macro pull16(v) {
+    local sa:3 = zext(SP + 1);
+    v = *:2 sa;
+    SP = SP + 2;
+}
+
+macro pushP() {
+    local ccr:1 = 0;
+    ccr[7,1] = N;
+    ccr[6,1] = V;
+    ccr[5,1] = MF;
+    ccr[4,1] = XF;
+    ccr[3,1] = D;
+    ccr[2,1] = I;
+    ccr[1,1] = Z;
+    ccr[0,1] = C;
+    local sa:3 = zext(SP);
+    *:1 sa = ccr;
+    SP = SP - 1;
+}
+
+macro popP() {
+    SP = SP + 1;
+    local sa:3 = zext(SP);
+    local ccr:1 = *:1 sa;
+    N = ccr[7,1];
+    V = ccr[6,1];
+    MF = ccr[5,1];
+    XF = ccr[4,1];
+    D = ccr[3,1];
+    I = ccr[2,1];
+    Z = ccr[1,1];
+    C = ccr[0,1];
+}
+
+# REP clears, SEP sets, the P bits named by the mask (the context follows it: see REP and SEP)
+macro repbit(f, m, n) { f = f & (((m >> n) & 1) ^ 1); }
+macro sepbit(f, m, n) { f = f | ((m >> n) & 1); }
+
+macro repP(m) {
+    repbit(N, m, 7); repbit(V, m, 6); repbit(MF, m, 5); repbit(XF, m, 4);
+    repbit(D, m, 3); repbit(I, m, 2); repbit(Z, m, 1); repbit(C, m, 0);
+}
+
+macro sepP(m) {
+    sepbit(N, m, 7); sepbit(V, m, 6); sepbit(MF, m, 5); sepbit(XF, m, 4);
+    sepbit(D, m, 3); sepbit(I, m, 2); sepbit(Z, m, 1); sepbit(C, m, 0);
+}
+
+
+# 8-bit accumulator arithmetic (binary mode)
+macro adc8(v) {
+    local a:1 = AL;
+    local cs:1 = C;
+    local r:1 = a + v + cs;
+    C = carry(a, v) || carry(a + v, cs);
+    V = ((a ^ r) & (v ^ r) & 0x80) != 0;
+    AL = r;
+    resultFlags(r);
+}
+
+macro sbc8(v) {
+    local a:1 = AL;
+    local cs:1 = C;
+    local bs:1 = cs ^ 1;
+    local r:1 = a - v - bs;
+    local w:2 = zext(a) - zext(v) - zext(bs);
+    C = w s>= 0;		# the carry is "no borrow"
+    V = (((a ^ v) & (a ^ r)) & 0x80) != 0;
+    AL = r;
+    resultFlags(r);
+}
+
+macro cmp8(v) {
+    local r:1 = AL - v;
+    resultFlags(r);
+    C = (AL >= v);
+}
+
+
+# 16-bit accumulator arithmetic (binary mode)
+macro adc16(v) {
+    local a:2 = A;
+    local cs:2 = zext(C);
+    local r:2 = a + v + cs;
+    C = carry(a, v) || carry(a + v, cs);
+    V = ((a ^ r) & (v ^ r) & 0x8000) != 0;
+    A = r;
+    resultFlags(r);
+}
+
+macro sbc16(v) {
+    local a:2 = A;
+    local cs:2 = zext(C);
+    local bs:2 = cs ^ 1;
+    local r:2 = a - v - bs;
+    local w:4 = zext(a) - zext(v) - zext(bs);
+    C = w s>= 0;		# the carry is "no borrow"
+    V = (((a ^ v) & (a ^ r)) & 0x8000) != 0;
+    A = r;
+    resultFlags(r);
+}
+
+macro cmp16(v) {
+    local r:2 = A - v;
+    resultFlags(r);
+    C = (A >= v);
+}
+
+
+################################################################
+# Addressing modes: each is a table (its operand bytes follow the opcode) exporting the 24-bit
+# effective address: the data bank (DB), direct page (DP), stack-relative and long modes.
+################################################################
+EA_DPXI: "("imm8",X)" is imm8
+{
+    local pp:3 = zext(DP + imm8 + X);
+    local p:2 = *:2 pp;
+    local b:3 = zext(DB);
+    b = b << 16;
+    local ea:3 = b + zext(p);
+    export ea;
+}
+EA_SR: imm8",S" is imm8
+{
+    local ea:3 = zext(SP + imm8);
+    export ea;
+}
+EA_DP: imm8 is imm8
+{
+    local ea:3 = zext(DP + imm8);
+    export ea;
+}
+EA_DPL: "["imm8"]" is imm8
+{
+    local pp:3 = zext(DP + imm8);
+    local ea:3 = *:3 pp;
+    export ea;
+}
+EA_ABS: imm16 is imm16
+{
+    local b:3 = zext(DB);
+    b = b << 16;
+    local ea:3 = b + imm16;
+    export ea;
+}
+EA_LONG: imm24 is imm24
+{
+    local ea:3 = imm24;
+    export ea;
+}
+EA_DPIY: "("imm8"),Y" is imm8
+{
+    local pp:3 = zext(DP + imm8);
+    local p:2 = *:2 pp;
+    local b:3 = zext(DB);
+    b = b << 16;
+    local ea:3 = b + zext(p) + zext(Y);
+    export ea;
+}
+EA_DPI: "("imm8")" is imm8
+{
+    local pp:3 = zext(DP + imm8);
+    local p:2 = *:2 pp;
+    local b:3 = zext(DB);
+    b = b << 16;
+    local ea:3 = b + zext(p);
+    export ea;
+}
+EA_SRIY: "("imm8",S),Y" is imm8
+{
+    local pp:3 = zext(SP + imm8);
+    local p:2 = *:2 pp;
+    local b:3 = zext(DB);
+    b = b << 16;
+    local ea:3 = b + zext(p) + zext(Y);
+    export ea;
+}
+EA_DPX: imm8",X" is imm8
+{
+    local ea:3 = zext(DP + imm8 + X);
+    export ea;
+}
+EA_DPY: imm8",Y" is imm8
+{
+    local ea:3 = zext(DP + imm8 + Y);
+    export ea;
+}
+EA_DPLY: "["imm8"],Y" is imm8
+{
+    local pp:3 = zext(DP + imm8);
+    local ea:3 = *:3 pp;
+    ea = ea + zext(Y);
+    export ea;
+}
+EA_ABSX: imm16",X" is imm16
+{
+    local b:3 = zext(DB);
+    b = b << 16;
+    local ea:3 = b + imm16 + zext(X);
+    export ea;
+}
+EA_ABSY: imm16",Y" is imm16
+{
+    local b:3 = zext(DB);
+    b = b << 16;
+    local ea:3 = b + imm16 + zext(Y);
+    export ea;
+}
+EA_LONGX: imm24",X" is imm24
+{
+    local ea:3 = imm24 + zext(X);
+    export ea;
+}
+
+# Branch targets stay in the program bank
+REL: reloc            is rel [ reloc = (inst_next & 0xff0000) | ((inst_next + rel) & 0xffff); ] { export *:3 reloc; }
+REL16: reloc          is rel16 [ reloc = (inst_next & 0xff0000) | ((inst_next + rel16) & 0xffff); ] { export *:3 reloc; }
+
+# JMP and JSR to an address in the program bank
+JABS: target          is imm16 [ target = (inst_next & 0xff0000) | imm16; ] { export *:3 target; }
+JLONG: imm24          is imm24 { export *:3 imm24; }
+
+
+################################################################
+# Instructions
+################################################################
+
+# --- the accumulator group: ORA AND EOR ADC STA LDA CMP SBC (the width of A)
+
+:ORA EA_DPXI is m16=0 & op=0x01; EA_DPXI
+{
+    local v:1 = *:1 EA_DPXI;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_SR is m16=0 & op=0x03; EA_SR
+{
+    local v:1 = *:1 EA_SR;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_DP is m16=0 & op=0x05; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_DPL is m16=0 & op=0x07; EA_DPL
+{
+    local v:1 = *:1 EA_DPL;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_ABS is m16=0 & op=0x0D; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_LONG is m16=0 & op=0x0F; EA_LONG
+{
+    local v:1 = *:1 EA_LONG;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_DPIY is m16=0 & op=0x11; EA_DPIY
+{
+    local v:1 = *:1 EA_DPIY;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_DPI is m16=0 & op=0x12; EA_DPI
+{
+    local v:1 = *:1 EA_DPI;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_SRIY is m16=0 & op=0x13; EA_SRIY
+{
+    local v:1 = *:1 EA_SRIY;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_DPX is m16=0 & op=0x15; EA_DPX
+{
+    local v:1 = *:1 EA_DPX;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_DPLY is m16=0 & op=0x17; EA_DPLY
+{
+    local v:1 = *:1 EA_DPLY;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_ABSY is m16=0 & op=0x19; EA_ABSY
+{
+    local v:1 = *:1 EA_ABSY;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_ABSX is m16=0 & op=0x1D; EA_ABSX
+{
+    local v:1 = *:1 EA_ABSX;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_LONGX is m16=0 & op=0x1F; EA_LONGX
+{
+    local v:1 = *:1 EA_LONGX;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA "#"imm8 is m16=0 & op=0x09; imm8
+{
+    local v:1 = imm8;
+    AL = AL | v;
+    resultFlags(AL);
+}
+
+:ORA EA_DPXI is m16=1 & op=0x01; EA_DPXI
+{
+    local v:2 = *:2 EA_DPXI;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_SR is m16=1 & op=0x03; EA_SR
+{
+    local v:2 = *:2 EA_SR;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_DP is m16=1 & op=0x05; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_DPL is m16=1 & op=0x07; EA_DPL
+{
+    local v:2 = *:2 EA_DPL;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_ABS is m16=1 & op=0x0D; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_LONG is m16=1 & op=0x0F; EA_LONG
+{
+    local v:2 = *:2 EA_LONG;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_DPIY is m16=1 & op=0x11; EA_DPIY
+{
+    local v:2 = *:2 EA_DPIY;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_DPI is m16=1 & op=0x12; EA_DPI
+{
+    local v:2 = *:2 EA_DPI;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_SRIY is m16=1 & op=0x13; EA_SRIY
+{
+    local v:2 = *:2 EA_SRIY;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_DPX is m16=1 & op=0x15; EA_DPX
+{
+    local v:2 = *:2 EA_DPX;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_DPLY is m16=1 & op=0x17; EA_DPLY
+{
+    local v:2 = *:2 EA_DPLY;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_ABSY is m16=1 & op=0x19; EA_ABSY
+{
+    local v:2 = *:2 EA_ABSY;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_ABSX is m16=1 & op=0x1D; EA_ABSX
+{
+    local v:2 = *:2 EA_ABSX;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA EA_LONGX is m16=1 & op=0x1F; EA_LONGX
+{
+    local v:2 = *:2 EA_LONGX;
+    A = A | v;
+    resultFlags(A);
+}
+
+:ORA "#"imm16 is m16=1 & op=0x09; imm16
+{
+    local v:2 = imm16;
+    A = A | v;
+    resultFlags(A);
+}
+
+:AND EA_DPXI is m16=0 & op=0x21; EA_DPXI
+{
+    local v:1 = *:1 EA_DPXI;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_SR is m16=0 & op=0x23; EA_SR
+{
+    local v:1 = *:1 EA_SR;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_DP is m16=0 & op=0x25; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_DPL is m16=0 & op=0x27; EA_DPL
+{
+    local v:1 = *:1 EA_DPL;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_ABS is m16=0 & op=0x2D; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_LONG is m16=0 & op=0x2F; EA_LONG
+{
+    local v:1 = *:1 EA_LONG;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_DPIY is m16=0 & op=0x31; EA_DPIY
+{
+    local v:1 = *:1 EA_DPIY;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_DPI is m16=0 & op=0x32; EA_DPI
+{
+    local v:1 = *:1 EA_DPI;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_SRIY is m16=0 & op=0x33; EA_SRIY
+{
+    local v:1 = *:1 EA_SRIY;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_DPX is m16=0 & op=0x35; EA_DPX
+{
+    local v:1 = *:1 EA_DPX;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_DPLY is m16=0 & op=0x37; EA_DPLY
+{
+    local v:1 = *:1 EA_DPLY;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_ABSY is m16=0 & op=0x39; EA_ABSY
+{
+    local v:1 = *:1 EA_ABSY;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_ABSX is m16=0 & op=0x3D; EA_ABSX
+{
+    local v:1 = *:1 EA_ABSX;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_LONGX is m16=0 & op=0x3F; EA_LONGX
+{
+    local v:1 = *:1 EA_LONGX;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND "#"imm8 is m16=0 & op=0x29; imm8
+{
+    local v:1 = imm8;
+    AL = AL & v;
+    resultFlags(AL);
+}
+
+:AND EA_DPXI is m16=1 & op=0x21; EA_DPXI
+{
+    local v:2 = *:2 EA_DPXI;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_SR is m16=1 & op=0x23; EA_SR
+{
+    local v:2 = *:2 EA_SR;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_DP is m16=1 & op=0x25; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_DPL is m16=1 & op=0x27; EA_DPL
+{
+    local v:2 = *:2 EA_DPL;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_ABS is m16=1 & op=0x2D; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_LONG is m16=1 & op=0x2F; EA_LONG
+{
+    local v:2 = *:2 EA_LONG;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_DPIY is m16=1 & op=0x31; EA_DPIY
+{
+    local v:2 = *:2 EA_DPIY;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_DPI is m16=1 & op=0x32; EA_DPI
+{
+    local v:2 = *:2 EA_DPI;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_SRIY is m16=1 & op=0x33; EA_SRIY
+{
+    local v:2 = *:2 EA_SRIY;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_DPX is m16=1 & op=0x35; EA_DPX
+{
+    local v:2 = *:2 EA_DPX;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_DPLY is m16=1 & op=0x37; EA_DPLY
+{
+    local v:2 = *:2 EA_DPLY;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_ABSY is m16=1 & op=0x39; EA_ABSY
+{
+    local v:2 = *:2 EA_ABSY;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_ABSX is m16=1 & op=0x3D; EA_ABSX
+{
+    local v:2 = *:2 EA_ABSX;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND EA_LONGX is m16=1 & op=0x3F; EA_LONGX
+{
+    local v:2 = *:2 EA_LONGX;
+    A = A & v;
+    resultFlags(A);
+}
+
+:AND "#"imm16 is m16=1 & op=0x29; imm16
+{
+    local v:2 = imm16;
+    A = A & v;
+    resultFlags(A);
+}
+
+:EOR EA_DPXI is m16=0 & op=0x41; EA_DPXI
+{
+    local v:1 = *:1 EA_DPXI;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_SR is m16=0 & op=0x43; EA_SR
+{
+    local v:1 = *:1 EA_SR;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_DP is m16=0 & op=0x45; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_DPL is m16=0 & op=0x47; EA_DPL
+{
+    local v:1 = *:1 EA_DPL;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_ABS is m16=0 & op=0x4D; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_LONG is m16=0 & op=0x4F; EA_LONG
+{
+    local v:1 = *:1 EA_LONG;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_DPIY is m16=0 & op=0x51; EA_DPIY
+{
+    local v:1 = *:1 EA_DPIY;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_DPI is m16=0 & op=0x52; EA_DPI
+{
+    local v:1 = *:1 EA_DPI;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_SRIY is m16=0 & op=0x53; EA_SRIY
+{
+    local v:1 = *:1 EA_SRIY;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_DPX is m16=0 & op=0x55; EA_DPX
+{
+    local v:1 = *:1 EA_DPX;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_DPLY is m16=0 & op=0x57; EA_DPLY
+{
+    local v:1 = *:1 EA_DPLY;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_ABSY is m16=0 & op=0x59; EA_ABSY
+{
+    local v:1 = *:1 EA_ABSY;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_ABSX is m16=0 & op=0x5D; EA_ABSX
+{
+    local v:1 = *:1 EA_ABSX;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_LONGX is m16=0 & op=0x5F; EA_LONGX
+{
+    local v:1 = *:1 EA_LONGX;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR "#"imm8 is m16=0 & op=0x49; imm8
+{
+    local v:1 = imm8;
+    AL = AL ^ v;
+    resultFlags(AL);
+}
+
+:EOR EA_DPXI is m16=1 & op=0x41; EA_DPXI
+{
+    local v:2 = *:2 EA_DPXI;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_SR is m16=1 & op=0x43; EA_SR
+{
+    local v:2 = *:2 EA_SR;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_DP is m16=1 & op=0x45; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_DPL is m16=1 & op=0x47; EA_DPL
+{
+    local v:2 = *:2 EA_DPL;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_ABS is m16=1 & op=0x4D; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_LONG is m16=1 & op=0x4F; EA_LONG
+{
+    local v:2 = *:2 EA_LONG;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_DPIY is m16=1 & op=0x51; EA_DPIY
+{
+    local v:2 = *:2 EA_DPIY;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_DPI is m16=1 & op=0x52; EA_DPI
+{
+    local v:2 = *:2 EA_DPI;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_SRIY is m16=1 & op=0x53; EA_SRIY
+{
+    local v:2 = *:2 EA_SRIY;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_DPX is m16=1 & op=0x55; EA_DPX
+{
+    local v:2 = *:2 EA_DPX;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_DPLY is m16=1 & op=0x57; EA_DPLY
+{
+    local v:2 = *:2 EA_DPLY;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_ABSY is m16=1 & op=0x59; EA_ABSY
+{
+    local v:2 = *:2 EA_ABSY;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_ABSX is m16=1 & op=0x5D; EA_ABSX
+{
+    local v:2 = *:2 EA_ABSX;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR EA_LONGX is m16=1 & op=0x5F; EA_LONGX
+{
+    local v:2 = *:2 EA_LONGX;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:EOR "#"imm16 is m16=1 & op=0x49; imm16
+{
+    local v:2 = imm16;
+    A = A ^ v;
+    resultFlags(A);
+}
+
+:ADC EA_DPXI is m16=0 & op=0x61; EA_DPXI
+{
+    local v:1 = *:1 EA_DPXI;
+    adc8(v);
+}
+
+:ADC EA_SR is m16=0 & op=0x63; EA_SR
+{
+    local v:1 = *:1 EA_SR;
+    adc8(v);
+}
+
+:ADC EA_DP is m16=0 & op=0x65; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    adc8(v);
+}
+
+:ADC EA_DPL is m16=0 & op=0x67; EA_DPL
+{
+    local v:1 = *:1 EA_DPL;
+    adc8(v);
+}
+
+:ADC EA_ABS is m16=0 & op=0x6D; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    adc8(v);
+}
+
+:ADC EA_LONG is m16=0 & op=0x6F; EA_LONG
+{
+    local v:1 = *:1 EA_LONG;
+    adc8(v);
+}
+
+:ADC EA_DPIY is m16=0 & op=0x71; EA_DPIY
+{
+    local v:1 = *:1 EA_DPIY;
+    adc8(v);
+}
+
+:ADC EA_DPI is m16=0 & op=0x72; EA_DPI
+{
+    local v:1 = *:1 EA_DPI;
+    adc8(v);
+}
+
+:ADC EA_SRIY is m16=0 & op=0x73; EA_SRIY
+{
+    local v:1 = *:1 EA_SRIY;
+    adc8(v);
+}
+
+:ADC EA_DPX is m16=0 & op=0x75; EA_DPX
+{
+    local v:1 = *:1 EA_DPX;
+    adc8(v);
+}
+
+:ADC EA_DPLY is m16=0 & op=0x77; EA_DPLY
+{
+    local v:1 = *:1 EA_DPLY;
+    adc8(v);
+}
+
+:ADC EA_ABSY is m16=0 & op=0x79; EA_ABSY
+{
+    local v:1 = *:1 EA_ABSY;
+    adc8(v);
+}
+
+:ADC EA_ABSX is m16=0 & op=0x7D; EA_ABSX
+{
+    local v:1 = *:1 EA_ABSX;
+    adc8(v);
+}
+
+:ADC EA_LONGX is m16=0 & op=0x7F; EA_LONGX
+{
+    local v:1 = *:1 EA_LONGX;
+    adc8(v);
+}
+
+:ADC "#"imm8 is m16=0 & op=0x69; imm8
+{
+    local v:1 = imm8;
+    adc8(v);
+}
+
+:ADC EA_DPXI is m16=1 & op=0x61; EA_DPXI
+{
+    local v:2 = *:2 EA_DPXI;
+    adc16(v);
+}
+
+:ADC EA_SR is m16=1 & op=0x63; EA_SR
+{
+    local v:2 = *:2 EA_SR;
+    adc16(v);
+}
+
+:ADC EA_DP is m16=1 & op=0x65; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    adc16(v);
+}
+
+:ADC EA_DPL is m16=1 & op=0x67; EA_DPL
+{
+    local v:2 = *:2 EA_DPL;
+    adc16(v);
+}
+
+:ADC EA_ABS is m16=1 & op=0x6D; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    adc16(v);
+}
+
+:ADC EA_LONG is m16=1 & op=0x6F; EA_LONG
+{
+    local v:2 = *:2 EA_LONG;
+    adc16(v);
+}
+
+:ADC EA_DPIY is m16=1 & op=0x71; EA_DPIY
+{
+    local v:2 = *:2 EA_DPIY;
+    adc16(v);
+}
+
+:ADC EA_DPI is m16=1 & op=0x72; EA_DPI
+{
+    local v:2 = *:2 EA_DPI;
+    adc16(v);
+}
+
+:ADC EA_SRIY is m16=1 & op=0x73; EA_SRIY
+{
+    local v:2 = *:2 EA_SRIY;
+    adc16(v);
+}
+
+:ADC EA_DPX is m16=1 & op=0x75; EA_DPX
+{
+    local v:2 = *:2 EA_DPX;
+    adc16(v);
+}
+
+:ADC EA_DPLY is m16=1 & op=0x77; EA_DPLY
+{
+    local v:2 = *:2 EA_DPLY;
+    adc16(v);
+}
+
+:ADC EA_ABSY is m16=1 & op=0x79; EA_ABSY
+{
+    local v:2 = *:2 EA_ABSY;
+    adc16(v);
+}
+
+:ADC EA_ABSX is m16=1 & op=0x7D; EA_ABSX
+{
+    local v:2 = *:2 EA_ABSX;
+    adc16(v);
+}
+
+:ADC EA_LONGX is m16=1 & op=0x7F; EA_LONGX
+{
+    local v:2 = *:2 EA_LONGX;
+    adc16(v);
+}
+
+:ADC "#"imm16 is m16=1 & op=0x69; imm16
+{
+    local v:2 = imm16;
+    adc16(v);
+}
+
+:STA EA_DPXI is m16=0 & op=0x81; EA_DPXI
+{
+    *:1 EA_DPXI = AL;
+}
+
+:STA EA_SR is m16=0 & op=0x83; EA_SR
+{
+    *:1 EA_SR = AL;
+}
+
+:STA EA_DP is m16=0 & op=0x85; EA_DP
+{
+    *:1 EA_DP = AL;
+}
+
+:STA EA_DPL is m16=0 & op=0x87; EA_DPL
+{
+    *:1 EA_DPL = AL;
+}
+
+:STA EA_ABS is m16=0 & op=0x8D; EA_ABS
+{
+    *:1 EA_ABS = AL;
+}
+
+:STA EA_LONG is m16=0 & op=0x8F; EA_LONG
+{
+    *:1 EA_LONG = AL;
+}
+
+:STA EA_DPIY is m16=0 & op=0x91; EA_DPIY
+{
+    *:1 EA_DPIY = AL;
+}
+
+:STA EA_DPI is m16=0 & op=0x92; EA_DPI
+{
+    *:1 EA_DPI = AL;
+}
+
+:STA EA_SRIY is m16=0 & op=0x93; EA_SRIY
+{
+    *:1 EA_SRIY = AL;
+}
+
+:STA EA_DPX is m16=0 & op=0x95; EA_DPX
+{
+    *:1 EA_DPX = AL;
+}
+
+:STA EA_DPLY is m16=0 & op=0x97; EA_DPLY
+{
+    *:1 EA_DPLY = AL;
+}
+
+:STA EA_ABSY is m16=0 & op=0x99; EA_ABSY
+{
+    *:1 EA_ABSY = AL;
+}
+
+:STA EA_ABSX is m16=0 & op=0x9D; EA_ABSX
+{
+    *:1 EA_ABSX = AL;
+}
+
+:STA EA_LONGX is m16=0 & op=0x9F; EA_LONGX
+{
+    *:1 EA_LONGX = AL;
+}
+
+:STA EA_DPXI is m16=1 & op=0x81; EA_DPXI
+{
+    *:2 EA_DPXI = A;
+}
+
+:STA EA_SR is m16=1 & op=0x83; EA_SR
+{
+    *:2 EA_SR = A;
+}
+
+:STA EA_DP is m16=1 & op=0x85; EA_DP
+{
+    *:2 EA_DP = A;
+}
+
+:STA EA_DPL is m16=1 & op=0x87; EA_DPL
+{
+    *:2 EA_DPL = A;
+}
+
+:STA EA_ABS is m16=1 & op=0x8D; EA_ABS
+{
+    *:2 EA_ABS = A;
+}
+
+:STA EA_LONG is m16=1 & op=0x8F; EA_LONG
+{
+    *:2 EA_LONG = A;
+}
+
+:STA EA_DPIY is m16=1 & op=0x91; EA_DPIY
+{
+    *:2 EA_DPIY = A;
+}
+
+:STA EA_DPI is m16=1 & op=0x92; EA_DPI
+{
+    *:2 EA_DPI = A;
+}
+
+:STA EA_SRIY is m16=1 & op=0x93; EA_SRIY
+{
+    *:2 EA_SRIY = A;
+}
+
+:STA EA_DPX is m16=1 & op=0x95; EA_DPX
+{
+    *:2 EA_DPX = A;
+}
+
+:STA EA_DPLY is m16=1 & op=0x97; EA_DPLY
+{
+    *:2 EA_DPLY = A;
+}
+
+:STA EA_ABSY is m16=1 & op=0x99; EA_ABSY
+{
+    *:2 EA_ABSY = A;
+}
+
+:STA EA_ABSX is m16=1 & op=0x9D; EA_ABSX
+{
+    *:2 EA_ABSX = A;
+}
+
+:STA EA_LONGX is m16=1 & op=0x9F; EA_LONGX
+{
+    *:2 EA_LONGX = A;
+}
+
+:LDA EA_DPXI is m16=0 & op=0xA1; EA_DPXI
+{
+    local v:1 = *:1 EA_DPXI;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_SR is m16=0 & op=0xA3; EA_SR
+{
+    local v:1 = *:1 EA_SR;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_DP is m16=0 & op=0xA5; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_DPL is m16=0 & op=0xA7; EA_DPL
+{
+    local v:1 = *:1 EA_DPL;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_ABS is m16=0 & op=0xAD; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_LONG is m16=0 & op=0xAF; EA_LONG
+{
+    local v:1 = *:1 EA_LONG;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_DPIY is m16=0 & op=0xB1; EA_DPIY
+{
+    local v:1 = *:1 EA_DPIY;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_DPI is m16=0 & op=0xB2; EA_DPI
+{
+    local v:1 = *:1 EA_DPI;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_SRIY is m16=0 & op=0xB3; EA_SRIY
+{
+    local v:1 = *:1 EA_SRIY;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_DPX is m16=0 & op=0xB5; EA_DPX
+{
+    local v:1 = *:1 EA_DPX;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_DPLY is m16=0 & op=0xB7; EA_DPLY
+{
+    local v:1 = *:1 EA_DPLY;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_ABSY is m16=0 & op=0xB9; EA_ABSY
+{
+    local v:1 = *:1 EA_ABSY;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_ABSX is m16=0 & op=0xBD; EA_ABSX
+{
+    local v:1 = *:1 EA_ABSX;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_LONGX is m16=0 & op=0xBF; EA_LONGX
+{
+    local v:1 = *:1 EA_LONGX;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA "#"imm8 is m16=0 & op=0xA9; imm8
+{
+    local v:1 = imm8;
+    AL = v;
+    resultFlags(AL);
+}
+
+:LDA EA_DPXI is m16=1 & op=0xA1; EA_DPXI
+{
+    local v:2 = *:2 EA_DPXI;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_SR is m16=1 & op=0xA3; EA_SR
+{
+    local v:2 = *:2 EA_SR;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_DP is m16=1 & op=0xA5; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_DPL is m16=1 & op=0xA7; EA_DPL
+{
+    local v:2 = *:2 EA_DPL;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_ABS is m16=1 & op=0xAD; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_LONG is m16=1 & op=0xAF; EA_LONG
+{
+    local v:2 = *:2 EA_LONG;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_DPIY is m16=1 & op=0xB1; EA_DPIY
+{
+    local v:2 = *:2 EA_DPIY;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_DPI is m16=1 & op=0xB2; EA_DPI
+{
+    local v:2 = *:2 EA_DPI;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_SRIY is m16=1 & op=0xB3; EA_SRIY
+{
+    local v:2 = *:2 EA_SRIY;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_DPX is m16=1 & op=0xB5; EA_DPX
+{
+    local v:2 = *:2 EA_DPX;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_DPLY is m16=1 & op=0xB7; EA_DPLY
+{
+    local v:2 = *:2 EA_DPLY;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_ABSY is m16=1 & op=0xB9; EA_ABSY
+{
+    local v:2 = *:2 EA_ABSY;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_ABSX is m16=1 & op=0xBD; EA_ABSX
+{
+    local v:2 = *:2 EA_ABSX;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA EA_LONGX is m16=1 & op=0xBF; EA_LONGX
+{
+    local v:2 = *:2 EA_LONGX;
+    A = v;
+    resultFlags(A);
+}
+
+:LDA "#"imm16 is m16=1 & op=0xA9; imm16
+{
+    local v:2 = imm16;
+    A = v;
+    resultFlags(A);
+}
+
+:CMP EA_DPXI is m16=0 & op=0xC1; EA_DPXI
+{
+    local v:1 = *:1 EA_DPXI;
+    cmp8(v);
+}
+
+:CMP EA_SR is m16=0 & op=0xC3; EA_SR
+{
+    local v:1 = *:1 EA_SR;
+    cmp8(v);
+}
+
+:CMP EA_DP is m16=0 & op=0xC5; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    cmp8(v);
+}
+
+:CMP EA_DPL is m16=0 & op=0xC7; EA_DPL
+{
+    local v:1 = *:1 EA_DPL;
+    cmp8(v);
+}
+
+:CMP EA_ABS is m16=0 & op=0xCD; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    cmp8(v);
+}
+
+:CMP EA_LONG is m16=0 & op=0xCF; EA_LONG
+{
+    local v:1 = *:1 EA_LONG;
+    cmp8(v);
+}
+
+:CMP EA_DPIY is m16=0 & op=0xD1; EA_DPIY
+{
+    local v:1 = *:1 EA_DPIY;
+    cmp8(v);
+}
+
+:CMP EA_DPI is m16=0 & op=0xD2; EA_DPI
+{
+    local v:1 = *:1 EA_DPI;
+    cmp8(v);
+}
+
+:CMP EA_SRIY is m16=0 & op=0xD3; EA_SRIY
+{
+    local v:1 = *:1 EA_SRIY;
+    cmp8(v);
+}
+
+:CMP EA_DPX is m16=0 & op=0xD5; EA_DPX
+{
+    local v:1 = *:1 EA_DPX;
+    cmp8(v);
+}
+
+:CMP EA_DPLY is m16=0 & op=0xD7; EA_DPLY
+{
+    local v:1 = *:1 EA_DPLY;
+    cmp8(v);
+}
+
+:CMP EA_ABSY is m16=0 & op=0xD9; EA_ABSY
+{
+    local v:1 = *:1 EA_ABSY;
+    cmp8(v);
+}
+
+:CMP EA_ABSX is m16=0 & op=0xDD; EA_ABSX
+{
+    local v:1 = *:1 EA_ABSX;
+    cmp8(v);
+}
+
+:CMP EA_LONGX is m16=0 & op=0xDF; EA_LONGX
+{
+    local v:1 = *:1 EA_LONGX;
+    cmp8(v);
+}
+
+:CMP "#"imm8 is m16=0 & op=0xC9; imm8
+{
+    local v:1 = imm8;
+    cmp8(v);
+}
+
+:CMP EA_DPXI is m16=1 & op=0xC1; EA_DPXI
+{
+    local v:2 = *:2 EA_DPXI;
+    cmp16(v);
+}
+
+:CMP EA_SR is m16=1 & op=0xC3; EA_SR
+{
+    local v:2 = *:2 EA_SR;
+    cmp16(v);
+}
+
+:CMP EA_DP is m16=1 & op=0xC5; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    cmp16(v);
+}
+
+:CMP EA_DPL is m16=1 & op=0xC7; EA_DPL
+{
+    local v:2 = *:2 EA_DPL;
+    cmp16(v);
+}
+
+:CMP EA_ABS is m16=1 & op=0xCD; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    cmp16(v);
+}
+
+:CMP EA_LONG is m16=1 & op=0xCF; EA_LONG
+{
+    local v:2 = *:2 EA_LONG;
+    cmp16(v);
+}
+
+:CMP EA_DPIY is m16=1 & op=0xD1; EA_DPIY
+{
+    local v:2 = *:2 EA_DPIY;
+    cmp16(v);
+}
+
+:CMP EA_DPI is m16=1 & op=0xD2; EA_DPI
+{
+    local v:2 = *:2 EA_DPI;
+    cmp16(v);
+}
+
+:CMP EA_SRIY is m16=1 & op=0xD3; EA_SRIY
+{
+    local v:2 = *:2 EA_SRIY;
+    cmp16(v);
+}
+
+:CMP EA_DPX is m16=1 & op=0xD5; EA_DPX
+{
+    local v:2 = *:2 EA_DPX;
+    cmp16(v);
+}
+
+:CMP EA_DPLY is m16=1 & op=0xD7; EA_DPLY
+{
+    local v:2 = *:2 EA_DPLY;
+    cmp16(v);
+}
+
+:CMP EA_ABSY is m16=1 & op=0xD9; EA_ABSY
+{
+    local v:2 = *:2 EA_ABSY;
+    cmp16(v);
+}
+
+:CMP EA_ABSX is m16=1 & op=0xDD; EA_ABSX
+{
+    local v:2 = *:2 EA_ABSX;
+    cmp16(v);
+}
+
+:CMP EA_LONGX is m16=1 & op=0xDF; EA_LONGX
+{
+    local v:2 = *:2 EA_LONGX;
+    cmp16(v);
+}
+
+:CMP "#"imm16 is m16=1 & op=0xC9; imm16
+{
+    local v:2 = imm16;
+    cmp16(v);
+}
+
+:SBC EA_DPXI is m16=0 & op=0xE1; EA_DPXI
+{
+    local v:1 = *:1 EA_DPXI;
+    sbc8(v);
+}
+
+:SBC EA_SR is m16=0 & op=0xE3; EA_SR
+{
+    local v:1 = *:1 EA_SR;
+    sbc8(v);
+}
+
+:SBC EA_DP is m16=0 & op=0xE5; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    sbc8(v);
+}
+
+:SBC EA_DPL is m16=0 & op=0xE7; EA_DPL
+{
+    local v:1 = *:1 EA_DPL;
+    sbc8(v);
+}
+
+:SBC EA_ABS is m16=0 & op=0xED; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    sbc8(v);
+}
+
+:SBC EA_LONG is m16=0 & op=0xEF; EA_LONG
+{
+    local v:1 = *:1 EA_LONG;
+    sbc8(v);
+}
+
+:SBC EA_DPIY is m16=0 & op=0xF1; EA_DPIY
+{
+    local v:1 = *:1 EA_DPIY;
+    sbc8(v);
+}
+
+:SBC EA_DPI is m16=0 & op=0xF2; EA_DPI
+{
+    local v:1 = *:1 EA_DPI;
+    sbc8(v);
+}
+
+:SBC EA_SRIY is m16=0 & op=0xF3; EA_SRIY
+{
+    local v:1 = *:1 EA_SRIY;
+    sbc8(v);
+}
+
+:SBC EA_DPX is m16=0 & op=0xF5; EA_DPX
+{
+    local v:1 = *:1 EA_DPX;
+    sbc8(v);
+}
+
+:SBC EA_DPLY is m16=0 & op=0xF7; EA_DPLY
+{
+    local v:1 = *:1 EA_DPLY;
+    sbc8(v);
+}
+
+:SBC EA_ABSY is m16=0 & op=0xF9; EA_ABSY
+{
+    local v:1 = *:1 EA_ABSY;
+    sbc8(v);
+}
+
+:SBC EA_ABSX is m16=0 & op=0xFD; EA_ABSX
+{
+    local v:1 = *:1 EA_ABSX;
+    sbc8(v);
+}
+
+:SBC EA_LONGX is m16=0 & op=0xFF; EA_LONGX
+{
+    local v:1 = *:1 EA_LONGX;
+    sbc8(v);
+}
+
+:SBC "#"imm8 is m16=0 & op=0xE9; imm8
+{
+    local v:1 = imm8;
+    sbc8(v);
+}
+
+:SBC EA_DPXI is m16=1 & op=0xE1; EA_DPXI
+{
+    local v:2 = *:2 EA_DPXI;
+    sbc16(v);
+}
+
+:SBC EA_SR is m16=1 & op=0xE3; EA_SR
+{
+    local v:2 = *:2 EA_SR;
+    sbc16(v);
+}
+
+:SBC EA_DP is m16=1 & op=0xE5; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    sbc16(v);
+}
+
+:SBC EA_DPL is m16=1 & op=0xE7; EA_DPL
+{
+    local v:2 = *:2 EA_DPL;
+    sbc16(v);
+}
+
+:SBC EA_ABS is m16=1 & op=0xED; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    sbc16(v);
+}
+
+:SBC EA_LONG is m16=1 & op=0xEF; EA_LONG
+{
+    local v:2 = *:2 EA_LONG;
+    sbc16(v);
+}
+
+:SBC EA_DPIY is m16=1 & op=0xF1; EA_DPIY
+{
+    local v:2 = *:2 EA_DPIY;
+    sbc16(v);
+}
+
+:SBC EA_DPI is m16=1 & op=0xF2; EA_DPI
+{
+    local v:2 = *:2 EA_DPI;
+    sbc16(v);
+}
+
+:SBC EA_SRIY is m16=1 & op=0xF3; EA_SRIY
+{
+    local v:2 = *:2 EA_SRIY;
+    sbc16(v);
+}
+
+:SBC EA_DPX is m16=1 & op=0xF5; EA_DPX
+{
+    local v:2 = *:2 EA_DPX;
+    sbc16(v);
+}
+
+:SBC EA_DPLY is m16=1 & op=0xF7; EA_DPLY
+{
+    local v:2 = *:2 EA_DPLY;
+    sbc16(v);
+}
+
+:SBC EA_ABSY is m16=1 & op=0xF9; EA_ABSY
+{
+    local v:2 = *:2 EA_ABSY;
+    sbc16(v);
+}
+
+:SBC EA_ABSX is m16=1 & op=0xFD; EA_ABSX
+{
+    local v:2 = *:2 EA_ABSX;
+    sbc16(v);
+}
+
+:SBC EA_LONGX is m16=1 & op=0xFF; EA_LONGX
+{
+    local v:2 = *:2 EA_LONGX;
+    sbc16(v);
+}
+
+:SBC "#"imm16 is m16=1 & op=0xE9; imm16
+{
+    local v:2 = imm16;
+    sbc16(v);
+}
+
+# --- shifts, rotates, INC and DEC: memory, then the accumulator
+
+:ASL EA_DP is m16=0 & op=0x06; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    C = (t s< 0);
+    t = t << 1;
+    *:1 EA_DP = t;
+    resultFlags(t);
+}
+
+:ASL EA_ABS is m16=0 & op=0x0E; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    C = (t s< 0);
+    t = t << 1;
+    *:1 EA_ABS = t;
+    resultFlags(t);
+}
+
+:ASL EA_DPX is m16=0 & op=0x16; EA_DPX
+{
+    local t:1 = *:1 EA_DPX;
+    C = (t s< 0);
+    t = t << 1;
+    *:1 EA_DPX = t;
+    resultFlags(t);
+}
+
+:ASL EA_ABSX is m16=0 & op=0x1E; EA_ABSX
+{
+    local t:1 = *:1 EA_ABSX;
+    C = (t s< 0);
+    t = t << 1;
+    *:1 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:ASL A is m16=0 & op=0x0A & A
+{
+    local t:1 = AL;
+    C = (t s< 0);
+    t = t << 1;
+    AL = t;
+    resultFlags(t);
+}
+
+:ASL EA_DP is m16=1 & op=0x06; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    C = (t s< 0);
+    t = t << 1;
+    *:2 EA_DP = t;
+    resultFlags(t);
+}
+
+:ASL EA_ABS is m16=1 & op=0x0E; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    C = (t s< 0);
+    t = t << 1;
+    *:2 EA_ABS = t;
+    resultFlags(t);
+}
+
+:ASL EA_DPX is m16=1 & op=0x16; EA_DPX
+{
+    local t:2 = *:2 EA_DPX;
+    C = (t s< 0);
+    t = t << 1;
+    *:2 EA_DPX = t;
+    resultFlags(t);
+}
+
+:ASL EA_ABSX is m16=1 & op=0x1E; EA_ABSX
+{
+    local t:2 = *:2 EA_ABSX;
+    C = (t s< 0);
+    t = t << 1;
+    *:2 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:ASL A is m16=1 & op=0x0A & A
+{
+    local t:2 = A;
+    C = (t s< 0);
+    t = t << 1;
+    A = t;
+    resultFlags(t);
+}
+
+:ROL EA_DP is m16=0 & op=0x26; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    local oc:1 = C;
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    *:1 EA_DP = t;
+    resultFlags(t);
+}
+
+:ROL EA_ABS is m16=0 & op=0x2E; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    local oc:1 = C;
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    *:1 EA_ABS = t;
+    resultFlags(t);
+}
+
+:ROL EA_DPX is m16=0 & op=0x36; EA_DPX
+{
+    local t:1 = *:1 EA_DPX;
+    local oc:1 = C;
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    *:1 EA_DPX = t;
+    resultFlags(t);
+}
+
+:ROL EA_ABSX is m16=0 & op=0x3E; EA_ABSX
+{
+    local t:1 = *:1 EA_ABSX;
+    local oc:1 = C;
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    *:1 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:ROL A is m16=0 & op=0x2A & A
+{
+    local t:1 = AL;
+    local oc:1 = C;
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    AL = t;
+    resultFlags(t);
+}
+
+:ROL EA_DP is m16=1 & op=0x26; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    local oc:2 = zext(C);
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    *:2 EA_DP = t;
+    resultFlags(t);
+}
+
+:ROL EA_ABS is m16=1 & op=0x2E; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    local oc:2 = zext(C);
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    *:2 EA_ABS = t;
+    resultFlags(t);
+}
+
+:ROL EA_DPX is m16=1 & op=0x36; EA_DPX
+{
+    local t:2 = *:2 EA_DPX;
+    local oc:2 = zext(C);
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    *:2 EA_DPX = t;
+    resultFlags(t);
+}
+
+:ROL EA_ABSX is m16=1 & op=0x3E; EA_ABSX
+{
+    local t:2 = *:2 EA_ABSX;
+    local oc:2 = zext(C);
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    *:2 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:ROL A is m16=1 & op=0x2A & A
+{
+    local t:2 = A;
+    local oc:2 = zext(C);
+    C = (t s< 0);
+    t = (t << 1) | oc;
+    A = t;
+    resultFlags(t);
+}
+
+:LSR EA_DP is m16=0 & op=0x46; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    *:1 EA_DP = t;
+    resultFlags(t);
+}
+
+:LSR EA_ABS is m16=0 & op=0x4E; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    *:1 EA_ABS = t;
+    resultFlags(t);
+}
+
+:LSR EA_DPX is m16=0 & op=0x56; EA_DPX
+{
+    local t:1 = *:1 EA_DPX;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    *:1 EA_DPX = t;
+    resultFlags(t);
+}
+
+:LSR EA_ABSX is m16=0 & op=0x5E; EA_ABSX
+{
+    local t:1 = *:1 EA_ABSX;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    *:1 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:LSR A is m16=0 & op=0x4A & A
+{
+    local t:1 = AL;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    AL = t;
+    resultFlags(t);
+}
+
+:LSR EA_DP is m16=1 & op=0x46; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    *:2 EA_DP = t;
+    resultFlags(t);
+}
+
+:LSR EA_ABS is m16=1 & op=0x4E; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    *:2 EA_ABS = t;
+    resultFlags(t);
+}
+
+:LSR EA_DPX is m16=1 & op=0x56; EA_DPX
+{
+    local t:2 = *:2 EA_DPX;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    *:2 EA_DPX = t;
+    resultFlags(t);
+}
+
+:LSR EA_ABSX is m16=1 & op=0x5E; EA_ABSX
+{
+    local t:2 = *:2 EA_ABSX;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    *:2 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:LSR A is m16=1 & op=0x4A & A
+{
+    local t:2 = A;
+    C = ((t & 1) != 0);
+    t = t >> 1;
+    A = t;
+    resultFlags(t);
+}
+
+:ROR EA_DP is m16=0 & op=0x66; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    local oc:1 = C;
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 7);
+    *:1 EA_DP = t;
+    resultFlags(t);
+}
+
+:ROR EA_ABS is m16=0 & op=0x6E; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    local oc:1 = C;
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 7);
+    *:1 EA_ABS = t;
+    resultFlags(t);
+}
+
+:ROR EA_DPX is m16=0 & op=0x76; EA_DPX
+{
+    local t:1 = *:1 EA_DPX;
+    local oc:1 = C;
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 7);
+    *:1 EA_DPX = t;
+    resultFlags(t);
+}
+
+:ROR EA_ABSX is m16=0 & op=0x7E; EA_ABSX
+{
+    local t:1 = *:1 EA_ABSX;
+    local oc:1 = C;
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 7);
+    *:1 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:ROR A is m16=0 & op=0x6A & A
+{
+    local t:1 = AL;
+    local oc:1 = C;
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 7);
+    AL = t;
+    resultFlags(t);
+}
+
+:ROR EA_DP is m16=1 & op=0x66; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    local oc:2 = zext(C);
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 15);
+    *:2 EA_DP = t;
+    resultFlags(t);
+}
+
+:ROR EA_ABS is m16=1 & op=0x6E; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    local oc:2 = zext(C);
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 15);
+    *:2 EA_ABS = t;
+    resultFlags(t);
+}
+
+:ROR EA_DPX is m16=1 & op=0x76; EA_DPX
+{
+    local t:2 = *:2 EA_DPX;
+    local oc:2 = zext(C);
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 15);
+    *:2 EA_DPX = t;
+    resultFlags(t);
+}
+
+:ROR EA_ABSX is m16=1 & op=0x7E; EA_ABSX
+{
+    local t:2 = *:2 EA_ABSX;
+    local oc:2 = zext(C);
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 15);
+    *:2 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:ROR A is m16=1 & op=0x6A & A
+{
+    local t:2 = A;
+    local oc:2 = zext(C);
+    C = ((t & 1) != 0);
+    t = (t >> 1) | (oc << 15);
+    A = t;
+    resultFlags(t);
+}
+
+:DEC EA_DP is m16=0 & op=0xC6; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    t = t - 1;
+    *:1 EA_DP = t;
+    resultFlags(t);
+}
+
+:DEC EA_ABS is m16=0 & op=0xCE; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    t = t - 1;
+    *:1 EA_ABS = t;
+    resultFlags(t);
+}
+
+:DEC EA_DPX is m16=0 & op=0xD6; EA_DPX
+{
+    local t:1 = *:1 EA_DPX;
+    t = t - 1;
+    *:1 EA_DPX = t;
+    resultFlags(t);
+}
+
+:DEC EA_ABSX is m16=0 & op=0xDE; EA_ABSX
+{
+    local t:1 = *:1 EA_ABSX;
+    t = t - 1;
+    *:1 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:DEC A is m16=0 & op=0x3A & A
+{
+    local t:1 = AL;
+    t = t - 1;
+    AL = t;
+    resultFlags(t);
+}
+
+:DEC EA_DP is m16=1 & op=0xC6; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    t = t - 1;
+    *:2 EA_DP = t;
+    resultFlags(t);
+}
+
+:DEC EA_ABS is m16=1 & op=0xCE; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    t = t - 1;
+    *:2 EA_ABS = t;
+    resultFlags(t);
+}
+
+:DEC EA_DPX is m16=1 & op=0xD6; EA_DPX
+{
+    local t:2 = *:2 EA_DPX;
+    t = t - 1;
+    *:2 EA_DPX = t;
+    resultFlags(t);
+}
+
+:DEC EA_ABSX is m16=1 & op=0xDE; EA_ABSX
+{
+    local t:2 = *:2 EA_ABSX;
+    t = t - 1;
+    *:2 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:DEC A is m16=1 & op=0x3A & A
+{
+    local t:2 = A;
+    t = t - 1;
+    A = t;
+    resultFlags(t);
+}
+
+:INC EA_DP is m16=0 & op=0xE6; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    t = t + 1;
+    *:1 EA_DP = t;
+    resultFlags(t);
+}
+
+:INC EA_ABS is m16=0 & op=0xEE; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    t = t + 1;
+    *:1 EA_ABS = t;
+    resultFlags(t);
+}
+
+:INC EA_DPX is m16=0 & op=0xF6; EA_DPX
+{
+    local t:1 = *:1 EA_DPX;
+    t = t + 1;
+    *:1 EA_DPX = t;
+    resultFlags(t);
+}
+
+:INC EA_ABSX is m16=0 & op=0xFE; EA_ABSX
+{
+    local t:1 = *:1 EA_ABSX;
+    t = t + 1;
+    *:1 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:INC A is m16=0 & op=0x1A & A
+{
+    local t:1 = AL;
+    t = t + 1;
+    AL = t;
+    resultFlags(t);
+}
+
+:INC EA_DP is m16=1 & op=0xE6; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    t = t + 1;
+    *:2 EA_DP = t;
+    resultFlags(t);
+}
+
+:INC EA_ABS is m16=1 & op=0xEE; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    t = t + 1;
+    *:2 EA_ABS = t;
+    resultFlags(t);
+}
+
+:INC EA_DPX is m16=1 & op=0xF6; EA_DPX
+{
+    local t:2 = *:2 EA_DPX;
+    t = t + 1;
+    *:2 EA_DPX = t;
+    resultFlags(t);
+}
+
+:INC EA_ABSX is m16=1 & op=0xFE; EA_ABSX
+{
+    local t:2 = *:2 EA_ABSX;
+    t = t + 1;
+    *:2 EA_ABSX = t;
+    resultFlags(t);
+}
+
+:INC A is m16=1 & op=0x1A & A
+{
+    local t:2 = A;
+    t = t + 1;
+    A = t;
+    resultFlags(t);
+}
+
+# --- BIT, TSB, TRB, STZ
+
+:BIT EA_DP is m16=0 & op=0x24; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    N = (t s< 0);
+    V = (((t >> 6) & 1) != 0);
+    local r:1 = AL & t;
+    Z = (r == 0);
+}
+
+:BIT EA_ABS is m16=0 & op=0x2C; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    N = (t s< 0);
+    V = (((t >> 6) & 1) != 0);
+    local r:1 = AL & t;
+    Z = (r == 0);
+}
+
+:BIT EA_DPX is m16=0 & op=0x34; EA_DPX
+{
+    local t:1 = *:1 EA_DPX;
+    N = (t s< 0);
+    V = (((t >> 6) & 1) != 0);
+    local r:1 = AL & t;
+    Z = (r == 0);
+}
+
+:BIT EA_ABSX is m16=0 & op=0x3C; EA_ABSX
+{
+    local t:1 = *:1 EA_ABSX;
+    N = (t s< 0);
+    V = (((t >> 6) & 1) != 0);
+    local r:1 = AL & t;
+    Z = (r == 0);
+}
+
+:BIT "#"imm8 is m16=0 & op=0x89; imm8
+{
+    local t:1 = imm8;
+    local r:1 = AL & t;
+    Z = (r == 0);
+}
+
+:TSB EA_DP is m16=0 & op=0x04; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    local r:1 = AL & t;
+    Z = (r == 0);
+    *:1 EA_DP = t | AL;
+}
+
+:TSB EA_ABS is m16=0 & op=0x0C; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    local r:1 = AL & t;
+    Z = (r == 0);
+    *:1 EA_ABS = t | AL;
+}
+
+:TRB EA_DP is m16=0 & op=0x14; EA_DP
+{
+    local t:1 = *:1 EA_DP;
+    local r:1 = AL & t;
+    Z = (r == 0);
+    *:1 EA_DP = t & ~AL;
+}
+
+:TRB EA_ABS is m16=0 & op=0x1C; EA_ABS
+{
+    local t:1 = *:1 EA_ABS;
+    local r:1 = AL & t;
+    Z = (r == 0);
+    *:1 EA_ABS = t & ~AL;
+}
+
+:STZ EA_DP is m16=0 & op=0x64; EA_DP
+{
+    *:1 EA_DP = 0;
+}
+
+:STZ EA_DPX is m16=0 & op=0x74; EA_DPX
+{
+    *:1 EA_DPX = 0;
+}
+
+:STZ EA_ABS is m16=0 & op=0x9C; EA_ABS
+{
+    *:1 EA_ABS = 0;
+}
+
+:STZ EA_ABSX is m16=0 & op=0x9E; EA_ABSX
+{
+    *:1 EA_ABSX = 0;
+}
+
+:BIT EA_DP is m16=1 & op=0x24; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    N = (t s< 0);
+    V = (((t >> 14) & 1) != 0);
+    local r:2 = A & t;
+    Z = (r == 0);
+}
+
+:BIT EA_ABS is m16=1 & op=0x2C; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    N = (t s< 0);
+    V = (((t >> 14) & 1) != 0);
+    local r:2 = A & t;
+    Z = (r == 0);
+}
+
+:BIT EA_DPX is m16=1 & op=0x34; EA_DPX
+{
+    local t:2 = *:2 EA_DPX;
+    N = (t s< 0);
+    V = (((t >> 14) & 1) != 0);
+    local r:2 = A & t;
+    Z = (r == 0);
+}
+
+:BIT EA_ABSX is m16=1 & op=0x3C; EA_ABSX
+{
+    local t:2 = *:2 EA_ABSX;
+    N = (t s< 0);
+    V = (((t >> 14) & 1) != 0);
+    local r:2 = A & t;
+    Z = (r == 0);
+}
+
+:BIT "#"imm16 is m16=1 & op=0x89; imm16
+{
+    local t:2 = imm16;
+    local r:2 = A & t;
+    Z = (r == 0);
+}
+
+:TSB EA_DP is m16=1 & op=0x04; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    local r:2 = A & t;
+    Z = (r == 0);
+    *:2 EA_DP = t | A;
+}
+
+:TSB EA_ABS is m16=1 & op=0x0C; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    local r:2 = A & t;
+    Z = (r == 0);
+    *:2 EA_ABS = t | A;
+}
+
+:TRB EA_DP is m16=1 & op=0x14; EA_DP
+{
+    local t:2 = *:2 EA_DP;
+    local r:2 = A & t;
+    Z = (r == 0);
+    *:2 EA_DP = t & ~A;
+}
+
+:TRB EA_ABS is m16=1 & op=0x1C; EA_ABS
+{
+    local t:2 = *:2 EA_ABS;
+    local r:2 = A & t;
+    Z = (r == 0);
+    *:2 EA_ABS = t & ~A;
+}
+
+:STZ EA_DP is m16=1 & op=0x64; EA_DP
+{
+    *:2 EA_DP = 0;
+}
+
+:STZ EA_DPX is m16=1 & op=0x74; EA_DPX
+{
+    *:2 EA_DPX = 0;
+}
+
+:STZ EA_ABS is m16=1 & op=0x9C; EA_ABS
+{
+    *:2 EA_ABS = 0;
+}
+
+:STZ EA_ABSX is m16=1 & op=0x9E; EA_ABSX
+{
+    *:2 EA_ABSX = 0;
+}
+
+# --- LDX LDY STX STY CPX CPY (the width of the index registers)
+
+:LDX EA_DP is x16=0 & op=0xA6; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    X = zext(v);
+    resultFlags(v);
+}
+
+:STX EA_DP is x16=0 & op=0x86; EA_DP
+{
+    *:1 EA_DP = XL;
+}
+
+:LDX EA_ABS is x16=0 & op=0xAE; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    X = zext(v);
+    resultFlags(v);
+}
+
+:STX EA_ABS is x16=0 & op=0x8E; EA_ABS
+{
+    *:1 EA_ABS = XL;
+}
+
+:LDX EA_DPY is x16=0 & op=0xB6; EA_DPY
+{
+    local v:1 = *:1 EA_DPY;
+    X = zext(v);
+    resultFlags(v);
+}
+
+:STX EA_DPY is x16=0 & op=0x96; EA_DPY
+{
+    *:1 EA_DPY = XL;
+}
+
+:LDX EA_ABSY is x16=0 & op=0xBE; EA_ABSY
+{
+    local v:1 = *:1 EA_ABSY;
+    X = zext(v);
+    resultFlags(v);
+}
+
+:LDY EA_DP is x16=0 & op=0xA4; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    Y = zext(v);
+    resultFlags(v);
+}
+
+:STY EA_DP is x16=0 & op=0x84; EA_DP
+{
+    *:1 EA_DP = YL;
+}
+
+:LDY EA_ABS is x16=0 & op=0xAC; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    Y = zext(v);
+    resultFlags(v);
+}
+
+:STY EA_ABS is x16=0 & op=0x8C; EA_ABS
+{
+    *:1 EA_ABS = YL;
+}
+
+:LDY EA_DPX is x16=0 & op=0xB4; EA_DPX
+{
+    local v:1 = *:1 EA_DPX;
+    Y = zext(v);
+    resultFlags(v);
+}
+
+:STY EA_DPX is x16=0 & op=0x94; EA_DPX
+{
+    *:1 EA_DPX = YL;
+}
+
+:LDY EA_ABSX is x16=0 & op=0xBC; EA_ABSX
+{
+    local v:1 = *:1 EA_ABSX;
+    Y = zext(v);
+    resultFlags(v);
+}
+
+:CPX EA_DP is x16=0 & op=0xE4; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    local r:1 = XL - v;
+    resultFlags(r);
+    C = (XL >= v);
+}
+
+:CPY EA_DP is x16=0 & op=0xC4; EA_DP
+{
+    local v:1 = *:1 EA_DP;
+    local r:1 = YL - v;
+    resultFlags(r);
+    C = (YL >= v);
+}
+
+:CPX EA_ABS is x16=0 & op=0xEC; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    local r:1 = XL - v;
+    resultFlags(r);
+    C = (XL >= v);
+}
+
+:CPY EA_ABS is x16=0 & op=0xCC; EA_ABS
+{
+    local v:1 = *:1 EA_ABS;
+    local r:1 = YL - v;
+    resultFlags(r);
+    C = (YL >= v);
+}
+
+:LDX "#"imm8 is x16=0 & op=0xA2; imm8
+{
+    local v:1 = imm8;
+    X = zext(v);
+    resultFlags(v);
+}
+
+:LDY "#"imm8 is x16=0 & op=0xA0; imm8
+{
+    local v:1 = imm8;
+    Y = zext(v);
+    resultFlags(v);
+}
+
+:CPX "#"imm8 is x16=0 & op=0xE0; imm8
+{
+    local v:1 = imm8;
+    local r:1 = XL - v;
+    resultFlags(r);
+    C = (XL >= v);
+}
+
+:CPY "#"imm8 is x16=0 & op=0xC0; imm8
+{
+    local v:1 = imm8;
+    local r:1 = YL - v;
+    resultFlags(r);
+    C = (YL >= v);
+}
+
+:INX is x16=0 & op=0xE8
+{
+    XL = XL + 1;
+    resultFlags(XL);
+}
+
+:INY is x16=0 & op=0xC8
+{
+    YL = YL + 1;
+    resultFlags(YL);
+}
+
+:DEX is x16=0 & op=0xCA
+{
+    XL = XL - 1;
+    resultFlags(XL);
+}
+
+:DEY is x16=0 & op=0x88
+{
+    YL = YL - 1;
+    resultFlags(YL);
+}
+
+:LDX EA_DP is x16=1 & op=0xA6; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    X = v;
+    resultFlags(v);
+}
+
+:STX EA_DP is x16=1 & op=0x86; EA_DP
+{
+    *:2 EA_DP = X;
+}
+
+:LDX EA_ABS is x16=1 & op=0xAE; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    X = v;
+    resultFlags(v);
+}
+
+:STX EA_ABS is x16=1 & op=0x8E; EA_ABS
+{
+    *:2 EA_ABS = X;
+}
+
+:LDX EA_DPY is x16=1 & op=0xB6; EA_DPY
+{
+    local v:2 = *:2 EA_DPY;
+    X = v;
+    resultFlags(v);
+}
+
+:STX EA_DPY is x16=1 & op=0x96; EA_DPY
+{
+    *:2 EA_DPY = X;
+}
+
+:LDX EA_ABSY is x16=1 & op=0xBE; EA_ABSY
+{
+    local v:2 = *:2 EA_ABSY;
+    X = v;
+    resultFlags(v);
+}
+
+:LDY EA_DP is x16=1 & op=0xA4; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    Y = v;
+    resultFlags(v);
+}
+
+:STY EA_DP is x16=1 & op=0x84; EA_DP
+{
+    *:2 EA_DP = Y;
+}
+
+:LDY EA_ABS is x16=1 & op=0xAC; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    Y = v;
+    resultFlags(v);
+}
+
+:STY EA_ABS is x16=1 & op=0x8C; EA_ABS
+{
+    *:2 EA_ABS = Y;
+}
+
+:LDY EA_DPX is x16=1 & op=0xB4; EA_DPX
+{
+    local v:2 = *:2 EA_DPX;
+    Y = v;
+    resultFlags(v);
+}
+
+:STY EA_DPX is x16=1 & op=0x94; EA_DPX
+{
+    *:2 EA_DPX = Y;
+}
+
+:LDY EA_ABSX is x16=1 & op=0xBC; EA_ABSX
+{
+    local v:2 = *:2 EA_ABSX;
+    Y = v;
+    resultFlags(v);
+}
+
+:CPX EA_DP is x16=1 & op=0xE4; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    local r:2 = X - v;
+    resultFlags(r);
+    C = (X >= v);
+}
+
+:CPY EA_DP is x16=1 & op=0xC4; EA_DP
+{
+    local v:2 = *:2 EA_DP;
+    local r:2 = Y - v;
+    resultFlags(r);
+    C = (Y >= v);
+}
+
+:CPX EA_ABS is x16=1 & op=0xEC; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    local r:2 = X - v;
+    resultFlags(r);
+    C = (X >= v);
+}
+
+:CPY EA_ABS is x16=1 & op=0xCC; EA_ABS
+{
+    local v:2 = *:2 EA_ABS;
+    local r:2 = Y - v;
+    resultFlags(r);
+    C = (Y >= v);
+}
+
+:LDX "#"imm16 is x16=1 & op=0xA2; imm16
+{
+    local v:2 = imm16;
+    X = v;
+    resultFlags(v);
+}
+
+:LDY "#"imm16 is x16=1 & op=0xA0; imm16
+{
+    local v:2 = imm16;
+    Y = v;
+    resultFlags(v);
+}
+
+:CPX "#"imm16 is x16=1 & op=0xE0; imm16
+{
+    local v:2 = imm16;
+    local r:2 = X - v;
+    resultFlags(r);
+    C = (X >= v);
+}
+
+:CPY "#"imm16 is x16=1 & op=0xC0; imm16
+{
+    local v:2 = imm16;
+    local r:2 = Y - v;
+    resultFlags(r);
+    C = (Y >= v);
+}
+
+:INX is x16=1 & op=0xE8
+{
+    X = X + 1;
+    resultFlags(X);
+}
+
+:INY is x16=1 & op=0xC8
+{
+    Y = Y + 1;
+    resultFlags(Y);
+}
+
+:DEX is x16=1 & op=0xCA
+{
+    X = X - 1;
+    resultFlags(X);
+}
+
+:DEY is x16=1 & op=0x88
+{
+    Y = Y - 1;
+    resultFlags(Y);
+}
+
+# --- register transfers
+
+:TAX is x16=0 & op=0xAA
+{
+    X = zext(AL);
+    resultFlags(XL);
+}
+
+:TAY is x16=0 & op=0xA8
+{
+    Y = zext(AL);
+    resultFlags(YL);
+}
+
+:TSX is x16=0 & op=0xBA
+{
+    X = zext(SPL);
+    resultFlags(XL);
+}
+
+:TXY is x16=0 & op=0x9B
+{
+    Y = zext(XL);
+    resultFlags(YL);
+}
+
+:TYX is x16=0 & op=0xBB
+{
+    X = zext(YL);
+    resultFlags(XL);
+}
+
+:TXA is m16=0 & op=0x8A
+{
+    AL = XL;
+    resultFlags(AL);
+}
+
+:TYA is m16=0 & op=0x98
+{
+    AL = YL;
+    resultFlags(AL);
+}
+
+:TAX is x16=1 & op=0xAA
+{
+    X = A;
+    resultFlags(X);
+}
+
+:TAY is x16=1 & op=0xA8
+{
+    Y = A;
+    resultFlags(Y);
+}
+
+:TSX is x16=1 & op=0xBA
+{
+    X = SP;
+    resultFlags(X);
+}
+
+:TXY is x16=1 & op=0x9B
+{
+    Y = X;
+    resultFlags(Y);
+}
+
+:TYX is x16=1 & op=0xBB
+{
+    X = Y;
+    resultFlags(X);
+}
+
+:TXA is m16=1 & op=0x8A
+{
+    A = X;
+    resultFlags(A);
+}
+
+:TYA is m16=1 & op=0x98
+{
+    A = Y;
+    resultFlags(A);
+}
+
+:TXS is op=0x9A { SP = X; }
+:TCS is op=0x1B { SP = A; }
+:TSC is op=0x3B { A = SP; resultFlags(A); }
+:TCD is op=0x5B { DP = A; resultFlags(DP); }
+:TDC is op=0x7B { A = DP; resultFlags(A); }
+:XBA is op=0xEB { local t:1 = AL; AL = AH; AH = t; resultFlags(AL); }
+:XCE is op=0xFB { local t:1 = C; C = E; E = t; }
+
+# --- stack
+
+:PHA is m16=0 & op=0x48 { local v:1 = AL; push8(v); }
+
+:PHX is x16=0 & op=0xDA { local v:1 = XL; push8(v); }
+
+:PHY is x16=0 & op=0x5A { local v:1 = YL; push8(v); }
+
+:PLA is m16=0 & op=0x68 { local v:1 = 0; pull8(v); AL = v; resultFlags(v); }
+
+:PLX is x16=0 & op=0xFA { local v:1 = 0; pull8(v); X = zext(v); resultFlags(v); }
+
+:PLY is x16=0 & op=0x7A { local v:1 = 0; pull8(v); Y = zext(v); resultFlags(v); }
+
+:PHA is m16=1 & op=0x48 { local v:2 = A; push16(v); }
+
+:PHX is x16=1 & op=0xDA { local v:2 = X; push16(v); }
+
+:PHY is x16=1 & op=0x5A { local v:2 = Y; push16(v); }
+
+:PLA is m16=1 & op=0x68 { local v:2 = 0; pull16(v); A = v; resultFlags(v); }
+
+:PLX is x16=1 & op=0xFA { local v:2 = 0; pull16(v); X = v; resultFlags(v); }
+
+:PLY is x16=1 & op=0x7A { local v:2 = 0; pull16(v); Y = v; resultFlags(v); }
+
+:PHB is op=0x8B { push8(DB); }
+:PLB is op=0xAB { local v:1 = 0; pull8(v); DB = v; resultFlags(v); }
+:PHK is op=0x4B { push8(PB); }
+:PHD is op=0x0B { push16(DP); }
+:PLD is op=0x2B { local v:2 = 0; pull16(v); DP = v; resultFlags(v); }
+:PHP is op=0x08 { pushP(); }
+:PLP is op=0x28 { popP(); }
+:PEA imm16 is op=0xF4; imm16 { local v:2 = imm16; push16(v); }
+:PEI "("imm8")" is op=0xD4; imm8 { local pa:3 = zext(DP + imm8); local v:2 = *:2 pa; push16(v); }
+:PER reloc is op=0x62; rel16 [ reloc = (inst_next + rel16) & 0xffff; ] { local v:2 = reloc; push16(v); }
+
+# --- flags
+:CLC is op=0x18 { C = 0; }
+:SEC is op=0x38 { C = 1; }
+:CLI is op=0x58 { I = 0; }
+:SEI is op=0x78 { I = 1; }
+:CLV is op=0xB8 { V = 0; }
+:CLD is op=0xD8 { D = 0; }
+:SED is op=0xF8 { D = 1; }
+
+# REP and SEP change the flags, and with them the widths the following instructions are read in
+:REP "#"imm8 is op=0xC2; imm8 & repm & repx [ m16 = m16 | repm; x16 = x16 | repx; globalset(inst_next, m16); globalset(inst_next, x16); ]
+{
+    local m:1 = imm8;
+    repP(m);
+}
+
+:SEP "#"imm8 is op=0xE2; imm8 & repm & repx [ m16 = m16 & (1 - repm); x16 = x16 & (1 - repx); globalset(inst_next, m16); globalset(inst_next, x16); ]
+{
+    local m:1 = imm8;
+    sepP(m);
+}
+
+# --- branches
+:BPL REL is op=0x10; REL { if (N == 0) goto REL; }
+:BMI REL is op=0x30; REL { if (N) goto REL; }
+:BVC REL is op=0x50; REL { if (V == 0) goto REL; }
+:BVS REL is op=0x70; REL { if (V) goto REL; }
+:BCC REL is op=0x90; REL { if (C == 0) goto REL; }
+:BCS REL is op=0xB0; REL { if (C) goto REL; }
+:BNE REL is op=0xD0; REL { if (Z == 0) goto REL; }
+:BEQ REL is op=0xF0; REL { if (Z) goto REL; }
+:BRA REL is op=0x80; REL { goto REL; }
+:BRL REL16 is op=0x82; REL16 { goto REL16; }
+
+# --- jumps and calls
+:JMP JABS is op=0x4C; JABS { goto JABS; }
+:JML JLONG is op=0x5C; JLONG { goto JLONG; }
+
+:JMP "("imm16")" is op=0x6C; imm16
+{
+    local p:3 = imm16;
+    local t16:2 = *:2 p;
+    local b:3 = zext(PB);
+    b = b << 16;
+    local t:3 = b + zext(t16);
+    goto [t];
+}
+
+:JMP "("imm16",X)" is op=0x7C; imm16
+{
+    local s:2 = imm16 + X;
+    local b:3 = zext(PB);
+    b = b << 16;
+    local p:3 = b + zext(s);
+    local t16:2 = *:2 p;
+    local t:3 = b + zext(t16);
+    goto [t];
+}
+
+:JML "["imm16"]" is op=0xDC; imm16
+{
+    local p:3 = imm16;
+    local t:3 = *:3 p;
+    goto [t];
+}
+
+:JSR JABS is op=0x20; JABS
+{
+    local r:3 = inst_next - 1;
+    local r16:2 = r:2;
+    push16(r16);
+    call JABS;
+}
+
+:JSR "("imm16",X)" is op=0xFC; imm16
+{
+    local r:3 = inst_next - 1;
+    local r16:2 = r:2;
+    push16(r16);
+    local s:2 = imm16 + X;
+    local b:3 = zext(PB);
+    b = b << 16;
+    local p:3 = b + zext(s);
+    local t16:2 = *:2 p;
+    local t:3 = b + zext(t16);
+    call [t];
+}
+
+:JSL JLONG is op=0x22; JLONG
+{
+    push8(PB);
+    local r:3 = inst_next - 1;
+    local r16:2 = r:2;
+    push16(r16);
+    call JLONG;
+}
+
+:RTS is op=0x60
+{
+    local v:2 = 0;
+    pull16(v);
+    local b:3 = zext(PB);
+    b = b << 16;
+    local t:3 = b + zext(v + 1);	# JSR pushed the address of its last byte
+    return [t];
+}
+
+:RTL is op=0x6B
+{
+    local v:2 = 0;
+    local bk:1 = 0;
+    pull16(v);
+    pull8(bk);
+    local b:3 = zext(bk);
+    b = b << 16;
+    local t:3 = b + zext(v + 1);
+    return [t];
+}
+
+:RTI is op=0x40
+{
+    local v:2 = 0;
+    local bk:1 = 0;
+    popP();
+    pull16(v);
+    pull8(bk);
+    local b:3 = zext(bk);
+    b = b << 16;
+    local t:3 = b | zext(v);
+    return [t];
+}
+
+# --- software interrupts (native mode vectors in bank 0: COP $FFE4, BRK $FFE6)
+:BRK "#"imm8 is op=0x00; imm8
+{
+    push8(PB);
+    local r:3 = inst_next;
+    local r16:2 = r:2;
+    push16(r16);
+    pushP();
+    I = 1;
+    D = 0;
+    local vec:3 = 0xFFE6;
+    local t16:2 = *:2 vec;
+    local t:3 = zext(t16);
+    goto [t];
+}
+
+:COP "#"imm8 is op=0x02; imm8
+{
+    push8(PB);
+    local r:3 = inst_next;
+    local r16:2 = r:2;
+    push16(r16);
+    pushP();
+    I = 1;
+    D = 0;
+    local vec:3 = 0xFFE4;
+    local t16:2 = *:2 vec;
+    local t:3 = zext(t16);
+    goto [t];
+}
+
+:WDM "#"imm8 is op=0x42; imm8 { }
+:WAI is op=0xCB { wait_for_interrupt(); }
+:STP is op=0xDB { stop_clock(); }
+:NOP is op=0xEA { }
+
+# --- block moves: A is the count less one, X the source, Y the destination (one byte per pass:
+# the instruction repeats until A is $FFFF); the second operand byte is the source bank
+:MVN imm8b, imm8 is op=0x54; imm8; imm8b
+{
+    local sb:3 = imm8b;
+    local db:3 = imm8;
+    local s:3 = (sb << 16) + zext(X);
+    local d:3 = (db << 16) + zext(Y);
+    *:1 d = *:1 s;
+    X = X + 1;
+    Y = Y + 1;
+    A = A - 1;
+    DB = imm8;
+    if (A != 0xFFFF) goto inst_start;
+}
+
+:MVP imm8b, imm8 is op=0x44; imm8; imm8b
+{
+    local sb:3 = imm8b;
+    local db:3 = imm8;
+    local s:3 = (sb << 16) + zext(X);
+    local d:3 = (db << 16) + zext(Y);
+    *:1 d = *:1 s;
+    X = X - 1;
+    Y = Y - 1;
+    A = A - 1;
+    DB = imm8;
+    if (A != 0xFFFF) goto inst_start;
+}

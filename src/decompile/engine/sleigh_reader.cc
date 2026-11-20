@@ -87,6 +87,7 @@ std::size_t Reader::alignment() const { return static_cast<std::size_t>(impl_->t
 std::vector<Instruction> Reader::read(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::size_t count) const {
     std::lock_guard hold(impl_->lock);
     impl_->window.set(code, size, base);
+    impl_->trans->forgetParses();   // (other bytes may have been read at these addresses before)
     ghidra::AddrSpace* space = impl_->trans->getDefaultCodeSpace();
     // an address in the space's units (a word-addressed processor counts words, not bytes)
     const std::uint64_t unit = static_cast<std::uint64_t>(space->getWordSize());

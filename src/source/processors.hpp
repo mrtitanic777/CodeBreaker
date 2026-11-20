@@ -49,11 +49,22 @@ struct Processor {
     // starts from; empty for a processor that has none yet. `read_described` reads through it.
     std::string_view sla;
     std::vector<std::pair<std::string_view, int>> context;
+    bool big_endian = false;   // how its data directives write a word
 };
 
 // The instructions as the processor's SLEIGH description reads them (the decompiler core's own reader, in this program): the
 // same arguments as `disassemble`, the text in the description's syntax. UsageError for a processor with no description.
 std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count);
+
+// The image `source` assembles to through the processor's SLEIGH description: the one assembler (decompile/engine/
+// sleigh_assembler) under the one directive layer (build/mips_asm: labels, .org, data). The instructions are in the description's
+// syntax, as read_described writes them. UsageError for a processor with no description; AsmError for source that does not assemble.
+Image assemble_described(const Processor& processor, std::string_view source, const std::filesystem::path& folder);
+
+// Source for `code` that assembles back to exactly `code` through assemble_described: each instruction as read_described writes it,
+// except where its text assembles to other bytes (an encoding the text cannot tell apart: a 68000 immediate's unused byte, an ARM
+// constant's other rotation), which stays as its bytes, with the instruction in a comment.
+std::string source_described(const Processor& processor, ByteView code, std::uint64_t base);
 
 // Every processor, in a fixed order.
 std::span<const Processor> all();

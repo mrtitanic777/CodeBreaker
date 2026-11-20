@@ -1,0 +1,605 @@
+# SLEIGH specification for the Sharp SM83 (LR35902), the Game Boy / Game Boy Color CPU.
+#
+# Derived from Ghidra's Z80 description (Apache-2.0, see GHIDRA_LICENSE next to it) and
+# reworked for the SM83: no IX/IY, no shadow registers, no I/O space, no DD/ED/FD pages;
+# adds LDH, LD (HL+)/(HL-), LD (nn),SP, ADD SP,e, LD HL,SP+e, STOP, SWAP, RETI, DI/EI as
+# the Game Boy defines them.  F holds Z N H C in its high nibble: Z=bit7, N=bit6, H=bit5, C=bit4.
+
+define endian=little;
+define alignment=1;
+
+define space ram      type=ram_space      size=2  default;
+define space register type=register_space size=1;
+
+define register offset=0x00 size=1 [ F A C B E D L H ];
+define register offset=0x00 size=2 [ AF BC DE HL ];
+define register offset=0x20 size=2 [ PC SP ];
+
+@define Z_flag "F[7,1]"
+@define N_flag "F[6,1]"
+@define H_flag "F[5,1]"
+@define C_flag "F[4,1]"
+
+define token opbyte (8)
+	op0_8    = (0,7)
+	op6_2    = (6,7)
+	rp4_2    = (4,5)
+	qq4_2    = (4,5)
+	cc3_2    = (3,4)
+	bit5     = (5,5)
+	bit3     = (3,3)
+	reg3_3   = (3,5)
+	bits3_3  = (3,5)
+	bits0_4  = (0,3)
+	reg0_3   = (0,2)
+	bits0_3  = (0,2)
+;
+
+define token data8 (8)
+	imm8   = (0,7)
+	sign8  = (7,7)
+	simm8  = (0,7) signed
+	nz8    = (0,7)
+;
+
+define token data16 (16)
+	imm16  = (0,15)
+;
+
+attach variables [ reg0_3 reg3_3 ] [ B C D E H L _ A ];
+attach variables [ rp4_2 ] [ BC DE HL SP ];
+attach variables [ qq4_2 ] [ BC DE HL AF ];
+
+define pcodeop disableMaskableInterrupts;
+define pcodeop enableMaskableInterrupts;
+define pcodeop halt;
+define pcodeop stop;
+define pcodeop undefinedOpcode;
+
+################################################################
+# Macros
+################################################################
+
+macro push16(val16) {
+	SP = SP - 2;
+	*:2 SP = val16;
+}
+
+macro pop16(ret16) {
+	ret16 = *:2 SP;
+	SP = SP + 2;
+}
+
+# res = a + b + cin; sets Z N H C
+macro add8(a, b, cin, res) {
+	local a2:2 = zext(a);
+	local b2:2 = zext(b);
+	local c2:2 = zext(cin);
+	local lo:2 = (a2 & 0xf) + (b2 & 0xf) + c2;
+	local full:2 = a2 + b2 + c2;
+	res = full:1;
+	$(Z_flag) = (res == 0);
+	$(N_flag) = 0;
+	$(H_flag) = (lo > 0xf);
+	$(C_flag) = (full > 0xff);
+}
+
+# res = a - b - cin; sets Z N H C
+macro sub8(a, b, cin, res) {
+	local a2:2 = zext(a);
+	local b2:2 = zext(b);
+	local c2:2 = zext(cin);
+	local lo:2 = (a2 & 0xf) - (b2 & 0xf) - c2;
+	local full:2 = a2 - b2 - c2;
+	res = full:1;
+	$(Z_flag) = (res == 0);
+	$(N_flag) = 1;
+	$(H_flag) = (lo s< 0);
+	$(C_flag) = (full s< 0);
+}
+
+macro andFlags(res) {
+	$(Z_flag) = (res == 0);
+	$(N_flag) = 0;
+	$(H_flag) = 1;
+	$(C_flag) = 0;
+}
+
+macro orFlags(res) {
+	$(Z_flag) = (res == 0);
+	$(N_flag) = 0;
+	$(H_flag) = 0;
+	$(C_flag) = 0;
+}
+
+# flags of SP + signed e (ADD SP,e and LD HL,SP+e): carries out of bit 3 and bit 7 of the low byte
+macro spOffsetFlags(e) {
+	local sp:2 = SP;
+	local e2:2 = zext(e);
+	$(Z_flag) = 0;
+	$(N_flag) = 0;
+	$(H_flag) = (((sp & 0xf) + (e2 & 0xf)) > 0xf);
+	$(C_flag) = (((sp & 0xff) + e2) > 0xff);
+}
+
+macro rotateFlags(res, cout) {
+	$(Z_flag) = (res == 0);
+	$(N_flag) = 0;
+	$(H_flag) = 0;
+	$(C_flag) = cout;
+}
+
+################################################################
+# Operands
+################################################################
+
+# register or (HL), low three bits
+src8: reg0_3 is reg0_3             { export reg0_3; }
+src8: "(HL)" is reg0_3=6           { local p:2 = HL; export *:1 p; }
+
+# register or (HL), middle three bits
+dst8: reg3_3 is reg3_3             { export reg3_3; }
+dst8: "(HL)" is reg3_3=6           { local p:2 = HL; export *:1 p; }
+
+cc: "NZ" is cc3_2=0                { c:1 = ($(Z_flag) == 0); export c; }
+cc: "Z"  is cc3_2=1                { c:1 = $(Z_flag); export c; }
+cc: "NC" is cc3_2=2                { c:1 = ($(C_flag) == 0); export c; }
+cc: "C"  is cc3_2=3                { c:1 = $(C_flag); export c; }
+
+Addr16: imm16 is imm16             { export *:1 imm16; }
+RelAddr8: loc is simm8 [ loc = inst_next + simm8; ]  { export *:1 loc; }
+RstAddr: loc is bits3_3 [ loc = bits3_3 << 3; ]       { export *:1 loc; }
+
+Mem8: "(" imm16 ")" is imm16       { export *:1 imm16; }
+Mem16: "(" imm16 ")" is imm16      { export *:2 imm16; }
+
+# LDH: the high page, 0xFF00 + n
+HiMem: "(" loc ")" is imm8 [ loc = 0xff00 + imm8; ]   { export *:1 loc; }
+
+# a signed byte, shown with its sign
+Disp8: simm8 is simm8 & sign8=0    { }
+Disp8: -val is simm8 & sign8=1 [ val = -simm8; ]  { }
+
+SPDisp: SP+simm8 is SP & simm8 & sign8=0           { }
+SPDisp: SP-val is SP & simm8 & sign8=1 [ val = -simm8; ]  { }
+
+################################################################
+# Loads
+################################################################
+
+:NOP is op0_8=0x00 { }
+
+:LD rp4_2,imm16 is op6_2=0 & rp4_2 & bits0_4=0x1; imm16 {
+	rp4_2 = imm16;
+}
+
+:LD "(BC)","A" is op0_8=0x02 { *:1 BC = A; }
+:LD "(DE)","A" is op0_8=0x12 { *:1 DE = A; }
+:LD "(HL+)","A" is op0_8=0x22 { *:1 HL = A; HL = HL + 1; }
+:LD "(HL-)","A" is op0_8=0x32 { *:1 HL = A; HL = HL - 1; }
+
+:LD "A","(BC)" is op0_8=0x0a { A = *:1 BC; }
+:LD "A","(DE)" is op0_8=0x1a { A = *:1 DE; }
+:LD "A","(HL+)" is op0_8=0x2a { A = *:1 HL; HL = HL + 1; }
+:LD "A","(HL-)" is op0_8=0x3a { A = *:1 HL; HL = HL - 1; }
+
+:LD dst8,imm8 is op6_2=0 & reg0_3=6 & dst8; imm8 {
+	dst8 = imm8;
+}
+
+:LD reg3_3,reg0_3 is op6_2=1 & reg3_3 & reg0_3 {
+	reg3_3 = reg0_3;
+}
+
+:LD reg3_3,"(HL)" is op6_2=1 & reg3_3 & reg0_3=6 {
+	reg3_3 = *:1 HL;
+}
+
+:LD "(HL)",reg0_3 is op6_2=1 & reg3_3=6 & reg0_3 {
+	*:1 HL = reg0_3;
+}
+
+:LD Mem16,"SP" is op0_8=0x08; Mem16 {
+	Mem16 = SP;
+}
+
+:LD Mem8,"A" is op0_8=0xea; Mem8 { Mem8 = A; }
+:LD "A",Mem8 is op0_8=0xfa; Mem8 { A = Mem8; }
+
+:LDH HiMem,"A" is op0_8=0xe0; HiMem { HiMem = A; }
+:LDH "A",HiMem is op0_8=0xf0; HiMem { A = HiMem; }
+
+:LD "(C)","A" is op0_8=0xe2 {
+	local p:2 = zext(C) | 0xff00;
+	*:1 p = A;
+}
+
+:LD "A","(C)" is op0_8=0xf2 {
+	local p:2 = zext(C) | 0xff00;
+	A = *:1 p;
+}
+
+:LD "SP","HL" is op0_8=0xf9 { SP = HL; }
+
+:LD "HL",SPDisp is op0_8=0xf8; SPDisp & imm8 {
+	local e:1 = imm8;
+	spOffsetFlags(e);
+	HL = SP + sext(e);
+}
+
+:PUSH qq4_2 is op6_2=3 & qq4_2 & bits0_4=0x5 {
+	push16(qq4_2);
+}
+
+:POP qq4_2 is op6_2=3 & qq4_2 & bits0_4=0x1 {
+	pop16(qq4_2);
+	F = F & 0xf0;
+}
+
+################################################################
+# 8-bit arithmetic and logic
+################################################################
+
+:ADD "A",src8 is op6_2=2 & bits3_3=0 & src8 {
+	local s:1 = src8;
+	local z:1 = 0;
+	add8(A, s, z, A);
+}
+:ADC "A",src8 is op6_2=2 & bits3_3=1 & src8 {
+	local s:1 = src8;
+	local c:1 = $(C_flag);
+	add8(A, s, c, A);
+}
+:SUB src8 is op6_2=2 & bits3_3=2 & src8 {
+	local s:1 = src8;
+	local z:1 = 0;
+	sub8(A, s, z, A);
+}
+:SBC "A",src8 is op6_2=2 & bits3_3=3 & src8 {
+	local s:1 = src8;
+	local c:1 = $(C_flag);
+	sub8(A, s, c, A);
+}
+:AND src8 is op6_2=2 & bits3_3=4 & src8 {
+	A = A & src8;
+	andFlags(A);
+}
+:XOR src8 is op6_2=2 & bits3_3=5 & src8 {
+	A = A ^ src8;
+	orFlags(A);
+}
+:OR src8 is op6_2=2 & bits3_3=6 & src8 {
+	A = A | src8;
+	orFlags(A);
+}
+:CP src8 is op6_2=2 & bits3_3=7 & src8 {
+	local s:1 = src8;
+	local z:1 = 0;
+	local t:1 = 0;
+	sub8(A, s, z, t);
+}
+
+:ADD "A",imm8 is op0_8=0xc6; imm8 {
+	local s:1 = imm8;
+	local z:1 = 0;
+	add8(A, s, z, A);
+}
+:ADC "A",imm8 is op0_8=0xce; imm8 {
+	local s:1 = imm8;
+	local c:1 = $(C_flag);
+	add8(A, s, c, A);
+}
+:SUB imm8 is op0_8=0xd6; imm8 {
+	local s:1 = imm8;
+	local z:1 = 0;
+	sub8(A, s, z, A);
+}
+:SBC "A",imm8 is op0_8=0xde; imm8 {
+	local s:1 = imm8;
+	local c:1 = $(C_flag);
+	sub8(A, s, c, A);
+}
+:AND imm8 is op0_8=0xe6; imm8 {
+	A = A & imm8;
+	andFlags(A);
+}
+:XOR imm8 is op0_8=0xee; imm8 {
+	A = A ^ imm8;
+	orFlags(A);
+}
+:OR imm8 is op0_8=0xf6; imm8 {
+	A = A | imm8;
+	orFlags(A);
+}
+:CP imm8 is op0_8=0xfe; imm8 {
+	local s:1 = imm8;
+	local z:1 = 0;
+	local t:1 = 0;
+	sub8(A, s, z, t);
+}
+
+:INC dst8 is op6_2=0 & reg0_3=4 & dst8 {
+	local v:1 = dst8;
+	local r:1 = v + 1;
+	dst8 = r;
+	$(Z_flag) = (r == 0);
+	$(N_flag) = 0;
+	$(H_flag) = ((v & 0xf) == 0xf);
+}
+
+:DEC dst8 is op6_2=0 & reg0_3=5 & dst8 {
+	local v:1 = dst8;
+	local r:1 = v - 1;
+	dst8 = r;
+	$(Z_flag) = (r == 0);
+	$(N_flag) = 1;
+	$(H_flag) = ((v & 0xf) == 0);
+}
+
+:DAA is op0_8=0x27 {
+	local a:1 = A;
+	local n:1 = $(N_flag);
+	local h:1 = $(H_flag);
+	local c:1 = $(C_flag);
+	local hi:1 = (c == 1) || ((n == 0) && (a > 0x99));
+	local lo:1 = (h == 1) || ((n == 0) && ((a & 0xf) > 9));
+	local adj:1 = (hi * 0x60) + (lo * 6);
+	if (n == 0) goto <add>;
+	a = a - adj;
+	goto <done>;
+<add>
+	a = a + adj;
+<done>
+	A = a;
+	$(Z_flag) = (a == 0);
+	$(H_flag) = 0;
+	$(C_flag) = hi;
+}
+
+:CPL is op0_8=0x2f {
+	A = ~A;
+	$(N_flag) = 1;
+	$(H_flag) = 1;
+}
+
+:SCF is op0_8=0x37 {
+	$(N_flag) = 0;
+	$(H_flag) = 0;
+	$(C_flag) = 1;
+}
+
+:CCF is op0_8=0x3f {
+	$(N_flag) = 0;
+	$(H_flag) = 0;
+	$(C_flag) = ($(C_flag) == 0);
+}
+
+################################################################
+# 16-bit arithmetic
+################################################################
+
+:INC rp4_2 is op6_2=0 & rp4_2 & bits0_4=0x3 { rp4_2 = rp4_2 + 1; }
+:DEC rp4_2 is op6_2=0 & rp4_2 & bits0_4=0xb { rp4_2 = rp4_2 - 1; }
+
+:ADD "HL",rp4_2 is op6_2=0 & rp4_2 & bits0_4=0x9 {
+	local s:2 = rp4_2;
+	local h:2 = HL;
+	$(N_flag) = 0;
+	$(H_flag) = (((h & 0xfff) + (s & 0xfff)) > 0xfff);
+	$(C_flag) = carry(h, s);
+	HL = h + s;
+}
+
+:ADD "SP",Disp8 is op0_8=0xe8; Disp8 & imm8 {
+	local e:1 = imm8;
+	spOffsetFlags(e);
+	SP = SP + sext(e);
+}
+
+################################################################
+# Rotates, shifts, bit operations
+################################################################
+
+:RLCA is op0_8=0x07 {
+	local v:1 = A;
+	local c:1 = v >> 7;
+	A = (v << 1) | c;
+	$(Z_flag) = 0;
+	$(N_flag) = 0;
+	$(H_flag) = 0;
+	$(C_flag) = (c != 0);
+}
+
+:RRCA is op0_8=0x0f {
+	local v:1 = A;
+	local c:1 = v & 1;
+	A = (v >> 1) | (c << 7);
+	$(Z_flag) = 0;
+	$(N_flag) = 0;
+	$(H_flag) = 0;
+	$(C_flag) = (c != 0);
+}
+
+:RLA is op0_8=0x17 {
+	local v:1 = A;
+	local c:1 = $(C_flag);
+	A = (v << 1) | c;
+	$(Z_flag) = 0;
+	$(N_flag) = 0;
+	$(H_flag) = 0;
+	$(C_flag) = ((v & 0x80) != 0);
+}
+
+:RRA is op0_8=0x1f {
+	local v:1 = A;
+	local c:1 = $(C_flag);
+	A = (v >> 1) | (c << 7);
+	$(Z_flag) = 0;
+	$(N_flag) = 0;
+	$(H_flag) = 0;
+	$(C_flag) = ((v & 1) != 0);
+}
+
+:RLC src8 is op0_8=0xcb; op6_2=0 & bits3_3=0 & src8 {
+	local v:1 = src8;
+	local r:1 = (v << 1) | (v >> 7);
+	src8 = r;
+	rotateFlags(r, ((v & 0x80) != 0));
+}
+
+:RRC src8 is op0_8=0xcb; op6_2=0 & bits3_3=1 & src8 {
+	local v:1 = src8;
+	local r:1 = (v >> 1) | (v << 7);
+	src8 = r;
+	rotateFlags(r, ((v & 1) != 0));
+}
+
+:RL src8 is op0_8=0xcb; op6_2=0 & bits3_3=2 & src8 {
+	local v:1 = src8;
+	local c:1 = $(C_flag);
+	local r:1 = (v << 1) | c;
+	src8 = r;
+	rotateFlags(r, ((v & 0x80) != 0));
+}
+
+:RR src8 is op0_8=0xcb; op6_2=0 & bits3_3=3 & src8 {
+	local v:1 = src8;
+	local c:1 = $(C_flag);
+	local r:1 = (v >> 1) | (c << 7);
+	src8 = r;
+	rotateFlags(r, ((v & 1) != 0));
+}
+
+:SLA src8 is op0_8=0xcb; op6_2=0 & bits3_3=4 & src8 {
+	local v:1 = src8;
+	local r:1 = v << 1;
+	src8 = r;
+	rotateFlags(r, ((v & 0x80) != 0));
+}
+
+:SRA src8 is op0_8=0xcb; op6_2=0 & bits3_3=5 & src8 {
+	local v:1 = src8;
+	local r:1 = v s>> 1;
+	src8 = r;
+	rotateFlags(r, ((v & 1) != 0));
+}
+
+:SWAP src8 is op0_8=0xcb; op6_2=0 & bits3_3=6 & src8 {
+	local v:1 = src8;
+	local r:1 = (v << 4) | (v >> 4);
+	src8 = r;
+	rotateFlags(r, 0:1);
+}
+
+:SRL src8 is op0_8=0xcb; op6_2=0 & bits3_3=7 & src8 {
+	local v:1 = src8;
+	local r:1 = v >> 1;
+	src8 = r;
+	rotateFlags(r, ((v & 1) != 0));
+}
+
+:BIT bits3_3,src8 is op0_8=0xcb; op6_2=1 & bits3_3 & src8 {
+	local v:1 = src8;
+	local m:1 = 1 << bits3_3;
+	$(Z_flag) = ((v & m) == 0);
+	$(N_flag) = 0;
+	$(H_flag) = 1;
+}
+
+:RES bits3_3,src8 is op0_8=0xcb; op6_2=2 & bits3_3 & src8 {
+	local m:1 = ~(1 << bits3_3);
+	local v:1 = src8;
+	src8 = v & m;
+}
+
+:SET bits3_3,src8 is op0_8=0xcb; op6_2=3 & bits3_3 & src8 {
+	local m:1 = 1 << bits3_3;
+	local v:1 = src8;
+	src8 = v | m;
+}
+
+################################################################
+# Control flow
+################################################################
+
+:JP Addr16 is op0_8=0xc3; Addr16 {
+	goto Addr16;
+}
+
+:JP cc,Addr16 is op6_2=3 & bit5=0 & cc & bits0_3=2; Addr16 {
+	if (cc) goto Addr16;
+}
+
+:JP "HL" is op0_8=0xe9 {
+	local p:2 = HL;
+	goto [p];
+}
+
+:JR RelAddr8 is op0_8=0x18; RelAddr8 {
+	goto RelAddr8;
+}
+
+:JR cc,RelAddr8 is op6_2=0 & bit5=1 & cc & bits0_3=0; RelAddr8 {
+	if (cc) goto RelAddr8;
+}
+
+:CALL Addr16 is op0_8=0xcd; Addr16 {
+	push16(&:2 inst_next);
+	call Addr16;
+}
+
+:CALL cc,Addr16 is op6_2=3 & bit5=0 & cc & bits0_3=4; Addr16 {
+	if (!cc) goto inst_next;
+	push16(&:2 inst_next);
+	call Addr16;
+}
+
+:RET is op0_8=0xc9 {
+	pop16(PC);
+	local p:2 = PC;
+	return [p];
+}
+
+:RETI is op0_8=0xd9 {
+	enableMaskableInterrupts();
+	pop16(PC);
+	local p:2 = PC;
+	return [p];
+}
+
+:RET cc is op6_2=3 & bit5=0 & cc & bits0_3=0 {
+	if (!cc) goto inst_next;
+	pop16(PC);
+	local p:2 = PC;
+	return [p];
+}
+
+:RST RstAddr is op6_2=3 & RstAddr & bits0_3=7 {
+	push16(&:2 inst_next);
+	call RstAddr;
+}
+
+################################################################
+# CPU control
+################################################################
+
+:HALT is op0_8=0x76 { halt(); }
+:STOP is op0_8=0x10; op0_8=0x00 { stop(); }
+:DI is op0_8=0xf3 { disableMaskableInterrupts(); }
+:EI is op0_8=0xfb { enableMaskableInterrupts(); }
+
+# STOP followed by anything but 00 is not a defined instruction; the byte pair is data
+:".db" "0x10",imm8 is op0_8=0x10; imm8 & nz8!=0 { undefinedOpcode(); }
+
+# the eleven opcodes the SM83 does not define
+:".db" "0xd3" is op0_8=0xd3 { undefinedOpcode(); }
+:".db" "0xdb" is op0_8=0xdb { undefinedOpcode(); }
+:".db" "0xdd" is op0_8=0xdd { undefinedOpcode(); }
+:".db" "0xe3" is op0_8=0xe3 { undefinedOpcode(); }
+:".db" "0xe4" is op0_8=0xe4 { undefinedOpcode(); }
+:".db" "0xeb" is op0_8=0xeb { undefinedOpcode(); }
+:".db" "0xec" is op0_8=0xec { undefinedOpcode(); }
+:".db" "0xed" is op0_8=0xed { undefinedOpcode(); }
+:".db" "0xf4" is op0_8=0xf4 { undefinedOpcode(); }
+:".db" "0xfc" is op0_8=0xfc { undefinedOpcode(); }
+:".db" "0xfd" is op0_8=0xfd { undefinedOpcode(); }

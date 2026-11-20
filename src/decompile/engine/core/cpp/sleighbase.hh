@@ -76,6 +76,7 @@ public:
   static const uint4 MAX_UNIQUE_SIZE;    ///< Maximum size of a varnode in the unique space (should match value in SleighBase.java)
   SleighBase(void);		///< Construct an uninitialized translator
   bool isInitialized(void) const { return (root != (SubtableSymbol *)0); }	///< Return \b true if \b this is initialized
+  SubtableSymbol *getRoot(void) const { return root; }	// (the root decoding table, for the assembler)
   virtual ~SleighBase(void) {}	///< Destructor
   virtual const VarnodeData &getRegister(const string &nm) const;
   virtual string getRegisterName(AddrSpace *base,uintb off,int4 size) const;

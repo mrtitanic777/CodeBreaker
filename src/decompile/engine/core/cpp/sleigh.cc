@@ -550,6 +550,21 @@ void Sleigh::reset(LoadImage *ld,ContextDatabase *c_db)
   discache = (DisassemblyCache *)0;
 }
 
+/// CodeBreaker: the reader and the assembler read new bytes at addresses already read, so the parses kept for them are dropped.
+void Sleigh::forgetParses(void)
+
+{
+  if (discache == (DisassemblyCache *)0) return;
+  delete discache;
+  uint4 parser_cachesize = 2;		// (as initialize sizes it)
+  uint4 parser_windowsize = 32;
+  if ((maxdelayslotbytes > 1)||(unique_allocatemask != 0)) {
+    parser_cachesize = 8;
+    parser_windowsize = 256;
+  }
+  discache = new DisassemblyCache(this,cache,getConstantSpace(),parser_cachesize,parser_windowsize);
+}
+
 /// The .sla file from the document store is loaded and cache objects are prepared
 /// \param store is the document store containing the main \<sleigh> tag.
 void Sleigh::initialize(DocumentStorage &store)

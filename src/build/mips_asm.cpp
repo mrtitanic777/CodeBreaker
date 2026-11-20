@@ -31,12 +31,12 @@ struct SourceLine {
     std::string_view text;   // comment removed, trimmed, never empty
 };
 
-std::vector<SourceLine> significant_lines(std::string_view source) {
+std::vector<SourceLine> significant_lines(std::string_view source, char comment) {
     std::vector<SourceLine> out;
     std::uint32_t number = 0;
     for (std::string_view raw : text::lines(source)) {
         ++number;
-        const std::string_view line = text::trim(strip(raw));
+        const std::string_view line = text::trim(strip(raw, comment));
         if (!line.empty()) out.push_back({number, line});
     }
     return out;
@@ -117,8 +117,8 @@ Bytes string_bytes(std::string_view quoted) {
 
 class Pass {
 public:
-    Pass(const Encoder& isa, Labels& labels, std::unordered_map<std::uint32_t, std::size_t>& sizes, bool final, ByteOrder order)
-        : isa_(isa), labels_(labels), sizes_(sizes), final_(final), order_(order) {}
+    Pass(const Encoder& isa, Labels& labels, std::unordered_map<std::uint32_t, std::size_t>& sizes, bool final, ByteOrder order, unsigned alignment)
+        : isa_(isa), labels_(labels), sizes_(sizes), final_(final), order_(order), alignment_(alignment) {}
 
     Bytes run(const std::vector<SourceLine>& lines) {
         for (const SourceLine& l : lines) {
@@ -243,7 +243,7 @@ private:
     }
 
     void instruction(std::string_view text) {
-        if (pc_ % 4 != 0) fail(std::format("an instruction at ${:X}, which is not a multiple of four", pc_));
+        if (pc_ % alignment_ != 0) fail(std::format("an instruction at ${:X}, which is not a multiple of {}", pc_, alignment_));
         Result<Bytes> r = isa_.assemble(text, pc_, labels_);
         if (!r.ok() && is_undefined(r.error()) && !final_) r = assemble_with_guesses(isa_, text, pc_, labels_, pc_ + kGuessDistance);   // (size_guess's answer, without a copy of the labels)
         if (!r.ok()) fail(r.error().what());
@@ -261,6 +261,7 @@ private:
     std::unordered_map<std::uint32_t, std::size_t>& sizes_;
     bool final_;
     ByteOrder order_;
+    std::int64_t alignment_;
     Bytes image_;
     std::int64_t pc_ = 0;
     std::string_view current_;
@@ -269,14 +270,14 @@ private:
 
 }  // namespace
 
-std::string_view strip(std::string_view line) {
+std::string_view strip(std::string_view line, char comment) {
     bool quoted = false;
     for (std::size_t i = 0; i < line.size(); ++i) {
         if (line[i] == '\\' && quoted) {
             ++i;
         } else if (line[i] == '"') {
             quoted = !quoted;
-        } else if (line[i] == '#' && !quoted) {
+        } else if (line[i] == comment && !quoted) {
             return text::rtrim(line.substr(0, i));
         }
     }
@@ -295,12 +296,12 @@ Result<Bytes> size_guess(const Encoder& encoder, std::string_view line, std::int
 }
 
 Bytes Assembler::build(std::string_view source) const {
-    const std::vector<SourceLine> lines = significant_lines(source);
+    const std::vector<SourceLine> lines = significant_lines(source, comment_);
     Labels labels;
     std::unordered_map<std::uint32_t, std::size_t> sizes;
     Bytes image;
     for (const bool final : {false, true}) {
-        Pass pass(*isa_, labels, sizes, final, order_);
+        Pass pass(*isa_, labels, sizes, final, order_, alignment_);
         image = pass.run(lines);
     }
     return image;

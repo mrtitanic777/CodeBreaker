@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<language_definitions>
+  <language processor="SM83"
+            endian="little"
+            size="16"
+            variant="default"
+            version="1.0"
+            slafile="sm83.sla"
+            processorspec="sm83.pspec"
+            id="sm83:LE:16:default">
+    <description>Sharp SM83 (Game Boy / Game Boy Color, LR35902)</description>
+    <compiler name="default" spec="sm83.cspec" id="default"/>
+  </language>
+</language_definitions>

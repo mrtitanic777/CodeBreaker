@@ -56,6 +56,7 @@
 #include "source/isa_mips_le.hpp"
 #include "source/isa_r4300.hpp"
 #include "source/isa_sh2.hpp"
+#include "source/isa_sleigh.hpp"
 
 namespace cb::source::processors {
 namespace {
@@ -355,23 +356,26 @@ std::vector<Processor> make_table() {
     struct Described {
         std::string_view name, sla;
         std::vector<std::pair<std::string_view, int>> context;
+        bool big_endian = false;
     };
     const Described described[] = {
         {"x86-16", "x86.sla", {{"addrsize", 0}, {"opsize", 0}}}, {"x86-32", "x86.sla", {{"addrsize", 1}, {"opsize", 1}}},
         {"masm", "x86.sla", {{"addrsize", 0}, {"opsize", 0}}},   {"6502", "6502.sla", {}},
         {"65c02", "65c02.sla", {}},                               {"z80", "z80.sla", {}},
-        {"m68k", "68020.sla", {}},                                {"m6809", "6809.sla", {}},
-        {"mips", "mips32le.sla", {}},                             {"r4300", "mips64be.sla", {}},
+        {"m68k", "68020.sla", {}, true},                          {"m6809", "6809.sla", {}, true},
+        {"mips", "mips32le.sla", {}},                             {"r4300", "mips64be.sla", {}, true},
         {"r5900", "mips64le.sla", {}},                            {"arm", "ARM4t_le.sla", {{"TMode", 0}}},
         {"thumb", "ARM4t_le.sla", {{"TMode", 1}}},                {"arm9", "ARM5t_le.sla", {{"TMode", 0}}},
         {"arm11", "ARM6_le.sla", {{"TMode", 0}}},                 {"armv7", "ARM7_le.sla", {{"TMode", 0}}},
-        {"a64", "AARCH64.sla", {}},                               {"ppc", "ppc_32_be.sla", {}},
-        {"sh2", "sh-2.sla", {}},                                  {"sh4", "SuperH4_le.sla", {}},
-        {"i8048", "8048.sla", {}},                                {"cp1610", "CP1600.sla", {}},
+        {"a64", "AARCH64.sla", {}},                               {"ppc", "ppc_32_be.sla", {}, true},
+        {"sh2", "sh-2.sla", {}, true},                            {"sh4", "SuperH4_le.sla", {}},
+        {"i8048", "8048.sla", {}},                                {"cp1610", "CP1600.sla", {}, true},
+        {"sm83", "sm83.sla", {}},                                 {"huc6280", "huc6280.sla", {}},
+        {"65816", "65816.sla", {}},
     };
     for (const Described& d : described)
         for (Processor& p : t)
-            if (p.name == d.name) p.sla = d.sla, p.context = d.context;
+            if (p.name == d.name) p.sla = d.sla, p.context = d.context, p.big_endian = d.big_endian;
     return t;
 }
 
@@ -413,6 +417,38 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
         line.bytes.assign(code.begin() + static_cast<std::ptrdiff_t>(at), code.begin() + static_cast<std::ptrdiff_t>(at + n));
         line.text = i.length != 0 ? (i.operands.empty() ? i.mnemonic : i.mnemonic + " " + i.operands) : data_text(code.subspan(at, n));
         out.push_back(std::move(line));
+    }
+    return out;
+}
+
+Image assemble_described(const Processor& processor, std::string_view source, const std::filesystem::path& folder) {
+    if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
+    std::vector<std::pair<std::string, int>> context;
+    for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
+    const build::Encoder& encoder = isa::sleigh_encoder(languages() / processor.sla, context);
+    (void)folder;
+    return bytes_at(build::mips_asm::Assembler(encoder, processor.big_endian ? build::mips_asm::ByteOrder::Big : build::mips_asm::ByteOrder::Little, 1, ';').build(source));
+}
+
+std::string source_described(const Processor& processor, ByteView code, std::uint64_t base) {
+    std::vector<std::pair<std::string, int>> context;
+    for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
+    const build::Encoder& encoder = isa::sleigh_encoder(languages() / processor.sla, context);
+    const build::Labels none;
+    auto raw = [](const Line& l) {
+        std::string s = "\t.byte ";
+        for (std::size_t k = 0; k < l.bytes.size(); ++k) s += std::format("{}0x{:02x}", k ? "," : "", l.bytes[k]);
+        return s;
+    };
+    std::string out = std::format("; {} ({}), {} bytes from 0x{:x}\n\t.org 0x{:x}\n", processor.name, processor.sla, code.size(), base, base);
+    for (const Line& l : read_described(processor, code, base, 0)) {
+        if (l.text.starts_with(".d")) {
+            out += raw(l) + "\n";
+            continue;
+        }
+        const Result<Bytes> again = encoder.assemble(l.text, static_cast<std::int64_t>(l.address), none);
+        if (again.ok() && again.value() == l.bytes) out += "\t" + l.text + "\n";
+        else out += raw(l) + "\t; " + l.text + "\n";
     }
     return out;
 }

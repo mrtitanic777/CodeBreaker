@@ -98,5 +98,24 @@ CB_TEST("source.processors.the_sleigh_descriptions_read_what_the_own_tables_read
     CB_CHECK_THROWS_AS(UsageError, (void)read_described(find("f8"), ld, 0, 1));   // (no description yet)
 });
 
+CB_TEST("source.processors.the_one_assembler_rebuilds_what_the_one_disassembler_writes", [] {
+    // each processor with a description: its program read as source through the description, assembled again through it -- the
+    // same bytes (the one disassembler and the one assembler are one description read both ways)
+    for (const Case& c : kCases) {
+        const Processor& p = find(c.cpu);
+        if (p.sla.empty()) continue;
+        const Image image = p.assemble(c.source, ".");
+        const std::string source = source_described(p, image.data, image.base);
+        const Image again = assemble_described(p, source, ".");
+        CB_CHECK_EQ(std::format("{}: {}", c.cpu, again.data.size()), std::format("{}: {}", c.cpu, image.data.size()));
+        CB_CHECK(again.data == image.data);
+    }
+    // labels: a branch to a label defined further on (the first pass guesses it)
+    const Image loop = assemble_described(find("z80"), "\tLD A,0x12\nloop:\n\tDEC A\n\tJR NZ,loop\n\tJP done\ndone:\n\tRET\n", ".");
+    CB_CHECK(loop.data == (Bytes{0x3E, 0x12, 0x3D, 0x20, 0xFD, 0xC3, 0x08, 0x00, 0xC9}));
+    // the SM83's CPL is not CP L (texts that differ only by a space between two words)
+    CB_CHECK(assemble_described(find("sm83"), "\tCPL\n\tCP L\n", ".").data == (Bytes{0x2F, 0xBD}));
+});
+
 }  // namespace
 }  // namespace cb::source::processors

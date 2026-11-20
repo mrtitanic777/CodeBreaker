@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CodeBreaker: the PC Engine's HuC6280, seen through its 16-bit logical address space (the eight
+     MPR registers map 8K pages of the 21-bit physical space; a ROM's bank layout is the loader's).
+     Zero page is $2000-$20FF and the stack $2100-$21FF (MPR1 holds the RAM page); the I/O page
+     ($0000-$1FFF while MPR0 is $FF) is volatile: every access happens, in order. -->
+<processor_spec>
+  <programcounter register="PC"/>
+  <volatile outputop="write_volatile" inputop="read_volatile">
+    <range space="RAM" first="0x0000" last="0x1fff"/>
+  </volatile>
+  <context_data>
+    <tracked_set space="RAM">
+      <set name="SH" val="0x21"/>
+    </tracked_set>
+  </context_data>
+  <default_symbols>
+    <symbol name="IRQ2" address="FFF6" entry="true" type="code_ptr"/>
+    <symbol name="IRQ1" address="FFF8" entry="true" type="code_ptr"/>
+    <symbol name="TIMER" address="FFFA" entry="true" type="code_ptr"/>
+    <symbol name="NMI" address="FFFC" entry="true" type="code_ptr"/>
+    <symbol name="RES" address="FFFE" entry="true" type="code_ptr"/>
+  </default_symbols>
+  <default_memory_blocks>
+    <memory_block name="ZERO_PAGE" start_address="0x2000" length="0x0100" initialized="false"/>
+    <memory_block name="STACK" start_address="0x2100" length="0x0100" initialized="false"/>
+  </default_memory_blocks>
+</processor_spec>
