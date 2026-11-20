@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <format>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <set>
 
@@ -712,6 +713,27 @@ int convert_tool(const ContextP& ctx, const cli::Args& a) {
 // `port`: the whole job from one input and one choice (java/port.hpp): find or make the Java source, convert it, then everything the platform
 // needs, then build. Each step prints a "NN%  step" line the window's progress bar follows. A step the computer has no tool for (MSBuild, CMake,
 // the XDK's XACTBLD) is skipped and said; a step that fails stops the run.
+// A configured CMake build's SDL2, when it is a MinGW-w64 prefix's (SDL2_DIR <prefix>/lib/cmake/SDL2 with the prefix's bin holding g++ and
+// mingw32-make) and the compiler CMake chose is not that g++: the prefix. nullopt otherwise (no SDL2, another SDL2, or MinGW chosen already).
+std::optional<stdfs::path> port_mingw_prefix(const stdfs::path& build_dir) {
+    std::error_code ec;
+    const stdfs::path cache = build_dir / "CMakeCache.txt";
+    if (!stdfs::is_regular_file(cache, ec)) return std::nullopt;
+    std::string sdl2, cxx;
+    for (std::string_view line : text::split(fs::read_text(cache), '\n')) {
+        line = text::trim(line, "\r");
+        if (line.starts_with("SDL2_DIR:PATH=")) sdl2 = std::string(line.substr(14));
+        else if (line.starts_with("CMAKE_CXX_COMPILER:")) cxx = std::string(line.substr(line.find('=') + 1));
+    }
+    const std::string suffix = "/lib/cmake/SDL2";
+    if (sdl2.size() <= suffix.size() || !text::lower(sdl2).ends_with(text::lower(suffix))) return std::nullopt;
+    const stdfs::path prefix = fs::from_text(sdl2.substr(0, sdl2.size() - suffix.size()));
+    const stdfs::path bin = prefix / "bin";
+    if (!stdfs::is_regular_file(bin / "g++.exe", ec) || !stdfs::is_regular_file(bin / "mingw32-make.exe", ec)) return std::nullopt;
+    if (text::lower(cxx).find("g++") != std::string::npos) return std::nullopt;
+    return prefix;
+}
+
 int port_tool(const ContextP& ctx, const cli::Args& a) {
     const std::optional<port::Platform> platform = port::parse_platform(a.value_or("platform", "pc"));
     if (!platform) {
@@ -857,8 +879,34 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
             cb::flush_out();
             process::ProcessResult r = process::run({.argv = {"cmake", "-S", jt_native(p.project), "-B", jt_native(build_dir)},
                                                     .out = process::Capture::Inherit, .err = process::Capture::Inherit});
-            if (r.exit_code == 0)
-                r = process::run({.argv = {"cmake", "--build", jt_native(build_dir), "--config", "Release"}, .out = process::Capture::Inherit, .err = process::Capture::Inherit});
+            stdfs::path built_dir = build_dir;
+            process::ProcessSpec build{.argv = {"cmake", "--build", jt_native(build_dir), "--config", "Release"}, .out = process::Capture::Inherit, .err = process::Capture::Inherit};
+            // The SDL2 CMake found is MinGW's (a MinGW-w64 prefix: msys2's mingw64, ...) while the generator is another compiler's: its headers and
+            // libraries are not that compiler's (MSVC stops at MinGW's winnt.h). The build is then made with that prefix's own gcc and make.
+            if (r.exit_code == 0) {
+                if (const std::optional<stdfs::path> mingw = port_mingw_prefix(build_dir)) {
+                    const stdfs::path bin = *mingw / "bin";
+                    jt_out(std::format("  SDL2 is MinGW's ({}): building with its compiler", jt_native(*mingw)));
+                    built_dir = p.project / "build-mingw";
+                    // (a cache of another generator in it, an earlier build's: CMake refuses to switch; the folder is the port's, made again)
+                    std::error_code ec;
+                    if (stdfs::is_regular_file(built_dir / "CMakeCache.txt", ec) &&
+                        fs::read_text(built_dir / "CMakeCache.txt").find("CMAKE_GENERATOR:INTERNAL=MinGW Makefiles") == std::string::npos) {
+                        stdfs::remove(built_dir / "CMakeCache.txt", ec);
+                        stdfs::remove_all(built_dir / "CMakeFiles", ec);
+                    }
+                    const std::map<std::string, std::string> env{{"PATH", jt_native(bin) + ";" + fs::get_env("PATH").value_or("")}};
+                    cb::flush_out();
+                    r = process::run({.argv = {"cmake", "-S", jt_native(p.project), "-B", jt_native(built_dir), "-G", "MinGW Makefiles",
+                                               "-DCMAKE_C_COMPILER=" + jt_native(bin / "gcc.exe"), "-DCMAKE_CXX_COMPILER=" + jt_native(bin / "g++.exe"),
+                                               "-DCMAKE_MAKE_PROGRAM=" + jt_native(bin / "mingw32-make.exe"), "-DCMAKE_BUILD_TYPE=Release"},
+                                      .env = env,
+                                      .out = process::Capture::Inherit,
+                                      .err = process::Capture::Inherit});
+                    build = {.argv = {"cmake", "--build", jt_native(built_dir), "--parallel"}, .env = env, .out = process::Capture::Inherit, .err = process::Capture::Inherit};
+                }
+            }
+            if (r.exit_code == 0) r = process::run(build);
             jt_out(r.exit_code == 0 ? std::string("  built") : std::format("  the build FAILED (exit {})", r.exit_code));
             if (r.exit_code != 0) code = kProblem;
         }

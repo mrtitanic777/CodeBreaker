@@ -123,7 +123,11 @@ ArrayExprent::ArrayExprent(Exprent* array, Exprent* index, VarType hard_type, co
     add_bytecode_offsets(offsets);
 }
 
-Exprent* ArrayExprent::copy() const { return make<ArrayExprent>(array_->copy(), index_->copy(), hard_type_, bytecode); }
+Exprent* ArrayExprent::copy() const {
+    Exprent* array = array_->copy();   // (Java evaluates the arguments left to right; C++ does not say: the order the ids are taken in is Java's)
+    Exprent* index = index_->copy();
+    return make<ArrayExprent>(array, index, hard_type_, bytecode);
+}
 
 VarType ArrayExprent::get_expr_type() const {
     const VarType expr_type = array_->get_expr_type();
@@ -258,7 +262,11 @@ CheckTypesResult AssignmentExprent::check_expr_type_bounds() {
     return result;
 }
 
-Exprent* AssignmentExprent::copy() const { return make<AssignmentExprent>(left_->copy(), right_->copy(), bytecode); }
+Exprent* AssignmentExprent::copy() const {
+    Exprent* left = left_->copy();   // (Java's left-to-right order of the arguments: the ids are taken in it)
+    Exprent* right = right_->copy();
+    return make<AssignmentExprent>(left, right, bytecode);
+}
 
 TextBuffer AssignmentExprent::to_java(int indent, BytecodeMappingTracer& tracer) {
     const VarType left_type = left_->get_expr_type();

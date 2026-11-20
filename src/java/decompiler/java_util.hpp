@@ -19,6 +19,7 @@
 #include <list>
 #include <unordered_map>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -180,6 +181,8 @@ private:
 // its place; a removed one re-added goes last.
 template <class K, class Hash = std::hash<K>, class Eq = std::equal_to<K>>
 class LinkedSet {
+    // The keys in a vector in the order they went in, a removed one marked dead (its place given back when the set next grows: a removal never moves
+    // the others, so it is safe while iterating); looked up by a scan while small (most of these sets are a node's few edges), by a hash index past 16.
 public:
     LinkedSet() = default;
     LinkedSet(std::initializer_list<K> items) { for (const K& k : items) add(k); }
@@ -188,18 +191,28 @@ public:
         for (const auto& k : items) s.add(k);
         return s;
     }
-    LinkedSet(const LinkedSet& o) { for (const K& k : o.order_) add(k); }
+    LinkedSet(const LinkedSet& o) {
+        keys_.reserve(o.count_);
+        for (const K& k : o) add(k);
+    }
     LinkedSet& operator=(const LinkedSet& o) {
-        if (this != &o) { clear(); for (const K& k : o.order_) add(k); }
+        if (this != &o) {
+            clear();
+            for (const K& k : o) add(k);
+        }
         return *this;
     }
     LinkedSet(LinkedSet&&) noexcept = default;
     LinkedSet& operator=(LinkedSet&&) noexcept = default;
 
     bool add(const K& k) {
-        if (index_.contains(k)) return false;
-        order_.push_back(k);
-        index_.emplace(k, std::prev(order_.end()));
+        if (find(k) != kNone) return false;
+        if (keys_.size() >= 2 * count_ + 16) compact();
+        keys_.push_back(k);
+        live_.push_back(1);
+        ++count_;
+        if (index_) index_->emplace(k, keys_.size() - 1);
+        else if (count_ > kScanLimit) build_index();
         return true;
     }
     template <class Range> bool add_all(const Range& items) {
@@ -208,10 +221,11 @@ public:
         return changed;
     }
     bool remove(const K& k) {
-        const auto it = index_.find(k);
-        if (it == index_.end()) return false;
-        order_.erase(it->second);
-        index_.erase(it);
+        const std::size_t at = find(k);
+        if (at == kNone) return false;
+        live_[at] = 0;
+        --count_;
+        if (index_) index_->erase(k);
         return true;
     }
     template <class Range> bool remove_all(const Range& items) {
@@ -221,30 +235,113 @@ public:
     }
     template <class Pred> bool remove_if(Pred pred) {
         bool changed = false;
-        for (auto it = order_.begin(); it != order_.end();) {
-            if (pred(*it)) { index_.erase(*it); it = order_.erase(it); changed = true; }
-            else ++it;
+        for (std::size_t i = 0; i < keys_.size(); ++i) {
+            if (live_[i] && pred(keys_[i])) {
+                live_[i] = 0;
+                --count_;
+                if (index_) index_->erase(keys_[i]);
+                changed = true;
+            }
         }
         return changed;
     }
     bool retain_all(const LinkedSet& keep) { return remove_if([&](const K& k) { return !keep.contains(k); }); }
-    bool contains(const K& k) const { return index_.contains(k); }
-    std::size_t size() const { return order_.size(); }
-    bool empty() const { return order_.empty(); }
-    void clear() { order_.clear(); index_.clear(); }
-    const K& first() const { return order_.front(); }
-    auto begin() const { return order_.begin(); }
-    auto end() const { return order_.end(); }
-    std::vector<K> items() const { return {order_.begin(), order_.end()}; }
+    bool contains(const K& k) const { return find(k) != kNone; }
+    std::size_t size() const { return count_; }
+    bool empty() const { return count_ == 0; }
+    void clear() {
+        keys_.clear();
+        live_.clear();
+        index_.reset();
+        count_ = 0;
+    }
+    const K& first() const { return *begin(); }
+
+    class iterator {
+    public:
+        using value_type = K;
+        using difference_type = std::ptrdiff_t;
+        using reference = const K&;
+        using pointer = const K*;
+        using iterator_category = std::forward_iterator_tag;
+        iterator() = default;
+        iterator(const LinkedSet* s, std::size_t at) : s_(s), at_(at) { skip(); }
+        const K& operator*() const { return s_->keys_[at_]; }
+        const K* operator->() const { return &s_->keys_[at_]; }
+        iterator& operator++() {
+            ++at_;
+            skip();
+            return *this;
+        }
+        iterator operator++(int) {
+            iterator t = *this;
+            ++*this;
+            return t;
+        }
+        bool operator==(const iterator& o) const { return at_ == o.at_; }
+        bool operator!=(const iterator& o) const { return at_ != o.at_; }
+
+    private:
+        void skip() {
+            while (at_ < s_->keys_.size() && !s_->live_[at_]) ++at_;
+        }
+        const LinkedSet* s_ = nullptr;
+        std::size_t at_ = 0;
+    };
+    iterator begin() const { return iterator(this, 0); }
+    iterator end() const { return iterator(this, keys_.size()); }
+    std::vector<K> items() const {
+        std::vector<K> out;
+        out.reserve(count_);
+        for (const K& k : *this) out.push_back(k);
+        return out;
+    }
     friend bool operator==(const LinkedSet& a, const LinkedSet& b) {   // Set.equals: the same members, any order
         if (a.size() != b.size()) return false;
-        for (const K& k : a.order_) if (!b.contains(k)) return false;
+        for (const K& k : a) if (!b.contains(k)) return false;
         return true;
     }
 
 private:
-    std::list<K> order_;
-    std::unordered_map<K, typename std::list<K>::iterator, Hash, Eq> index_;
+    static constexpr std::size_t kNone = static_cast<std::size_t>(-1);
+    static constexpr std::size_t kScanLimit = 16;
+
+    std::size_t find(const K& k) const {
+        if (index_) {
+            const auto it = index_->find(k);
+            return it == index_->end() ? kNone : it->second;
+        }
+        const Eq eq;
+        for (std::size_t i = 0; i < keys_.size(); ++i) {
+            if (live_[i] && eq(keys_[i], k)) return i;
+        }
+        return kNone;
+    }
+    void build_index() {
+        index_ = std::make_unique<std::unordered_map<K, std::size_t, Hash, Eq>>();
+        index_->reserve(keys_.size() * 2);
+        for (std::size_t i = 0; i < keys_.size(); ++i) {
+            if (live_[i]) index_->emplace(keys_[i], i);
+        }
+    }
+    // (only from add: an iteration that adds is not one Java allows either)
+    void compact() {
+        std::size_t to = 0;
+        for (std::size_t i = 0; i < keys_.size(); ++i) {
+            if (!live_[i]) continue;
+            if (to != i) keys_[to] = std::move(keys_[i]);
+            live_[to] = 1;
+            ++to;
+        }
+        keys_.resize(to);
+        live_.resize(to);
+        if (index_) build_index();
+    }
+
+    std::vector<K> keys_;
+    std::vector<std::uint8_t> live_;
+    std::size_t count_ = 0;
+    std::unique_ptr<std::unordered_map<K, std::size_t, Hash, Eq>> index_;   // (made when the set grows past kScanLimit: an empty one allocates)
 };
 
 // LinkedHashMap, and every HashMap keyed by identity-hashed objects: iterates in insertion order; put on a present key keeps its place.
