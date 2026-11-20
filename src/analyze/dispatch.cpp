@@ -3,6 +3,9 @@
 
 #include <algorithm>
 #include <format>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -11,113 +14,96 @@
 #include "analyze/globals.hpp"
 #include "analyze/strings.hpp"
 #include "core/text.hpp"
+#include "knowledge/package.hpp"
+#include "knowledge/reads.hpp"
 
 namespace cb::analyze::dispatch {
 
 namespace {
 
-struct NamedValue {
-    Va value;
-    std::string_view name;
-};
-
-constexpr NamedValue kMessages[] = {
-    {0x0001, "WM_CREATE"}, {0x0002, "WM_DESTROY"}, {0x0003, "WM_MOVE"}, {0x0005, "WM_SIZE"}, {0x0006, "WM_ACTIVATE"},
-    {0x0007, "WM_SETFOCUS"}, {0x0008, "WM_KILLFOCUS"}, {0x000A, "WM_ENABLE"}, {0x000B, "WM_SETREDRAW"},
-    {0x000C, "WM_SETTEXT"}, {0x000D, "WM_GETTEXT"}, {0x000E, "WM_GETTEXTLENGTH"}, {0x000F, "WM_PAINT"},
-    {0x0010, "WM_CLOSE"}, {0x0011, "WM_QUERYENDSESSION"}, {0x0012, "WM_QUIT"}, {0x0013, "WM_QUERYOPEN"},
-    {0x0014, "WM_ERASEBKGND"}, {0x0015, "WM_SYSCOLORCHANGE"}, {0x0016, "WM_ENDSESSION"}, {0x0018, "WM_SHOWWINDOW"},
-    {0x0019, "WM_CTLCOLOR"}, {0x001A, "WM_WININICHANGE"}, {0x001B, "WM_DEVMODECHANGE"}, {0x001C, "WM_ACTIVATEAPP"},
-    {0x001D, "WM_FONTCHANGE"}, {0x001E, "WM_TIMECHANGE"}, {0x001F, "WM_CANCELMODE"}, {0x0020, "WM_SETCURSOR"},
-    {0x0021, "WM_MOUSEACTIVATE"}, {0x0022, "WM_CHILDACTIVATE"}, {0x0024, "WM_GETMINMAXINFO"}, {0x0026, "WM_PAINTICON"},
-    {0x0027, "WM_ICONERASEBKGND"}, {0x0028, "WM_NEXTDLGCTL"}, {0x002B, "WM_DRAWITEM"}, {0x002C, "WM_MEASUREITEM"},
-    {0x002D, "WM_DELETEITEM"}, {0x002E, "WM_VKEYTOITEM"}, {0x002F, "WM_CHARTOITEM"}, {0x0030, "WM_SETFONT"},
-    {0x0031, "WM_GETFONT"}, {0x0037, "WM_QUERYDRAGICON"}, {0x0039, "WM_COMPAREITEM"}, {0x0041, "WM_COMPACTING"},
-    {0x0046, "WM_WINDOWPOSCHANGING"}, {0x0047, "WM_WINDOWPOSCHANGED"}, {0x004A, "WM_COPYDATA"}, {0x004E, "WM_NOTIFY"},
-    {0x0053, "WM_HELP"}, {0x0055, "WM_NOTIFYFORMAT"}, {0x007B, "WM_CONTEXTMENU"}, {0x007C, "WM_STYLECHANGING"},
-    {0x007D, "WM_STYLECHANGED"}, {0x007E, "WM_DISPLAYCHANGE"}, {0x007F, "WM_GETICON"}, {0x0080, "WM_SETICON"},
-    {0x0081, "WM_NCCREATE"}, {0x0082, "WM_NCDESTROY"}, {0x0083, "WM_NCCALCSIZE"}, {0x0084, "WM_NCHITTEST"},
-    {0x0085, "WM_NCPAINT"}, {0x0086, "WM_NCACTIVATE"}, {0x0087, "WM_GETDLGCODE"}, {0x00A0, "WM_NCMOUSEMOVE"},
-    {0x00A1, "WM_NCLBUTTONDOWN"}, {0x00A2, "WM_NCLBUTTONUP"}, {0x00A3, "WM_NCLBUTTONDBLCLK"}, {0x00A4, "WM_NCRBUTTONDOWN"},
-    {0x0100, "WM_KEYDOWN"}, {0x0101, "WM_KEYUP"}, {0x0102, "WM_CHAR"}, {0x0103, "WM_DEADCHAR"}, {0x0104, "WM_SYSKEYDOWN"},
-    {0x0105, "WM_SYSKEYUP"}, {0x0106, "WM_SYSCHAR"}, {0x0110, "WM_INITDIALOG"}, {0x0111, "WM_COMMAND"},
-    {0x0112, "WM_SYSCOMMAND"}, {0x0113, "WM_TIMER"}, {0x0114, "WM_HSCROLL"}, {0x0115, "WM_VSCROLL"}, {0x0116, "WM_INITMENU"},
-    {0x0117, "WM_INITMENUPOPUP"}, {0x011F, "WM_MENUSELECT"}, {0x0120, "WM_MENUCHAR"}, {0x0121, "WM_ENTERIDLE"},
-    {0x0132, "WM_CTLCOLORMSGBOX"}, {0x0133, "WM_CTLCOLOREDIT"}, {0x0134, "WM_CTLCOLORLISTBOX"}, {0x0135, "WM_CTLCOLORBTN"},
-    {0x0136, "WM_CTLCOLORDLG"}, {0x0137, "WM_CTLCOLORSCROLLBAR"}, {0x0138, "WM_CTLCOLORSTATIC"},
-    {0x0200, "WM_MOUSEMOVE"}, {0x0201, "WM_LBUTTONDOWN"}, {0x0202, "WM_LBUTTONUP"}, {0x0203, "WM_LBUTTONDBLCLK"},
-    {0x0204, "WM_RBUTTONDOWN"}, {0x0205, "WM_RBUTTONUP"}, {0x0206, "WM_RBUTTONDBLCLK"}, {0x0207, "WM_MBUTTONDOWN"},
-    {0x0208, "WM_MBUTTONUP"}, {0x0209, "WM_MBUTTONDBLCLK"}, {0x0210, "WM_PARENTNOTIFY"}, {0x0211, "WM_ENTERMENULOOP"},
-    {0x0212, "WM_EXITMENULOOP"}, {0x0214, "WM_SIZING"}, {0x0215, "WM_CAPTURECHANGED"}, {0x0216, "WM_MOVING"},
-    {0x0219, "WM_DEVICECHANGE"}, {0x0220, "WM_MDICREATE"}, {0x0221, "WM_MDIDESTROY"}, {0x0222, "WM_MDIACTIVATE"},
-    {0x0231, "WM_ENTERSIZEMOVE"}, {0x0232, "WM_EXITSIZEMOVE"}, {0x0233, "WM_DROPFILES"}, {0x0300, "WM_CUT"},
-    {0x0301, "WM_COPY"}, {0x0302, "WM_PASTE"}, {0x0303, "WM_CLEAR"}, {0x0304, "WM_UNDO"}, {0x0307, "WM_DESTROYCLIPBOARD"},
-    {0x0308, "WM_DRAWCLIPBOARD"}, {0x030D, "WM_CHANGECBCHAIN"}, {0x030F, "WM_QUERYNEWPALETTE"},
-    {0x0311, "WM_PALETTECHANGED"}, {0x0312, "WM_HOTKEY"}, {0x0317, "WM_PRINT"}, {0x0318, "WM_PRINTCLIENT"},
-};
+// The names of the window messages, the driver control messages and the DOS, BIOS and DPMI services are knowledge
+// (config/knowledge/{windows/messages,vxd/messages,dos/services}.json), read through knowledge::standard().
 
 // The handful of messages every window handles.
 constexpr Va kCoreMessages[] = {0x000F, 0x0010, 0x0081, 0x0082, 0x0110, 0x0111, 0x0112};
 
-constexpr NamedValue kControlMessages[] = {
-    {0x00, "Sys_Critical_Init"}, {0x01, "Device_Init"}, {0x02, "Init_Complete"}, {0x03, "Sys_VM_Init"},
-    {0x04, "Sys_VM_Terminate"}, {0x05, "System_Exit"}, {0x06, "Sys_Critical_Exit"}, {0x07, "Create_VM"},
-    {0x08, "VM_Critical_Init"}, {0x09, "VM_Init"}, {0x0A, "VM_Terminate"}, {0x0B, "VM_Not_Executeable"},
-    {0x0C, "Destroy_VM"}, {0x0D, "VM_Suspend"}, {0x0E, "VM_Resume"}, {0x0F, "Set_Device_Focus"},
-    {0x10, "Begin_Message_Mode"}, {0x11, "End_Message_Mode"}, {0x12, "Reboot_Processor"}, {0x13, "Query_Destroy"},
-    {0x14, "Debug_Query"}, {0x15, "Begin_PM_App"}, {0x16, "End_PM_App"}, {0x17, "Device_Reboot_Notify"},
-    {0x18, "Crit_Reboot_Notify"}, {0x19, "Close_VM_Notify"}, {0x1A, "Power_Event"}, {0x1B, "Sys_Dynamic_Device_Init"},
-    {0x1C, "Sys_Dynamic_Device_Exit"}, {0x1D, "Create_Thread"}, {0x1E, "Thread_Init"}, {0x1F, "Terminate_Thread"},
-    {0x20, "Thread_Not_Executeable"}, {0x21, "Destroy_Thread"}, {0x22, "PNP_New_Devnode"}, {0x23, "W32_DeviceIoControl"},
-    {0x24, "Sys_VM_Terminate2"}, {0x25, "System_Exit2"}, {0x26, "Sys_Critical_Exit2"}, {0x27, "VM_Terminate2"},
-    {0x28, "VM_Not_Executeable2"}, {0x29, "Destroy_VM2"}, {0x2A, "VM_Suspend2"}, {0x2B, "End_Message_Mode2"},
-    {0x2C, "End_PM_App2"}, {0x2D, "Device_Reboot_Notify2"}, {0x2E, "Crit_Reboot_Notify2"}, {0x2F, "Close_VM_Notify2"},
-    {0x30, "Get_Contention_Handler"}, {0x31, "Kernel32_Initialized"}, {0x32, "Kernel32_Shutdown"},
+// The entries of a description file that are named by a number: {number -> the text of `field`}. Three ways an entry holds
+// its number: in a register of its `select` (the function of an interrupt: AH of int 21h, AX of int 31h, a driver's EAX; for
+// an interrupt `vector` names which), as its `vector` alone (a BIOS interrupt: the entries with no `select`), or as its
+// `value` (a constant). Every ask is recorded as a read of the domain (knowledge/reads.hpp), so a fact made from a name is
+// stale when the file changes.
+enum class By { Register, Vector, Value };
+
+struct Named {
+    const char* platform;
+    const char* domain;
+    By by;
+    const char* register_name;   // By::Register: the `select` key
+    const char* vector;          // By::Register: only the entries of this vector ("" any); By::Vector: unused
+    const char* field;           // the text to give
 };
 
-// The DOS functions (AH of int 21h), the BIOS and other interrupts, and the DPMI functions (AX of int 31h).
-constexpr NamedValue kDosServices[] = {
-    {0x00, "terminate"}, {0x02, "display character"}, {0x09, "display string"}, {0x0E, "select disk"},
-    {0x19, "get current disk"}, {0x1A, "set transfer address"}, {0x25, "set interrupt vector"}, {0x2A, "get date"},
-    {0x2C, "get time"}, {0x2F, "get transfer address"}, {0x30, "get DOS version"}, {0x33, "break and boot drive"},
-    {0x35, "get interrupt vector"}, {0x36, "get free disk space"}, {0x38, "country information"},
-    {0x39, "create directory"}, {0x3A, "remove directory"}, {0x3B, "set current directory"}, {0x3C, "create file"},
-    {0x3D, "open file"}, {0x3E, "close file"}, {0x3F, "read file"}, {0x40, "write file"}, {0x41, "delete file"},
-    {0x42, "seek"}, {0x43, "file attributes"}, {0x44, "device control"}, {0x45, "duplicate handle"},
-    {0x46, "redirect handle"}, {0x47, "get current directory"}, {0x48, "allocate memory"}, {0x49, "free memory"},
-    {0x4A, "resize memory"}, {0x4B, "execute program"}, {0x4C, "exit"}, {0x4D, "get exit code"}, {0x4E, "find first file"},
-    {0x4F, "find next file"}, {0x50, "set PSP"}, {0x51, "get PSP"}, {0x52, "get list of lists"}, {0x56, "rename file"},
-    {0x57, "file date and time"}, {0x59, "extended error"}, {0x5A, "create temporary file"}, {0x5B, "create new file"},
-    {0x5C, "lock file region"}, {0x5E, "network machine name"}, {0x5F, "network redirection"}, {0x60, "canonical path"},
-    {0x62, "get PSP"}, {0x65, "extended country information"}, {0x67, "set handle count"}, {0x68, "commit file"},
-    {0x6C, "extended open"}, {0x71, "long file name function"}, {0x73, "FAT32 function"},
-};
-constexpr NamedValue kBiosServices[] = {
-    {0x10, "video"}, {0x11, "equipment list"}, {0x12, "memory size"}, {0x13, "disk"}, {0x14, "serial port"},
-    {0x15, "system services"}, {0x16, "keyboard"}, {0x17, "printer"}, {0x1A, "clock"}, {0x20, "DOS terminate"},
-    {0x25, "absolute disk read"}, {0x26, "absolute disk write"}, {0x2A, "network"}, {0x2F, "multiplex"},
-    {0x31, "DPMI"}, {0x33, "mouse"}, {0x3F, "overlay manager"}, {0x41, "debugger hook"}, {0x67, "expanded memory"},
-};
-constexpr NamedValue kDpmiServices[] = {
-    {0x0000, "allocate descriptors"}, {0x0001, "free descriptor"}, {0x0002, "segment to descriptor"},
-    {0x0006, "get segment base"}, {0x0007, "set segment base"}, {0x0008, "set segment limit"},
-    {0x0009, "set descriptor access rights"}, {0x000A, "create alias descriptor"}, {0x000B, "get descriptor"},
-    {0x000C, "set descriptor"}, {0x0100, "allocate DOS memory"}, {0x0101, "free DOS memory"},
-    {0x0200, "get real-mode vector"}, {0x0201, "set real-mode vector"}, {0x0202, "get exception handler"},
-    {0x0203, "set exception handler"}, {0x0204, "get protected-mode vector"}, {0x0205, "set protected-mode vector"},
-    {0x0300, "simulate real-mode interrupt"}, {0x0301, "call real-mode procedure"}, {0x0302, "call real-mode interrupt procedure"},
-    {0x0303, "allocate real-mode callback"}, {0x0304, "free real-mode callback"}, {0x0400, "get version"},
-    {0x0500, "get free memory"}, {0x0501, "allocate memory"}, {0x0502, "free memory"}, {0x0503, "resize memory"},
-    {0x0600, "lock region"}, {0x0601, "unlock region"}, {0x0800, "map physical address"},
-};
-
-template <std::size_t N>
-std::optional<std::string_view> lookup(const NamedValue (&table)[N], Va value) {
-    for (const NamedValue& row : table) {
-        if (row.value == value) return row.name;
+class NameTable {
+public:
+    explicit NameTable(const Named& what) {
+        using KnownValue = knowledge::Value;
+        for (const auto& [id, entry] : knowledge::standard().entries(what.platform, what.domain)) {
+            const KnownValue* field = entry.get(what.field);
+            const std::string* text = field != nullptr ? field->text() : nullptr;
+            if (text == nullptr) continue;
+            const KnownValue* vec = entry.get("vector");
+            const KnownValue* sel = entry.get("select");
+            const std::string* vector = vec != nullptr ? vec->text() : nullptr;
+            const std::string* number = nullptr;
+            switch (what.by) {
+                case By::Register: {
+                    const KnownValue* reg = sel != nullptr ? sel->get(what.register_name) : nullptr;
+                    number = reg != nullptr ? reg->text() : nullptr;
+                    if (*what.vector != '\0' && (vector == nullptr || *vector != what.vector)) number = nullptr;
+                    break;
+                }
+                case By::Vector: number = sel == nullptr ? vector : nullptr; break;
+                case By::Value: {
+                    const KnownValue* value = entry.get("value");
+                    number = value != nullptr ? value->text() : nullptr;
+                    break;
+                }
+            }
+            if (number == nullptr) continue;
+            if (const std::optional<std::uint64_t> parsed = knowledge::hex_value(*number)) names_.try_emplace(static_cast<Va>(*parsed), *text);
+        }
     }
-    return std::nullopt;
+    std::optional<std::string_view> at(Va value) const {
+        const auto it = names_.find(value);
+        if (it == names_.end()) return std::nullopt;
+        return std::string_view(it->second);
+    }
+
+private:
+    std::unordered_map<Va, std::string> names_;
+};
+
+// The table of `what`, made at the first ask; the read is recorded at every ask.
+std::optional<std::string_view> lookup(const Named& what, Va value) {
+    knowledge::record_kind(what.platform, what.domain);
+    static std::mutex mutex;
+    static std::map<std::string, std::unique_ptr<NameTable>> tables;
+    const NameTable* table = nullptr;
+    {
+        const std::lock_guard<std::mutex> lock(mutex);
+        std::unique_ptr<NameTable>& slot = tables[std::string(what.platform) + "/" + what.domain + "/" + what.vector + "/" +
+                                                  what.register_name + "/" + std::to_string(static_cast<int>(what.by)) + "/" + what.field];
+        if (!slot) slot = std::make_unique<NameTable>(what);
+        table = slot.get();
+    }
+    return table->at(value);
 }
+
+constexpr Named kMessages{"windows", "messages", By::Value, "", "", "id"};
+constexpr Named kControlMessages{"vxd", "messages", By::Register, "EAX", "", "name"};
+constexpr Named kDosServices{"dos", "services", By::Register, "AH", "21", "label"};
+constexpr Named kBiosServices{"dos", "services", By::Vector, "", "", "label"};
+constexpr Named kDpmiServices{"dos", "services", By::Register, "AX", "31", "label"};
 
 // The string-comparing functions whose call with literals makes a keyword dispatch.
 bool is_comparer(std::string_view api) {

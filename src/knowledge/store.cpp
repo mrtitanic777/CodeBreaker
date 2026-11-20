@@ -393,7 +393,7 @@ Rows Store::table(std::string_view platform, std::string_view kind) {
 }
 
 Rows Store::authored_table(const KindId& kind) {
-    if (AuthoredSources::find(kind) != nullptr) return sources_.authored(kind, *this);
+    if (sources_.lookup(kind)) return sources_.authored(kind, *this);
     return table(kind.platform, kind.kind);
 }
 
@@ -577,7 +577,7 @@ std::size_t Store::modules_with_body(std::string_view digest_text) {
 // ---- show::Base --------------------------------------------------------------------------------------------------------
 
 void Store::load_authored() {
-    for (const AuthoredKind& k : AuthoredSources::catalogue()) (void)sources_.authored(k.id, *this);
+    for (const AuthoredKind& k : sources_.kinds()) (void)sources_.authored(k.id, *this);
 }
 
 std::vector<show::KindRow> Store::kinds(std::optional<std::string_view> platform_name) {

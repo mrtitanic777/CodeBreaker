@@ -42,6 +42,7 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "knowledge/describe.hpp"
 #include "knowledge/sources.hpp"
 #include "knowledge/store.hpp"
 #include "knowledge/value.hpp"
@@ -72,6 +73,13 @@ std::string platform(int bits);
 // `KERNEL.GLOBALALLOC`, `USER32!FindWindowA` -> the function's own name; anything else as it is.
 std::string bare_name(std::string_view name);
 
+class Knowledge;
+
+// The checkout's own knowledge, opened at the first ask (the base the engine's steps read when none is handed to them: the
+// checkout is $CB_CHECKOUT_ROOT, else the one the running program belongs to; the base file is $CB_KNOWLEDGE_DB, else
+// build/knowledge.v2.sqlite).
+Knowledge& standard();
+
 class Knowledge {
 public:
     // `headers`: the header folders the prototypes are read from when they are asked for and the base has none made from
@@ -96,6 +104,16 @@ public:
     // knowledge/models/win16.json says; {argc} for win32; {answers_in} for a ring-0 service), as a map without the keys
     // that start with "_"; nullopt when it is not modelled.
     std::optional<Value> api_model(std::string_view platform, std::string_view api);
+
+    // ---- description files (describe.hpp: config/knowledge/<platform>/<domain>.json) -------------------------------
+    // One entry of a domain: its object, as the file writes it (the ask is recorded as a read of platform:domain:id).
+    std::optional<Value> entry(std::string_view platform, std::string_view domain, std::string_view id);
+    // Every entry of a domain by id, in the file's order (a step reading it reads the whole domain).
+    Rows entries(std::string_view platform, std::string_view domain);
+    // The domains a platform has description files for, in order of name.
+    std::vector<std::string> domains(std::string_view platform);
+    // Every description file checked against the schema: header, kinds, ids, shapes.
+    ValidationReport validate();
 
     // ---- prototypes -----------------------------------------------------------------------------------------------
     // The headers' declarations, read once and kept in the base (made again when the header folders change).

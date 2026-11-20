@@ -116,7 +116,7 @@ void ReadDigests::on_kind(KindId kind, Freshener freshen) {
 }
 
 void ReadDigests::freshen_authored(AuthoredSources& sources, KindStore& store) {
-    for (const AuthoredKind& k : AuthoredSources::catalogue()) {
+    for (const AuthoredKind& k : sources.kinds()) {
         on_kind(k.id, [&sources, &store](const KindId& id) { (void)sources.authored(id, store); });
     }
 }

@@ -51,13 +51,14 @@ public:
 };
 
 // Which folder of the data a file is in.
-enum class DataFolder { Symbols, Models };
+enum class DataFolder { Symbols, Models, Described };
 
 // How a kind's rows are cut from its file.
 enum class Layout {
     Whole,        // the file is one object; each entry is a row
     Part,         // one entry of the file's object (`part`) is the object whose entries are the rows
     Signatures,   // `part` is "16" or "32": rows "000000", "000001"... of [lead, size, mask, digest, name, library]
+    Described,    // a description file (describe.hpp): each entry is a row, by its id
 };
 
 struct AuthoredKind {
@@ -75,6 +76,7 @@ struct DataFolders {
     std::filesystem::path models;    // <checkout>/config/knowledge/models
     std::filesystem::path kept;      // <checkout>/config/knowledge/kept: the given knowledge (what a person decided), as text (empty: none kept)
     std::filesystem::path index;     // <checkout>/build/knowledge.v2.sqlite: the base, made from config/ (empty: none)
+    std::filesystem::path described; // <checkout>/config/knowledge: the description files, <platform>/<domain>.json (empty: none)
 
     static DataFolders under(const std::filesystem::path& checkout);
     // CB_CHECKOUT_ROOT when set, else the working folder.
@@ -89,6 +91,12 @@ public:
     // Every authored kind, in the order the catalogue lists them.
     static const std::vector<AuthoredKind>& catalogue();
     static const AuthoredKind* find(const KindId& id);
+
+    // The catalogue's kinds, then one kind per description file under DataFolders::described (platform / domain). The
+    // files are listed once per object.
+    std::vector<AuthoredKind> kinds();
+    // The kind `id` names among those of kinds(), or nullopt.
+    std::optional<AuthoredKind> lookup(const KindId& id);
 
     std::filesystem::path path_of(const AuthoredKind& kind) const;
 
@@ -113,6 +121,7 @@ public:
 private:
     DataFolders folders_;
     std::mutex mutex_;
+    std::optional<std::vector<AuthoredKind>> described_;   // the description files' kinds, listed at the first ask
     std::unordered_map<std::string, std::string> stamps_;   // lookup only: file path text -> hash
 };
 

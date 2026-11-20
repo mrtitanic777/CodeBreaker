@@ -6,6 +6,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
+#include "knowledge/describe.hpp"
 
 namespace cb::knowledge {
 
@@ -57,7 +58,7 @@ Rows signature_rows(const Value& document, std::string_view bits, std::string_vi
 
 DataFolders DataFolders::under(const std::filesystem::path& checkout) {
     return {checkout / "config" / "symbols", checkout / "config" / "knowledge" / "models", checkout / "config" / "knowledge" / "kept",
-            checkout / "build" / "knowledge.v2.sqlite"};
+            checkout / "build" / "knowledge.v2.sqlite", checkout / "config" / "knowledge"};
 }
 
 DataFolders DataFolders::from_environment() {
@@ -109,12 +110,47 @@ const AuthoredKind* AuthoredSources::find(const KindId& id) {
     return nullptr;
 }
 
+std::vector<AuthoredKind> AuthoredSources::kinds() {
+    std::vector<AuthoredKind> out = catalogue();
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (!described_) {
+        described_.emplace();
+        if (!folders_.described.empty()) {
+            for (const std::filesystem::path& path : description_files(folders_.described)) {
+                const std::string platform = fs::to_text(path.parent_path().filename());
+                const std::string domain = fs::to_text(path.stem());
+                described_->push_back(kind(platform, domain, DataFolder::Described, platform + "/" + fs::to_text(path.filename()),
+                                           Layout::Described, "", "described in " + platform + "/" + domain + ".json"));
+            }
+        }
+    }
+    out.insert(out.end(), described_->begin(), described_->end());
+    return out;
+}
+
+std::optional<AuthoredKind> AuthoredSources::lookup(const KindId& id) {
+    if (const AuthoredKind* k = find(id)) return *k;
+    for (AuthoredKind& k : kinds())
+        if (k.id == id) return std::move(k);
+    return std::nullopt;
+}
+
 std::filesystem::path AuthoredSources::path_of(const AuthoredKind& k) const {
-    return (k.folder == DataFolder::Symbols ? folders_.symbols : folders_.models) / k.file;
+    switch (k.folder) {
+        case DataFolder::Symbols: return folders_.symbols / k.file;
+        case DataFolder::Models: return folders_.models / k.file;
+        case DataFolder::Described: return folders_.described / k.file;
+    }
+    throw InternalError("AuthoredSources::path_of: unknown folder");
 }
 
 std::string AuthoredSources::source_label(const AuthoredKind& k) const {
-    return std::string(k.folder == DataFolder::Symbols ? "config/symbols/" : "config/knowledge/models/") + k.file;
+    switch (k.folder) {
+        case DataFolder::Symbols: return "config/symbols/" + k.file;
+        case DataFolder::Models: return "config/knowledge/models/" + k.file;
+        case DataFolder::Described: return "config/knowledge/" + k.file;
+    }
+    throw InternalError("AuthoredSources::source_label: unknown folder");
 }
 
 Rows AuthoredSources::read(const AuthoredKind& k) const {
@@ -129,6 +165,8 @@ Rows AuthoredSources::read(const AuthoredKind& k) const {
             return part == nullptr ? Rows() : rows_of_object(*part, name);
         }
         case Layout::Signatures: return signature_rows(document, k.part, name);
+        case Layout::Described:
+            return parse_description(fs::read_text(path), k.file, k.id.platform, k.id.kind).entries;
     }
     throw InternalError("AuthoredSources::read: unknown layout");
 }
@@ -152,8 +190,9 @@ std::string AuthoredSources::stamp(const AuthoredKind& k) {
 }
 
 Rows AuthoredSources::authored(const KindId& id, KindStore& store) {
-    const AuthoredKind* k = find(id);
-    if (k == nullptr) throw UsageError(std::format("{}:{} is not an authored kind", id.platform, id.kind));
+    const std::optional<AuthoredKind> found = lookup(id);
+    if (!found) throw UsageError(std::format("{}:{} is not an authored kind", id.platform, id.kind));
+    const AuthoredKind* k = &*found;
     const std::string stamp_now = stamp(*k);
     // An isolation boundary: one broken data file empties its kinds, loudly, and the run goes on.
     auto make = [this, k]() -> Rows {
@@ -169,7 +208,7 @@ Rows AuthoredSources::authored(const KindId& id, KindStore& store) {
 
 std::vector<KindId> AuthoredSources::changed(const std::filesystem::path& file, KindStore& store) {
     std::vector<KindId> touched;
-    for (const AuthoredKind& k : catalogue()) {
+    for (const AuthoredKind& k : kinds()) {
         if (!fs::same_path(path_of(k), file)) continue;
         {
             const std::lock_guard<std::mutex> lock(mutex_);

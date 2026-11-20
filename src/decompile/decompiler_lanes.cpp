@@ -538,8 +538,7 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
     for (const auto& [va, fn] : d->analysis->functions)
         if (!library.skipped.contains(va)) own.push_back(va);
     Functions grown = lanes_grow(*this, *d, line, 8, library.skipped.empty() ? std::span<const Va>() : std::span<const Va>(own));
-    const symbols::dos_interrupts::ServiceTable table =
-        symbols::dos_interrupts::ServiceTable::load(context_.settings.checkout / "config" / "symbols" / "dos_interrupts.json");
+    const symbols::dos_interrupts::ServiceTable& table = symbols::dos_interrupts::ServiceTable::standard();
     DosProgramC result;
     result.functions.order = std::move(grown.order);
     result.functions.by_va = std::move(grown.by_va);

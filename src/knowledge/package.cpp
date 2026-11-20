@@ -6,6 +6,7 @@
 #include <mutex>
 #include <set>
 
+#include "base/config.hpp"
 #include "core/error.hpp"
 #include "knowledge/reads.hpp"
 #include "knowledge/sources.hpp"
@@ -218,7 +219,7 @@ std::optional<Value> Knowledge::known(std::string_view platform_name, std::strin
         const std::lock_guard lock(impl_->mutex);
         first = impl_->authored_loaded.insert(p + ":" + std::string(kind)).second;
     }
-    if (first && AuthoredSources::find({p, std::string(kind)}) != nullptr) (void)store_.authored_table({p, std::string(kind)});
+    if (first && store_.sources().lookup({p, std::string(kind)})) (void)store_.authored_table({p, std::string(kind)});
     return store_.get(p, kind, key);
 }
 
@@ -231,6 +232,35 @@ Rows Knowledge::table(std::string_view platform_name, std::string_view kind) {
     const std::string p = platform(platform_name);
     record_kind(p, kind);
     return store_.authored_table({p, std::string(kind)});
+}
+
+std::optional<Value> Knowledge::entry(std::string_view platform_name, std::string_view domain, std::string_view id) {
+    return known(platform_name, domain, id);
+}
+
+Rows Knowledge::entries(std::string_view platform_name, std::string_view domain) { return table(platform_name, domain); }
+
+std::vector<std::string> Knowledge::domains(std::string_view platform_name) {
+    const std::string p = platform(platform_name);
+    std::vector<std::string> out;
+    for (const AuthoredKind& k : store_.sources().kinds())
+        if (k.layout == Layout::Described && k.id.platform == p) out.push_back(k.id.kind);
+    return out;
+}
+
+ValidationReport Knowledge::validate() {
+    const std::filesystem::path& root = store_.sources().folders().described;
+    return root.empty() ? ValidationReport{} : validate_descriptions(root);
+}
+
+Knowledge& standard() {
+    struct Own {
+        DataFolders folders = DataFolders::under(config::find_checkout());
+        Store store{Store::default_path(folders), folders};
+        Knowledge knowledge{store};
+    };
+    static Own own;
+    return own.knowledge;
 }
 
 std::optional<Value> Knowledge::api_model(std::string_view platform_name, std::string_view api_name) {

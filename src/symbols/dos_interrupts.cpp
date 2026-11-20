@@ -12,7 +12,8 @@
 #include "core/json.hpp"
 #include "core/log.hpp"
 #include "core/text.hpp"
-#include "knowledge/sources.hpp"
+#include "knowledge/package.hpp"
+#include "knowledge/reads.hpp"
 
 namespace cb::symbols::dos_interrupts {
 namespace {
@@ -80,8 +81,13 @@ ServiceTable ServiceTable::load(const std::filesystem::path& file) {
 }
 
 const ServiceTable& ServiceTable::standard() {
-    static const ServiceTable table =
-        load(knowledge::DataFolders::from_environment().symbols / "dos_interrupts.json");
+    // The table is read once, through the knowledge base (dos / interrupt); every ask is a recorded read of it.
+    static const ServiceTable table = [] {
+        knowledge::Value::Map rows;
+        for (const auto& [number, row] : knowledge::standard().table("dos", "interrupt")) rows.insert_or_assign(number, row);
+        return parse(knowledge::Value(std::move(rows)).to_json_text(), "config/symbols/dos_interrupts.json");
+    }();
+    knowledge::record_kind("dos", "interrupt");
     return table;
 }
 

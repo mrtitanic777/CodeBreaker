@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <mutex>
 
 #include <nlohmann/json.hpp>
 
@@ -14,6 +15,8 @@
 #include "core/text.hpp"
 #include "decompile/vmx128.hpp"
 #include "formats/xex.hpp"
+#include "knowledge/package.hpp"
+#include "knowledge/reads.hpp"
 #include "recompile/disassemble.hpp"
 #include "recompile/title.hpp"
 #include "recompile/xenon.hpp"
@@ -43,20 +46,22 @@ xenon::Config xenon_config(const cb::config::Config& config) {
     return c;
 }
 
-// The console's ordinal names ({library: {ordinal: name}}), read the first time a name is asked for.
-project::ImportNames ordinal_names(const cb::config::Config& config) {
-    const stdfs::path file = config.checkout_root() / "config" / "symbols" / "console_ordinals.json";
-    auto table = std::make_shared<std::optional<Json>>();
-    return [file, table](std::string_view library, std::uint32_t ordinal) -> std::string {
-        if (!table->has_value()) {
-            std::error_code ec;
-            *table = stdfs::is_regular_file(file, ec) ? json::load(file) : Json::object();
-        }
-        const Json& root = **table;
-        const auto lib = root.find(std::string(library));
-        if (lib == root.end() || !lib->is_object()) return {};
-        const auto name = lib->find(std::to_string(ordinal));
-        return name != lib->end() && name->is_string() ? name->get<std::string>() : std::string();
+// The console's ordinal names ({library: {ordinal: name}}: the knowledge base's xbox360 / ordinal_names), read the first time a name is asked for.
+project::ImportNames ordinal_names(const cb::config::Config&) {
+    struct Table {
+        std::once_flag once;
+        knowledge::Rows rows;
+    };
+    auto table = std::make_shared<Table>();
+    return [table](std::string_view library, std::uint32_t ordinal) -> std::string {
+        std::call_once(table->once, [&] { table->rows = knowledge::standard().table("xbox360", "ordinal_names"); });
+        knowledge::record_kind("xbox360", "ordinal_names");
+        const knowledge::Value* lib = table->rows.find(std::string(library));
+        const knowledge::Value::Map* names = lib != nullptr ? lib->map() : nullptr;
+        if (names == nullptr) return {};
+        const knowledge::Value* name = names->find(std::to_string(ordinal));
+        const std::string* text = name != nullptr ? name->text() : nullptr;
+        return text != nullptr ? *text : std::string();
     };
 }
 

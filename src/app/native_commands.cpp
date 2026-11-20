@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
+#include <mutex>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -76,6 +78,8 @@
 #include "ui/serve.hpp"
 #include "xna/command.hpp"
 #include "symbols/prototypes.hpp"
+#include "knowledge/package.hpp"
+#include "knowledge/reads.hpp"
 
 namespace cb::app {
 
@@ -83,21 +87,23 @@ namespace {
 
 constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java", "judge-cs-cpp", "judge-py-cpp", "nasm", "dos-run", "convert", "app", "inspect", "extract", "check", "compare", "corpus", "lookup", "xbox", "disassemble", "assemble", "compile", "link"});   // (counted by the compiler)
 
-// The console's ordinal names (config/symbols/console_ordinals.json, {library: {ordinal: name}}), read the first time a name is asked for.
-formats::xex_imports::OrdinalNames console_ordinal_names(const config::Config& config) {
-    const std::filesystem::path file = config.config_root() / "symbols" / "console_ordinals.json";
-    auto table = std::make_shared<std::optional<Json>>();
-    return [file, table](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
-        if (!table->has_value()) {
-            std::error_code ec;
-            *table = std::filesystem::is_regular_file(file, ec) ? json::load(file) : Json::object();
-        }
-        const Json& root = **table;
-        const auto lib = root.find(std::string(library));
-        if (lib == root.end() || !lib->is_object()) return std::nullopt;
-        const auto name = lib->find(std::to_string(ordinal));
-        if (name == lib->end() || !name->is_string()) return std::nullopt;
-        return name->get<std::string>();
+// The console's ordinal names ({library: {ordinal: name}}: the knowledge base's xbox360 / ordinal_names), read the first time a name is asked for.
+formats::xex_imports::OrdinalNames console_ordinal_names(const config::Config&) {
+    struct Table {
+        std::once_flag once;
+        knowledge::Rows rows;
+    };
+    auto table = std::make_shared<Table>();
+    return [table](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
+        std::call_once(table->once, [&] { table->rows = knowledge::standard().table("xbox360", "ordinal_names"); });
+        knowledge::record_kind("xbox360", "ordinal_names");
+        const knowledge::Value* lib = table->rows.find(std::string(library));
+        const knowledge::Value::Map* names = lib != nullptr ? lib->map() : nullptr;
+        if (names == nullptr) return std::nullopt;
+        const knowledge::Value* name = names->find(std::to_string(ordinal));
+        const std::string* text = name != nullptr ? name->text() : nullptr;
+        if (text == nullptr) return std::nullopt;
+        return *text;
     };
 }
 
@@ -350,14 +356,13 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
         return 0;
     });
 
-    // dos-interrupts [<interrupt> [<AH> [<AL>]]]: the checkout's own dos_interrupts.json
-    const std::filesystem::path interrupts = config.checkout_root() / "config" / "symbols" / "dos_interrupts.json";
-    table.set("dos-interrupts", [interrupts](std::span<const std::string> args) -> int {
-        return symbols::dos_interrupts::run(symbols::dos_interrupts::ServiceTable::load(interrupts), args);
+    // dos-interrupts [<interrupt> [<AH> [<AL>]]]: the knowledge base's DOS and BIOS interrupt services (config/symbols/dos_interrupts.json)
+    table.set("dos-interrupts", [](std::span<const std::string> args) -> int {
+        return symbols::dos_interrupts::run(symbols::dos_interrupts::ServiceTable::standard(), args);
     });
 
     // dos-functions <program> [--all]: the functions found in a real-mode program, and the interrupt services it calls
-    table.set("dos-functions", [corpus, interrupts](std::span<const std::string> args) -> int {
+    table.set("dos-functions", [corpus](std::span<const std::string> args) -> int {
         if (args.empty()) {
             out("usage: codebreaker dos-functions <program> [--all]\n");
             return 2;
@@ -367,7 +372,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
         const formats::dos::Program program = formats::dos::read_program(fs::read_file(path), name);
         const analyze::dos_functions::Analysis analysis = analyze::dos_functions::discover(program);
         const bool all = std::find(args.begin(), args.end(), "--all") != args.end();
-        const auto services = symbols::dos_interrupts::ServiceTable::load(interrupts);
+        const symbols::dos_interrupts::ServiceTable& services = symbols::dos_interrupts::ServiceTable::standard();
         for (const std::string& line : analyze::dos_functions::report(name, program, analysis, all, services)) out("{}\n", line);
         return 0;
     });
