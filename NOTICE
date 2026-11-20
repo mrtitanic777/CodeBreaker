@@ -31,11 +31,11 @@ Third-party open-source code in this repository, each under its own license:
                                TinySHA1 (Saurav Mohapatra, ISC-style), rijndael-alg-fst (public domain),
                                aes_128 (MIT, LuoPeng), des (MIT, Faraz Fallahi), rc4 (Whistle
                                Communications' permissive notice), sha256 (zlib, Stephan Brumme)
-  - codebreaker/recompile      the instruction builders and the switch-table scanner, derived from
+  - native/cb/recompile        the instruction builders and the switch-table scanner, derived from
                                the rexglue SDK's code generator (BSD-3-Clause, as above)
-  - codebreaker/formats/xbox   the empty LIVE header template from iso2god-rs (Ilia
+  - native/cb/formats/xbox     the empty LIVE header template from iso2god-rs (Ilia
                                Pozdnyakov) and the ZArchive reader adapted from xVerter
-                               (MIT; codebreaker/formats/xbox/THIRD_PARTY.txt)
+                               (MIT; native/cb/formats/xbox/THIRD_PARTY.txt)
   - native/cb/recompile/xenonrecomp
                                XenonRecomp by hedge-dev and contributors, with the changes the Xbox 360
                                ports made to it (MIT; native/cb/recompile/xenonrecomp/LICENSE.md), with what it
@@ -45,7 +45,7 @@ Third-party open-source code in this repository, each under its own license:
                                (BSD-2-Clause, Yann Collet), TinySHA1 (Saurav Mohapatra);
                                native/cb/recompile/xenonrecomp/ppc_tests/xenia: Xenia's PowerPC instruction tests
                                (BSD-3-Clause, Ben Vanik and the Xenia contributors)
-  - codebreaker/recompile/switches.py  the switch-table scanner of the Xbox 360 ports (by the
+  - native/cb/recompile/switches.cpp  the switch-table scanner of the Xbox 360 ports (by the
                                same author as native/cb/recompile/x360)
   - native/cb/recompile/x360
                                CodeBreaker's Xbox 360 runtime, from the Xbox 360 ports' runtime (by
@@ -57,5 +57,5 @@ Third-party runtime dependency (not distributed here; installed separately):
   - Capstone disassembly framework (BSD-3-Clause) — https://www.capstone-engine.org
 
 By the same author, under the MIT License:
-  - codebreaker/java   the Java transpiler (codebreaker/java/LICENSE)
+  - native/cb/java     the Java transpiler (data/java/LICENSE)
   - native/cb/formats/xex        the XEX engine (native/cb/formats/xex/LICENSE)

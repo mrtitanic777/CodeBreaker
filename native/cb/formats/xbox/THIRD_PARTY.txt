@@ -1,8 +1,9 @@
-Third-party material in codebreaker/formats/xbox, each under the MIT License below:
+Third-party material in native/cb/formats/xbox, each under the MIT License below:
 
-  - empty_live.bin   the empty LIVE header template, from iso2god-rs
+  - god.cpp, testdata/god/empty_live.bin
+                     the empty LIVE header template, from iso2god-rs
                      Copyright (c) 2023 Ilia Pozdnyakov
-  - zar.py           adapted from xVerter's ZArchive reader
+  - zar.cpp          adapted from xVerter's ZArchive reader
                      Copyright (c) the xVerter authors
 
 MIT License

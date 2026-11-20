@@ -2,7 +2,7 @@
 //
 //     crypto <tool> [arguments]       (crypto: the list)
 //
-// Most of this is Xbox-360-Crypto by GoobyCorp (BSD 3-Clause; see the LICENSE and ATTRIBUTION.md of codebreaker/formats/xbox/crypto), kept
+// Most of this is Xbox-360-Crypto by GoobyCorp (BSD 3-Clause; see the LICENSE and ATTRIBUTION.md in native/cb/formats/xbox/crypto), kept
 // as its authors wrote it: each tool runs as `crypto <tool>` and takes its own --help. What the tools read that is not part of the package
 // comes from settings: the key store folder (1BL_pub.bin, SB_prv.bin, ...; Keys/ in the current folder by default), upstream's bin/ folder (the
 // LZX libraries, the Free60 xenon-as and xenon-objcopy, hypervisor images) and the Xbox 360 SDK (dumpbin). None of them is in the repository.

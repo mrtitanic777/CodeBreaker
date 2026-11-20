@@ -462,10 +462,10 @@ throws, the Java lane's J2X-GAP); a program whose run reaches a gap is refused w
 **Judge** (`codebreaker/translate/judge_native_jvm.py`, `python tools/judge_c_java.py [c|cpp|roundtrip]`):
 the original built with clang `-O0` and run; the translation compiled with javac and run; stdout, stderr
 and exit code compared ("\r\n" as "\n"). Verdicts: equivalent, divergent, refused, no-compile,
-no-original. Corpus: `frontends/clang/corpus/manifest.json` -- Logan's CodingTeacher C course, the MS C
+no-original. Corpus (the manifest is retired; the C++ programs and RoundTrip.java are kept in `native/cb/translate/frontends/clang/testdata/`) -- Logan's CodingTeacher C course, the MS C
 compiler project's K&R test programs (printf, fp, diff, diff300; bdos output as putchar), the MSC 3.00
 verify inputs, tiny-AES-c's test, zlib's `enough.c`, Reko's C subjects; for C++, Reko's
-LocalStackVariables and eight classic programs written for the corpus (`corpus/cpp/`, two of them meant to
+LocalStackVariables and eight classic programs written for the corpus (`testdata/cpp/`, two of them meant to
 be refused: iostream/vector and RAII).
 
 **Round trip:** `judge_native_jvm.roundtrip` -- the Java lane's fixture classes (Vec3D, MathHelper,

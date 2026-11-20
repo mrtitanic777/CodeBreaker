@@ -1,4 +1,4 @@
-# codebreaker/formats/xbox/crypto
+# native/cb/formats/xbox/crypto
 
 Xbox 360 crypto, keyvault, boot-chain and NAND tooling from **Xbox-360-Crypto** by GoobyCorp,
 under the **BSD 3-Clause License** (see LICENSE). Copyright and license are retained per its terms.
