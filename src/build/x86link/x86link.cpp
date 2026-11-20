@@ -161,7 +161,7 @@ Run link(const std::vector<std::string>& args, const stdfs::path& folder, const 
 }
 
 void install() {
-    process::set_in_process([](const process::ProcessSpec& spec) -> std::optional<process::ProcessResult> {
+    process::add_in_process([](const process::ProcessSpec& spec) -> std::optional<process::ProcessResult> {
         std::string program = stdfs::path(spec.argv[0]).filename().string();
         for (char& ch : program) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
         if (program != "wlink.exe" && program != "wlink") return std::nullopt;

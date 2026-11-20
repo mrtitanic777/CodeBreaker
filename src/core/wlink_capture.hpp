@@ -9,6 +9,10 @@
 //
 // The id is the SHA-1 of the arguments and the inputs, so the same link seen twice is one case. process::run calls `before`
 // and `after` around every child; nothing happens unless the variable is set and the program is wlink.
+//
+// The same for OpenWatcom's C compilers (the proof of compiling in-process): while CB_WCC_CAPTURE names a folder, every run
+// of wcc or wcc386 is kept the same way -- its sources, the headers beside them and in -i= folders (not OpenWatcom's own),
+// and the object and error file it writes.
 #pragma once
 
 #include <filesystem>

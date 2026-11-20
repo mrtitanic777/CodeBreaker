@@ -39,18 +39,20 @@ std::string quote_arg(std::string_view arg) {
 }
 
 namespace {
-InProcess& in_process_hook() {
-    static InProcess hook;
-    return hook;
+std::vector<InProcess>& in_process_hooks() {
+    static std::vector<InProcess> hooks;
+    return hooks;
 }
 }  // namespace
 
-void set_in_process(InProcess hook) { in_process_hook() = std::move(hook); }
+void add_in_process(InProcess hook) { in_process_hooks().push_back(std::move(hook)); }
 
 std::optional<ProcessResult> run_in_process(const ProcessSpec& spec) {
-    const InProcess& hook = in_process_hook();
-    if (!hook || spec.argv.empty()) return std::nullopt;
-    std::optional<ProcessResult> r = hook(spec);
+    if (spec.argv.empty()) return std::nullopt;
+    std::optional<ProcessResult> r;
+    for (const InProcess& hook : in_process_hooks()) {
+        if ((r = hook(spec))) break;
+    }
     if (!r) return r;
     // the streams where a started program's would have gone
     if (spec.err.mode == Capture::Merge) {   // stderr into stdout

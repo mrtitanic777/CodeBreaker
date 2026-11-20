@@ -1,0 +1,955 @@
+bool OPT_PROCESS( OPT_STORAGE *data )
+{
+    switch( OPT_GET_LOWER() ) {
+    case 'z':
+	if( OPT_RECOG( 'A' ) ) {
+	    if( OPT_RECOG_LOWER( 's' ) ) {
+		if( OPT_RECOG_LOWER( 't' ) ) {
+		    if( OPT_RECOG_LOWER( 'd' ) ) {
+			if( checkSTD( &(data->zastd_value) ) ) {
+			    data->cstd = OPT_ENUM_cstd_zastd;
+			}
+			return( false );
+		    }
+		    return( true );
+		}
+		return( true );
+	    }
+	    if( OPT_RECOG_LOWER( '9' ) ) {
+		if( OPT_RECOG_LOWER( '9' ) ) {
+		    data->cstd = OPT_ENUM_cstd_za99;
+		    return( false );
+		}
+		return( true );
+	    }
+	    if( OPT_RECOG_LOWER( 'm' ) ) {
+		data->zam = true;
+		return( false );
+	    }
+	    data->iso = OPT_ENUM_iso_zA;
+	    return( false );
+	}
+	if( OPT_RECOG( 'a' ) ) {
+	    if( OPT_RECOG_LOWER( 's' ) ) {
+		if( OPT_RECOG_LOWER( 't' ) ) {
+		    if( OPT_RECOG_LOWER( 'd' ) ) {
+			if( checkSTD( &(data->zastd_value) ) ) {
+			    data->cstd = OPT_ENUM_cstd_zastd;
+			}
+			return( false );
+		    }
+		    return( true );
+		}
+		return( true );
+	    }
+	    if( OPT_RECOG_LOWER( '9' ) ) {
+		if( OPT_RECOG_LOWER( '9' ) ) {
+		    data->cstd = OPT_ENUM_cstd_za99;
+		    return( false );
+		}
+		return( true );
+	    }
+	    if( OPT_RECOG_LOWER( 'm' ) ) {
+		data->zam = true;
+		return( false );
+	    }
+	    data->iso = OPT_ENUM_iso_za;
+	    return( false );
+	}
+	switch( OPT_GET_LOWER() ) {
+	case 'r':
+	    if( OPT_RECOG_LOWER( 'o' ) ) {
+		data->fp_rounding = OPT_ENUM_fp_rounding_zro;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'i' ) ) {
+		data->fp_rounding = OPT_ENUM_fp_rounding_zri;
+		return( false );
+	    }
+	    return( true );
+	case 'f':
+	    if( OPT_RECOG_LOWER( 'w' ) ) {
+		data->zfw = true;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'f' ) ) {
+		data->fs_peg = OPT_ENUM_fs_peg_zff;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'p' ) ) {
+		data->fs_peg = OPT_ENUM_fs_peg_zfp;
+		return( false );
+	    }
+	    return( true );
+	case 'd':
+	    if( OPT_RECOG_LOWER( 'f' ) ) {
+		data->ds_peg = OPT_ENUM_ds_peg_zdf;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'p' ) ) {
+		data->ds_peg = OPT_ENUM_ds_peg_zdp;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'l' ) ) {
+		data->zdl = true;
+		return( false );
+	    }
+	    return( true );
+	case 'c':
+	    data->zc = true;
+	    return( false );
+	case 'e':
+	    if( OPT_RECOG_LOWER( 'v' ) ) {
+		data->zev = true;
+		return( false );
+	    }
+	    data->iso = OPT_ENUM_iso_ze;
+	    return( false );
+	case 'g':
+	    if( OPT_RECOG_LOWER( 'f' ) ) {
+		data->gs_peg = OPT_ENUM_gs_peg_zgf;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'p' ) ) {
+		data->gs_peg = OPT_ENUM_gs_peg_zgp;
+		return( false );
+	    }
+	    data->zg = true;
+	    return( false );
+	case 'k':
+	    switch( OPT_GET_LOWER() ) {
+	    case '1':
+		data->char_set = OPT_ENUM_char_set_zk1;
+		return( false );
+	    case '2':
+		data->char_set = OPT_ENUM_char_set_zk2;
+		return( false );
+	    case '3':
+		data->char_set = OPT_ENUM_char_set_zk3;
+		return( false );
+	    case '0':
+		if( OPT_RECOG_LOWER( 'u' ) ) {
+		    data->char_set = OPT_ENUM_char_set_zk0u;
+		    return( false );
+		}
+		data->char_set = OPT_ENUM_char_set_zk0;
+		return( false );
+	    case 'l':
+		data->char_set = OPT_ENUM_char_set_zkl;
+		return( false );
+	    case 'u':
+		if( OPT_RECOG_LOWER( '8' ) ) {
+		    data->char_set = OPT_ENUM_char_set_zku8;
+		    return( false );
+		}
+		if( OPT_GET_NUMBER( &(data->zku_value) ) ) {
+		    data->char_set = OPT_ENUM_char_set_zku;
+		}
+		return( false );
+	    }
+	    OPT_UNGET();
+	    data->char_set = OPT_ENUM_char_set_zk0;
+	    return( false );
+	case 'l':
+	    if( OPT_RECOG_LOWER( 'd' ) ) {
+		data->zld = true;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'f' ) ) {
+		data->zlf = true;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 's' ) ) {
+		data->zls = true;
+		return( false );
+	    }
+	    data->zl = true;
+	    return( false );
+	case 'm':
+	    data->zm = true;
+	    return( false );
+	case 'p':
+	    if( OPT_RECOG_LOWER( 'w' ) ) {
+		data->zpw = true;
+		return( false );
+	    }
+	    if( OPT_GET_NUMBER( &(data->zp_value) ) ) {
+		checkPacking( &(data->zp_value) );
+		data->zp = true;
+	    }
+	    return( false );
+	case 'q':
+	    data->zq = true;
+	    return( false );
+	case 's':
+	    data->zs = true;
+	    return( false );
+	case 't':
+	    if( OPT_GET_NUMBER_DEFAULT( &(data->zt_value ), 256 ) ) {
+		checkDataThreshold( &(data->zt_value) );
+		data->zt = true;
+	    }
+	    return( false );
+	case 'u':
+	    data->zu = true;
+	    return( false );
+	case 'w':
+	    data->win = OPT_ENUM_win_zw;
+	    return( false );
+	case 'z':
+	    data->zz = true;
+	    return( false );
+	}
+	OPT_UNGET();
+	return( true );
+    case 'o':
+	do {
+	    switch( OPT_GET_LOWER() ) {
+	    case 'a':
+		data->oa = true;
+		continue;
+	    case 'b':
+		data->ob = true;
+		continue;
+	    case 'c':
+		data->oc = true;
+		continue;
+	    case 'd':
+		data->opt_level_timestamp = ++(data->timestamp);
+		data->opt_level = OPT_ENUM_opt_level_od;
+		continue;
+	    case 'e':
+		if( OPT_GET_NUMBER_DEFAULT( &(data->oe_value ), 20 ) ) {
+		    checkOENumber( &(data->oe_value) );
+		    data->oe = true;
+		}
+		continue;
+	    case 'f':
+		if( OPT_RECOG_LOWER( '+' ) ) {
+		    data->of_plus = true;
+		    continue;
+		}
+		data->of = true;
+		continue;
+	    case 'h':
+		data->oh = true;
+		continue;
+	    case 'i':
+		data->oi = true;
+		continue;
+	    case 'k':
+		data->ok = true;
+		continue;
+	    case 'l':
+		if( OPT_RECOG_LOWER( '+' ) ) {
+		    data->ol_plus = true;
+		    continue;
+		}
+		data->ol = true;
+		continue;
+	    case 'm':
+		data->om = true;
+		continue;
+	    case 'n':
+		data->on = true;
+		continue;
+	    case 'o':
+		data->oo = true;
+		continue;
+	    case 'p':
+		data->op = true;
+		continue;
+	    case 'r':
+		data->or = true;
+		continue;
+	    case 's':
+		data->opt_size_time_timestamp = ++(data->timestamp);
+		data->opt_size_time = OPT_ENUM_opt_size_time_os;
+		continue;
+	    case 't':
+		data->opt_size_time_timestamp = ++(data->timestamp);
+		data->opt_size_time = OPT_ENUM_opt_size_time_ot;
+		continue;
+	    case 'u':
+		data->ou = true;
+		continue;
+	    case 'x':
+		data->opt_level_timestamp = ++(data->timestamp);
+		data->opt_level = OPT_ENUM_opt_level_ox;
+		continue;
+	    case 'z':
+		data->oz = true;
+		continue;
+	    }
+	    OPT_UNGET();
+	    break;
+	} while( ! OPT_END() );
+	return( false );
+    case 'n':
+	switch( OPT_GET_LOWER() ) {
+	case 'c':
+	    if( OPT_GET_ID( &(data->nc_value) ) ) {
+		data->nc = true;
+	    }
+	    return( false );
+	case 'd':
+	    if( OPT_GET_ID( &(data->nd_value) ) ) {
+		data->nd = true;
+	    }
+	    return( false );
+	case 'm':
+	    if( OPT_GET_FILE( &(data->nm_value) ) ) {
+		data->nm = true;
+	    }
+	    return( false );
+	case 't':
+	    if( OPT_GET_ID( &(data->nt_value) ) ) {
+		data->nt = true;
+	    }
+	    return( false );
+	}
+	OPT_UNGET();
+	return( true );
+    case 'm':
+	switch( OPT_GET_LOWER() ) {
+	case 'c':
+	    data->mem_model = OPT_ENUM_mem_model_mc;
+	    return( false );
+	case 'f':
+	    data->mem_model = OPT_ENUM_mem_model_mf;
+	    return( false );
+	case 'l':
+	    data->mem_model = OPT_ENUM_mem_model_ml;
+	    return( false );
+	case 'm':
+	    data->mem_model = OPT_ENUM_mem_model_mm;
+	    return( false );
+	case 's':
+	    data->mem_model = OPT_ENUM_mem_model_ms;
+	    return( false );
+	}
+	OPT_UNGET();
+	return( true );
+    case 'f':
+	switch( OPT_GET_LOWER() ) {
+	case 'l':
+	    if( OPT_RECOG_LOWER( 'd' ) ) {
+		data->fld = true;
+		return( false );
+	    }
+	    return( true );
+	case 'p':
+	    switch( OPT_GET_LOWER() ) {
+	    case 'c':
+		data->intel_fpu_model = OPT_ENUM_intel_fpu_model_fpc;
+		return( false );
+	    case 'i':
+		if( OPT_RECOG_LOWER( '8' ) ) {
+		    if( OPT_RECOG_LOWER( '7' ) ) {
+			data->intel_fpu_model = OPT_ENUM_intel_fpu_model_fpi87;
+			return( false );
+		    }
+		    return( true );
+		}
+		data->intel_fpu_model = OPT_ENUM_intel_fpu_model_fpi;
+		return( false );
+	    case '2':
+		if( OPT_RECOG_LOWER( '8' ) ) {
+		    if( OPT_RECOG_LOWER( '7' ) ) {
+			data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp2;
+			return( false );
+		    }
+		    return( true );
+		}
+		data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp2;
+		return( false );
+	    case '3':
+		if( OPT_RECOG_LOWER( '8' ) ) {
+		    if( OPT_RECOG_LOWER( '7' ) ) {
+			data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp3;
+			return( false );
+		    }
+		    return( true );
+		}
+		data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp3;
+		return( false );
+	    case '5':
+		data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp5;
+		return( false );
+	    case '6':
+		data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp6;
+		return( false );
+	    case 'r':
+		data->fpr = true;
+		return( false );
+	    case 'd':
+		data->fpd = true;
+		return( false );
+	    }
+	    OPT_UNGET();
+	    return( true );
+	case 'h':
+	    if( OPT_RECOG_LOWER( 'q' ) ) {
+		if( OPT_GET_FILE_OPT( &(data->fhq_value) ) ) {
+		    data->fhq_timestamp = ++(data->timestamp);
+		    data->fhq = true;
+		}
+		return( false );
+	    }
+	    if( OPT_GET_FILE_OPT( &(data->fh_value) ) ) {
+		data->fh_timestamp = ++(data->timestamp);
+		data->fh = true;
+	    }
+	    return( false );
+	case 'i':
+	    if( OPT_RECOG_LOWER( 'p' ) ) {
+		if( OPT_GET_FILE_OPT( &(data->fip_value) ) ) {
+		    data->fip = true;
+		}
+		return( false );
+	    }
+	    if( OPT_GET_FILE( &(data->fi_value) ) ) {
+		data->fi = true;
+	    }
+	    return( false );
+	case 'o':
+	    if( OPT_GET_FILE_OPT( &(data->fo_value) ) ) {
+		data->fo = true;
+	    }
+	    return( false );
+	case 'r':
+	    if( OPT_GET_FILE_OPT( &(data->fr_value) ) ) {
+		data->fr = true;
+	    }
+	    return( false );
+	case 't':
+	    if( OPT_RECOG_LOWER( 'i' ) ) {
+		data->fti = true;
+		return( false );
+	    }
+	    data->file_83 = OPT_ENUM_file_83_ft;
+	    return( false );
+	case 'x':
+	    data->file_83 = OPT_ENUM_file_83_fx;
+	    return( false );
+	}
+	OPT_UNGET();
+	return( true );
+    case 'b':
+	switch( OPT_GET_LOWER() ) {
+	case 'c':
+	    data->bc = true;
+	    return( false );
+	case 'd':
+	    data->bd = true;
+	    return( false );
+	case 'g':
+	    data->bg = true;
+	    return( false );
+	case 'm':
+	    data->bm = true;
+	    return( false );
+	case 'r':
+	    data->br = true;
+	    return( false );
+	case 't':
+	    if( OPT_GET_ID_OPT( &(data->bt_value) ) ) {
+		data->bt = true;
+	    }
+	    return( false );
+	case 'w':
+	    data->bw = true;
+	    return( false );
+	}
+	OPT_UNGET();
+	return( true );
+    case 'a':
+	switch( OPT_GET_LOWER() ) {
+	case 'a':
+	    data->aa = true;
+	    return( false );
+	case 'd':
+	    switch( OPT_GET_LOWER() ) {
+	    case 'h':
+		if( OPT_RECOG_LOWER( 'p' ) ) {
+		    if( OPT_GET_FILE_OPT( &(data->adhp_value) ) ) {
+			data->adhp = true;
+		    }
+		    return( false );
+		}
+		return( true );
+	    case 'f':
+		if( OPT_RECOG_LOWER( 's' ) ) {
+		    data->adfs = true;
+		    return( false );
+		}
+		return( true );
+	    case 'b':
+		if( OPT_RECOG_LOWER( 's' ) ) {
+		    data->adbs = true;
+		    return( false );
+		}
+		return( true );
+	    case 'd':
+		if( OPT_GET_FILE_OPT( &(data->add_value) ) ) {
+		    data->add = true;
+		}
+		return( false );
+	    case 't':
+		if( OPT_GET_FILE_OPT( &(data->adt_value) ) ) {
+		    data->adt = true;
+		}
+		return( false );
+	    }
+	    OPT_UNGET();
+	    if( OPT_GET_FILE_OPT( &(data->ad_value) ) ) {
+		data->ad = true;
+	    }
+	    return( false );
+	case 'i':
+	    data->ai = true;
+	    return( false );
+	case 'q':
+	    data->aq = true;
+	    return( false );
+	}
+	OPT_UNGET();
+	return( true );
+    case '?':
+	data->_question = true;
+	return( false );
+    case '3':
+	if( OPT_RECOG_LOWER( 'r' ) ) {
+	    data->arch_386 = OPT_ENUM_arch_386__3r;
+	    return( false );
+	}
+	if( OPT_RECOG_LOWER( 's' ) ) {
+	    data->arch_386 = OPT_ENUM_arch_386__3s;
+	    return( false );
+	}
+	data->arch_386 = OPT_ENUM_arch_386__3r;
+	return( false );
+    case '4':
+	if( OPT_RECOG_LOWER( 'r' ) ) {
+	    data->arch_386 = OPT_ENUM_arch_386__4r;
+	    return( false );
+	}
+	if( OPT_RECOG_LOWER( 's' ) ) {
+	    data->arch_386 = OPT_ENUM_arch_386__4s;
+	    return( false );
+	}
+	data->arch_386 = OPT_ENUM_arch_386__4r;
+	return( false );
+    case '5':
+	if( OPT_RECOG_LOWER( 'r' ) ) {
+	    data->arch_386 = OPT_ENUM_arch_386__5r;
+	    return( false );
+	}
+	if( OPT_RECOG_LOWER( 's' ) ) {
+	    data->arch_386 = OPT_ENUM_arch_386__5s;
+	    return( false );
+	}
+	data->arch_386 = OPT_ENUM_arch_386__5r;
+	return( false );
+    case '6':
+	if( OPT_RECOG_LOWER( 'r' ) ) {
+	    data->arch_386 = OPT_ENUM_arch_386__6r;
+	    return( false );
+	}
+	if( OPT_RECOG_LOWER( 's' ) ) {
+	    data->arch_386 = OPT_ENUM_arch_386__6s;
+	    return( false );
+	}
+	data->arch_386 = OPT_ENUM_arch_386__6r;
+	return( false );
+    case 'd':
+	switch( OPT_GET_LOWER() ) {
+	case '0':
+	    data->debug_info_timestamp = ++(data->timestamp);
+	    data->debug_info = OPT_ENUM_debug_info_d0;
+	    return( false );
+	case '1':
+	    if( OPT_RECOG_LOWER( '+' ) ) {
+		data->debug_info_timestamp = ++(data->timestamp);
+		data->debug_info = OPT_ENUM_debug_info_d1_plus;
+		return( false );
+	    }
+	    data->debug_info_timestamp = ++(data->timestamp);
+	    data->debug_info = OPT_ENUM_debug_info_d1;
+	    return( false );
+	case '2':
+	    if( OPT_RECOG_LOWER( '~' ) ) {
+		data->debug_info_timestamp = ++(data->timestamp);
+		data->debug_info = OPT_ENUM_debug_info_d2_tilde;
+		return( false );
+	    }
+	    data->debug_info_timestamp = ++(data->timestamp);
+	    data->debug_info = OPT_ENUM_debug_info_d2;
+	    return( false );
+	case '3':
+	    data->debug_info_timestamp = ++(data->timestamp);
+	    data->debug_info = OPT_ENUM_debug_info_d3;
+	    return( false );
+	case '9':
+	    data->debug_info_timestamp = ++(data->timestamp);
+	    data->debug_info = OPT_ENUM_debug_info_d9;
+	    return( false );
+	case '+':
+	    if( scanDefinePlus( &(data->d_plus_value) ) ) {
+		data->d_plus = true;
+	    }
+	    return( false );
+	case 'b':
+	    if( OPT_END() ) {
+		data->db = true;
+		return( false );
+	    }
+	    break;
+	}
+	OPT_UNGET();
+	if( scanDefine( &(data->d_value) ) ) {
+	    data->d = true;
+	}
+	return( false );
+    case 'e':
+	switch( OPT_GET_LOWER() ) {
+	case 's':
+	    if( OPT_RECOG_LOWER( 'p' ) ) {
+		data->esp = true;
+		return( false );
+	    }
+	    return( true );
+	case 'o':
+	    if( OPT_RECOG_LOWER( 'c' ) ) {
+		data->eoc = true;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'e' ) ) {
+		data->eoe = true;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'o' ) ) {
+		data->eoo = true;
+		return( false );
+	    }
+	    return( true );
+	case 'c':
+	    switch( OPT_GET_LOWER() ) {
+	    case 'c':
+		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecc;
+		return( false );
+	    case 'd':
+		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecd;
+		return( false );
+	    case 'f':
+		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecf;
+		return( false );
+	    case 'o':
+		data->intel_call_conv = OPT_ENUM_intel_call_conv_eco;
+		return( false );
+	    case 'p':
+		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecp;
+		return( false );
+	    case 'r':
+		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecr;
+		return( false );
+	    case 's':
+		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecs;
+		return( false );
+	    case 'w':
+		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecw;
+		return( false );
+	    }
+	    OPT_UNGET();
+	    data->ec = true;
+	    return( false );
+	case 'e':
+	    data->ee = true;
+	    return( false );
+	case 'f':
+	    data->ef = true;
+	    return( false );
+	case 'i':
+	    data->enum_size = OPT_ENUM_enum_size_ei;
+	    return( false );
+	case 'm':
+	    data->enum_size = OPT_ENUM_enum_size_em;
+	    return( false );
+	case 'n':
+	    data->en = true;
+	    return( false );
+	case 'p':
+	    if( OPT_GET_NUMBER_DEFAULT( &(data->ep_value ), 0 ) ) {
+		checkPrologSize( &(data->ep_value) );
+		data->ep = true;
+	    }
+	    return( false );
+	case 'q':
+	    data->eq = true;
+	    handleOptionEQ( data, true );
+	    return( false );
+	case 't':
+	    if( OPT_RECOG_LOWER( '0' ) ) {
+		data->et0 = true;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'p' ) ) {
+		data->etp = true;
+		return( false );
+	    }
+	    data->et = true;
+	    return( false );
+	case 'z':
+	    data->ez = true;
+	    return( false );
+	}
+	OPT_UNGET();
+	if( OPT_GET_NUMBER_DEFAULT( &(data->e_value ), 20 ) ) {
+	    checkErrorLimit( &(data->e_value) );
+	    data->e = true;
+	}
+	return( false );
+    case 'g':
+	if( OPT_GET_ID( &(data->g_value) ) ) {
+	    data->g = true;
+	}
+	return( false );
+    case 'h':
+	if( OPT_RECOG_LOWER( 'c' ) ) {
+	    data->dbg_output = OPT_ENUM_dbg_output_hc;
+	    return( false );
+	}
+	if( OPT_RECOG_LOWER( 'd' ) ) {
+	    if( OPT_RECOG_LOWER( 'a' ) ) {
+		data->dbg_output = OPT_ENUM_dbg_output_hda;
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'g' ) ) {
+		data->dbg_output = OPT_ENUM_dbg_output_hdg;
+		return( false );
+	    }
+	    data->dbg_output = OPT_ENUM_dbg_output_hd;
+	    return( false );
+	}
+	if( OPT_RECOG_LOWER( 'w' ) ) {
+	    data->dbg_output = OPT_ENUM_dbg_output_hw;
+	    return( false );
+	}
+	data->_question = true;
+	return( false );
+    case 'i':
+	if( OPT_GET_PATH( &(data->i_value) ) ) {
+	    data->i = true;
+	}
+	return( false );
+    case 'j':
+	data->j = true;
+	return( false );
+    case 'p':
+	if( OPT_RECOG_LOWER( 'i' ) ) {
+	    if( OPT_RECOG_LOWER( 'l' ) ) {
+		data->pil = true;
+		return( false );
+	    }
+	    return( true );
+	}
+	if( OPT_RECOG_LOWER( 'm' ) ) {
+	    data->pm = true;
+	    return( false );
+	}
+	do {
+	    switch( OPT_GET_LOWER() ) {
+	    case '#':
+		if( OPT_GET_CHAR( &(data->p_sharp_value) ) ) {
+		    data->p_sharp = true;
+		}
+		continue;
+	    case 'l':
+		data->pl = true;
+		continue;
+	    case 'c':
+		data->pc = true;
+		continue;
+	    case 'w':
+		if( OPT_GET_NUMBER( &(data->pw_value) ) ) {
+		    checkPPWidth( &(data->pw_value) );
+		    data->pw = true;
+		}
+		continue;
+	    }
+	    OPT_UNGET();
+	    break;
+	} while( ! OPT_END() );
+	data->p = true;
+	return( false );
+    case 'q':
+	data->q = true;
+	return( false );
+    case 'r':
+	if( OPT_RECOG_LOWER( 'o' ) ) {
+	    if( OPT_RECOG_LOWER( 'd' ) ) {
+		if( OPT_GET_PATH( &(data->rod_value) ) ) {
+		    data->rod = true;
+		}
+		return( false );
+	    }
+	    return( true );
+	}
+	if( OPT_RECOG_LOWER( 'e' ) ) {
+	    data->re = true;
+	    return( false );
+	}
+	if( OPT_RECOG_LOWER( 'i' ) ) {
+	    data->ri = true;
+	    return( false );
+	}
+	data->r = true;
+	return( false );
+    case 's':
+	if( OPT_RECOG_LOWER( 'g' ) ) {
+	    data->sg = true;
+	    return( false );
+	}
+	if( OPT_RECOG_LOWER( 't' ) ) {
+	    data->st = true;
+	    return( false );
+	}
+	data->s = true;
+	return( false );
+    case 'u':
+	if( scanUndefine( &(data->u_value) ) ) {
+	    data->u = true;
+	}
+	return( false );
+    case 'v':
+	if( OPT_RECOG_LOWER( 'c' ) ) {
+	    if( OPT_RECOG_LOWER( 'a' ) ) {
+		if( OPT_RECOG_LOWER( 'p' ) ) {
+		    data->vcap = true;
+		    return( false );
+		}
+		return( true );
+	    }
+	    return( true );
+	}
+	data->v = true;
+	return( false );
+    case 'w':
+	switch( OPT_GET_LOWER() ) {
+	case 'p':
+	    if( OPT_RECOG_LOWER( 'x' ) ) {
+		data->wpx = true;
+		return( false );
+	    }
+	    return( true );
+	case 'c':
+	    if( OPT_RECOG_LOWER( 'd' ) ) {
+		if( OPT_GET_ID( &(data->wcd_value) ) ) {
+		    data->wcd = true;
+		}
+		return( false );
+	    }
+	    if( OPT_RECOG_LOWER( 'e' ) ) {
+		if( OPT_GET_ID( &(data->wce_value) ) ) {
+		    data->wce = true;
+		}
+		return( false );
+	    }
+	    return( true );
+	case 'e':
+	    data->we = true;
+	    return( false );
+	case 'x':
+	    data->warn_level = OPT_ENUM_warn_level_wx;
+	    return( false );
+	}
+	OPT_UNGET();
+	if( OPT_GET_NUMBER( &(data->w_value) ) ) {
+	    checkWarnLevel( &(data->w_value) );
+	    data->warn_level = OPT_ENUM_warn_level_w;
+	}
+	return( false );
+    case 'x':
+	if( OPT_RECOG_LOWER( 'b' ) ) {
+	    if( OPT_RECOG_LOWER( 's' ) ) {
+		if( OPT_RECOG_LOWER( 'a' ) ) {
+		    data->xbsa = true;
+		    return( false );
+		}
+		return( true );
+	    }
+	    return( true );
+	}
+	if( OPT_RECOG_LOWER( 'g' ) ) {
+	    if( OPT_RECOG_LOWER( 'v' ) ) {
+		data->xgv = true;
+		return( false );
+	    }
+	    return( true );
+	}
+	if( OPT_RECOG_LOWER( 'x' ) ) {
+	    data->xx = true;
+	    return( false );
+	}
+	data->x = true;
+	return( false );
+    }
+    OPT_UNGET();
+    return( true );
+}
+void OPT_INIT( OPT_STORAGE *data )
+{
+    memset( data, 0, sizeof( *data ) );
+    data->zt_value = 256;
+    data->zastd_value = 0;
+    data->oe_value = 20;
+    data->e_value = 20;
+    data->ep_value = 0;
+    data->win = OPT_ENUM_win_default;
+    data->fp_rounding = OPT_ENUM_fp_rounding_default;
+    data->char_set = OPT_ENUM_char_set_default;
+    data->gs_peg = OPT_ENUM_gs_peg_default;
+    data->fs_peg = OPT_ENUM_fs_peg_default;
+    data->ds_peg = OPT_ENUM_ds_peg_default;
+    data->cstd = OPT_ENUM_cstd_default;
+    data->iso = OPT_ENUM_iso_default;
+    data->warn_level = OPT_ENUM_warn_level_default;
+    data->opt_size_time = OPT_ENUM_opt_size_time_default;
+    data->opt_level = OPT_ENUM_opt_level_default;
+    data->mem_model = OPT_ENUM_mem_model_default;
+    data->dbg_output = OPT_ENUM_dbg_output_default;
+    data->intel_fpu_level = OPT_ENUM_intel_fpu_level_default;
+    data->intel_fpu_model = OPT_ENUM_intel_fpu_model_default;
+    data->file_83 = OPT_ENUM_file_83_default;
+    data->enum_size = OPT_ENUM_enum_size_default;
+    data->intel_call_conv = OPT_ENUM_intel_call_conv_default;
+    data->debug_info = OPT_ENUM_debug_info_default;
+    data->arch_386 = OPT_ENUM_arch_386_default;
+    data->arch_i86 = OPT_ENUM_arch_i86_default;
+}
+void OPT_FINI( OPT_STORAGE *data )
+{
+    OPT_CLEAN_STRING( &(data->wce_value) );
+    OPT_CLEAN_STRING( &(data->wcd_value) );
+    OPT_CLEAN_STRING( &(data->u_value) );
+    OPT_CLEAN_STRING( &(data->rod_value) );
+    OPT_CLEAN_STRING( &(data->nt_value) );
+    OPT_CLEAN_STRING( &(data->nm_value) );
+    OPT_CLEAN_STRING( &(data->nd_value) );
+    OPT_CLEAN_STRING( &(data->nc_value) );
+    OPT_CLEAN_STRING( &(data->i_value) );
+    OPT_CLEAN_STRING( &(data->g_value) );
+    OPT_CLEAN_STRING( &(data->fr_value) );
+    OPT_CLEAN_STRING( &(data->fo_value) );
+    OPT_CLEAN_STRING( &(data->fip_value) );
+    OPT_CLEAN_STRING( &(data->fi_value) );
+    OPT_CLEAN_STRING( &(data->fhq_value) );
+    OPT_CLEAN_STRING( &(data->fh_value) );
+    OPT_CLEAN_STRING( &(data->d_value) );
+    OPT_CLEAN_STRING( &(data->d_plus_value) );
+    OPT_CLEAN_STRING( &(data->bt_value) );
+    OPT_CLEAN_STRING( &(data->adt_value) );
+    OPT_CLEAN_STRING( &(data->adhp_value) );
+    OPT_CLEAN_STRING( &(data->add_value) );
+    OPT_CLEAN_STRING( &(data->ad_value) );
+}

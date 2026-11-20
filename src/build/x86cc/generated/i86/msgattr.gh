@@ -1,0 +1,26 @@
+
+
+#define MSGTYPES_DEFS \
+MSGTYPES_DEF( ERROR ) \
+MSGTYPES_DEF( WARNING ) \
+MSGTYPES_DEF( INFO ) \
+MSGTYPES_DEF( ANSI ) \
+MSGTYPES_DEF( ANSIERR ) \
+MSGTYPES_DEF( ANSIWARN ) \
+MSGTYPES_DEF( STYLE ) \
+MSGTYPES_DEF( JCK ) \
+
+
+//define GRP_DEF( name,prefix,num,index,eindex )
+#define GRP_DEFS \
+GRP_DEF( Warn1, W, 100, 0, 45 ) \
+GRP_DEF( Warn2, W, 200, 45, 49 ) \
+GRP_DEF( Warn3, W, 300, 49, 60 ) \
+GRP_DEF( Warn4, W, 400, 60, 61 ) \
+GRP_DEF( Warn5, W, 500, 61, 62 ) \
+GRP_DEF( Errs, E, 1000, 62, 271 ) \
+GRP_DEF( Info, I, 2000, 271, 280 ) \
+GRP_DEF( PCHDR, H, 3000, 280, 289 ) \
+GRP_DEF( Misc, M, 4000, 289, 294 ) \
+
+

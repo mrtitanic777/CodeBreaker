@@ -174,13 +174,84 @@ struct Reader {
     }
 };
 
+// A compile by OpenWatcom's wcc or wcc386 (CB_WCC_CAPTURE): the sources it names, the headers beside them and in its working
+// folder and -i= folders (OpenWatcom's own, under WATCOM, are not kept: the replay reads them from the toolchain), and the
+// object it writes (-fo=, else <source>.obj in the working folder) with its error file.
+std::unique_ptr<Pending> compile_before(const ProcessSpec& spec, const stdfs::path& root) {
+    const stdfs::path cwd = spec.cwd ? *spec.cwd : stdfs::current_path();
+    auto p = std::make_unique<Pending>();
+    p->root = root;
+    p->cwd = cwd;
+    p->started = stdfs::file_time_type::clock::now() - std::chrono::seconds(2);
+    std::set<std::string> seen;
+    auto add = [&](const std::string& as, const stdfs::path& file) {
+        std::error_code ec;
+        const std::string key = lower(stdfs::weakly_canonical(file, ec).generic_string());
+        if (is_file(file) && seen.insert(key).second) p->inputs.emplace_back(as, file);
+    };
+    std::vector<stdfs::path> header_dirs = {cwd};
+    std::optional<std::string> object;
+    std::vector<std::string> sources;
+    const std::optional<std::string> watcom = env_of(spec, "WATCOM");
+    for (std::size_t i = 1; i < spec.argv.size(); ++i) {
+        const std::string& a = spec.argv[i];
+        if (a.empty()) continue;
+        if (a[0] == '-' || a[0] == '/') {
+            const std::string o = lower(a.substr(1));
+            if (o.starts_with("fo=")) object = a.substr(4);
+            if (o.starts_with("i=")) {
+                const std::string list = a.substr(3);
+                for (std::size_t s = 0, e; s <= list.size(); s = e + 1) {
+                    e = list.find(';', s);
+                    if (e == std::string::npos) e = list.size();
+                    if (e > s) header_dirs.push_back(resolve(cwd, list.substr(s, e - s)));
+                }
+            }
+            continue;
+        }
+        if (a[0] == '@') continue;   // (an options file: none of CodeBreaker's compiles use one)
+        sources.push_back(a);
+        add(a, resolve(cwd, a));
+        header_dirs.push_back(resolve(cwd, a).parent_path());
+    }
+    if (sources.empty()) return nullptr;
+    for (const stdfs::path& dir : header_dirs) {
+        if (watcom && lower(dir.generic_string()).starts_with(lower(stdfs::path(*watcom).generic_string()))) continue;
+        std::error_code ec;
+        for (const auto& e : stdfs::directory_iterator(dir, ec)) {
+            const std::string ext = lower(e.path().extension().string());
+            if (ext == ".h" || ext == ".hpp" || ext == ".inc" || ext == ".gh") add(fs::to_text(e.path()), e.path());
+        }
+    }
+    const stdfs::path first(sources.front());
+    const std::string obj = object ? *object : first.stem().string() + ".obj";
+    p->outputs = {obj, (stdfs::path(obj).parent_path() / (first.stem().string() + ".err")).string()};
+    std::sort(p->inputs.begin(), p->inputs.end());
+    std::string key;
+    for (std::size_t i = 1; i < spec.argv.size(); ++i) key += spec.argv[i] + '\n';
+    Bytes all(key.begin(), key.end());
+    for (const auto& [as, file] : p->inputs) {
+        all.insert(all.end(), as.begin(), as.end());
+        const Bytes b = fs::read_file(file);
+        all.insert(all.end(), b.begin(), b.end());
+    }
+    p->folder = root / crypto::to_hex(crypto::sha1(all)).substr(0, 16);
+    return p;
+}
+
 }  // namespace
 
 std::unique_ptr<Pending> before(const ProcessSpec& spec) {
     try {
-        const auto root = fs::get_env("CB_WLINK_CAPTURE");
-        if (!root || root->empty() || spec.argv.empty()) return nullptr;
+        if (spec.argv.empty()) return nullptr;
         const std::string program = lower(stdfs::path(spec.argv[0]).filename().string());
+        if (program == "wcc.exe" || program == "wcc" || program == "wcc386.exe" || program == "wcc386") {
+            const auto wcc_root = fs::get_env("CB_WCC_CAPTURE");
+            if (!wcc_root || wcc_root->empty()) return nullptr;
+            return compile_before(spec, fs::from_text(*wcc_root));
+        }
+        const auto root = fs::get_env("CB_WLINK_CAPTURE");
+        if (!root || root->empty()) return nullptr;
         if (program != "wlink.exe" && program != "wlink") return nullptr;
         Reader r{spec, spec.cwd ? *spec.cwd : stdfs::current_path(), {}, {}, {}, {}, {}, {}};
         // the system definitions every link reads (`system dos` and the like are blocks of directives in them)
@@ -248,6 +319,7 @@ void after(std::unique_ptr<Pending> pending, const ProcessSpec& spec, const Proc
         for (const char* name : {"WATCOM", "LIB", "INCLUDE"})
             if (auto v = env_of(spec, name)) env[name] = *v;
         nlohmann::json c;
+        c["program"] = lower(stdfs::path(spec.argv[0]).stem().string());   // wlink, wcc or wcc386
         c["args"] = std::vector<std::string>(spec.argv.begin() + 1, spec.argv.end());
         c["cwd"] = pending->cwd.generic_string();
         c["env"] = env;

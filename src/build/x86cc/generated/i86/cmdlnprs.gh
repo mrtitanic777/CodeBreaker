@@ -1,0 +1,280 @@
+#ifndef OPT_STRING
+#define OPT_STRING opt_string
+typedef struct opt_string {
+    struct opt_string *next;
+    char data[1];
+} opt_string;
+#endif
+#ifndef OPT_NUMBER
+#define OPT_NUMBER opt_number
+typedef struct opt_number {
+    struct opt_number *next;
+    unsigned number;
+} opt_number;
+#endif
+typedef struct opt_storage OPT_STORAGE;
+struct opt_storage {
+    unsigned     timestamp;
+    unsigned     zt_value;
+    unsigned     zp_value;
+    unsigned     zku_value;
+    unsigned     zastd_value;
+    OPT_STRING   *wce_value;
+    OPT_STRING   *wcd_value;
+    unsigned     w_value;
+    OPT_STRING   *u_value;
+    OPT_STRING   *rod_value;
+    unsigned     pw_value;
+    int          p_sharp_value;
+    unsigned     oe_value;
+    OPT_STRING   *nt_value;
+    OPT_STRING   *nm_value;
+    OPT_STRING   *nd_value;
+    OPT_STRING   *nc_value;
+    OPT_STRING   *i_value;
+    OPT_STRING   *g_value;
+    OPT_STRING   *fr_value;
+    OPT_STRING   *fo_value;
+    OPT_STRING   *fip_value;
+    OPT_STRING   *fi_value;
+    OPT_STRING   *fhq_value;
+    unsigned     fhq_timestamp;
+    OPT_STRING   *fh_value;
+    unsigned     fh_timestamp;
+    unsigned     e_value;
+    unsigned     ep_value;
+    OPT_STRING   *d_value;
+    OPT_STRING   *d_plus_value;
+    OPT_STRING   *bt_value;
+    OPT_STRING   *adt_value;
+    OPT_STRING   *adhp_value;
+    OPT_STRING   *add_value;
+    OPT_STRING   *ad_value;
+    unsigned     win;
+    unsigned     fp_rounding;
+    unsigned     char_set;
+    unsigned     gs_peg;
+    unsigned     fs_peg;
+    unsigned     ds_peg;
+    unsigned     cstd;
+    unsigned     iso;
+    unsigned     warn_level;
+    unsigned     opt_size_time;
+    unsigned     opt_size_time_timestamp;
+    unsigned     opt_level;
+    unsigned     opt_level_timestamp;
+    unsigned     mem_model;
+    unsigned     dbg_output;
+    unsigned     intel_fpu_level;
+    unsigned     intel_fpu_level_timestamp;
+    unsigned     intel_fpu_model;
+    unsigned     intel_fpu_model_timestamp;
+    unsigned     file_83;
+    unsigned     file_83_timestamp;
+    unsigned     enum_size;
+    unsigned     enum_size_timestamp;
+    unsigned     intel_call_conv;
+    unsigned     debug_info;
+    unsigned     debug_info_timestamp;
+    unsigned     arch_i86;
+    boolbit      zu : 1;
+    boolbit      zt : 1;
+    boolbit      zs : 1;
+    boolbit      zq : 1;
+    boolbit      zpw : 1;
+    boolbit      zp : 1;
+    boolbit      zm : 1;
+    boolbit      zls : 1;
+    boolbit      zlf : 1;
+    boolbit      zld : 1;
+    boolbit      zl : 1;
+    boolbit      zg : 1;
+    boolbit      zmsc : 1;
+    boolbit      zfw : 1;
+    boolbit      zev : 1;
+    boolbit      zc : 1;
+    boolbit      zam : 1;
+    boolbit      xx : 1;
+    boolbit      xbsa : 1;
+    boolbit      x : 1;
+    boolbit      wpx : 1;
+    boolbit      wo : 1;
+    boolbit      we : 1;
+    boolbit      wce : 1;
+    boolbit      wcd : 1;
+    boolbit      v : 1;
+    boolbit      u : 1;
+    boolbit      st : 1;
+    boolbit      sg : 1;
+    boolbit      s : 1;
+    boolbit      rod : 1;
+    boolbit      ri : 1;
+    boolbit      r : 1;
+    boolbit      q : 1;
+    boolbit      pw : 1;
+    boolbit      pc : 1;
+    boolbit      pl : 1;
+    boolbit      p_sharp : 1;
+    boolbit      p : 1;
+    boolbit      pm : 1;
+    boolbit      pil : 1;
+    boolbit      oz : 1;
+    boolbit      ou : 1;
+    boolbit      or : 1;
+    boolbit      op : 1;
+    boolbit      oo : 1;
+    boolbit      on : 1;
+    boolbit      om : 1;
+    boolbit      ol_plus : 1;
+    boolbit      ol : 1;
+    boolbit      ok : 1;
+    boolbit      oi : 1;
+    boolbit      oh : 1;
+    boolbit      of_plus : 1;
+    boolbit      of : 1;
+    boolbit      oe : 1;
+    boolbit      oc : 1;
+    boolbit      ob : 1;
+    boolbit      oa : 1;
+    boolbit      nt : 1;
+    boolbit      nm : 1;
+    boolbit      nd : 1;
+    boolbit      nc : 1;
+    boolbit      j : 1;
+    boolbit      i : 1;
+    boolbit      g : 1;
+    boolbit      fld : 1;
+    boolbit      fpd : 1;
+    boolbit      fpr : 1;
+    boolbit      fti : 1;
+    boolbit      fr : 1;
+    boolbit      fo : 1;
+    boolbit      fip : 1;
+    boolbit      fi : 1;
+    boolbit      fhq : 1;
+    boolbit      fh : 1;
+    boolbit      e : 1;
+    boolbit      eq : 1;
+    boolbit      ep : 1;
+    boolbit      eoo : 1;
+    boolbit      en : 1;
+    boolbit      ef : 1;
+    boolbit      ee : 1;
+    boolbit      ec : 1;
+    boolbit      d : 1;
+    boolbit      db : 1;
+    boolbit      d_plus : 1;
+    boolbit      bw : 1;
+    boolbit      bt : 1;
+    boolbit      bm : 1;
+    boolbit      bg : 1;
+    boolbit      bd : 1;
+    boolbit      bc : 1;
+    boolbit      aq : 1;
+    boolbit      ai : 1;
+    boolbit      adt : 1;
+    boolbit      adhp : 1;
+    boolbit      adfs : 1;
+    boolbit      add : 1;
+    boolbit      adbs : 1;
+    boolbit      ad : 1;
+    boolbit      aa : 1;
+    boolbit      _question : 1;
+};
+extern void OPT_INIT( OPT_STORAGE *data );
+extern void OPT_FINI( OPT_STORAGE *data );
+extern bool OPT_PROCESS( OPT_STORAGE *data );
+#define OPT_ENUM_win_zw 1
+#define OPT_ENUM_win_zws 2
+#define OPT_ENUM_win_zW 3
+#define OPT_ENUM_win_zWs 4
+#define OPT_ENUM_win_default 5
+#define OPT_ENUM_fp_rounding_zri 6
+#define OPT_ENUM_fp_rounding_zro 7
+#define OPT_ENUM_fp_rounding_default 8
+#define OPT_ENUM_char_set_zku 9
+#define OPT_ENUM_char_set_zku8 10
+#define OPT_ENUM_char_set_zkl 11
+#define OPT_ENUM_char_set_zk0 12
+#define OPT_ENUM_char_set_zk0u 13
+#define OPT_ENUM_char_set_zk3 14
+#define OPT_ENUM_char_set_zk2 15
+#define OPT_ENUM_char_set_zk1 16
+#define OPT_ENUM_char_set_default 17
+#define OPT_ENUM_gs_peg_zgp 18
+#define OPT_ENUM_gs_peg_zgf 19
+#define OPT_ENUM_gs_peg_default 20
+#define OPT_ENUM_fs_peg_zfp 21
+#define OPT_ENUM_fs_peg_zff 22
+#define OPT_ENUM_fs_peg_default 23
+#define OPT_ENUM_ds_peg_zdp 24
+#define OPT_ENUM_ds_peg_zdf 25
+#define OPT_ENUM_ds_peg_default 26
+#define OPT_ENUM_cstd_za99 27
+#define OPT_ENUM_cstd_zastd 28
+#define OPT_ENUM_cstd_default 29
+#define OPT_ENUM_iso_ze 30
+#define OPT_ENUM_iso_za 31
+#define OPT_ENUM_iso_zA 32
+#define OPT_ENUM_iso_default 33
+#define OPT_ENUM_warn_level_w 34
+#define OPT_ENUM_warn_level_wx 35
+#define OPT_ENUM_warn_level_default 36
+#define OPT_ENUM_opt_size_time_ot 37
+#define OPT_ENUM_opt_size_time_os 38
+#define OPT_ENUM_opt_size_time_default 39
+#define OPT_ENUM_opt_level_ox 40
+#define OPT_ENUM_opt_level_od 41
+#define OPT_ENUM_opt_level_default 42
+#define OPT_ENUM_mem_model_ms 43
+#define OPT_ENUM_mem_model_mm 44
+#define OPT_ENUM_mem_model_ml 45
+#define OPT_ENUM_mem_model_mh 46
+#define OPT_ENUM_mem_model_mc 47
+#define OPT_ENUM_mem_model_default 48
+#define OPT_ENUM_dbg_output_hw 49
+#define OPT_ENUM_dbg_output_hd 50
+#define OPT_ENUM_dbg_output_hdg 51
+#define OPT_ENUM_dbg_output_hda 52
+#define OPT_ENUM_dbg_output_hc 53
+#define OPT_ENUM_dbg_output_default 54
+#define OPT_ENUM_intel_fpu_level_fp6 55
+#define OPT_ENUM_intel_fpu_level_fp5 56
+#define OPT_ENUM_intel_fpu_level_fp3 57
+#define OPT_ENUM_intel_fpu_level_fp2 58
+#define OPT_ENUM_intel_fpu_level_default 59
+#define OPT_ENUM_intel_fpu_model_fpi 60
+#define OPT_ENUM_intel_fpu_model_fpi87 61
+#define OPT_ENUM_intel_fpu_model_fpc 62
+#define OPT_ENUM_intel_fpu_model_default 63
+#define OPT_ENUM_file_83_fx 64
+#define OPT_ENUM_file_83_ft 65
+#define OPT_ENUM_file_83_default 66
+#define OPT_ENUM_enum_size_em 67
+#define OPT_ENUM_enum_size_ei 68
+#define OPT_ENUM_enum_size_default 69
+#define OPT_ENUM_intel_call_conv_ecw 70
+#define OPT_ENUM_intel_call_conv_ecs 71
+#define OPT_ENUM_intel_call_conv_ecr 72
+#define OPT_ENUM_intel_call_conv_ecp 73
+#define OPT_ENUM_intel_call_conv_eco 74
+#define OPT_ENUM_intel_call_conv_ecf 75
+#define OPT_ENUM_intel_call_conv_ecd 76
+#define OPT_ENUM_intel_call_conv_ecc 77
+#define OPT_ENUM_intel_call_conv_default 78
+#define OPT_ENUM_debug_info_d9 79
+#define OPT_ENUM_debug_info_d3 80
+#define OPT_ENUM_debug_info_d2 81
+#define OPT_ENUM_debug_info_d2_tilde 82
+#define OPT_ENUM_debug_info_d1 83
+#define OPT_ENUM_debug_info_d1_plus 84
+#define OPT_ENUM_debug_info_d0 85
+#define OPT_ENUM_debug_info_default 86
+#define OPT_ENUM_arch_i86__6 87
+#define OPT_ENUM_arch_i86__5 88
+#define OPT_ENUM_arch_i86__4 89
+#define OPT_ENUM_arch_i86__3 90
+#define OPT_ENUM_arch_i86__2 91
+#define OPT_ENUM_arch_i86__1 92
+#define OPT_ENUM_arch_i86__0 93
+#define OPT_ENUM_arch_i86_default 94

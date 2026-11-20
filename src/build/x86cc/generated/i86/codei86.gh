@@ -1,0 +1,506 @@
+/* di strcpy( di, si ) zaps ax,si */
+#define C_strcpy_ret   HW_D( HW_DI )
+#define C_strcpy_parms P_DI_SI
+#define C_strcpy_saves HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 26 ) C_strcpy = { 26, false, {
+    0x57,0x8A,0x04,0x88,0x05,0x84,0xC0,0x74,0x10,0x8A,
+    0x44,0x01,0x83,0xC6,0x02,0x88,0x45,0x01,0x83,0xC7,
+    0x02,0x84,0xC0,0x75,0xE8,0x5F
+} };
+
+/* di strcpy( di, si ) zaps ax,si */
+#define S_strcpy_ret   HW_D( HW_DI )
+#define S_strcpy_parms P_DI_SI
+#define S_strcpy_saves HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 10 ) S_strcpy = { 10, false, {
+    0x57,0xAC,0x88,0x05,0x47,0x84,0xC0,0x75,0xF8,0x5F
+} };
+
+/* es:di strcpy( es:di, ds:si ) zaps ax,si */
+#define ZF_strcpy_ret   HW_D_2( HW_ES, HW_DI )
+#define ZF_strcpy_parms P_ESDI_DSSI
+#define ZF_strcpy_saves HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 8 ) ZF_strcpy = { 8, false, {
+    0x57,0xAC,0xAA,0x84,0xC0,0x75,0xFA,0x5F
+} };
+
+/* es:di strcpy( es:di, si:ax ) zaps ax,si */
+#define ZP_strcpy_ret   HW_D_2( HW_ES, HW_DI )
+#define ZP_strcpy_parms P_ESDI_SIAX
+#define ZP_strcpy_saves HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 13 ) ZP_strcpy = { 13, false, {
+    0x1E,0x57,0x96,0x8E,0xD8,0xAC,0xAA,0x84,0xC0,0x75,
+    0xFA,0x5F,0x1F
+} };
+
+/* es:di strcpy( es:di, ds:si ) zaps ax,si */
+#define DF_strcpy_ret   HW_D_2( HW_ES, HW_DI )
+#define DF_strcpy_parms P_ESDI_DSSI
+#define DF_strcpy_saves HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 28 ) DF_strcpy = { 28, false, {
+    0x57,0x8A,0x04,0x26,0x88,0x05,0x84,0xC0,0x74,0x11,
+    0x8A,0x44,0x01,0x83,0xC6,0x02,0x26,0x88,0x45,0x01,
+    0x83,0xC7,0x02,0x84,0xC0,0x75,0xE6,0x5F
+} };
+
+/* es:di strcpy( es:di, si:ax ) zaps ax,si */
+#define DP_strcpy_ret   HW_D_2( HW_ES, HW_DI )
+#define DP_strcpy_parms P_ESDI_SIAX
+#define DP_strcpy_saves HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 33 ) DP_strcpy = { 33, false, {
+    0x1E,0x57,0x96,0x8E,0xD8,0x8A,0x04,0x26,0x88,0x05,
+    0x84,0xC0,0x74,0x11,0x8A,0x44,0x01,0x83,0xC6,0x02,
+    0x26,0x88,0x45,0x01,0x83,0xC7,0x02,0x84,0xC0,0x75,
+    0xE6,0x5F,0x1F
+} };
+
+/* di strcat( di, si ) zaps ax,es,cx,si */
+/* di strcat( di, si ) zaps ax,es,cx,si */
+#define C_strcat_ret   HW_D( HW_DI )
+#define C_strcat_parms P_DI_SI
+#define C_strcat_saves HW_NotD_4( HW_AX, HW_ES, HW_CX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 36 ) C_strcat = { 36, false, {
+    0x1E,0x07,0x57,0x83,0xC9,0xFF,0x32,0xC0,0xF2,0xAE,
+    0x4F,0x8A,0x04,0x88,0x05,0x84,0xC0,0x74,0x10,0x8A,
+    0x44,0x01,0x83,0xC6,0x02,0x88,0x45,0x01,0x83,0xC7,
+    0x02,0x84,0xC0,0x75,0xE8,0x5F
+} };
+
+/* di strcat( di, si ) zaps ax,es,si */
+#define S_strcat_ret   HW_D( HW_DI )
+#define S_strcat_parms P_DI_SI
+#define S_strcat_saves HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 17 ) S_strcat = { 17, false, {
+    0x57,0x4F,0x47,0x80,0x3D,0x00,0x75,0xFA,0xAC,0x88,
+    0x05,0x47,0x84,0xC0,0x75,0xF8,0x5F
+} };
+
+/* es:di strcat( es:di, ds:si ) zaps ax,si */
+#define ZF_strcat_ret    HW_D_2( HW_ES, HW_DI )
+#define ZF_strcat_parms  P_ESDI_DSSI
+#define ZF_strcat_saves  HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 18 ) ZF_strcat = { 18, false, {
+    0x57,0x51,0x83,0xC9,0xFF,0x32,0xC0,0xF2,0xAE,0x59,
+    0x4F,0xAC,0xAA,0x84,0xC0,0x75,0xFA,0x5F
+} };
+
+/* es:di strcat( es:di, si:ax ) zaps ax,si */
+#define ZP_strcat_ret    HW_D_2( HW_ES, HW_DI )
+#define ZP_strcat_parms  P_ESDI_SIAX
+#define ZP_strcat_saves  HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 23 ) ZP_strcat = { 23, false, {
+    0x1E,0x57,0x96,0x8E,0xD8,0x51,0x83,0xC9,0xFF,0x32,
+    0xC0,0xF2,0xAE,0x59,0x4F,0xAC,0xAA,0x84,0xC0,0x75,
+    0xFA,0x5F,0x1F
+} };
+
+/* es:di strcat( es:di, ds:si ) zaps cx,ax,si */
+#define DF_strcat_ret   HW_D_2( HW_ES, HW_DI )
+#define DF_strcat_parms P_ESDI_DSSI
+#define DF_strcat_saves HW_NotD_3( HW_CX, HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 28 ) DF_strcat = { 28, false, {
+    0x57,0x83,0xC9,0xFF,0x32,0xC0,0xF2,0xAE,0x4F,0x8A,
+    0x04,0xAA,0x84,0xC0,0x74,0x0B,0x8A,0x44,0x01,0x83,
+    0xC6,0x02,0xAA,0x84,0xC0,0x75,0xEE,0x5F
+} };
+
+/* es:di strcat( es:di, si:ax ) zaps cx,ax,si */
+#define DP_strcat_ret   HW_D_2( HW_ES, HW_DI )
+#define DP_strcat_parms P_ESDI_SIAX
+#define DP_strcat_saves HW_NotD_3( HW_CX, HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 33 ) DP_strcat = { 33, false, {
+    0x1E,0x57,0x96,0x8E,0xD8,0x83,0xC9,0xFF,0x32,0xC0,
+    0xF2,0xAE,0x4F,0x8A,0x04,0xAA,0x84,0xC0,0x74,0x0B,
+    0x8A,0x44,0x01,0x83,0xC6,0x02,0xAA,0x84,0xC0,0x75,
+    0xEE,0x5F,0x1F
+} };
+
+/* si strchr( si, dl ) zaps ax,si */
+#define C_strchr_ret   HW_D( HW_SI )
+#define C_strchr_parms P_SI_DL
+#define C_strchr_saves HW_NotD_2( HW_AX, HW_SI )
+static struct STRUCT_BYTE_SEQ( 24 ) C_strchr = { 24, false, {
+    0x8A,0x04,0x3A,0xC2,0x74,0x12,0x84,0xC0,0x74,0x0C,
+    0x46,0x8A,0x04,0x3A,0xC2,0x74,0x07,0x46,0x84,0xC0,
+    0x75,0xEA,0x2B,0xF6
+} };
+
+/* dx:si strchr( ds:si, cl ) zaps ds,si,ax */
+#define DF_strchr_ret  HW_D_2( HW_DX, HW_SI )
+#define DF_strchr_parms P_DSSI_CL
+#define DF_strchr_saves HW_NotD_3( HW_DX, HW_SI, HW_AX )
+static struct STRUCT_BYTE_SEQ( 17 ) DF_strchr = { 17, false, {
+    0x8C,0xDA,0x8A,0x04,0x3A,0xC1,0x74,0x09,0x46,0x84,
+    0xC0,0x75,0xF5,0x2B,0xF6,0x2B,0xD2
+} };
+
+/* dx:si strchr( dx:si, cl ) zaps dx,si,ax */
+#define DP_strchr_ret  HW_D_2( HW_DX, HW_SI )
+#define DP_strchr_parms P_DXSI_CL
+#define DP_strchr_saves HW_NotD_3( HW_DX, HW_SI, HW_AX )
+static struct STRUCT_BYTE_SEQ( 19 ) DP_strchr = { 19, false, {
+    0x1E,0x8E,0xDA,0x8A,0x04,0x3A,0xC1,0x74,0x09,0x46,
+    0x84,0xC0,0x75,0xF5,0x2B,0xF6,0x2B,0xD2,0x1F
+} };
+
+/* di memset( di, al, cx ) zaps es,ah,cx */
+#define C_memset_ret   HW_D( HW_DI )
+#define C_memset_parms P_DI_AL_CX
+#define C_memset_saves HW_NotD_3( HW_ES, HW_AH, HW_CX )
+static struct STRUCT_BYTE_SEQ( 14 ) C_memset = { 14, false, {
+    0x57,0x1E,0x07,0x8A,0xE0,0xD1,0xE9,0xF3,0xAB,0x13,
+    0xC9,0xF3,0xAA,0x5F
+} };
+
+/* di memset( di, al, cx ) zaps es,cx */
+#define S_memset_ret   HW_D( HW_DI )
+#define S_memset_parms P_DI_AL_CX
+#define S_memset_saves HW_NotD_2( HW_ES, HW_CX )
+static struct STRUCT_BYTE_SEQ( 6 ) S_memset = { 6, false, {
+    0x57,0x1E,0x07,0xF3,0xAA,0x5F
+} };
+
+/* es:di memset( es:di, al, cx ) zaps cx */
+#define ZF_memset_ret   HW_D_2( HW_ES, HW_DI )
+#define ZF_memset_parms  P_ESDI_AL_CX
+#define ZF_memset_saves  HW_NotD( HW_CX )
+static struct STRUCT_BYTE_SEQ( 4 ) ZF_memset = { 4, false, {
+    0x57,0xF3,0xAA,0x5F
+} };
+
+/* es:di memset( es:di, al, cx ) zaps cx */
+#define ZP_memset_ret   HW_D_2( HW_ES, HW_DI )
+#define ZP_memset_parms P_ESDI_AL_CX
+#define ZP_memset_saves HW_NotD( HW_CX )
+static struct STRUCT_BYTE_SEQ( 4 ) ZP_memset = { 4, false, {
+    0x57,0xF3,0xAA,0x5F
+} };
+
+/* es:di memset( es:di, al, cx ) zaps ah,cx */
+#define DF_memset_ret  HW_D_2( HW_ES, HW_DI )
+#define DF_memset_parms P_ESDI_AL_CX
+#define DF_memset_saves  HW_NotD_2( HW_AH, HW_CX )
+static struct STRUCT_BYTE_SEQ( 12 ) DF_memset = { 12, false, {
+    0x57,0x8A,0xE0,0xD1,0xE9,0xF3,0xAB,0x13,0xC9,0xF3,
+    0xAA,0x5F
+} };
+
+/* es:di memset( es:di, al, cx ) zaps ah,cx */
+#define DP_memset_ret   HW_D_2( HW_ES, HW_DI )
+#define DP_memset_parms P_ESDI_AL_CX
+#define DP_memset_saves HW_NotD_2( HW_AH, HW_CX )
+static struct STRUCT_BYTE_SEQ( 12 ) DP_memset = { 12, false, {
+    0x57,0x8A,0xE0,0xD1,0xE9,0xF3,0xAB,0x13,0xC9,0xF3,
+    0xAA,0x5F
+} };
+
+/* di memcpy( di, si, cx ) zaps ax,es,si,cx */
+#define C_memcpy_ret   HW_D( HW_DI )
+#define C_memcpy_parms P_DI_SI_CX
+#define C_memcpy_saves  HW_NotD_4( HW_AX, HW_ES, HW_SI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 14 ) C_memcpy = { 14, false, {
+    0x57,0x8C,0xD8,0x8E,0xC0,0xD1,0xE9,0xF3,0xA5,0x13,
+    0xC9,0xF3,0xA4,0x5F
+} };
+
+/* di memcpy( di, si, cx ) zaps es,si,cx */
+#define S_memcpy_ret   HW_D( HW_DI )
+#define S_memcpy_parms P_DI_SI_CX
+#define S_memcpy_saves  HW_NotD_3( HW_ES, HW_SI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 6 ) S_memcpy = { 6, false, {
+    0x57,0x1E,0x07,0xF3,0xA4,0x5F
+} };
+
+/* es:di memcpy( es:di, ds:si, cx ) zaps cx,si */
+#define ZF_memcpy_ret   HW_D_2( HW_ES, HW_DI )
+#define ZF_memcpy_parms  P_ESDI_DSSI_CX
+#define ZF_memcpy_saves   HW_NotD_2( HW_SI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 4 ) ZF_memcpy = { 4, false, {
+    0x57,0xF3,0xA4,0x5F
+} };
+
+/* es:di memcpy( es:di, cx:si, ax ) zaps cx,si,ax */
+#define ZP_memcpy_ret   HW_D_2( HW_ES, HW_DI )
+#define ZP_memcpy_parms  P_ESDI_CXSI_AX
+#define ZP_memcpy_saves  HW_NotD_3( HW_SI, HW_CX, HW_AX )
+static struct STRUCT_BYTE_SEQ( 9 ) ZP_memcpy = { 9, false, {
+    0x1E,0x57,0x91,0x8E,0xD8,0xF3,0xA4,0x5F,0x1F
+} };
+
+/* es:di memcpy( es:di, ds:si, cx ) zaps cx,si */
+#define DF_memcpy_ret  HW_D_2( HW_ES, HW_DI )
+#define DF_memcpy_parms P_ESDI_DSSI_CX
+#define DF_memcpy_saves  HW_NotD_2( HW_SI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 10 ) DF_memcpy = { 10, false, {
+    0x57,0xD1,0xE9,0xF3,0xA5,0x13,0xC9,0xF3,0xA4,0x5F
+} };
+
+/* es:di memcpy( es:di, cx:si, ax ) zaps cx,si,ax */
+#define DP_memcpy_ret  HW_D_2( HW_ES, HW_DI )
+#define DP_memcpy_parms P_ESDI_CXSI_AX
+#define DP_memcpy_saves HW_NotD_3( HW_SI, HW_CX, HW_AX )
+static struct STRUCT_BYTE_SEQ( 15 ) DP_memcpy = { 15, false, {
+    0x1E,0x57,0x91,0x8E,0xD8,0xD1,0xE9,0xF3,0xA5,0x13,
+    0xC9,0xF3,0xA4,0x5F,0x1F
+} };
+
+/* dx:ax  div( ax, cx ) */
+#define C_div_ret       HW_D_2( HW_AX, HW_DX )
+#define C_div_parms     P_AX_CX
+#define C_div_saves     HW_NotD_2( HW_AX, HW_DX )
+static struct STRUCT_BYTE_SEQ( 3 ) C_div = { 3, false, {
+    0x99,0xF7,0xF9
+} };
+
+/* es:di stosw( es:di, ds:si, cx ) zaps si,cx */
+#define DF_stosw_ret   HW_D( HW_DI )
+#define DF_stosw_parms P_ESDI_AX_CX
+#define DF_stosw_saves HW_NotD_2( HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 2 ) DF_stosw = { 2, false, {
+    0xF3,0xAB
+} };
+
+/* es:di stoswb( es:di, ds:si, cx ) zaps si,cx */
+#define DF_stoswb_ret   HW_D( HW_DI )
+#define DF_stoswb_parms P_ESDI_AX_CX
+#define DF_stoswb_saves HW_NotD_2( HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 3 ) DF_stoswb = { 3, false, {
+    0xF3,0xAB,0xAA
+} };
+
+/* ax memcmp( si, di, cx ) zaps ax,es,si,di,cx */
+#define C_memcmp_ret    HW_D( HW_AX )
+#define C_memcmp_parms  P_SI_DI_CX
+#define C_memcmp_saves  HW_NotD_5( HW_AX, HW_ES, HW_SI, HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 15 ) C_memcmp = { 15, false, {
+    0x8C,0xD8,0x8E,0xC0,0x33,0xC0,0xF3,0xA6,0x74,0x05,
+    0x19,0xC0,0x83,0xD8,0xFF
+} };
+
+/* cx memcmp( ds:si, es:di, cx ) zaps si,di,cx */
+#define DF_memcmp_ret   HW_D( HW_CX )
+#define DF_memcmp_parms P_DSSI_ESDI_CX
+#define DF_memcmp_saves HW_NotD_3( HW_SI, HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 11 ) DF_memcmp = { 11, false, {
+    0x0B,0xC9,0xF3,0xA6,0x74,0x05,0x19,0xC9,0x83,0xD9,
+    0xFF
+} };
+
+/* cx memcmp( cx:si, es:di, ax ) zaps si,di,cx,ax */
+#define DP_memcmp_ret   HW_D( HW_CX )
+#define DP_memcmp_parms P_CXSI_ESDI_AX
+#define DP_memcmp_saves HW_NotD_4( HW_SI, HW_DI, HW_CX, HW_AX )
+static struct STRUCT_BYTE_SEQ( 16 ) DP_memcmp = { 16, false, {
+    0x1E,0x91,0x8E,0xD8,0x0B,0xC9,0xF3,0xA6,0x74,0x05,
+    0x19,0xC9,0x83,0xD9,0xFF,0x1F
+} };
+
+/* di memchr( di, al, cx ) zaps dx,es,di,cx */
+#define C_memchr_ret    HW_D( HW_DI )
+#define C_memchr_parms  P_DI_AL_CX
+#define C_memchr_saves  HW_NotD_4( HW_DX, HW_ES, HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 14 ) C_memchr = { 14, false, {
+    0xE3,0x0A,0x8C,0xDA,0x8E,0xC2,0xF2,0xAE,0x75,0x02,
+    0x4F,0xA9,0x8B,0xF9
+} };
+
+/* cx:di memchr( es:di, al, cx ) zaps di,cx */
+#define DF_memchr_ret   HW_D_2( HW_DI, HW_CX )
+#define DF_memchr_parms P_ESDI_AL_CX
+#define DF_memchr_saves HW_NotD_2( HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 12 ) DF_memchr = { 12, false, {
+    0xE3,0x08,0xF2,0xAE,0x75,0x04,0x4F,0x8C,0xC1,0xA9,
+    0x8B,0xF9
+} };
+
+/* cx:di memchr( es:di, al, cx ) zaps di,cx */
+#define DP_memchr_ret   HW_D_2( HW_DI, HW_CX )
+#define DP_memchr_parms P_ESDI_AL_CX
+#define DP_memchr_saves HW_NotD_2( HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 12 ) DP_memchr = { 12, false, {
+    0xE3,0x08,0xF2,0xAE,0x75,0x04,0x4F,0x8C,0xC1,0xA9,
+    0x8B,0xF9
+} };
+
+/* ax strcmp( si, di ) zaps ax,si,di */
+#define S_strcmp_ret    HW_D( HW_AX )
+#define S_strcmp_parms  P_SI_DI
+#define S_strcmp_saves  HW_NotD_3( HW_AX, HW_SI, HW_DI )
+static struct STRUCT_BYTE_SEQ( 14 ) S_strcmp = { 14, false, {
+    0xAC,0x8A,0x25,0x2A,0xC4,0x75,0x05,0x47,0x3A,0xC4,
+    0x75,0xF4,0x18,0xE4
+} };
+
+/* ax strcmp( si, di ) zaps ax,es,si,di,cx */
+#define C_strcmp_ret    HW_D( HW_AX )
+#define C_strcmp_parms  P_SI_DI
+#define C_strcmp_saves  HW_NotD_5( HW_AX, HW_ES, HW_SI, HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 29 ) C_strcmp = { 29, false, {
+    0x8C,0xD8,0x8E,0xC0,0xA6,0x75,0x11,0x4F,0x4E,0x83,
+    0xC9,0xFF,0x33,0xC0,0xF2,0xAE,0xF7,0xD1,0x2B,0xF9,
+    0xF3,0xA6,0x74,0x05,0x19,0xC0,0x83,0xD8,0xFF
+} };
+
+/* ax strcmp( ds:si, es:di ) zaps ax,si,di */
+#define ZF_strcmp_ret    HW_D( HW_AX )
+#define ZF_strcmp_parms  P_DSSI_ESDI
+#define ZF_strcmp_saves  HW_NotD_3( HW_AX, HW_SI, HW_DI )
+static struct STRUCT_BYTE_SEQ( 15 ) ZF_strcmp = { 15, false, {
+    0xAC,0x26,0x8A,0x25,0x2A,0xC4,0x75,0x05,0x47,0x3A,
+    0xC4,0x75,0xF3,0x18,0xE4
+} };
+
+/* ax strcmp( si:ax, es:di ) zaps ax,si,di */
+#define ZP_strcmp_ret    HW_D( HW_AX )
+#define ZP_strcmp_parms  P_SIAX_ESDI
+#define ZP_strcmp_saves  HW_NotD_3( HW_AX, HW_SI, HW_DI )
+static struct STRUCT_BYTE_SEQ( 20 ) ZP_strcmp = { 20, false, {
+    0x1E,0x96,0x8E,0xD8,0xAC,0x26,0x8A,0x25,0x2A,0xC4,
+    0x75,0x05,0x47,0x3A,0xC4,0x75,0xF3,0x18,0xE4,0x1F
+} };
+
+/* cx strcmp( ds:si, es:di ) zaps ax,si,di,cx */
+#define DF_strcmp_ret   HW_D( HW_CX )
+#define DF_strcmp_parms P_DSSI_ESDI
+#define DF_strcmp_saves HW_NotD_4( HW_AX, HW_SI, HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 25 ) DF_strcmp = { 25, false, {
+    0xA6,0x75,0x11,0x4F,0x4E,0x83,0xC9,0xFF,0x33,0xC0,
+    0xF2,0xAE,0xF7,0xD1,0x2B,0xF9,0xF3,0xA6,0x74,0x05,
+    0x19,0xC9,0x83,0xD9,0xFF
+} };
+
+/* cx strcmp( si:ax, es:di ) zaps ax,si,di,cx */
+#define DP_strcmp_ret   HW_D( HW_CX )
+#define DP_strcmp_parms P_SIAX_ESDI
+#define DP_strcmp_saves HW_NotD_4( HW_AX, HW_SI, HW_DI, HW_CX )
+static struct STRUCT_BYTE_SEQ( 30 ) DP_strcmp = { 30, false, {
+    0x1E,0x96,0x8E,0xD8,0xA6,0x75,0x11,0x4F,0x4E,0x83,
+    0xC9,0xFF,0x33,0xC0,0xF2,0xAE,0xF7,0xD1,0x2B,0xF9,
+    0xF3,0xA6,0x74,0x05,0x19,0xC9,0x83,0xD9,0xFF,0x1F
+} };
+
+/* cx strlen( di ) zaps ax,es,cx,di */
+#define C_strlen_ret    HW_D( HW_CX )
+#define C_strlen_parms  P_DI
+#define C_strlen_saves  HW_NotD_4( HW_AX, HW_ES, HW_CX, HW_DI )
+static struct STRUCT_BYTE_SEQ( 14 ) C_strlen = { 14, false, {
+    0x8C,0xD8,0x8E,0xC0,0x83,0xC9,0xFF,0x33,0xC0,0xF2,
+    0xAE,0xF7,0xD1,0x49
+} };
+
+/* cx strlen( es:di ) zaps ax,cx,di */
+#define DF_strlen_ret   HW_D( HW_CX )
+#define DF_strlen_parms P_ESDI
+#define DF_strlen_saves HW_NotD_3( HW_AX, HW_CX, HW_DI )
+static struct STRUCT_BYTE_SEQ( 10 ) DF_strlen = { 10, false, {
+    0x83,0xC9,0xFF,0x33,0xC0,0xF2,0xAE,0xF7,0xD1,0x49
+} };
+
+/* cx strlen( es:di ) zaps ax,cx,di */
+#define DP_strlen_ret   HW_D( HW_CX )
+#define DP_strlen_parms P_ESDI
+#define DP_strlen_saves HW_NotD_3( HW_AX, HW_CX, HW_DI )
+static struct STRUCT_BYTE_SEQ( 10 ) DP_strlen = { 10, false, {
+    0x83,0xC9,0xFF,0x33,0xC0,0xF2,0xAE,0xF7,0xD1,0x49
+} };
+
+#define C_abs_ret    HW_D( HW_AX )
+#define C_abs_parms  P_AX
+#define C_abs_saves  HW_NotD_2( HW_AX, HW_DX )
+static struct STRUCT_BYTE_SEQ( 5 ) C_abs = { 5, false, {
+    0x99,0x33,0xC2,0x2B,0xC2
+} };
+
+#define C_labs_ret    HW_D_2( HW_AX, HW_DX )
+#define C_labs_parms  P_AXDX
+#define C_labs_saves  HW_NotD_2( HW_AX, HW_DX )
+static struct STRUCT_BYTE_SEQ( 11 ) C_labs = { 11, false, {
+    0x0B,0xD2,0x7D,0x07,0xF7,0xD8,0x83,0xD2,0x00,0xF7,
+    0xDA
+} };
+
+#define C_inp_ret    HW_D( HW_AX )
+#define C_inp_parms  P_DX
+#define C_inp_saves  HW_NotD( HW_AX )
+static struct STRUCT_BYTE_SEQ( 3 ) C_inp = { 3, false, {
+    0xEC,0x2A,0xE4
+} };
+
+#define C_inpw_ret    HW_D( HW_AX )
+#define C_inpw_parms  P_DX
+#define C_inpw_saves  HW_NotD( HW_AX )
+static struct STRUCT_BYTE_SEQ( 1 ) C_inpw = { 1, false, {
+    0xED
+} };
+
+#define C_outp_ret    HW_D( HW_AX )
+#define C_outp_parms  P_DX_AL
+#define C_outp_saves  HW_NotD( HW_EMPTY )
+static struct STRUCT_BYTE_SEQ( 1 ) C_outp = { 1, false, {
+    0xEE
+} };
+
+#define C_outpw_ret    HW_D( HW_AX )
+#define C_outpw_parms  P_DX_AX
+#define C_outpw_saves  HW_NotD( HW_EMPTY )
+static struct STRUCT_BYTE_SEQ( 1 ) C_outpw = { 1, false, {
+    0xEF
+} };
+
+#define C_movedata_ret    HW_D( HW_EMPTY )
+#define C_movedata_parms  P_AX_SI_ES_DI_CX
+#define C_movedata_saves  HW_NotD_3( HW_CX, HW_SI, HW_DI )
+static struct STRUCT_BYTE_SEQ( 12 ) C_movedata = { 12, false, {
+    0x1E,0x8E,0xD8,0xD1,0xE9,0xF3,0xA5,0x13,0xC9,0xF3,
+    0xA4,0x1F
+} };
+
+#define C_enable_ret    HW_D( HW_EMPTY )
+#define C_enable_parms  P_AX
+#define C_enable_saves  HW_NotD( HW_EMPTY )
+static struct STRUCT_BYTE_SEQ( 2 ) C_enable = { 2, false, {
+    0xFB,0xFC
+} };
+
+#define C_disable_ret    HW_D( HW_EMPTY )
+#define C_disable_parms  P_AX
+#define C_disable_saves  HW_NotD( HW_EMPTY )
+static struct STRUCT_BYTE_SEQ( 1 ) C_disable = { 1, false, {
+    0xFA
+} };
+
+#define C_rotl_ret    HW_D( HW_AX )
+#define C_rotl_parms  P_AX_CX
+#define C_rotl_saves  HW_NotD( HW_AX )
+static struct STRUCT_BYTE_SEQ( 2 ) C_rotl = { 2, false, {
+    0xD3,0xC0
+} };
+
+#define C_rotr_ret    HW_D( HW_AX )
+#define C_rotr_parms  P_AX_CX
+#define C_rotr_saves  HW_NotD( HW_AX )
+static struct STRUCT_BYTE_SEQ( 2 ) C_rotr = { 2, false, {
+    0xD3,0xC8
+} };
+
+#define C_fabs_ret    HW_D( HW_ABCD )
+#define C_fabs_parms  P_AXBXCXDX
+#define C_fabs_saves  HW_NotD( HW_ABCD )
+static struct STRUCT_BYTE_SEQ( 3 ) C_fabs = { 3, false, {
+    0x80,0xE4,0x7F
+} };
+
+#define C_min_ret   HW_D( HW_AX )
+#define C_min_parms P_AX_DX
+#define C_min_saves HW_NotD_2( HW_CX, HW_AX )
+static struct STRUCT_BYTE_SEQ( 8 ) C_min = { 8, false, {
+    0x2B,0xC2,0x19,0xC9,0x23,0xC1,0x03,0xC2
+} };
+
+#define C_max_ret   HW_D( HW_AX )
+#define C_max_parms P_AX_DX
+#define C_max_saves HW_NotD_2( HW_CX, HW_AX )
+static struct STRUCT_BYTE_SEQ( 9 ) C_max = { 9, false, {
+    0x2B,0xC2,0xF5,0x19,0xC9,0x23,0xC1,0x03,0xC2
+} };
+
