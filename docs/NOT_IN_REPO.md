@@ -25,7 +25,6 @@ setting for one run.
 | PowerPC compiler, linker and runtime | | `powerpc_tools`, `powerpc_lib` |
 | A C++ compiler for judging transpiled Java (g++) | `C:/msys64/mingw64/bin/g++.exe` (or g++ on PATH) | `host_cxx` |
 | Java (a JDK 8+: java and javac), to decompile a jar and to run classes beside their translation | `JAVA_HOME`, or `java` on PATH | `java` |
-| RetroMCP CLI jar (RetroMCP-Java + Vineflower; MIT / Apache-2.0) | | `retromcp` |
 | Visual Studio with clang-cl (builds XenonRecomp and recompiled Xbox 360 titles) | the newest install vswhere finds | `visual_studio` |
 | PowerPC binutils that know VMX128 (the recompiler's instruction tests) | `toolchains/powerpc-binutils` | `ppc_binutils` |
 | The Xbox 360 SDK (XDK), for the Java transpiler's console target | `C:/Program Files (x86)/Microsoft Xbox 360 SDK` | `xbox360_sdk` |

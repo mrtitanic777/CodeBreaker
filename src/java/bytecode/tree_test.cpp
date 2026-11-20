@@ -13,7 +13,7 @@ namespace cb::java::bytecode {
 namespace {
 
 CB_TEST("java.bytecode.tree.a_jar_written_again_decompiles_as_before", [] {
-    const auto jar = java::console::ZipArchive::open(testing::data_path("java/retromcp/gradle/wrapper/gradle-wrapper.jar"));
+    const auto jar = java::console::ZipArchive::open(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"));
     java::console::ZipWriter z;
     int classes = 0;
     for (const auto& e : jar.entries()) {

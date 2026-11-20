@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <exception>
+#include <set>
 #include <stdexcept>
 
 #include "core/fs.hpp"
@@ -297,6 +298,23 @@ DecompileResult decompile(const DecompileRequest& request) {
     (void)kRunStack;
     return decompile_here(request);
 #endif
+}
+
+int save_into_folder(const DecompileResult& result, const std::filesystem::path& folder) {
+    std::set<std::string> containers;
+    int classes = 0;
+    for (const OutputFile& f : result.files) {
+        const bool first_of_archive = !f.container.empty() && containers.insert(f.container).second;
+        if (first_of_archive && !f.is_class && f.path == "META-INF/MANIFEST.MF") continue;   // (createArchive's manifest)
+        const std::filesystem::path p = folder / fs::from_text(f.path);
+        if (f.is_directory) {
+            std::filesystem::create_directories(p);
+            continue;
+        }
+        fs::write_file(p, as_bytes(f.content));
+        if (f.is_class) ++classes;
+    }
+    return classes;
 }
 
 bool parse_option_argument(const std::string& arg, std::map<std::string, std::string>& options) {

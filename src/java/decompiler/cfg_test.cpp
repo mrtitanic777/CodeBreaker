@@ -88,7 +88,7 @@ void gd_check(const std::filesystem::path& jar, const std::filesystem::path& gol
 }
 
 CB_TEST("java.decompiler.cfg.every_method_is_parsed_and_built_into_the_graph_the_original_builds", [] {
-    gd_check(testing::data_path("java/retromcp/gradle/wrapper/gradle-wrapper.jar"), testing::data_path("java/decompiler/testdata/graph/gradle-wrapper.txt"));
+    gd_check(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"), testing::data_path("java/decompiler/testdata/graph/gradle-wrapper.txt"));
     // a larger reference when it is there: the decompile engine's jar and the original's dump of it (work/fernflower-src)
     const std::filesystem::path big = testing::data_path("../work/fernflower-src/retromcp.graph.txt");
     std::error_code ec;

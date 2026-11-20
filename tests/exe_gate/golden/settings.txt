@@ -28,7 +28,6 @@ settings: <repo>/settings.json
 <~>
      regress_minecraft <games>/584111F7/000D0000
 <~>
-<~>
      struct_recovery  all
      target           win95
      threads          

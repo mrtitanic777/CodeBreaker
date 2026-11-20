@@ -5,7 +5,7 @@ rem     the committed source without its tests (git archive honours .gitattribut
 rem     testdata\ folder and *_test.cpp, docs\history\), plus what runs it:
 rem       bin\               codebreaker.exe and the DLLs it loads
 rem       native\*\build\bin the engines it calls (decompiler, L2, DOS, XEX, symbols, invert, formats, engine, analyze, NASM)
-rem       src\third_party\bin, src\java\retromcp\build\libs
+rem       src\third_party\bin
 rem
 rem Build first (tools\build_codebreaker_exe.cmd) and commit: the package is made from HEAD and the built program.
 setlocal
@@ -36,10 +36,6 @@ for %%D in (decompiler l2 dosexec xex symbols invert formats engine analyze) do 
 )
 mkdir "%OUT%\src\third_party\bin" 2>nul
 copy /y "%ROOT%\src\third_party\bin\*" "%OUT%\src\third_party\bin\" >nul
-if exist "%ROOT%\src\java\retromcp\build\libs\retromcp.jar" (
-    mkdir "%OUT%\src\java\retromcp\build\libs" 2>nul
-    copy /y "%ROOT%\src\java\retromcp\build\libs\retromcp.jar" "%OUT%\src\java\retromcp\build\libs\" >nul
-)
 
 rem the folders the archive left empty (testdata\ and tests\ whose files were all left out)
 for /f "delims=" %%D in ('dir /ad /b /s "%OUT%" ^| sort /r') do rd "%%D" 2>nul

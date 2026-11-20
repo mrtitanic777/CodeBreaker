@@ -39,12 +39,12 @@ CfRound cf_round_trip(const std::filesystem::path& jar) {
 }
 
 CB_TEST("java.classfile.real_classes_come_back_byte_for_byte", [] {
-    const CfRound r = cf_round_trip(testing::data_path("java/retromcp/gradle/wrapper/gradle-wrapper.jar"));
+    const CfRound r = cf_round_trip(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"));
     CB_CHECK(r.classes == 31 && r.methods > 50 && r.instructions > 500);
     CB_CHECK_EQ(r.mismatched, 0u);
     CB_CHECK_EQ(r.code_mismatched, 0u);
     // the decompiler engine's own jar when it has been built here: hundreds of classes of every kind (switches, wide, invokedynamic)
-    const std::filesystem::path big = testing::data_path("java/retromcp/build/libs/retromcp.jar");
+    const std::filesystem::path big = testing::data_path("../work/fernflower-src/retromcp.jar");
     std::error_code ec;
     if (std::filesystem::is_regular_file(big, ec)) {
         const CfRound b = cf_round_trip(big);
@@ -55,7 +55,7 @@ CB_TEST("java.classfile.real_classes_come_back_byte_for_byte", [] {
 });
 
 CB_TEST("java.classfile.the_names_a_class_holds", [] {
-    const console::ZipArchive zip = console::ZipArchive::open(testing::data_path("java/retromcp/gradle/wrapper/gradle-wrapper.jar"));
+    const console::ZipArchive zip = console::ZipArchive::open(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"));
     bool found = false;
     for (const console::ZipArchive::Entry& e : zip.entries()) {
         if (e.name != "org/gradle/wrapper/GradleWrapperMain.class") continue;

@@ -148,6 +148,11 @@ struct DecompileRequest {
     std::function<void(const std::string& line)> on_log;   // each log line as it is written (besides DecompileResult::log)
 };
 
+// Saves `result` into `folder` as RetroMCP's DirectoryResultSaver does: an archive's entries (its classes as Java, its other files as they are, its
+// directories) at their own paths under the folder, a loose class at its path; the archive's manifest is not written (the saver's createArchive does
+// nothing). Returns how many classes were written.
+int save_into_folder(const DecompileResult& result, const std::filesystem::path& folder);
+
 // Decompiles `request` as BaseDecompiler/ConsoleDecompiler do. A class that cannot be decompiled is logged and its entry left empty; a missing source
 // or an unreadable archive is logged; std::runtime_error only for what the original would let escape.
 DecompileResult decompile(const DecompileRequest& request);

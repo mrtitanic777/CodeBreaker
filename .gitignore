@@ -7,15 +7,12 @@ __pycache__/
 # machine-specific locations (copy settings.example.json)
 /settings.json
 # native build output (src/build is source: the build area). The engines inside src that are built by
-# their own tools keep their output beside them: XenonRecomp's (built on demand), the Xbox 360 runtime's tests,
-# retromcp's Gradle build.
+# their own tools keep their output beside them: XenonRecomp's (built on demand), the Xbox 360 runtime's tests.
 src/*/build/
 !src/build/
 src/recompile/xenonrecomp/build/
 src/recompile/x360/**/build/
 src/recompile/rexglue/**/build/
-src/java/retromcp/build/
-src/java/retromcp/bin/
 *.obj
 *.o
 
@@ -40,7 +37,6 @@ src/*/*.log
 *.egg-info/
 src/*/build.*/
 # the Java engine's Gradle state
-src/java/retromcp/.gradle/
 src/recompile/xenonrecomp/thirdparty/fmt/support/.gradle/
 # test inputs of src are data (objects, binaries), never build output
 !src/**/testdata/**

@@ -207,7 +207,7 @@ set_property(GLOBAL PROPERTY CB_AREAS "")
 # area's library never takes their sources; each is added below with add_subdirectory or compiled by its own rules.
 set(CB_ENGINE_DIRS
   decompile/engine exact/emu/dosexec translate/l2 translate/frontends/python/pyfront formats/xex
-  recompile/x360 recompile/xenonrecomp recompile/rexglue java/retromcp app/memcap third_party build/x86link build/x86cc)
+  recompile/x360 recompile/xenonrecomp recompile/rexglue app/memcap third_party build/x86link build/x86cc)
 function(cb_area dir)
   file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
   file(GLOB_RECURSE tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
@@ -247,7 +247,7 @@ target_compile_definitions(cb_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
 
 cb_area(core)
 if(WIN32)
-  target_link_libraries(cb_core PUBLIC bcrypt ws2_32)
+  target_link_libraries(cb_core PUBLIC bcrypt ws2_32 winhttp)   # (winhttp: core/http, the downloads of a Minecraft version)
 else()
   find_package(Threads REQUIRED)
   target_link_libraries(cb_core PUBLIC Threads::Threads ${CMAKE_DL_LIBS})   # (std::thread; dlopen for the engine libraries)

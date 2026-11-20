@@ -15,7 +15,7 @@ J2CTool, the deterministic Java -> C++03 transpiler, is `codebreaker/java` since
 | `python -m j2ctool <tool>` | `codebreaker java <tool>` |
 | the PySide6 window | the terminal interface (`ui`): `java <tool>` from its command palette |
 | its Build button | `codebreaker java build SLN` (settings.json `msbuild`) |
-| environment variables and fixed paths (XEDK, JAVA_HOME, J2X_CC, ...) | settings.json: `xbox360_sdk`, `java`, `retromcp`, `host_cxx`, `msbuild`, `java_overlays` |
+| environment variables and fixed paths (XEDK, JAVA_HOME, J2X_CC, ...) | settings.json: `xbox360_sdk`, `java`, `host_cxx`, `msbuild`, `java_overlays` |
 | `BUGFIX_LEDGER.md` in the checkout | `state/java/BUGFIX_LEDGER.md` |
 | `tests/` (pytest) | `tests/java/`, run by `tests/test_java.py` in the gate |
 
@@ -41,7 +41,7 @@ every CodeBreaker job does.
 | Tool | What it does |
 |---|---|
 | `convert` | a Java source tree as C++ (`--platform`, `--cpp-std`, `--mc-version` to decompile first) |
-| `decompile` | a Minecraft version as Java source, through RetroMCP's engine (`src/java/retromcp`) |
+| `decompile` | a Minecraft version as Java source: downloaded, remapped, decompiled and patched natively (`src/java/projects/minecraft/prep`) |
 | `report`, `worklist` | the crash-class report; compile the output and list the files that fail |
 | `signatures` | signatures.md: every class's fields and methods, Java type to C++ type |
 | `scan-project`, `scaffold`, `apimap` | one-folder project resolver; skeletons in other languages; the API-mapping registry |

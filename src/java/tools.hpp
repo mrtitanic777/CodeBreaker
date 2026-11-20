@@ -8,7 +8,7 @@
 //
 //   convert, decompile     the transpiler assembled over the lane's folder (codebreaker/java: platform layer, API maps, the projects' profiles) with the
 //                          Java front end (java/frontend: TreeDump run by the JDK of setting java, the libraries of setting java_libs); a Minecraft version
-//                          is decompiled first by RetroMCP (setting retromcp) when --mc-version names one
+//                          is decompiled first (java/projects/minecraft/prep, natively) when --mc-version names one
 //   scaffold, signatures   the Java source parsed into skeletons or the codebase map
 //   report, worklist       the conversion report of an emitted tree; every .cpp compiled by the host compiler (setting host_cxx, else g++)
 //   sdk, platform-config   the console SDK (settings xbox360_sdk ...), and the controller, keyboard and storage choices the port is emitted with

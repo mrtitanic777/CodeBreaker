@@ -1,5 +1,5 @@
 // java/projects/minecraft/profiles/minecraft_indev.hpp -- the Indev edition target profile, derived from a
-// RetroMCP Indev decompile (net.minecraft.game.*, com.mojang.nbt; 230 classes).
+// Indev decompile (the MCP mappings) (net.minecraft.game.*, com.mojang.nbt; 230 classes).
 //
 // Indev has the Block/Item/Material registries and mobs/items/inventory/crafting, but the world is a single FINITE
 // World (a flat byte[] block array indexed (y*length + z)*width + x -- fields width/length/height) with NO chunk

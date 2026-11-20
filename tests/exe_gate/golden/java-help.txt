@@ -5,8 +5,8 @@ usage: codebreaker java <command> [arguments]
 Transpile:
   port        the whole job from one input: a .jar, a decompiled game folder or a Java source folder to a built C++ project
   convert     convert a Java source tree to C++
-  decompile   decompile a Minecraft version to Java source (bundled RetroMCP/Fernflower)
-  fernflower  classes to Java with CodeBreaker's Fernflower (the text the original writes), saved into a folder as RetroMCP saves it
+  decompile   decompile a Minecraft version to Java source (downloaded, remapped with its mappings, decompiled and patched by CodeBreaker)
+  fernflower  classes to Java with CodeBreaker's Fernflower (the text the original writes), saved into a folder
   scaffold    one structural skeleton file per Java class in C, C# or Rust (not a translation)
   signatures  generate signatures.md, the codebase map (class -> fields and methods, Java -> C++ types)
 

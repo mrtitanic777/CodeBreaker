@@ -11,6 +11,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
@@ -42,10 +43,11 @@ public:
     // new HashMap<>(initialCapacity)
     explicit JavaHashMap(int initial_capacity) : initial_capacity_(table_size_for(std::max(0, initial_capacity))) {}
 
-    // new HashMap<>(other): sized for it, its entries put in its order.
+    // new HashMap<>(other): sized for it, its entries put in its order. (The sizing is the JDK's since 19, which the reference runs on:
+    // putMapEntries pre-sizes to ceil(size / 0.75); JDK 8 to size / 0.75 + 1, a table twice as big at some sizes and so another order.)
     static JavaHashMap copy_of(const JavaHashMap& other) {
         JavaHashMap m;
-        if (other.size() > 0) m.initial_capacity_ = table_size_for(static_cast<int>(static_cast<float>(other.size()) / 0.75f + 1.0f));
+        if (other.size() > 0) m.initial_capacity_ = table_size_for(static_cast<int>(std::ceil(static_cast<double>(other.size()) / 0.75)));
         for (const auto& [k, v] : other.entries()) m.put(k, v);
         return m;
     }
@@ -154,10 +156,11 @@ class JavaHashSet {
 public:
     JavaHashSet() = default;
     explicit JavaHashSet(int initial_capacity) : map_(initial_capacity) {}
-    // new HashSet<>(collection): sized max(n / .75 + 1, 16), then each added in order.
+    // new HashSet<>(collection): sized as the JDK since 19 sizes it (HashMap.newHashMap(max(n, 12)): ceil(max(n, 12) / 0.75); JDK 8's
+    // max(n / .75 + 1, 16) makes a table twice as big at some sizes, so another order), then each added in order.
     template <class Range> static JavaHashSet of(const Range& items) {
         const int n = static_cast<int>(std::size(items));
-        JavaHashSet s(std::max(static_cast<int>(static_cast<float>(n) / 0.75f) + 1, 16));
+        JavaHashSet s(static_cast<int>(std::ceil(static_cast<double>(std::max(n, 12)) / 0.75)));
         for (const auto& x : items) s.add(x);
         return s;
     }

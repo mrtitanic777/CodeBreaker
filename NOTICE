@@ -16,10 +16,12 @@ Third-party open-source code in this repository, each under its own license:
                                and NOTICE beside it), with zlib (zlib license; src/third_party/zlib)
   - native/nasm                NASM's assembler engine, with CodeBreaker's MASM-compatibility
                                changes (BSD-2-Clause; native/nasm/LICENSE, AUTHORS)
-  - src/java/retromcp
-                               RetroMCP-Java's engine by MCPHackers, with CodeBreaker's
-                               changes (MIT; src/java/retromcp/LICENSE, MCP-CREDITS.TXT);
-                               the decompiler it drives, Fernflower, is Apache-2.0
+  - src/java/decompiler        Fernflower (JetBrains; Lassebq's build), ported to C++ (Apache-2.0;
+                               src/java/decompiler/NOTICE)
+  - src/java/projects/minecraft/prep
+                               the Minecraft preparation of RetroMCP and its RDI library (MCPHackers)
+                               and the patch application of DiffPatch, ported to C++ (MIT;
+                               LICENSE-RetroMCP, MCP-CREDITS.TXT and LICENSE-DiffPatch beside it)
   - src/recompile/rexglue
                                the rexglue SDK's kernel core, base library (src/core) and DXBC
                                shader translator, which recompiled Xbox 360 projects build on

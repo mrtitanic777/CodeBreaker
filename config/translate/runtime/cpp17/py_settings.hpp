@@ -41,7 +41,7 @@ inline const std::map<std::string, std::string>& defaults() {
         {"symbols_bin", "native\\symbols\\build\\bin"}, {"invert_bin", "native\\invert\\build\\bin"},
         {"analyze_bin", "native\\analyze\\build\\bin"}, {"ppc_binutils", "toolchains\\powerpc-binutils"},
         {"converted", "Converted"}, {"nasm", "native\\nasm\\build\\bin\\nasm.exe"},
-        {"retromcp", "native\\retromcp\\build\\libs\\retromcp.jar"}, {"state", "state"}, {"target", "win95"},
+        {"state", "state"}, {"target", "win95"},
         {"threads", ""}, {"struct_recovery", "all"}};
     return d;
 }
@@ -49,7 +49,7 @@ inline bool is_path_key(const std::string& k) {
     static const char* const P[] = {"corpus", "openwatcom", "build_cache", "decompiler_bin", "xex_bin", "tracer_bin", "formats_bin",
                                     "engine_bin", "dosexec_bin", "symbols_bin", "invert_bin", "analyze_bin", "state", "powerpc_tools",
                                     "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152", "java",
-                                    "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs", "visual_studio",
+                                    "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs", "visual_studio",
                                     "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays",
                                     "win95_installed_hd"};
     for (auto* p : P)

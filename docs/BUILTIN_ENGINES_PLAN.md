@@ -13,7 +13,7 @@ rest. Nothing here is built yet.
 | OpenWatcom `wasm` | DOS programs' and VxDs' MASM-style assembly | source/dos_writer, source/vxd |
 | OpenWatcom `wlink` | linking DOS, Win16, Win32 and VxD builds | the same lanes |
 | DOSBox-X | running period DOS tools (Microsoft C, MASM) and DOS programs | build/dos_tools, scripts |
-| Fernflower (inside RetroMCP's jar) and javac (the JDK) | Java classes decompiled to Java source, and Java compiled back to classes | decompile/jar.cpp, java/tools.cpp |
+| javac (the JDK) | the Java translator's front end (TreeDump: parse and attribute) | java/frontend.cpp |
 
 ## 1. The decompiler — first, and the smallest step
 
@@ -56,42 +56,34 @@ Already has an in-house replacement under way: CodeBreaker's own DOS executive o
 exact/emu/dos), proven byte-identical for MASM and ML. Extending it to the Microsoft C passes and to running DOS
 programs for behaviour checks retires DOSBox-X.
 
-## 5. The Java engines: the decompiler and the compiler
+## 5. The Java engines -- done: RetroMCP is retired
 
-Logan (2026-11-20): what CodeBreaker needs from RetroMCP is not RetroMCP (it only prepares a Minecraft version to be
-worked on: downloads, mappings, patches) but the two engines it drives: **Fernflower**, which decompiles the classes to
-Java, and **javac**, the JDK's compiler, which compiles the Java back to classes. Those two are ported to CodeBreaker C++;
-RetroMCP's own steps are not. Each engine is proven against the original on the same input before it replaces it.
+Logan (2026-11-20): CodeBreaker does natively what RetroMCP did for Minecraft, and RetroMCP is deleted. javac is not
+ported ("a major headache": about 120,000 lines); the JDK stays only for the translator's front end (TreeDump).
 
-1. **Class files** (done: `java/classfile`): a class read into a tree and written back byte for byte; a method's code
-   decoded into instructions and encoded back. Both engines stand on it. Proven on every class of the jars in the tree.
-2. **The decompiler**: Fernflower, the build RetroMCP uses (github.com/Lassebq/Fernflower, master; package
-   `de.fernflower`, Apache-2.0 with the JetBrains headers; 211 files, about 42,000 lines; every class in RetroMCP's jar is
-   in it). The reference is that source built with the JDK (`javac --release 8`, `ConsoleDecompiler <jar> <out>`): the
-   C++ port writes the same Java for the same classes, a method the original cannot write included. In this order, each
-   layer proven before the next:
-   - the class structure (struct/, struct/attr, consts, gen, generics: about 4,400 lines) over `java/classfile` -- done: `java/decompiler`, every class of the Gradle wrapper and of RetroMCP's jar read as the original reads it (its own dump the golden); the annotation attributes are read with the expressions;
-   - the instructions and the control-flow graph (code/, code/optinstructions, code/cfg, code/interpreter: about 5,300) -- done: `java/decompiler` (instructions, cfg, exception_deobfuscator, dominators, context), every method of the Gradle wrapper and of RetroMCP's jar parsed and built into the graph the original builds before making statements; the jsr inlining is ported but no jar here has jsr;
-   - statements from the graph, expressions and the stack (SSA), variables and their types, the simplify passes, the
-     renamer, the class writer and the main driver -- done: `java/decompiler` whole (`decompile(DecompileRequest)`,
-     decompiler.hpp). With RetroMCP's options (nco=1 rbr=0 asc=1 ovr=0 dgs=1, a tab indent) every class of the Gradle
-     wrapper (31, golden in testdata/java/gradle-wrapper) and of RetroMCP's jar (585) is written byte for byte as the
-     original writes it, the methods it cannot write and its StackOverflowError on a lambda that is its own parent included
-     (decompiler_test.cpp). Memory: what a class is written with is freed when it is written (a bump region per class,
-     `Arena::ClassRegion`): 890 MB at peak on RetroMCP's jar instead of 11 GB, about 13 s against Java's 10.
-   The log is the original's line for line but its Java stack frames. `codebreaker java fernflower <jar> <dir>` runs it
-   and saves as RetroMCP's DirectoryResultSaver saves; RetroMCP's decompile stage runs it when CodeBreaker starts
-   RetroMCP (`-Dcodebreaker.fernflower=<codebreaker.exe>`, decompile/jar.cpp; RetroMCP's Decompiler.java), so
-   `java decompile` / `java port` decompile natively. The run has a stack of its own (512 MB reserved): a client jar's
-   nesting overflows a program's usual one. Minecraft a1.2.6 through RetroMCP: the server's 297 classes are RetroMCP's
-   own text but one method's variable placement in World.java, where RetroMCP's Fernflower iterates identity-hashed
-   sets (the reference build made them ordered; both are valid Java). Patches written against that text could miss a
-   hunk there.
-3. **The compiler**: not ported (Logan, 2026-11-20). javac is about 120,000 lines; the JDK stays needed anyway
-   (RetroMCP is a Java program), and the translator uses only javac's front half (TreeDump: parse and attribute).
+1. **Class files** (`java/classfile`): a class read and written back byte for byte, a method's code decoded and encoded.
+2. **The decompiler** (`java/decompiler`): Fernflower (Lassebq's build, Apache-2.0) ported whole. With Minecraft's
+   options (nco=1 rbr=0 asc=1 ovr=0 dgs=1, a tab indent) every class of the Gradle wrapper (31) and of RetroMCP's own jar
+   (585) is written byte for byte as the original writes it, its failures included (decompiler_test.cpp). Memory: a bump
+   region per class (`Arena::ClassRegion`), 890 MB at peak instead of 11 GB; a stack of its own (512 MB reserved). Java's
+   collection orders are Java's, sized as the JDK since 19 sizes a copied HashSet/HashMap (the reference runs on JDK 21).
+   `codebreaker java fernflower <jar> <dir>` runs it on any jar.
+3. **The class tree** (`java/bytecode`): ASM's tree model (ClassNode, MethodNode, InsnList, Type ...), read with
+   java/classfile, written with the pool built again and max stack and locals computed (ASM's COMPUTE_MAXS).
+4. **The Minecraft preparation** (`java/projects/minecraft/prep`): RetroMCP's setup (the version list, the version JSON,
+   the jars, libraries, natives and assets downloaded with core/http), its RDI library (the mappings read, the classes
+   remapped and fixed: decompose variables, common constants, the GL constants, source files, inner classes, implicit
+   constructors, generics, exceptions, access, merge), the decompile with the native Fernflower and DiffPatch's patch
+   application, in TaskDecompile's order (prepare.hpp). Each part proven against the original's own step (an oracle of
+   RetroMCP's code, work/retire-retromcp/oracle) on six versions (1.5.2, 1.2.5, b1.7.3, c0.30, inf-20100618, a1.2.6):
+   setup 1436 of 1436 files byte for byte; remap, fixes and constants: every class; patches: every hunk. End to end
+   (`codebreaker java decompile <version>`): 6,545 of 6,551 source files are RetroMCP's own text; the 6 others are where
+   RetroMCP's Fernflower iterates sets ordered by Java's identity hash (its own output there depends on what the JVM ran
+   before), and in each ours is the original's ordered build's text byte for byte. Not ported, as nothing uses them:
+   RetroMCP's IDE projects and its recompile-and-MD5 stage (javac, for reobfuscation).
 
 ## Order
 
 1. x86asm (in progress). 2. The decompiler in-process. 3. x86link, and wasm's jobs moved to x86asm. 4. The DOS executive
 for everything DOSBox-X does. 5. The C compiler, by the option chosen.
-6. The Java decompiler (done; the compiler is not ported).
+6. The Java engines (done: RetroMCP retired; javac not ported).

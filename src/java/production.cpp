@@ -10,7 +10,6 @@ namespace stdfs = std::filesystem;
 
 std::optional<stdfs::path> find_java(const cb::config::Config& config) {
     decompile::jar::Settings s;
-    s.retromcp_jar = config.path("retromcp").value_or(stdfs::path{});
     s.java = config.path("java").value_or(stdfs::path{});
     return decompile::jar::find_java(s);
 }

@@ -133,7 +133,7 @@ std::string sd_dump(const StructContext& ctx) {
 
 CB_TEST("java.decompiler.structs.every_class_of_a_jar_is_read_as_the_original_reads_it", [] {
     StructContext ctx([](const std::string& m, const std::exception& e) { std::fprintf(stderr, "%s\n%s\n", m.c_str(), e.what()); });
-    ctx.add_space(testing::data_path("java/retromcp/gradle/wrapper/gradle-wrapper.jar"), true);
+    ctx.add_space(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"), true);
     CB_CHECK_EQ(ctx.classes().size(), 31u);
     const std::string got = sd_dump(ctx);
     const std::string want = fs::read_text(testing::data_path("java/decompiler/testdata/struct/gradle-wrapper.txt"));   // (as the original wrote it: '\n' lines)

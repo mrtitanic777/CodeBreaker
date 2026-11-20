@@ -52,7 +52,6 @@ constexpr StWords kStWords[] = {
     {"converted", "Converted source folder", "Where converted source goes."},
     {"state", "Working folder", "Where results and temporary files are kept."},
     {"build_cache", "Build cache", "Where finished build steps are remembered."},
-    {"retromcp", "Retro tools folder", "The helper tools for retro consoles."},
     {"decompiler_bin", "Decompiler program", "The program that turns code into C."},
     {"tracer_bin", "Tracer program", "Runs code in the emulator to see what it does."},
     {"workers", "Jobs at once", "How many jobs run together (0 chooses for you)."},

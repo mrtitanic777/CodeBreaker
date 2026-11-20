@@ -43,7 +43,7 @@ int check_against(const DecompileResult& res, const std::filesystem::path& golde
 }
 
 CB_TEST("java.decompiler.decompile.a_jar_decompiles_as_the_original_decompiles_it", [] {
-    const DecompileResult res = decompile(retromcp_request(testing::data_path("java/retromcp/gradle/wrapper/gradle-wrapper.jar")));
+    const DecompileResult res = decompile(retromcp_request(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar")));
     int total = 0;
     const int same = check_against(res, testing::data_path("java/decompiler/testdata/java/gradle-wrapper"), total);
     CB_CHECK_EQ(total, 31);
