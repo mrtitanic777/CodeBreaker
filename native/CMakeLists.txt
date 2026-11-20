@@ -1,6 +1,8 @@
-# CodeBreaker in C++ (docs/CPP_DESIGN.md section 8): one tree, `native/cb/`, built as static libraries per area
-# (cb_core, and cb_formats, cb_analyze ... as each wave lands), a test executable `cb_tests` that runs every
-# module's `_test.cpp`, and -- once the commands exist natively -- the one executable `codebreaker`.
+# CodeBreaker in C++ (docs/CPP_DESIGN.md section 8): one tree, `native/cb/`, one build. Each area is a static library
+# (cb_core, cb_formats, cb_analyze ...), and each engine inside an area is one too (cb_xex, cb_l2, cb_dosexec,
+# cb_pyfront, cb_decompiler ...); they link into the one executable `codebreaker` and the test executable `cb_tests`,
+# which runs every module's `_test.cpp`. The decompiler engine's programs (decompiler.exe, pcodecheck.exe) are built
+# beside them. (native/nasm is NASM, built apart with gcc until x86asm, native/cb/build/x86asm, replaces it.)
 #
 #   (in a vcvars64 shell, or any shell once cmake/ninja/cl are on PATH)
 #   cmake -S native -B state/cxx/cb -G Ninja -DCMAKE_BUILD_TYPE=Release

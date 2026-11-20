@@ -1,5 +1,5 @@
-// cb/analyze/globals.cpp -- see globals.hpp. The engine is native/analyze/globals.cc (was cbanalyze.dll's), on an
-// Image, the call graph and the strings table directly.
+// cb/analyze/globals.cpp -- see globals.hpp. The engine (once cbanalyze.dll's globals.cc), on an Image, the call graph
+// and the strings table directly.
 #include "cb/analyze/globals.hpp"
 
 #include <algorithm>

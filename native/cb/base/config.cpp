@@ -33,11 +33,6 @@ struct Default {
 constexpr std::array kDefaults{
     Default{"corpus", "../Windows95/design/corpus/files"},
     Default{"tracer_bin", "state/cxx/cb/bin"},
-    Default{"formats_bin", "native/formats/build/bin"},
-    Default{"engine_bin", "native/engine/build/bin"},
-    Default{"symbols_bin", "native/symbols/build/bin"},
-    Default{"invert_bin", "native/invert/build/bin"},
-    Default{"analyze_bin", "native/analyze/build/bin"},
     Default{"ppc_binutils", "toolchains/binutils-ppc"},
     Default{"converted", "Converted"},
     Default{"nasm", "native/nasm/build/bin/nasm.exe"},
@@ -50,9 +45,8 @@ constexpr std::array kDefaults{
 
 // The settings whose value is a path (relative ones are taken against the checkout): the path keys, plus
 // "reference" (a relative one is taken against the checkout, not the working folder).
-constexpr std::array<std::string_view, 36> kPathSettings{
+constexpr std::array<std::string_view, 31> kPathSettings{
     "corpus",        "openwatcom",   "build_cache",  "decompiler_bin", "tracer_bin",
-    "formats_bin",   "engine_bin",   "symbols_bin",    "invert_bin",       "analyze_bin",
     "state",         "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x",        "msc6",
     "xenix_c",       "masm",         "nasm",         "msvc152",        "java",             "retromcp",
     "xbox360_sdk",   "host_cxx",     "msbuild",      "java_overlays",  "java_libs",        "visual_studio",

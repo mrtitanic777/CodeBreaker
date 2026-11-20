@@ -180,8 +180,7 @@ endif()
 # core16_types.hpp: the records of the core16 cycle (header only; its test sits beside it, not in an area)
 get_property(CB_TESTS_BEFORE_CORE16 GLOBAL PROPERTY CB_TEST_SOURCES)
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_TESTS_BEFORE_CORE16} "${CMAKE_CURRENT_LIST_DIR}/core16_types_test.cpp")
-# The SQLite amalgamation (third-party C, its own flags). It stays where the engine keeps it until native/engine
-# moves into this tree (docs/CPP_DESIGN.md section 8), when it moves to third_party/ with nlohmann.
+# The SQLite amalgamation (third_party/sqlite; third-party C, its own flags).
 set(CB_SQLITE_DIR "${CB_THIRD_PARTY}/sqlite")
 add_library(cb_sqlite3 STATIC "${CB_SQLITE_DIR}/sqlite3.c")
 target_include_directories(cb_sqlite3 PUBLIC "${CB_SQLITE_DIR}")
@@ -198,7 +197,7 @@ target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
 target_link_libraries(cb_build PUBLIC cb_decompile)   # (sm83_asm: the Game Boy instruction encoder)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core cb_base cb_symbols)   # (cb_base: the SQLite wrapper; cb_symbols: the readers Knowledge gives their memories to -- static libraries may be cyclic)
-# The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
+# The program database (the fact store, over cb::base::sqlite).
 cb_area(engine)
 target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify cb_jobs cb_decompile cb_build cb_emulate cb_symbols cb_analyze cb_formats cb_platforms cb_translate cb_source cb_java)   # (the lane kit builds every lane's surroundings from these -- static libraries may be cyclic)   # (cb_verify: the verdict and class vocabulary)
 cb_area(jobs)

@@ -111,8 +111,7 @@ Record read_record(std::string_view data) {
 Record scan_tree(const stdfs::path& repo, const Record* previous, const std::map<std::string, std::string>& extra) {
     Record out;
     const stdfs::path native = repo / "native";
-    for (const char* dir : {"native/cb",
-                            "native/formats/core", "data", "tests"})
+    for (const char* dir : {"native/cb", "data", "tests"})
         walk(repo, repo / dir, true, previous, out, extra);
     walk(repo, native, false, previous, out, extra);   // native/CMakeLists.txt and the *.cmake beside it
     walk(repo, repo / "tools", false, previous, out, extra);

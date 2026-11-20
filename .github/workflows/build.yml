@@ -28,7 +28,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - name: Engines (decompiler, L2, formats, DOS, XEX, NASM, ...)
+      - name: The one build and NASM (toolsuild_native.cmd)
         shell: cmd
         run: tools\build_native.cmd
       - name: codebreaker.exe and the unit tests

@@ -10,8 +10,8 @@
 // (<folder>/<sha>.sqlite, the file engine/facts keeps its facts in); the store's own file is their index (module, profile,
 // summary, store_about). A *function* is one address of one module; a *candidate* is what one engine (a decompiler's
 // version, a hand edit) made of it; a *verdict* is what a judge said of a candidate under one profile (a set of settings);
-// a *variant* is a rebuilt candidate whose bytes were compared with the original's. The schema is the one native/engine
-// (cbengine.dll) writes, so a store written by either is read by the other.
+// a *variant* is a rebuilt candidate whose bytes were compared with the original's. The schema is the one the old C engine
+// (cbengine.dll) wrote, so a store it wrote reads the same.
 //
 // Verdict and class words are the vocabulary of verify/verdicts: a stored word in an older spelling reads as the word now, and
 // is written back as the word.

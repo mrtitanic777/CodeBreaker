@@ -331,7 +331,7 @@ CB_TEST("engine.function_store.variants_are_compared_by_their_bytes", [] {
 });
 
 CB_TEST("engine.function_store.a_store_written_by_the_c_engine_reads_the_same", [] {
-    // rows as native/engine (cbengine.dll) writes them: the same tables, the weak limits and a carried verdict among them
+    // rows as the old C engine (cbengine.dll) wrote them: the same tables, the weak limits and a carried verdict among them
     Fixture fx;
     {
         FunctionStore writer = fx.open();
