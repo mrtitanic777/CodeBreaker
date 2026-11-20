@@ -159,7 +159,7 @@ void StructContext::add_class(ContextUnit& unit, ByteView bytes, bool own, const
         unit.classes.push_back(raw);
         unit.class_entries.push_back(entry);
     } catch (const std::exception& ex) {
-        if (log_) log_("Corrupted class file: " + fs::to_text(file) + " (" + ex.what() + ")");
+        if (log_) log_("Corrupted class file: " + fs::to_text(file), ex);
     }
 }
 
@@ -181,7 +181,7 @@ void StructContext::add_space(const std::string& path_in, const std::filesystem:
         try {
             add_archive(path, file, jar ? ContextUnit::TYPE_JAR : ContextUnit::TYPE_ZIP, own);
         } catch (const std::exception& ex) {
-            if (log_) log_("Corrupted archive file: " + fs::to_text(file) + " (" + ex.what() + ")");
+            if (log_) log_("Corrupted archive file: " + fs::to_text(file), ex);
         }
         return;
     }
@@ -221,7 +221,7 @@ void StructContext::add_archive(const std::string& external_path, const std::fil
             try {
                 bytes = zip.read(e);
             } catch (const std::exception& ex) {
-                if (log_) log_("Corrupted class file: " + fs::to_text(file) + " (" + ex.what() + ")");
+                if (log_) log_("Corrupted class file: " + fs::to_text(file), ex);
                 continue;
             }
             add_class(unit, bytes, own, name, file);

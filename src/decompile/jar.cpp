@@ -169,7 +169,12 @@ void LineSplitter::finish(const std::function<void(std::string_view)>& emit) {
 RunResult run_java(const stdfs::path& java, const stdfs::path& jar, const std::vector<std::string>& args,
                    const stdfs::path& cwd, const OutputFn& on_output, const std::optional<std::string>& stdin_text) {
     process::ProcessSpec spec;
-    spec.argv = {fs::to_text(java), "-jar", fs::to_text(jar)};
+    spec.argv = {fs::to_text(java)};
+    // RetroMCP's decompile stage runs CodeBreaker's own Fernflower (`codebreaker java fernflower`, java/decompiler) when it is told where we are; from
+    // another program of ours (the tests) it keeps its own
+    const stdfs::path self = fs::executable_path();
+    if (text::lower(fs::to_text(self.stem())) == "codebreaker") spec.argv.push_back("-Dcodebreaker.fernflower=" + fs::to_text(self));
+    spec.argv.insert(spec.argv.end(), {"-jar", fs::to_text(jar)});
     spec.argv.insert(spec.argv.end(), args.begin(), args.end());
     spec.cwd = cwd;
     spec.out = process::Capture::Collect;

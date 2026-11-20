@@ -1,7 +1,8 @@
 // Tests of the whole decompiler: a jar decompiled with RetroMCP's options gives, class for class, the text the original Fernflower gives. The golden
 // (testdata/java/gradle-wrapper) is the original's own output: fernflower-ordered.jar (testdata/oracle/README.txt) run as
 //     java -cp fernflower-ordered.jar de.fernflower.main.decompiler.ConsoleDecompiler -nco=1 -rbr=0 -asc=1 -ovr=0 -dgs=1 -ind=<tab> <jar> <out>
-// and its .java entries unpacked. RetroMCP's own jar (585 classes) is checked the same way when its golden is in work/fernflower-src/golden.
+// and its .java entries unpacked. RetroMCP's own jar (585 classes; the build the golden was made of, work/fernflower-src/retromcp.jar) is checked the
+// same way when its golden is in work/fernflower-src/golden.
 #include "java/decompiler/decompiler.hpp"
 
 #include <cstdio>
@@ -55,7 +56,7 @@ CB_TEST("java.decompiler.decompile.retromcp_jar_as_the_original", [] {
     const std::filesystem::path golden = testing::data_path("../work/fernflower-src/golden/retromcp");
     std::error_code ec;
     if (!std::filesystem::is_directory(golden, ec)) return;   // (the big golden lives in work/, made as the small one)
-    const DecompileResult res = decompile(retromcp_request(testing::data_path("java/retromcp/build/libs/retromcp.jar")));
+    const DecompileResult res = decompile(retromcp_request(testing::data_path("../work/fernflower-src/retromcp.jar")));   // (the jar the golden was made of)
     int total = 0;
     const int same = check_against(res, golden, total);
     CB_CHECK_EQ(total, 585);

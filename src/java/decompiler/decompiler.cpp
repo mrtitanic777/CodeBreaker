@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <stdexcept>
 
 #include "core/fs.hpp"
@@ -12,6 +13,11 @@
 #include "java/decompiler/classes.hpp"
 #include "java/decompiler/context.hpp"
 #include "java/decompiler/text_buffer.hpp"
+
+#ifdef _WIN32
+#include <windows.h>
+#undef ERROR   // (wingdi's, against Severity::ERROR)
+#endif
 
 namespace cb::java::decompiler {
 
@@ -225,7 +231,9 @@ void MemoryResultSaver::close_archive(const std::string& path, const std::string
 
 // ---- decompile
 
-DecompileResult decompile(const DecompileRequest& request) {
+namespace {
+
+DecompileResult decompile_here(const DecompileRequest& request) {
     DecompileResult result;
     PrintStreamLogger logger([&result, &request](const std::string& line) {
         result.log.push_back(line);
@@ -235,13 +243,14 @@ DecompileResult decompile(const DecompileRequest& request) {
 
     Fernflower fernflower(saver, request.options, logger);
     try {
-        for (const std::filesystem::path& source : request.sources) {
-            if (std::filesystem::exists(source)) fernflower.add_space(source, true);
-            else result.log.push_back("warn: missing '" + source.string() + "', ignored");
-        }
+        // the libraries first, then the sources (ConsoleDecompiler's order, and RetroMCP's): a class a library also has is the source's
         for (const std::filesystem::path& library : request.libraries) {
             if (std::filesystem::exists(library)) fernflower.add_space(library, false);
             else result.log.push_back("warn: missing '" + library.string() + "', ignored");
+        }
+        for (const std::filesystem::path& source : request.sources) {
+            if (std::filesystem::exists(source)) fernflower.add_space(source, true);
+            else result.log.push_back("warn: missing '" + source.string() + "', ignored");
         }
         fernflower.decompile_context();
     } catch (...) {
@@ -252,12 +261,51 @@ DecompileResult decompile(const DecompileRequest& request) {
     return result;
 }
 
+// The original's recursions (statements in statements, expressions in expressions) run as deep as the code is nested, on Java frames that are smaller
+// than ours: a big client jar overflows a program's usual 1 MB. The run gets a stack of its own, reserved (not committed) as it needs it.
+constexpr std::size_t kRunStack = std::size_t{512} << 20;
+
+#ifdef _WIN32
+struct RunOnBigStack {
+    const DecompileRequest* request;
+    DecompileResult result;
+    std::exception_ptr error;
+    static DWORD WINAPI entry(LPVOID self) {
+        auto* run = static_cast<RunOnBigStack*>(self);
+        try {
+            run->result = decompile_here(*run->request);
+        } catch (...) {
+            run->error = std::current_exception();
+        }
+        return 0;
+    }
+};
+#endif
+
+}  // namespace
+
+DecompileResult decompile(const DecompileRequest& request) {
+#ifdef _WIN32
+    RunOnBigStack run{&request, {}, nullptr};
+    HANDLE thread = CreateThread(nullptr, kRunStack, &RunOnBigStack::entry, &run, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    if (thread == nullptr) return decompile_here(request);   // (no thread to be had: the caller's stack)
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+    if (run.error) std::rethrow_exception(run.error);
+    return std::move(run.result);
+#else
+    (void)kRunStack;
+    return decompile_here(request);
+#endif
+}
+
 bool parse_option_argument(const std::string& arg, std::map<std::string, std::string>& options) {
     if (arg.size() > 5 && arg[0] == '-' && arg[4] == '=') {
         std::string value = arg.substr(5);
-        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-        if (value == "TRUE") value = "1";
-        else if (value == "FALSE") value = "0";
+        std::string up = value;
+        std::transform(up.begin(), up.end(), up.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        if (up == "TRUE") value = "1";   // ("true".equalsIgnoreCase(value): any other value is kept as written)
+        else if (up == "FALSE") value = "0";
         options[arg.substr(1, 3)] = value;
         return true;
     }

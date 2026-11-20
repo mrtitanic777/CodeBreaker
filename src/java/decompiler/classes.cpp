@@ -681,7 +681,7 @@ Fernflower::Fernflower(IResultSaver& saver, const std::map<std::string, std::str
 }
 
 void Fernflower::make_struct_context(std::shared_ptr<const PoolInterceptor> interceptor) {
-    struct_context_ = std::make_unique<StructContext>([this](const std::string& message) { logger_.write_message(message, IFernflowerLogger::Severity::ERROR); },
+    struct_context_ = std::make_unique<StructContext>([this](const std::string& message, const std::exception& cause) { logger_.write_message(message, cause); },
                                                        std::move(interceptor));
     for (const auto& [path, is_own] : spaces_) struct_context_->add_space(path, is_own);
 }

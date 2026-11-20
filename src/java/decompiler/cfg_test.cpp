@@ -92,7 +92,7 @@ CB_TEST("java.decompiler.cfg.every_method_is_parsed_and_built_into_the_graph_the
     // a larger reference when it is there: the decompile engine's jar and the original's dump of it (work/fernflower-src)
     const std::filesystem::path big = testing::data_path("../work/fernflower-src/retromcp.graph.txt");
     std::error_code ec;
-    if (std::filesystem::is_regular_file(big, ec)) gd_check(testing::data_path("java/retromcp/build/libs/retromcp.jar"), big);
+    if (std::filesystem::is_regular_file(big, ec)) gd_check(testing::data_path("../work/fernflower-src/retromcp.jar"), big);   // (the jar the dump was made of)
 });
 
 CB_TEST("java.decompiler.cfg.java_hash_order", [] {

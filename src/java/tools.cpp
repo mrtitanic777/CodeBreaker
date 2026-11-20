@@ -5,6 +5,7 @@
 #include <format>
 #include <memory>
 #include <mutex>
+#include <set>
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
@@ -23,6 +24,7 @@
 #include "java/console/worklist.hpp"
 #include "java/console/xact.hpp"
 #include "java/corpus.hpp"
+#include "java/decompiler/decompiler.hpp"
 #include "java/frontend.hpp"
 #include "java/ledger.hpp"
 #include "java/paths.hpp"
@@ -563,6 +565,43 @@ int report_tool(const ContextP& ctx, const cli::Args& a) {
     return kOk;
 }
 
+// `fernflower`: CodeBreaker's Fernflower (java/decompiler) over a jar, saved as RetroMCP's DirectoryResultSaver saves it: an archive's entries (its
+// classes as Java, its other files as they are, its directories) at their own paths under the folder, a loose class at its path; the archive's
+// manifest is not written (the saver's createArchive does nothing). RetroMCP's decompile stage runs this when CodeBreaker starts RetroMCP.
+int fernflower_tool(const cli::Args& a) {
+    namespace jd = cb::java::decompiler;
+    jd::DecompileRequest req;
+    req.sources.push_back(fs::from_text(a.required("source")));
+    for (const std::string& lib : a.values("lib")) req.libraries.push_back(fs::from_text(lib));
+    // (any key, as BaseDecompiler's options map takes it: RetroMCP passes every preference, the long internal ones too)
+    for (const std::string& option : a.values("option")) {
+        const std::size_t eq = option.find('=');
+        if (eq == std::string::npos || eq == 0) {
+            jt_err("ERROR: --option takes KEY=VALUE, not: " + option);
+            return kUsage;
+        }
+        req.options[option.substr(0, eq)] = option.substr(eq + 1);
+    }
+    req.on_log = [](const std::string& line) { jt_out(line); };
+    const jd::DecompileResult res = jd::decompile(req);
+    const stdfs::path out = fs::from_text(a.required("out_dir"));
+    std::set<std::string> containers;
+    int classes = 0;
+    for (const jd::OutputFile& f : res.files) {
+        const bool first_of_archive = !f.container.empty() && containers.insert(f.container).second;
+        if (first_of_archive && !f.is_class && f.path == "META-INF/MANIFEST.MF") continue;   // (createArchive's manifest)
+        const stdfs::path p = out / fs::from_text(f.path);
+        if (f.is_directory) {
+            stdfs::create_directories(p);
+            continue;
+        }
+        fs::write_file(p, as_bytes(f.content));
+        if (f.is_class) ++classes;
+    }
+    jt_out(std::format("{} classes decompiled -> {}", classes, jt_native(out)));
+    return kOk;
+}
+
 int decompile_tool(const ContextP& ctx, const cli::Args& a) {
     const decompile::jar::Settings settings = ctx->jar_settings();
     const std::optional<stdfs::path> java = opt_value(a, "java") ? std::optional<stdfs::path>(fs::from_text(*opt_value(a, "java"))) : std::nullopt;
@@ -857,6 +896,7 @@ run::Tools make_tools(const Environment& environment) {
     auto& h = tools.handlers;
     h["convert"] = [ctx](const cli::Args& a) { return convert_tool(ctx, a); };
     h["decompile"] = [ctx](const cli::Args& a) { return decompile_tool(ctx, a); };
+    h["fernflower"] = [](const cli::Args& a) { return fernflower_tool(a); };
     h["scaffold"] = [](const cli::Args& a) { return scaffold_tool(a); };
     h["signatures"] = [ctx](const cli::Args& a) { return signatures_tool(ctx, a); };
     h["report"] = [ctx](const cli::Args& a) { return report_tool(ctx, a); };

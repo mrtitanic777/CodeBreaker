@@ -79,6 +79,7 @@ private:
 template <class E>
 class FastSet : public ArenaObject {
 public:
+    static constexpr bool holds_only_arena_memory = true;   // (pointers and ArenaVector arrays only: never destroyed one by one)
     FastSet<E>* get_copy() const;
     // add / remove / contains of an element the factory does not know yet name it (as the original does).
     void add(const E& element);
@@ -162,6 +163,7 @@ private:
 template <class E>
 class FastFixedSet : public ArenaObject {
 public:
+    static constexpr bool holds_only_arena_memory = true;   // (pointers and ArenaVector arrays only: never destroyed one by one)
     FastFixedSet<E>* get_copy() const;
     void set_all_elements();
     void add(const E& element);
@@ -245,6 +247,7 @@ private:
 template <class E>
 class FastSparseSet : public ArenaObject {
 public:
+    static constexpr bool holds_only_arena_memory = true;   // (pointers and ArenaVector arrays only: never destroyed one by one)
     FastSparseSet<E>* get_copy() const;   // a new set of the arena, the data copied
     void add(const E& element);
     void set_all_elements();
@@ -316,6 +319,7 @@ private:
 // stored shifted down) or a field variable (negative, stored negated): three arrays, each with its own chain of the filled places.
 class SFormsFastMapDirect : public ArenaObject {
 public:
+    static constexpr bool holds_only_arena_memory = true;   // (pointers and ArenaVector arrays only: never destroyed one by one)
     using SparseSet = FastSparseSet<int>;
     using Entry = std::pair<int, SparseSet*>;   // the original's Map.Entry<Integer, FastSparseSet<Integer>>
 

@@ -132,7 +132,7 @@ std::string sd_dump(const StructContext& ctx) {
 }
 
 CB_TEST("java.decompiler.structs.every_class_of_a_jar_is_read_as_the_original_reads_it", [] {
-    StructContext ctx([](const std::string& m) { std::fprintf(stderr, "%s\n", m.c_str()); });
+    StructContext ctx([](const std::string& m, const std::exception& e) { std::fprintf(stderr, "%s\n%s\n", m.c_str(), e.what()); });
     ctx.add_space(testing::data_path("java/retromcp/gradle/wrapper/gradle-wrapper.jar"), true);
     CB_CHECK_EQ(ctx.classes().size(), 31u);
     const std::string got = sd_dump(ctx);
@@ -144,7 +144,7 @@ CB_TEST("java.decompiler.structs.every_class_of_a_jar_is_read_as_the_original_re
     std::error_code ec;
     if (std::filesystem::is_regular_file(big, ec)) {
         StructContext all;
-        all.add_space(testing::data_path("java/retromcp/build/libs/retromcp.jar"), true);
+        all.add_space(testing::data_path("../work/fernflower-src/retromcp.jar"), true);   // (the jar the dump was made of, kept beside it)
         const std::string big_got = sd_dump(all);
         const std::string big_want = fs::read_text(big);
         if (big_got != big_want) fs::write_text(std::filesystem::temp_directory_path() / "cb-struct-dump-big.txt", big_got);

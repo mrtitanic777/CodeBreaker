@@ -13,6 +13,7 @@
 // code layer; writing the decompiled units out is the driver's.
 #pragma once
 
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -141,7 +142,8 @@ struct ContextUnit {
 
 class StructContext {
 public:
-    using Logger = std::function<void(const std::string& message)>;
+    // An ERROR of reading, with what was thrown (the original's writeMessage(message, throwable): the message, then the exception on a line of its own).
+    using Logger = std::function<void(const std::string& message, const std::exception& cause)>;
     explicit StructContext(Logger log = {}, std::shared_ptr<const PoolInterceptor> interceptor = nullptr);
 
     StructClass* get_class(const std::string& name) const;

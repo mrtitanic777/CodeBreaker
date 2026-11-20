@@ -49,6 +49,9 @@ class ArenaObject {
 public:
     virtual ~ArenaObject() = default;
     static constexpr bool kept_across_classes = false;
+    // A type whose members are all plain values, arena pointers or arena arrays (ArenaVector) says so: its objects are never destroyed one by one,
+    // their memory goes back with the region (the SSA sets: millions of them).
+    static constexpr bool holds_only_arena_memory = false;
 };
 
 // The run's objects and the memory they (and their arrays, through ArenaAllocator) are made in: bump regions, one for the run and one for each class
@@ -70,7 +73,7 @@ public:
             return p.release();
         } else {
             T* raw = new (allocate(sizeof(T), alignof(T))) T(std::forward<A>(args)...);
-            objects_.push_back({raw, false});
+            if constexpr (!T::holds_only_arena_memory) objects_.push_back({raw, false});
             return raw;
         }
     }

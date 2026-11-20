@@ -79,12 +79,19 @@ RetroMCP's own steps are not. Each engine is proven against the original on the 
      original writes it, the methods it cannot write and its StackOverflowError on a lambda that is its own parent included
      (decompiler_test.cpp). Memory: what a class is written with is freed when it is written (a bump region per class,
      `Arena::ClassRegion`): 890 MB at peak on RetroMCP's jar instead of 11 GB, about 13 s against Java's 10.
-   Still to do: the log lines' severity prefix and stack traces; `java port` switched to it.
-3. **The compiler**: Java source to class files (parse, attribute, flow, lower, generate), checked by compiling with
-   both and comparing what the classes do (and, where javac is deterministic, their bytes).
+   The log is the original's line for line but its Java stack frames. `codebreaker java fernflower <jar> <dir>` runs it
+   and saves as RetroMCP's DirectoryResultSaver saves; RetroMCP's decompile stage runs it when CodeBreaker starts
+   RetroMCP (`-Dcodebreaker.fernflower=<codebreaker.exe>`, decompile/jar.cpp; RetroMCP's Decompiler.java), so
+   `java decompile` / `java port` decompile natively. The run has a stack of its own (512 MB reserved): a client jar's
+   nesting overflows a program's usual one. Minecraft a1.2.6 through RetroMCP: the server's 297 classes are RetroMCP's
+   own text but one method's variable placement in World.java, where RetroMCP's Fernflower iterates identity-hashed
+   sets (the reference build made them ordered; both are valid Java). Patches written against that text could miss a
+   hunk there.
+3. **The compiler**: not ported (Logan, 2026-11-20). javac is about 120,000 lines; the JDK stays needed anyway
+   (RetroMCP is a Java program), and the translator uses only javac's front half (TreeDump: parse and attribute).
 
 ## Order
 
 1. x86asm (in progress). 2. The decompiler in-process. 3. x86link, and wasm's jobs moved to x86asm. 4. The DOS executive
 for everything DOSBox-X does. 5. The C compiler, by the option chosen.
-6. The Java decompiler, then the Java compiler.
+6. The Java decompiler (done; the compiler is not ported).
