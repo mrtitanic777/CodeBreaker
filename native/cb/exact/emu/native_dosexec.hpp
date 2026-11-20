@@ -33,7 +33,7 @@ struct Places {
     std::filesystem::path cbdos, unicorn;
 };
 // Where the DLLs are: cbdos.dll is CB_CBDOS_DLL, else `dosexec_bin` of the configuration (default native/dosexec/build/bin of the
-// checkout) with cbdos.dll; unicorn.dll is CB_UNICORN_DLL, else native/third_party/bin/unicorn.dll of the checkout.
+// checkout) with cbdos.dll; unicorn.dll is CB_UNICORN_DLL, else native/cb/third_party/bin/unicorn.dll of the checkout.
 Places locate(const config::Config& config);
 
 struct Opened {

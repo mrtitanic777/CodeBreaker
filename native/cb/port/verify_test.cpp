@@ -616,7 +616,7 @@ std::unique_ptr<v::CbdosRunner> real_emulator() {
     v::CbdosRunner::Settings s;
     s.dll = cb::fs::from_text(*dll);
     const std::optional<std::string> unicorn = cb::fs::get_env("CB_UNICORN_DLL");
-    s.unicorn = unicorn ? cb::fs::from_text(*unicorn) : cb::testing::data_path("../third_party/bin/unicorn.dll");
+    s.unicorn = unicorn ? cb::fs::from_text(*unicorn) : cb::testing::data_path("third_party/bin/unicorn.dll");
     return v::CbdosRunner::load(s);
 }
 

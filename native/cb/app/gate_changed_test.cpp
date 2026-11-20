@@ -80,7 +80,7 @@ CB_TEST("app.gate_changed.an_area_runs_the_cases_whose_commands_reach_it_and_the
 CB_TEST("app.gate_changed.the_foundations_and_the_unknown_run_everything", [] {
     for (const char* path : {"native/cb/core/fs.cpp", "native/cb/base/cache.cpp", "native/cb/CMakeLists.txt", "native/CMakeLists.txt", "tools/gate.cmd",
                              "native/cb/app/exe_gate_main.cpp", "native/cb/app/commands_catalog.inc", "native/cb/app/native_commands.cpp",
-                             "native/cb/formats/testdata/lz32.dll", "tests/exe_gate/in/x.txt", "tests/fixtures/y", "data/mystery/z.json", "native/third_party/bin/a.dll",
+                             "native/cb/formats/testdata/lz32.dll", "tests/exe_gate/in/x.txt", "tests/fixtures/y", "data/mystery/z.json", "native/cb/third_party/bin/a.dll",
                              "native/x360/whatever.cpp", "case-vars"}) {
         const Selection s = select({path});
         CB_CHECK(s.everything);

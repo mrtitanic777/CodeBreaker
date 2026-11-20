@@ -2,7 +2,7 @@
 //
 // `cb::emu::unicorn::api()` loads unicorn.dll (beside the executable, see dynlib.hpp) on first use and returns a
 // table of typed function pointers, one per function CodeBreaker calls. The types come from the real
-// <unicorn/unicorn.h> (native/third_party/include, Unicorn 2.1.4), so a call through the table is checked
+// <unicorn/unicorn.h> (native/cb/third_party/include, Unicorn 2.1.4), so a call through the table is checked
 // against the C declaration. This header pulls in the Unicorn headers: it is included only by the emulator
 // wrapper in cb/emulate, never by a module's public header (docs/CPP_DESIGN.md 3.13).
 //

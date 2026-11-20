@@ -6,18 +6,16 @@ Hand-written: a tokenizer and a recursive-descent parser that follows
 CPython's `Grammar/python.gram`. Nothing is downloaded and CPython is not embedded. Python
 serves only as the oracle that checks the trees.
 
-    cmake -S native/pyfront -B native/pyfront/build -G Ninja -DCMAKE_BUILD_TYPE=Release
-    cmake --build native/pyfront/build
-    ctest --test-dir native/pyfront/build
+It is part of native/cb's one build (`cmake -S native -B state/cxx/cb`, from a VS 18 x64 developer prompt):
 
-(from a VS 18 x64 developer prompt, `vcvars64.bat`). The build produces:
+    cmake --build state/cxx/cb --target pyfront_tests pyfront_dump
+    ctest --test-dir state/cxx/cb -R pyfront_grammar
 
 | target | what |
 |---|---|
-| `pyfront` (static lib) | the C++ API below; native/l2 and the inference stage link this |
-| `pyfront.dll` (`pyfront_c`, import lib `pyfront_dll.lib`) | the C ABI, `include/pyfront/pyfront.h` |
-| `pyfront_dump.exe` | dumps trees in the canonical text form |
-| `pyfront_tests.exe` | the grammar cases (CTest `pyfront_grammar`) |
+| `cb_pyfront` (static lib) | the C++ API below and the C interface (`include/pyfront/pyfront.h`); the translator's Python front end links it |
+| `pyfront_dump.exe` | dumps trees in the canonical text form (built on request) |
+| `pyfront_tests.exe` | the grammar cases (CTest `pyfront_grammar`, built on request) |
 
 ## The gate: identical trees
 

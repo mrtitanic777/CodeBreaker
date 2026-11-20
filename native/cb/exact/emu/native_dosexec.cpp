@@ -40,7 +40,7 @@ Places locate(const config::Config& config) {
         p.cbdos = (bin ? *bin : root / "native" / "dosexec" / "build" / "bin") / "cbdos.dll";
     }
     if (const auto env = fs::get_env("CB_UNICORN_DLL"); env && !env->empty()) p.unicorn = fs::from_text(*env);
-    else p.unicorn = root / "native" / "third_party" / "bin" / "unicorn.dll";
+    else p.unicorn = root / "native" / "cb" / "third_party" / "bin" / "unicorn.dll";
     return p;
 }
 

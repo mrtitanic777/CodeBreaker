@@ -2,7 +2,7 @@
 //
 // `cb::z3::api()` loads libz3.dll (beside the executable, see dynlib.hpp) on first use and returns a table of
 // typed function pointers, one per Z3 function CodeBreaker calls: contexts and solvers, bit-vector and boolean
-// terms, models. The types come from the real <z3/z3.h> (native/third_party/include/z3, Z3 5.3.2, the
+// terms, models. The types come from the real <z3/z3.h> (native/cb/third_party/include/z3, Z3 5.3.2, the
 // z3-solver 5.3.2.0 wheel's library). Includes the Z3 C headers: only for the solver wrapper in cb/verify, never for
 // a module's public header. A function not on the list is reachable through `library().function<Fn>(name)`.
 #pragma once

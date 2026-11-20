@@ -2,7 +2,7 @@
 //
 // `cb::disasm::capstone::api()` loads capstone.dll (beside the executable, see dynlib.hpp) on first use and
 // returns a table of typed function pointers; the types come from the real <capstone/capstone.h>
-// (native/third_party/include, Capstone 5.0.7). Includes the Capstone headers: for the disassembly wrapper in
+// (native/cb/third_party/include, Capstone 5.0.7). Includes the Capstone headers: for the disassembly wrapper in
 // cb/analyze or cb/decompile only, never for a module's public header.
 //
 //     const auto& cs = cb::disasm::capstone::api();

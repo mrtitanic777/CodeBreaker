@@ -251,7 +251,7 @@ CB_TEST("exact.emu.dos.the_executive_runs_a_program_and_hands_files_back", [] {
     const auto dll = fs::get_env("CB_CBDOS_DLL");
     if (!dll) return;
     const auto unicorn = fs::get_env("CB_UNICORN_DLL");
-    const auto executive = dos::Executive::load(fs::from_text(*dll), unicorn ? fs::from_text(*unicorn) : testing::data_path("../third_party/bin/unicorn.dll"));
+    const auto executive = dos::Executive::load(fs::from_text(*dll), unicorn ? fs::from_text(*unicorn) : testing::data_path("third_party/bin/unicorn.dll"));
     fs::ScopedTempDir dir("dostest");
     dos::RunSpec spec;
     spec.exe = testing::data_path("port/testdata/verify/hello.exe");

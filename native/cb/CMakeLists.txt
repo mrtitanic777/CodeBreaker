@@ -5,10 +5,10 @@ cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0091 NEW)        # MSVC_RUNTIME_LIBRARY is honoured (static CRT, as the other libraries)
 
 get_filename_component(CB_NATIVE_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-set(CB_THIRD_PARTY "${CB_NATIVE_ROOT}/third_party")
+set(CB_THIRD_PARTY "${CMAKE_CURRENT_LIST_DIR}/third_party")
 
 # What differs by platform: the libraries sockets and process queries come from, the manifest a Windows executable carries,
-# and the prebuilt engine libraries that go next to every executable (native/third_party/README.md).
+# and the prebuilt engine libraries that go next to every executable (native/cb/third_party/README.md).
 if(WIN32)
   set(CB_SOCKET_LIBS ws2_32)
   set(CB_PROCESS_LIBS psapi)
@@ -182,7 +182,7 @@ get_property(CB_TESTS_BEFORE_CORE16 GLOBAL PROPERTY CB_TEST_SOURCES)
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_TESTS_BEFORE_CORE16} "${CMAKE_CURRENT_LIST_DIR}/core16_types_test.cpp")
 # The SQLite amalgamation (third-party C, its own flags). It stays where the engine keeps it until native/engine
 # moves into this tree (docs/CPP_DESIGN.md section 8), when it moves to third_party/ with nlohmann.
-set(CB_SQLITE_DIR "${CB_NATIVE_ROOT}/engine/third_party/sqlite")
+set(CB_SQLITE_DIR "${CB_THIRD_PARTY}/sqlite")
 add_library(cb_sqlite3 STATIC "${CB_SQLITE_DIR}/sqlite3.c")
 target_include_directories(cb_sqlite3 PUBLIC "${CB_SQLITE_DIR}")
 target_compile_definitions(cb_sqlite3 PRIVATE SQLITE_THREADSAFE=1 _CRT_SECURE_NO_WARNINGS)
@@ -209,6 +209,13 @@ target_link_libraries(cb_platforms PUBLIC cb_core cb_formats)
 # function store's tally reach it through Services.
 cb_area(coverage)
 target_link_libraries(cb_coverage PUBLIC cb_core cb_formats cb_platforms cb_base cb_engine cb_verify cb_store)   # (ledger: the corpus, the function store, the verdict vocabulary; cb_store: where the store of a state folder is -- static libraries may be cyclic)
+
+# memcap <MB> <program> [args...]: runs a program in a job object with a commit limit (app/memcap; Windows). Built on request.
+if(WIN32)
+  add_executable(memcap EXCLUDE_FROM_ALL app/memcap/memcap.cpp)
+  set_target_properties(memcap PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  target_compile_options(memcap PRIVATE ${CB_FLAGS_LIB})   # (a standalone Win32 program: its own flags, narrow Win32 calls)
+endif()
 
 # The host the worker tests start: a program with a few kinds of share (jobs/worker_probe_main.cpp).
 add_executable(cb_worker_probe jobs/worker_probe_main.cpp)
@@ -271,19 +278,8 @@ target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decomp
 
 # The translator's back ends, front ends and the whole-program judge; the interface's helpers (the window is
 # app/window_*: docs/CPP_DESIGN.md section 9).
-# pyfront: the Python parser the translator's Python front end reads programs with (source -> an AST shaped like CPython's
-# `ast`). Compiled as it is from native/pyfront (its own flags, not /W4 /WX); the C ABI (capi.cpp) is not needed here.
-add_library(cb_pyfront STATIC
-  "${CB_NATIVE_ROOT}/pyfront/src/lexer.cpp" "${CB_NATIVE_ROOT}/pyfront/src/literals.cpp"
-  "${CB_NATIVE_ROOT}/pyfront/src/unicode.cpp" "${CB_NATIVE_ROOT}/pyfront/src/parser.cpp"
-  "${CB_NATIVE_ROOT}/pyfront/src/dump.cpp")
-set_target_properties(cb_pyfront PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
-  MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-target_include_directories(cb_pyfront PUBLIC "${CB_NATIVE_ROOT}/pyfront/include")
-target_compile_options(cb_pyfront PRIVATE ${CB_FLAGS_LIB})
-if(CB_ASAN)
-  target_compile_options(cb_pyfront PRIVATE /fsanitize=address /Zi)
-endif()
+# pyfront: the Python parser the translator's Python front end reads programs with (translate/frontends/python/pyfront).
+include("${CMAKE_CURRENT_LIST_DIR}/translate/frontends/python/pyfront/CMakeLists.txt")
 
 cb_area(translate)
 target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_java cb_verify)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
@@ -314,7 +310,7 @@ target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms c
 
 
 # where DynLib looks last: the source tree's prebuilt DLLs, so a test run from the build folder finds them even
-# before the copy below (see native/third_party/README.md)
+# before the copy below (see native/cb/third_party/README.md)
 set_source_files_properties(core/dynlib.cpp PROPERTIES COMPILE_DEFINITIONS CB_THIRD_PARTY_BIN="${CB_THIRD_PARTY}/bin")
 
 # The prebuilt unicorn/capstone/libz3 DLLs go next to every executable that loads them.

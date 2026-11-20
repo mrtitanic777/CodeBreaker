@@ -1,6 +1,6 @@
 // cb/translate/frontends/python/pyast.hpp -- the Python syntax tree the front end walks.
 //
-// The tree itself is native/pyfront's: CPython's `ast` shape (Python 3.14), one struct per node class, owned by the
+// The tree itself is pyfront's (translate/frontends/python/pyfront): CPython's `ast` shape (Python 3.14), one struct per node class, owned by the
 // arena of its `pyfront::Module`. This header adds what the front end needs on top of it and pyfront leaves to its
 // first consumer: one handle for "any node" (the helper nodes -- arguments, keywords, handlers -- carry no kind field),
 // the children of a node in CPython's field order, breadth-first and statement-list walks, the names a function binds,

@@ -111,7 +111,7 @@ Record read_record(std::string_view data) {
 Record scan_tree(const stdfs::path& repo, const Record* previous, const std::map<std::string, std::string>& extra) {
     Record out;
     const stdfs::path native = repo / "native";
-    for (const char* dir : {"native/cb", "native/decompiler", "native/third_party/include", "native/pyfront", "native/engine/third_party",
+    for (const char* dir : {"native/cb", "native/decompiler",
                             "native/formats/core", "data", "tests"})
         walk(repo, repo / dir, true, previous, out, extra);
     walk(repo, native, false, previous, out, extra);   // native/CMakeLists.txt and the *.cmake beside it
@@ -262,7 +262,7 @@ Selection select(const std::vector<std::string>& changed) {
             }
             const std::string area = rest.substr(0, slash);
             const std::string file = rest.substr(slash + 1);
-            if (rest.find("/testdata/") != std::string::npos || area == "core" || area == "base") {
+            if (rest.find("/testdata/") != std::string::npos || area == "core" || area == "base" || area == "third_party") {   // (third_party: the libraries every area links)
                 all(path);
             } else if (area == "app") {
                 if (file.find('/') != std::string::npos) all(path);   // app/res/

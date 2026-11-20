@@ -2,7 +2,7 @@
 //
 // nlohmann::json is an expensive header; CodeBreaker headers never include it. They include this file and
 // declare `load(path)` / `save(path)` in terms of typed structs, or take `const Json&` by reference. A .cpp that
-// builds or reads a Json includes <nlohmann/json.hpp> (from native/third_party) itself.
+// builds or reads a Json includes <nlohmann/json.hpp> (from native/cb/third_party) itself.
 //
 // The declarations below are the ones nlohmann 3.10.5 makes in its own json_fwd.hpp and under the same include
 // guard, so including the real header before or after this one is harmless. Moving the vendored copy to another

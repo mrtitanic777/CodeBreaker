@@ -5,7 +5,7 @@ rem     the committed source without its tests (git archive honours .gitattribut
 rem     testdata\ folder and *_test.cpp, docs\history\), plus what runs it:
 rem       bin\               codebreaker.exe and the DLLs it loads
 rem       native\*\build\bin the engines it calls (decompiler, L2, DOS, XEX, symbols, invert, formats, engine, analyze, NASM)
-rem       native\third_party\bin, native\retromcp\build\libs
+rem       native\cb\third_party\bin, native\retromcp\build\libs
 rem
 rem Build first (tools\build_codebreaker_exe.cmd) and commit: the package is made from HEAD and the built program.
 setlocal
@@ -34,8 +34,8 @@ for %%D in (decompiler l2 dosexec xex symbols invert formats engine analyze nasm
         for %%X in (exe dll) do if exist "%ROOT%\native\%%D\build\bin\*.%%X" copy /y "%ROOT%\native\%%D\build\bin\*.%%X" "%OUT%\native\%%D\build\bin\" >nul
     )
 )
-mkdir "%OUT%\native\third_party\bin" 2>nul
-copy /y "%ROOT%\native\third_party\bin\*" "%OUT%\native\third_party\bin\" >nul
+mkdir "%OUT%\native\cb\third_party\bin" 2>nul
+copy /y "%ROOT%\native\cb\third_party\bin\*" "%OUT%\native\cb\third_party\bin\" >nul
 if exist "%ROOT%\native\retromcp\build\libs\retromcp.jar" (
     mkdir "%OUT%\native\retromcp\build\libs" 2>nul
     copy /y "%ROOT%\native\retromcp\build\libs\retromcp.jar" "%OUT%\native\retromcp\build\libs\" >nul

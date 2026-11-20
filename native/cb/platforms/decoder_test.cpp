@@ -7,7 +7,7 @@
 #include "cb/core/testing.hpp"
 
 // Behaviour pinned here:
-//   * the engine is Capstone 5.0.7 (native/third_party), so operand text follows 5.x (PowerPC registers print as "r3");
+//   * the engine is Capstone 5.0.7 (native/cb/third_party), so operand text follows 5.x (PowerPC registers print as "r3");
 //     the decompiler is checked against the judge (7.2), not text;
 //   * a width Capstone has no mode for is a UsageError; an unknown architecture cannot be named (Arch is an enum);
 //   * a decoder is a value (Decoder) owned by a DecoderSet per thread.

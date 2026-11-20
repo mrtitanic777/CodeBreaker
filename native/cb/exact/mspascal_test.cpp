@@ -345,7 +345,7 @@ CB_TEST("exact.mspascal.the_real_compiler", [] {
     const auto dll = cfs::get_env("CB_CBDOS_DLL");
     if (!kit || !dll) return;   // (not set up: nothing to run)
     const auto unicorn = cfs::get_env("CB_UNICORN_DLL");
-    const auto executive = cb::exact::emu::dos::Executive::load(cfs::from_text(*dll), unicorn ? cfs::from_text(*unicorn) : cb::testing::data_path("../third_party/bin/unicorn.dll"));
+    const auto executive = cb::exact::emu::dos::Executive::load(cfs::from_text(*dll), unicorn ? cfs::from_text(*unicorn) : cb::testing::data_path("third_party/bin/unicorn.dll"));
     const tc::ExecutiveRunner runner(*executive);
     cfs::ScopedTempDir dir("cbpascalreal");
     tc::Locations locations;

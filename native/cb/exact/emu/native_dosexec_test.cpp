@@ -62,7 +62,7 @@ CB_TEST("exact.emu.native_dosexec.the_dlls_are_found_by_environment_or_in_the_ch
     const config::Config config = config::Config::load(dir.path());
     const nd::Places by_default = nd::locate(config);
     CB_CHECK(fs::same_path(by_default.cbdos, dir.path() / "native" / "dosexec" / "build" / "bin" / "cbdos.dll"));
-    CB_CHECK(fs::same_path(by_default.unicorn, dir.path() / "native" / "third_party" / "bin" / "unicorn.dll"));
+    CB_CHECK(fs::same_path(by_default.unicorn, dir.path() / "native" / "cb" / "third_party" / "bin" / "unicorn.dll"));
 
     fs::write_text(dir.path() / "settings.json", R"({"dosexec_bin": "elsewhere/bin"})");
     const nd::Places by_setting = nd::locate(config::Config::load(dir.path()));
@@ -106,7 +106,7 @@ CB_TEST("exact.emu.native_dosexec.the_real_executive_starts", [] {
     const auto dll = fs::get_env("CB_CBDOS_DLL");
     if (!dll) return;
     const auto unicorn = fs::get_env("CB_UNICORN_DLL");
-    const nd::Opened opened = nd::open({fs::from_text(*dll), unicorn ? fs::from_text(*unicorn) : testing::data_path("../third_party/bin/unicorn.dll")});
+    const nd::Opened opened = nd::open({fs::from_text(*dll), unicorn ? fs::from_text(*unicorn) : testing::data_path("third_party/bin/unicorn.dll")});
     CB_CHECK(opened.usable());
     CB_CHECK(opened.why.empty());
 });
