@@ -79,6 +79,7 @@ public:
     void map_writes(std::uint16_t lo, std::uint16_t hi, WriteFn write);
     // The address lines the chip has: every address is ANDed with `mask` before anything else (the 2600's 6507 has 13, mask 0x1FFF).
     void set_address_mask(std::uint16_t mask) { mask_ = mask; }
+    std::uint16_t address_mask() const { return mask_; }
 
     std::uint8_t read(std::uint16_t address);
     void write(std::uint16_t address, std::uint8_t value);
