@@ -104,7 +104,7 @@ public:
     // kinds.
     std::vector<KindId> changed(const std::filesystem::path& file, KindStore& store);
 
-    // The file's name relative to the checkout, as the base shows it ("data/symbols/ordinal_names.json").
+    // The file's name relative to the checkout, as the base shows it ("config/symbols/ordinal_names.json").
     std::string source_label(const AuthoredKind& kind) const;
 
 private:

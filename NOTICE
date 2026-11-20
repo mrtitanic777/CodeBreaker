@@ -57,5 +57,5 @@ Third-party runtime dependency (not distributed here; installed separately):
   - Capstone disassembly framework (BSD-3-Clause) — https://www.capstone-engine.org
 
 By the same author, under the MIT License:
-  - native/cb/java     the Java transpiler (data/java/LICENSE)
+  - native/cb/java     the Java transpiler (config/java/LICENSE)
   - native/cb/formats/xex        the XEX engine (native/cb/formats/xex/LICENSE)

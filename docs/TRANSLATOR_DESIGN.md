@@ -482,7 +482,7 @@ left-to-right where C leaves it open.
 ## C# -> C++17
 
 C# programs go in through the Roslyn front end (`translate/frontends/csharp`, IR with `Unit.lang = "csharp"`) and come out as one C++17
-translation unit written by `translate/backends/csharp_cpp17` against the runtime `data/translate/runtime/cpp17/csrt.hpp`. (The shared L2
+translation unit written by `translate/backends/csharp_cpp17` against the runtime `config/translate/runtime/cpp17/csrt.hpp`. (The shared L2
 core's C++17 emitter, `backends/cpp17`, still declines C# units; this back end works on the C++ IR directly and carries C#'s rules itself.)
 
 **Object model.** A class is a struct held through `cs::Ref<T>` (`std::shared_ptr`) and derives virtually from `cs::Object`, so interfaces
@@ -550,7 +550,7 @@ what any back end gets (the Python front end lowers `yield` in a generator funct
 `translate.judge_cs_cpp.the_language_features_agree`): the C# runs beside its C++17 translation and the output and exit code must be equal.
 Built and run with g++ 15, clang 22 and MSVC 14.51.
 
-**New L2 nodes** (ir.hpp, schema in data/translate/l2.schema.json): `YieldReturn{expr}` and `YieldBreak` (statements), `Await{x}` (an
+**New L2 nodes** (ir.hpp, schema in config/translate/l2.schema.json): `YieldReturn{expr}` and `YieldBreak` (statements), `Await{x}` (an
 expression typed as the task's result). A method that holds a yield carries the mod `iterator`; an `async` method carries `async` (the
 front end copies the source's modifiers; `iterator` it adds). Nothing else changed in the IR: the other features lower to nodes L2 already
 had, so every back end reads them.
@@ -615,7 +615,7 @@ and all round-trip through the C# back end. With the phase 1 corpus 23 of 23 pro
 **Python generators (2026-11-15).** A Python function with `yield` gets the result type `iter[item]` (the item type is what its yields join to,
 as the rounds of inference find more of it), the mod `iterator` and `YieldReturn` nodes; `yield from`, a bare `yield` and `async` are still
 refused. The L2 core's C++17 back end writes it as `return py::generate<T>([=](py::yielder<T>& py_y) mutable { ... py_y.yield_return(x); });`
-on the same stackful coroutine as C# (now `data/translate/runtime/cpp17/coro.hpp`, shared by csrt.hpp and py.hpp). The new judge,
+on the same stackful coroutine as C# (now `config/translate/runtime/cpp17/coro.hpp`, shared by csrt.hpp and py.hpp). The new judge,
 `codebreaker judge-py-cpp [FILE.py ...]` (default: tests/translate/corpus/python), lowers a module's zero-argument `run_*` functions,
 writes and compiles the module with a generated main, runs CPython on the same functions and compares the JSON answers (an exception
 as `{"error": class}`). tests/translate/corpus/python/Generators.py (six functions) agrees on g++, clang and MSVC;

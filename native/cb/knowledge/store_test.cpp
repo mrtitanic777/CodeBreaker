@@ -25,7 +25,7 @@ std::filesystem::path checkout() { return std::filesystem::path(CB_SOURCE_DIR).p
 
 // What the checkout's win16 model file holds (the tests count the file, not a number that goes stale when a call is modelled).
 std::size_t win16_model_count() {
-    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "data" / "knowledge" / "models" / "win16.json"));
+    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "config" / "knowledge" / "models" / "win16.json"));
     return j.at("functions").size();
 }
 
@@ -263,7 +263,7 @@ CB_TEST("knowledge.store.authored_kinds_load_from_the_checkouts_files", [] {
     CB_CHECK_EQ(t.store.table("win16", "api_model").size(), win16_model_count());
     CB_CHECK(t.store.stamp_of("win16", "api_model").has_value());
     const auto p = t.store.about("win16", "api_model", "GLOBALLOCK");
-    CB_CHECK(p && p->origin == "authored" && p->source == "data/knowledge/models/win16.json");
+    CB_CHECK(p && p->origin == "authored" && p->source == "config/knowledge/models/win16.json");
     // an unknown kind is just the base's rows
     CB_CHECK(t.store.authored_table({"win16", "no-such-kind"}).empty());
 });
@@ -280,7 +280,7 @@ CB_TEST("knowledge.store.kinds_listing_counts_by_origin", [] {
     CB_CHECK_EQ(static_cast<std::size_t>(all[0].keys), win16_model_count() + 1);
     CB_CHECK_EQ(static_cast<std::size_t>(all[0].origins.at("authored")), win16_model_count());
     CB_CHECK_EQ(all[0].origins.at("given"), 1);
-    CB_CHECK_EQ(all[0].source, "data/knowledge/models/win16.json");
+    CB_CHECK_EQ(all[0].source, "config/knowledge/models/win16.json");
     CB_CHECK(all[0].bytes > 0);
     CB_CHECK_EQ(t.store.kinds("win32").size(), std::size_t{1});
     CB_CHECK(t.store.kinds("dos").empty());

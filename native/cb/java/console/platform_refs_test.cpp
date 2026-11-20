@@ -1,5 +1,5 @@
 // platform_refs: the generic entry points, the detection of the game's main class, and the emission of the real
-// hand-written platform layer from data/java/platform/{reference,companions} (the real files, read in place).
+// hand-written platform layer from config/java/platform/{reference,companions} (the real files, read in place).
 #include <set>
 #include <string>
 #include <vector>
@@ -16,7 +16,7 @@ namespace pr = cb::java::console::platform_refs;
 namespace jir = cb::java::ir;
 namespace stdfs = std::filesystem;
 
-stdfs::path refs_real_reference() { return testing::data_path("../../data/java/platform/reference"); }
+stdfs::path refs_real_reference() { return testing::data_path("../../config/java/platform/reference"); }
 
 bool refs_has(const std::string& text, std::string_view needle) { return text.find(needle) != std::string::npos; }
 
@@ -226,7 +226,7 @@ CB_TEST("java.platform_refs.emit_writes_references_with_a_banner_and_shims", [] 
     const std::string gl = fs::read_text(layer.out / "GL11.h");
     CB_CHECK(gl.starts_with("// ============================ PLATFORM REFERENCE"));
     CB_CHECK(refs_has(gl, "Hand-written Xbox 360 platform layer"));
-    CB_CHECK(refs_has(gl, "data/java/platform/reference/GL11.reference.h"));
+    CB_CHECK(refs_has(gl, "config/java/platform/reference/GL11.reference.h"));
     CB_CHECK(refs_has(gl, "namespace GL11 { void glBegin(int); }"));
     CB_CHECK(refs_has(fs::read_text(layer.out / "GL11.cpp"), "#include \"GL11.h\""));
     // the stubs the Input reference replaces become shims onto it
@@ -276,7 +276,7 @@ CB_TEST("java.platform_refs.emit_entry_point_choices", [] {
         const std::string main = fs::read_text(layer.out / "Main.cpp");
         CB_CHECK(refs_has(main, "SDL_SetMainReady();"));
         CB_CHECK(refs_has(fs::read_text(layer.out / "GL11.h"), "PC (SDL2 + OpenGL) platform layer"));
-        CB_CHECK(refs_has(fs::read_text(layer.out / "GL11.h"), "data/java/platform/pc/reference/GL11.reference.h"));
+        CB_CHECK(refs_has(fs::read_text(layer.out / "GL11.h"), "config/java/platform/pc/reference/GL11.reference.h"));
     }
     {   // no main class but a Runnable shell: construct and run it
         RefsLayer layer;

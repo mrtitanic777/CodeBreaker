@@ -24,7 +24,7 @@ recompiled and linked in.
   messages, parties, against a server of one's own), `pads/` (other controllers), `transition/`.
   Their assets are the user's own (extracted from a system update), never stored here.
 - `x360.cmake` — `x360_title(<target> <recompiled dir> <module_info.cpp>)` builds a title's program.
-- `tools/gen_ordinal_names.py` — the console's export names by ordinal (from `data/symbols/console_ordinals.json`), so an export a title looks up by ordinal and the runtime implements as an import is found.
+- `tools/gen_ordinal_names.py` — the console's export names by ordinal (from `config/symbols/console_ordinals.json`), so an export a title looks up by ordinal and the runtime implements as an import is found.
 - `tools/gen_import_stubs.py` — a stub that reports the call, for each import the runtime does not
   implement yet.
 

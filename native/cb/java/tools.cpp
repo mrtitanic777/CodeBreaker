@@ -68,7 +68,7 @@ std::string jt_bool(bool b) { return b ? "True" : "False"; }
 // One run of a tool: the checkout's configuration, the lane's folder, and the transpiler assembled over it the first time a tool asks for it.
 class Context {
 public:
-    explicit Context(Environment env) : env_(std::move(env)), data_(env_.config.checkout_root() / "data" / "java") {}
+    explicit Context(Environment env) : env_(std::move(env)), data_(env_.config.checkout_root() / "config" / "java") {}
 
     const cb::config::Config& config() const { return env_.config; }
     const JavaData& data() const { return data_; }

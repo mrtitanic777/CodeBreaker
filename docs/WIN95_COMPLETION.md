@@ -367,7 +367,7 @@ was put behind a switch (`CB_DS_OWN_CALLERS=<one name>`, default off) and run on
 | **sub_25_0429** | **FAIL(error box before Welcome)** | 570 |
 
 So the DS reading is right for four and the two others break for a reason of their own (their C, unlocked, is wrong in a way the gate
-does not see; not found). They are listed in data/build/kept_as_asm.txt (the whole-run-showed-wrong list). The rule is then on by default
+does not see; not found). They are listed in config/build/kept_as_asm.txt (the whole-run-showed-wrong list). The rule is then on by default
 (`CB_NO_DS_OWN=1` turns it off). `regress all15 --runs 2` with the switch on for all 13 callers and the two kept: PASS, PASS, USER C 574 / gated 40;
 default (no switch), rebuilt exe: PASS, PASS (5m23s), USER C 574 / gated 40 (+5 over 569), GDI unchanged. `regress install --runs 1` of this exe (`win95track-install-ds`): **PASS**, 1h27m, Setup to the desktop on all 22 modules; screen state/phase3/shots/win95track-install-ds-install-1.png.
 
@@ -418,11 +418,11 @@ are stand-ins. Two things follow that a window procedure falls through:
 The change that would close the gate itself, not the two functions: run the callees that take a pointer to the function's own frame as
 their own model (a table of the Windows calls that fill a structure: BeginPaint, GetClientRect, GetWindowRect, GetMessage, ... which are known from
 the SDK headers) so the buffer is filled on both sides; and refuse (keep as instructions) any C that addresses a local at an offset from another local's
-address past that local's own size. Neither is built; the two functions stay in data/build/kept_as_asm.txt.
+address past that local's own size. Neither is built; the two functions stay in config/build/kept_as_asm.txt.
 
 ### 19. A model for the Windows calls that fill a structure (built, default off: `CB_FILL=1`)
 
-`data/knowledge/models/win16.json` gains a `fill` for 13 calls (BEGINPAINT 32 bytes, GETCLIENTRECT / GETWINDOWRECT / GETUPDATERECT / GETCLIPBOX 8,
+`config/knowledge/models/win16.json` gains a `fill` for 13 calls (BEGINPAINT 32 bytes, GETCLIENTRECT / GETWINDOWRECT / GETUPDATERECT / GETCLIPBOX 8,
 GETCURSORPOS / GETCARETPOS 4, GETMESSAGE / PEEKMESSAGE 18, GETWINDOWPLACEMENT 22, GETTEXTMETRICS 31, GETKEYBOARDSTATE 256, GETSCROLLRANGE two words):
 `"fill": "<word>:<bytes>[,...]"`, the far pointer being the arguments' words `<word>` (segment) and `<word>+1` (offset) as pushed. `StubModel::fills`
 (emulate/windows16.hpp), read by `models_of`; `Runner::probe` writes the same fixed bytes (0x40 + 5i mod 0x3B, never zero) through that pointer on
@@ -433,7 +433,7 @@ Does it move existing verdicts? No: with `CB_FILL=1` the gate re-ran (USER 594 f
 the baseline's (USER 40 / GDI 16, `diff` empty on the names).
 
 Does it explain BEAR306 and sub_25_0429? No. `sub_25_0429` as C (forced out of its DS rule) passes the gate with and without the fill (it calls no
-structure-filling API: ISWINDOW, its own helpers); BEAR306 is held by data/build/kept_as_asm.txt, which `CB_FORCE_C` does not override, so the fill
+structure-filling API: ISWINDOW, its own helpers); BEAR306 is held by config/build/kept_as_asm.txt, which `CB_FORCE_C` does not override, so the fill
 could not be tried on it without editing that file. So the gate gap for these two is not the callee-fill. What remains as candidates, unproven:
 stack-frame layout dependence of the decompiled C (item 18), and state in the data segment that callees (stubbed) would have changed between
 two messages (a window procedure is correct per call and wrong in sequence: the gate runs one call at a time).
@@ -516,9 +516,9 @@ two-literal form (`= 0x1587; = 0x1048;`, selector the decompiler's pseudo value)
 `regress all15 --runs 2` with the two sites: PASS, PASS; with all seven, `regress all15 --runs 1`: PASS, whole run 3m03s (USER C 576 / gated 40: 574 + the two functions);
 `regress install --runs 1`: **PASS**, 52m08s in all (the install itself 25m29s: Welcome 52 s, wizard 663 s, copy 1057 s, FIX95CPU patched 1212 s, desktop 1528 s; the rest was the
 builds of 22 modules behind the decompile slots), screen state/phase3/shots/extinst-install-1.png (private state). Not yet on by default; with it on, the two lines of
-data/build/kept_as_asm.txt go.
+config/build/kept_as_asm.txt go.
 
-**Item 22, the ending: on by default (2026-11-18).** `CB_FN_PTR_STORES` is on unless `CB_FN_PTR_STORES=0`; the BEAR306 and sub_25_0429 lines are out of data/build/kept_as_asm.txt
+**Item 22, the ending: on by default (2026-11-18).** `CB_FN_PTR_STORES` is on unless `CB_FN_PTR_STORES=0`; the BEAR306 and sub_25_0429 lines are out of config/build/kept_as_asm.txt
 (both are C now). Unit tests `build.module` 23/23, `decompile.describe` 19/19, `verify.regress` 18/18. `regress all15 --runs 1` with nothing set (private exe copy, shared state):
 **PASS**, boot 1m15s, whole run 3m41s, USER C 576 / gated 40. No new install (the same build as the proven one: 52m08s, PASS).
 
@@ -548,7 +548,7 @@ Since the audit's start: all15 C 753 -> about 800 functions, none lost.
 Built, off by default: the Windows-call structure fill (`CB_FILL=1`, item 19). It moves no verdict (identical gated sets) and does not explain the two
 failures below.
 
-**Next step: a sequence-aware gate, for `BEAR306` and `sub_25_0429`** (both in data/build/kept_as_asm.txt; their C passes the gate and breaks the all-15 boot
+**Next step: a sequence-aware gate, for `BEAR306` and `sub_25_0429`** (both in config/build/kept_as_asm.txt; their C passes the gate and breaks the all-15 boot
 once it is used: FAIL(dos) and "error box before Welcome"). What is known (items 15, 18, 19): the DS reading of their call of sub_1_5D4F is right; the gate runs
 one call at a time with callees stubbed; filling the structures Windows calls write does not change either verdict; `CB_FORCE_C` does not override kept_as_asm.txt
 (to try BEAR306 as C remove its line temporarily, or add that override). The untried hypothesis: a window procedure is right per call and wrong in

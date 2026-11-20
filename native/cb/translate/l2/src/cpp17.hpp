@@ -2,7 +2,7 @@
 // front end, on the L2 core (l2.hpp). C++17 is written by one emitter; what a source language means is
 // a rule set apart, chosen by the unit's language (Unit.lang):
 //
-//   'python'  py.hpp semantics (data/translate/runtime/cpp17/py.hpp): int64_t where the front end proved the
+//   'python'  py.hpp semantics (config/translate/runtime/cpp17/py.hpp): int64_t where the front end proved the
 //             range, floor division and modulo signs (py::floordiv, py::mod), UTF-8 str and bytes,
 //             dict insertion order, value records and shared objects (cpp17_python.cc);
 //   'java'    jrt.hpp semantics (translate/runtime/cpp17/jrt.hpp): wrapping ints, masked shifts,

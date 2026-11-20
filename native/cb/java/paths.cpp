@@ -11,20 +11,20 @@ namespace stdfs = std::filesystem;
 
 JavaData JavaData::locate() {
     if (auto env = fs::get_env("CB_CHECKOUT_ROOT"); env && !env->empty()) {
-        stdfs::path root = fs::from_text(*env) / "data" / "java";
+        stdfs::path root = fs::from_text(*env) / "config" / "java";
         std::error_code ec;
         if (stdfs::is_directory(root, ec)) return JavaData(root);
     }
     std::error_code ec;
     stdfs::path dir = stdfs::current_path(ec);
     while (!ec && !dir.empty()) {
-        stdfs::path candidate = dir / "data" / "java";
+        stdfs::path candidate = dir / "config" / "java";
         if (stdfs::is_directory(candidate, ec)) return JavaData(candidate);
         stdfs::path parent = dir.parent_path();
         if (parent == dir) break;
         dir = parent;
     }
-    throw NotFoundError(stdfs::path("data/java"), 0, "the Java lane's data folder was not found");
+    throw NotFoundError(stdfs::path("config/java"), 0, "the Java lane's data folder was not found");
 }
 
 stdfs::path JavaData::path(std::initializer_list<std::string_view> parts) const {

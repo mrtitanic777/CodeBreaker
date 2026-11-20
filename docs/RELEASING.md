@@ -25,7 +25,7 @@ tools\gate.cmd
 ```
 
 The gate must end with every suite passing. The milestone regression boots Windows 95 from the rebuilt modules; it
-tests only the Windows 95 build path (native/cb/build, decompile, emulate/windows16*, verify/gate16, data/build and
+tests only the Windows 95 build path (native/cb/build, decompile, emulate/windows16*, verify/gate16, config/build and
 the OpenWatcom toolchain). Run only what covers code that changed since its last proof: nothing, if that path is
 unchanged since the last release or since its last proven run; `all15 --runs 1` for small changes there that were not
 proven yet; the full set below (about three hours) when a change to that path has not been proven at all:

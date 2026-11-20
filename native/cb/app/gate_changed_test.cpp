@@ -89,9 +89,9 @@ CB_TEST("app.gate_changed.the_foundations_and_the_unknown_run_everything", [] {
 });
 
 CB_TEST("app.gate_changed.data_is_its_area_s_code_a_golden_or_a_case_line_is_that_case", [] {
-    const Selection d = select({"data/build/kept_as_asm.txt"});
+    const Selection d = select({"config/build/kept_as_asm.txt"});
     CB_CHECK(!d.everything && d.areas == std::set<std::string>({"build"}));
-    CB_CHECK(runs({"data/build/kept_as_asm.txt"}, "info-pe", "info"));   // formats -> build
+    CB_CHECK(runs({"config/build/kept_as_asm.txt"}, "info-pe", "info"));   // formats -> build
     const Selection g = select({"tests/exe_gate/golden/info-pe.txt", "case:info-ne"});
     CB_CHECK(!g.everything && g.areas.empty() && g.cases == std::set<std::string>({"info-pe", "info-ne"}));
     CB_CHECK(case_selected(g, toy(), toy_map(), "info-pe", "info", {}) && case_selected(g, toy(), toy_map(), "info-ne", "info", {}));
@@ -104,15 +104,15 @@ CB_TEST("app.gate_changed.a_record_is_the_exact_difference_of_two_trees_by_conte
     const std::filesystem::path r = dir.path();
     fs::make_dirs(r / "native" / "cb" / "xna");
     fs::make_dirs(r / "native" / "cb" / "app");
-    fs::make_dirs(r / "data" / "build");
+    fs::make_dirs(r / "config" / "build");
     fs::make_dirs(r / "tests" / "exe_gate");
     fs::write_text(r / "native" / "cb" / "xna" / "a.cpp", "int a;\n");
     fs::write_text(r / "native" / "cb" / "app" / "window_win.cpp", "int w;\n");
-    fs::write_text(r / "data" / "build" / "k.txt", "k\n");
+    fs::write_text(r / "config" / "build" / "k.txt", "k\n");
     fs::write_text(r / "tests" / "exe_gate" / "cases.txt", "info-pe: info x\n");   // not a file of the record: its lines are
     const std::map<std::string, std::string> extra = {{"case:info-pe", "aa"}, {"case-vars", "vv"}};
     const Record first = scan_tree(r, nullptr, extra);
-    CB_CHECK(first.files.contains("native/cb/xna/a.cpp") && first.files.contains("data/build/k.txt") && first.files.contains("case:info-pe"));
+    CB_CHECK(first.files.contains("native/cb/xna/a.cpp") && first.files.contains("config/build/k.txt") && first.files.contains("case:info-pe"));
     CB_CHECK(!first.files.contains("tests/exe_gate/cases.txt"));
     const Record round = read_record(record_text(first));
     CB_CHECK(round.files == first.files);
@@ -122,12 +122,12 @@ CB_TEST("app.gate_changed.a_record_is_the_exact_difference_of_two_trees_by_conte
     CB_CHECK(changed_paths(round, scan_tree(r, &round, extra)).empty());
     // one file edited, one added, one case line edited
     fs::write_text(r / "native" / "cb" / "app" / "window_win.cpp", "int w2;\n");
-    fs::write_text(r / "data" / "build" / "new.txt", "n\n");
+    fs::write_text(r / "config" / "build" / "new.txt", "n\n");
     std::map<std::string, std::string> extra2 = extra;
     extra2["case:info-pe"] = "bb";
     std::vector<std::string> changed = changed_paths(round, scan_tree(r, &round, extra2));
     std::sort(changed.begin(), changed.end());
-    CB_CHECK(changed == (std::vector<std::string>{"case:info-pe", "data/build/new.txt", "native/cb/app/window_win.cpp"}));
+    CB_CHECK(changed == (std::vector<std::string>{"case:info-pe", "config/build/new.txt", "native/cb/app/window_win.cpp"}));
     // a file removed counts too
     fs::remove_tree(r / "native" / "cb" / "xna");
     changed = changed_paths(round, scan_tree(r, &round, extra));

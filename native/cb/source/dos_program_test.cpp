@@ -81,7 +81,7 @@ CB_TEST("source.dos_program.a_file_that_is_not_what_was_built_is_an_error", [] {
 
 CB_TEST("source.dos_program.without_an_assembler_the_first_round_says_so", [] {
     fs::ScopedTempDir tmp("cb-dosprog");
-    const auto services = symbols::dos_interrupts::ServiceTable::load(std::filesystem::path(CB_SOURCE_DIR).parent_path() / "data" / "symbols" / "dos_interrupts.json");
+    const auto services = symbols::dos_interrupts::ServiceTable::load(std::filesystem::path(CB_SOURCE_DIR).parent_path() / "config" / "symbols" / "dos_interrupts.json");
     const platforms::Decoder decoder = platforms::Decoder::open(platforms::Arch::X86, 16, false);
     Bytes image(0x20, 0);
     image[0] = 0xEB;   // jmp short 4

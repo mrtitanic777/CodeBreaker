@@ -49,7 +49,7 @@ void tf_copy(const stdfs::path& from, const stdfs::path& to, std::vector<stdfs::
 void tf_write_cpp17(const stdfs::path& built_dir, const std::string& name, const std::vector<std::string>& headers, const std::vector<std::string>& sources,
                     const stdfs::path& out, Result& result) {
     const stdfs::path checkout = config::current().checkout_root();
-    const stdfs::path runtime = checkout / "data" / "translate" / "runtime" / "cpp17";
+    const stdfs::path runtime = checkout / "config" / "translate" / "runtime" / "cpp17";
     for (const std::string& s : sources) tf_copy(built_dir / s, out / s, result.files, out);
     for (const std::string& h : headers) tf_copy(runtime / h, out / "runtime" / h, result.files, out);
     const stdfs::path note = out / "BUILD.txt";
@@ -93,7 +93,7 @@ Result tf_csharp_csharp(const stdfs::path& input, const stdfs::path& out, const 
     };
     const stdfs::path checkout = environment.config.checkout_root();
     const stdfs::path judged = work / "judge";
-    const frontends::csharp::Frontend frontend(*sdk, checkout / "data" / "translate" / "frontends" / "csharp" / "CsTreeDump.cs", environment.config.state());
+    const frontends::csharp::Frontend frontend(*sdk, checkout / "config" / "translate" / "frontends" / "csharp" / "CsTreeDump.cs", environment.config.state());
     Arena arena;
     dotnet::pairs::Pairs pairs{.sdk = *sdk, .csharp = frontend, .arena = arena};
     Result result;

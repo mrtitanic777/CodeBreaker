@@ -33,7 +33,7 @@ include("${X360_ROOT}/../../formats/xex/reader.cmake")
 # the console's export names by ordinal (kernel::OrdinalName), from the repository's symbol data
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(ordinal_names "${CMAKE_CURRENT_BINARY_DIR}/ordinal_names.cpp")
-set(ordinal_json "${X360_ROOT}/../../../../data/symbols/console_ordinals.json")
+set(ordinal_json "${X360_ROOT}/../../../../config/symbols/console_ordinals.json")
 add_custom_command(OUTPUT "${ordinal_names}"
     COMMAND Python3::Interpreter -I "${X360_ROOT}/tools/gen_ordinal_names.py" "${ordinal_json}" "${ordinal_names}"
     DEPENDS "${X360_ROOT}/tools/gen_ordinal_names.py" "${ordinal_json}"

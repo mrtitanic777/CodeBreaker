@@ -32,7 +32,7 @@ Json cort_names(const std::set<std::string, std::less<>>& names) { return Json(s
 // testdata/corpus.golden.json: the recorded result of the passes on the corpus in testdata/corpus, as
 // compact JSON with sorted keys; this test builds the same document from the passes.
 CB_TEST("java.corpus.passes_match_golden", [] {
-    const auto runtime = cb::java::runtime::Runtime(cb::java::JavaData(cb::testing::data_path("../../data/java")));
+    const auto runtime = cb::java::runtime::Runtime(cb::java::JavaData(cb::testing::data_path("../../config/java")));
     std::vector<ir::JClass> classes = cort_parse_all();
     std::size_t methods_before = 0, methods_after = 0;
     for (const ir::JClass& c : classes) methods_before += c.methods.size();
@@ -155,7 +155,7 @@ CB_TEST("java.corpus.markers_that_are_bases_stay", [] {
 });
 
 CB_TEST("java.corpus.stub_member_types", [] {
-    const auto runtime = cb::java::runtime::Runtime(cb::java::JavaData(cb::testing::data_path("../../data/java")));
+    const auto runtime = cb::java::runtime::Runtime(cb::java::JavaData(cb::testing::data_path("../../config/java")));
     const auto env = cor::build_member_env({}, runtime);
     // a runtime stub's method counts when its result is a single reference pointer or std::string
     CB_CHECK_EQ(env.at("URL").methods.at("openStream").to_string(), "InputStream");

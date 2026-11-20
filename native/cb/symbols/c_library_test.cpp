@@ -1,4 +1,4 @@
-// Tests of cb/symbols/c_library: a small table in the file's layout, and the project's own table (data/symbols/c_library.json).
+// Tests of cb/symbols/c_library: a small table in the file's layout, and the project's own table (config/symbols/c_library.json).
 #include "cb/symbols/c_library.hpp"
 
 #include "cb/core/error.hpp"
@@ -32,7 +32,7 @@ CB_TEST("symbols.c_library.refuses_a_table_that_is_not_one", [] {
 });
 
 CB_TEST("symbols.c_library.the_projects_table", [] {
-    const cl::CLibrary library = cl::CLibrary::load(cb::testing::data_path("../../data/symbols/c_library.json"));
+    const cl::CLibrary library = cl::CLibrary::load(cb::testing::data_path("../../config/symbols/c_library.json"));
     CB_CHECK(library.size() > 150);
     CB_CHECK_EQ(library.find("strlen")->header, "string.h");
     CB_CHECK_EQ(library.find("fopen")->header, "stdio.h");

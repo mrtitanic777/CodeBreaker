@@ -248,11 +248,11 @@ CB_TEST("translate.j2x.the_native_round_trip_judge_gives_the_expected_verdict", 
     std::error_code ec;
     if (!stdfs::is_regular_file(javac_text, ec) || !stdfs::is_regular_file(java_text, ec)) return;   // no JDK here: nothing to judge on
 
-    static const cb::java::apimap::Registry registry = cb::java::apimap::Registry::load(cb::testing::data_path("../../data/java/api_maps"));
+    static const cb::java::apimap::Registry registry = cb::java::apimap::Registry::load(cb::testing::data_path("../../config/java/api_maps"));
     static const cb::translate::backends::java_libc::LibC libc(registry);
     jj::Host host;
     host.jdk = {javac_text, java_text};
-    host.runtime_sources = cb::testing::data_path("../../data/translate/backends/java_runtime");
+    host.runtime_sources = cb::testing::data_path("../../config/translate/backends/java_runtime");
     const stdfs::path state = cb::testing::data_path("../../state/work/j2x-tests");
     cb::fs::make_dirs(state);
     host.state_folder = state / "state";

@@ -183,7 +183,7 @@ std::vector<cli::Command> state_commands(const config::Config& config, const std
                 if (!copies.empty() && formats::detect::holds_drivers(copies.front())) drivers.push_back(copies.front());
             return drivers;
         };
-        env.table_file = config.data_root() / "symbols" / "driver_services.json";
+        env.table_file = config.config_root() / "symbols" / "driver_services.json";
         env.kit_folder = config.text("driver_kit");
         env.reference_folder = reference;
         out.push_back(symbols::driver_services::command(env));

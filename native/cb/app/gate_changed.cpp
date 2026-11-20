@@ -26,9 +26,9 @@ bool starts(std::string_view s, std::string_view p) { return s.substr(0, p.size(
 std::string node_of(const std::string& area) { return area.substr(0, area.find(':')); }
 
 // Folders that are build output or somebody else's code, never part of what the gate depends on.
-// ("build" is output next to other people's code, but a folder of ours under native/cb (the build area), data and tests.)
+// ("build" is output next to other people's code, but a folder of ours under native/cb (the build area), config and tests.)
 bool skipped_folder(const std::string& name, const std::string& rel) {
-    if (name == "build") return !(starts(rel, "native/cb/") || starts(rel, "data/") || starts(rel, "tests/"));
+    if (name == "build") return !(starts(rel, "native/cb/") || starts(rel, "config/") || starts(rel, "tests/"));
     return name == ".git" || name == "state" || name == ".gradle" || name == "__pycache__" || name == "node_modules";
 }
 
@@ -111,7 +111,7 @@ Record read_record(std::string_view data) {
 Record scan_tree(const stdfs::path& repo, const Record* previous, const std::map<std::string, std::string>& extra) {
     Record out;
     const stdfs::path native = repo / "native";
-    for (const char* dir : {"native/cb", "data", "tests"})
+    for (const char* dir : {"native/cb", "config", "tests"})
         walk(repo, repo / dir, true, previous, out, extra);
     walk(repo, native, false, previous, out, extra);   // native/CMakeLists.txt and the *.cmake beside it
     walk(repo, repo / "tools", false, previous, out, extra);
@@ -277,8 +277,8 @@ Selection select(const std::vector<std::string>& changed) {
             } else {
                 s.areas.insert(area);
             }
-        } else if (starts(path, "data/")) {
-            const std::string rest = path.substr(5);
+        } else if (starts(path, "config/")) {
+            const std::string rest = path.substr(7);
             const std::size_t slash = rest.find('/');
             static const std::set<std::string> owned = {"build", "exact", "java", "knowledge", "port", "source", "symbols", "translate", "xna"};
             const std::string owner = slash == std::string::npos ? std::string() : rest.substr(0, slash);

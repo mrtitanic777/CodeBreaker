@@ -122,7 +122,7 @@ Score judge_module(const Environment& environment, const judge_cs_cpp::Cxx& cxx,
     fs::write_text(source, main_text);
     std::string log;
     checking(0, 4, "Building the C++ translation");
-    score.compiles = judge_cs_cpp::build_program(cxx, checkout / "data" / "translate" / "runtime" / "cpp17", source, exe, log);
+    score.compiles = judge_cs_cpp::build_program(cxx, checkout / "config" / "translate" / "runtime" / "cpp17", source, exe, log);
     if (!*score.compiles) {
         score.detail = "compile: " + clip(log, 700);
         return score;

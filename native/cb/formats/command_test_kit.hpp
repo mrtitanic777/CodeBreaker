@@ -55,7 +55,7 @@ inline std::optional<std::filesystem::path> game_file(const char* relative) {
 // The console ordinals the knowledge base keeps (codebreaker/symbols/console_ordinals.json): {library: {ordinal: name}}, as the function
 // the xex commands' environments take.
 inline formats::xex_imports::OrdinalNames console_ordinal_names() {
-    auto table = std::make_shared<Json>(json::load(data_path("../../data/symbols/console_ordinals.json")));
+    auto table = std::make_shared<Json>(json::load(data_path("../../config/symbols/console_ordinals.json")));
     return [table](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
         const auto lib = table->find(std::string(library));
         if (lib == table->end() || !lib->is_object()) return std::nullopt;

@@ -27,7 +27,7 @@ std::filesystem::path checkout() { return std::filesystem::path(CB_SOURCE_DIR).p
 
 // What the checkout's win16 model file holds (the tests count the file, not a number that goes stale when a call is modelled).
 std::size_t win16_model_count() {
-    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "data" / "knowledge" / "models" / "win16.json"));
+    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "config" / "knowledge" / "models" / "win16.json"));
     return j.at("functions").size();
 }
 

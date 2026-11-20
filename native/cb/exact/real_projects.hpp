@@ -71,7 +71,7 @@ struct Real {
         std::error_code ec;
         if (!std::filesystem::is_directory(research_root() / "msc-3.0", ec) || !std::filesystem::is_regular_file(root / "settings.json", ec)) return;
         locations = toolchain::Locations::of_checkout(root);
-        locations.profiles = testing::data_path("../../data/exact/toolchains");
+        locations.profiles = testing::data_path("../../config/exact/toolchains");
         locations.state = state.path();   // (a stage's files, if any: not the checkout's)
         try {
             (void)locations.kit("msc300");

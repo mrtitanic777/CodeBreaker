@@ -7,7 +7,7 @@
 //
 //     lowers     the Roslyn front end lowered all of it to IR (no Unsupported node)
 //     writes     the C++17 back end (backends/csharp_cpp17) wrote it (nothing declined)
-//     compiles   the host C++ compiler (g++, clang++ or cl) built the C++ with the runtime, data/translate/runtime/cpp17/csrt.hpp
+//     compiles   the host C++ compiler (g++, clang++ or cl) built the C++ with the runtime, config/translate/runtime/cpp17/csrt.hpp
 //     agrees     the C# program (csc and the installed runtime) and the C++ printed the same output and exited with the same code
 //
 // The result is a table, one row per program (the scoreboard of docs/TRANSLATOR_DESIGN.md), and the exit code is 0 when every program

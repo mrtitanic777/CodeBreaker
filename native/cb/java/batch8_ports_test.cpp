@@ -31,7 +31,7 @@ b8r::Findings b8_fire(std::string_view rule, std::string_view name, std::string_
 }
 
 const cb::java::runtime::Runtime& b8_runtime() {
-    static const cb::java::runtime::Runtime r{cb::java::JavaData(cb::testing::data_path("../../data/java"))};
+    static const cb::java::runtime::Runtime r{cb::java::JavaData(cb::testing::data_path("../../config/java"))};
     return r;
 }
 

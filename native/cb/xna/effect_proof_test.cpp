@@ -3,7 +3,7 @@
 //
 // The effects in tests/data/xbox_effects are our own HLSL, each with the Xbox 360 SDK's fxc output beside it (<name>.fxo). The .fxo is
 // recovered as HLSL (decompile/xbox_effect); the original .fx and the recovered one are both compiled by MonoGame's mgfxc and drawn by
-// data/xna/shadercheck with the same vertices, parameters and texture; every technique draws something and every pixel agrees within one
+// config/xna/shadercheck with the same vertices, parameters and texture; every technique draws something and every pixel agrees within one
 // step. A machine without mgfxc or dotnet skips the test (neither is ours to install: NOT_IN_REPO.md); a shadercheck that is built is
 // kept in state/xna/shadercheck and rebuilt only when its sources are newer.
 #include <algorithm>
@@ -59,7 +59,7 @@ CB_TEST("xna.proof.recovered_hlsl_behaves_as_the_source", [] {
     if (!on_path("mgfxc") || !on_path("dotnet")) return;   // MonoGame's effect compiler and the .NET SDK are the machine's own
 
     const stdfs::path data = testing::data_path("../../tests/data/xbox_effects");
-    const stdfs::path source = testing::data_path("../../data/xna/shadercheck");
+    const stdfs::path source = testing::data_path("../../config/xna/shadercheck");
     const stdfs::path built = testing::data_path("../../state/xna/shadercheck");
     const stdfs::path exe = built / "shadercheck.exe";
     if (!stdfs::exists(exe) || cb::fs::last_write_time(exe) < cb::fs::last_write_time(newest_source(source))) {

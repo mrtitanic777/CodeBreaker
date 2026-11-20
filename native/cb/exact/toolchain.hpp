@@ -1,6 +1,6 @@
 // cb/exact/toolchain.hpp -- a compiler (or assembler) of the period, run in this process from its profile.
 //
-// A profile (data/exact/toolchains/NAME.json) says what the tool is and how its driver ran it; nothing about one
+// A profile (config/exact/toolchains/NAME.json) says what the tool is and how its driver ran it; nothing about one
 // compiler is written in the code. Its parts:
 //
 //     kit         the settings.json `kits` entry holding the tool's files (they are not in the repository)
@@ -69,7 +69,7 @@ inline constexpr std::string_view kCacheKind = "exact";   // the cache kind comp
 
 // ---- where things are ----------------------------------------------------------------------------------------------
 struct Locations {
-    std::filesystem::path profiles;        // toolchains/NAME.json: data/exact/toolchains of the checkout
+    std::filesystem::path profiles;        // toolchains/NAME.json: config/exact/toolchains of the checkout
     std::filesystem::path state;           // the state folder: stages are kept in <state>/exact/stage
     std::filesystem::path checkout_root;   // a relative kit folder is taken against it
     std::map<std::string, std::filesystem::path> kits;   // settings.json "kits": {name: folder}

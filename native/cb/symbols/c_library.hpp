@@ -1,6 +1,6 @@
 // cb/symbols/c_library.hpp -- the C library functions of a period compiler, as its headers declare them.
 //
-//     const CLibrary library = CLibrary::load(checkout / "data" / "symbols" / "c_library.json");
+//     const CLibrary library = CLibrary::load(checkout / "config" / "symbols" / "c_library.json");
 //     const Prototype* p = library.find("strcpy");     p->header "string.h", p->result 'p', p->arguments {'p', 'p'}
 //     p->result_bytes(4)                               2: the width of the pointer, in bytes, is the model's (2 small and medium, 4 compact and large)
 //     p->argument_sizes(4)                             {"4p", "4p"}: the sizes a decompiler description gives a cdecl function's arguments

@@ -349,7 +349,7 @@ CB_TEST("exact.mspascal.the_real_compiler", [] {
     const tc::ExecutiveRunner runner(*executive);
     cfs::ScopedTempDir dir("cbpascalreal");
     tc::Locations locations;
-    locations.profiles = cb::testing::data_path("../../data/exact/toolchains");
+    locations.profiles = cb::testing::data_path("../../config/exact/toolchains");
     locations.state = dir.path() / "state";
     locations.checkout_root = dir.path();
     tc::Context c;

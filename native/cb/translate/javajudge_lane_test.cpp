@@ -86,7 +86,7 @@ void jl_judge_against_golden(const stdfs::path& folder) {
     const Json units = json::load(folder / "units.json");
     const Json golden = json::load(folder / "verdicts.python.json");
     const stdfs::path src = folder / "src";
-    java::assembly::Assembly assembly(java::JavaData(testing::data_path("../../data/java")), jl_front_end(units));
+    java::assembly::Assembly assembly(java::JavaData(testing::data_path("../../config/java")), jl_front_end(units));
     const bool times = fs::get_env("CB_JAVAJUDGE_TIMES").has_value();
     JavaTreeLane lane(jl_tools, [&](std::string_view label) {
         verify::lanes::JavaLane::Convert convert = assembly.converter(std::string(label));

@@ -14,7 +14,7 @@ namespace {
 
 namespace stdfs = std::filesystem;
 
-JavaData asm_data() { return JavaData(testing::data_path("../../data/java")); }
+JavaData asm_data() { return JavaData(testing::data_path("../../config/java")); }
 stdfs::path asm_source() { return testing::data_path("java/testdata/source"); }
 
 CB_TEST("java.assembly.a_conversion_asks_the_front_end_for_the_programs_units", [] {

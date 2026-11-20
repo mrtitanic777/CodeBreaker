@@ -36,7 +36,7 @@ public:
 
     const std::filesystem::path& checkout_root() const { return root_; }
     // The data the program ships with (JSON tables, Java API maps, toolchain profiles, runtimes): <checkout>/data.
-    std::filesystem::path data_root() const { return root_ / "data"; }
+    std::filesystem::path config_root() const { return root_ / "config"; }
 
     // The setting as text: a string as it is, a number in decimal, a bool "true"/"false"; "" when not set.
     std::string text(std::string_view key) const;

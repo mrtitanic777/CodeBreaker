@@ -1,7 +1,7 @@
 {
  "subsystem": "python.builtins",
  "language": "python",
- "description": "CPython builtins / stdlib -> C++ and C. The cpp targets (C++17 forms) are what the Python front end (native/cb/translate/frontends/python) writes through the C++17 back end (native/l2/src/cpp17_python.cc): a target is a template ({recv} the receiver, {0}.. the arguments, {args} all of them, {T} the result type) over data/translate/runtime/cpp17/py.hpp.",
+ "description": "CPython builtins / stdlib -> C++ and C. The cpp targets (C++17 forms) are what the Python front end (native/cb/translate/frontends/python) writes through the C++17 back end (native/l2/src/cpp17_python.cc): a target is a template ({recv} the receiver, {0}.. the arguments, {args} all of them, {T} the result type) over config/translate/runtime/cpp17/py.hpp.",
  "symbols": {
   "len": {
    "signature": "(seq)",

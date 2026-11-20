@@ -194,9 +194,9 @@ CB_TEST("symbols.ordinals.shipped_file_round_trip", [] {
 });
 
 CB_TEST("symbols.ordinals.the_xbox_kernels_ordinal_8_is_dbgprint", [] {
-    // the table the product ships (data/symbols/ordinal_names.json): an XBE's kernel thunk table is imports of xboxkrnl.exe by number
+    // the table the product ships (config/symbols/ordinal_names.json): an XBE's kernel thunk table is imports of xboxkrnl.exe by number
     // (kernel ordinal 8 is DbgPrint)
-    const ord::ShippedTables tables = ord::parse_shipped(cb::fs::read_text(cb::testing::data_path("../../data/symbols/ordinal_names.json")));
+    const ord::ShippedTables tables = ord::parse_shipped(cb::fs::read_text(cb::testing::data_path("../../config/symbols/ordinal_names.json")));
     CB_CHECK(tables.contains("XBOXKRNL"));
     CB_CHECK_EQ(tables.at("XBOXKRNL").names.at(8), "DbgPrint");
 });

@@ -15,7 +15,7 @@
 #include <type_traits>
 
 #include "pystr.hpp"
-#include "../../../../../data/translate/runtime/cpp17/py_unicode.hpp"
+#include "../../../../../config/translate/runtime/cpp17/py_unicode.hpp"
 #include "value.hpp"
 
 namespace re {

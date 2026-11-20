@@ -17,7 +17,7 @@ CB_TEST("exact.run.the_arguments_that_are_the_commands_own", [] {
     test::Real real;
     run::Stages stages;
     toolchain::Locations locations;
-    locations.profiles = testing::data_path("../../data/exact/toolchains");
+    locations.profiles = testing::data_path("../../config/exact/toolchains");
     toolchain::Toolchains toolchains(locations, nullptr, nullptr);
     {
         testing::CapturedStd cap;

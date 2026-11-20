@@ -188,7 +188,7 @@ int learn_command(const Environment& environment, const std::vector<std::string>
     const std::vector<rl::LearnSource> sources = learn_sources(arguments);
     rl::Learned learned = rl::learn(sources, decoders, [](const std::string& line) { cb::out("{}\n", line); });
     std::filesystem::path file = environment.signature_file;
-    if (file.empty()) file = environment.config->checkout_root() / "data" / "symbols" / "runtime_signatures.json";
+    if (file.empty()) file = environment.config->checkout_root() / "config" / "symbols" / "runtime_signatures.json";
     if (add && std::filesystem::exists(file)) {   // (what is already learned stays; the new libraries come after it)
         const Bytes kept = fs::read_file(file);
         rl::Learned all = rl::read_signature_file(as_text(kept));

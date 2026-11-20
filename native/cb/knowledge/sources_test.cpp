@@ -50,7 +50,7 @@ std::filesystem::path checkout() { return std::filesystem::path(CB_SOURCE_DIR).p
 
 // What the checkout's win16 model file holds (the tests count the file, not a number that goes stale when a call is modelled).
 std::size_t win16_model_count() {
-    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "data" / "knowledge" / "models" / "win16.json"));
+    const nlohmann::json j = nlohmann::json::parse(fs::read_text(checkout() / "config" / "knowledge" / "models" / "win16.json"));
     return j.at("functions").size();
 }
 
@@ -84,7 +84,7 @@ CB_TEST("knowledge.sources.catalogue", [] {
     for (const AuthoredKind& k : all) in_driver_services += k.file == "driver_services.json";
     CB_CHECK_EQ(in_driver_services, 4);
     CB_CHECK_EQ(AuthoredSources({}).source_label(*AuthoredSources::find({"vxd", "api_model"})),
-                "data/knowledge/models/vxd.json");
+                "config/knowledge/models/vxd.json");
 });
 
 CB_TEST("knowledge.sources.real_files_every_kind_loads", [] {
@@ -106,7 +106,7 @@ CB_TEST("knowledge.sources.real_files_every_kind_loads", [] {
         CB_CHECK_EQ(rows.size(), count);
     }
     CB_CHECK_EQ(store.makes, 14);
-    CB_CHECK_EQ(store.kinds.at({"vxd", "device"}).source, "data/symbols/driver_services.json");
+    CB_CHECK_EQ(store.kinds.at({"vxd", "device"}).source, "config/symbols/driver_services.json");
 });
 
 CB_TEST("knowledge.sources.real_rows_content", [] {
@@ -230,8 +230,8 @@ CB_TEST("knowledge.sources.unknown_kind_is_misuse", [] {
 
 CB_TEST("knowledge.sources.data_folders", [] {
     const DataFolders d = DataFolders::under("C:/repo");
-    CB_CHECK_EQ(fs::to_text(d.symbols), "C:/repo/data/symbols");
-    CB_CHECK_EQ(fs::to_text(d.models), "C:/repo/data/knowledge/models");
+    CB_CHECK_EQ(fs::to_text(d.symbols), "C:/repo/config/symbols");
+    CB_CHECK_EQ(fs::to_text(d.models), "C:/repo/config/knowledge/models");
     const fs::ScopedEnv env("CB_CHECKOUT_ROOT", "D:/elsewhere");
-    CB_CHECK_EQ(fs::to_text(DataFolders::from_environment().symbols), "D:/elsewhere/data/symbols");
+    CB_CHECK_EQ(fs::to_text(DataFolders::from_environment().symbols), "D:/elsewhere/config/symbols");
 });

@@ -1,7 +1,7 @@
 """The console's export names by ordinal, as C++ for the runtime (kernel::OrdinalName).
 
 Usage: gen_ordinal_names.py <console_ordinals.json> <output .cpp>
-The JSON is {library: {ordinal: name}} (data/symbols/console_ordinals.json); only xam.xex and xboxkrnl.exe are written. A title
+The JSON is {library: {ordinal: name}} (config/symbols/console_ordinals.json); only xam.xex and xboxkrnl.exe are written. A title
 that looks an export up by ordinal at run time (XexGetProcedureAddress) and that the runtime implements as an import of that
 name is answered through this table (kernel/xboxkrnl_modules.cpp).
 """

@@ -265,7 +265,7 @@ CB_TEST("translate.native_l2.round_trip_as_the_typed_tree_does", [] {
 CB_TEST("translate.native_l2.schema_check", [] {
     const nl::Library* lib = library();
     if (lib == nullptr) return;
-    const std::string schema = cb::fs::read_text(cb::testing::data_path("../../data/translate/l2.schema.json"));
+    const std::string schema = cb::fs::read_text(cb::testing::data_path("../../config/translate/l2.schema.json"));
     const nl::Validation ok = lib->validate(parse(R"({"node":"Return","expr":{"node":"Lit","type":{"kind":"i32"},"value":1}})"), schema);
     CB_CHECK(ok.valid);
     // a node the schema does not know, a slot it does not have, a type of a kind it has not

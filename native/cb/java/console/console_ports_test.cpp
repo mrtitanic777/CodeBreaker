@@ -19,7 +19,7 @@ const vcxproj::FilterRules& cpt_rules() {
     return r;
 }
 
-stdfs::path cpt_template() { return testing::data_path("../../data/java/console/templates/xbox360.vcxproj.in"); }
+stdfs::path cpt_template() { return testing::data_path("../../config/java/console/templates/xbox360.vcxproj.in"); }
 
 void cpt_flat_dump(const stdfs::path& root) {
     for (const char* n : {"Foo.cpp", "Bar.cpp", "stdafx.cpp", "Foo.h", "Bar.h", "stdafx.h"}) fs::write_text(root / n, std::string("// ") + n);

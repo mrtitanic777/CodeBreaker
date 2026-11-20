@@ -8,7 +8,7 @@
 //
 //     lowers     the Python front end (inference, lowering) translated every run_* function (what else it refused is only listed)
 //     writes     the L2 core's C++17 back end (translate/l2) wrote the module
-//     compiles   the host C++ compiler built it with the runtime (data/translate/runtime/cpp17: py.hpp ...) and a main that prints each answer
+//     compiles   the host C++ compiler built it with the runtime (config/translate/runtime/cpp17: py.hpp ...) and a main that prints each answer
 //     agrees     CPython and the C++ gave the same answer for every run_* function
 //
 // The result is a table, one row per module (the same as judge-cs-cpp's), and the exit code is 0 when every module agrees. The default

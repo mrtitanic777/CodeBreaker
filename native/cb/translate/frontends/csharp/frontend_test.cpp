@@ -37,7 +37,7 @@ stdfs::path csf_corpus(const std::string& name = "") {
     return cb::testing::data_path("../../tests/translate/corpus/csharp") / (name.empty() ? "" : name + ".cs");
 }
 
-stdfs::path csf_tool_source() { return cb::testing::data_path("../../data/translate/frontends/csharp/CsTreeDump.cs"); }
+stdfs::path csf_tool_source() { return cb::testing::data_path("../../config/translate/frontends/csharp/CsTreeDump.cs"); }
 
 // The SDK of this machine, if it has one that can compile and run.
 const dn::Sdk* csf_installed() {
@@ -256,11 +256,11 @@ CB_TEST("translate.csharp.pairs.java_programs_round_trip_to_equivalent", [] {
     const std::string java = cb::fs::get_env("CB_JAVA").value_or((jdk / "java.exe").string());
     std::error_code ec;
     if (sdk == nullptr || !stdfs::is_regular_file(javac, ec) || !stdfs::is_regular_file(java, ec)) return;
-    static const cb::java::apimap::Registry registry = cb::java::apimap::Registry::load(cb::testing::data_path("../../data/java/api_maps"));
+    static const cb::java::apimap::Registry registry = cb::java::apimap::Registry::load(cb::testing::data_path("../../config/java/api_maps"));
     dn::pairs::JavaSide side;
-    side.tools = {.java = java, .javac = javac, .treedump_source = cb::testing::data_path("../../data/translate/frontends/java/TreeDump.java"), .state = csf_state_folder()};
+    side.tools = {.java = java, .javac = javac, .treedump_source = cb::testing::data_path("../../config/translate/frontends/java/TreeDump.java"), .state = csf_state_folder()};
     side.registry = &registry;
-    side.runtime_dir = cb::testing::data_path("../../data/translate/dotnet/runtime");
+    side.runtime_dir = cb::testing::data_path("../../config/translate/dotnet/runtime");
     side.jdk = dn::judge::Jdk{.javac = javac, .jvm = java};
     const cs::Frontend frontend = csf_frontend_of(*sdk);
     struct Case {

@@ -85,7 +85,7 @@ std::string jc_clip(const std::string& s, std::size_t n) { return s.size() > n ?
 
 ProductionHost make_host(const Environment& environment) {
     const cb::config::Config& config = environment.config;
-    const stdfs::path data_root = config.checkout_root() / "data";
+    const stdfs::path data_root = config.checkout_root() / "config";
     auto state = std::make_shared<JcState>(config, cb::java::JavaData(data_root / "java"), cb::java::apimap::Registry::load(data_root / "java" / "api_maps"));
 
     jj::Host host;
@@ -140,9 +140,9 @@ RoundTripInputs default_inputs(const Environment& environment, const stdfs::path
     const stdfs::path root = environment.config.checkout_root();
     RoundTripInputs inputs;
     // the fixture classes, the clang front end's round-trip program, and Base and Sub (the C++03 back end's test classes, package `sample`)
-    const stdfs::path data = root / "data" / "translate" / "judge_c_java";
+    const stdfs::path data = root / "config" / "translate" / "judge_c_java";
     for (const char* name : {"Vec3D", "MathHelper", "AxisAlignedBB"}) inputs.files.push_back(data / (std::string(name) + ".java"));
-    inputs.files.push_back(root / "codebreaker" / "translate" / "frontends" / "clang" / "corpus" / "roundtrip" / "RoundTrip.java");
+    inputs.files.push_back(root / "native" / "cb" / "translate" / "frontends" / "clang" / "testdata" / "roundtrip" / "RoundTrip.java");
     for (const char* name : {"Base", "Sub"}) inputs.files.push_back(data / (std::string(name) + ".java"));
     inputs.main_class = "sample.RoundTrip";
     return inputs;

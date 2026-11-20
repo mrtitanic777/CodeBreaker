@@ -142,7 +142,7 @@ DosLibrary lanes_dos_library(Decompiler& decompiler, describe::DosDescription& d
     if (identified.empty()) return out;
     symbols::c_library::CLibrary prototypes;
     try {
-        prototypes = symbols::c_library::CLibrary::load(checkout / "data" / "symbols" / "c_library.json");
+        prototypes = symbols::c_library::CLibrary::load(checkout / "config" / "symbols" / "c_library.json");
     } catch (const Error&) {   // (no table: the functions are named, their arguments left to the analysis)
     }
     std::set<std::string> used;
@@ -500,7 +500,7 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
         if (!library.skipped.contains(va)) own.push_back(va);
     Functions grown = lanes_grow(*this, *d, line, 8, library.skipped.empty() ? std::span<const Va>() : std::span<const Va>(own));
     const symbols::dos_interrupts::ServiceTable table =
-        symbols::dos_interrupts::ServiceTable::load(context_.settings.checkout / "data" / "symbols" / "dos_interrupts.json");
+        symbols::dos_interrupts::ServiceTable::load(context_.settings.checkout / "config" / "symbols" / "dos_interrupts.json");
     DosProgramC result;
     result.functions.order = std::move(grown.order);
     result.functions.by_va = std::move(grown.by_va);

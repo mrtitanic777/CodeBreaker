@@ -80,7 +80,7 @@ cli::Command place(const Environment& environment) {
     declared.passthrough = true;
     return in_world(std::move(declared), environment, [](World& world, const cli::Args& args) {
         base::Corpus& corpus = world.corpus();
-        const stdfs::path table_file = world.config().checkout_root() / "data" / "source" / "placement.json";
+        const stdfs::path table_file = world.config().checkout_root() / "config" / "source" / "placement.json";
         const placement::Placement where(corpus.design_dir().parent_path(), placement::load_table(table_file, corpus.current()));
         const std::vector<std::string> words = args.values("args");
         return placement::place_command(where, corpus, words);

@@ -467,7 +467,7 @@ Output Writer::run() {
         for (Node* t : unit->types) register_class(t, unit->package.value_or(""), "");
     }
     const std::vector<std::string> order = sorted_classes();
-    out_ += "// Translated from C# by CodeBreaker (the csharp_cpp17 back end); built against data/translate/runtime/cpp17/csrt.hpp.\n";
+    out_ += "// Translated from C# by CodeBreaker (the csharp_cpp17 back end); built against config/translate/runtime/cpp17/csrt.hpp.\n";
     out_ += "#include \"csrt.hpp\"\n\n";
     // one namespace block for a run of classes of one package
     const auto each = [&](const std::function<void(const ClassInfo&)>& f) {

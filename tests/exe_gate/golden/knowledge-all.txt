@@ -1,10 +1,10 @@
 exit: 0
 --- stdout
 <work>/state/db/knowledge.v2.sqlite
-  vxd      device                       109       1.7 KB  authored 109                 data/symbols/driver_services.json
-  vxd      driver                        25       0.4 KB  authored 25                  data/symbols/driver_services.json
-  vxd      message                       51       1.2 KB  authored 51                  data/symbols/driver_services.json
-  vxd      service_table                 38      28.3 KB  authored 38                  data/symbols/driver_services.json
+  vxd      device                       109       1.7 KB  authored 109                 config/symbols/driver_services.json
+  vxd      driver                        25       0.4 KB  authored 25                  config/symbols/driver_services.json
+  vxd      message                       51       1.2 KB  authored 51                  config/symbols/driver_services.json
+  vxd      service_table                 38      28.3 KB  authored 38                  config/symbols/driver_services.json
   (bodies) 0 recorded, 0 distinct, 0 in two or more modules
 --- files
 --- stderr (not compared)

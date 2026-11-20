@@ -45,7 +45,7 @@ xenon::Config xenon_config(const cb::config::Config& config) {
 
 // The console's ordinal names ({library: {ordinal: name}}), read the first time a name is asked for.
 project::ImportNames ordinal_names(const cb::config::Config& config) {
-    const stdfs::path file = config.checkout_root() / "data" / "symbols" / "console_ordinals.json";
+    const stdfs::path file = config.checkout_root() / "config" / "symbols" / "console_ordinals.json";
     auto table = std::make_shared<std::optional<Json>>();
     return [file, table](std::string_view library, std::uint32_t ordinal) -> std::string {
         if (!table->has_value()) {

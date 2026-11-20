@@ -120,7 +120,7 @@ Score judge_program(const dotnet::Sdk& sdk, const Environment& environment, cons
     Score score{.program = name};
     dj::fresh_folder(work);   // (a compiler runs in the folder of the source, so every path given is made absolute)
     const stdfs::path checkout = environment.config.checkout_root();
-    const frontends::csharp::Frontend frontend(sdk, checkout / "data" / "translate" / "frontends" / "csharp" / "CsTreeDump.cs", environment.config.state());
+    const frontends::csharp::Frontend frontend(sdk, checkout / "config" / "translate" / "frontends" / "csharp" / "CsTreeDump.cs", environment.config.state());
 
     const Observer& watch = environment.observer;
     const auto translating = [&watch](std::uint64_t done, std::uint64_t total, std::string_view what) {
@@ -173,7 +173,7 @@ Score judge_program(const dotnet::Sdk& sdk, const Environment& environment, cons
     fs::write_text(source, out.source);
     std::string log;
     checking(0, 4, "Building the C++ translation");
-    score.compiles = build(cxx, checkout / "data" / "translate" / "runtime" / "cpp17", source, exe, log);
+    score.compiles = build(cxx, checkout / "config" / "translate" / "runtime" / "cpp17", source, exe, log);
     if (!*score.compiles) {
         score.detail = "compile: " + dj::first_errors(log);
         return score;

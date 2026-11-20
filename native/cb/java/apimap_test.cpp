@@ -14,7 +14,7 @@ namespace stdfs = std::filesystem;
 
 // The registry as the lane ships it: the real api_maps/ folder (11 subsystem files, ~650 symbols).
 const Registry& real_registry() {
-    static const Registry reg = Registry::load(cb::testing::data_path("../../data/java/api_maps"));
+    static const Registry reg = Registry::load(cb::testing::data_path("../../config/java/api_maps"));
     return reg;
 }
 

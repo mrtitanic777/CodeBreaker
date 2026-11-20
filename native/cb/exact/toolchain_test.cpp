@@ -15,7 +15,7 @@ namespace emu = cb::exact::emu;
 namespace modules = cb::exact::modules;
 
 const stdfs::path& real_profiles() {
-    static const stdfs::path p = testing::data_path("../../data/exact/toolchains");
+    static const stdfs::path p = testing::data_path("../../config/exact/toolchains");
     return p;
 }
 
@@ -184,7 +184,7 @@ CB_TEST("exact.toolchain.a_checkouts_locations_come_from_its_settings", [] {
     CB_CHECK(fs::same_path(l.state, dir.path() / "work"));
     CB_CHECK_EQ(l.kits.size(), 2u);
     CB_CHECK_EQ(l.stage_tag, "w3");
-    CB_CHECK(fs::same_path(l.profiles, dir.path() / "data" / "exact" / "toolchains"));
+    CB_CHECK(fs::same_path(l.profiles, dir.path() / "config" / "exact" / "toolchains"));
     // no settings file: the defaults
     fs::ScopedTempDir bare("toolchain-bare");
     CB_CHECK(fs::same_path(Locations::of_checkout(bare.path()).state, bare.path() / "state"));

@@ -142,7 +142,7 @@ CB_TEST("exact.plm86.the_real_compiler", [] {
     if (!kit || !stdfs::is_directory(cfs::from_text(*kit))) return;   // (not set up: nothing to run)
     cfs::ScopedTempDir dir("cbplm86real");
     tc::Locations locations;
-    locations.profiles = cb::testing::data_path("../../data/exact/toolchains");
+    locations.profiles = cb::testing::data_path("../../config/exact/toolchains");
     locations.state = dir.path() / "state";
     locations.checkout_root = dir.path();
     const plm::Plm86 t(tc::read_profile(locations, "plm86"), std::nullopt, [&] {

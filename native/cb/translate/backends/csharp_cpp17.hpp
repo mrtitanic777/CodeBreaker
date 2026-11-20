@@ -1,5 +1,5 @@
 // cb/translate/backends/csharp_cpp17.hpp -- the C++17 back end for C# programs: the C# front end's IR written as one C++17 translation
-// unit against data/translate/runtime/cpp17/csrt.hpp (docs/TRANSLATOR_DESIGN.md, "C# -> C++17").
+// unit against config/translate/runtime/cpp17/csrt.hpp (docs/TRANSLATOR_DESIGN.md, "C# -> C++17").
 //
 //     csharp_cpp17::Output out = csharp_cpp17::write(units);        // units from frontends/csharp, lang "csharp"
 //     if (out.declined.empty()) compile(out.source);                 // else out.declined says what has no form yet and where

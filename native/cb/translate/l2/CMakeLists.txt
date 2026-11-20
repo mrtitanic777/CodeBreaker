@@ -33,10 +33,10 @@ endif()
 
 # The library's own tests (tests/), built on request: l2_tests (the node model and the C back end) and cpp17_tests.
 add_executable(l2_tests EXCLUDE_FROM_ALL "${L2_DIR}/tests/test_l2.cc")
-target_compile_definitions(l2_tests PRIVATE CBL2_CBACK L2_SCHEMA="${L2_DIR}/../../../../data/translate/l2.schema.json"
+target_compile_definitions(l2_tests PRIVATE CBL2_CBACK L2_SCHEMA="${L2_DIR}/../../../../config/translate/l2.schema.json"
                                             L2_TESTDATA="${L2_DIR}/tests/data")
 add_executable(cpp17_tests EXCLUDE_FROM_ALL "${L2_DIR}/tests/test_cpp17.cc")
-target_compile_definitions(cpp17_tests PRIVATE L2_TESTDATA="${L2_DIR}/tests/data" API_MAPS="${L2_DIR}/../../../../data/java/api_maps")
+target_compile_definitions(cpp17_tests PRIVATE L2_TESTDATA="${L2_DIR}/tests/data" API_MAPS="${L2_DIR}/../../../../config/java/api_maps")
 foreach(t l2_tests cpp17_tests)
   target_link_libraries(${t} PRIVATE cb_l2)
   target_include_directories(${t} PRIVATE "${L2_DIR}/src")

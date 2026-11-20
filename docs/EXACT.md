@@ -22,7 +22,7 @@ period tool and compared. What it cannot settle it leaves as a stand-in (the ori
 an object of their own) and reports, so a program always relinks and the report says how much of
 it is source.
 
-## Toolchain profiles (data/exact/toolchains/*.json)
+## Toolchain profiles (config/exact/toolchains/*.json)
 
 One per compiler/assembler/linker version. Facts that were scattered through scripts:
 
@@ -97,7 +97,7 @@ Then the engine is pointed at programs nobody has rebuilt.
     codebreaker exact --toolchains
     codebreaker exact PROJECT ledger|library|carve|bss|data|draft|modules|link [options]
 
-Toolchains (profiles in `data/exact/toolchains/`; plug-ins where running the tool is code):
+Toolchains (profiles in `config/exact/toolchains/`; plug-ins where running the tool is code):
 
 | profile | what | the programs that prove it (functions identical through the engine) |
 |---|---|---|

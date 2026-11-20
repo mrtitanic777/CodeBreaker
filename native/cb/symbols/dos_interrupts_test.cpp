@@ -1,5 +1,5 @@
 // Tests of cb/symbols/dos_interrupts on the project's own table (testdata/dos_interrupts.json, a copy of
-// data/symbols/dos_interrupts.json). The expected names were checked against the documented interfaces
+// config/symbols/dos_interrupts.json). The expected names were checked against the documented interfaces
 // (Ralf Brown's list: INT 21h AH=3Dh open file, INT 2Fh AX=1600h Windows enhanced mode check, INT 33h mouse).
 // A sweep of 33,000 name, describe and annotate cases also checked every number in 0..2^32.
 //

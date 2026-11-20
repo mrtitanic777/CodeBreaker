@@ -15,7 +15,7 @@ namespace {
 bool bfp_has(const std::string& text, std::string_view part) { return text.find(part) != std::string::npos; }
 
 const cb::java::runtime::Runtime& bfp_runtime() {
-    static const cb::java::runtime::Runtime r{cb::java::JavaData(cb::testing::data_path("../../data/java"))};
+    static const cb::java::runtime::Runtime r{cb::java::JavaData(cb::testing::data_path("../../config/java"))};
     return r;
 }
 

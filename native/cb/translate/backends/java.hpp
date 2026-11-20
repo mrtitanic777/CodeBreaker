@@ -56,7 +56,7 @@ namespace cb::translate::backends::java {
 namespace ir = cb::translate::ir;
 
 // Where the Java sources of the runtime (`crt/*.java`) are, relative to the checkout.
-inline constexpr std::string_view kRuntimeDir = "data/translate/backends/java_runtime";
+inline constexpr std::string_view kRuntimeDir = "config/translate/backends/java_runtime";
 
 // Java operator precedence (higher binds tighter).
 inline constexpr int kAtom = 17, kPost = 16, kUnary = 15, kMul = 13, kAdd = 12, kShift = 11, kRel = 10, kEq = 9, kBitAnd = 8, kXor = 7,

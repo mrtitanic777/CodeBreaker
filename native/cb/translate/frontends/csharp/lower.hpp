@@ -1,6 +1,6 @@
 // cb/translate/frontends/csharp/lower.hpp -- the C# front end's lowering: Roslyn's bound tree into the translator's IR.
 //
-// CsTreeDump (data/translate/frontends/csharp/CsTreeDump.cs) runs the C# compiler over a file and writes what it
+// CsTreeDump (config/translate/frontends/csharp/CsTreeDump.cs) runs the C# compiler over a file and writes what it
 // bound as JSON: the declarations from the symbols the compiler gave them, every body as Roslyn's IOperation tree, in which
 // each call already names its overload and lists its arguments in parameter order (defaults and `params` arrays filled in),
 // every implicit conversion is a node, and `foreach`, `using`, `lock`, string interpolation, patterns and LINQ's query syntax

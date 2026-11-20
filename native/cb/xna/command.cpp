@@ -60,8 +60,8 @@ run::Environment run_environment(const Environment& environment) {
 port::Tools port_tools(const Environment& environment) {
     const cb::config::Config& config = environment.config;
     port::Tools tools;
-    tools.runtime_dir = config.checkout_root() / "data" / "xna" / "runtime";
-    tools.apistubs_dir = config.checkout_root() / "data" / "xna" / "apistubs";
+    tools.runtime_dir = config.checkout_root() / "config" / "xna" / "runtime";
+    tools.apistubs_dir = config.checkout_root() / "config" / "xna" / "apistubs";
     tools.state = config.state();
     tools.overlays = config.path("xna_overlays");
     tools.mgfxc = setting_path(config, "mgfxc");
