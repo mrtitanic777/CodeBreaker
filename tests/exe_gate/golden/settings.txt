@@ -3,12 +3,7 @@ exit: 0
 settings: <repo>/settings.json
 <~>
 <~>
-<~>
      corpora          win1.0=../win1.0/files/WF, win3.1=../win3.1/files, win98=../win98/files
-<~>
-<~>
-<~>
-<~>
 <~>
 <~>
 <~>
@@ -28,13 +23,11 @@ settings: <repo>/settings.json
 <~>
 <~>
 <~>
-<~>
      qemu             C:/Program Files/qemu/qemu-system-i386.exe
      regress_minecraft <games>/584111F7/000D0000
 <~>
 <~>
      struct_recovery  all
-<~>
      target           win95
      threads          
 <~>
@@ -43,7 +36,6 @@ settings: <repo>/settings.json
 <~>
      win95_setup_iso  <repo>/state/win95/win95setup.iso
      workers          4
-<~>
 <~>
 <~>
 <~>

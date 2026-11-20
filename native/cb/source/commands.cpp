@@ -243,7 +243,7 @@ struct Production::Impl {
         Vxd(Impl& impl, Dos& dos)
             : ddk(vxd::DdkFolders::standard(*impl.corpus, impl.config.main_checkout().parent_path())),
               names(vxd::DdkNames::standard(ddk, impl.design_dir())),
-              tools(vxd::masm::Toolchain::standard(ddk, impl.tools_root(), impl.config.text("nasm").empty() ? std::nullopt : std::optional<std::string>(impl.config.text("nasm")),
+              tools(vxd::masm::Toolchain::standard(ddk, impl.tools_root(),
                                                    commands_period_assembler(dos.runner, impl.ddk_root() / "MASM611C",
                                                                              impl.tools_root() / "toolchains" / "period" / "compilers" / "msvc-1.52c" / "BIN" / "DOSXNT.EXE",
                                                                              impl.config.state("vxdtc") / "tnt"))),
@@ -254,7 +254,7 @@ struct Production::Impl {
               masm{names, tools},
               disassembly{*impl.corpus, names, impl.config.state(stdfs::path("vxd") / "listing")},
               corpus{names, tools, *impl.corpus, impl.config.state(stdfs::path("vxd") / "byte_exact.json")},
-              owbuild{standard_link, vxd::owbuild::tools_from_settings(impl.config.checkout_root(), impl.config.text("openwatcom"), impl.config.path("nasm").value_or(stdfs::path()))},
+              owbuild{standard_link, vxd::owbuild::tools_from_settings(impl.config.checkout_root(), impl.config.text("openwatcom"))},
               owbuild_command{owbuild, *impl.corpus, impl.config.state("vxd_ow")},
               loadable_corpus{linker_260, *impl.corpus, impl.config.state(stdfs::path("vxd") / "loadable.json")},
               boot{names, *impl.corpus, impl.config.state("vxdboot"), impl.config.path("qemu").value_or(stdfs::path(R"(C:\Program Files\qemu\qemu-system-i386.exe)")),
@@ -285,8 +285,7 @@ struct Production::Impl {
         }
         static ne_asm::idiom::Assemblers assemblers(Impl& impl, Dos& dos) {
             ne_asm::idiom::Assemblers a;
-            if (const auto nasm = impl.config.path("nasm"); nasm && !nasm->empty())
-                a.nasm = ne_asm::idiom::nasm_assembler(*nasm, impl.config.state("ne_idiom_nasm_inc") / "inc");
+            a.nasm = ne_asm::idiom::nasm_assembler();
             a.ml = ne_asm::idiom::ml_assembler(dos.runner, {impl.ddk_root() / "MASM611C", impl.tools_root() / "toolchains" / "period" / "compilers" / "msvc-1.52c" / "BIN" / "DOSXNT.EXE",
                                                             impl.ddk_root() / "INC16", impl.config.state("vxdtc") / "ml"});
             return a;
@@ -482,7 +481,6 @@ cli::Command Production::boot_floppy() const {
     env.corpus_root = impl_->corpus->root();
     env.design_dir = impl_->design_dir().value_or(stdfs::path());
     env.state = impl_->state();
-    if (const auto nasm = impl_->config.path("nasm")) env.nasm = *nasm;
     env.writer = impl_->dos_options();
     return build::floppy::command(env);
 }

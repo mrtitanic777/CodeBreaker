@@ -195,7 +195,7 @@ CB_TEST("app.tools.a_program_that_cannot_start_says_why", [] {
 
 CB_TEST("app.tools.settings_are_rows_a_form_can_edit_and_the_theme_is_remembered", [] {
     fs::ScopedTempDir dir{"cb_settings_edit"};
-    fs::write_text(dir.path() / "settings.json", "{\"nasm\": \"tools/nasm.exe\", \"low_load\": true, \"workers\": 3}");
+    fs::write_text(dir.path() / "settings.json", "{\"masm\": \"tools/masm\", \"low_load\": true, \"workers\": 3}");
     const config::Config config = config::Config::load(dir.path());
     const std::vector<settings::Row> rows = settings::rows(config);
     CB_CHECK(!rows.empty());
@@ -204,12 +204,12 @@ CB_TEST("app.tools.settings_are_rows_a_form_can_edit_and_the_theme_is_remembered
             if (r.key == key) return &r;
         return nullptr;
     };
-    CB_CHECK(row("nasm") != nullptr && row("nasm")->kind == settings::Kind::Path && !row("nasm")->present);   // (named but not there)
+    CB_CHECK(row("msvc152") != nullptr && row("msvc152")->kind == settings::Kind::Path && !row("msvc152")->present);   // (named but not there)
     CB_CHECK(row("low_load") != nullptr && row("low_load")->kind == settings::Kind::Toggle);
-    CB_CHECK_EQ(row("nasm")->label, "NASM assembler");   // (plain words; the key stays the settings.json key)
+    CB_CHECK_EQ(row("msvc152")->label, "Visual C++ 1.52");   // (plain words; the key stays the settings.json key)
     CB_CHECK(!row("low_load")->hint.empty());
     CB_CHECK_EQ(settings::plain_label("some_new_key"), "Some new key");
-    CB_CHECK(settings::is_everyday("converted") && settings::is_everyday("low_load") && !settings::is_everyday("nasm"));
+    CB_CHECK(settings::is_everyday("converted") && settings::is_everyday("low_load") && !settings::is_everyday("msvc152"));
     {   // what this computer can convert: one Ready line first, then a row with its setting for each tool not found
         const std::vector<settings::Row> some = {{"java", "C:\\jdk", settings::Kind::Path, true, true, "", ""}, {"ilspycmd", "", settings::Kind::Path, false, false, "", ""}};
         const std::vector<settings::Capability> can = settings::capabilities(some);
@@ -219,10 +219,10 @@ CB_TEST("app.tools.settings_are_rows_a_form_can_edit_and_the_theme_is_remembered
         CB_CHECK(!can[2].ready && can[2].key == "xbox360_sdk" && can[2].folder);   // (no row at all: missing too)
     }
     CB_CHECK_EQ(settings::write(config, "low_load", "false", settings::Kind::Toggle), "");
-    CB_CHECK_EQ(settings::write(config, "nasm", "C:/tools/nasm.exe", settings::Kind::Path), "");
+    CB_CHECK_EQ(settings::write(config, "masm", "C:/tools/masm", settings::Kind::Path), "");
     const config::Config again = config::Config::load(dir.path());
     CB_CHECK(!again.truthy("low_load"));
-    CB_CHECK_EQ(again.text("nasm"), "C:/tools/nasm.exe");
+    CB_CHECK_EQ(again.text("masm"), "C:/tools/masm");
     CB_CHECK_EQ(again.text("workers"), "3");   // (what was there stays)
     // the theme
     const std::string file = fs::to_text(dir.path() / "app.json");

@@ -23,7 +23,7 @@ Bytes read_all(const std::filesystem::path& path) { return fs::read_file(path); 
 
 std::string tail(std::string_view said, std::size_t n) { return std::string(said.size() > n ? said.substr(said.size() - n) : said); }
 
-Assembled assemble(const std::filesystem::path&, std::string_view source, const std::filesystem::path& work, std::string_view name) {
+Assembled assemble(std::string_view source, const std::filesystem::path& work, std::string_view name) {
     Assembled out;
     const std::filesystem::path asm_file = work / (std::string(name) + ".asm");
     const std::filesystem::path image = work / std::string(name);

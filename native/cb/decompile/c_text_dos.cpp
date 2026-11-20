@@ -261,6 +261,24 @@ std::string ctd_library_void(const std::string& body, const std::set<std::string
     return out;
 }
 
+// `_chkstk();`: the stack probe Microsoft C puts at the start of a function compiled with stack checking (`mov ax, <frame>` /
+// `call _chkstk`, the size in AX). It is the compiler's, not the program's -- the source never wrote it -- and called from C
+// without its AX it moves the stack by whatever AX holds. The statement goes; a compiler that checks the stack adds its own.
+std::string ctd_drop_stack_probe(const std::string& body, std::size_t& dropped) {
+    std::string out;
+    out.reserve(body.size());
+    for (const std::string_view line : text::lines(body)) {
+        const std::string_view t = ctd_trim(line);
+        if (t == "_chkstk();" || t == "__chkstk();" || t == "_aNchkstk();" || t == "_aFchkstk();") {
+            ++dropped;
+            continue;
+        }
+        out += line;
+        out += '\n';
+    }
+    return out;
+}
+
 // A call of a library function that returns a double, whose result the code reads through as a pointer (Microsoft C before
 // 5.1 returned a double as the address of the library's floating-point accumulator, __fac): the call is written as giving
 // that address, `codebreaker_fac(atof(s))` (the value kept where the result is read from, as the library kept it).
@@ -674,6 +692,7 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         f.body = ctd_strings(ctd_label_statements(ctd_pieces(ctd_far(ctd_drop_registers(f, r.registers_dropped), pointees))), layout.data, layout.data_segment, r.strings);
         f.body = ctd_library_void(ctd_library_casts(ctd_pointer_locals(f.body, r.pointers), layout.library_pointers), layout.library_void);
         f.body = ctd_library_double(f.body, layout.library_double, fac);
+        f.body = ctd_drop_stack_probe(f.body, r.stack_probes);
         f.signature = ctd_pieces(f.signature);
     }
 

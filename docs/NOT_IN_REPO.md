@@ -21,7 +21,6 @@ setting for one run.
 | The Windows 3.1 DLL kit (lean MDLLCEW.LIB, LIBW.LIB, LIBENTRY.OBJ) | `toolchains/period/libs/win31-kit` | (found there) |
 | Microsoft C 2.03 (MC1, MC2) | `binaries/latticec/oracle16` | `kits`: `msc203` |
 | MASM (BIN, INC, LIB) | `toolchains/masmroot` | `masm` |
-| A MASM-compatible NASM | built from `native/nasm` (default `native/nasm/build/bin/nasm.exe`) | `nasm` |
 | The XENIX C compiler of Microsoft's 1984 tools (its files; the LINK/LIB reconstruction it is compared with: the `xenix_c` kit's folder) | | `kits`: `xenix86`; `xenix_c` |
 | PowerPC compiler, linker and runtime | | `powerpc_tools`, `powerpc_lib` |
 | A C++ compiler for judging transpiled Java (g++) | `C:/msys64/mingw64/bin/g++.exe` (or g++ on PATH) | `host_cxx` |

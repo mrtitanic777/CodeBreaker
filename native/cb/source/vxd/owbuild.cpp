@@ -8,6 +8,7 @@
 #include <limits>
 #include <tuple>
 
+#include "cb/build/x86asm/x86asm.hpp"
 #include "cb/core/cli.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -36,9 +37,25 @@ std::map<std::string, std::string> tool_environment(const Tools& tools) {
     return {{"WATCOM", fs::to_text(tools.watcom)}, {"PATH", fs::to_text(tools.watcom / "binnt64") + ";" + path}};
 }
 
+// One tree file assembled by x86asm (NASM's MASM mode, built in) to a COFF object beside it: true when it assembled.
+bool assemble_object(const stdfs::path& folder, const std::string& file, const std::string& object) {
+    build::x86asm::Request request;
+    request.cwd = folder.generic_string();
+    request.args = {"--masm", "-f", "win32", file, "-o", object};
+    request.read = [&](const std::string& path) -> std::optional<Bytes> {   // (the source, and anything it includes, from the disk)
+        std::error_code ec;
+        if (!stdfs::is_regular_file(fs::from_text(path), ec)) return std::nullopt;
+        return fs::read_file(fs::from_text(path));
+    };
+    const build::x86asm::Result r = build::x86asm::assemble(request);
+    if (r.exit != 0) return false;
+    for (const auto& [name, bytes] : r.files) fs::write_file(folder / fs::from_text(name), bytes);
+    return true;
+}
+
 }  // namespace
 
-Tools tools_from_settings(const stdfs::path& checkout_root, std::string_view openwatcom_setting, const stdfs::path& nasm) {
+Tools tools_from_settings(const stdfs::path& checkout_root, std::string_view openwatcom_setting) {
     // <tree>/rel is what the setting names; the assembler lives in the tree's own build folder, beside rel
     const stdfs::path tree = openwatcom_setting.empty() ? checkout_root / "experiments" / "premise-proof" / "open-watcom-v2"
                                                         : fs::from_text(openwatcom_setting).parent_path();
@@ -46,7 +63,6 @@ Tools tools_from_settings(const stdfs::path& checkout_root, std::string_view ope
     tools.wasm = tree / "bld" / "wasm" / "nt386" / "wasm.exe";
     tools.wlink = tree / "rel" / "binnt64" / "wlink.exe";
     tools.watcom = tree / "rel";
-    tools.nasm = nasm;
     return tools;
 }
 
@@ -80,15 +96,20 @@ Result build_vxd(const Environment& env, const le::Module& driver, std::string_v
         if (!file.ends_with(".asm")) continue;
         if (fs::read_text(folder / file).find("public VXD_DDB") != std::string::npos) has_ddb = true;
         const std::string object = file.substr(0, file.size() - 4) + ".obj";
-        process::ProcessSpec spec;
-        spec.cwd = folder;
-        spec.env = environment;
-        spec.timeout = kToolLimit;
-        // the byte-exact build uses the same nasm-masm (COFF) the force-raw set was verified against; the buildable one uses wasm
-        spec.argv = byte_exact ? std::vector<std::string>{fs::to_text(tools.nasm), "--masm", "-f", "win32", file, "-o", object}
-                               : std::vector<std::string>{fs::to_text(tools.wasm), "-zcm=masm", "-q", "-fo=" + object, file};
-        const process::ProcessResult r = process::run(spec);
-        if (r.exit_code == 0 && is_file(folder / object)) objects.push_back(object);
+        // the byte-exact build uses the same MASM-mode assembler (COFF) the force-raw set was verified against (x86asm, in this process);
+        // the buildable one uses wasm
+        bool made = false;
+        if (byte_exact) {
+            made = assemble_object(folder, file, object);
+        } else {
+            process::ProcessSpec spec;
+            spec.cwd = folder;
+            spec.env = environment;
+            spec.timeout = kToolLimit;
+            spec.argv = {fs::to_text(tools.wasm), "-zcm=masm", "-q", "-fo=" + object, file};
+            made = process::run(spec).exit_code == 0;
+        }
+        if (made && is_file(folder / object)) objects.push_back(object);
         else failed.push_back(file);
     }
     if (!failed.empty()) {

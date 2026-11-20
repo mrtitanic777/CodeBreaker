@@ -309,9 +309,6 @@ CB_TEST("app.convert.a_png_is_unsupported_and_says_it_is_a_png", [] {
 });
 
 CB_TEST("app.convert.a_32_bit_dll_is_disassembled_and_decompiled", [] {
-    const config::Config& config = config::current();
-    const auto nasm = config.path("nasm");
-    if (!nasm || !stdfs::is_regular_file(*nasm)) return;   // (the assembler is not set up on this machine: nothing to run)
     CvFixture f;
     f.input = testing::data_path("formats/testdata/lz32.dll");
     const Outcome done = convert(f.request(), standard_planner(), f.listener(), f.cancel);

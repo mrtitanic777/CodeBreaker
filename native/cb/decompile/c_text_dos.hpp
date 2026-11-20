@@ -45,6 +45,7 @@ struct Report {
     std::size_t widened = 0;             // functions given the arguments all their callers pass
     std::size_t strings = 0;             // pointers into the data segment shown with the string they point at
     std::size_t pointers = 0;            // four-byte locals the statements dereference, declared as the far pointers they are
+    std::size_t stack_probes = 0;        // the compiler's stack probes (_chkstk) left out: not the source's
 };
 
 struct Result {

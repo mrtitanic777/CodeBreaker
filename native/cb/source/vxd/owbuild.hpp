@@ -37,12 +37,11 @@ namespace cb::source::vxd::owbuild {
 struct Tools {
     std::filesystem::path wasm, wlink;
     std::filesystem::path watcom;   // the tree's rel folder: the WATCOM variable, and its binnt64 first on PATH
-    std::filesystem::path nasm;     // nasm with --masm, for the byte-exact build; empty: none
 };
 
 // The tools of an OpenWatcom tree given by the `openwatcom` setting (its rel folder; empty: experiments/premise-proof/open-watcom-v2 of
-// the checkout) and the `nasm` setting.
-Tools tools_from_settings(const std::filesystem::path& checkout_root, std::string_view openwatcom_setting, const std::filesystem::path& nasm);
+// the checkout). The byte-exact build assembles with x86asm, in this process.
+Tools tools_from_settings(const std::filesystem::path& checkout_root, std::string_view openwatcom_setting);
 
 struct Environment {
     const link::Environment& link;   // the object-level test that finds the force-raw set of a byte-exact build

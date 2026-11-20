@@ -1,6 +1,6 @@
 // Tests of the whole-file writer of device drivers over real ones: splitter.vxd and srammtd.vxd (Windows 95's, a few hundred instructions each,
-// code and data objects, fix-ups of every width). A driver is read and its code found without an assembler; written back it needs NASM
-// (settings: nasm, or CB_NASM) and those tests are skipped where there is none. The golden sources (testdata/writers/le_*.golden.asm) are what
+// code and data objects, fix-ups of every width). A driver is read and its code found without an assembler; written back it is assembled by x86asm,
+// in this process. The golden sources (testdata/writers/le_*.golden.asm) are what
 // the writer wrote; they were read through -- the macros, an object's functions, the fix-up records and the page table -- and
 // the test builds them again and holds the result to the original byte for byte.
 
@@ -16,18 +16,6 @@
 
 namespace cb::source::le_writer {
 namespace {
-
-std::optional<std::filesystem::path> assembler_for_le_tests() {
-    if (const auto env = fs::get_env("CB_NASM"); env && !env->empty()) return fs::from_text(*env);
-    try {
-        const config::Config main = config::Config::load(config::current().main_checkout());
-        if (const auto configured = main.path("nasm"); configured && std::filesystem::is_regular_file(*configured)) return configured;
-        const std::filesystem::path built = main.checkout_root() / "native" / "nasm" / "build" / "bin" / "nasm.exe";
-        if (std::filesystem::is_regular_file(built)) return built;
-    } catch (const Error&) {   // (no configuration to read: no assembler to test against)
-    }
-    return std::nullopt;
-}
 
 std::filesystem::path driver_file(std::string_view name) { return testing::data_path("formats/testdata/" + std::string(name)); }
 
@@ -85,8 +73,6 @@ CB_TEST("source.le_writer.a_writing_has_a_section_per_object_the_fixup_records_a
 });
 
 CB_TEST("source.le_writer.drivers_build_back_the_same_and_the_source_is_what_the_original_writer_wrote", [] {
-    const auto nasm = assembler_for_le_tests();
-    if (!nasm) return;   // (no assembler on this machine)
     struct Expect {
         const char* file;
         const char* golden;
@@ -95,7 +81,7 @@ CB_TEST("source.le_writer.drivers_build_back_the_same_and_the_source_is_what_the
     for (const Expect& e : {Expect{"splitter.vxd", "le_splitter.golden.asm", 450, 14, 3}, Expect{"srammtd.vxd", "le_srammtd.golden.asm", 412, 2, 2}}) {
         fs::ScopedTempDir dir("cb_le_writer");
         std::vector<std::string> said;
-        const Result r = reconstruct(driver_file(e.file), dir.path(), {.nasm = *nasm, .say = [&](std::string_view line) { said.emplace_back(line); }});
+        const Result r = reconstruct(driver_file(e.file), dir.path(), {.say = [&](std::string_view line) { said.emplace_back(line); }});
         CB_CHECK(r.same);
         CB_CHECK(r.image.has_value());
         CB_CHECK_EQ(r.instructions, e.instructions);
@@ -120,11 +106,10 @@ CB_TEST("source.le_writer.the_command_prints_what_was_done_and_exits_by_whether_
     std::vector<std::string> lines;
     const auto say = [&](std::string_view line) { lines.emplace_back(line); };
     fs::ScopedTempDir dir("cb_le_writer");
-    const Environment env{.nasm = assembler_for_le_tests().value_or(dir.path() / "no-nasm.exe"), .state = dir.path() / "state"};
+    const Environment env{.state = dir.path() / "state"};
     CB_CHECK_EQ(command({}, env, say), 2);
     CB_CHECK(!lines.empty() && lines.back().find("le-source <driver> [--out DIR]") != std::string::npos);
     CB_CHECK_THROWS_AS(UsageError, command(std::vector<std::string>{"x.vxd", "--out"}, env, say));
-    if (!assembler_for_le_tests()) return;
     lines.clear();
     const std::vector<std::string> args = {fs::to_text(driver_file("srammtd.vxd")), "--out", fs::to_text(dir.path() / "o")};
     CB_CHECK_EQ(command(args, env, say), 0);

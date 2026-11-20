@@ -52,15 +52,13 @@ struct OwWorld {
 
 CB_TEST("source.vxd.owbuild.the_tools_of_an_openwatcom_tree", [] {
     // the setting names the tree's rel folder; the assembler is in the tree's own build folder, beside it
-    const ow::Tools tools = ow::tools_from_settings("C:/cb", "D:/tools/open-watcom-v2/rel", "D:/nasm/nasm.exe");
+    const ow::Tools tools = ow::tools_from_settings("C:/cb", "D:/tools/open-watcom-v2/rel");
     CB_CHECK(tools.wasm == std::filesystem::path("D:/tools/open-watcom-v2") / "bld" / "wasm" / "nt386" / "wasm.exe");
     CB_CHECK(tools.wlink == std::filesystem::path("D:/tools/open-watcom-v2") / "rel" / "binnt64" / "wlink.exe");
     CB_CHECK(tools.watcom == std::filesystem::path("D:/tools/open-watcom-v2") / "rel");
-    CB_CHECK(tools.nasm == std::filesystem::path("D:/nasm/nasm.exe"));
     // no setting: the tree of the premise experiment, in the checkout
-    const ow::Tools fallback = ow::tools_from_settings("C:/cb", "", {});
+    const ow::Tools fallback = ow::tools_from_settings("C:/cb", "");
     CB_CHECK(fallback.wlink == std::filesystem::path("C:/cb") / "experiments" / "premise-proof" / "open-watcom-v2" / "rel" / "binnt64" / "wlink.exe");
-    CB_CHECK(fallback.nasm.empty());
 });
 
 CB_TEST("source.vxd.owbuild.the_header_of_a_w3_bundle", [] {
@@ -82,7 +80,7 @@ CB_TEST("source.vxd.owbuild.the_header_of_a_w3_bundle", [] {
 });
 
 CB_TEST("source.vxd.owbuild.without_the_tools_a_build_says_so", [] {
-    OwWorld world(ow::tools_from_settings(std::filesystem::path("nowhere"), "nowhere/open-watcom-v2/rel", {}));
+    OwWorld world(ow::tools_from_settings(std::filesystem::path("nowhere"), "nowhere/open-watcom-v2/rel"));
     const cb::formats::le::Module splitter = cb::formats::le::Module::open(cb::testing::data_path("formats/testdata/splitter.vxd"));
     const ow::Result r = ow::build_vxd(*world.env, splitter, "SPLITTER", world.dir.path() / "out");
     CB_CHECK(!r.ok);
@@ -96,7 +94,7 @@ CB_TEST("source.vxd.owbuild.without_the_tools_a_build_says_so", [] {
 });
 
 CB_TEST("source.vxd.owbuild.the_command_says_what_happened_to_the_first_driver", [] {
-    OwWorld world(ow::tools_from_settings(std::filesystem::path("nowhere"), "nowhere/open-watcom-v2/rel", {}));
+    OwWorld world(ow::tools_from_settings(std::filesystem::path("nowhere"), "nowhere/open-watcom-v2/rel"));
     cb::fs::ScopedEnv no_name{"CB_CORPUS_NAME", std::nullopt};
     cb::fs::ScopedEnv root{"CB_CORPUS_ROOT", cb::fs::to_text(world.dir.path() / "corpus")};
     cb::fs::make_dirs(world.dir.path() / "corpus");
@@ -124,13 +122,13 @@ CB_TEST("source.vxd.owbuild.the_command_says_what_happened_to_the_first_driver",
 });
 
 CB_TEST("source.vxd.owbuild.splitter_builds_with_the_real_tools", [] {
-    // only where the OpenWatcom tree and nasm are set up (CB_OPENWATCOM, CB_NASM or settings.json)
+    // only where the OpenWatcom tree is set up (CB_OPENWATCOM or settings.json); the byte-exact objects come from x86asm
     const cb::config::Config& config = cb::config::current();
-    const ow::Tools tools = ow::tools_from_settings(config.checkout_root(), config.text("openwatcom"), config.path("nasm").value_or(std::filesystem::path()));
+    const ow::Tools tools = ow::tools_from_settings(config.checkout_root(), config.text("openwatcom"));
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(tools.wasm, ec) || !std::filesystem::is_regular_file(tools.wlink, ec) || !std::filesystem::is_regular_file(tools.nasm, ec)) return;
+    if (!std::filesystem::is_regular_file(tools.wasm, ec) || !std::filesystem::is_regular_file(tools.wlink, ec)) return;
     OwWorld world(tools);
-    const vx::masm::Toolchain nasm_tools = vx::masm::Toolchain::standard({}, config.checkout_root(), config.text("nasm"));
+    const vx::masm::Toolchain nasm_tools = vx::masm::Toolchain::standard({}, config.checkout_root());
     const vx::link::Environment link{world.names, nasm_tools, world.link->link};
     const ow::Environment env{link, tools};
     const cb::formats::le::Module splitter = cb::formats::le::Module::open(cb::testing::data_path("formats/testdata/splitter.vxd"));

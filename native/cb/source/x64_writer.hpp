@@ -14,7 +14,7 @@
 // `mov_`-style macros at the head of the source. What NASM still does not give back byte for byte (a long form where a short one fits, a multi-byte `nop`, an
 // instruction it has no spelling for) is found out in rounds against the assembler (source/flat_rounds) and written as `db` with the instruction beside it.
 //
-// NASM is the assembler (settings: nasm, or CB_NASM). Without one the source is written and not built (`linked` is false and a note says why).
+// x86asm, CodeBreaker's own assembler, builds the source, in this process.
 #pragma once
 
 #include <cstdint>

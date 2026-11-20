@@ -3,7 +3,7 @@
 //
 // The 16-bit kernel, USER and GDI were written largely in assembly with the SDK's cMacros; the tools of this command
 // produce that form, not a disassembly listing: every place a loader patches is a label, and each range is reassembled
-// (MASM, or a MASM-compatible NASM -- settings: masm, nasm) and compared. Each tool is a command of its own; this one
+// (MASM, or x86asm, the built-in MASM-compatible assembler -- setting: masm) and compared. Each tool is a command of its own; this one
 // only names them and hands over the rest of the command line. The application registers the tools (`idiom`, `segdiff`,
 // ...) by name when it builds its command table.
 #pragma once

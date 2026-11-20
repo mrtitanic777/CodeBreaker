@@ -347,9 +347,8 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // cab list|extract|create: Microsoft cabinets, with no outside tool
     table.set("cab", [](std::span<const std::string> argv) -> int { return cab_command(argv); });
 
-    // le-source <driver> [--out DIR]: a VxD as NASM source that reassembles to it (the nasm setting; out under state/le_source)
+    // le-source <driver> [--out DIR]: a VxD as NASM source that reassembles to it (built by x86asm; out under state/le_source)
     source::le_writer::Environment le_env;
-    if (const auto nasm = config.path("nasm"); nasm && std::filesystem::is_regular_file(*nasm)) le_env.nasm = *nasm;
     le_env.state = config.state();
     table.set("le-source", [le_env](std::span<const std::string> args) -> int {
         return source::le_writer::command(args, le_env, [](std::string_view line) { out("{}\n", line); });
@@ -362,11 +361,11 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
             source::dos_writer::options_for(ft_openwatcom_of(config), config.state() / "assembly_probes.json"));
     };
     table.set("pe-source", [le_env, stub_finder](std::span<const std::string> args) -> int {
-        source::pe_writer::Environment env{le_env.nasm, le_env.state, stub_finder()};
+        source::pe_writer::Environment env{le_env.state, stub_finder()};
         return source::pe_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
     });
     table.set("ne-source", [le_env, stub_finder](std::span<const std::string> args) -> int {
-        source::ne_writer::Environment env{le_env.nasm, le_env.state, stub_finder()};
+        source::ne_writer::Environment env{le_env.state, stub_finder()};
         return source::ne_writer::command(args, env, [](std::string_view line) { out("{}\n", line); });
     });
 

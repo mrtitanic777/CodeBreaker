@@ -160,21 +160,15 @@ CB_TEST("source.ne_asm.idiom.an_assembler_that_refuses_pins_the_instruction", []
 });
 
 CB_TEST("source.ne_asm.idiom.nasm_is_run_on_the_source_and_its_words_are_kept", [] {
-    cb::fs::ScopedTempDir dir("idiomtest");
-    // a program that is not there: the failure is the log, and nothing was made
-    const rc::Assemble none = id::nasm_assembler(dir.path() / "no-such-nasm.exe", dir.path() / "inc");
-    const rc::Assembled made = none("sBegin CODE\n");
-    CB_CHECK(!made.object.has_value());
-    CB_CHECK(!made.log.empty());
-    CB_CHECK(made.listing.empty());
-    // the shim is looked for in the nasm source tree: beside the program, or above it where the program is in a build folder
-    cb::fs::make_dirs(dir.path() / "nasm" / "test" / "masm");
-    cb::fs::make_dirs(dir.path() / "nasm" / "build" / "bin");
-    cb::fs::write_text(dir.path() / "nasm" / "test" / "masm" / "cmacros_shim.inc", "; the shim\n");
-    const rc::Assemble again = id::nasm_assembler(dir.path() / "nasm" / "build" / "bin" / "nasm.exe", dir.path() / "shim-copy");
-    again("x");
-    CB_CHECK(std::filesystem::is_regular_file(dir.path() / "shim-copy" / "cmacros_shim.inc"));
-    CB_CHECK_EQ(cb::fs::read_text(dir.path() / "shim-copy" / "cmacros_shim.inc"), "; the shim\n");
+    // x86asm assembles in this process: a source that is not MASM is a log and no object, and a good one gives an object and its listing
+    const rc::Assemble assemble = id::nasm_assembler();
+    const rc::Assembled bad = assemble("this is not assembly\n");
+    CB_CHECK(!bad.object.has_value());
+    CB_CHECK(!bad.log.empty());
+    // a segment holding code, with CMACROS.INC redirected to the shim that is built in
+    const rc::Assembled good = assemble("include cmacros.inc\nsBegin CODE\n    assumes cs, CODE\n    nop\n    ret\nsEnd CODE\nend\n");
+    CB_CHECK(good.object.has_value());
+    CB_CHECK(!good.listing.empty());
 });
 
 CB_TEST("source.ne_asm.idiom.ml_is_run_as_a_dos_program_over_a_staged_folder", [] {

@@ -1,6 +1,5 @@
 // cb-unity: alone
-// The PlayStation 4 / 5 writer over a small x86-64 ELF written byte by byte (formats/orbis_test_image.hpp). The tests that build run NASM (settings: nasm, or CB_NASM) and are
-// skipped where there is none.
+// The PlayStation 4 / 5 writer over a small x86-64 ELF written byte by byte (formats/orbis_test_image.hpp). The tests that build run x86asm, in this process.
 
 #include "cb/source/orbis_writer.hpp"
 

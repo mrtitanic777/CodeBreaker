@@ -1,6 +1,6 @@
 // cb/source/le_writer.hpp -- a virtual device driver (LE, and the W3 bundle VMM32.VXD) as assembly source that builds back byte for byte.
 //
-//     le_writer::Result r = le_writer::reconstruct("vmouse.vxd", "out", {.nasm = nasm});
+//     le_writer::Result r = le_writer::reconstruct("vmouse.vxd", "out", {});
 //     r.source, r.image, r.same, r.instructions, r.raw, r.rounds
 //
 // source/driver_writer writes a driver as the driver kit's macro source, built by wasm and wlink: that is the driver as it was written, and
@@ -55,7 +55,6 @@ struct Key {
 };
 
 struct Options {
-    std::filesystem::path nasm;                         // the assembler (settings: nasm); NotFoundError when it is not there
     std::function<void(std::string_view)> say;          // progress, one line a round
 };
 
@@ -173,7 +172,6 @@ Result reconstruct(const std::filesystem::path& driver, const std::filesystem::p
 
 // What the command `le-source <driver> [--out DIR]` needs of its surroundings.
 struct Environment {
-    std::filesystem::path nasm;
     std::filesystem::path state;     // the default out folder is <state>/le_source/<driver name>
 };
 // The command line without the command's name; `say` takes every line printed. -> the exit code (2: no driver named).

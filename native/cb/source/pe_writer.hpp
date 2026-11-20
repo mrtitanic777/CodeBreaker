@@ -1,6 +1,6 @@
 // cb/source/pe_writer.hpp -- a 32-bit Windows program as assembly source that builds back into it, byte for byte.
 //
-//     pe_writer::Result r = pe_writer::reconstruct("lz32.dll", "out", {.nasm = nasm});
+//     pe_writer::Result r = pe_writer::reconstruct("lz32.dll", "out", {});
 //     r.source, r.image, r.same, r.instructions, r.raw, r.rounds
 //
 // The whole file is one NASM source assembled flat (-f bin): one section for the headers and one for every section of the image, each
@@ -50,7 +50,6 @@ using ::cb::source::Stub;
 using Va = std::uint64_t;
 
 struct Options {
-    std::filesystem::path nasm;                         // the assembler (settings: nasm); NotFoundError when it is not there
     Stub stub = SearchStub{};
     FindStub find_stub;                                 // used for SearchStub; none: the stub's bytes are kept
     std::function<void(std::string_view)> say;          // progress, one line a round
@@ -153,7 +152,6 @@ Result reconstruct(const std::filesystem::path& program, const std::filesystem::
 
 // What the command `pe-source <program> [--out DIR] [--stub SOURCE.ASM] [--keep-stub]` needs of its surroundings.
 struct Environment {
-    std::filesystem::path nasm;
     std::filesystem::path state;     // the default out folder is <state>/pe_source/<program name>
     FindStub find_stub;
 };

@@ -1,6 +1,6 @@
 // cb/source/ne_writer.hpp -- a 16-bit Windows (or OS/2) program as assembly source that builds back into it, byte for byte.
 //
-//     ne_writer::Result r = ne_writer::reconstruct("lzexpand.dll", "out", {.nasm = nasm});
+//     ne_writer::Result r = ne_writer::reconstruct("lzexpand.dll", "out", {});
 //     r.source, r.image, r.same, r.instructions, r.raw, r.rounds
 //
 // The way pe_writer writes a 32-bit image, for the segmented kind: one NASM source assembled flat (-f bin), each segment a section at its
@@ -55,7 +55,6 @@ struct Place {
 };
 
 struct Options {
-    std::filesystem::path nasm;                         // the assembler (settings: nasm); NotFoundError when it is not there
     Stub stub = SearchStub{};
     FindStub find_stub;                                 // used for SearchStub; none: the stub's bytes are kept
     std::function<void(std::string_view)> say;          // progress, one line a round
@@ -160,7 +159,6 @@ Result reconstruct(const std::filesystem::path& program, const std::filesystem::
 
 // What the command `ne-source <program> [--out DIR] [--keep-stub]` needs of its surroundings.
 struct Environment {
-    std::filesystem::path nasm;
     std::filesystem::path state;     // the default out folder is <state>/ne_source/<program name>
     FindStub find_stub;
 };

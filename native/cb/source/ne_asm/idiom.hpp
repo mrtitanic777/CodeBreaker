@@ -16,7 +16,7 @@
 // names and symbolic branches. What the assembler encodes another way is pinned as `db` (verify_range's loop), so the source is byte-exact and what
 // is measured is how much of it stays live.
 //
-// Two assemblers do it: the period ML under DOS (CMACROS.INC as shipped), or a nasm built from the nasm-masm fork (its cmacros_shim.inc replaces
+// Two assemblers do it: the period ML under DOS (CMACROS.INC as shipped), or x86asm, the built-in NASM with its MASM mode (its cmacros_shim.inc replaces
 // CMACROS.INC), a hundred times faster and with no DOS. nasm picks other, equivalent encodings on the ambiguous cases, so the loop pins nasm's own
 // divergers, found by direct comparison.
 //
@@ -52,9 +52,9 @@ struct Assemblers {
     const recon::Assemble& of(Backend backend) const;
 };
 
-// nasm in MASM mode on a source (16-bit OMF), CMACROS.INC redirected to the shim of the nasm folder (<nasm folder>/test/masm/cmacros_shim.inc),
-// copied to `include_folder` (a path with no space in it) first. Nothing is kept of the run.
-recon::Assemble nasm_assembler(std::filesystem::path nasm, std::filesystem::path include_folder);
+// x86asm (NASM's MASM mode, built in) on a source (16-bit OMF), CMACROS.INC redirected to the shim (cmacros_shim.hpp), all in memory.
+// Nothing is kept of the run.
+recon::Assemble nasm_assembler();
 
 // Where the period ML runs from: ML.EXE and ML.ERR (the DDK's MASM611C), the DOS extender it needs (MSVC 1.52's DOSXNT.EXE) and the SDK's include
 // files (INC16: CMACROS.INC and the rest). `stage` is a folder with no space in its path: the DOS emulator cannot mount one that has, so the

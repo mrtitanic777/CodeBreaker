@@ -1,5 +1,5 @@
 // cb-unity: alone
-// The WonderSwan writer over a small program written byte by byte. The tests that build run NASM (settings: nasm, or CB_NASM) and are skipped where there is none.
+// The WonderSwan writer over a small program written byte by byte. The tests that build run x86asm, in this process.
 
 #include "cb/source/wonderswan_writer.hpp"
 

@@ -1,6 +1,6 @@
 // Tests of the whole-file writer of 32-bit programs over two real ones: lz32.dll and version.dll (Windows 95's LZ decompressor and version
 // API, 378 and 612 instructions of code, import tables, base relocations). The program is read and its code found without an assembler;
-// written back it needs NASM (settings: nasm, or CB_NASM) and those tests are skipped where there is none. The golden sources
+// written back it is assembled by x86asm, in this process. The golden sources
 // (testdata/writers/pe_lz32.golden.asm, pe_version.golden.asm) are the recorded `pe-source` output for the same two files; the
 // test builds the C++ writer's source again, holds it to the golden text, and -- more to the point -- holds the image it assembles to the
 // original byte for byte.
@@ -19,18 +19,6 @@
 
 namespace cb::source::pe_writer {
 namespace {
-
-std::optional<std::filesystem::path> assembler_for_pe_tests() {
-    if (const auto env = fs::get_env("CB_NASM"); env && !env->empty()) return fs::from_text(*env);
-    try {
-        const config::Config main = config::Config::load(config::current().main_checkout());
-        if (const auto configured = main.path("nasm"); configured && std::filesystem::is_regular_file(*configured)) return configured;
-        const std::filesystem::path built = main.checkout_root() / "native" / "nasm" / "build" / "bin" / "nasm.exe";
-        if (std::filesystem::is_regular_file(built)) return built;
-    } catch (const Error&) {   // (no configuration to read: no assembler to test against)
-    }
-    return std::nullopt;
-}
 
 std::filesystem::path pe_lz32() { return testing::data_path("formats/testdata/lz32.dll"); }
 std::filesystem::path pe_version() { return testing::data_path("source/testdata/writers/version.dll"); }
@@ -102,8 +90,6 @@ CB_TEST("source.pe_writer.an_instruction_that_is_written_as_bytes_keeps_its_mnem
 });
 
 CB_TEST("source.pe_writer.the_programs_build_back_the_same_and_the_source_is_the_recorded_source", [] {
-    const auto nasm = assembler_for_pe_tests();
-    if (!nasm) return;   // (no assembler on this machine)
     struct Case {
         std::filesystem::path program;
         std::string golden;
@@ -112,7 +98,7 @@ CB_TEST("source.pe_writer.the_programs_build_back_the_same_and_the_source_is_the
     for (const Case& c : {Case{pe_lz32(), "pe_lz32.golden.asm", 378, 2}, Case{pe_version(), "pe_version.golden.asm", 612, 4}}) {
         fs::ScopedTempDir dir("cb_pe_writer");
         std::vector<std::string> said;
-        const Result r = reconstruct(c.program, dir.path(), {.nasm = *nasm, .say = [&](std::string_view line) { said.emplace_back(line); }});
+        const Result r = reconstruct(c.program, dir.path(), {.say = [&](std::string_view line) { said.emplace_back(line); }});
         CB_CHECK(r.same);
         CB_CHECK(r.image.has_value());
         CB_CHECK_EQ(r.instructions, c.instructions);
@@ -126,25 +112,21 @@ CB_TEST("source.pe_writer.the_programs_build_back_the_same_and_the_source_is_the
 });
 
 CB_TEST("source.pe_writer.a_stub_given_as_bytes_is_included_in_front_of_the_header", [] {
-    const auto nasm = assembler_for_pe_tests();
-    if (!nasm) return;
     fs::ScopedTempDir dir("cb_pe_writer");
     // the program's DOS stub is what lies before its new header
     const Bytes file = fs::read_file(pe_lz32());
     const std::size_t stub_size = Image::open(pe_lz32()).pe().header().e_lfanew;
     fs::write_file(dir.path() / "stub.bin", ByteView(file).first(stub_size));
-    const Result r = reconstruct(pe_lz32(), dir.path() / "out", {.nasm = *nasm, .stub = dir.path() / "stub.bin"});
+    const Result r = reconstruct(pe_lz32(), dir.path() / "out", {.stub = dir.path() / "stub.bin"});
     CB_CHECK(r.same);
     CB_CHECK(fs::read_text(r.source).find("incbin \"") != std::string::npos);
     // and KeepStub writes the stub as data
-    const Result kept = reconstruct(pe_lz32(), dir.path() / "kept", {.nasm = *nasm, .stub = KeepStub{}});
+    const Result kept = reconstruct(pe_lz32(), dir.path() / "kept", {.stub = KeepStub{}});
     CB_CHECK(kept.same);
     CB_CHECK(fs::read_text(kept.source).find("incbin") == std::string::npos);
 });
 
 CB_TEST("source.pe_writer.the_stub_finder_is_asked_with_the_file_and_where_its_header_is", [] {
-    const auto nasm = assembler_for_pe_tests();
-    if (!nasm) return;
     fs::ScopedTempDir dir("cb_pe_writer");
     std::size_t asked_size = 0;
     std::uint64_t asked_header = 0;
@@ -153,7 +135,7 @@ CB_TEST("source.pe_writer.the_stub_finder_is_asked_with_the_file_and_where_its_h
         asked_header = header;
         return std::optional<std::filesystem::path>();   // (no source for the stub: its bytes are kept)
     };
-    const Result r = reconstruct(pe_lz32(), dir.path(), {.nasm = *nasm, .find_stub = finder});
+    const Result r = reconstruct(pe_lz32(), dir.path(), {.find_stub = finder});
     CB_CHECK(r.same);
     CB_CHECK_EQ(asked_size, fs::read_file(pe_lz32()).size());
     CB_CHECK_EQ(asked_header, Image::open(pe_lz32()).pe().header().e_lfanew);
@@ -175,13 +157,12 @@ CB_TEST("source.pe_writer.the_command_prints_what_was_done_and_exits_by_whether_
     std::vector<std::string> lines;
     const auto say = [&](std::string_view line) { lines.emplace_back(line); };
     fs::ScopedTempDir dir("cb_pe_writer");
-    Environment env{.nasm = assembler_for_pe_tests().value_or(dir.path() / "no-nasm.exe"), .state = dir.path() / "state", .find_stub = nullptr};
+    Environment env{.state = dir.path() / "state", .find_stub = nullptr};
     // no program named: the usage, and exit 2
     CB_CHECK_EQ(command({}, env, say), 2);
     CB_CHECK(!lines.empty() && lines.back().find("pe-source <program> [--out DIR] [--stub SOURCE.ASM] [--keep-stub]") != std::string::npos);
     CB_CHECK_THROWS_AS(UsageError, command(std::vector<std::string>{"x.dll", "--out"}, env, say));
     CB_CHECK_THROWS_AS(UsageError, command(std::vector<std::string>{"x.dll", "--stub"}, env, say));
-    if (!assembler_for_pe_tests()) return;
     lines.clear();
     const std::vector<std::string> args = {fs::to_text(pe_lz32()), "--keep-stub", "--out", fs::to_text(dir.path() / "o")};
     CB_CHECK_EQ(command(args, env, say), 0);

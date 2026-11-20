@@ -1,6 +1,7 @@
 // cb/source/ne_asm/idiom.cpp -- a 16-bit NE code segment as cMacros source (see idiom.hpp).
 // cb-unity: alone
 #include "cb/source/ne_asm/idiom.hpp"
+#include "cb/source/ne_asm/cmacros_shim.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -10,6 +11,7 @@
 #include <map>
 #include <tuple>
 
+#include "cb/build/x86asm/x86asm.hpp"
 #include "cb/core/cli.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -55,11 +57,6 @@ const std::vector<std::string>& idiom_preamble() {
 
 enum class Target { Function, Local, Extern };
 
-std::string idiom_read_all(const stdfs::path& file) {
-    std::error_code ec;
-    return stdfs::is_regular_file(file, ec) ? fs::read_text(file) : std::string();
-}
-
 }  // namespace
 
 std::string_view backend_name(Backend backend) { return backend == Backend::Ml ? "ml" : "nasm"; }
@@ -70,36 +67,23 @@ const recon::Assemble& Assemblers::of(Backend backend) const {
     return assemble;
 }
 
-recon::Assemble nasm_assembler(stdfs::path nasm, stdfs::path include_folder) {
-    return [nasm = std::move(nasm), include_folder = std::move(include_folder)](std::string_view source) {
-        fs::make_dirs(include_folder);
-        // nasm redirects `include cmacros.inc' to the shim that stands in for it
-        // (the shim is in the nasm source tree's test/masm: beside the program, or above it where the program is in a build folder)
-        const stdfs::path copy = include_folder / "cmacros_shim.inc";
-        std::error_code ec;
-        stdfs::path folder = nasm.parent_path();
-        for (int level = 0; level < 4 && !folder.empty(); ++level, folder = folder.parent_path()) {
-            const stdfs::path shim = folder / "test" / "masm" / "cmacros_shim.inc";
-            if (!stdfs::exists(shim, ec)) continue;
-            if (!stdfs::exists(copy, ec) || cb::fs::last_write_time(shim, ec) > cb::fs::last_write_time(copy, ec))
-                stdfs::copy_file(shim, copy, stdfs::copy_options::overwrite_existing, ec);
-            break;
-        }
-        fs::ScopedTempDir work("ne_nasm");
-        const stdfs::path src = work.path() / "m.asm", object = work.path() / "m.obj", listing = work.path() / "m.lst";
-        fs::write_file(src, as_bytes(source));
-        process::ProcessSpec spec;
-        spec.argv = {fs::to_text(nasm), "--masm", "-f", "obj", "-I", fs::to_text(include_folder) + "\\", "-l", fs::to_text(listing), "-o", fs::to_text(object), fs::to_text(src)};
-        spec.timeout = std::chrono::seconds(120);
+recon::Assemble nasm_assembler() {
+    return [](std::string_view source) {
+        // x86asm in MASM mode, in memory: `include cmacros.inc' is redirected to the shim, which is handed over as an include file
+        build::x86asm::Request request;
+        request.cwd = "/m";
+        request.args = {"--masm", "-f", "obj", "-I", "/inc/", "-l", "m.lst", "-o", "m.obj", "/m/m.asm"};
+        request.files["/m/m.asm"] = Bytes(source.begin(), source.end());
+        request.files["/inc/cmacros_shim.inc"] = Bytes(kCmacrosShim.begin(), kCmacrosShim.end());
         recon::Assembled made;
         try {
-            const process::ProcessResult r = process::run(spec);
-            made.log = text::from_latin1(r.err) + text::from_latin1(r.out);
+            const build::x86asm::Result r = build::x86asm::assemble(request);
+            made.log = r.messages;
+            if (const auto at = r.files.find("m.obj"); at != r.files.end()) made.object = at->second;
+            if (const auto at = r.files.find("m.lst"); at != r.files.end()) made.listing.assign(at->second.begin(), at->second.end());
         } catch (const Error& e) {
             made.log = e.what();
         }
-        if (stdfs::is_regular_file(object, ec)) made.object = fs::read_file(object);
-        made.listing = idiom_read_all(listing);
         return made;
     };
 }
@@ -391,7 +375,7 @@ int main(const Environment& env, std::span<const std::string> args) {
          cli::Positional{"seg", "the code segment (from 1; default 1)", false},
          cli::Positional{"lo", "the first offset (default 0x04a4)", false},
          cli::Positional{"hi", "the end offset, or `whole` (default 0x4fa)", false},
-         cli::Option{"--backend", "", "the assembler: ml (the period ML under DOS) or nasm (the nasm-masm fork)", cli::Arg::Value, "ml|nasm", "ml"},
+         cli::Option{"--backend", "", "the assembler: ml (the period ML under DOS) or nasm (x86asm, the built-in NASM MASM mode)", cli::Arg::Value, "ml|nasm", "ml"},
          cli::Option{"--ords", "", "the ORDINALS.md to name ordinals from", cli::Arg::Value, "PATH", "ORDINALS.md"}},
         [&](const cli::Args& a) -> int {
             const std::string module_name = a.value_or("module", "KRNL386.EXE");

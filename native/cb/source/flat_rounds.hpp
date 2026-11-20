@@ -10,7 +10,7 @@
 // offset) and is ordered.
 //
 //     class PeImage : public FlatImage<std::uint32_t> { ... };
-//     FlatResult<std::uint32_t> r = flat(original, image, work, "prog", {.nasm = nasm_path});
+//     FlatResult<std::uint32_t> r = flat(original, image, work, "prog", {});
 //     if (r.same) ...
 #pragma once
 
@@ -49,8 +49,7 @@ struct Assembled {
 };
 
 // Assemble `source` flat (-f bin) as <work>/<name>, with its map of labels beside it (<name>.map). The source is text in Latin-1.
-// ToolError when `nasm` cannot be started.
-Assembled assemble(const std::filesystem::path& nasm, std::string_view source, const std::filesystem::path& work, std::string_view name);
+Assembled assemble(std::string_view source, const std::filesystem::path& work, std::string_view name);
 
 // The labels of a map file ("<place> <address> <name>" lines).
 LabelMap read_map(const std::filesystem::path& path);
@@ -77,7 +76,6 @@ public:
 };
 
 struct FlatOptions {
-    std::filesystem::path nasm;                              // the assembler (settings: nasm)
     std::size_t max_rounds = 30;
     bool new_only = false;                                   // the assembler rejecting only what is already bytes ends it
     std::function<void(std::string_view)> say = nullptr;     // progress, one line a round
@@ -113,7 +111,7 @@ FlatResult<Key> flat(ByteView original, FlatImage<Key>& image, const std::filesy
     while (rounds < options.max_rounds) {
         ++rounds;
         const Source<Key> src = image.write(raw, false);
-        const Assembled built = assemble(options.nasm, src.text, work, name);
+        const Assembled built = assemble(src.text, work, name);
         said = built.said;
         if (!built.file) {
             std::set<Key> bad;
@@ -137,7 +135,7 @@ FlatResult<Key> flat(ByteView original, FlatImage<Key>& image, const std::filesy
         raw.insert(bad.begin(), bad.end());
     }
     const Source<Key> src = image.write(raw, true);
-    const Assembled built = assemble(options.nasm, src.text, work, name);
+    const Assembled built = assemble(src.text, work, name);
     FlatResult<Key> r;
     r.source = work / (std::string(name) + ".asm");
     r.raw = std::move(raw);

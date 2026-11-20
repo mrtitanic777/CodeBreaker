@@ -151,19 +151,19 @@ CB_TEST("source.flat_rounds.an_error_no_instruction_owns_stops_the_rounds", [] {
 
 CB_TEST("source.flat_rounds.no_assembler_outside_codebreaker_is_needed", [] {
     fs::ScopedTempDir dir("cb_flat");
-    const Assembled a = assemble(dir.path() / "no-such-nasm.exe", "bits 32\nret\n", dir.path(), "x");   // (the path is not used)
+    const Assembled a = assemble("bits 32\nret\n", dir.path(), "x");
     CB_CHECK(a.file.has_value());
     CB_CHECK((read_all(*a.file) == Bytes{0xC3}));
 });
 
 CB_TEST("source.flat_rounds.assemble_gives_the_image_and_the_map", [] {
     fs::ScopedTempDir dir("cb_flat");
-    const Assembled a = assemble({}, "bits 32\norg 0\nstart: nop\nnext: ret\n", dir.path(), "tiny");
+    const Assembled a = assemble("bits 32\norg 0\nstart: nop\nnext: ret\n", dir.path(), "tiny");
     CB_CHECK(a.file.has_value());
     CB_CHECK((read_all(*a.file) == Bytes{0x90, 0xC3}));
     const LabelMap labels = read_map(a.map);
     CB_CHECK(labels.at("start").address == 0 && labels.at("next").address == 1);
-    const Assembled bad = assemble({}, "bits 32\nmov eax, ebx, ecx\n", dir.path(), "bad");
+    const Assembled bad = assemble("bits 32\nmov eax, ebx, ecx\n", dir.path(), "bad");
     CB_CHECK(!bad.file.has_value());
     CB_CHECK(!error_lines(bad.said).empty());
 });

@@ -87,7 +87,6 @@ struct Environment {
     std::filesystem::path corpus_root;   // the original floppy is <corpus_root>/setup/media/boot.img
     std::filesystem::path design_dir;    // the boot sector's source is <design_dir>/recon/bootdisk/msboot.asm
     std::filesystem::path state;         // <state>/bootfloppy: original/, src/, msboot.bin, and boot95.img by default
-    std::filesystem::path nasm;          // the assembler (a folder holding nasm.exe will do; empty: "nasm" from the path)
     source::dos_writer::Options writer;  // how a program of the floppy is written back as source and built
 };
 

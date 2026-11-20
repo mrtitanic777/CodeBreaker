@@ -50,11 +50,8 @@ constexpr std::uint16_t kCvMachineX86 = 0x014C;
 
 struct CvTools {
     config::Config config;
-    stdfs::path nasm;
 
-    explicit CvTools(const config::Config& c) : config(c) {
-        if (const auto n = c.path("nasm"); n && stdfs::is_regular_file(*n)) nasm = *n;
-    }
+    explicit CvTools(const config::Config& c) : config(c) {}
     build::watcom::OpenWatcom open_watcom() const { return build::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
     source::dos_writer::Options dos_options() const {
         return source::dos_writer::options_for(open_watcom(), config.state() / "assembly_probes.json");
@@ -128,7 +125,6 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
         switch (kind) {
             case CvMz::Pe: {
                 source::pe_writer::Options o;
-                o.nasm = tools.nasm;
                 o.find_stub = tools.stub_finder();
                 o.say = say;
                 cv_keep(source::pe_writer::reconstruct(input, scratch, o).source, work);
@@ -136,7 +132,6 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
             }
             case CvMz::Ne: {
                 source::ne_writer::Options o;
-                o.nasm = tools.nasm;
                 o.find_stub = tools.stub_finder();
                 o.say = say;
                 cv_keep(source::ne_writer::reconstruct(input, scratch, o).source, work);
@@ -144,7 +139,6 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
             }
             case CvMz::Le: {
                 source::le_writer::Options o;
-                o.nasm = tools.nasm;
                 o.say = say;
                 cv_keep(source::le_writer::reconstruct(input, scratch, o).source, work);
                 break;

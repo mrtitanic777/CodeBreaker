@@ -1,6 +1,5 @@
 // cb-unity: alone
-// The Xbox One / Series writer over a small x64 PE32+ written byte by byte (formats/xboxone_test_image.hpp). The tests that build run NASM (settings: nasm, or CB_NASM) and are
-// skipped where there is none.
+// The Xbox One / Series writer over a small x64 PE32+ written byte by byte (formats/xboxone_test_image.hpp). The tests that build run x86asm, in this process.
 
 #include "cb/source/xboxone_writer.hpp"
 

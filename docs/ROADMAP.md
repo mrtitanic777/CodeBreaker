@@ -69,7 +69,7 @@ tests, the same results. About 87 source files call the Windows API directly tod
 1. A portable layer in `native/cb/core`: processes and pipes, files and paths, file locks, loading the engine
    libraries, environment, console text, time; a Windows and a POSIX implementation behind one interface.
 2. Every other area moved onto that layer (no Windows calls outside `core` and the Windows-only lanes' tools).
-3. The engines (L2, formats, DOS, XEX, decompiler, NASM) and the third-party libraries (Unicorn, Capstone, Z3)
+3. The engines (L2, formats, DOS, XEX, decompiler) and the third-party libraries (Unicorn, Capstone, Z3)
    built as Linux shared libraries; `tools/` gets shell equivalents of the build and gate scripts.
 4. CI builds and tests on Ubuntu; the gate's command cases run on Linux where their tools exist there.
 5. The lanes that drive Windows-only tools (period compilers under DOSBox-X, QEMU for the Windows 95 boot) work on

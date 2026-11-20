@@ -15,7 +15,6 @@ settings: <ROOT>/settings.json
   -- msbuild          (not set)
   !! msc6             <ROOT>/missing-dir
   -- msvc152          (not set)
-  !! nasm             <ROOT>/native/nasm/build/bin/nasm.exe
   ok openwatcom       <ROOT>/wc
   -- period_compiler  (not set)
   -- powerpc_lib      (not set)

@@ -14,13 +14,17 @@ release is made. Each entry lists what a user notices: new commands and lanes, f
   so any number of assemblies run at once, in memory. It gives the same bytes as NASM for every captured run (234 of 234,
   with the COFF header's time stamp set aside) and in 15,000 instruction cases. `convert` (the PE, NE, LE, x64 and
   WonderSwan writers' self-check) and the Win95 boot floppy now assemble with it: converting a Windows program needs no
-  separate NASM. `codebreaker nasm <NASM's arguments>` runs it on files, as nasm.exe did. (The MASM-mode callers -- the Win16
-  idioms and the VxD builds -- still start nasm.exe, until they move too.)
-- `CB_NASM_CAPTURE=<folder>` saves every NASM run as a case
-  (its arguments, the files it read under the paths it read them by -- sources, `incbin`s, includes -- and what NASM
-  wrote): the cases x86asm must reproduce byte for byte. A gate run gives 236 cases.
+  separate NASM. `codebreaker nasm <NASM's arguments>` runs it on files, as nasm.exe did. The MASM-mode callers moved to it
+  too -- the Win16 idioms (`ne-asm idiom`, `ne-asm sweep`), the VxD builds (`vxd masm`, `vxd corpus`, `vxd idiom`) and the
+  byte-exact OpenWatcom VxD build (`vxd owbuild`) -- after 6,236 more captured runs (the VxD corpus, 190 NE modules) came
+  back byte for byte (with the 234 of the gate, 6,470 of 6,470). The separate NASM is gone: `native/nasm`, the `nasm`
+  setting and its fields are deleted; NASM's own MASM-mode fixtures are kept in `native/cb/build/testdata/masm`.
 
 ### Fixed
+
+- A DOS program's C no longer calls the compiler's stack probe: `_chkstk();` (Microsoft C's, put at the start of a function
+  compiled with stack checking, its frame size in AX) is the compiler's and not the source's, and called from C without AX it
+  moved the stack by whatever AX held. In the C1.EXE behaviour check, 105 of the 154 C functions that broke the program called it.
 - Library code carried unchanged from one compiler to the next is named as the compiler a program was linked with. Learning signatures (`identify --learn`, and `--add`) kept only the first library a routine's bytes were seen in, so Microsoft C 4.0's and 5.0's copies of routines Visual C++ 1.5 also has were not in the table, and C1.EXE's `strncpy` was called Visual C++ 1.5's `_fstrncpy`. Each library now keeps its own row (a single match still finds the first); Microsoft C 4.0's and 5.0's libraries are learned again (16-bit signatures 5694 → 6970). C1.EXE: 63 functions from Microsoft C 4.0's libraries, and the 3 long shifts no Microsoft C library before Visual C++ 1.5 has are said to be "the same code as in" it.
 
 ### Changed

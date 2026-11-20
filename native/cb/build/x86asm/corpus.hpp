@@ -1,6 +1,6 @@
 // cb/build/x86asm/corpus.hpp -- x86asm's acceptance (docs/X86ASM_DESIGN.md): the captured NASM runs, replayed through x86asm.
 //
-// A case (core/nasm_capture.hpp) holds a run's arguments, the files it read under the paths it read them by, and what the
+// A case (a folder: case.json, in/, out/) was captured from the reference nasm.exe, while it still existed, and holds a run's arguments, the files it read under the paths it read them by, and what the
 // reference nasm.exe wrote. The replay hands x86asm the same arguments and the same files under the same names -- no path
 // is rewritten, so an object that records its source's name must record the same one -- and compares every output
 // byte for byte, the exit code, and the messages.

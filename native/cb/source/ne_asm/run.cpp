@@ -28,7 +28,7 @@ std::string_view usage() {
 
 The 16-bit kernel, USER and GDI were written largely in assembly with the SDK's cMacros; this is
 that form, not a disassembly listing: every place a loader patches is a label, and each range
-is reassembled (MASM, or a MASM-compatible NASM -- settings: masm, nasm) and compared.)DOC";
+is reassembled (MASM, or x86asm, the built-in MASM-compatible assembler -- setting: masm) and compared.)DOC";
 }
 
 std::span<const std::string_view> tool_names() {

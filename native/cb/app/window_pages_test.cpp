@@ -85,7 +85,7 @@ CB_TEST("app.window_pages.tab_visits_the_page_and_ends_at_the_rail", [] {
     CB_CHECK(browse == 2);   // (the two file fields)
     m.tool_selected = -1;
     CB_CHECK(focus_order_tools(m).size() == 4);   // the search box and the rail
-    m.setting_fields = {{"Theme", 3, "System", {"System", "Light", "Dark"}, true, ""}, {"nasm", 0, "", {}, false, ""}};
+    m.setting_fields = {{"Theme", 3, "System", {"System", "Light", "Dark"}, true, ""}, {"masm", 0, "", {}, false, ""}};
     CB_CHECK(focus_order_settings(m).size() == 2 + 1 + 3);
 });
 
@@ -148,8 +148,8 @@ CB_TEST("app.window_pages.advanced_has_back_beside_its_title", [] {
     const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
     Model m = wp_settings_model();
     m.settings_advanced = true;
-    m.setting_fields = {{"NASM assembler", 0, "", {}, false, ""}, {"Jobs at once", 2, "4", {}, false, ""}};
-    m.setting_keys = {"nasm", "workers"};
+    m.setting_fields = {{"MASM assembler", 0, "", {}, false, ""}, {"Jobs at once", 2, "4", {}, false, ""}};
+    m.setting_keys = {"masm", "workers"};
     const SettingsLayout s = compute_settings_layout(shell, m);
     CB_CHECK(s.back.w > 0 && s.back.right() < s.title.x);
     CB_CHECK(hit_test_settings(s, m, s.back.x + 5, s.back.y + 5).control == Control::SettingsBack);

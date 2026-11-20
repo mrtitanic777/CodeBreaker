@@ -741,7 +741,7 @@ Result reconstruct(const std::filesystem::path& driver, const std::filesystem::p
     Image image = Image::open(driver);
     const std::string name = text::lower(fs::to_text(driver.filename()));
     // (the assembler rejecting only what is already bytes ends the rounds: new_only)
-    const flat_rounds::FlatResult<Key> fr = flat_rounds::flat<Key>(image.data(), image, outdir, name, {.nasm = options.nasm, .new_only = true, .say = say});
+    const flat_rounds::FlatResult<Key> fr = flat_rounds::flat<Key>(image.data(), image, outdir, name, {.new_only = true, .say = say});
     Result r;
     r.source = fr.source;
     r.image = fr.image;
@@ -770,7 +770,7 @@ int command(std::span<const std::string> args, const Environment& env, const std
     }
     const std::filesystem::path driver = fs::from_text(drivers.front());
     const std::filesystem::path outdir = out ? fs::from_text(*out) : env.state / "le_source" / text::lower(fs::to_text(driver.stem()));
-    const flat_rounds::ReportText report = flat_rounds::report(driver, reconstruct(driver, outdir, {.nasm = env.nasm, .say = say}).report());
+    const flat_rounds::ReportText report = flat_rounds::report(driver, reconstruct(driver, outdir, {.say = say}).report());
     say(text::rtrim(report.text));
     return report.exit_code;
 }

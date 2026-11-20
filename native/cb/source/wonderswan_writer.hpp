@@ -14,7 +14,7 @@
 // five digits), jump targets `L_<address>`; the I/O ports an `in` or `out` names have the hardware's names (DISPLAY_CTRL, SPR_BASE, KEY_SCAN, INT_ENABLE,
 // BANK_ROM0 ...), written as equates. Far jumps and calls into other segments are not followed.
 //
-// NASM is the assembler (settings: nasm, or CB_NASM). Without one the source is written and not built (`linked` is false and a note says why).
+// x86asm, CodeBreaker's own assembler, builds the source, in this process.
 #pragma once
 
 #include <cstdint>

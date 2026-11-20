@@ -1,6 +1,6 @@
-// The assembler engine's MASM mode (native/nasm, `nasm --masm`): every fixture of native/nasm/test/masm/fixtures assembled flat (-f bin) must give the
-// bytes of its golden/<name>.hex, and the fixtures that declare a segment must give the same code in the object backends (-f obj, -f win32). The fixtures and their golden bytes are read
-// where they are kept. Skipped when the engine is not built (native/nasm/build/bin/nasm.exe of this checkout or the main one, or CB_NASM).
+// The assembler engine's MASM mode (x86asm, `--masm`): every fixture of build/testdata/masm/fixtures (the NASM fork's own MASM-mode tests) assembled flat (-f bin)
+// must give the bytes of its golden/<name>.hex, and the fixtures that declare a segment must give the same code in the object backends (-f obj, -f win32).
+// The fixtures and their golden bytes are read where they are kept; x86asm assembles them in this process.
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -10,10 +10,9 @@
 #include <string>
 #include <vector>
 
-#include "cb/base/config.hpp"
+#include "cb/build/x86asm/x86asm.hpp"
 #include "cb/core/crypto.hpp"
 #include "cb/core/fs.hpp"
-#include "cb/core/process.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
 
@@ -27,31 +26,33 @@ namespace mfx_fs = std::filesystem;
 // (the fixture list).
 const std::set<std::string> kMasmFixturesKnown = {"masm_paren_operand"};   // a parenthesised operand naming a later EQU: not yet
 
-std::optional<mfx_fs::path> masm_fixtures_nasm() {
-    std::vector<mfx_fs::path> candidates;
-    if (const auto given = fs::get_env("CB_NASM")) candidates.push_back(fs::from_text(*given));
-    candidates.push_back(testing::data_path("../nasm/build/bin/nasm.exe"));
-    try {
-        candidates.push_back(config::current().main_checkout() / "native" / "nasm" / "build" / "bin" / "nasm.exe");
-    } catch (const Error&) {
-    }
-    std::error_code ec;
-    for (const auto& c : candidates) {
-        if (mfx_fs::is_regular_file(c, ec)) return c;
-    }
-    return std::nullopt;
+// One fixture assembled by x86asm in memory: the file it wrote, nothing when it did not assemble. A file it includes is read from the disk.
+std::optional<Bytes> masm_fixtures_assemble(const mfx_fs::path& source, const std::string& format) {
+    build::x86asm::Request request;
+    request.cwd = source.parent_path().generic_string();
+    request.args = {"--masm", "-f", format, source.generic_string(), "-o", "out.bin"};
+    request.read = [](const std::string& path) -> std::optional<Bytes> {
+        std::error_code ec;
+        if (!mfx_fs::is_regular_file(fs::from_text(path), ec)) return std::nullopt;
+        return fs::read_file(fs::from_text(path));
+    };
+    const build::x86asm::Result r = build::x86asm::assemble(request);
+    if (r.exit != 0) return std::nullopt;
+    const auto at = r.files.find("out.bin");
+    if (at == r.files.end()) return std::nullopt;
+    return at->second;
 }
 
 std::vector<mfx_fs::path> masm_fixtures_sources() {
     std::vector<mfx_fs::path> sources;
-    for (const auto& entry : mfx_fs::directory_iterator(testing::data_path("../nasm/test/masm/fixtures"))) {
+    for (const auto& entry : mfx_fs::directory_iterator(testing::data_path("build/testdata/masm/fixtures"))) {
         if (entry.path().extension() == ".asm") sources.push_back(entry.path());
     }
     std::sort(sources.begin(), sources.end());
     return sources;
 }
 
-mfx_fs::path masm_fixtures_golden(const std::string& name) { return testing::data_path("../nasm/test/masm/golden") / (name + ".hex"); }
+mfx_fs::path masm_fixtures_golden(const std::string& name) { return testing::data_path("build/testdata/masm/golden") / (name + ".hex"); }
 
 // ---- the object backends: the code of the _TEXT segment read back out of the object -----------------------------------------------------
 
@@ -137,24 +138,16 @@ std::optional<Bytes> mfx_coff_code(const Bytes& data) {
 }  // namespace
 
 CB_TEST("build.masm_fixtures.every_fixture_assembles_to_its_golden_bytes", [] {
-    CB_WINDOWS_ONLY("it runs the period assembler");
-    const auto nasm = masm_fixtures_nasm();
-    if (!nasm) {
-        std::cout << "SKIP the assembler engine is not built (native/nasm/CMakeLists.txt)\n";
-        return;
-    }
     const std::vector<mfx_fs::path> sources = masm_fixtures_sources();
     CB_CHECK(sources.size() >= 80u);
-    fs::ScopedTempDir dir("cb-masm-fixtures");
     std::size_t passed = 0;
     for (const auto& source : sources) {
         const std::string name = fs::to_text(source.stem());
-        const mfx_fs::path out = dir.path() / (name + ".bin");
-        const process::ProcessResult r = process::run({.argv = {fs::to_text(*nasm), "--masm", "-f", "bin", fs::to_text(source), "-o", fs::to_text(out)}});
+        const std::optional<Bytes> made = masm_fixtures_assemble(source, "bin");
         const mfx_fs::path hex = masm_fixtures_golden(name);
         const bool known = kMasmFixturesKnown.count(name) != 0;
-        bool good = r.ok() && mfx_fs::is_regular_file(out) && mfx_fs::is_regular_file(hex);
-        if (good) good = fs::read_file(out) == crypto::from_hex(text::trim(fs::read_text(hex)));
+        bool good = made && mfx_fs::is_regular_file(hex);
+        if (good) good = *made == crypto::from_hex(text::trim(fs::read_text(hex)));
         if (good) {
             ++passed;
         } else if (known) {
@@ -168,18 +161,11 @@ CB_TEST("build.masm_fixtures.every_fixture_assembles_to_its_golden_bytes", [] {
 });
 
 CB_TEST("build.masm_fixtures.segment_fixtures_give_the_same_code_in_the_object_backends", [] {
-    CB_WINDOWS_ONLY("it runs the period assembler");
-    const auto nasm = masm_fixtures_nasm();
-    if (!nasm) {
-        std::cout << "SKIP the assembler engine is not built (native/nasm/CMakeLists.txt)\n";
-        return;
-    }
     // A fixture is object-checked when it declares a `NAME segment', and hll_struct besides (it guards the STRUCT-then-.code USE32 path: USE16 would add 66
     // prefixes). Two are -f bin tests only: a 16-bit FAR pointer needs a 16-bit relocation COFF has none of, and the SEGMENT/ENDS resume fixture splits its
     // bytes across two physical segments.
     const std::set<std::string> object_safe = {"hll_struct"}, bin_only = {"masm_lds_farptr", "masm_segment_resume"};
     const std::regex declares_segment(R"(^\s*\S+\s+segment\b)", std::regex::icase);
-    fs::ScopedTempDir dir("cb-masm-objects");
     std::size_t checked = 0;
     for (const auto& source : masm_fixtures_sources()) {
         const std::string name = fs::to_text(source.stem());
@@ -203,14 +189,12 @@ CB_TEST("build.masm_fixtures.segment_fixtures_give_the_same_code_in_the_object_b
             std::optional<Bytes> (*reader)(const Bytes&);
         };
         for (const Backend& backend : {Backend{"obj", &mfx_omf_code}, Backend{"win32", &mfx_coff_code}}) {
-            const mfx_fs::path out = dir.path() / (name + "." + backend.format);
-            const process::ProcessResult r =
-                process::run({.argv = {fs::to_text(*nasm), "--masm", "-f", backend.format, fs::to_text(source), "-o", fs::to_text(out)}});
-            const bool assembled = r.ok() && mfx_fs::is_regular_file(out);
+            const std::optional<Bytes> object = masm_fixtures_assemble(source, backend.format);
+            const bool assembled = object.has_value();
             if (!assembled) std::cout << "FAIL " << name << " [-f " << backend.format << "]: it did not assemble\n";
             CB_CHECK(assembled);
             if (!assembled) continue;
-            const std::optional<Bytes> code = backend.reader(fs::read_file(out));
+            const std::optional<Bytes> code = backend.reader(*object);
             const bool same = code && *code == want;
             if (!same) std::cout << "FAIL " << name << " [-f " << backend.format << "]: the code is not the golden bytes\n";
             CB_CHECK(same);

@@ -2728,7 +2728,6 @@ Model ww_model_for(const std::string& state, bool dark) {
             row("ilspycmd", "C:\\Tools\\ilspycmd.exe", settings::Kind::Path, true),
             row("java", "C:\\Program Files\\Java\\jdk-21", settings::Kind::Path, true),
             row("xbox360_sdk", "", settings::Kind::Path, false),
-            {"nasm", "C:\\Tools\\nasm\\nasm.exe", settings::Kind::Path, true, true, settings::plain_label("nasm"), settings::plain_hint("nasm")},
             {"openwatcom", "C:\\Tools\\WATCOM", settings::Kind::Path, true, true, settings::plain_label("openwatcom"), settings::plain_hint("openwatcom")},
             {"converted", "C:\\CodeBreaker\\Converted", settings::Kind::Path, true, true, settings::plain_label("converted"), settings::plain_hint("converted")},
             {"workers", "4", settings::Kind::Text, true, true, settings::plain_label("workers"), settings::plain_hint("workers")},

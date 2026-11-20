@@ -3,7 +3,7 @@
 // hand (instructions, labels and bytes written out below over the object table of the real driver splitter.vxd: the expected text was
 // worked out from the emission rules, not recorded from a run); the assemblers are stand-ins that read the MASM text the module writes
 // (a perfect one, and one whose encoding of a chosen instruction is a byte longer than the original's, as MASM's is where it re-encodes),
-// and a COFF object written by hand carries the symbols. The real nasm and ML are used where installed. The listing of a real driver
+// and a COFF object written by hand carries the symbols. x86asm, and the real ML where installed, are used. The listing of a real driver
 // (splitter.vxd) goes through the module end to end.
 //
 // Behaviour pinned here: the assemblers' files get the line ends the text has (a text-mode write would turn
@@ -456,8 +456,8 @@ CB_TEST("source.vxd.masm.no_assembler_is_a_log_and_no_object", [] {
 });
 
 CB_TEST("source.vxd.masm.the_real_assembler_agrees_where_it_is_installed", [] {
-    const mx::Toolchain tools = mx::Toolchain::standard({}, cb::testing::data_path(""), std::nullopt);
-    if (!tools.nasm && !tools.native_ml) return;   // no --masm nasm and no MASM 6.11d here
+    const mx::Toolchain tools = mx::Toolchain::standard({}, cb::testing::data_path(""));
+    CB_CHECK(tools.x86asm || tools.native_ml);   // x86asm is always there
     Hand hand;
     const mx::Emission code = hand.emission();
     mx::ObjectReport report;

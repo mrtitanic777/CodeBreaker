@@ -23,7 +23,7 @@ the hand-written assembly of a 16-bit module as the source its authors wrote.
 
 The 16-bit kernel, USER and GDI were written largely in assembly with the SDK's cMacros; this is
 that form, not a disassembly listing: every place a loader patches is a label, and each range
-is reassembled (MASM, or a MASM-compatible NASM -- settings: masm, nasm) and compared.
+is reassembled (MASM, or x86asm, the built-in MASM-compatible assembler -- setting: masm) and compared.
 tools: datacode, debug-names, debug-names-estimate, fixups, idiom, msvc152, reachability, recon, segdiff, segment, sweep
 --- files
 --- stderr (not compared)

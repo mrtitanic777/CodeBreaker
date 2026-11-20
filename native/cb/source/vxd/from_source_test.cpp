@@ -206,7 +206,7 @@ CB_TEST("source.vxd.from_source.splitter_compiles_and_links_with_the_period_tool
     const std::filesystem::path ddk_root = inc->parent_path();
     if (!std::filesystem::is_regular_file(ddk_root / "MSVC20" / "LINK.EXE", ec)) return;
     const vx::DdkNames names = vx::DdkNames::standard(ddk, design);
-    const vx::masm::Toolchain tools = vx::masm::Toolchain::standard(ddk, tools_root, std::nullopt);
+    const vx::masm::Toolchain tools = vx::masm::Toolchain::standard(ddk, tools_root);
     cb::fs::ScopedTempDir stage("fromsrcstage");
     const fsrc::Environment env{names, tools, vx::link::link_260(ddk_root / "MSVC20", stage.path() / "link260", 0x1000)};
     const le::Module splitter = le::Module::open(fsrc_path("splitter.vxd"));

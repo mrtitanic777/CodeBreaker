@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <format>
 
+#include "cb/build/x86asm/x86asm.hpp"
 #include "cb/core/cli.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -279,7 +280,6 @@ namespace {
 
 namespace stdfs = std::filesystem;
 
-constexpr std::string_view kNasmProbe = "bits 32\r\nglobal Q7X\r\nQ7X:\r\n mov eax, ebx\r\n";
 constexpr std::size_t kLargeSource = 60000;   // characters: the assemblers get longer to finish
 
 bool file_exists(const stdfs::path& p) {
@@ -302,11 +302,17 @@ Assembled run_assembler(const std::vector<std::string>& argv, const stdfs::path&
     return out;
 }
 
-Assembled assemble_with_nasm(const stdfs::path& nasm, std::string_view masm_text) {
-    fs::ScopedTempDir work("cbvxdnasm");
-    fs::write_file(work.path() / "m.asm", as_bytes(masm_text));
-    return run_assembler({fs::to_text(nasm), "--masm", "-f", "win32", "m.asm", "-o", "m.obj"}, work.path(), work.path() / "m.obj",
-                         std::chrono::seconds(masm_text.size() > kLargeSource ? 300 : 120), "nasm");
+// x86asm, CodeBreaker's own assembler (build/x86asm), in memory: the MASM text in, the COFF object out. No process, no files.
+Assembled assemble_with_x86asm(std::string_view masm_text) {
+    build::x86asm::Request request;
+    request.cwd = "/m";
+    request.args = {"--masm", "-f", "win32", "m.asm", "-o", "m.obj"};
+    request.files["/m/m.asm"] = Bytes(masm_text.begin(), masm_text.end());
+    const build::x86asm::Result made = build::x86asm::assemble(request);
+    Assembled out;
+    out.log = made.messages;
+    if (const auto at = made.files.find("m.obj"); at != made.files.end()) out.object = at->second;
+    return out;
 }
 
 Assembled assemble_with_ml(const Toolchain& tools, std::string_view masm_text) {
@@ -316,74 +322,34 @@ Assembled assemble_with_ml(const Toolchain& tools, std::string_view masm_text) {
                          work.path(), work.path() / "m.obj", std::chrono::seconds(masm_text.size() > kLargeSource ? 600 : 180), "ml");
 }
 
-// A program on PATH (with the .exe a Windows program has), nullopt when there is none.
-std::optional<stdfs::path> find_on_path(std::string_view name) {
-    const auto path = fs::get_env("PATH");
-    if (!path) return std::nullopt;
-    for (const std::string_view dir : text::split(*path, ';')) {
-        if (dir.empty()) continue;
-        for (const char* extension : {".exe", ""}) {
-            const stdfs::path candidate = fs::from_text(dir) / (std::string(name) + extension);
-            std::error_code ec;
-            if (stdfs::is_regular_file(candidate, ec)) return candidate;
-        }
-    }
-    return std::nullopt;
-}
-
 bool force_period_ml() { return fs::get_env("CB_FORCE_ML").has_value(); }
 
 }  // namespace
 
-std::optional<stdfs::path> probe_nasm(const std::vector<stdfs::path>& candidates) {
-    for (const stdfs::path& candidate : candidates) {
-        if (candidate.empty() || !file_exists(candidate)) continue;
-        try {
-            fs::ScopedTempDir work("cbvxdprobe");
-            fs::write_file(work.path() / "p.asm", as_bytes(kNasmProbe));
-            const Assembled made = run_assembler({fs::to_text(candidate), "--masm", "-f", "win32", "p.asm", "-o", "p.obj"}, work.path(), work.path() / "p.obj",
-                                                 std::chrono::seconds(30), "nasm");
-            if (made.object && std::search(made.object->begin(), made.object->end(), std::string_view("Q7X").begin(), std::string_view("Q7X").end()) != made.object->end()) {
-                return candidate;   // --masm accepted, COFF written, the case of PUBLIC names kept
-            }
-        } catch (const Error&) {
-            // a candidate that cannot be probed is not the one
-        }
-    }
-    return std::nullopt;
-}
-
-Toolchain Toolchain::standard(const DdkFolders& ddk, const stdfs::path& checkout_root, const std::optional<std::string>& nasm_setting,
-                              PeriodAssembler period) {
+Toolchain Toolchain::standard(const DdkFolders& ddk, const stdfs::path& checkout_root, PeriodAssembler period) {
     Toolchain tools;
     tools.period = std::move(period);
     if (const auto inc = DdkFolders::first_existing(ddk.inc)) tools.include_dir = *inc;
     if (force_period_ml()) return tools;   // the authentic period assembler, not a native one
-    std::vector<stdfs::path> candidates;
-    if (nasm_setting) candidates.push_back(fs::from_text(*nasm_setting));
-    if (const auto env = fs::get_env("NASM_MASM")) candidates.push_back(fs::from_text(*env));
-    for (const char* name : {"nasm-masm", "nasm"}) {
-        if (const auto found = find_on_path(name)) candidates.push_back(*found);
-    }
-    tools.nasm = probe_nasm(candidates);
+    tools.x86asm = true;
     const stdfs::path nt = checkout_root / "toolchains" / "period" / "sdks" / "nt351-ddk" / "DDK" / "BIN" / "I386" / "FREE" / "ML.EXE";
     if (file_exists(nt)) tools.native_ml = nt;   // the Win95 DDK's own ML is a Phar Lap TNT program: only the period assembler runs it
     return tools;
 }
 
 Assembled assemble_coff(const Toolchain& tools, std::string_view masm_text) {
-    if (tools.nasm) return assemble_with_nasm(*tools.nasm, masm_text);
+    if (tools.x86asm) return assemble_with_x86asm(masm_text);
     if (tools.native_ml) return assemble_with_ml(tools, masm_text);
     if (tools.period) {
         const std::string one(masm_text);
         auto made = tools.period(std::span<const std::string>(&one, 1));
         if (!made.empty()) return std::move(made.front());
     }
-    return {std::nullopt, "no assembler: no nasm --masm, no MASM 6.11d and no period assembler"};
+    return {std::nullopt, "no assembler: no x86asm, no MASM 6.11d and no period assembler"};
 }
 
 std::vector<Assembled> assemble_coff_batch(const Toolchain& tools, std::span<const std::string> texts) {
-    if (!tools.nasm && !tools.native_ml && tools.period) return tools.period(texts);
+    if (!tools.x86asm && !tools.native_ml && tools.period) return tools.period(texts);
     std::vector<Assembled> out;
     out.reserve(texts.size());
     for (const std::string& t : texts) out.push_back(assemble_coff(tools, t));   // a native tool has no cold start: no batching

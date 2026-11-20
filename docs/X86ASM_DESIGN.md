@@ -14,11 +14,13 @@ of records in an OMF or COFF object).
 
 The proof is differential, never by eye:
 
-- **The capture corpus.** With `CB_NASM_CAPTURE=<folder>` set, every NASM run CodeBreaker makes saves its input
-  source, its options and the reference `nasm.exe`'s output (and exit code, and messages) as one case. A gate run and
-  a corpus sweep give the real inputs: the PE/NE/LE/x64/WonderSwan writers' flat images, the boot floppy, the Win16
-  idioms (`--masm -f obj`), the VxD sources (`--masm -f win32`).
-- **NASM's own MASM-mode tests** (`native/nasm/test/masm`).
+- **The capture corpus.** Every NASM run CodeBreaker made while the reference `nasm.exe` still existed was saved as one case:
+  its input source, its options and the reference's output (and exit code, and messages). A gate run, a corpus sweep of the
+  Win95 VxDs (`vxd corpus`, `vxd owbuild`) and the Win16 idioms (`ne-asm sweep`) gave 6,470: the PE/NE/LE/x64/WonderSwan
+  writers' flat images, the boot floppy, the Win16 idioms (`--masm -f obj`), the VxD sources (`--masm -f win32`). x86asm
+  reproduces all of them byte for byte (the COFF header's time stamp set aside). The folders are kept under `state/work`;
+  `CB_X86ASM_CORPUS` names one and `cb_tests --filter corpus_replays` replays it.
+- **NASM's own MASM-mode tests** (`native/cb/build/testdata/masm`: 85 fixtures and their golden bytes, assembled by x86asm).
 - `cb_tests` area `x86asm` runs every case through x86asm and compares bytes with the recorded output. A case that
   differs is a bug in x86asm; nothing is ever "close enough".
 
@@ -59,4 +61,5 @@ the same job, with NASM's behaviour, not a re-imagining of it.
 2. Tables and the encoder (16/32/64-bit, all of NASM's instructions).
 3. Parser, directives, driver, the bin format → the flat-image writers and the floppy switch to x86asm.
 4. Preprocessor (NASM language), then MASM mode; obj and coff formats → the Win16 idioms and the VxD builds switch.
-5. `native/nasm`, the `nasm` setting and every child-process path deleted.
+5. `native/nasm`, the `nasm` setting and every child-process path deleted. **Done:** the Win16 idioms, the VxD builds and the
+   byte-exact OpenWatcom build assemble with x86asm in memory; no code starts a separate NASM.

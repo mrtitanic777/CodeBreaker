@@ -1,8 +1,8 @@
 // cmdrun: runs the command layers of the formats, build and analyze areas on a command line, with the surroundings the integrator's table
-// will give them (a corpus, the xex program, the console ordinals, OpenWatcom, nasm), so each can be run on
+// will give them (a corpus, the xex program, the console ordinals, OpenWatcom), so each can be run on
 // real inputs. Not built by default (`cmake --build <dir> --target cb_cmdrun`).
 //
-//     cmdrun [--corpus DIR] [--xex-bin DIR] [--state DIR] [--ordinals FILE] [--nasm EXE] [--openwatcom DIR] [--design DIR] <command> [args...]
+//     cmdrun [--corpus DIR] [--xex-bin DIR] [--state DIR] [--ordinals FILE] [--openwatcom DIR] [--design DIR] <command> [args...]
 #include <algorithm>
 #include <filesystem>
 #include <memory>
@@ -47,14 +47,13 @@ std::optional<stdfs::path> corpus_file(const stdfs::path& root, std::string_view
 }  // namespace
 
 int main(int argc, char** argv) {
-    stdfs::path corpus, state = "state", nasm, openwatcom, design, ordinals;
+    stdfs::path corpus, state = "state", openwatcom, design, ordinals;
     int at = 1;
     for (; at + 1 < argc; at += 2) {
         const std::string flag = argv[at];
         const stdfs::path value = fs::from_text(argv[at + 1]);
         if (flag == "--corpus") corpus = value;
         else if (flag == "--state") state = value;
-        else if (flag == "--nasm") nasm = value;
         else if (flag == "--openwatcom") openwatcom = value;
         else if (flag == "--design") design = value;
         else if (flag == "--ordinals") ordinals = value;
@@ -86,7 +85,6 @@ int main(int argc, char** argv) {
     floppy_env.corpus_root = corpus;
     floppy_env.design_dir = design;
     floppy_env.state = state;
-    floppy_env.nasm = nasm;
     if (!openwatcom.empty()) {
         const build::watcom::OpenWatcom watcom(openwatcom);
         floppy_env.writer = source::dos_writer::options_for(watcom, state / "assembly_probes.json");

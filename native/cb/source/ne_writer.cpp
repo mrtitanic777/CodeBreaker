@@ -672,7 +672,7 @@ Result reconstruct(const std::filesystem::path& program, const std::filesystem::
     image.set_stub(stub);
 
     const flat_rounds::FlatResult<Place> fr =
-        flat_rounds::flat<Place>(image.module().data(), image, outdir, name, {.nasm = options.nasm, .say = say});
+        flat_rounds::flat<Place>(image.module().data(), image, outdir, name, {.say = say});
     std::set<Place> raw = fr.raw;
     raw.insert(image.written_as_bytes().begin(), image.written_as_bytes().end());
     Result r;
@@ -706,7 +706,7 @@ int command(std::span<const std::string> args, const Environment& env, const std
     }
     const std::filesystem::path program = fs::from_text(programs.front());
     const std::filesystem::path outdir = out ? fs::from_text(*out) : env.state / "ne_source" / text::lower(fs::to_text(program.stem()));
-    Options options{.nasm = env.nasm, .stub = SearchStub{}, .find_stub = env.find_stub, .say = say};
+    Options options{.stub = SearchStub{}, .find_stub = env.find_stub, .say = say};
     if (keep_stub) options.stub = KeepStub{};
     const flat_rounds::ReportText report = flat_rounds::report(program, reconstruct(program, outdir, options).report());
     say(text::rtrim(report.text));

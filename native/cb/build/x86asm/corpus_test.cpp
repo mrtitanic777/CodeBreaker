@@ -1,4 +1,4 @@
-// x86asm's acceptance: every captured NASM run (CB_X86ASM_CORPUS names the folder of cases; core/nasm_capture.hpp) replayed
+// x86asm's acceptance: every captured NASM run (CB_X86ASM_CORPUS names the folder of cases; each saved from the reference nasm.exe) replayed
 // through x86asm must give what nasm.exe gave. Without the variable that test says so and passes without running; the
 // harness itself is tested on a case made here.
 #include "cb/build/x86asm/corpus.hpp"

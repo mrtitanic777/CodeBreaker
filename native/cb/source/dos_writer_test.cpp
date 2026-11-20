@@ -215,17 +215,9 @@ CB_TEST("source.dos_writer.a_windows_program_with_a_real_dos_stub_has_it_written
     const auto options = dw_options();
     const auto regedit = dw_corpus_file("WINDOWS/regedit.exe");   // (a 32-bit program whose DOS stub is a 38 KB registry editor)
     if (!options || !regedit) return;
-    std::optional<std::filesystem::path> nasm;
-    try {
-        const config::Config main = config::Config::load(config::current().main_checkout());
-        nasm = main.path("nasm");
-    } catch (const Error&) {
-    }
-    if (!nasm || !std::filesystem::is_regular_file(*nasm)) return;
     fs::ScopedTempDir dir("cb_dos_writer");
     std::vector<std::string> said;
     source::pe_writer::Options pe;
-    pe.nasm = *nasm;
     pe.find_stub = stub_finder(*options);
     pe.say = [&](std::string_view line) { said.emplace_back(line); };
     const source::pe_writer::Result r = source::pe_writer::reconstruct(*regedit, dir.path(), pe);

@@ -1,6 +1,6 @@
 // Tests of the whole-file writer of 16-bit programs over a real one: lzexpand.dll (Windows 95's LZ decompressor, six code segments, 2242
-// instructions, relocation chains of every kind). The program is read and its code found without an assembler; written back it needs NASM
-// (settings: nasm, or CB_NASM) and those tests are skipped where there is none. The golden source (testdata/writers/ne_lzexpand.golden.asm)
+// instructions, relocation chains of every kind). The program is read and its code found without an assembler; written back it is assembled by x86asm,
+// in this process. The golden source (testdata/writers/ne_lzexpand.golden.asm)
 // is what the writer wrote when it was recorded; it was read through -- the head, a segment's functions, a
 // relocation chain, the segment table, the relocation table -- and, more to the point, the test builds it again and holds it to the
 // original byte for byte.
@@ -17,18 +17,6 @@
 
 namespace cb::source::ne_writer {
 namespace {
-
-std::optional<std::filesystem::path> assembler_for_ne_tests() {
-    if (const auto env = fs::get_env("CB_NASM"); env && !env->empty()) return fs::from_text(*env);
-    try {
-        const config::Config main = config::Config::load(config::current().main_checkout());
-        if (const auto configured = main.path("nasm"); configured && std::filesystem::is_regular_file(*configured)) return configured;
-        const std::filesystem::path built = main.checkout_root() / "native" / "nasm" / "build" / "bin" / "nasm.exe";
-        if (std::filesystem::is_regular_file(built)) return built;
-    } catch (const Error&) {   // (no configuration to read: no assembler to test against)
-    }
-    return std::nullopt;
-}
 
 std::filesystem::path lzexpand() { return testing::data_path("formats/testdata/lzexpand.dll"); }
 
@@ -93,11 +81,9 @@ CB_TEST("source.ne_writer.a_place_a_relocation_patches_inside_an_instruction_is_
 });
 
 CB_TEST("source.ne_writer.the_program_builds_back_the_same_and_the_source_is_what_the_original_writer_wrote", [] {
-    const auto nasm = assembler_for_ne_tests();
-    if (!nasm) return;   // (no assembler on this machine)
     fs::ScopedTempDir dir("cb_ne_writer");
     std::vector<std::string> said;
-    const Result r = reconstruct(lzexpand(), dir.path(), {.nasm = *nasm, .say = [&](std::string_view line) { said.emplace_back(line); }});
+    const Result r = reconstruct(lzexpand(), dir.path(), {.say = [&](std::string_view line) { said.emplace_back(line); }});
     CB_CHECK(r.same);
     CB_CHECK(r.image.has_value());
     CB_CHECK_EQ(r.instructions, 2242u);
@@ -110,25 +96,21 @@ CB_TEST("source.ne_writer.the_program_builds_back_the_same_and_the_source_is_wha
 });
 
 CB_TEST("source.ne_writer.a_stub_given_as_bytes_is_included_in_front_of_the_header", [] {
-    const auto nasm = assembler_for_ne_tests();
-    if (!nasm) return;
     fs::ScopedTempDir dir("cb_ne_writer");
     // the program's DOS stub is what lies before its new header
     const Bytes file = fs::read_file(lzexpand());
     const std::size_t stub_size = Image::open(lzexpand()).module().ne_offset();
     fs::write_file(dir.path() / "stub.bin", ByteView(file).first(stub_size));
-    const Result r = reconstruct(lzexpand(), dir.path() / "out", {.nasm = *nasm, .stub = dir.path() / "stub.bin"});
+    const Result r = reconstruct(lzexpand(), dir.path() / "out", {.stub = dir.path() / "stub.bin"});
     CB_CHECK(r.same);
     CB_CHECK(fs::read_text(r.source).find("incbin \"") != std::string::npos);
     // and KeepStub writes the stub as data
-    const Result kept = reconstruct(lzexpand(), dir.path() / "kept", {.nasm = *nasm, .stub = KeepStub{}});
+    const Result kept = reconstruct(lzexpand(), dir.path() / "kept", {.stub = KeepStub{}});
     CB_CHECK(kept.same);
     CB_CHECK(fs::read_text(kept.source).find("incbin") == std::string::npos);
 });
 
 CB_TEST("source.ne_writer.the_stub_finder_is_asked_with_the_file_and_where_its_header_is", [] {
-    const auto nasm = assembler_for_ne_tests();
-    if (!nasm) return;
     fs::ScopedTempDir dir("cb_ne_writer");
     std::size_t asked_size = 0;
     std::uint64_t asked_header = 0;
@@ -137,7 +119,7 @@ CB_TEST("source.ne_writer.the_stub_finder_is_asked_with_the_file_and_where_its_h
         asked_header = header;
         return std::optional<std::filesystem::path>();   // (no source for the stub: its bytes are kept)
     };
-    const Result r = reconstruct(lzexpand(), dir.path(), {.nasm = *nasm, .find_stub = finder});
+    const Result r = reconstruct(lzexpand(), dir.path(), {.find_stub = finder});
     CB_CHECK(r.same);
     CB_CHECK_EQ(asked_size, fs::read_file(lzexpand()).size());
     CB_CHECK_EQ(asked_header, Image::open(lzexpand()).module().ne_offset());
@@ -155,12 +137,11 @@ CB_TEST("source.ne_writer.the_command_prints_what_was_done_and_exits_by_whether_
     std::vector<std::string> lines;
     const auto say = [&](std::string_view line) { lines.emplace_back(line); };
     fs::ScopedTempDir dir("cb_ne_writer");
-    Environment env{.nasm = assembler_for_ne_tests().value_or(dir.path() / "no-nasm.exe"), .state = dir.path() / "state", .find_stub = nullptr};
+    Environment env{.state = dir.path() / "state", .find_stub = nullptr};
     // no program named: the usage, and exit 2
     CB_CHECK_EQ(command({}, env, say), 2);
     CB_CHECK(!lines.empty() && lines.back().find("ne-source <program> [--out DIR] [--keep-stub]") != std::string::npos);
     CB_CHECK_THROWS_AS(UsageError, command(std::vector<std::string>{"x.dll", "--out"}, env, say));
-    if (!assembler_for_ne_tests()) return;
     lines.clear();
     const std::vector<std::string> args = {fs::to_text(lzexpand()), "--keep-stub", "--out", fs::to_text(dir.path() / "o")};
     CB_CHECK_EQ(command(args, env, say), 0);

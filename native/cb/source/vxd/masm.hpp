@@ -12,7 +12,7 @@
 // So a byte difference can only come from the assembler choosing another legal encoding than the compiler did (A1 or 8B for a
 // moffs load, imm8 or imm32, rel8 or rel32); the report lists exactly those.
 //
-// The assemblers are MASM-compatible: a nasm built with --masm, or MASM 6.11d for Windows (both run directly), or the period
+// The assemblers are MASM-compatible: x86asm (NASM's MASM mode, built in), or MASM 6.11d for Windows (both run directly), or the period
 // ML.EXE under DOS, which the caller supplies as a `PeriodAssembler` because running DOS is not this module's business.
 //
 //     const Emission code(Disassembly::run(driver, names), names);
@@ -164,28 +164,22 @@ struct Assembled {
 using PeriodAssembler = std::function<std::vector<Assembled>(std::span<const std::string> texts)>;
 
 struct Toolchain {
-    std::optional<std::filesystem::path> nasm;          // a nasm built with --masm that keeps the case of PUBLIC names
+    bool x86asm = false;                                // x86asm, CodeBreaker's own assembler (NASM's MASM mode), in this process; `standard` sets it
     std::optional<std::filesystem::path> native_ml;     // MASM 6.11d for Windows
     std::filesystem::path include_dir;                  // the DDK's INC32
     PeriodAssembler period;                             // the fallback; none: no assembler when the two above are missing
 
-    // The tools as this machine has them: `nasm_setting` (the configured nasm), else NASM_MASM, else nasm-masm or nasm on
-    // PATH, whichever passes the probe; MASM 6.11d from the NT 3.51 DDK under `checkout_root`/toolchains, else the Win95 DDK's
-    // MASM611C. CB_FORCE_ML leaves both out, to pin the authentic period assembler.
-    static Toolchain standard(const DdkFolders& ddk, const std::filesystem::path& checkout_root,
-                              const std::optional<std::string>& nasm_setting, PeriodAssembler period = {});
+    // The tools as this machine has them: x86asm always; MASM 6.11d from the NT 3.51 DDK under `checkout_root`/toolchains, else
+    // the Win95 DDK's MASM611C. CB_FORCE_ML leaves x86asm and MASM out, to pin the authentic period assembler.
+    static Toolchain standard(const DdkFolders& ddk, const std::filesystem::path& checkout_root, PeriodAssembler period = {});
 };
 
-// The first of the candidates that is a nasm accepting --masm, writing COFF and keeping the case of PUBLIC names (the convergence
-// finds drift by `public Q<off>` symbols, so a nasm that folds the case would fail every lookup).
-std::optional<std::filesystem::path> probe_nasm(const std::vector<std::filesystem::path>& candidates);
-
-// Assemble MASM text to a COFF object with the best assembler the toolchain has: nasm, else MASM 6.11d, else the period one.
+// Assemble MASM text to a COFF object with the best assembler the toolchain has: x86asm, else MASM 6.11d, else the period one.
 Assembled assemble_coff(const Toolchain& tools, std::string_view masm_text);
 // Many texts; with the period assembler they share its sessions.
 std::vector<Assembled> assemble_coff_batch(const Toolchain& tools, std::span<const std::string> texts);
 
-// Assemble source that includes the DDK's macro headers (`include vmm.inc`): only MASM does, so nasm is not tried. MASM 6.11d, else the
+// Assemble source that includes the DDK's macro headers (`include vmm.inc`): only MASM does, so x86asm is not tried. MASM 6.11d, else the
 // period assembler.
 std::vector<Assembled> assemble_macro_batch(const Toolchain& tools, std::span<const std::string> texts);
 

@@ -28,7 +28,7 @@ del /q "%REL%\%NAME%.tar"
 
 mkdir "%OUT%\bin"
 for %%F in (codebreaker.exe unicorn.dll capstone.dll libz3.dll) do copy /y "%EXE%\%%F" "%OUT%\bin\" >nul || exit /b 1
-for %%D in (decompiler l2 dosexec xex symbols invert formats engine analyze nasm) do (
+for %%D in (decompiler l2 dosexec xex symbols invert formats engine analyze) do (
     if exist "%ROOT%\native\%%D\build\bin" (
         mkdir "%OUT%\native\%%D\build\bin" 2>nul
         for %%X in (exe dll) do if exist "%ROOT%\native\%%D\build\bin\*.%%X" copy /y "%ROOT%\native\%%D\build\bin\*.%%X" "%OUT%\native\%%D\build\bin\" >nul

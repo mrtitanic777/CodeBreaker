@@ -224,6 +224,16 @@ CB_TEST("decompile.c_text_dos.a_local_read_through_a_cast_is_a_pointer_and_one_n
     CB_CHECK(ctdt_has(r.text, "  xunknown2 *xStack_6;\n"));   // (`(T *)*x` is a cast and a read, not a product)
 });
 
+CB_TEST("decompile.c_text_dos.the_compilers_stack_probe_is_not_the_sources", [] {
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void)\n\n{\n  \n  _chkstk();\n  *(int2 *)0x50ac = 0x174;\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(!ctdt_has(r.text, "_chkstk();"));
+    CB_CHECK(ctdt_has(r.text, "= 0x174;"));
+    CB_CHECK_EQ(r.report.stack_probes, std::size_t{1});
+});
+
 CB_TEST("decompile.c_text_dos.a_far_offset_cast_then_stepped_keeps_its_cast", [] {
     const std::string text =
         "/* T.EXE */\n\n"

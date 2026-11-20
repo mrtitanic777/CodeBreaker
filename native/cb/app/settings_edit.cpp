@@ -23,7 +23,6 @@ struct StWords {
 };
 
 constexpr StWords kStWords[] = {
-    {"nasm", "NASM assembler", "The nasm program that assembles rebuilt source."},
     {"openwatcom", "OpenWatcom folder", "The compiler that builds C source back into programs."},
     {"masm", "MASM assembler", "Microsoft's assembler, for source that needs it."},
     {"msc6", "Microsoft C 6", "The period compiler for 16-bit Windows code."},

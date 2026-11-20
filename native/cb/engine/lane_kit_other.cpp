@@ -42,11 +42,10 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::driver_lane() {
 
     verify::lanes::DriverLaneSpec spec;
     // The driver written back as assembly source (one NASM file that assembles to the file) and built by the assembler.
-    const std::filesystem::path nasm = config.path("nasm").value_or(std::filesystem::path());
-    spec.writer = [nasm](const stdfs::path& module, const stdfs::path& out_dir) {
+    spec.writer = [](const stdfs::path& module, const stdfs::path& out_dir) {
         verify::lanes::Written w;
         fs::make_dirs(out_dir);
-        const source::le_writer::Result r = source::le_writer::reconstruct(module, out_dir, {.nasm = nasm});
+        const source::le_writer::Result r = source::le_writer::reconstruct(module, out_dir, {});
         w.source = r.source;
         w.linked = r.image.has_value();
         w.same = r.same;
