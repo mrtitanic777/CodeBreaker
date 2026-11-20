@@ -29,15 +29,15 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 extern void             InitCmdFile( void );
 extern void             SetSegMask(void);
 extern char             *GetNextLink( void );
 extern void             DoCmdFile( const char * );
-extern void             Syntax( void );
 extern void             FreePaths( void );
 extern void             Burn( void );
-extern void             Ignite( void );
 extern void             SetFormat( void );
 extern void             AddFmtLibPaths( void );
 extern bool             HintFormat( exe_format );
@@ -51,4 +51,3 @@ extern void             AddLibPaths( const char *, size_t, bool );
 extern void             AddLibPathsToEnd( const char * );
 extern void             AddLibPathsToEndList( const char *list );
 extern int              DoBuffCmdParse( const char *cmd );
-extern char             *CmdFileName( void );

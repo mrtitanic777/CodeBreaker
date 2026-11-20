@@ -135,3 +135,21 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
       handler, the formats it is valid for), the matching (`ProcOne`, `MatchOne`) and the handlers of cmdall, cmdline and
       each format's file, writing typed `Options` in the `Link` rather than FmtData's union.
    4. Then the object reader, symbols, layout, fixups and each format, as the table above, each against both corpora.
+
+   **The directive language is typed C++ (2026-11-20; Logan: "All at once").** wlink's cmd*.c (13 files, 9,616 lines with
+   their headers) are `src/build/x86link/directives/` (6,466 lines), compiled into cb_wlink:
+   - `reader` (Source, the token, the sources' stack: positions into each source's own std::string, `@file`, `%ENV%`,
+     `^`, escapes, double-byte; every source read whole) and `language` (typed keyword tables of `Entry`, matching,
+     lists with wildcards and `{...}`, numbers, versions; the flags as `enum class Flag`);
+   - `state` (what reading a link's directives keeps, one `State` per run of the linker: the reader, the flags, the
+     file list, the executable's name, the system blocks, the link commands, what the common directives carry);
+   - `common` (cmdall.c), `driver` (cmdline.c), and one file per format: `dos`, `os2` (OS/2, Windows, NT, VxD),
+     `novell`, `phar`, `dos16m`, `qnx`, `elf`, `rdos`, `raw`, and `help`.
+   The rest of wlink calls the same 18 functions as before (cmdline.h, cmdall.h, cmdnov.h, cmdelf.h); msg.cpp reads the
+   message location and loadphar.cpp `runtime realbreak` through `state.hpp`. wlink's headers gained `#pragma once`
+   (but globals.h and specials.h, which global.cpp includes twice to define the globals). Both corpora are as before:
+   the gate 47 of 47, the directive corpus 1,749 of 1,929 with nothing newly different. One wlink bug fixed on the way:
+   the map's "Stub file: none" read the OS/2 family's `no_stub` for every format (FmtData.u is a union), so a Netware
+   link with `option messages` had it or not as the heap fell. Two behaviours changed on purpose: every source is
+   read whole (the line-by-line reading of command files over 64K is gone), and a link handed no command reads an
+   empty one (wlink read the host process's command line: in codebreaker.exe, CodeBreaker's own).

@@ -29,6 +29,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 extern void     CVInit( void );
 extern void     CVInitModule( mod_entry * );

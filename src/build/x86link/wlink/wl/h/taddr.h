@@ -29,6 +29,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 typedef signed_32   soffset;
 typedef unsigned_32 offset;

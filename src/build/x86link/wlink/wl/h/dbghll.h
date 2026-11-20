@@ -28,6 +28,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 extern void     HllInit( void );
 extern void     HllInitModule( mod_entry * );

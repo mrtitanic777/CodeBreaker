@@ -1,0 +1,1099 @@
+// build/x86link/directives/os2.cpp -- OS/2, Windows, Windows NT and VxD directives: the options, `export`, `import`,
+// `segment`, `commit`, `runtime` and `format` (a port of wlink's cmdos2.c).
+#include <cstdint>
+#include <string>
+#include <string_view>
+
+#include "build/x86link/directives/common.hpp"
+#include "build/x86link/directives/formats.hpp"
+#include "build/x86link/directives/state.hpp"
+#include "cmdline.h"
+#include "exepe.h"
+#include "fileio.h"
+#include "impexp.h"
+#include "loados2.h"
+#include "loadpe.h"
+#include "objfree.h"
+#include "objpass1.h"
+
+#ifdef _OS2
+
+namespace cb::x86link::directives {
+
+void SetOS2Fmt() {
+    // set up the structures needed to be able to process something in OS/2 mode.
+    if (LinkState & LS_FMT_INITIALIZED) return;
+    LinkState |= LS_FMT_INITIALIZED;
+    FmtData.def_ext = E_LOAD;
+    FmtData.u.os2fam.flags = (seg_flags_type)(MULTIPLE_AUTO_DATA);
+    FmtData.u.os2fam.heapsize = 0;
+    FmtData.u.os2fam.segment_shift = 0;
+    FmtData.u.os2fam.module_name = nullptr;
+    FmtData.u.os2fam.stub_file_name = nullptr;
+    FmtData.u.os2fam.seg_flags = nullptr;
+    FmtData.description = nullptr;
+    FmtData.u.os2fam.exports = nullptr;
+    FmtData.u.os2fam.old_lib_name = nullptr;
+    if (FmtData.type & MK_WIN_NE) {
+        FmtData.def_seg_flags |= SEG_PRELOAD;
+    }
+    ChkBase(_64K);
+}
+
+void FreeOS2Fmt() {
+    MemFree(FmtData.u.os2fam.stub_file_name);
+    MemFree(FmtData.u.os2fam.module_name);
+    MemFree(FmtData.u.os2fam.old_lib_name);
+    MemFree(FmtData.description);
+    FreeImpNameTab();
+    FreeExportList();
+    FreeSegFlags(FmtData.u.os2fam.seg_flags);
+}
+
+namespace {
+
+entry_export* ProcWlibDLLImportEntry() {
+    Reader& r = reader();
+    std::string symname = r.str();
+    std::string internal;
+    bool have_internal = false;
+    if (!r.get(Sep::dot_ext, Want::normal)) {
+        return nullptr;
+    }
+    std::uint16_t ordinal = 0;
+    if (r.get(Sep::dot_ext, Want::normal)) {
+        if (number16(ordinal) != Number::ok) {
+            if (r.text().size() > 0) {
+                internal = symname;
+                have_internal = true;
+                symname = r.str();
+            }
+            if (r.get(Sep::dot_ext, Want::normal) && number16(ordinal) != Number::ok) {
+                if (r.get(Sep::dot_ext, Want::normal)) {
+                    number16(ordinal);
+                }
+            }
+        }
+    }
+    entry_export* exp = AllocExport(symname.c_str(), symname.size());
+    if (any(cmd_flags() & Flag::anonymous_export)) exp->isanonymous = true;
+    if (have_internal) {
+        exp->sym = SymOp(ST_CREATE_REFERENCE, internal.c_str(), internal.size());
+    } else {
+        exp->sym = SymOp(ST_CREATE_REFERENCE, symname.c_str(), symname.size());
+    }
+    exp->sym->info |= SYM_1_DCE_REF;    // make sure it isn't removed
+    exp->ordinal = ordinal;
+    if (ordinal == 0) {
+        exp->isresident = true;         // no ord spec'd so must be resident
+    }
+    return exp;
+}
+
+bool GetWlibImports() {
+    // read in a wlib command file, get the import directives, and treat them as exports
+    Reader& r = reader();
+    const std::string_view name = r.text();
+    char* fname = FileName(name.data(), name.size(), E_LBC, false);
+    f_handle handle = QOpenR(fname);
+    r.push_file(handle, fname);
+    MemFree(fname);
+    r.lock(true);       // make sure only this file parsed
+    while (r.get(Sep::space, Want::normal)) {
+        if (r.text().size() <= 2) continue;
+        if (r.at(0) == '+' && r.at(1) == '+') {
+            r.drop_front(2);
+            if (r.at(0) == '\'') {
+                r.push_back();
+                if (!r.get(Sep::quote, Want::normal)) {
+                    LnkMsg(ERR + LOC + LINE + MSG_BAD_WLIB_IMPORT, nullptr);
+                    r.pop();    // get rid of this file
+                    return true;
+                }
+            }
+            entry_export* exp = ProcWlibDLLImportEntry();
+            if (exp == nullptr) {
+                LnkMsg(ERR + LOC + LINE + MSG_BAD_WLIB_IMPORT, nullptr);
+                r.pop();        // get rid of this file
+                return true;
+            }
+            AddToExportList(exp);
+        }
+    }
+    r.lock(false);
+    return true;
+}
+
+// ---- "OPtion" directive
+
+bool ProcNoStub() {
+    FmtData.u.os2fam.no_stub = true;
+    return true;
+}
+
+bool ProcSingle() {
+    if (any(cmd_flags() & Flag::auto_segment_flag)) {
+        LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
+    FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
+    return true;
+}
+
+bool ProcMultiple() {
+    if (any(cmd_flags() & Flag::auto_segment_flag)) {
+        LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.flags &= ~SINGLE_AUTO_DATA;
+    FmtData.u.os2fam.flags |= MULTIPLE_AUTO_DATA;
+    return true;
+}
+
+bool ProcNone() {
+    if (any(cmd_flags() & Flag::auto_segment_flag)) {
+        LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.flags &= ~(SINGLE_AUTO_DATA | MULTIPLE_AUTO_DATA);
+    return true;
+}
+
+bool ProcOldLibrary() {
+    if (!have_equals(Want::file_name)) return false;
+    const std::string_view t = reader().text();
+    FmtData.u.os2fam.old_lib_name = FileName(t.data(), t.size(), E_DLL, false);
+    return true;
+}
+
+bool ProcModName() {
+    Reader& r = reader();
+    if (!have_equals(Want::include_dot)) return false;
+    r.push_back();
+    if (!r.get(Sep::none, Want::normal)) {
+        r.get(Sep::none, Want::include_dot);
+    }
+    const std::string_view t = r.text();
+    FmtData.u.os2fam.module_name = MemToStringSafe(t.data(), t.size());
+    return true;
+}
+
+bool ProcNewFiles() {
+    FmtData.u.os2fam.flags |= LONG_FILENAMES;
+    return true;
+}
+
+bool ProcProtMode() {
+    FmtData.u.os2fam.flags |= PROTMODE_ONLY;
+    return true;
+}
+
+// CodeBreaker: the header says no application type (as KERNEL's does)
+bool ProcNoAppType() {
+    FmtData.u.os2fam.flags |= NO_APP_TYPE;
+    return true;
+}
+
+// CodeBreaker: the stub as it is, its header too (KRNL386's real-mode start steps back over a header of exactly 20h
+// paragraphs) -- only its NE offset (3Ch) is filled in
+bool ProcStubVerbatim() {
+    FmtData.u.os2fam.stub_verbatim = true;
+    return true;
+}
+
+// CodeBreaker: a reference to a place in the module itself as the segment's number -- never through the entry table,
+// movable segment or not -- and a far pointer to one as its offset, written in, with only its selector left to the
+// loader (as KRNL386 has them: it relocates itself before there is an entry table to go through)
+bool ProcSelectorFixups() {
+    FmtData.u.os2fam.selector_fixups = true;
+    return true;
+}
+
+bool ProcNoStdCall() {
+    FmtData.u.pe.no_stdcall = true;
+    return true;
+}
+
+bool ProcRWRelocCheck() {
+    // check for segment relocations pointing to read/write data segments
+    FmtData.u.os2fam.chk_seg_relocs = true;
+    return true;
+}
+
+bool ProcSelfRelative() {
+    FmtData.u.os2fam.gen_rel_relocs = true;
+    return true;
+}
+
+bool ProcInternalRelocs() {
+    // in case someone wants internal relocs generated.
+    FmtData.u.os2fam.gen_int_relocs = true;
+    return true;
+}
+
+bool ProcToggleRelocsFlag() {
+    // Rational wants internal relocs generated, but wants the "no internal relocs" flag set
+    FmtData.u.os2fam.toggle_relocs = true;
+    return true;
+}
+
+bool ProcLinkVersion() {
+    Version vb;
+    // set required limits, 0 = no limit
+    vb.major = 255;
+    vb.minor = 255;
+    vb.revision = 0;
+    vb.what = "LINKVERSION";
+    if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
+        FmtData.u.pe.lnk_specd = true;
+        FmtData.u.pe.linkmajor = vb.major;
+        FmtData.u.pe.linkminor = vb.minor;
+        return true;
+    }
+    return false;
+}
+
+bool ProcOsVersion() {
+    Version vb;
+    // set required limits, 0 = no limit
+    vb.major = 0;
+    vb.minor = 99;          // from old default of 100 max
+    vb.revision = 0;
+    vb.what = "OSVERSION";
+    if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
+        FmtData.u.pe.osv_specd = true;
+        FmtData.u.pe.osmajor = vb.major;
+        FmtData.u.pe.osminor = vb.minor;
+        return true;
+    }
+    return false;       // error has occurred
+}
+
+bool ProcChecksum() {
+    FmtData.u.pe.checksumfile = true;
+    return true;
+}
+
+bool ProcLargeAddressAware() {
+    FmtData.u.pe.largeaddressaware = true;
+    FmtData.u.pe.nolargeaddressaware = false;
+    return true;
+}
+
+bool ProcNoLargeAddressAware() {
+    FmtData.u.pe.nolargeaddressaware = true;
+    FmtData.u.pe.largeaddressaware = false;
+    return true;
+}
+
+bool ProcMixed1632() {
+    // Sometimes it's useful to mix 16-bit and 32-bit code/data into one segment, specially for OS/2 Device Drivers
+    LinkFlags &= ~LF_FAR_CALLS_FLAG;    // must be turned off for mixed code
+    FmtData.u.os2fam.mixed1632 = true;
+    return true;
+}
+
+constexpr Entry MainOptions[] = {
+    {"NOSTUB",              ProcNoStub,                 MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
+    {"ONEautodata",         ProcSingle,                 MK_NE | MK_OS2_FLAT,                        Flag::auto_segment_flag},
+    {"MANYautodata",        ProcMultiple,               MK_NE | MK_OS2_FLAT,                        Flag::auto_segment_flag},
+    {"NOAutodata",          ProcNone,                   MK_NE,                                      Flag::auto_segment_flag},
+    {"OLDlibrary",          ProcOldLibrary,             MK_NE | MK_OS2_FLAT | MK_PE},
+    {"MODName",             ProcModName,                MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
+    {"NEWFiles",            ProcNewFiles,               MK_OS2_NE},
+    {"PROTmode",            ProcProtMode,               MK_NE},
+    {"NOAPPType",           ProcNoAppType,              MK_NE},
+    {"SELECTORFixups",      ProcSelectorFixups,         MK_NE},
+    {"STUBVERBatim",        ProcStubVerbatim,           MK_NE},
+    {"NOSTDCall",           ProcNoStdCall,              MK_PE},
+    {"RWReloccheck",        ProcRWRelocCheck,           MK_WIN_NE},
+    {"SELFrelative",        ProcSelfRelative,           MK_OS2_LX},
+    {"INTernalrelocs",      ProcInternalRelocs,         MK_OS2_LX},
+    {"TOGglerelocsflag",    ProcToggleRelocsFlag,       MK_OS2_LX},
+    {"LINKVersion",         ProcLinkVersion,            MK_PE},
+    {"OSVersion",           ProcOsVersion,              MK_PE},
+    {"CHECKSUM",            ProcChecksum,               MK_PE},
+    {"LARGEaddressaware",   ProcLargeAddressAware,      MK_PE},
+    {"NOLARGEaddressaware", ProcNoLargeAddressAware,    MK_PE},
+    {"MIXed1632",           ProcMixed1632,              MK_OS2_FLAT | MK_WIN_VXD},
+};
+
+// ---- "RESource" directive
+
+bool AddResource() {
+    const std::string_view t = reader().text();
+    char* str = MemToStringSafe(t.data(), t.size());
+    DoAddResource(str);
+    MemFree(str);
+    return true;
+}
+
+// ---- "IMPort" directive
+
+bool getimport() {
+    Reader& r = reader();
+    const std::string intname = r.str();
+    if (!r.get(Sep::none, Want::normal)) {
+        return false;
+    }
+    const std::string modname = r.str();
+    std::uint16_t ordinal = 0;
+    length_name intn = {intname.size(), intname.c_str()};
+    length_name modn = {modname.size(), modname.c_str()};
+    if (r.get(Sep::period, Want::include_dot)) {
+        const Number state = number16(ordinal);
+        if (state == Number::too_big) {
+            LnkMsg(LOC + LINE + MSG_IMPORT_ORD_INVALID + ERR, nullptr);
+        } else if (state == Number::ok) {
+            HandleImport(&intn, &modn, nullptr, ordinal);
+        } else if (state == Number::not_a_number) {
+            const std::string_view t = r.text();
+            length_name extname = {t.size(), t.data()};
+            HandleImport(&intn, &modn, &extname, IMP_BY_NAME);
+        }
+    } else {
+        HandleImport(&intn, &modn, &intn, IMP_BY_NAME);
+    }
+    return true;
+}
+
+// ---- "EXPort" directive
+
+bool ProcExpResident() {
+    FmtData.u.os2fam.exports->isresident = true;
+    return true;
+}
+
+bool ProcPrivate() {
+    FmtData.u.os2fam.exports->isprivate = true;
+    return true;
+}
+
+// CodeBreaker: NODATA, as in a .def file -- the export keeps its caller's data segment
+bool ProcExpNoData() {
+    FmtData.u.os2fam.exports->isnodata = true;
+    return true;
+}
+
+constexpr Entry Exp_Keywords[] = {
+    {"RESident",    ProcExpResident,    MK_NE | MK_OS2_FLAT},
+    {"NODATA",      ProcExpNoData,      MK_NE},
+    {"PRIVATE",     ProcPrivate,        MK_NE | MK_OS2_FLAT | MK_PE},
+};
+
+bool getexport() {
+    Reader& r = reader();
+    std::uint16_t val16;
+    std::uint32_t val32;
+
+    const std::string_view name = r.text();
+    entry_export* exp = AllocExport(name.data(), name.size());
+    if (any(cmd_flags() & Flag::anonymous_export)) exp->isanonymous = true;
+    if (r.get(Sep::period, Want::include_dot)) {
+        if (number(val32) != Number::ok) {
+            LnkMsg(ERR + LOC + LINE + MSG_EXPORT_ORD_INVALID, nullptr);
+            MemFree(exp);
+            r.get(Sep::equals, Want::include_dot);
+            return true;
+        }
+        exp->ordinal = val32;
+    }
+    if (r.get(Sep::equals, Want::include_dot)) {
+        const std::string_view s = r.text();
+        exp->sym = SymOp(ST_CREATE_REFERENCE, s.data(), s.size());
+        if (r.get(Sep::equals, Want::include_dot)) {
+            const std::string_view i = r.text();
+            exp->impname = MemToStringSafe(i.data(), i.size());
+        }
+    } else {
+        exp->sym = RefISymbol(exp->name.u.ptr);
+    }
+    exp->sym->info |= SYM_1_DCE_REF;        // make sure it is not removed
+    if (exp->ordinal == 0) {
+        exp->isresident = true;             // no ordinal spec'd so must be kept resident
+    }
+    exp->next = FmtData.u.os2fam.exports;   // put in the front of the list for
+    FmtData.u.os2fam.exports = exp;         // now so ProcResidant can get to it.
+    while (process_one(Exp_Keywords, Sep::none)) {
+        /* nothing */
+    }
+    FmtData.u.os2fam.exports = exp->next;   // take it off the list
+    exp->iopl_words = 0;
+    if ((FmtData.type & (MK_WIN_NE | MK_PE)) == 0 && r.get(Sep::none, Want::include_dot)) {
+        if (number16(val16) == Number::ok) {
+            if (val16 > 63) {
+                LnkMsg(LOC + LINE + MSG_TOO_MANY_IOPL_WORDS + ERR, nullptr);
+            } else {
+                if (val16 & 1) {
+                    LnkMsg(WRN + LOC + LINE + MSG_IOPL_BYTES_ODD, nullptr);
+                }
+                // The linker takes bytes as input!
+                exp->iopl_words = val16 / 2;
+            }
+        } else {
+            r.push_back();      // reprocess the token.
+        }
+    }
+    AddToExportList(exp);
+    return true;
+}
+
+// ---- "SEGment" directive
+
+bool ProcOS2Class() {
+    FmtData.u.os2fam.seg_flags->type = SEGFLAG_CLASS;
+    return true;
+}
+
+bool ProcSegCode() {
+    FmtData.u.os2fam.seg_flags->type = SEGFLAG_CODE;
+    return true;
+}
+
+bool ProcSegData() {
+    FmtData.u.os2fam.seg_flags->type = SEGFLAG_DATA;
+    return true;
+}
+
+constexpr Entry SegTypeDesc[] = {
+    {"CODE", ProcSegCode, MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
+    {"DATA", ProcSegData, MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
+};
+
+bool ProcSegType() {
+    if (!process_one(SegTypeDesc, Sep::none)) {
+        LnkMsg(WRN + LOC + LINE + MSG_INVALID_TYPE_DESC, nullptr);
+    }
+    return true;
+}
+
+bool ProcPreload() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_PRELOAD) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags |= SEG_PRELOAD;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_PRELOAD;
+    return true;
+}
+
+bool ProcLoadoncall() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_PRELOAD) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_PRELOAD;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_PRELOAD;
+    return true;
+}
+
+bool ProcIopl() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_IOPL_SPECD) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    SET_SEG_PMODE_DPL(FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_2);
+    FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
+    return true;
+}
+
+bool ProcNoIopl() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_IOPL_SPECD) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    SET_SEG_PMODE_DPL(FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_3);
+    FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
+    return true;
+}
+
+bool ProcExecuteonly() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_READ_ONLY;
+    return true;
+}
+
+bool ProcExecuteread() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_READ_ONLY;
+    return true;
+}
+
+bool ProcShared() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_PURE) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags |= SEG_PURE;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_PURE;
+    return true;
+}
+
+bool ProcNonShared() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_PURE) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_PURE;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_PURE;
+    return true;
+}
+
+bool ProcReadOnly() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
+    return true;
+}
+
+bool ProcReadWrite() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
+    return true;
+}
+
+bool ProcConforming() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_CONFORMING) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags |= SEG_CONFORMING;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_CONFORMING;
+    return true;
+}
+
+bool ProcNonConforming() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_CONFORMING) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_CONFORMING;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_CONFORMING;
+    return true;
+}
+
+bool ProcMovable() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_MOVABLE) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags |= SEG_MOVABLE;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_MOVABLE;
+    return true;
+}
+
+bool ProcFixed() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_MOVABLE) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_MOVABLE;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_MOVABLE;
+    return true;
+}
+
+bool ProcDiscardable() {
+    FmtData.u.os2fam.seg_flags->flags |= SEG_DISCARD;
+    return true;
+}
+
+bool ProcNonDiscardable() {
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_DISCARD;
+    return true;
+}
+
+bool ProcInvalid() {
+    FmtData.u.os2fam.seg_flags->flags |= SEG_INVALID;
+    return true;
+}
+
+bool ProcContiguous() {
+    FmtData.u.os2fam.seg_flags->flags |= SEG_CONTIGUOUS;
+    return true;
+}
+
+bool ProcOS2Dynamic() {
+    return true;
+}
+
+bool ProcPermanent() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags |= SEG_RESIDENT;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
+    return true;
+}
+
+bool ProcNonPermanent() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_RESIDENT;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
+    return true;
+}
+
+bool ProcPageable() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags &= ~SEG_NOPAGE;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
+    return true;
+}
+
+bool ProcNonPageable() {
+    if (FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
+        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+    }
+    FmtData.u.os2fam.seg_flags->flags |= SEG_NOPAGE;
+    FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
+    return true;
+}
+
+constexpr Entry SegDesc[] = {
+    {"Class",   ProcOS2Class,   MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
+    {"TYpe",    ProcSegType,    MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
+};
+
+constexpr Entry SegModel[] = {
+    {"PReload",         ProcPreload,        MK_NE | MK_OS2_FLAT | MK_WIN_VXD},
+    {"LOadoncall",      ProcLoadoncall,     MK_NE | MK_OS2_FLAT | MK_WIN_VXD},
+    {"Iopl",            ProcIopl,           MK_OS2 | MK_WIN_VXD},
+    {"NOIopl",          ProcNoIopl,         MK_OS2 | MK_WIN_VXD},
+    {"EXECUTEOnly",     ProcExecuteonly,    MK_NE | MK_OS2_FLAT},
+    {"EXECUTERead",     ProcExecuteread,    MK_NE | MK_OS2_FLAT},
+    {"SHared",          ProcShared,         MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
+    {"NONShared",       ProcNonShared,      MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
+    {"READOnly",        ProcReadOnly,       MK_NE | MK_OS2_FLAT},
+    {"READWrite",       ProcReadWrite,      MK_NE | MK_OS2_FLAT},
+    {"CONforming",      ProcConforming,     MK_OS2 | MK_WIN_VXD},
+    {"NONConforming",   ProcNonConforming,  MK_OS2 | MK_WIN_VXD},
+    {"MOVeable",        ProcMovable,        MK_NE},
+    {"FIXed",           ProcFixed,          MK_WIN_NE},
+    {"DIScardable",     ProcDiscardable,    MK_WIN_NE | MK_WIN_VXD},
+    {"NONDiscardable",  ProcNonDiscardable, MK_WIN_VXD},
+    {"INValid",         ProcInvalid,        MK_OS2_FLAT},
+    {"RESident",        ProcPermanent,      MK_OS2_FLAT | MK_WIN_VXD},
+    {"CONTiguous",      ProcContiguous,     MK_OS2_FLAT},
+    {"DYNamic",         ProcOS2Dynamic,     MK_OS2_FLAT},
+    {"PERManent",       ProcPermanent,      MK_OS2_FLAT},
+    {"NONPERManent",    ProcNonPermanent,   MK_OS2_FLAT},
+    {"PAGEable",        ProcPageable,       MK_PE},
+    {"NONPageable",     ProcNonPageable,    MK_PE},
+};
+
+bool getsegflags() {
+    Reader& r = reader();
+    r.push_back();
+    seg_flags_struct* seg_flags = (seg_flags_struct*)(MemAllocSafe(sizeof(seg_flags_struct)));
+    seg_flags->specified = (seg_flags_type)(0);
+    seg_flags->flags = FmtData.def_seg_flags;   // default value.
+    seg_flags->name = nullptr;
+    seg_flags->type = SEGFLAG_SEGMENT;
+    seg_flags->next = FmtData.u.os2fam.seg_flags;
+    FmtData.u.os2fam.seg_flags = seg_flags;
+    process_one(SegDesc, Sep::none);            // look for an optional segdesc
+    if (seg_flags->type != SEGFLAG_CODE && seg_flags->type != SEGFLAG_DATA) {
+        if (!r.get(Sep::none, Want::include_dot)) {
+            FmtData.u.os2fam.seg_flags = seg_flags->next;
+            MemFree(seg_flags);
+            return false;
+        }
+        const std::string_view t = r.text();
+        seg_flags->name = MemToStringSafe(t.data(), t.size());
+    }
+    while (process_one(SegModel, Sep::none)) {
+        /* nothing */
+    }
+    return true;
+}
+
+// ---- "COMmit" directive
+
+bool ProcCommitStack() {
+    return get_number(FmtData.u.pe.stackcommit);
+}
+
+bool ProcCommitHeap() {
+    return get_number(FmtData.u.pe.heapcommit);
+}
+
+constexpr Entry CommitKeywords[] = {
+    {"STack",   ProcCommitStack,    MK_PE},
+    {"Heap",    ProcCommitHeap,     MK_PE},
+};
+
+bool AddCommit() {
+    reader().push_back();
+    return process_one(CommitKeywords, Sep::none);
+}
+
+// ---- "RUntime" directive
+
+void GetSubsystemVersion() {
+    Version vb;
+    // set required limits, 0 = no limit
+    vb.major = 0;
+    vb.minor = 0;
+    vb.revision = 0;
+    vb.what = "SUBSYSTEM";
+    if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
+        FmtData.u.pe.sub_specd = true;
+        FmtData.u.pe.submajor = vb.major;
+        FmtData.u.pe.subminor = vb.minor;
+    }
+}
+
+bool ProcRunNative() {
+    FmtData.u.pe.subsystem = PE_SS_NATIVE;
+    GetSubsystemVersion();
+    return true;
+}
+
+bool ProcRunWindows() {
+    FmtData.u.pe.subsystem = PE_SS_WINDOWS_GUI;
+    GetSubsystemVersion();
+    return true;
+}
+
+bool ProcRunConsole() {
+    FmtData.u.pe.subsystem = PE_SS_WINDOWS_CHAR;
+    GetSubsystemVersion();
+    return true;
+}
+
+bool ProcRunPosix() {
+    FmtData.u.pe.subsystem = PE_SS_POSIX_CHAR;
+    GetSubsystemVersion();
+    return true;
+}
+
+bool ProcRunOS2() {
+    FmtData.u.pe.subsystem = PE_SS_OS2_CHAR;
+    GetSubsystemVersion();
+    return true;
+}
+
+bool ProcRunDosstyle() {
+    FmtData.u.pe.subsystem = PE_SS_PL_DOSSTYLE;
+    GetSubsystemVersion();
+    return true;
+}
+
+bool ProcRunRDOS() {
+    FmtData.u.pe.subsystem = PE_SS_RDOS;
+    GetSubsystemVersion();
+    return true;
+}
+
+bool ProcRunEFIBoot() {
+    FmtData.def_ext = E_EFI;
+    FmtData.u.pe.subsystem = PE_SS_EFI_BOOT;
+    GetSubsystemVersion();
+    return true;
+}
+
+constexpr Entry RunOptions[] = {
+    {"NATive",   ProcRunNative,   MK_PE},
+    {"WINdows",  ProcRunWindows,  MK_PE},
+    {"CONsole",  ProcRunConsole,  MK_PE},
+    {"POSix",    ProcRunPosix,    MK_PE},
+    {"OS2",      ProcRunOS2,      MK_PE},
+    {"DOSstyle", ProcRunDosstyle, MK_PE},
+    {"RDOS",     ProcRunRDOS,     MK_PE},
+    {"EFIBoot",  ProcRunEFIBoot,  MK_PE},
+};
+
+// ---- "Format" directive
+
+bool ProcInitGlobal() {
+    FmtData.u.os2fam.flags &= ~INIT_INSTANCE_FLAG;
+    return true;
+}
+
+bool ProcInitInstance() {
+    FmtData.u.os2fam.flags |= INIT_INSTANCE_FLAG;
+    return true;
+}
+
+bool ProcInitThread() {
+    FmtData.u.os2fam.flags |= INIT_THREAD_FLAG;
+    return true;
+}
+
+bool ProcTermGlobal() {
+    FmtData.u.os2fam.flags &= ~TERM_INSTANCE_FLAG;
+    return true;
+}
+
+bool ProcTermInstance() {
+    FmtData.u.os2fam.flags |= TERM_INSTANCE_FLAG;
+    return true;
+}
+
+bool ProcTermThread() {
+    FmtData.u.os2fam.flags |= TERM_THREAD_FLAG;
+    return true;
+}
+
+constexpr Entry Init_Keywords[] = {
+    {"INITGlobal",   ProcInitGlobal,    MK_NE | MK_OS2_FLAT | MK_PE},
+    {"INITInstance", ProcInitInstance,  MK_NE | MK_OS2_FLAT | MK_PE},
+    {"INITThread",   ProcInitThread,    MK_PE},
+};
+
+constexpr Entry Term_Keywords[] = {
+    {"TERMGlobal",   ProcTermGlobal,    MK_OS2_FLAT | MK_PE},
+    {"TERMInstance", ProcTermInstance,  MK_OS2_FLAT | MK_PE},
+    {"TERMThread",   ProcTermThread,    MK_PE},
+};
+
+bool ProcOS2DLL() {
+    FmtData.def_ext = E_DLL;
+    FmtData.dll = true;
+    if (FmtData.type & MK_WIN_NE) {
+        FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
+        FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
+        FmtData.def_seg_flags |= SEG_PURE | SEG_MOVABLE;
+    }
+    if (process_one(Init_Keywords, Sep::none)) {
+        if (!process_one(Term_Keywords, Sep::none)) {
+            if (FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG) {
+                FmtData.u.os2fam.flags |= TERM_INSTANCE_FLAG;
+            }
+        }
+    }
+    return true;
+}
+
+bool ProcLX() {
+    return true;
+}
+
+bool ProcLE() {
+    return true;
+}
+
+bool ProcTNT() {
+    FmtData.u.pe.tnt = true;
+    return true;
+}
+
+constexpr Entry PESubFormats[] = {
+    {"TNT", ProcTNT, MK_PE},
+};
+
+bool ProcPE() {
+    process_one(PESubFormats, Sep::none);
+    FmtData.u.os2fam.heapsize = DEF_VALUE;      // another arbitrary non-zero default
+    FmtData.u.os2fam.segment_shift = 9;         // 512 byte arbitrary rounding
+    FmtData.u.pe.heapcommit = DEF_VALUE;        // arbitrary non-zero default.
+    FmtData.u.pe.stackcommit = DEF_VALUE;
+    return true;
+}
+
+bool ProcDynamicDriver() {
+    FmtData.u.os2fam.flags |= VIRT_DEVICE;
+    return true;
+}
+
+bool ProcStaticDriver() {
+    FmtData.u.os2fam.flags |= PHYS_DEVICE;
+    return true;
+}
+
+constexpr Entry VXDSubFormats[] = {
+    {"DYNamic", ProcDynamicDriver,  MK_WIN_VXD},
+    {"STATic",  ProcStaticDriver,   MK_WIN_VXD},
+};
+
+bool ProcVXD() {
+    process_one(VXDSubFormats, Sep::none);
+    FmtData.dll = true;
+    return true;
+}
+
+bool ProcMemory() {
+    FmtData.u.os2fam.flags |= CLEAN_MEMORY;
+    return true;
+}
+
+bool ProcFont() {
+    FmtData.u.os2fam.flags |= PROPORTIONAL_FONT;
+    return true;
+}
+
+bool ProcPM() {
+    FmtData.u.os2fam.flags |= PM_APPLICATION;
+    return true;
+}
+
+bool ProcPMCompatible() {
+    FmtData.u.os2fam.flags |= PM_COMPATIBLE;
+    return true;
+}
+
+bool ProcPMFullscreen() {
+    FmtData.u.os2fam.flags |= PM_NOT_COMPATIBLE;
+    return true;
+}
+
+bool ProcPhysDevice() {
+    FmtData.def_ext = E_DLL;
+    FmtData.dll = true;
+    FmtData.u.os2fam.flags |= PHYS_DEVICE;
+    return true;
+}
+
+bool ProcVirtDevice() {
+    FmtData.def_ext = E_DLL;
+    FmtData.dll = true;
+    FmtData.u.os2fam.flags |= VIRT_DEVICE;
+    return true;
+}
+
+constexpr Entry WindowsFormatOptions[] = {
+    {"MEMory",      ProcMemory,     MK_WIN_NE},
+    {"FOnt",        ProcFont,       MK_WIN_NE},
+    // VxD module type override: static(0x28000)/dynamic(0x38000) is a build-time property (not derivable from the DDB),
+    // so allow it on `format windows vxd'. VIRTdevice -> dynamic (VXDLDR-loadable), PHYSdevice -> static. Default is
+    // the DDB-driven choice (see loadflat.c), which is static for boot VxDs.
+    {"VIRTdevice",  ProcVirtDevice, MK_WIN_VXD},
+    {"PHYSdevice",  ProcPhysDevice, MK_WIN_VXD},
+};
+
+constexpr Entry WindowsSubFormats[] = {
+    {"DLl", ProcOS2DLL, MK_WIN_NE | MK_PE},
+};
+
+constexpr Entry WindowsFormats[] = {
+    {"NT",  ProcPE,     MK_PE},
+    {"PE",  ProcPE,     MK_PE},
+    {"VXD", ProcVXD,    MK_WIN_VXD},
+};
+
+constexpr Entry OS2SubFormats[] = {
+    {"DLl",          ProcOS2DLL,        MK_OS2},
+    {"PHYSdevice",   ProcPhysDevice,    MK_OS2_FLAT},
+    {"VIRTdevice",   ProcVirtDevice,    MK_OS2_FLAT},
+    {"PM",           ProcPM,            MK_OS2},
+    {"PMCompatible", ProcPMCompatible,  MK_OS2},
+    {"FULLscreen",   ProcPMFullscreen,  MK_OS2},
+};
+
+constexpr Entry OS2Formats[] = {
+    {"FLat",    ProcLX, MK_OS2_LX},
+    {"LE",      ProcLE, MK_OS2_LE},
+    {"LX",      ProcLX, MK_OS2_LX},
+};
+
+}  // namespace
+
+bool ProcOS2Options() {
+    return process_one(MainOptions, Sep::none);
+}
+
+bool ProcOS2NoRelocs() {
+    LinkState &= ~LS_MAKE_RELOCS;
+    return true;
+}
+
+bool ProcOS2Alignment() {
+    // process Alignment option
+    std::uint32_t value;
+    if (!have_equals(Want::normal)) return false;
+    const Number ret = number(value);
+    if (ret != Number::ok || value == 0) {
+        return false;
+    }
+    FmtData.u.os2fam.segment_shift = log2_32(value - 1) + 1;     // round up.
+    return true;
+}
+
+bool ProcOS2HeapSize() {
+    std::uint32_t value;
+    if (!have_equals(Want::normal)) return false;
+    const Number ret = number(value);
+    if (ret != Number::ok || value == 0) {
+        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "HEAPSIZE");
+    } else {
+        FmtData.u.os2fam.heapsize = value;
+    }
+    return true;
+}
+
+bool ProcResource() {
+    return process_list(AddResource, Want::file_name);
+}
+
+bool ProcOS2Import() {
+    return process_list(getimport, Want::normal);
+}
+
+bool ProcOS2Export() {
+    bool retval;
+    if (reader().get(Sep::equals, Want::include_dot)) {
+        retval = GetWlibImports();
+    } else {
+        retval = process_list(getexport, Want::normal);
+    }
+    return retval;
+}
+
+bool ProcAnonExport() {
+    cmd_flags() |= Flag::anonymous_export;
+    const bool retval = ProcOS2Export();
+    cmd_flags() &= ~Flag::anonymous_export;
+    return retval;
+}
+
+bool ProcOS2Segment() {
+    return process_list(getsegflags, Want::include_dot);
+}
+
+bool ProcCommit() {
+    // set NT stack and heap commit sizes.
+    return process_list(AddCommit, Want::include_dot);
+}
+
+bool ProcOS2Runtime() {
+    return process_one(RunOptions, Sep::none);
+}
+
+bool ProcOS2Format() {
+    // process the format os2 or format windows directives
+    FmtData.def_ext = E_LOAD;
+    process_one(OS2Formats, Sep::none);
+    process_one(OS2SubFormats, Sep::none);
+    if (FmtData.type & MK_OS2_LX) {
+        if (FmtData.dll) {
+            FmtData.u.os2fam.gen_int_relocs = true;
+        }
+    }
+    if (FmtData.type & MK_OS2_NE) {     // if no 32-bit thing specd
+        HintFormat(MK_OS2_NE);          // make sure 16-bit is what we get
+        if (FmtData.dll) {
+            FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
+            FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
+        }
+    }
+    return true;
+}
+
+bool ProcWindowsFormat() {
+    // process the format windows directives
+    FmtData.def_ext = E_LOAD;
+    process_one(WindowsFormats, Sep::none);
+    process_one(WindowsSubFormats, Sep::none);
+    if (FmtData.type & (MK_WIN_NE | MK_WIN_VXD)) {
+        while (process_one(WindowsFormatOptions, Sep::none)) {
+            /* nothing */
+        }
+    }
+    return true;
+}
+
+}  // namespace cb::x86link::directives
+
+#endif

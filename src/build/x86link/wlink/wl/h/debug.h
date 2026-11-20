@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 #define _ON             1
 #define _OFF            0

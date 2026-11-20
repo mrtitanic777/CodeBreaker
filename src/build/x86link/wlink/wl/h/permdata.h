@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 #define INC_FILE_SIG_SIZE        36
 #ifdef __QNX__

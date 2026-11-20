@@ -11,13 +11,16 @@
 set(W "${CMAKE_CURRENT_LIST_DIR}")
 
 set(CB_WLINK_SOURCES
-  autogrp carve wcomdef cmd16m cmdall cmddos cmdelf cmdhelp cmdline cmdnov cmdos2 cmdphar cmdrdv cmdraw cmdutils cmdqnx
+  autogrp carve wcomdef
   dbgall dbgcv dbghll dbgdwarf dbginfo debug distrib dosstub global hash ideentry impexp libr libsupp linkutil
   load16m loaddos loadelf loadelf2 loadfile loadflat loadnov loados2 loadpe loadphar loadqnx loadraw loadrdv
   lsymtab mapio mixcache msg objio obj2supp objcalc objfree objnode objomf objorl objpass1 objpass2 objstrip omfreloc
   overlays ovlsupp permdata procfile reloc ring ring2 salloc spillio strtab symmem symtrace toc virtmem wlink wlmem wlnkmsg ntio)
 list(TRANSFORM CB_WLINK_SOURCES PREPEND "${W}/wl/c/")
 list(TRANSFORM CB_WLINK_SOURCES APPEND ".cpp")
+# the directive language, typed C++ in build/x86link/directives (docs/X86LINK_DESIGN.md phase 4b): wlink's cmd*.c
+file(GLOB CB_WLINK_DIRECTIVES CONFIGURE_DEPENDS "${W}/../directives/*.cpp")
+list(APPEND CB_WLINK_SOURCES ${CB_WLINK_DIRECTIVES})
 # OpenWatcom builds these as libraries of their own (orl, wres, three of dwarf/dw, lib_misc): no INSIDE_WLINK
 file(GLOB CB_WLINK_LIBS CONFIGURE_DEPENDS
   "${W}/lib_misc/c/*.cpp" "${W}/dwarf/dw/c/*.cpp" "${W}/orl/c/*.cpp" "${W}/orl/omf/c/*.cpp" "${W}/orl/elf/c/*.cpp" "${W}/orl/coff/c/*.cpp"
@@ -27,7 +30,8 @@ file(GLOB CB_WLINK_WITH CONFIGURE_DEPENDS "${W}/watcom/c/*.cpp" "${W}/rc/rc/c/*.
 
 set(CB_WLINK_INCLUDES
   "${W}/generated" "${W}/cb" "${W}/wl/h" "${W}/dwarf/dw/h" "${W}/orl/h" "${W}/orl/omf/h" "${W}/orl/elf/h" "${W}/orl/coff/h"
-  "${W}/rc/rc/h" "${W}/wres/h" "${W}/lib_misc/h" "${W}/watcom/c" "${W}/trmem" "${W}/watcom/h" "${W}/wl/res")
+  "${W}/rc/rc/h" "${W}/wres/h" "${W}/lib_misc/h" "${W}/watcom/c" "${W}/trmem" "${W}/watcom/h" "${W}/wl/res"
+  "${W}/../../..")   # (src/: the directive layer's headers by their path under it)
 set(CB_WLINK_DEFINES
   _BLDVER=1300 _CYEAR=2026 _BETAVER NDEBUG __FLAT__ _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS __NT__ WIN32_LEAN_AND_MEAN
   _WIN32_WINNT=0x0601 $<IF:$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>,__NT_X64__,__NT_386__>)

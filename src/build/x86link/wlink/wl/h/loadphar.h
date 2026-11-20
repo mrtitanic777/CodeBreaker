@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 // this is the number of segments which the linker defines in the phar lap
 // multisegmented format

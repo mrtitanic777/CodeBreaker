@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 extern bool     CacheOpen( const file_list * );
 extern void     CacheClose( const file_list *, unsigned );

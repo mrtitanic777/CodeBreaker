@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 #include "ar.h"
 
 extern int              CheckLibraryType( file_list *, unsigned long *, bool );

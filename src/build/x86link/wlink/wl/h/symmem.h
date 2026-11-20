@@ -29,6 +29,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 extern void     ResetPermBlocks( void );
 extern void     BasicInitSym( symbol *sym );

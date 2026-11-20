@@ -29,6 +29,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 #define _TargU16toHost( X, Y )  Y = (unsigned_16) (X)
 #define _HostU16toTarg( X, Y )  Y = (unsigned_16) (X)

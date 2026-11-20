@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 typedef enum {
     LF_DWARF_DBI_FLAG       = 0x00000001,   // set if making DWARF debug info

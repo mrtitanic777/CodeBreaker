@@ -1004,10 +1004,12 @@ static const char *getStubName( void )
 /************************************/
 {
 #ifdef _OS2
-    if( FmtData.u.os2fam.no_stub ) {
-        return( "none" );
-    }
+    /* CodeBreaker: no_stub is the OS/2 family's (FmtData.u is a union: for another format it is other data, and
+       Netware's `option messages` pointer made "Stub file: none" come and go with the heap) */
     if( FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+        if( FmtData.u.os2fam.no_stub ) {
+            return( "none" );
+        }
         return( FmtData.u.os2fam.stub_file_name );
     }
 #endif

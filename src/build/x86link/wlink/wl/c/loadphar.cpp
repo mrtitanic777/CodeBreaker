@@ -40,7 +40,7 @@
 #include "dbgall.h"
 #include "fileio.h"
 #include "loadfile.h"
-#include "cmdutils.h"
+#include "build/x86link/directives/state.hpp"   /* CodeBreaker: `runtime realbreak` given */
 
 
 #ifdef _PHARLAP
@@ -437,7 +437,7 @@ void FiniPharLapLoadFile( void )
 void CheckPharLapData( void )
 /***************************/
 {
-    if( (FmtData.type & MK_PHAR_FLAT) && (LinkState & LS_HAVE_16BIT_CODE) && (CmdFlags & CF_HAVE_REALBREAK) == 0 ) {
+    if( (FmtData.type & MK_PHAR_FLAT) && (LinkState & LS_HAVE_16BIT_CODE) && !DirectivesHaveRealBreak() ) {
         LnkMsg( WRN+MSG_NO_REALBREAK_WITH_16BIT, NULL );
     }
 }

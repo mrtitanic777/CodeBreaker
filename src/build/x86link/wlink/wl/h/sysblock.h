@@ -29,14 +29,13 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 typedef struct sysblock {
     struct sysblock     *next;
     char                *name;
     char                commands[1];
 } sysblock;
-
-extern sysblock         *SysBlocks;
-extern sysblock         *LinkCommands;
 
 extern sysblock         *FindSysBlock( const char * );

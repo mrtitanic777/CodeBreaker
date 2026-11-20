@@ -29,6 +29,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 #define DUPBUF_STACK(p,s,l) {char *x=(char *)alloca(l);memcpy(x,s,l);p=x;}
 #define DUPSTR_STACK(p,s,l) {char *x=(char *)alloca(l+1);memcpy(x,s,l);x[l]='\0';p=x;}

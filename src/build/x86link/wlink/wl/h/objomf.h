@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 extern list_of_names    *FindName( unsigned_16 );
 extern unsigned_16      GetIdx( void );

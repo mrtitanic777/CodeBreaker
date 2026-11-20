@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 typedef struct spilladdr {
     unsigned        spilled : 1;    /* memory block is not in RAM (it is spilled to file) */

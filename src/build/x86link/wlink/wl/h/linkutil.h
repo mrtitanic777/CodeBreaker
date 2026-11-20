@@ -29,6 +29,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 typedef void    class_walk_fn( seg_leader * );
 typedef void    mods_walk_fn( mod_entry * );

@@ -30,6 +30,8 @@
 *
 ****************************************************************************/
 
+#pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
+
 
 #define WriteMapLnkMsg(m,...)   LnkMsg( MAP + m, __VA_ARGS__ )
 
