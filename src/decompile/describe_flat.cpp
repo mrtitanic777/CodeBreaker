@@ -349,6 +349,44 @@ bool dos_touches_dx(const std::vector<std::uint16_t>& regs) {
 // caller reads DX straight after calling one, before anything sets it -- a compiler reads DX after a call only for a result
 // that long (C1's sub_0758D: `sub ax, ax / cdq` on one way, a far pointer on the others). Only four is said: two or none
 // is left to the decompiler, which finds those itself. Without it a far pointer came back as its offset alone, 0000:AX.
+// `O` lines: each call through a pointer in a compiler's function (`push si / lcall es:[50E6h] / add sp, 2`) passes the bytes
+// its caller takes off right after it -- Microsoft C's caller removes a call's arguments. Without them the decompiler wrote
+// such a call with none (C1's sub_15A66 called its scanner's ungetc-style callback without the character it hands back).
+static std::vector<std::string> dos_pointer_calls(const formats::dos::Program& program, const analyze::dos_functions::Analysis& found) {
+    std::vector<std::string> lines;
+    std::map<std::uint32_t, Code16> segments;
+    for (auto f = found.functions.begin(); f != found.functions.end(); ++f) {
+        const analyze::dos_functions::Function& fn = f->second;
+        const std::size_t at = fn.address >= program.base ? fn.address - program.base : program.image.size();
+        if (at + 3 > program.image.size() || program.image[at] != 0x55 || program.image[at + 1] != 0x8B || program.image[at + 2] != 0xEC) continue;
+        if (fn.cs > fn.address || fn.address - fn.cs >= 0x10000 || fn.cs < program.base) continue;
+        auto it = segments.find(fn.cs);
+        if (it == segments.end()) {
+            const std::size_t from = std::min<std::size_t>(fn.cs - program.base, program.image.size());
+            const std::size_t n = std::min<std::size_t>(0x10000, program.image.size() - from);
+            it = segments.emplace(fn.cs, Code16(Bytes(program.image.begin() + static_cast<std::ptrdiff_t>(from),
+                                                      program.image.begin() + static_cast<std::ptrdiff_t>(from + n)))).first;
+        }
+        const Code16& code = it->second;
+        const std::int64_t start = fn.address - fn.cs;
+        std::int64_t end = fn.size ? start + fn.size : code.size();
+        if (const auto next = std::next(f); next != found.functions.end() && next->first > fn.address) end = std::min<std::int64_t>(end, next->first - fn.cs);
+        end = std::min(end, code.size());
+        if (end <= start) continue;
+        const std::vector<Insn> ins = code.decode(start, end, true);
+        for (std::size_t j = 0; j < ins.size(); ++j) {
+            const Insn& i = ins[j];
+            if (!i.in_group(kGroupCall) || i.operands.empty() || i.operands[0].kind == OperandKind::Immediate) continue;
+            const std::int64_t took = caller_cleanup(ins, j);
+            if (took <= 0) continue;
+            const bool is_far = i.mn == "lcall" || i.op_str.find("dword") != std::string::npos;
+            lines.push_back(std::format("O\t{}\t{}\t{}\t__cdecl16{}", hx(static_cast<Va>(fn.cs) + static_cast<Va>(i.address)), hx(fn.address), took,
+                                        is_far ? "far" : "near"));
+        }
+    }
+    return lines;
+}
+
 static std::map<Va, std::int64_t> dos_four_byte_results(const formats::dos::Program& program, const analyze::dos_functions::Analysis& found) {
     std::map<Va, std::int64_t> out;
     std::map<std::uint32_t, Code16> segments;   // the 64 KB from each code segment's base
@@ -499,6 +537,7 @@ DosDescription describe_dos(const formats::dos::Program& program, const std::fil
         lines.push_back(std::format("F\t{}\t{}\t{}\t{}{}{}", hx(fn.address), fn.name, fn.removes, fn.removes > 0 ? "__stdcall16" : "__cdecl16",
                                     analyze::dos_functions::name_of(fn.distance), four.contains(va) ? "\t4" : ""));
     }
+    for (const std::string& o : dos_pointer_calls(program, *found)) lines.push_back(o);
     std::int64_t k = 0;
     for (const formats::dos::Span& span : program.spans) d.spans[++k] = {span.address, span.length};
     d.image = program.image;
