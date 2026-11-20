@@ -37,6 +37,11 @@
 #include "core/text.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/detect.hpp"
+#include "decompile/decompiler.hpp"
+#include "engine/lane_kit.hpp"
+#include "engine/lane_kit_internal.hpp"
+#include "engine/lane_registry.hpp"
+#include "formats/code_scan.hpp"
 #include "source/isa.hpp"
 #include "source/processors.hpp"
 #include "ui/mcp_server.hpp"
@@ -95,6 +100,18 @@ std::optional<std::string> value(const Words& w, std::string_view a, std::string
     if (!b.empty())
         if (auto it = w.values.find(std::string(b)); it != w.values.end()) return it->second;
     return std::nullopt;
+}
+
+// The console lane a file is for (as convert finds it), or empty.
+std::string lane_of(const stdfs::path& file) {
+    engine::register_all_lanes();
+    std::string name;
+    try {
+        name = engine::kit_detail::machine_of_file(file);
+        if (name.empty()) name = engine::machine_lanes().name_of_file(file);
+    } catch (const std::exception&) {
+    }
+    return name;
 }
 
 // The processor a console lane's files run on (the lanes' names, engine/lane_list.cpp).
@@ -261,7 +278,7 @@ int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
     }
     // a console's ROM: the processor its lane runs on
     if (!cpu) {
-        const std::string lane = engine::machine_lanes().name_of_file(file);
+        const std::string lane = lane_of(file);
         cpu = lane.empty() ? nullptr : processor_of_lane(lane);
         if (!cpu) throw UsageError(std::format("which processor is {}? name it: --cpu NAME (disassemble --list)", fs::to_text(file.filename())));
         err_text(std::format("{}: {} ({})\n", fs::to_text(file.filename()), cpu->name, lane));
@@ -383,6 +400,75 @@ int link(std::span<const std::string> args) {
     return run.exit_code;
 }
 
+// Where a console's cartridge sits in its CPU's memory and where its code starts: the file's bytes from `offset` at `base`, the entry
+// points fixed ones and vectors read from the image (a 16- or 32-bit word, little- or big-endian). One row per machine: the rest
+// is the one decoder and the one decompiler.
+struct RomMap {
+    std::string_view lane;
+    std::size_t offset = 0;
+    std::uint32_t base = 0;
+    std::vector<std::uint32_t> entries;   // fixed entry points
+    std::vector<std::uint32_t> vectors;   // addresses of words that hold an entry point
+    unsigned vector_size = 2;
+    bool vector_big = false;
+    std::size_t max = 0;                  // the most of the file that is seen at `base` (0: all)
+    std::uint32_t mirror = 0;             // an entry point's address within the cartridge's window when its bus mirrors it (the 2600: 4 KB)
+};
+const RomMap* rom_map(std::string_view lane) {
+    static const RomMap kMaps[] = {
+        {"sms", 0, 0, {0x0000, 0x0038, 0x0066}, {}, 2, false, 0xC000},
+        {"gb", 0, 0, {0x0100, 0x0040, 0x0048, 0x0050, 0x0058, 0x0060}, {}, 2, false, 0x8000},
+        {"genesis", 0, 0, {}, {0x04}, 4, true, 0x400000},
+        {"atari2600", 0, 0xF000, {}, {0xFFFC}, 2, false, 0x1000, 0x0FFF},
+        {"coleco", 0, 0x8000, {}, {0x800A}, 2, false, 0x8000},
+        {"msx", 0, 0x4000, {}, {0x4002}, 2, false, 0x8000},
+    };
+    for (const RomMap& m : kMaps)
+        if (m.lane == lane) return &m;
+    return nullptr;
+}
+
+// A console program to C through the one decompiler: its functions found by the one decoder (its processor's description), the
+// description the decompiler reads written beside it, each function's C.
+int decompile_console(const stdfs::path& file, std::string_view lane, const px::Processor& cpu, const std::optional<stdfs::path>& out) {
+    const RomMap* map = rom_map(lane);
+    if (!map || cpu.language.empty()) throw UsageError(std::format("{} ({}, {}): the one decompiler does not map this machine's memory yet", fs::to_text(file.filename()), lane, cpu.name));
+    const Bytes data = fs::read_file(file);
+    if (map->offset > data.size()) throw UsageError("the file is shorter than its header");
+    std::size_t size = data.size() - map->offset;
+    if (map->max != 0) size = std::min(size, map->max);
+    Bytes mem(static_cast<std::size_t>(map->base) + size, 0);
+    std::copy_n(data.begin() + static_cast<std::ptrdiff_t>(map->offset), size, mem.begin() + map->base);
+    std::set<std::uint32_t> starts(map->entries.begin(), map->entries.end());
+    for (const std::uint32_t v : map->vectors) {
+        if (v + map->vector_size > mem.size()) continue;
+        std::uint32_t a = 0;
+        for (unsigned k = 0; k < map->vector_size; ++k) a = map->vector_big ? (a << 8 | mem[v + k]) : (a | static_cast<std::uint32_t>(mem[v + k]) << (8 * k));
+        starts.insert(map->mirror ? (a & map->mirror) | map->base : a);
+    }
+    formats::CodeSpace space;
+    space.begin = map->base;
+    space.end = static_cast<std::uint32_t>(map->base + size);
+    const std::vector<std::uint32_t> functions = formats::find_functions(mem, starts, px::described_decoder(cpu), space);
+    // the description: the processor's language, the cartridge's bytes where the CPU sees them, the functions
+    const stdfs::path work = stdfs::path(file).concat(".decompile");
+    stdfs::create_directories(work);
+    std::string description = std::format("arch\t{}\nbytes\t{:x}\t{}\t{:x}\t{:x}\n", cpu.language, map->base, fs::to_text(stdfs::absolute(file)), map->offset, size);
+    for (const std::uint32_t f : functions)
+        if (f >= space.begin && f < space.end) description += std::format("F\t{:x}\tsub_{:04X}\t-1\n", f, f);
+    const stdfs::path described = work / "description.txt";
+    fs::write_text(described, description);
+    engine::LaneKit kit(config::current());
+    const decompile::decompiler::Run run = kit.decompiler().run(described);
+    std::string text = std::format("/* {} -- {} ({}), {} functions, decompiled by CodeBreaker from the processor's description */\n\n", fs::to_text(file.filename()), lane, cpu.name, run.order.size());
+    for (const std::string& name : run.order)
+        if (const std::string* t = run.texts.find(name)) text += *t + "\n";
+    if (out) fs::write_text(*out, text);
+    else out_text(text);
+    err_text(std::format("{}: {} functions found, {} decompiled\n", fs::to_text(file.filename()), functions.size(), run.order.size()));
+    return 0;
+}
+
 }  // namespace
 
 void register_role_commands(CommandTable& table, std::shared_ptr<base::Corpus> corpus) {
@@ -396,7 +482,17 @@ void register_role_commands(CommandTable& table, std::shared_ptr<base::Corpus> c
         if (!args.empty() && !args[0].starts_with("-")) {
             const stdfs::path file = args[0];
             std::error_code ec;
-            if (stdfs::exists(file, ec) && !formats::detect::kind(file)) return table.invoke("convert", args);
+            if (stdfs::exists(file, ec) && !formats::detect::kind(file)) {
+                const std::string lane = lane_of(file);
+                const px::Processor* cpu = lane.empty() ? nullptr : processor_of_lane(lane);
+                if (cpu && rom_map(lane) && !cpu->language.empty()) {
+                    std::optional<stdfs::path> out;
+                    for (std::size_t k = 1; k + 1 < args.size(); ++k)
+                        if (args[k] == "--out" || args[k] == "-o") out = args[k + 1];
+                    return decompile_console(file, lane, *cpu, out);
+                }
+                return table.invoke("convert", args);
+            }
         }
         return original(args);
     });

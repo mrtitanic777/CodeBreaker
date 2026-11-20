@@ -2,6 +2,10 @@
 
 <processor_spec>
   <programcounter register="PC"/>
+  <!-- CodeBreaker: the I/O ports are hardware (a VDP, a PSG): every IN and OUT is kept, in order -->
+  <volatile outputop="write_volatile" inputop="read_volatile">
+    <range space="io" first="0x0" last="0xffff"/>
+  </volatile>
   
   <segmentop space="ram" userop="segment" farpointer="yes">
     <pcode>

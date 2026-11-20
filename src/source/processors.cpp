@@ -379,12 +379,23 @@ std::vector<Processor> make_table() {
         {"65816", "65816.sla", {}},                               {"v810", "v810.sla", {}},
         {"f8", "f8.sla", {}},                                     {"tlcs900", "tlcs900.sla", {}},
     };
+    const std::map<std::string_view, std::string_view> languages = {
+        {"6502", "6502:LE:16:default:default"},   {"65c02", "65C02:LE:16:default:default"}, {"huc6280", "HuC6280:LE:16:default:default"},
+        {"65816", "65816:LE:24:default:default"}, {"z80", "z80:LE:16:default:default"},    {"sm83", "sm83:LE:16:default:default"},
+        {"m68k", "68000:BE:32:MC68020:default"},  {"m6809", "6809:BE:16:default:default"},  {"mips", "MIPS:LE:32:default:default"},
+        {"r4300", "MIPS:BE:64:default:default"},  {"r5900", "MIPS:LE:64:default:default"},  {"arm", "ARM:LE:32:v4t:default"},
+        {"arm9", "ARM:LE:32:v5t:default"},        {"arm11", "ARM:LE:32:v6:default"},        {"armv7", "ARM:LE:32:v7:default"},
+        {"a64", "AARCH64:LE:64:v8A:default"},     {"ppc", "PowerPC:BE:32:default:default"}, {"sh2", "SuperH:BE:32:SH-2:default"},
+        {"sh4", "SuperH4:LE:32:default:default"}, {"v810", "V810:LE:32:default:default"},   {"i8048", "8048:LE:16:default:default"},
+        {"cp1610", "CP1600:BE:16:default:default"}, {"f8", "F8:BE:16:default:default"},     {"tlcs900", "TLCS900H:LE:24:default:default"},
+    };
     for (const Described& d : described)
         for (Processor& p : t)
             if (p.name == d.name) {
                 p.sla = d.sla, p.context = d.context, p.big_endian = d.big_endian;
                 if (const auto h = halts.find(p.name); h != halts.end()) p.halts = h->second;
                 if (p.name == "m68k") p.trap = {"trap", 0x80, 4};
+                if (const auto l = languages.find(p.name); l != languages.end()) p.language = l->second;
             }
     return t;
 }

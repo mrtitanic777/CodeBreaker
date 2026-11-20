@@ -50,6 +50,9 @@ struct Processor {
     // starts from; empty for a processor that has none yet. `read_described` reads through it.
     std::string_view sla;
     std::vector<std::pair<std::string_view, int>> context;
+    // Its language as the decompiler core names it (`arch` of a description: "<processor>:<endian>:<size>:<variant>:<compiler>",
+    // from the .ldefs beside the .sla); empty when the decompiler has none for it yet.
+    std::string_view language;
     bool big_endian = false;   // how its data directives write a word
     std::vector<std::string_view> halts;   // the mnemonics (lower case) that stop the processor: code does not go on after them
     // A software trap through a vector table (the 68000's TRAP #n: the handler's address is the 4-byte word at 0x80 + 4n): followed
