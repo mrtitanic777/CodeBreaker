@@ -162,4 +162,78 @@ Bytes ZipArchive::read(std::string_view name) const {
     return read(*e);
 }
 
+// ---- ZipWriter
+
+namespace {
+void zw_u16(Bytes& b, std::uint32_t v) {
+    b.push_back(static_cast<std::uint8_t>(v));
+    b.push_back(static_cast<std::uint8_t>(v >> 8));
+}
+void zw_u32(Bytes& b, std::uint32_t v) {
+    zw_u16(b, v & 0xFFFF);
+    zw_u16(b, v >> 16);
+}
+}  // namespace
+
+void ZipWriter::add(const std::string& name, ByteView data) {
+    if (out_.size() > 0xFFFFFFFFull || data.size() > 0xFFFFFFFFull) throw InternalError("a zip over 4 GB (no zip64)");
+    Written w;
+    w.name = name;
+    w.size = static_cast<std::uint32_t>(data.size());
+    w.crc = static_cast<std::uint32_t>(crc32(0L, data.data(), static_cast<uInt>(data.size())));
+    w.offset = static_cast<std::uint32_t>(out_.size());
+    zw_u32(out_, 0x04034b50);
+    zw_u16(out_, 10);           // version needed
+    zw_u16(out_, 0x0800);       // UTF-8 names
+    zw_u16(out_, 0);            // stored
+    zw_u16(out_, 0);            // time
+    zw_u16(out_, 0x21);         // date: 1980-01-01
+    zw_u32(out_, w.crc);
+    zw_u32(out_, w.size);
+    zw_u32(out_, w.size);
+    zw_u16(out_, static_cast<std::uint32_t>(name.size()));
+    zw_u16(out_, 0);
+    out_.insert(out_.end(), name.begin(), name.end());
+    out_.insert(out_.end(), data.begin(), data.end());
+    written_.push_back(std::move(w));
+}
+
+Bytes ZipWriter::finish() {
+    const auto directory = static_cast<std::uint32_t>(out_.size());
+    for (const Written& w : written_) {
+        zw_u32(out_, 0x02014b50);
+        zw_u16(out_, 20);
+        zw_u16(out_, 10);
+        zw_u16(out_, 0x0800);
+        zw_u16(out_, 0);
+        zw_u16(out_, 0);
+        zw_u16(out_, 0x21);
+        zw_u32(out_, w.crc);
+        zw_u32(out_, w.size);
+        zw_u32(out_, w.size);
+        zw_u16(out_, static_cast<std::uint32_t>(w.name.size()));
+        zw_u16(out_, 0);
+        zw_u16(out_, 0);
+        zw_u16(out_, 0);
+        zw_u16(out_, 0);
+        zw_u32(out_, 0);
+        zw_u32(out_, w.offset);
+        out_.insert(out_.end(), w.name.begin(), w.name.end());
+    }
+    const auto size = static_cast<std::uint32_t>(out_.size()) - directory;
+    if (written_.size() > 0xFFFF) throw InternalError("a zip of over 65535 entries (no zip64)");
+    zw_u32(out_, 0x06054b50);
+    zw_u16(out_, 0);
+    zw_u16(out_, 0);
+    zw_u16(out_, static_cast<std::uint32_t>(written_.size()));
+    zw_u16(out_, static_cast<std::uint32_t>(written_.size()));
+    zw_u32(out_, size);
+    zw_u32(out_, directory);
+    zw_u16(out_, 0);
+    written_.clear();
+    Bytes out = std::move(out_);
+    out_.clear();
+    return out;
+}
+
 }  // namespace cb::java::console

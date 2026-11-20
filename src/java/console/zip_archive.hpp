@@ -57,4 +57,24 @@ private:
     std::map<std::string, std::size_t, std::less<>> by_name_;
 };
 
+// Write a .zip/.jar: entries added in order, each stored (not compressed) with its CRC-32; a name ending in '/' is a directory.
+//
+//     ZipWriter z;
+//     z.add("META-INF/", {});
+//     z.add("a/B.class", bytes);
+//     fs::write_file(path, z.finish());
+class ZipWriter {
+public:
+    void add(const std::string& name, ByteView data);
+    Bytes finish();   // the archive (the writer is left empty)
+
+private:
+    struct Written {
+        std::string name;
+        std::uint32_t crc = 0, size = 0, offset = 0;
+    };
+    Bytes out_;
+    std::vector<Written> written_;
+};
+
 }  // namespace cb::java::console
