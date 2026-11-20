@@ -4,7 +4,8 @@
 //     for (const capability::Target& t : capability::targets_for_file("Bank.cs"))
 //         if (!t.supported) show_disabled(t.name, t.reason);      // "Java output is not supported yet"
 //
-// The answers come from three tables kept beside the code they describe (capability.cpp), not from anything a user interface writes:
+// The answers come from the translator's registry (registry.hpp: every front end and back end registers itself, the languages and paths are computed
+// from what is registered), not from anything a user interface writes:
 //
 //   languages   every language the hub has a front end for (it reads it: the extensions it takes) or a back end for (it writes it)
 //   paths       the (source language, target) pairs that are wired end to end: a front end, a back end, and the judge that proves the result by

@@ -11,6 +11,7 @@
 #include "translate/dotnet/package.hpp"
 #include "translate/judge_cs_cpp_command.hpp"
 #include "translate/native_l2.hpp"
+#include "translate/registry.hpp"
 
 namespace cb::translate::capability {
 
@@ -20,34 +21,30 @@ namespace {
 
 // ---- the tables --------------------------------------------------------------------------------------------------------------------------
 
-// A front end exists for each language with extensions (C# by Roslyn, Python by CPython's ast and the translator's inference, Java by javac's tree,
-// C by clang's); a back end for each with `back_end` (cpp17 by backends/csharp_cpp17 and the L2 core's C++17 writer, cpp03 by the Java lane's, c by
-// backends/c, java by backends/java, csharp by backends/csharp). Python has no back end yet.
+// Both tables are computed from the registry (translate/registry.hpp): each front end and back end registers itself, and nothing here lists a pair.
+// A language reads (has extensions) when a front end for it is registered, and writes (`back_end`) when a back end is.
 const std::vector<Language>& cap_languages() {
-    static const std::vector<Language> list = {
-        {"c", "C", {".c", ".h"}, true},
-        {"cpp03", "C++03", {}, true},
-        {"cpp17", "C++17", {}, true},
-        {"csharp", "C#", {".cs"}, true},
-        {"java", "Java", {".java"}, true},
-        {"python", "Python", {".py"}, false},
-    };
+    static const std::vector<Language> list = [] {
+        const registry::Registry& reg = registry::standard();
+        std::vector<Language> out;
+        for (const registry::LanguageName& n : reg.language_names()) {
+            Language l{n.id, n.name, {}, reg.has_back_end(n.id)};
+            for (const registry::FrontEnd& f : reg.front_ends())
+                if (f.language == n.id) l.extensions.insert(l.extensions.end(), f.extensions.begin(), f.extensions.end());
+            out.push_back(std::move(l));
+        }
+        return out;
+    }();
     return list;
 }
 
-// The paths wired end to end. Each is run and proven by translate_file.cpp with the judge's own steps.
+// The paths wired end to end: the registry's file-level routes. Each is run and proven by translate_file.cpp with the judge's own steps.
 const std::vector<Path>& cap_paths() {
-    static const std::vector<Path> list = {
-        {"csharp", "cpp17", "judge-cs-cpp",
-         "builds the C++17 translation, runs it beside the C# program (csc and the installed .NET), and compares what they print and their exit code",
-         {"dotnet", "cxx"}},
-        {"csharp", "csharp", "judge-cs-cpp",
-         "writes the program as C# again, runs both (csc and the installed .NET), and compares what they print and their exit code",
-         {"dotnet"}},
-        {"python", "cpp17", "judge-py-cpp",
-         "builds the C++17 translation, runs it beside the Python module (CPython), and compares the answer of every run_* function",
-         {"python", "cxx", "l2"}},
-    };
+    static const std::vector<Path> list = [] {
+        std::vector<Path> out;
+        for (const registry::Route& r : registry::standard().file_routes()) out.push_back(Path{r.from, r.to, r.judge, r.proof, r.needs});
+        return out;
+    }();
     return list;
 }
 
