@@ -70,6 +70,22 @@ uint2 codebreaker_ds(void);
 #pragma aux codebreaker_ds = "mov ax,ds" value [ax] modify exact [ax];
 uint2 codebreaker_cs(void);
 #pragma aux codebreaker_cs = "mov ax,cs" value [ax] modify exact [ax];
+/* a register as the function was entered with it (no code: what the register holds where the call is, the first thing the
+   function does) -- a value the decompiler read from the caller, `in_DX`, `unaff_SI` */
+uint2 codebreaker_ax(void);
+#pragma aux codebreaker_ax = value [ax] modify exact [];
+uint2 codebreaker_bx(void);
+#pragma aux codebreaker_bx = value [bx] modify exact [];
+uint2 codebreaker_cx(void);
+#pragma aux codebreaker_cx = value [cx] modify exact [];
+uint2 codebreaker_dx(void);
+#pragma aux codebreaker_dx = value [dx] modify exact [];
+uint2 codebreaker_si(void);
+#pragma aux codebreaker_si = value [si] modify exact [];
+uint2 codebreaker_di(void);
+#pragma aux codebreaker_di = value [di] modify exact [];
+uint2 codebreaker_es(void);
+#pragma aux codebreaker_es = "mov ax,es" value [ax] modify exact [ax];
 /* the stack pointer as the function was entered (where its return address is): with the
    function's frame (BP pushed, then BP = SP) that is BP+2 */
 uint2 codebreaker_entry_sp(void);

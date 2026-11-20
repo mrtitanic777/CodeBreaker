@@ -72,6 +72,8 @@ struct Layout {
     std::uint32_t base = 0;                                     // the linear address the program is loaded at (its segment 0)
     std::set<std::uint32_t> runtime_segments;                   // the code segments the compiler's library functions are in
     std::string data_segment;                                   // its segment as the code writes it, "0x2a38" (empty: not known)
+    std::set<std::string> long_results;                         // the functions the description says return DX:AX (4 bytes)
+    std::set<std::string> program_functions;                    // every function the description names (the program's and its library's)
     std::set<std::uint32_t> segments;                           // the segments the program names (its relocated words, as the code
                                                                 // writes them, 0x28e9): written by name, not number, in the C
     std::string data;                                           // the data segment's bytes (up to 64 KB): a pointer into it that

@@ -87,7 +87,7 @@ CB_TEST("decompile.c_text_dos.a_data_segment_word_is_named_once_with_the_type_mo
 CB_TEST("decompile.c_text_dos.unused_registers_go_and_structures_are_declared", [] {
     const Result r = compilable(kCtdtProgram, "");
     CB_CHECK(!ctdt_has(r.text, "unaff_DS;"));        // declared, never used
-    CB_CHECK(ctdt_has(r.text, "xunknown2 in_BX;"));  // used: kept
+    CB_CHECK(ctdt_has(r.text, "xunknown2 in_BX = (xunknown2)codebreaker_bx();"));  // used: kept, as the function was entered with it
     CB_CHECK_EQ(r.report.registers_dropped, std::size_t{1});
     CB_CHECK(ctdt_has(r.text, "typedef struct s_sub_00100_param_1 { uint1 pad_0[4]; xunknown2 f_4; } s_sub_00100_param_1;"));
 });

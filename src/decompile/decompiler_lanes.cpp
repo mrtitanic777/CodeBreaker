@@ -387,6 +387,12 @@ c_text_dos::Layout lanes_dos_layout(const describe::DosDescription& d) {
     if (*ds >= d.base && *ds < d.base + static_cast<Va>(image.size())) {
         const std::size_t from = static_cast<std::size_t>(*ds - d.base);
         layout.data_segment = std::format("0x{:x}", *ds / 16);
+        for (const std::string& line : d.lines) {   // (F lines whose sixth field says four bytes: describe_dos's DX:AX results)
+            if (!line.starts_with("F\t")) continue;
+            const std::vector<std::string_view> f = text::split(line, '\t');
+            if (f.size() > 5 && f[5] == "4") layout.long_results.insert(std::string(f[2]));
+            if (f.size() > 2) layout.program_functions.insert(std::string(f[2]));
+        }
         layout.data.assign(reinterpret_cast<const char*>(image.data() + from), std::min<std::size_t>(0x10000, image.size() - from));
     }
     for (std::size_t at = 0; at + 6 < image.size(); ++at) {
@@ -542,6 +548,14 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
     for (const Va va : library.skipped)   // (the segments the library's code is in)
         if (const auto fn = d->analysis->functions.find(static_cast<std::uint32_t>(va)); fn != d->analysis->functions.end())
             result.library_segments.insert(fn->second.cs);
+    // (a segment that opens with Microsoft's 8087 emulator's signature, "MSEM87", is the floating-point library's -- EMU87's
+    // code no signature table names: C1's segment 0 had its 58 functions voted into main1p.c)
+    for (const auto& [va, fn] : d->analysis->functions) {
+        const std::uint32_t cs = fn.cs;
+        if (cs < d->base || static_cast<std::size_t>(cs - d->base) + 6 > d->image.size()) continue;
+        const std::size_t at = static_cast<std::size_t>(cs - d->base);
+        if (std::string_view(reinterpret_cast<const char*>(d->image.data() + at), 6) == "MSEM87") result.library_segments.insert(cs);
+    }
     result.library_double = library.doubles;
     // each structure field's C type, as wide as the decompiler found it (`uint1` for a byte the code tests): the C pass declares
     // the structures again from what the statements reach, and every field it knows nothing of is a word
@@ -622,6 +636,7 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
             dos_layout.library_void = r.library_void;
             dos_layout.library_double = r.library_double;
             dos_layout.runtime_segments = r.library_segments;
+            for (const LibraryFunction& f : r.library) dos_layout.program_functions.erase(f.name);   // (declared by its header)
             dos_layout.base = static_cast<std::uint32_t>(r.description->base);
             dos_layout.structure_fields = r.structure_fields;
             texts = std::move(r.functions.texts);

@@ -190,23 +190,38 @@ struct CtdFrame {
 // The stack and data segment registers a function reads as it was given them (`int2 unaff_SS;`, then `CONCAT22(unaff_SS,
 // (int2)&uStack_6)`: a far pointer to a local): a declaration alone left them whatever the frame held, so they start as the
 // registers' values -- which no Microsoft C function changes (DS is DGROUP, SS the stack) -- `codebreaker_ss()`, `codebreaker_ds()`.
+// The other registers a function reads as it was entered with them -- `in_DX` (what its caller left in DX: C1's
+// check_node_operands hands back the caller's DX on one way out), `unaff_SI` -- start as those registers' values too
+// (`codebreaker_dx()`: no code, the register where the function begins). They are read first, in an order that reads each
+// before anything uses it (SS, DS and ES go through AX).
 std::string ctd_segment_registers(const std::string& body) {
-    std::string out;
+    static constexpr std::string_view kOrder[] = {"AX", "BX", "CX", "DX", "SI", "DI", "ES", "SS", "DS"};
+    std::map<std::string, std::pair<std::string, std::string>> found;   // register -> (its variable, its type)
+    std::string rest;
     for (const std::string_view line : text::lines(body)) {
         const std::string_view t = ctd_trim(line);
-        std::string_view reg;
-        if (line.starts_with("  ") && t.ends_with(" unaff_SS;")) reg = "ss";
-        if (line.starts_with("  ") && t.ends_with(" unaff_DS;")) reg = "ds";
-        if (!reg.empty() && t.find_first_of("=(*[") == std::string_view::npos) {
-            const std::string_view type = ctd_trim(t.substr(0, t.size() - 10));
-            out += std::format("  {} unaff_{} = ({})codebreaker_{}();\n", type, text::upper(std::string(reg)), type, reg);
-            continue;
+        bool taken = false;
+        if (line.starts_with("  ") && t.ends_with(';') && t.find_first_of("=(*[") == std::string_view::npos) {
+            const std::string name = ctd_declared(t.substr(0, t.size() - 1));
+            for (const std::string_view reg : kOrder)
+                if ((name == "in_" + std::string(reg) || name == "unaff_" + std::string(reg)) && !found.contains(std::string(reg))) {
+                    found[std::string(reg)] = {name, std::string(ctd_trim(t.substr(0, t.size() - 1 - name.size())))};
+                    taken = true;
+                }
         }
-        out += line;
-        out += '\n';
+        if (taken) continue;
+        rest += line;
+        rest += '\n';
     }
-    if (!body.ends_with('\n') && !out.empty()) out.pop_back();
-    return out;
+    if (!body.ends_with('\n') && !rest.empty()) rest.pop_back();
+    if (found.empty()) return body;
+    std::string reads;
+    for (const std::string_view reg : kOrder)
+        if (const auto f = found.find(std::string(reg)); f != found.end())
+            reads += std::format("  {} {} = ({})codebreaker_{}();\n", f->second.second, f->second.first, f->second.second, text::lower(std::string(reg)));
+    const std::size_t open = rest.find("{\n");
+    if (open == std::string::npos) return reads + rest;
+    return rest.substr(0, open + 2) + reads + rest.substr(open + 2);
 }
 
 // The program's segment numbers as the code writes them (0x28e9: the segment at 18E9h in the load module, loaded at 1000h)
@@ -1271,7 +1286,25 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         out += f.body.substr(at);
         f.body = std::move(out);
     }
-    std::set<std::string> ram, helpers;
+    std::set<std::string> ram, helpers, kept_long;
+    for (const CtdFunction& f : fns) {   // (`xVar3 = check_binary_operands(` with xVar3 four bytes: the callee's result is)
+        std::map<std::string, std::string> types;
+        for (const std::string_view line : text::lines(f.body)) {
+            const std::string_view t = ctd_trim(line);
+            if (!line.starts_with("  ") || !t.ends_with(';') || t.find_first_of("=(") != std::string_view::npos) continue;
+            const std::string name = ctd_declared(t.substr(0, t.size() - 1));
+            types[name] = std::string(ctd_trim(t.substr(0, t.size() - 1 - name.size())));
+        }
+        for (std::size_t k = f.body.find(" = "); k != std::string::npos; k = f.body.find(" = ", k + 3)) {
+            std::size_t b = k;
+            while (b > 0 && ctd_word(f.body[b - 1])) --b;
+            const auto ty = types.find(f.body.substr(b, k - b));
+            if (ty == types.end() || ctd_bytes(ty->second) != 4) continue;
+            std::size_t e = k + 3;
+            while (e < f.body.size() && ctd_word(f.body[e])) ++e;
+            if (e < f.body.size() && f.body[e] == '(') kept_long.insert(f.body.substr(k + 3, e - k - 3));
+        }
+    }
     for (const CtdFunction& f : fns) {
         const std::vector<std::string_view> ids = ctd_identifiers(f.body);
         for (std::size_t i = 0; i < ids.size(); ++i) {
@@ -1283,7 +1316,10 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
             const std::size_t k = static_cast<std::size_t>(id.data() - f.body.data());
             const bool called = k + id.size() < f.body.size() && f.body[k + id.size()] == '(';
             const bool interrupt = id.size() >= 5 && id.starts_with("int") && ctd_hex(id[3]) && ctd_hex(id[4]) && !defined.contains(std::string(id));
-            if (called && !defined.contains(std::string(id)) && (interrupt || id.starts_with("func_0x") || id.starts_with("FUN_")))
+            // (and a function of the program the C calls but does not hold -- one kept as its assembly: C1's
+            // check_binary_operands -- declared with the result it returns)
+            if (called && !defined.contains(std::string(id)) &&
+                (interrupt || id.starts_with("func_0x") || id.starts_with("FUN_") || layout.program_functions.contains(std::string(id))))
                 helpers.insert(std::string(id));
         }
     }
@@ -1329,7 +1365,9 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     }
     if (!helpers.empty()) {
         out += "\n";
-        for (const std::string& h : helpers) out += "int2 " + h + "();\n";
+        // (one that returns DX:AX -- a far pointer, a long -- is declared so: C1's check_binary_operands, assembly only, handed
+        // back the node in DX:AX and an `int2` declaration kept AX alone)
+        for (const std::string& h : helpers) out += (layout.long_results.contains(h) || kept_long.contains(h) ? "int4 " : "int2 ") + h + "();\n";
     }
     out += "\n";
     for (const std::string& p : prototypes) out += p + "\n";

@@ -15,5 +15,5 @@ exit: 0
 2 files written to <work>/out/setver
 --- files
 setver/setver.asm 156870 f44574cf430ccec1dbda054bc862732ecab30986ee8615c664367ca47fb9353f
-setver/setver.c 77898 7be3d7dd0e560edc7c0e3d587d066b1a744c1cba758f1bb5a39144c2d266e170
+setver/setver.c 80578 df719e9e4610fd7fdc0ee4417742e9595f55eaf6a2c1b23a6668996fc8fa8d41
 --- stderr (not compared)
