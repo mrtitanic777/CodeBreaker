@@ -1,6 +1,6 @@
 # The XEX reader: CodeBreaker's one parser of the Xbox 360 executable -- the XEX2 headers, the optional-header table,
 # the security info, imports, resources and TLS (xex_file.h), and the basefile's decryption and decompression
-# (basefile.h). The xex engine (CMakeLists.txt here) and the recompiled-game runtime (native/x360/runtime_lib) both
+# (basefile.h). The xex engine (CMakeLists.txt here) and the recompiled-game runtime (cb/recompile/x360/runtime_lib) both
 # compile it; neither has a reader of its own.
 #
 # Use from a CMakeLists.txt:

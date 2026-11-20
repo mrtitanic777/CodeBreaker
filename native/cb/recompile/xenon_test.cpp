@@ -213,7 +213,7 @@ struct World {
         }
     }
 
-    stdfs::path source() const { return root / "native" / "xenonrecomp"; }
+    stdfs::path source() const { return root / "native" / "cb" / "recompile" / "xenonrecomp"; }
 
     Config config() {
         Config c;
@@ -241,12 +241,12 @@ stdfs::path write_config(const World& w, std::string_view extra, std::string_vie
 
 CB_TEST("recompile.xenon.locations_come_from_the_checkout", [] {
     const Xenon x(Config{.checkout_root = "C:/co", .state_dir = "C:/co/state"});
-    CB_CHECK_EQ(fs::to_text(x.source_dir()), "C:/co/native/xenonrecomp");
-    CB_CHECK_EQ(fs::to_text(x.build_dir()), "C:/co/native/xenonrecomp/build");
-    CB_CHECK_EQ(fs::to_text(x.recomp_exe()), "C:/co/native/xenonrecomp/build/XenonRecomp/XenonRecomp.exe");
-    CB_CHECK_EQ(fs::to_text(x.analyse_exe()), "C:/co/native/xenonrecomp/build/XenonAnalyse/XenonAnalyse.exe");
-    CB_CHECK_EQ(fs::to_text(x.tests_dir()), "C:/co/native/xenonrecomp/ppc_tests");
-    CB_CHECK_EQ(fs::to_text(x.context_header()), "C:/co/native/xenonrecomp/XenonUtils/ppc_context.h");
+    CB_CHECK_EQ(fs::to_text(x.source_dir()), "C:/co/native/cb/recompile/xenonrecomp");
+    CB_CHECK_EQ(fs::to_text(x.build_dir()), "C:/co/native/cb/recompile/xenonrecomp/build");
+    CB_CHECK_EQ(fs::to_text(x.recomp_exe()), "C:/co/native/cb/recompile/xenonrecomp/build/XenonRecomp/XenonRecomp.exe");
+    CB_CHECK_EQ(fs::to_text(x.analyse_exe()), "C:/co/native/cb/recompile/xenonrecomp/build/XenonAnalyse/XenonAnalyse.exe");
+    CB_CHECK_EQ(fs::to_text(x.tests_dir()), "C:/co/native/cb/recompile/xenonrecomp/ppc_tests");
+    CB_CHECK_EQ(fs::to_text(x.context_header()), "C:/co/native/cb/recompile/xenonrecomp/XenonUtils/ppc_context.h");
     CB_CHECK_EQ(skipped_instruction_tests().size(), 2u);
     CB_CHECK_EQ(skipped_instruction_tests()[0], "ppc_testing_native_thunks");
     CB_CHECK_EQ(skipped_instruction_tests()[1], "seq_jumptable_constants");

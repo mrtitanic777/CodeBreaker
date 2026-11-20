@@ -206,7 +206,7 @@ std::optional<std::vector<std::string>> emit(const Instruction& insn, const Oper
 
 std::string_view runtime_helpers() {
     return R"CBX(
-// Provided by the runtime (native/rexglue/kernel; not redefined when it is included):
+// Provided by the runtime (native/cb/recompile/rexglue/kernel; not redefined when it is included):
 //   #include <simde/x86/sse4.1.h>   // simde_mm_shuffle_epi8, etc.
 // extern const uint8_t VectorMaskL[];        // whole-vector byte-reverse mask
 // extern const uint8_t VectorMaskR[];

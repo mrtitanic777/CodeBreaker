@@ -1,6 +1,6 @@
 // cb/decompile/jar.hpp -- the RetroMCP decompiler backend.
 //
-// CodeBreaker drives the RetroMCP CLI (native/retromcp: MIT, MCPHackers; built from that source, settings.json
+// CodeBreaker drives the RetroMCP CLI (native/cb/java/retromcp: MIT, MCPHackers; built from that source, settings.json
 // `retromcp` names another jar) as a headless backend so a Minecraft version can be decompiled straight into Java
 // source and fed into the transpiler -- no manual round-trip through the RetroMCP GUI. The decompile step needs a
 // Java runtime and network access (RetroMCP downloads the version + mappings on first setup). The C++ transpiler

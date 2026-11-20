@@ -1,7 +1,7 @@
 // cb/recompile/x360_real_test.cpp -- the two slow checks that build and run real programs (set CB_SLOW_TESTS=1; each prints SKIP
 // otherwise, or when a tool or the game is not on this machine):
 //
-//  - the runtime's xex::ReadImage (native/x360/runtime/src/xex.cpp, the path XAM's data reads take), built with clang-cl by native/x360/runtime/test,
+//  - the runtime's xex::ReadImage (native/cb/recompile/x360/runtime/src/xex.cpp, the path XAM's data reads take), built with clang-cl by native/cb/recompile/x360/runtime/test,
 //    gives the xex engine's basefile of a real XEX at the base its header states, with every resource inside it and the resources the engine lists;
 //  - Xenia's PowerPC instruction tests through XenonRecomp (assembled with the PowerPC binutils, recompiled, built, run): no mismatch.
 //
@@ -110,7 +110,7 @@ CB_TEST("recompile.x360.the_runtimes_read_image_is_the_xex_engines_basefile", []
         return;
     }
     const stdfs::path build = dir.path() / "build";
-    const stdfs::path source = stdfs::path(CB_SOURCE_DIR) / "x360" / "runtime" / "test";
+    const stdfs::path source = stdfs::path(CB_SOURCE_DIR) / "cb" / "recompile" / "x360" / "runtime" / "test";
     for (const std::vector<std::string>& argv : {
              std::vector<std::string>{"cmake", "-S", cb::fs::to_text(source), "-B", cb::fs::to_text(build), "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
                                       "-DCMAKE_CXX_COMPILER=" + cb::fs::to_text(*clang)},

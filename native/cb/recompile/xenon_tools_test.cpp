@@ -2,7 +2,7 @@
 // each test is skipped when it or the xex program is not on this machine), against the recorded output for the same program
 // (testdata/xenon_tools_goldens.txt): the size and SHA-1 of every file the three commands write.
 //
-// `switch-tables` also runs XenonAnalyse from the built XenonRecomp tree (native/xenonrecomp/build under the checkout the configuration names; the main
+// `switch-tables` also runs XenonAnalyse from the built XenonRecomp tree (native/cb/recompile/xenonrecomp/build under the checkout the configuration names; the main
 // checkout's when the tests run in a worktree); it is skipped when that is not built, so no test builds XenonRecomp.
 //
 // A missing .xex is an error.
@@ -40,7 +40,7 @@ struct Setup {
         state.emplace("CB_STATE", fs::to_text(dir.path() / "state"));
         environment.config = config::Config::load(main_checkout);
         std::error_code ec;
-        analyse_built = stdfs::is_regular_file(main_checkout / "native" / "xenonrecomp" / "build" / "XenonAnalyse" / "XenonAnalyse.exe", ec);
+        analyse_built = stdfs::is_regular_file(main_checkout / "native" / "cb" / "recompile" / "xenonrecomp" / "build" / "XenonAnalyse" / "XenonAnalyse.exe", ec);
         ok = true;
     }
 };

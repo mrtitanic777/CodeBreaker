@@ -29,11 +29,11 @@ include("${X360_ROOT}/system/guide/guide.cmake")
 include("${X360_ROOT}/system/transition/transition.cmake")
 include("${X360_ROOT}/system/pads/pads.cmake")
 # the XEX reader, shared with the xex engine (cb/formats/xex): xex.cpp loads modules through it
-include("${X360_ROOT}/../cb/formats/xex/reader.cmake")
+include("${X360_ROOT}/../../formats/xex/reader.cmake")
 # the console's export names by ordinal (kernel::OrdinalName), from the repository's symbol data
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(ordinal_names "${CMAKE_CURRENT_BINARY_DIR}/ordinal_names.cpp")
-set(ordinal_json "${X360_ROOT}/../../data/symbols/console_ordinals.json")
+set(ordinal_json "${X360_ROOT}/../../../../data/symbols/console_ordinals.json")
 add_custom_command(OUTPUT "${ordinal_names}"
     COMMAND Python3::Interpreter -I "${X360_ROOT}/tools/gen_ordinal_names.py" "${ordinal_json}" "${ordinal_names}"
     DEPENDS "${X360_ROOT}/tools/gen_ordinal_names.py" "${ordinal_json}"

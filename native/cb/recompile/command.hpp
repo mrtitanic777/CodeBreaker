@@ -11,7 +11,7 @@
 // Each is the module's command (powerpc::main, project::run_command, xenon::xenon_recompile_command) with everything it was given as a hook
 // made from the configuration: images read through cb::formats (an .xex through its basefile, written by the xex engine), the Xenon
 // vector decoder, the Converted folder of the project (setting converted), the title finder over the Xbox containers, XenonRecomp's tool chain
-// (settings visual_studio, ppc_binutils; built on demand), the rexglue kernel core under native/rexglue, the console's ordinal names
+// (settings visual_studio, ppc_binutils; built on demand), the rexglue kernel core under native/cb/recompile/rexglue, the console's ordinal names
 // (codebreaker/symbols/console_ordinals.json), and g++ (setting gpp, else PATH) for `--check`.
 #pragma once
 

@@ -59,7 +59,7 @@ std::optional<RrTools> rr_tools(std::string& why) {
         }
         RrTools tools{*folder / "cl.exe", *gpp, rcp::kernel_includes(env.checkout_root)};
         if (tools.includes.empty()) {
-            why = "the rexglue kernel core is not in the tree (native/rexglue/kernel)";
+            why = "the rexglue kernel core is not in the tree (native/cb/recompile/rexglue/kernel)";
             return std::nullopt;
         }
         return tools;

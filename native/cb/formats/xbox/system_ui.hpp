@@ -5,7 +5,7 @@
 //
 // A system update (su20076000_00000000, dashboard 2.0.17559) is an STFS package of the console's flash files; its system modules carry XUI
 // packages (XUIZ) as XEX resources. Written: every XUI package of the modules the Guide uses, as <module>.<resource>.xzp, and the system
-// fonts -- the folder native/x360's xui::Assets loads (system/xui/xui/assets.h).
+// fonts -- the folder native/cb/recompile/x360's xui::Assets loads (system/xui/xui/assets.h).
 //
 // <online modules folder> (optional): the Guide's LIVE-delivered modules as a console keeps them in its SystemAux partition
 // (online/<version>/Guide.Friends.xex ...; no system update carries them); their XUI packages are written too. Modules missing there are

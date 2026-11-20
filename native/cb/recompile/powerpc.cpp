@@ -824,7 +824,7 @@ std::optional<std::filesystem::path> find_compiler(const CompilerEnv& env) {
 }
 
 std::vector<std::filesystem::path> kernel_includes(const std::filesystem::path& checkout_root) {
-    const std::filesystem::path root = checkout_root / "native" / "rexglue" / "kernel";
+    const std::filesystem::path root = checkout_root / "native" / "cb" / "recompile" / "rexglue" / "kernel";
     std::error_code ec;
     if (!std::filesystem::is_directory(root, ec)) return {};
     std::vector<std::filesystem::path> out;

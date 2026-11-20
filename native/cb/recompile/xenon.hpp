@@ -1,21 +1,21 @@
 // cb/recompile/xenon.hpp -- XenonRecomp, the Xbox 360 recompiler CodeBreaker's projects are generated with.
 //
 //     Xenon xenon(config);
-//     xenon.build();                         // native/xenonrecomp -> build/XenonRecomp/XenonRecomp.exe
+//     xenon.build();                         // native/cb/recompile/xenonrecomp -> build/XenonRecomp/XenonRecomp.exe
 //     xenon.recompile(config_toml);          // runs it on a project's configuration (config.hpp writes one)
 //     xenon.recompile_synced(config_toml);   // the same into a clean folder, then only the changed files into the
 //                                            // configuration's output folder (and the stale ones out)
 //     xenon.instruction_tests();             // Xenia's PowerPC tests through it
 //
-// native/xenonrecomp is a fork of hedge-dev's XenonRecomp (MIT) with the changes the Xbox 360 system-software ports
+// native/cb/recompile/xenonrecomp is a fork of hedge-dev's XenonRecomp (MIT) with the changes the Xbox 360 system-software ports
 // needed (VMX128 compares that set CR6, the import library index, symbol suffixes for several modules in one
 // program, MMIO stores, the shared indirect-call table; every change from upstream is listed in
-// native/xenonrecomp/CHANGES.md). It is the one XenonRecomp: the Xbox 360 Dashboard's line was merged into it. It
-// turns each guest instruction into one C++ statement on a PPCContext; the runtime (native/x360) supplies the
+// native/cb/recompile/xenonrecomp/CHANGES.md). It is the one XenonRecomp: the Xbox 360 Dashboard's line was merged into it. It
+// turns each guest instruction into one C++ statement on a PPCContext; the runtime (native/cb/recompile/x360) supplies the
 // kernel, XAM, GPU, audio and input.
 //
 // It is built with clang-cl from Visual Studio and Ninja. The instruction tests assemble Xenia's tests
-// (native/xenonrecomp/ppc_tests: inputs and the outputs measured on the console) with PowerPC binutils that know
+// (native/cb/recompile/xenonrecomp/ppc_tests: inputs and the outputs measured on the console) with PowerPC binutils that know
 // VMX128, recompile them, build them and run them: every printed line is a mismatch.
 //
 // Every program runs through cb::process (a Job Object, a timeout); a program that cannot be started or that fails
@@ -45,7 +45,7 @@ using ToolRunner = std::function<process::ProcessResult(const process::ProcessSp
 
 // Where things are and which tools to use. The settings the original read are plain values here.
 struct Config {
-    stdfs::path checkout_root;                       // the CodeBreaker checkout: native/xenonrecomp is below it
+    stdfs::path checkout_root;                       // the CodeBreaker checkout: native/cb/recompile/xenonrecomp is below it
     stdfs::path state_dir;                           // where the instruction tests are built (xenonrecomp/ppc_tests)
     std::optional<stdfs::path> visual_studio;        // the Visual Studio install with clang-cl; found by vswhere if not set
     std::optional<stdfs::path> ppc_binutils;         // the folder with powerpc-none-elf-as / -objdump (instruction tests only)
@@ -87,7 +87,7 @@ public:
     explicit Xenon(Config config);
 
     const Config& config() const { return config_; }
-    stdfs::path source_dir() const { return config_.checkout_root / "native" / "xenonrecomp"; }
+    stdfs::path source_dir() const { return config_.checkout_root / "native" / "cb" / "recompile" / "xenonrecomp"; }
     stdfs::path build_dir() const { return source_dir() / "build"; }
     stdfs::path recomp_exe() const { return build_dir() / "XenonRecomp" / "XenonRecomp.exe"; }
     stdfs::path analyse_exe() const { return build_dir() / "XenonAnalyse" / "XenonAnalyse.exe"; }

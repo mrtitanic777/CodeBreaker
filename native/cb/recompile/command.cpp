@@ -83,7 +83,7 @@ project::TitleImage read_title(const stdfs::path& file, const Environment& envir
     return title;
 }
 
-stdfs::path rexglue_root(const cb::config::Config& config) { return config.checkout_root() / "native" / "rexglue"; }
+stdfs::path rexglue_root(const cb::config::Config& config) { return config.checkout_root() / "native" / "cb" / "recompile" / "rexglue"; }
 
 // The functions a module exports (its XEX security info's export table: {+0x20 high half of the addresses, +0x24 count, +0x28
 // ordinal base, +0x2C offsets}, an address being (high << 16) + offset, 0 for none). Other modules call them through pointers the
@@ -123,7 +123,7 @@ x360project::Recompiler make_recompiler(const Environment& environment, xenon::X
         r.visual_studio = tool.visual_studio();
     } catch (const ToolError&) {   // the Build script names it; a title can still be recompiled without
     }
-    r.runtime_cmake = config.checkout_root() / "native" / "x360" / "x360.cmake";
+    r.runtime_cmake = config.checkout_root() / "native" / "cb" / "recompile" / "x360" / "x360.cmake";
     r.ensure_built = [&tool] { tool.build(); };
     r.write_basic = [&environment](const stdfs::path& xex, const stdfs::path& out) {
         formats::xex::write_basic(xex_tools(environment.config), xex, out);

@@ -9,7 +9,7 @@
 //
 // They are what the Dashboard's game-preparation scripts and the like run as commands of the program. Each writes its output whole or not at
 // all (to `<out>.part`, then renamed), its folder made. The state folder comes from the settings,
-// XenonRecomp's own tools from the same Xenon the other recompile commands use: `switch-tables` builds XenonAnalyse the first time (native/xenonrecomp)
+// XenonRecomp's own tools from the same Xenon the other recompile commands use: `switch-tables` builds XenonAnalyse the first time (native/cb/recompile/xenonrecomp)
 // and runs it into `<out>.analysed.toml`; where it cannot be built or run, the note
 //
 //     NOTE XenonAnalyse did not run (<why>); switch tables from the finder alone

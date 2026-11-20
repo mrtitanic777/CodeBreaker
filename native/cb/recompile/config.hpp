@@ -11,7 +11,7 @@
 //   * every function .pdata leaves out (recompile/discover: leaf functions, those reached only through a pointer in the data
 //     or an address the code builds), with its length;
 //   * the switch tables (XenonAnalyse's, written to their own file);
-//   * the register settings, which must match the runtime's ppc_config.h (native/x360) since they change PPCContext's
+//   * the register settings, which must match the runtime's ppc_config.h (native/cb/recompile/x360) since they change PPCContext's
 //     layout;
 //   * the title's hooks: `midasm_hook` tables from a hooks file, copied as they are.
 //

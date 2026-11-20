@@ -421,10 +421,10 @@ CB_TEST("recompile.powerpc.finding_a_compiler", [] {
 CB_TEST("recompile.powerpc.kernel_includes", [] {
     fs::ScopedTempDir dir("cb-ppc-kernel");
     CB_CHECK(ppcgen::kernel_includes(dir.path()).empty());   // (not in the tree)
-    std::filesystem::create_directories(dir.path() / "native" / "rexglue" / "kernel");
+    std::filesystem::create_directories(dir.path() / "native" / "cb" / "recompile" / "rexglue" / "kernel");
     const auto includes = ppcgen::kernel_includes(dir.path());
     CB_CHECK_EQ(includes.size(), std::size_t{8});
-    CB_CHECK_EQ(fs::to_text(includes.front()), fs::to_text(dir.path() / "native" / "rexglue" / "kernel" / "shim"));
+    CB_CHECK_EQ(fs::to_text(includes.front()), fs::to_text(dir.path() / "native" / "cb" / "recompile" / "rexglue" / "kernel" / "shim"));
     CB_CHECK_EQ(fs::to_text(includes[2]).substr(fs::to_text(includes[2]).size() - 22), "thirdparty/fmt/include");
 });
 

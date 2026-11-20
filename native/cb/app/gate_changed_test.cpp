@@ -81,7 +81,7 @@ CB_TEST("app.gate_changed.the_foundations_and_the_unknown_run_everything", [] {
     for (const char* path : {"native/cb/core/fs.cpp", "native/cb/base/cache.cpp", "native/cb/CMakeLists.txt", "native/CMakeLists.txt", "tools/gate.cmd",
                              "native/cb/app/exe_gate_main.cpp", "native/cb/app/commands_catalog.inc", "native/cb/app/native_commands.cpp",
                              "native/cb/formats/testdata/lz32.dll", "tests/exe_gate/in/x.txt", "tests/fixtures/y", "data/mystery/z.json", "native/cb/third_party/bin/a.dll",
-                             "native/x360/whatever.cpp", "case-vars"}) {
+                             "native/nasm/whatever.c", "case-vars"}) {
         const Selection s = select({path});
         CB_CHECK(s.everything);
         CB_CHECK(runs({path}, "info-pe", "info") && runs({path}, "help", "--help"));

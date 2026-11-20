@@ -8,7 +8,7 @@
 // The folder is the binary's project folder (Converted/<name>/) unless -o names another:
 //
 //     <folder>/
-//       CMakeLists.txt        x360_title(<name> ...) from native/x360/x360.cmake
+//       CMakeLists.txt        x360_title(<name> ...) from native/cb/recompile/x360/x360.cmake
 //       src/                  the title's XenonRecomp configuration, its switch tables (the finder's, with XenonAnalyse's),
 //                             and default.xex in basic form
 //       src/ppc/              XenonRecomp's C++ (one statement per guest instruction), regenerated: only changed files are
@@ -24,7 +24,7 @@
 //       Build-<name>.bat      configures and builds with clang-cl and Ninja
 //       Play-<name>.bat       runs it
 //
-// The program is native/x360's runtime with the title linked in; run it as `build/<name>.exe assets` (or from assets/).
+// The program is native/cb/recompile/x360's runtime with the title linked in; run it as `build/<name>.exe assets` (or from assets/).
 //
 // What XenonRecomp's tool chain does (finding it, building it, the configuration it reads, the switch tables) is given as a
 // `Recompiler`: recompile/xenon, config and discover own that knowledge.
@@ -48,7 +48,7 @@ struct Recompiler {
     std::filesystem::path recomp;           // XenonRecomp.exe
     std::filesystem::path source;           // XenonRecomp's source folder (XenonUtils/ppc_context.h is read from it)
     std::filesystem::path visual_studio;    // the Visual Studio folder the Build script loads vcvars64 from
-    std::filesystem::path runtime_cmake;    // native/x360/x360.cmake
+    std::filesystem::path runtime_cmake;    // native/cb/recompile/x360/x360.cmake
 
     std::function<void()> ensure_built;     // builds XenonRecomp and XenonAnalyse when they are not
     // `xex` as an unencrypted XEX with basic compression, the form XenonRecomp reads.

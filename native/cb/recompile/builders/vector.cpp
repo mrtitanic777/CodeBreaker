@@ -1068,7 +1068,7 @@ std::string_view runtime_helpers() {
     return R"CBX(
 // ---------------------------------------------------------------------------
 // VMX runtime helpers the vector statements call. They are the runtime's (the rex namespace
-// of native/rexglue/kernel: ppc.h and its SIMD extension header), declared here, not defined.
+// of native/cb/recompile/rexglue/kernel: ppc.h and its SIMD extension header), declared here, not defined.
 //
 //   namespace rex {
 //     simde__m128i simde_mm_adds_epu32(simde__m128i a, simde__m128i b);   // saturating u32 add

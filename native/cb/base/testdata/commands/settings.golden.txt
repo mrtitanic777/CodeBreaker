@@ -25,7 +25,7 @@ settings: <ROOT>/settings.json
   -- powerpc_lib      (not set)
   ok powerpc_tools    <ROOT>/tools/ppc
   !! ppc_binutils     <ROOT>/toolchains/binutils-ppc
-  !! retromcp         <ROOT>/native/retromcp/build/libs/retromcp.jar
+  !! retromcp         <ROOT>/native/cb/java/retromcp/build/libs/retromcp.jar
      service_idle_minutes 5
   ok state            <ROOT>/state
      struct_recovery  all

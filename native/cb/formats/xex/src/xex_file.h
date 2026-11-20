@@ -53,7 +53,7 @@ struct ImportLibrary {
     std::vector<uint32_t> records;
 };
 
-// The TLS optional header (kHdrTlsInfo). Named apart from the runtime's xex::TlsInfo (native/x360/runtime/src/xex.h).
+// The TLS optional header (kHdrTlsInfo). Named apart from the runtime's xex::TlsInfo (cb/recompile/x360/runtime/src/xex.h).
 struct TlsHeader {
     uint32_t slot_count       = 0;
     uint32_t raw_data_address = 0;

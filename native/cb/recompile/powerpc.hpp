@@ -157,14 +157,14 @@ ImageResult recompile_image(const Program& program, const disassemble::VectorDec
 // Where the compiler and the rexglue kernel are.
 struct CompilerEnv {
     std::optional<std::filesystem::path> gpp;   // settings "gpp"
-    std::filesystem::path checkout_root;        // native/rexglue/kernel is below it
+    std::filesystem::path checkout_root;        // native/cb/recompile/rexglue/kernel is below it
     std::optional<std::string> path_variable;   // PATH (none: the environment's)
 };
 
 // A C++ compiler for checking the output: the configured one if it is a file, else g++ on PATH.
 std::optional<std::filesystem::path> find_compiler(const CompilerEnv& env);
 
-// The include folders of the rexglue kernel core (native/rexglue/kernel), in its CMake order; none when it is not in the tree.
+// The include folders of the rexglue kernel core (native/cb/recompile/rexglue/kernel), in its CMake order; none when it is not in the tree.
 std::vector<std::filesystem::path> kernel_includes(const std::filesystem::path& checkout_root);
 
 struct CompileCheck {

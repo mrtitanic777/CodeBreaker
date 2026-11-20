@@ -8,7 +8,7 @@
 // array read through the address register), the compiler's literal constants written in place, and the inputs and
 // outputs by their semantics. It compiles for the PC as vs_3_0 or ps_3_0 (MonoGame's mgfxc).
 //
-// The operations are the microcode's (decompile/xenos decodes it; native/x360's GPU translator, from which the operation
+// The operations are the microcode's (decompile/xenos decodes it; native/cb/recompile/x360's GPU translator, from which the operation
 // semantics here are taken, runs it on the console's terms): a vector and a scalar operation per ALU instruction,
 // reading every operand before writing; the predicate p0; kills; the address register a0; vertex fetches by the input
 // table's semantic (the vertex declaration on the PC converts formats, as the console's runtime patched the fetch for

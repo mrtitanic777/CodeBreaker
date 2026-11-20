@@ -39,7 +39,7 @@ static inline void ppc_vspltb(PPCVRegister&d,const PPCVRegister&a,int e){uint8_t
 )cbvec";
 
 inline constexpr std::string_view kRuntimeTemplate = R"cbrt(// rex_ppc_min.h - the runtime of CodeBreaker's recompiled PowerPC code.
-// When the rexglue kernel (native/rexglue/kernel) is on the include path (<rex/ppc/context.h>),
+// When the rexglue kernel (native/cb/recompile/rexglue/kernel) is on the include path (<rex/ppc/context.h>),
 // this BRIDGES onto its PPCContext so the recompiled code and the kernel share
 // one runtime ABI (the register types are byte-compatible - ours were modeled on
 // the kernel's). Otherwise it falls back to a standalone context of its own that compiles

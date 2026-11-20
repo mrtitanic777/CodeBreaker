@@ -6,9 +6,16 @@ __pycache__/
 /Converted/
 # machine-specific locations (copy settings.example.json)
 /settings.json
-# native build output
+# native build output (native/cb/build is source: the build area). The engines inside native/cb that are built by
+# their own tools keep their output beside them: XenonRecomp's (built on demand), the Xbox 360 runtime's tests,
+# retromcp's Gradle build.
 native/*/build/
 !native/cb/build/
+native/cb/recompile/xenonrecomp/build/
+native/cb/recompile/x360/**/build/
+native/cb/recompile/rexglue/**/build/
+native/cb/java/retromcp/build/
+native/cb/java/retromcp/bin/
 *.obj
 *.o
 
@@ -35,7 +42,8 @@ native/*/*.log
 *.egg-info/
 native/*/build.*/
 # the Java engine's Gradle state
-native/retromcp/.gradle/
+native/cb/java/retromcp/.gradle/
+native/cb/recompile/xenonrecomp/thirdparty/fmt/support/.gradle/
 # test inputs of native/cb are data (objects, binaries), never build output
 !native/cb/**/testdata/**
 native/cb/**/testdata/**/__pycache__/

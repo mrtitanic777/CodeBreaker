@@ -39,7 +39,7 @@ struct Fake {
         rc.recomp = dir.path() / "recomp.bat";
         rc.source = dir.path() / "XenonRecomp";
         rc.visual_studio = "C:/VS/Community";
-        rc.runtime_cmake = "C:/cb/native/x360/x360.cmake";
+        rc.runtime_cmake = "C:/cb/native/cb/recompile/x360/x360.cmake";
         rc.ensure_built = [this] { ++built; };
         rc.write_basic = [](const stdfs::path& xex, const stdfs::path& out) { fs::write_file(out, fs::read_file(xex)); };
         rc.write_switch_tables = [](const stdfs::path& file, const stdfs::path&, const std::optional<std::string>& analysed) {
@@ -127,7 +127,7 @@ CB_TEST("recompile.x360project.scaffold_writes_the_project", [] {
     CB_CHECK(has(info_cpp, "extern const modules::RecompiledModule g_titleModule = {\n    \"default.xex\","));
     CB_CHECK_EQ(fs::read_text(out / "CMakeLists.txt"),
                 "# Written by CodeBreaker (cb/recompile/x360project.cpp).\ncmake_minimum_required(VERSION 3.20)\nproject(pac_man_c_e CXX)\n"
-                "include(\"C:/cb/native/x360/x360.cmake\")\n"
+                "include(\"C:/cb/native/cb/recompile/x360/x360.cmake\")\n"
                 "x360_title(pac_man_c_e \"${CMAKE_CURRENT_SOURCE_DIR}/src/ppc\" \"${CMAKE_CURRENT_SOURCE_DIR}/src/module_info.cpp\")\n");
     const std::string build_bat = fs::read_text(out / "Build-pac_man_c_e.bat");
     CB_CHECK(has(build_bat, "rem Builds pac_man_c_e with clang-cl and Ninja (written by CodeBreaker). Run: build\\pac_man_c_e.exe assets\r\n"));

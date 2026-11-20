@@ -41,7 +41,7 @@ constexpr std::array kDefaults{
     Default{"ppc_binutils", "toolchains/binutils-ppc"},
     Default{"converted", "Converted"},
     Default{"nasm", "native/nasm/build/bin/nasm.exe"},
-    Default{"retromcp", "native/retromcp/build/libs/retromcp.jar"},
+    Default{"retromcp", "native/cb/java/retromcp/build/libs/retromcp.jar"},
     Default{"state", "state"},
     Default{"threads", ""},
     Default{"target", "win95"},

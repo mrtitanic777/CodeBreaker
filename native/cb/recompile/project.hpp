@@ -13,7 +13,7 @@
 //                   <name>_init.cpp (guest address -> function), rex_runtime.cpp (indirect calls,
 //                   guest memory, boot), <name>_imports.cpp (one host function per import)
 //       graphics/   the native GPU subsystem (recompile/gpu), with the rexglue DXBC shader translator
-//       kernel/     the rexglue kernel core (native/rexglue/kernel), which the recompiled code
+//       kernel/     the rexglue kernel core (native/cb/recompile/rexglue/kernel), which the recompiled code
 //                   bridges onto: its PPCContext, and its real implementations of kernel exports
 //       assets/     the image (loaded at its base) and the .xex
 //
@@ -89,7 +89,7 @@ struct RexExports {
     std::map<std::pair<std::string, std::uint32_t>, std::string> names;
     std::set<std::string, std::less<>> implemented;
 };
-// Read from native/rexglue/kernel (`rexglue` is native/rexglue); empty when the kernel is not in the tree.
+// Read from native/cb/recompile/rexglue/kernel (`rexglue` is native/cb/recompile/rexglue); empty when the kernel is not in the tree.
 RexExports read_rex_exports(const std::filesystem::path& rexglue);
 
 // The host-implementation table: the statements that implement a tractable named import.
@@ -113,7 +113,7 @@ bool write_if_changed(const std::filesystem::path& path, ByteView data);
 // `src` no longer has.
 void sync_tree(const std::filesystem::path& src, const std::filesystem::path& dst, const std::function<bool(const std::string&)>& drop);
 
-// Copy the rexglue DXBC shader translator (native/rexglue/dxbc) or the kernel core (native/rexglue/kernel) into a project,
+// Copy the rexglue DXBC shader translator (native/cb/recompile/rexglue/dxbc) or the kernel core (native/cb/recompile/rexglue/kernel) into a project,
 // without build products or standalone tests. -> whether there was one to copy.
 bool copy_rex_dxbc(const std::filesystem::path& rexglue, const std::filesystem::path& dst);
 bool copy_rex_kernel(const std::filesystem::path& rexglue, const std::filesystem::path& dst);
@@ -136,7 +136,7 @@ struct Environment {
     std::function<TitleImage(const std::filesystem::path&)> read_title;   // FormatError for what is not an image
     disassemble::VectorDecoder vector;
     ImportNames import_names;
-    std::filesystem::path rexglue;                                        // native/rexglue
+    std::filesystem::path rexglue;                                        // native/cb/recompile/rexglue
 };
 
 struct Scaffolded {

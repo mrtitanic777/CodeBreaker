@@ -1,5 +1,5 @@
 // rex_ppc_min.h - the runtime of CodeBreaker's recompiled PowerPC code.
-// When the rexglue kernel (native/rexglue/kernel) is on the include path (<rex/ppc/context.h>),
+// When the rexglue kernel (native/cb/recompile/rexglue/kernel) is on the include path (<rex/ppc/context.h>),
 // this BRIDGES onto its PPCContext so the recompiled code and the kernel share
 // one runtime ABI (the register types are byte-compatible - ours were modeled on
 // the kernel's). Otherwise it falls back to a standalone context of its own that compiles
@@ -334,7 +334,7 @@ extern "C" void ppc_call_indirect(PPCContext& ctx, uint8_t* base, uint32_t addr)
 // ---- runtime symbols the builders reference --------------------------------
 // (bridge mode: real definitions come from <rex/ppc/context.h> + <memory.h>)
 
-// Provided by the runtime (native/rexglue/kernel; not redefined when it is included):
+// Provided by the runtime (native/cb/recompile/rexglue/kernel; not redefined when it is included):
 //   #include <simde/x86/sse4.1.h>   // simde_mm_shuffle_epi8, etc.
 // extern const uint8_t VectorMaskL[];        // whole-vector byte-reverse mask
 // extern const uint8_t VectorMaskR[];
@@ -345,7 +345,7 @@ extern "C" void ppc_call_indirect(PPCContext& ctx, uint8_t* base, uint32_t addr)
 
 // ---------------------------------------------------------------------------
 // VMX runtime helpers the vector statements call. They are the runtime's (the rex namespace
-// of native/rexglue/kernel: ppc.h and its SIMD extension header), declared here, not defined.
+// of native/cb/recompile/rexglue/kernel: ppc.h and its SIMD extension header), declared here, not defined.
 //
 //   namespace rex {
 //     simde__m128i simde_mm_adds_epu32(simde__m128i a, simde__m128i b);   // saturating u32 add
