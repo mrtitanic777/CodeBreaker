@@ -13,7 +13,7 @@ rest. Nothing here is built yet.
 | OpenWatcom `wasm` | DOS programs' and VxDs' MASM-style assembly | source/dos_writer, source/vxd |
 | OpenWatcom `wlink` | linking DOS, Win16, Win32 and VxD builds | the same lanes |
 | DOSBox-X | running period DOS tools (Microsoft C, MASM) and DOS programs | build/dos_tools, scripts |
-| RetroMCP (`src/java/retromcp`, a jar run by Java) | a Minecraft version downloaded, remapped and decompiled to Java source, the first step of `java port` for a game jar | decompile/jar.cpp, java/tools.cpp |
+| Fernflower (inside RetroMCP's jar) and javac (the JDK) | Java classes decompiled to Java source, and Java compiled back to classes | decompile/jar.cpp, java/tools.cpp |
 
 ## 1. The decompiler — first, and the smallest step
 
@@ -56,29 +56,23 @@ Already has an in-house replacement under way: CodeBreaker's own DOS executive o
 exact/emu/dos), proven byte-identical for MASM and ML. Extending it to the Microsoft C passes and to running DOS
 programs for behaviour checks retires DOSBox-X.
 
-## 5. RetroMCP: the Java decompile pipeline
+## 5. The Java engines: the decompiler and the compiler
 
-Logan (2026-11-20): CodeBreaker does natively everything RetroMCP does, and the jar goes. A full C++ port in stages, each
-proven against the jar's own output on real Minecraft versions before the next starts; the jar and its Gradle build are
-deleted when the last stage matches (its LICENSE and MCP-CREDITS stay with the code that came from it). Compiling and
-running the game keep using the installed JDK, as the Java front end already does.
+Logan (2026-11-20): what CodeBreaker needs from RetroMCP is not RetroMCP (it only prepares a Minecraft version to be
+worked on: downloads, mappings, patches) but the two engines it drives: **Fernflower**, which decompiles the classes to
+Java, and **javac**, the JDK's compiler, which compiles the Java back to classes. Those two are ported to CodeBreaker C++;
+RetroMCP's own steps are not. Each engine is proven against the original on the same input before it replaces it.
 
 1. **Class files** (done: `java/classfile`): a class read into a tree and written back byte for byte; a method's code
-   decoded into instructions and encoded back. Proven on every class of the jars in the tree.
-2. **Versions and downloads**: the version list, a version's JSON, the client and server jars, the libraries and the
-   assets, kept in a cache keyed by their SHA-1; an HTTP client on WinHTTP (and libcurl's place on Linux).
-3. **Mappings and remapping**: Tiny v2 mappings read, the obfuscated names of every class, field and method renamed
-   through the constant pools and descriptors (the injector's remap), with the jar's own results as the oracle.
-4. **The injector's fixes**: inner classes, implicit constructors, exceptions (.exc), access, decomposed variables,
-   the common constants and the GL constants, string literals, generics guessed or stripped.
-5. **The decompiler**: Fernflower's passes (control flow, variables, expressions, class writer) in C++, the largest
-   stage; each pass checked on the output Fernflower gives for the same remapped classes.
-6. **Patches and the source adapters**: the unified diffs applied, the source rewritten as RetroMCP does after them.
-
-`java port` (java/port.cpp) keeps working through every stage: a stage that lands replaces the jar's part of the run.
+   decoded into instructions and encoded back. Both engines stand on it. Proven on every class of the jars in the tree.
+2. **The decompiler**: Fernflower's passes (the class structure and its attributes, control flow into statements,
+   variables and their types, expressions, the class writer) in C++, each checked on the Java Fernflower writes for the
+   same classes.
+3. **The compiler**: Java source to class files (parse, attribute, flow, lower, generate), checked by compiling with
+   both and comparing what the classes do (and, where javac is deterministic, their bytes).
 
 ## Order
 
 1. x86asm (in progress). 2. The decompiler in-process. 3. x86link, and wasm's jobs moved to x86asm. 4. The DOS executive
 for everything DOSBox-X does. 5. The C compiler, by the option chosen.
-6. RetroMCP, by its stages above.
+6. The Java decompiler, then the Java compiler.
