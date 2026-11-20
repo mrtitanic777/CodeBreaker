@@ -25,6 +25,12 @@ Also:
     mcp                             CodeBreaker as an MCP server for an assistant (stdio; or HTTP with a token)
     app                             the CodeBreaker window, what `codebreaker` starts with no command; --screenshot
                                     PNG draws it to a file
+    disassemble FILE                CodeBreaker's disassembler: any program or ROM, for any processor (`disassemble
+                                    --list`)
+    assemble SOURCE --cpu NAME      CodeBreaker's assembler: source for any processor to its bytes (`assemble --list`)
+    compile SOURCE.c                CodeBreaker's compiler: C to an object, in this program (OpenWatcom's wcc /
+                                    wcc386)
+    link <linker arguments>         CodeBreaker's linker: objects to a program, in this program (OpenWatcom's wlink)
 
 `--corpus NAME` before or after any command selects another product's files (settings.json: corpora).
 --- files

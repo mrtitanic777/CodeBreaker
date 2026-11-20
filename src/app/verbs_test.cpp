@@ -92,7 +92,7 @@ CB_TEST("app.verbs.help_lists_exactly_the_new_verbs", [] {
     const std::vector<std::string> verbs = names_of(std::string_view(usage).substr(0, also));
     CB_CHECK(verbs == (Words{"convert", "inspect", "extract", "build", "check", "compare", "corpus", "lookup", "xbox"}));
     const std::vector<std::string> rest = names_of(std::string_view(usage).substr(also));
-    CB_CHECK(rest == (Words{"settings", "cache", "regress", "serve", "mcp", "app"}));
+    CB_CHECK(rest == (Words{"settings", "cache", "regress", "serve", "mcp", "app", "disassemble", "assemble", "compile", "link"}));
     for (const CommandDoc& d : command_docs())
         if (is_alias(d.name)) CB_CHECK(usage.find("\n    " + std::string(d.name) + " ") == std::string::npos); // no older name is listed
 });

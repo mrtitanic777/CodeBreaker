@@ -152,7 +152,7 @@ CB_TEST("ui.mcp.the_command_table_is_the_catalog", [] {
     CB_CHECK(has_decompile);
     CB_CHECK(!has_ui);
     const Json help = Json::parse(f.call("command_help", Json{{"command", "decompile"}}).first);
-    CB_CHECK(help["help"].get<std::string>().find("decompile <name> [--out FILE]") != std::string::npos);
+    CB_CHECK(help["help"].get<std::string>().find("decompile <name or file> [--out FILE]") != std::string::npos);
     CB_CHECK(f.call("command_help", Json{{"command", "nosuchcommand"}}).second);
 });
 
