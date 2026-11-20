@@ -37,6 +37,6 @@ extern void ResAddLLItemAtEnd( void **head, void **tail, void *item );
 extern void ResInsertLLItemAfter( void **head, void **tail, void *who, void *item );
 extern void ResInsertLLItemBefore( void **head, void **tail, void *who, void *item );
 extern void *ResDeleteLLItem( void **head, void **tail, void *item );
-extern void ResReplaceLLItem( void **head, void **tail, void *item, void *new );
+extern void ResReplaceLLItem( void **head, void **tail, void *item, void *new_ );
 
 #endif

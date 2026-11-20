@@ -33,7 +33,7 @@
 _LFMAC( modifier,    MODIFIER   , 0x0001 )
 _LFMAC( pointer,     POINTER    , 0x0002 )
 _LFMAC( array,       ARRAY      , 0x0003 )
-_LFMAC( class,       CLASS      , 0x0004 )
+_LFMAC( class_,       CLASS      , 0x0004 )
 _LFMAC( structure,   STRUCTURE  , 0x0005 )
 _LFMAC( union,       UNION      , 0x0006 )
 _LFMAC( enum,        ENUM       , 0x0007 )

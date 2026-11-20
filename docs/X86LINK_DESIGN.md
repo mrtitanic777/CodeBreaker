@@ -97,3 +97,11 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    links in-process with no change of its own (CB_WLINK=exe starts wlink.exe again). The gate: 6636/6636, 168/168.
 4. The refactoring, module by module (the table above), each re-proven on the corpus: the directives, the OMF reader (onto
    cb/formats/omf), the symbol passes, the layout and fixups, then each format (DOS, LE, NE, PE).
+   **4a done (2026-11-20): wlink is C++.** Every file of `src/build/x86link/wlink` is `.cpp`, compiled as C++20 under
+   `/permissive-`, and the replay is 47 of 47 the same. What C++ asked to be written (scripts in work/x86link4): C++
+   keywords used as names renamed `<word>_` (`class_`, `this_`, `export_`, `new_` ...; 729); an anonymous struct named
+   by a typedef that is also a tag given that tag, and `typedef struct x *x` tags made `x_s`; every conversion C made
+   silently (`void *` to a typed pointer, an int to an enumeration) a cast where it happens or in its macro; string
+   constants pointed at by `const char *`; the command tables' empty flags `CF_NONE`. `cb/cbcxx.h`, force-included,
+   gives enumerations C's arithmetic (`|=`, `&`, `++` ...). The source is now the starting point of each module's
+   refactoring; `work/x86link/vendor.py` copies OpenWatcom's C and is no longer how these files are made.

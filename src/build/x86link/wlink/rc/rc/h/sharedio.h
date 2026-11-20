@@ -44,7 +44,7 @@ extern void     ReportDupResource( WResID *res_id, WResID *type_id, const char *
 extern bool     OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, ExeType type, const char *exename );
 extern void     CloseResFiles( ResFileInfo *resfiles );
 extern void     SharedIOInitStatics( void );
-extern char     *LastWresErrStr( void );
+extern const char *LastWresErrStr( void );
 extern int      LastWresStatus( void );
 extern int      LastWresErr( void );
 

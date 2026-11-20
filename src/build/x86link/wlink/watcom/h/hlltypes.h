@@ -29,9 +29,9 @@
 ****************************************************************************/
 
 
-_LFMAC( class,       CLASS      , 0x40 )
+_LFMAC( class_,       CLASS      , 0x40 )
 _LFMAC( bclass,      BCLASS     , 0x41 )
-_LFMAC( friend,      FRIEND     , 0x42 )
+_LFMAC( friend_,      FRIEND     , 0x42 )
 _LFMAC( classdef,    CLASSDEF   , 0x43 )
 _LFMAC( mfunction,   MFUNCTION  , 0x45 )
 _LFMAC( member,      MEMBER     , 0x46 )

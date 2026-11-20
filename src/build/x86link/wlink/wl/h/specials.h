@@ -35,7 +35,7 @@
     Magical names that the linker knows about
 */
 
-#ifdef export
+#ifdef export_
 #define SPECIAL( sym, val ) char sym[] = val
 #else
 #define SPECIAL( sym, val ) extern char sym[sizeof( val )]

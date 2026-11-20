@@ -68,6 +68,7 @@ typedef enum {
 } ord_state;
 
 typedef enum {
+    CF_NONE                 = 0x00000000,
     CF_SET_SECTION          = 0x00000001,   // used for LIB/FIXEDLIB directives
     CF_NO_DEF_LIBS          = 0x00000002,
     CF_FILES_BEFORE_DBI     = 0x00000004,
@@ -116,7 +117,7 @@ typedef struct {
     char        *buff;
     size_t      len;
     const char  *next;
-    const char  *this;
+    const char  *this_;
     place       where;
     method      how;
     boolbit     thumb       : 1;
@@ -136,7 +137,7 @@ typedef struct cmdfilelist {
 } cmdfilelist;
 
 typedef struct {
-    char                *keyword;
+    const char          *keyword;
     bool                (*rtn)( void );
     exe_format          format;
     commandflag         flags;

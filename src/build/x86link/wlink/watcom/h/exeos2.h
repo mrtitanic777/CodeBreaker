@@ -204,7 +204,7 @@ typedef enum seg_flags_type {
 
 #define GET_SEG_DISCARD_PRIORITY(x) ((x) >> SEG_SHIFT_DISCARD_PRIORITY)
 #define GET_SEG_PMODE_DPL(x)        ((x) & (3 << SEG_SHIFT_PMODE_DPL))
-#define SET_SEG_PMODE_DPL(x,v)      (x) = (((x) & ~(3 << SEG_SHIFT_PMODE_DPL)) | (v))
+#define SET_SEG_PMODE_DPL(x,v)      (x) = (seg_flags_type)(((x) & ~(3 << SEG_SHIFT_PMODE_DPL)) | (v))
 
 #define MOVABLE_ENTRY_PNT   0xff
 

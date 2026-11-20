@@ -444,7 +444,7 @@ typedef struct group_entry {
         reloc_info      *reloclist_array;   // PE only
         os2_reloc_header *pagelist_array;   // OS/2 flat and Windows 3.x VxD only.
         reloc_info      reloclist;          // others
-        class_entry     *class;         // debug info CV (during addr calc )
+        class_entry     *class_;         // debug info CV (during addr calc )
     } g;
     union {
         unsigned        qnxflags;       // QNX
@@ -469,7 +469,7 @@ typedef struct seg_leader {
     name_strtab         segname;
     SEGDATA             *pieces;
     group_entry         *group;
-    class_entry         *class;
+    class_entry         *class_;
     int                 ord;                // definition order
     offset              size;               // total size of segment
     offset              vsize;              // total virtual size of segment
@@ -533,7 +533,7 @@ typedef struct segdata {
     boolbit             hascdatsym : 1; // true if comdat and has a symbol defd
 } segdata;
 
-typedef struct {
+typedef struct node {
     void                *next;
     void                *entry;
 } node;
@@ -565,7 +565,7 @@ typedef struct seg_flags_struct {
     seg_flags_type      specified;      // used for enforcing mutual exclusion
 } seg_flags_struct;
 
-typedef struct {
+typedef struct extnode {
     symbol              *entry;
     orl_symbol_handle   handle;         // ORL: handle for the symbol
     overlay_ref         ovlref;
@@ -573,11 +573,11 @@ typedef struct {
     boolbit             isdefd  : 1;    // used in ORL
 } extnode;
 
-typedef struct {
+typedef struct grpnode {
     GROUP_ENTRY         *entry;
 } grpnode;
 
-typedef struct {
+typedef struct segnode {
     SEGDATA             *entry;
     orl_sec_handle      handle;     // ORL: handle for the segment.
     unsigned_8          *contents;  // ORL: pointer to contents of segment.
@@ -589,7 +589,7 @@ typedef struct list_of_names {
     char                name[1];
 } list_of_names;
 
-typedef struct {
+typedef struct lobject_data {
     segdata             *seg;
     offset              obj_offset; // pass 1: delta for fixup offsets
     addr_type           addr;

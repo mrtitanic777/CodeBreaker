@@ -153,11 +153,11 @@ typedef enum {
 #define IS_SYM_LINK_WEAK(sym)   (((sym)->info & SYM_TYPE_MASK) == SYM_LINK_WEAK_REF)
 #define IS_SYM_COMM32(sym)      (((sym)->info & SYM_TYPE_MASK) == SYM_COMMUNAL_32)
 
-#define SET_SYM_TYPE(sym,type)  ((sym)->info = ((sym)->info & ~SYM_TYPE_MASK)|(type))
+#define SET_SYM_TYPE(sym,type)  ((sym)->info = (sym_info)(((sym)->info & ~SYM_TYPE_MASK)|(type)))
 
 #define SET_SYM_ADDR(sym,o,s)   (sym)->addr.seg=s;(sym)->addr.off=o
 
-#define SET_SYM_2_FPP(sym,value) ((sym)->info = ((sym)->info & ~SYM_2_FPP_MASK)|((value) << SYM_2_FPP_SHIFT))
+#define SET_SYM_2_FPP(sym,value) ((sym)->info = (sym_info)(((sym)->info & ~SYM_2_FPP_MASK)|((value) << SYM_2_FPP_SHIFT)))
 #define GET_SYM_2_FPP(sym)      (((sym)->info & SYM_2_FPP_MASK) >> SYM_2_FPP_SHIFT)
 
 /* note that OVL_VECTOR && OVL_FORCE can be thought of as a two-bit field.
@@ -218,7 +218,7 @@ typedef struct symbol {
         struct symbol   *mainsym;   // altdefs: main symbol definition
         struct symbol   *def;       // for lazy externs
         struct symbol   **vfdata;   // for virtual function lazy externs.
-        void            *export;    // OS/2 & PE only: exported sym info.
+        void            *export_;    // OS/2 & PE only: exported sym info.
     } e;
     name_strtab         name;
     char                *prefix;    // primarily for netware, though could be

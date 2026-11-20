@@ -53,4 +53,6 @@
         #define boolbit     bool
     #endif
   #endif
+#elif !defined( boolbit )
+  #define boolbit     bool
 #endif

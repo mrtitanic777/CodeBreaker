@@ -116,7 +116,7 @@ struct references_private {
     dw_column           column;
 };
 
-struct dw_client {
+struct dw_client_s {
     jmp_buf                     exception_handler;
     dw_funcs                    funcs;
     char                        *producer_name;

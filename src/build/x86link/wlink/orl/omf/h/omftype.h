@@ -225,7 +225,7 @@ typedef struct omf_comdat_struct {
 
 struct omf_seg_assoc_struct {
     omf_idx             name;
-    omf_idx             class;
+    omf_idx             class_;
     orl_sec_alignment   alignment;
     orl_sec_combine     combine;
     omf_frame           frame;
@@ -266,7 +266,7 @@ struct omf_string_assoc_struct {
 TYPEDEF_LOCAL_TYPE( omf_comment );
 
 ORL_STRUCT( omf_comment ) {
-    unsigned_8          class;
+    unsigned_8          class_;
     unsigned_8          flags;
     omf_rec_size        len;
     unsigned char       data[1];

@@ -31,7 +31,7 @@
 ****************************************************************************/
 
 
-#ifdef export
+#ifdef export_
 #define GLOB       /**/
 #else
 #define GLOB       extern
