@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<processor_spec>
+
+  <programcounter register="PC"/>
+
+  <default_symbols>
+    <symbol name="RESET" address="ram:200040" entry="true"/>
+  </default_symbols>
+
+  <default_memory_blocks>
+    <memory_block name="SFR" start_address="ram:000000" length="0x100" initialized="false"/>
+    <memory_block name="WORKRAM" start_address="ram:004000" length="0x3000" initialized="false"/>
+    <memory_block name="VIDEORAM" start_address="ram:008000" length="0x2000" initialized="false"/>
+    <memory_block name="CARTRIDGE" start_address="ram:200000" length="0x200000" initialized="false"/>
+    <memory_block name="BIOS" start_address="ram:ff0000" length="0x10000" initialized="false"/>
+  </default_memory_blocks>
+
+</processor_spec>

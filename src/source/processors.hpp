@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "formats/code_scan.hpp"
 
 namespace cb::source::processors {
 
@@ -50,6 +51,14 @@ struct Processor {
     std::string_view sla;
     std::vector<std::pair<std::string_view, int>> context;
     bool big_endian = false;   // how its data directives write a word
+    std::vector<std::string_view> halts;   // the mnemonics (lower case) that stop the processor: code does not go on after them
+    // A software trap through a vector table (the 68000's TRAP #n: the handler's address is the 4-byte word at 0x80 + 4n): followed
+    // as a branch to the handler (formats/code_scan: not a function start). Empty mnemonic: none.
+    struct Trap {
+        std::string_view mnemonic;
+        std::uint32_t table = 0;
+        unsigned entry = 4;
+    } trap;
 };
 
 // The instructions as the processor's SLEIGH description reads them (the decompiler core's own reader, in this program): the
@@ -65,6 +74,10 @@ Image assemble_described(const Processor& processor, std::string_view source, co
 // except where its text assembles to other bytes (an encoding the text cannot tell apart: a 68000 immediate's unused byte, an ARM
 // constant's other rotation), which stays as its bytes, with the instruction in a comment.
 std::string source_described(const Processor& processor, ByteView code, std::uint64_t base);
+
+// The processor's description as the decoder the cartridge formats follow code by (formats/code_scan: size, how control leaves,
+// where it goes), for any processor: the one decoder in place of source/isa's one per CPU. UsageError for no description.
+formats::Decoder described_decoder(const Processor& processor);
 
 // Every processor, in a fixed order.
 std::span<const Processor> all();

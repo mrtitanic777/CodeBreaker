@@ -37,6 +37,7 @@
 #include "core/text.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/detect.hpp"
+#include "source/isa.hpp"
 #include "source/processors.hpp"
 #include "ui/mcp_server.hpp"
 #include "ui/mcp_wiring.hpp"
@@ -177,8 +178,53 @@ int compare_readers(const px::Processor& cpu, ByteView code, std::uint64_t base,
     return 0;
 }
 
+// The lanes' own decoder of a processor (source/isa), where there is one.
+const formats::Decoder* own_decoder(std::string_view cpu) {
+    if (cpu == "6502") return &source::isa::m6502_decoder();
+    if (cpu == "z80") return &source::isa::z80_decoder();
+    if (cpu == "sm83") return &source::isa::sm83_decoder();
+    if (cpu == "m68k") return &source::isa::m68k_decoder();
+    if (cpu == "mips") return &source::isa::mips_decoder();
+    if (cpu == "arm") return &source::isa::arm_decoder();
+    if (cpu == "arm9") return &source::isa::arm9_decoder();
+    if (cpu == "arm11") return &source::isa::arm11_decoder();
+    return nullptr;
+}
+
+// The lanes' own decoder and the description's (processors::described_decoder) at each instruction the own decoder steps through:
+// whether they agree on the size, how control leaves and where it goes.
+int compare_flow(const px::Processor& cpu, const Bytes& data, std::size_t offset, std::size_t length, std::uint64_t base, std::size_t count) {
+    const formats::Decoder* own = own_decoder(cpu.name);
+    if (!own) throw UsageError(std::format("{} has no lane decoder of its own to compare with", cpu.name));
+    const formats::Decoder described = px::described_decoder(cpu);
+    // the image indexed by address, as the cartridge formats hand it to a decoder
+    Bytes mem(static_cast<std::size_t>(base) + length, 0);
+    std::copy(data.begin() + static_cast<std::ptrdiff_t>(offset), data.begin() + static_cast<std::ptrdiff_t>(offset + length), mem.begin() + static_cast<std::ptrdiff_t>(base));
+    static const char* const kFlow[] = {"next", "branch", "jump", "call", "return", "indirect", "halt"};
+    std::size_t n = 0, both = 0, size_same = 0, flow_same = 0, target_same = 0, shown = 0;
+    std::string diffs;
+    for (std::uint32_t pc = static_cast<std::uint32_t>(base); pc < base + length && (count == 0 || n < count);) {
+        const std::optional<formats::DecodedInsn> a = (*own)(mem, pc), b = described(mem, pc);
+        ++n;
+        if (a && b) {
+            ++both;
+            const bool s = a->size == b->size, f = a->flow == b->flow, t = a->target == b->target;
+            size_same += s;
+            flow_same += s && f;
+            target_same += s && f && t;
+            if (!(s && f && t) && shown++ < 25)
+                diffs += std::format("  {:08X}  own: {} {} {}   sleigh: {} {} {}\n", pc, a->size, kFlow[static_cast<int>(a->flow)], a->target ? std::format("{:X}", *a->target) : "-",
+                                     b->size, kFlow[static_cast<int>(b->flow)], b->target ? std::format("{:X}", *b->target) : "-");
+        }
+        pc += a && a->size ? a->size : 1;
+    }
+    out_text(std::format("{}: {} places; both decode {}: same size {}, same size+flow {}, same size+flow+target {} ({:.2f}%)\n{}", cpu.name, n, both, size_same, flow_same,
+                         target_same, both ? 100.0 * target_same / both : 0.0, diffs));
+    return 0;
+}
+
 int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
-    const Words w = take(args, {"--cpu", "--at", "--count", "--offset", "--base", "--length", "--out", "-o"}, {"--list", "--help", "--sleigh", "--compare", "--source"});
+    const Words w = take(args, {"--cpu", "--at", "--count", "--offset", "--base", "--length", "--out", "-o"}, {"--list", "--help", "--sleigh", "--compare", "--source", "--compare-flow"});
     if (w.flags.contains("--list")) return list_processors();
     if (w.rest.size() != 1 || w.flags.contains("--help")) throw UsageError("disassemble FILE [--at ADDR] [--count N] | disassemble FILE --cpu NAME [--offset N] [--length N] [--base ADDR] [--count N] [--out FILE] | disassemble --list");
     const stdfs::path file = w.rest[0];
@@ -224,6 +270,14 @@ int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
     // --sleigh: through the processor's SLEIGH description (the decompiler core's reader) instead of its own tables
     const bool described = w.flags.contains("--sleigh");
     auto read = [&](const px::Processor& p, ByteView bytes, std::uint64_t at) { return described ? px::read_described(p, bytes, at, count) : p.disassemble(bytes, at, count); };
+    if (w.flags.contains("--compare-flow")) {
+        const std::size_t off = value(w, "--offset") ? static_cast<std::size_t>(number("--offset", *value(w, "--offset"))) : 0;
+        if (off > data.size()) throw UsageError("--offset is past the end of the file");
+        std::size_t len = data.size() - off;
+        if (auto l = value(w, "--length")) len = std::min<std::size_t>(len, static_cast<std::size_t>(number("--length", *l)));
+        const std::uint64_t b0 = value(w, "--base") ? number("--base", *value(w, "--base")) : off;
+        return compare_flow(*cpu, data, off, len, b0, count);
+    }
     if (w.flags.contains("--source")) {   // source that assembles back to exactly these bytes (assemble --sleigh)
         const std::size_t off = value(w, "--offset") ? static_cast<std::size_t>(number("--offset", *value(w, "--offset"))) : dos_offset;
         if (off > data.size()) throw UsageError("--offset is past the end of the file");

@@ -358,6 +358,11 @@ std::vector<Processor> make_table() {
         std::vector<std::pair<std::string_view, int>> context;
         bool big_endian = false;
     };
+    const std::map<std::string_view, std::vector<std::string_view>> halts = {
+        // (a Z80 or SM83 HALT, an SH SLEEP, a 6809 SYNC wait for an interrupt and go on after it: code continues)
+        {"6502", {"brk"}}, {"65c02", {"brk", "stp"}}, {"huc6280", {"brk"}}, {"65816", {"brk", "stp"}},
+        {"sm83", {"stop", ".db"}}, {"m68k", {"stop"}}, {"cp1610", {"hlt"}},   // (the SM83's ".db": STOP with a second byte that is not 0)
+    };
     const Described described[] = {
         {"x86-16", "x86.sla", {{"addrsize", 0}, {"opsize", 0}}}, {"x86-32", "x86.sla", {{"addrsize", 1}, {"opsize", 1}}},
         {"masm", "x86.sla", {{"addrsize", 0}, {"opsize", 0}}},   {"6502", "6502.sla", {}},
@@ -371,11 +376,16 @@ std::vector<Processor> make_table() {
         {"sh2", "sh-2.sla", {}, true},                            {"sh4", "SuperH4_le.sla", {}},
         {"i8048", "8048.sla", {}},                                {"cp1610", "CP1600.sla", {}, true},
         {"sm83", "sm83.sla", {}},                                 {"huc6280", "huc6280.sla", {}},
-        {"65816", "65816.sla", {}},
+        {"65816", "65816.sla", {}},                               {"v810", "v810.sla", {}},
+        {"f8", "f8.sla", {}},                                     {"tlcs900", "tlcs900.sla", {}},
     };
     for (const Described& d : described)
         for (Processor& p : t)
-            if (p.name == d.name) p.sla = d.sla, p.context = d.context, p.big_endian = d.big_endian;
+            if (p.name == d.name) {
+                p.sla = d.sla, p.context = d.context, p.big_endian = d.big_endian;
+                if (const auto h = halts.find(p.name); h != halts.end()) p.halts = h->second;
+                if (p.name == "m68k") p.trap = {"trap", 0x80, 4};
+            }
     return t;
 }
 
@@ -451,6 +461,53 @@ std::string source_described(const Processor& processor, ByteView code, std::uin
         else out += raw(l) + "\t; " + l.text + "\n";
     }
     return out;
+}
+
+formats::Decoder described_decoder(const Processor& processor) {
+    if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
+    std::vector<std::pair<std::string, int>> context;
+    for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
+    auto reader = std::make_shared<decompile::sleigh::Reader>(languages() / processor.sla, context);
+    std::vector<std::string> halts;
+    for (std::string_view h : processor.halts) halts.emplace_back(h);
+    const Processor::Trap trap = processor.trap;
+    const bool big = processor.big_endian;
+    return [reader, halts, trap, big](ByteView mem, std::uint32_t pc) -> std::optional<formats::DecodedInsn> {
+        if (pc >= mem.size()) return std::nullopt;
+        // (the image is indexed by address: the reader is handed the whole of it, read at `pc`)
+        const std::vector<decompile::sleigh::Instruction> one{reader->at(mem.data(), mem.size(), 0, pc)};
+        if (one[0].length == 0) return std::nullopt;
+        formats::DecodedInsn d;
+        d.size = static_cast<std::uint32_t>(one[0].length);
+        using F = decompile::sleigh::Flow;
+        switch (one[0].flow) {
+            case F::Next: d.flow = formats::Flow::Next; break;
+            case F::CallIndirect: d.flow = formats::Flow::Call; break;   // (a call through a register: a call with no target known)
+            case F::Branch: d.flow = formats::Flow::Branch; break;
+            case F::Jump: d.flow = formats::Flow::Jump; break;
+            case F::Call: d.flow = formats::Flow::Call; break;
+            case F::Return: d.flow = formats::Flow::Return; break;
+            case F::Indirect: d.flow = formats::Flow::Indirect; break;
+        }
+        if (one[0].target) d.target = static_cast<std::uint32_t>(*one[0].target);
+        const std::string mnemonic = text::lower(one[0].mnemonic);
+        if (std::find(halts.begin(), halts.end(), mnemonic) != halts.end()) d.flow = formats::Flow::Halt, d.target.reset();
+        if (!trap.mnemonic.empty() && mnemonic == trap.mnemonic) {   // TRAP #n: a branch to the handler the vector table names
+            const std::string_view op = text::trim(one[0].operands);
+            const std::optional<std::int64_t> n = build::parse_number(op.starts_with('#') ? op.substr(1) : op);
+            d.flow = formats::Flow::Branch;
+            d.target.reset();
+            if (n && *n >= 0) {
+                const std::uint64_t at = trap.table + static_cast<std::uint64_t>(*n) * trap.entry;
+                if (at + trap.entry <= mem.size()) {
+                    std::uint32_t v = 0;
+                    for (unsigned k = 0; k < trap.entry; ++k) v = big ? (v << 8 | mem[at + k]) : (v | static_cast<std::uint32_t>(mem[at + k]) << (8 * k));
+                    d.target = v;
+                }
+            }
+        }
+        return d;
+    };
 }
 
 std::span<const Processor> all() {

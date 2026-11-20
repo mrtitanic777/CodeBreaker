@@ -1,0 +1,296 @@
+# sleigh specification file for the Fairchild F8 (3850 CPU, 3851 PSU as used in the Channel F)
+#
+# Big-endian addresses (the high byte comes first in PI, JMP, DCI).
+# The 64-byte scratchpad is the SPAD space; R0-R11 are its bytes 0-11, bytes 12-15 are
+# KU, KL, QU, QL.  An operand of 12, 13, 14 means S, I, D: scratchpad[ISAR], then
+# ISAR low three bits incremented / decremented after.  DC0, DC1 are the data counters,
+# PC0, PC1 the program counters.
+
+define endian=big;
+define alignment=1;
+
+define space ram     type=ram_space size=2 default;
+define space SPAD    type=ram_space size=1;
+define space PORT    type=ram_space size=1;
+define space register type=register_space size=1;
+
+define register offset=0x00 size=1 [ A ISAR SF CF ZF OF ICB ];
+define register offset=0x10 size=2 [ PC0 PC1 DC0 DC1 ];
+
+define token opbyte (8)
+   opc  = (0,7)
+   hi   = (4,7)
+   lo   = (0,3)
+   lon  = (0,3)
+   lod  = (0,3) dec
+   lox  = (0,3) hex
+   lo3  = (0,2) dec
+   lo3h = (3,3)
+;
+
+define token imm8tok (8)
+   imm8 = (0,7)
+   rel8 = (0,7) signed
+;
+
+define token imm16tok (16)
+   a16 = (0,15)
+;
+
+attach names lo [ R0 R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11 S I D _ ];
+
+define pcodeop nop;
+define pcodeop disableInt;
+define pcodeop enableInt;
+define pcodeop bcdAdd;
+define pcodeop bcdCarry;
+
+macro setZS(v) {
+  ZF = (v == 0);
+  SF = ((v & 0x80) == 0);
+}
+
+macro getW(w) {
+  w = 0;
+  w[0,1] = SF;
+  w[1,1] = CF;
+  w[2,1] = ZF;
+  w[3,1] = OF;
+  w[4,1] = ICB;
+}
+
+macro setW(w) {
+  SF  = w[0,1];
+  CF  = w[1,1];
+  ZF  = w[2,1];
+  OF  = w[3,1];
+  ICB = w[4,1];
+}
+
+macro add8(dst, x, y, c) {
+  local res:1 = x + y + c;
+  CF = carry(x, y) || carry(x + y, c);
+  OF = scarry(x, y) || scarry(x + y, c);
+  dst = res;
+  setZS(res);
+}
+
+macro cmp8(x, y) {
+  # x - y the way the F8 does it: x + ~y + 1
+  local ny:1 = ~y;
+  local res:1 = x + ny + 1;
+  CF = carry(x, ny) || carry(x + ny, 1);
+  OF = scarry(x, ny) || scarry(x + ny, 1);
+  setZS(res);
+}
+
+macro logic8(res) {
+  CF = 0;
+  OF = 0;
+  setZS(res);
+}
+
+macro bcdadd(dst, x, y) {
+  local r:1 = bcdAdd(x, y, CF);
+  CF = bcdCarry(x, y, CF);
+  OF = 0;
+  dst = r;
+  setZS(r);
+}
+
+################################################################
+
+Q: "Q" is epsilon { local q:2 = 0; q[8,8] = *[SPAD]:1 14:1; q[0,8] = *[SPAD]:1 15:1; export q; }
+K: "K" is epsilon { local k:2 = 0; k[8,8] = *[SPAD]:1 12:1; k[0,8] = *[SPAD]:1 13:1; export k; }
+Hh: "H" is epsilon { local h:2 = 0; h[8,8] = *[SPAD]:1 10:1; h[0,8] = *[SPAD]:1 11:1; export h; }
+
+# the scratchpad register an operand names
+Rr: lo is lon<12 & lo {
+  local ptr:1 = lo;
+  export *[SPAD]:1 ptr;
+}
+Rr: lo is lon = 12 & lo {
+  local ptr:1 = ISAR;
+  export *[SPAD]:1 ptr;
+}
+Rr: lo is lon = 13 & lo {
+  local ptr:1 = ISAR;
+  ISAR = (ISAR & 0x38) | ((ISAR + 1) & 7);
+  export *[SPAD]:1 ptr;
+}
+Rr: lo is lon = 14 & lo {
+  local ptr:1 = ISAR;
+  ISAR = (ISAR & 0x38) | ((ISAR - 1) & 7);
+  export *[SPAD]:1 ptr;
+}
+
+Rel: reloc is rel8 [ reloc = (inst_start + 1 + rel8) & 0xffff; ] {
+  export *[ram]:1 reloc;
+}
+
+Addr: a16 is a16 {
+  export *[ram]:1 a16;
+}
+
+# the byte at DC0, after which DC0 advances
+Mem: "" is epsilon {
+  local p:2 = DC0;
+  DC0 = DC0 + 1;
+  export *[ram]:1 p;
+}
+
+################################################################
+
+:LR "A,KU"   is opc=0x00 { A = *[SPAD]:1 12:1; }
+:LR "A,KL"   is opc=0x01 { A = *[SPAD]:1 13:1; }
+:LR "A,QU"   is opc=0x02 { A = *[SPAD]:1 14:1; }
+:LR "A,QL"   is opc=0x03 { A = *[SPAD]:1 15:1; }
+:LR "KU,A"   is opc=0x04 { *[SPAD]:1 12:1 = A; }
+:LR "KL,A"   is opc=0x05 { *[SPAD]:1 13:1 = A; }
+:LR "QU,A"   is opc=0x06 { *[SPAD]:1 14:1 = A; }
+:LR "QL,A"   is opc=0x07 { *[SPAD]:1 15:1 = A; }
+:LR "K,P"    is opc=0x08 {
+  *[SPAD]:1 12:1 = PC1[8,8];
+  *[SPAD]:1 13:1 = PC1[0,8];
+}
+:LR "P,K"    is opc=0x09 & K {
+  PC1 = K;
+}
+:LR "A,IS"   is opc=0x0A { A = ISAR; }
+:LR "IS,A"   is opc=0x0B { ISAR = A & 0x3f; }
+:PK        is opc=0x0C & K {
+  PC1 = inst_next;
+  call [K];
+}
+:LR "P0,Q"   is opc=0x0D & Q {
+  goto [Q];
+}
+:LR "Q,DC"   is opc=0x0E {
+  *[SPAD]:1 14:1 = DC0[8,8];
+  *[SPAD]:1 15:1 = DC0[0,8];
+}
+:LR "DC,Q"   is opc=0x0F & Q {
+  DC0 = Q;
+}
+:LR "DC,H"   is opc=0x10 & Hh {
+  DC0 = Hh;
+}
+:LR "H,DC"   is opc=0x11 {
+  *[SPAD]:1 10:1 = DC0[8,8];
+  *[SPAD]:1 11:1 = DC0[0,8];
+}
+:SR "1" is opc=0x12 { A = A >> 1; logic8(A); }
+:SL "1" is opc=0x13 { A = A << 1; logic8(A); }
+:SR "4" is opc=0x14 { A = A >> 4; logic8(A); }
+:SL "4" is opc=0x15 { A = A << 4; logic8(A); }
+:LM        is opc=0x16 { A = *[ram]:1 DC0; DC0 = DC0 + 1; }
+:ST        is opc=0x17 { *[ram]:1 DC0 = A; DC0 = DC0 + 1; }
+:COM       is opc=0x18 { A = ~A; logic8(A); }
+:LNK       is opc=0x19 { local c:1 = CF; add8(A, A, 0:1, c); }
+:DI        is opc=0x1A { ICB = 0; disableInt(); }
+:EI        is opc=0x1B { ICB = 1; enableInt(); }
+:POP       is opc=0x1C {
+  return [PC1];
+}
+:LR "W,J"    is opc=0x1D {
+  local j:1 = *[SPAD]:1 9:1;
+  setW(j);
+}
+:LR "J,W"    is opc=0x1E {
+  local w:1 = 0;
+  getW(w);
+  *[SPAD]:1 9:1 = w;
+}
+:INC       is opc=0x1F { add8(A, A, 1:1, 0:1); }
+
+:LI imm8   is opc=0x20; imm8 { A = imm8; }
+:NI imm8   is opc=0x21; imm8 { A = A & imm8; logic8(A); }
+:OI imm8   is opc=0x22; imm8 { A = A | imm8; logic8(A); }
+:XI imm8   is opc=0x23; imm8 { A = A ^ imm8; logic8(A); }
+:AI imm8   is opc=0x24; imm8 { add8(A, A, imm8, 0:1); }
+:CI imm8   is opc=0x25; imm8 { cmp8(imm8, A); }
+:IN imm8   is opc=0x26; imm8 {
+  local port:1 = imm8;
+  A = *[PORT]:1 port;
+  logic8(A);
+}
+:OUT imm8  is opc=0x27; imm8 {
+  local port:1 = imm8;
+  *[PORT]:1 port = A;
+}
+:PI Addr   is opc=0x28; Addr {
+  PC1 = inst_next;
+  call Addr;
+}
+:JMP Addr  is opc=0x29; Addr {
+  goto Addr;
+}
+:DCI a16   is opc=0x2A; a16 {
+  DC0 = a16;
+}
+:NOP       is opc=0x2B { nop(); }
+:XDC       is opc=0x2C {
+  local t:2 = DC0;
+  DC0 = DC1;
+  DC1 = t;
+}
+
+:DS Rr     is hi=3 & Rr { local v:1 = Rr; add8(v, v, 0xff:1, 0:1); Rr = v; }
+:LR "A",Rr   is hi=4 & Rr { A = Rr; }
+:LR Rr,"A"   is hi=5 & Rr { Rr = A; }
+
+:LISU lo3  is hi=6 & lo3h=0 & lo3 { ISAR = (ISAR & 7) | (lo3 << 3); }
+:LISL lo3  is hi=6 & lo3h=1 & lo3 { ISAR = (ISAR & 0x38) | lo3; }
+:LIS lod   is hi=7 & lod & lon<10 { A = lod; }
+:LIS lox   is hi=7 & lox & lon>=10 { A = lox; }
+
+:BT lo3,Rel is hi=8 & lo3h=0 & lo3; Rel {
+  local w:1 = 0;
+  getW(w);
+  if ((w & lo3) == 0) goto inst_next;
+  goto Rel;
+}
+:AM        is opc=0x88 & Mem { add8(A, A, Mem, 0:1); }
+:AMD       is opc=0x89 & Mem { bcdadd(A, A, Mem); }
+:NM        is opc=0x8A & Mem { A = A & Mem; logic8(A); }
+:OM        is opc=0x8B & Mem { A = A | Mem; logic8(A); }
+:XM        is opc=0x8C & Mem { A = A ^ Mem; logic8(A); }
+:CM        is opc=0x8D & Mem { cmp8(Mem, A); }
+:ADC       is opc=0x8E { local d:2 = sext(A); DC0 = DC0 + d; }
+:BR7 Rel   is opc=0x8F; Rel {
+  if ((ISAR & 7) == 7) goto inst_next;
+  goto Rel;
+}
+:BR Rel    is opc=0x90; Rel {
+  goto Rel;
+}
+:BF lod,Rel is hi=9 & lod & lon!=0; Rel {
+  local w:1 = 0;
+  getW(w);
+  if ((w & lod) != 0) goto inst_next;
+  goto Rel;
+}
+
+:INS lod   is hi=10 & lod & lon<10 {
+  local port:1 = lod;
+  A = *[PORT]:1 port;
+  logic8(A);
+}
+:INS lox   is hi=10 & lox & lon>=10 {
+  local port:1 = lox;
+  A = *[PORT]:1 port;
+  logic8(A);
+}
+:OUTS lod  is hi=11 & lod & lon<10 {
+  local port:1 = lod;
+  *[PORT]:1 port = A;
+}
+:OUTS lox  is hi=11 & lox & lon>=10 {
+  local port:1 = lox;
+  *[PORT]:1 port = A;
+}
+
+:AS Rr     is hi=12 & Rr { add8(A, A, Rr, 0:1); }
+:ASD Rr    is hi=13 & Rr { bcdadd(A, A, Rr); }
+:XS Rr     is hi=14 & Rr { A = A ^ Rr; logic8(A); }
+:NS Rr     is hi=15 & Rr { A = A & Rr; logic8(A); }

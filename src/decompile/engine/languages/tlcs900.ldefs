@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<language_definitions>
+
+  <language processor="TLCS900H"
+            endian="little"
+            size="24"
+            variant="default"
+            version="1.0"
+            slafile="tlcs900.sla"
+            processorspec="tlcs900.pspec"
+            id="TLCS900H:LE:24:default">
+    <description>Toshiba TLCS-900/H (Neo Geo Pocket, TMP95C061)</description>
+    <compiler name="default" spec="tlcs900.cspec" id="default"/>
+  </language>
+
+</language_definitions>

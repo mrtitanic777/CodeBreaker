@@ -1,0 +1,459 @@
+# sleigh specification file for the NEC V810 (Virtual Boy)
+#
+# 32 general registers r0-r31 (r0 reads as zero on the real chip; here it is an ordinary
+# register), 16/32-bit instructions, little-endian halfwords.  The system registers
+# (eipc eipsw fepc fepsw ecr psw pir tkcw chcw adtre) are reached by ldsr / stsr; the PSW
+# flags are kept apart (Z S OV CY ...) and put together on ldsr / stsr of the psw.
+#
+# Instruction formats:
+#   I    opcode(6) reg2(5) reg1(5)           register-register
+#   II   opcode(6) reg2(5) imm5(5)           register-immediate
+#   III  100 cond(4) disp9(9)                conditional branch
+#   IV   opcode(6) disp26 (hw1 low)          jr, jal
+#   V    opcode(6) reg2 reg1 ; imm16         movea addi ori andi xori movhi
+#   VI   opcode(6) reg2 reg1 ; disp16        ld.x st.x in.x out.x caxi
+#   VII  opcode(6)=0x3E ... ; subop(6) 0     floating-point and extended
+#   bit-string: opcode 0x1F, subop in the reg1 field
+
+define endian=little;
+define alignment=2;
+
+define space ram      type=ram_space      size=4 default;
+define space register type=register_space size=4;
+
+define register offset=0x000 size=4 [ r0  r1  r2  r3  r4  r5  r6  r7
+                                      r8  r9  r10 r11 r12 r13 r14 r15
+                                      r16 r17 r18 r19 r20 r21 r22 r23
+                                      r24 r25 r26 r27 r28 r29 r30 r31 ];
+
+define register offset=0x100 size=4 [ eipc eipsw fepc fepsw ecr pir tkcw chcw adtre
+                                      sr8 sr9 sr10 sr11 sr12 sr13 sr14 sr15 sr16 sr17 sr18 sr19 sr20 sr21 sr22 sr23
+                                      sr26 sr27 sr28 sr29 sr30 sr31 ];
+
+define register offset=0x200 size=1 [ Z S OV CY FPR FUD FOV FZD FIV FRO ID AE EP NP PSWI ];
+
+define register offset=0x300 size=4 [ PC ];
+
+define token insn (16)
+   op6    = (10,15)
+   op3    = (13,15)
+   reg2   = (5,9)
+   reg1   = (0,4)
+   r2n    = (5,9)
+   r1n    = (0,4)
+   imm5u  = (0,4)
+   imm5s  = (0,4) signed
+   cnd    = (9,12)
+   scnd   = (0,3)
+   dsp9   = (0,8) signed
+   dsp9b0 = (0,0)
+;
+
+# a jr / jal as one 32-bit word: the displacement's high ten bits are the first
+# halfword's low ten, its low sixteen the second halfword
+define token insn32 (32)
+   op6w   = (10,15)
+   j26hi  = (0,9) signed
+   jlob0  = (16,16)
+   jlo    = (17,31)
+;
+
+define token insn2 (16)
+   imm16  = (0,15)
+   simm16 = (0,15) signed
+   ext6   = (10,15)
+   extlow = (0,9)
+;
+
+attach variables [ reg1 reg2 ] [ r0  r1  r2  r3  r4  r5  r6  r7
+                                 r8  r9  r10 r11 r12 r13 r14 r15
+                                 r16 r17 r18 r19 r20 r21 r22 r23
+                                 r24 r25 r26 r27 r28 r29 r30 r31 ];
+
+define pcodeop trap;
+define pcodeop halt;
+define pcodeop bitrev;
+define pcodeop sch0bsu;
+define pcodeop sch0bsd;
+define pcodeop sch1bsu;
+define pcodeop sch1bsd;
+define pcodeop orbsu;
+define pcodeop andbsu;
+define pcodeop xorbsu;
+define pcodeop movbsu;
+define pcodeop ornbsu;
+define pcodeop andnbsu;
+define pcodeop xornbsu;
+define pcodeop notbsu;
+
+################################################################
+# Macros
+
+macro getPSW(w) {
+  w = 0;
+  w[0,1]  = Z;
+  w[1,1]  = S;
+  w[2,1]  = OV;
+  w[3,1]  = CY;
+  w[4,1]  = FPR;
+  w[5,1]  = FUD;
+  w[6,1]  = FOV;
+  w[7,1]  = FZD;
+  w[8,1]  = FIV;
+  w[9,1]  = FRO;
+  w[12,1] = ID;
+  w[13,1] = AE;
+  w[14,1] = EP;
+  w[15,1] = NP;
+  w[16,4] = PSWI;
+}
+
+macro setPSW(w) {
+  Z    = w[0,1];
+  S    = w[1,1];
+  OV   = w[2,1];
+  CY   = w[3,1];
+  FPR  = w[4,1];
+  FUD  = w[5,1];
+  FOV  = w[6,1];
+  FZD  = w[7,1];
+  FIV  = w[8,1];
+  FRO  = w[9,1];
+  ID   = w[12,1];
+  AE   = w[13,1];
+  EP   = w[14,1];
+  NP   = w[15,1];
+  PSWI = w[16,4];
+}
+
+macro zs(r) {
+  Z = (r == 0);
+  S = (r s< 0);
+}
+
+macro logic(dst, r) {
+  dst = r;
+  OV = 0;
+  zs(dst);
+}
+
+macro addop(dst, a, b) {
+  local r:4 = a + b;
+  CY = carry(a, b);
+  OV = scarry(a, b);
+  dst = r;
+  zs(r);
+}
+
+macro subop(dst, a, b) {
+  local r:4 = a - b;
+  CY = a < b;
+  OV = sborrow(a, b);
+  dst = r;
+  zs(r);
+}
+
+macro cmpop(a, b) {
+  local r:4 = a - b;
+  CY = a < b;
+  OV = sborrow(a, b);
+  zs(r);
+}
+
+macro shlop(dst, a, c) {
+  local n:4 = c & 31;
+  local x:4 = a;
+  CY = ((x >> (32 - n)) & 1) != 0;
+  x = x << n;
+  OV = 0;
+  dst = x;
+  zs(x);
+}
+
+macro shrop(dst, a, c) {
+  local n:4 = c & 31;
+  local x:4 = a;
+  CY = (n != 0) && (((x >> (n - 1)) & 1) != 0);
+  x = x >> n;
+  OV = 0;
+  dst = x;
+  zs(x);
+}
+
+macro sarop(dst, a, c) {
+  local n:4 = c & 31;
+  local x:4 = a;
+  CY = (n != 0) && (((x s>> (n - 1)) & 1) != 0);
+  x = x s>> n;
+  OV = 0;
+  dst = x;
+  zs(x);
+}
+
+macro mulop(a, b) {
+  local p:8 = sext(a) * sext(b);
+  r30 = p(4);
+  a = p:4;
+  OV = (p != sext(a));
+  zs(a);
+}
+
+macro muluop(a, b) {
+  local p:8 = zext(a) * zext(b);
+  r30 = p(4);
+  a = p:4;
+  OV = (p != zext(a));
+  zs(a);
+}
+
+macro fcheck(r) {
+  Z = ((r << 1) == 0);
+  S = (r s< 0);
+  OV = 0;
+}
+
+################################################################
+# Operand tables
+
+SysReg: "eipc"  is r1n=0  { export eipc; }
+SysReg: "eipsw" is r1n=1  { export eipsw; }
+SysReg: "fepc"  is r1n=2  { export fepc; }
+SysReg: "fepsw" is r1n=3  { export fepsw; }
+SysReg: "ecr"   is r1n=4  { export ecr; }
+SysReg: "pir"   is r1n=6  { export pir; }
+SysReg: "tkcw"  is r1n=7  { export tkcw; }
+SysReg: "chcw"  is r1n=24 { export chcw; }
+SysReg: "adtre" is r1n=25 { export adtre; }
+SysReg: imm5u   is imm5u & r1n=8  { export sr8; }
+SysReg: imm5u   is imm5u & r1n=9  { export sr9; }
+SysReg: imm5u   is imm5u & r1n=10 { export sr10; }
+SysReg: imm5u   is imm5u & r1n=11 { export sr11; }
+SysReg: imm5u   is imm5u & r1n=12 { export sr12; }
+SysReg: imm5u   is imm5u & r1n=13 { export sr13; }
+SysReg: imm5u   is imm5u & r1n=14 { export sr14; }
+SysReg: imm5u   is imm5u & r1n=15 { export sr15; }
+SysReg: imm5u   is imm5u & r1n=16 { export sr16; }
+SysReg: imm5u   is imm5u & r1n=17 { export sr17; }
+SysReg: imm5u   is imm5u & r1n=18 { export sr18; }
+SysReg: imm5u   is imm5u & r1n=19 { export sr19; }
+SysReg: imm5u   is imm5u & r1n=20 { export sr20; }
+SysReg: imm5u   is imm5u & r1n=21 { export sr21; }
+SysReg: imm5u   is imm5u & r1n=22 { export sr22; }
+SysReg: imm5u   is imm5u & r1n=23 { export sr23; }
+SysReg: imm5u   is imm5u & r1n=26 { export sr26; }
+SysReg: imm5u   is imm5u & r1n=27 { export sr27; }
+SysReg: imm5u   is imm5u & r1n=28 { export sr28; }
+SysReg: imm5u   is imm5u & r1n=29 { export sr29; }
+SysReg: imm5u   is imm5u & r1n=30 { export sr30; }
+SysReg: imm5u   is imm5u & r1n=31 { export sr31; }
+
+# conditions (branches: field cnd; setf: field scnd)
+CcB: "v" is cnd=0 { local c:1 = OV; export c; }
+CcB: "l" is cnd=1 { local c:1 = CY; export c; }
+CcB: "e" is cnd=2 { local c:1 = Z; export c; }
+CcB: "nh" is cnd=3 { local c:1 = (CY || Z); export c; }
+CcB: "n" is cnd=4 { local c:1 = S; export c; }
+CcB: "lt" is cnd=6 { local c:1 = (S != OV); export c; }
+CcB: "le" is cnd=7 { local c:1 = ((S != OV) || Z); export c; }
+CcB: "nv" is cnd=8 { local c:1 = (OV == 0); export c; }
+CcB: "nl" is cnd=9 { local c:1 = (CY == 0); export c; }
+CcB: "ne" is cnd=10 { local c:1 = (Z == 0); export c; }
+CcB: "h" is cnd=11 { local c:1 = ((CY || Z) == 0); export c; }
+CcB: "p" is cnd=12 { local c:1 = (S == 0); export c; }
+CcB: "ge" is cnd=14 { local c:1 = (S == OV); export c; }
+CcB: "gt" is cnd=15 { local c:1 = (((S != OV) || Z) == 0); export c; }
+
+CcS: "v" is scnd=0 { local c:1 = OV; export c; }
+CcS: "l" is scnd=1 { local c:1 = CY; export c; }
+CcS: "e" is scnd=2 { local c:1 = Z; export c; }
+CcS: "nh" is scnd=3 { local c:1 = (CY || Z); export c; }
+CcS: "n" is scnd=4 { local c:1 = S; export c; }
+CcS: "r" is scnd=5 { local c:1 = 1; export c; }
+CcS: "lt" is scnd=6 { local c:1 = (S != OV); export c; }
+CcS: "le" is scnd=7 { local c:1 = ((S != OV) || Z); export c; }
+CcS: "nv" is scnd=8 { local c:1 = (OV == 0); export c; }
+CcS: "nl" is scnd=9 { local c:1 = (CY == 0); export c; }
+CcS: "ne" is scnd=10 { local c:1 = (Z == 0); export c; }
+CcS: "h" is scnd=11 { local c:1 = ((CY || Z) == 0); export c; }
+CcS: "p" is scnd=12 { local c:1 = (S == 0); export c; }
+CcS: "nop" is scnd=13 { local c:1 = 0; export c; }
+CcS: "ge" is scnd=14 { local c:1 = (S == OV); export c; }
+CcS: "gt" is scnd=15 { local c:1 = (((S != OV) || Z) == 0); export c; }
+
+Rel9: reloc is dsp9 & dsp9b0=0 [ reloc = (inst_start + dsp9) & 0xffffffff; ] {
+  export *[ram]:1 reloc;
+}
+
+Rel26: reloc is j26hi & jlo & jlob0=0 [ reloc = (inst_start + j26hi * 65536 + jlo * 2) & 0xffffffff; ] {
+  export *[ram]:1 reloc;
+}
+
+################################################################
+# Format I: reg1, reg2
+
+:mov reg1,reg2   is op6=0x00 & reg1 & reg2 { reg2 = reg1; }
+:add reg1,reg2   is op6=0x01 & reg1 & reg2 { addop(reg2, reg2, reg1); }
+:sub reg1,reg2   is op6=0x02 & reg1 & reg2 { subop(reg2, reg2, reg1); }
+:cmp reg1,reg2   is op6=0x03 & reg1 & reg2 { cmpop(reg2, reg1); }
+:shl reg1,reg2   is op6=0x04 & reg1 & reg2 { shlop(reg2, reg2, reg1); }
+:shr reg1,reg2   is op6=0x05 & reg1 & reg2 { shrop(reg2, reg2, reg1); }
+:jmp "["^reg1^"]"  is op6=0x06 & r1n=31 & reg1 & r2n=0 { return [reg1]; }
+:jmp "["^reg1^"]"  is op6=0x06 & reg1 & r2n=0 { goto [reg1]; }
+:sar reg1,reg2   is op6=0x07 & reg1 & reg2 { sarop(reg2, reg2, reg1); }
+:mul reg1,reg2   is op6=0x08 & reg1 & reg2 { mulop(reg2, reg1); }
+:div reg1,reg2   is op6=0x09 & reg1 & reg2 {
+  local q:4 = reg2 s/ reg1;
+  r30 = reg2 s% reg1;
+  reg2 = q;
+  OV = (reg1 == 0xffffffff) && (q == 0x80000000);
+  zs(q);
+}
+:mulu reg1,reg2  is op6=0x0A & reg1 & reg2 { muluop(reg2, reg1); }
+:divu reg1,reg2  is op6=0x0B & reg1 & reg2 {
+  local q:4 = reg2 / reg1;
+  r30 = reg2 % reg1;
+  reg2 = q;
+  OV = 0;
+  zs(q);
+}
+:or reg1,reg2    is op6=0x0C & reg1 & reg2 { logic(reg2, reg2 | reg1); }
+:and reg1,reg2   is op6=0x0D & reg1 & reg2 { logic(reg2, reg2 & reg1); }
+:xor reg1,reg2   is op6=0x0E & reg1 & reg2 { logic(reg2, reg2 ^ reg1); }
+:not reg1,reg2   is op6=0x0F & reg1 & reg2 { logic(reg2, ~reg1); }
+
+################################################################
+# Format II: imm5, reg2
+
+:mov imm5s,reg2  is op6=0x10 & imm5s & reg2 { reg2 = imm5s; }
+:add imm5s,reg2  is op6=0x11 & imm5s & reg2 { local v:4 = imm5s; addop(reg2, reg2, v); }
+:setf imm5u,reg2 is op6=0x12 & imm5u & reg2 & CcS { reg2 = zext(CcS); }
+:cmp imm5s,reg2  is op6=0x13 & imm5s & reg2 { local v:4 = imm5s; cmpop(reg2, v); }
+:shl imm5u,reg2  is op6=0x14 & imm5u & reg2 { local v:4 = imm5u; shlop(reg2, reg2, v); }
+:shr imm5u,reg2  is op6=0x15 & imm5u & reg2 { local v:4 = imm5u; shrop(reg2, reg2, v); }
+:cli             is op6=0x16 & r1n=0 & r2n=0 { ID = 0; }
+:sar imm5u,reg2  is op6=0x17 & imm5u & reg2 { local v:4 = imm5u; sarop(reg2, reg2, v); }
+:trap imm5u      is op6=0x18 & imm5u & r2n=0 { local t:4 = imm5u; trap(t); }
+:reti            is op6=0x19 & r1n=0 & r2n=0 {
+  if (NP != 0) goto <fatal>;
+  local w:4 = eipsw;
+  setPSW(w);
+  return [eipc];
+<fatal>
+  local w2:4 = fepsw;
+  setPSW(w2);
+  return [fepc];
+}
+:halt            is op6=0x1A & r1n=0 & r2n=0 { halt(); }
+:ldsr reg2,"psw" is op6=0x1C & r1n=5 & reg2 { local w:4 = reg2; setPSW(w); }
+:ldsr reg2,SysReg is op6=0x1C & reg2 & SysReg { SysReg = reg2; }
+:stsr "psw",reg2 is op6=0x1D & r1n=5 & reg2 { local w:4 = 0; getPSW(w); reg2 = w; }
+:stsr SysReg,reg2 is op6=0x1D & reg2 & SysReg { reg2 = SysReg; }
+:sei             is op6=0x1E & r1n=0 & r2n=0 { ID = 1; }
+
+################################################################
+# Bit-string instructions (opcode 0x1F, the sub-opcode in the reg1 field, reg2 = 0)
+# They work on r26 (destination word address), r27 (destination bit offset),
+# r28 (length), r29 (source bit offset), r30 (source word address).
+
+:sch0bsu is op6=0x1F & r1n=0 & r2n=0 { sch0bsu(r26, r27, r28, r29, r30); }
+:sch0bsd is op6=0x1F & r1n=1 & r2n=0 { sch0bsd(r26, r27, r28, r29, r30); }
+:sch1bsu is op6=0x1F & r1n=2 & r2n=0 { sch1bsu(r26, r27, r28, r29, r30); }
+:sch1bsd is op6=0x1F & r1n=3 & r2n=0 { sch1bsd(r26, r27, r28, r29, r30); }
+:orbsu   is op6=0x1F & r1n=8 & r2n=0 { orbsu(r26, r27, r28, r29, r30); }
+:andbsu  is op6=0x1F & r1n=9 & r2n=0 { andbsu(r26, r27, r28, r29, r30); }
+:xorbsu  is op6=0x1F & r1n=10 & r2n=0 { xorbsu(r26, r27, r28, r29, r30); }
+:movbsu  is op6=0x1F & r1n=11 & r2n=0 { movbsu(r26, r27, r28, r29, r30); }
+:ornbsu  is op6=0x1F & r1n=12 & r2n=0 { ornbsu(r26, r27, r28, r29, r30); }
+:andnbsu is op6=0x1F & r1n=13 & r2n=0 { andnbsu(r26, r27, r28, r29, r30); }
+:xornbsu is op6=0x1F & r1n=14 & r2n=0 { xornbsu(r26, r27, r28, r29, r30); }
+:notbsu  is op6=0x1F & r1n=15 & r2n=0 { notbsu(r26, r27, r28, r29, r30); }
+
+################################################################
+# Format III: conditional branches (100 cccc ddddddddd, bit 0 of the displacement is 0)
+
+:b^CcB Rel9  is op3=4 & CcB & Rel9 {
+  if (CcB) goto Rel9;
+}
+:br Rel9      is op3=4 & cnd=5 & Rel9 {
+  goto Rel9;
+}
+:bnop Rel9    is op3=4 & cnd=13 & Rel9 {
+}
+
+################################################################
+# Format IV: jr, jal (26-bit displacement, hw0 low 10 bits high, hw1 low)
+
+:jr Rel26     is op6w=0x2A & Rel26 {
+  goto Rel26;
+}
+:jal Rel26    is op6w=0x2B & Rel26 {
+  r31 = inst_next;
+  call Rel26;
+}
+
+################################################################
+# Format V: imm16
+
+:movea simm16,reg1,reg2 is op6=0x28 & reg1 & reg2; simm16 { reg2 = reg1 + simm16; }
+:addi simm16,reg1,reg2  is op6=0x29 & reg1 & reg2; simm16 { local v:4 = simm16; addop(reg2, reg1, v); }
+:ori imm16,reg1,reg2    is op6=0x2C & reg1 & reg2; imm16 { logic(reg2, reg1 | imm16); }
+:andi imm16,reg1,reg2   is op6=0x2D & reg1 & reg2; imm16 { logic(reg2, reg1 & imm16); }
+:xori imm16,reg1,reg2   is op6=0x2E & reg1 & reg2; imm16 { logic(reg2, reg1 ^ imm16); }
+:movhi imm16,reg1,reg2  is op6=0x2F & reg1 & reg2; imm16 { local v:4 = imm16; reg2 = reg1 + (v << 16); }
+
+################################################################
+# Format VI: loads and stores, disp16[reg1]
+
+:ld.b simm16^"["^reg1^"],"^reg2  is op6=0x30 & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; reg2 = sext(*[ram]:1 ea); }
+:ld.h simm16^"["^reg1^"],"^reg2  is op6=0x31 & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; reg2 = sext(*[ram]:2 ea); }
+:ld.w simm16^"["^reg1^"],"^reg2  is op6=0x33 & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; reg2 = *[ram]:4 ea; }
+:st.b reg2^","^simm16^"["^reg1^"]" is op6=0x34 & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; *[ram]:1 ea = reg2:1; }
+:st.h reg2^","^simm16^"["^reg1^"]" is op6=0x35 & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; *[ram]:2 ea = reg2:2; }
+:st.w reg2^","^simm16^"["^reg1^"]" is op6=0x37 & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; *[ram]:4 ea = reg2; }
+:in.b simm16^"["^reg1^"],"^reg2  is op6=0x38 & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; reg2 = zext(*[ram]:1 ea); }
+:in.h simm16^"["^reg1^"],"^reg2  is op6=0x39 & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; reg2 = zext(*[ram]:2 ea); }
+:in.w simm16^"["^reg1^"],"^reg2  is op6=0x3B & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; reg2 = *[ram]:4 ea; }
+:caxi simm16^"["^reg1^"],"^reg2  is op6=0x3A & reg1 & reg2; simm16 {
+  local ea:4 = reg1 + simm16;
+  local m:4 = *[ram]:4 ea;
+  cmpop(r30, m);
+  if (r30 != m) goto <keep>;
+  *[ram]:4 ea = reg2;
+<keep>
+  reg2 = m;
+}
+:out.b reg2^","^simm16^"["^reg1^"]" is op6=0x3C & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; *[ram]:1 ea = reg2:1; }
+:out.h reg2^","^simm16^"["^reg1^"]" is op6=0x3D & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; *[ram]:2 ea = reg2:2; }
+:out.w reg2^","^simm16^"["^reg1^"]" is op6=0x3F & reg1 & reg2; simm16 { local ea:4 = reg1 + simm16; *[ram]:4 ea = reg2; }
+
+################################################################
+# Format VII: floating point and the extended instructions (opcode 0x3E; the
+# sub-opcode is the top six bits of the second halfword, the rest of it zero)
+
+:cmpf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x00 & extlow=0 {
+  local d:4 = reg2 f- reg1;
+  Z = (reg2 f== reg1);
+  CY = (reg2 f< reg1);
+  S = CY;
+  OV = 0;
+}
+:cvt.ws reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x02 & extlow=0 { reg2 = int2float(reg1); fcheck(reg2); }
+:cvt.sw reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x03 & extlow=0 { local t:4 = round(reg1); reg2 = trunc(t); zs(reg2); OV = 0; }
+:addf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x04 & extlow=0 { reg2 = reg2 f+ reg1; fcheck(reg2); }
+:subf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x05 & extlow=0 { reg2 = reg2 f- reg1; fcheck(reg2); }
+:mulf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x06 & extlow=0 { reg2 = reg2 f* reg1; fcheck(reg2); }
+:divf.s reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x07 & extlow=0 { reg2 = reg2 f/ reg1; fcheck(reg2); }
+:xb reg2          is op6=0x3E & r1n=0 & reg2; ext6=0x08 & extlow=0 {
+  local t:4 = reg2;
+  reg2[8,8] = t[0,8];
+  reg2[0,8] = t[8,8];
+}
+:xh reg2          is op6=0x3E & r1n=0 & reg2; ext6=0x09 & extlow=0 {
+  local t:4 = reg2;
+  reg2[16,16] = t[0,16];
+  reg2[0,16] = t[16,16];
+}
+:rev reg1,reg2    is op6=0x3E & reg1 & reg2; ext6=0x0A & extlow=0 { reg2 = bitrev(reg1); }
+:trnc.sw reg1,reg2 is op6=0x3E & reg1 & reg2; ext6=0x0B & extlow=0 { reg2 = trunc(reg1); zs(reg2); OV = 0; }
+:mpyhw reg1,reg2  is op6=0x3E & reg1 & reg2; ext6=0x0C & extlow=0 { local t:4 = sext(reg1[0,16]); reg2 = reg2 * t; }
+

@@ -2,6 +2,8 @@
 
 #include "source/isa.hpp"
 
+#include "source/processors.hpp"
+
 #include "decompile/arm.hpp"
 #include "decompile/m6502.hpp"
 #include "decompile/m68k.hpp"
@@ -32,32 +34,6 @@ formats::Flow flow_of(dz::Flow flow) {
         case dz::Flow::None: break;
     }
     return formats::Flow::Next;
-}
-
-std::optional<DecodedInsn> decode_6502(ByteView mem, std::uint32_t pc) {
-    const std::optional<decompile::m6502::Insn> insn = decompile::m6502::decode(mem, pc, pc);
-    if (!insn) return std::nullopt;
-    DecodedInsn out;
-    out.size = insn->size;
-    if (insn->target) out.target = *insn->target;
-    const std::string_view m = insn->mnemonic;
-    if (m == "JSR") out.flow = formats::Flow::Call;
-    else if (m == "JMP") out.flow = insn->mode == decompile::m6502::Mode::Ind ? formats::Flow::Indirect : formats::Flow::Jump;
-    else if (m == "RTS" || m == "RTI") out.flow = formats::Flow::Return;
-    else if (m == "BRK") out.flow = formats::Flow::Halt;
-    else if (decompile::m6502::is_branch(m)) out.flow = formats::Flow::Branch;
-    return out;
-}
-
-// The Z80: a HALT resumes after an interrupt, so it falls through.
-std::optional<DecodedInsn> decode_z80(ByteView mem, std::uint32_t pc) {
-    const std::optional<dz::Insn> insn = dz::decode(mem, pc, pc);
-    if (!insn) return std::nullopt;
-    DecodedInsn out;
-    out.size = insn->size;
-    if (insn->target) out.target = *insn->target;
-    out.flow = flow_of(insn->flow);
-    return out;
 }
 
 // The SM83 as the Z80, and a STOP ends the flow.
@@ -96,37 +72,6 @@ std::optional<DecodedInsn> decode_arm(ByteView mem, std::uint32_t pc) { return d
 std::optional<DecodedInsn> decode_arm9(ByteView mem, std::uint32_t pc) { return decode_arm_as(mem, pc, decompile::arm::Arch::V5TE); }
 // The ARM11 (ARMv6K, the 3DS): ARMv5TE and the ARMv6 and VFP rows.
 std::optional<DecodedInsn> decode_arm11(ByteView mem, std::uint32_t pc) { return decode_arm_as(mem, pc, decompile::arm::Arch::V6K); }
-
-// The 68000: a TRAP is a branch to its handler (formats/code_scan: not a function start); a halt ends the flow.
-std::optional<DecodedInsn> decode_68k(ByteView mem, std::uint32_t pc) {
-    const std::optional<decompile::m68k::Insn> insn = decompile::m68k::decode(mem, pc, pc);
-    if (!insn) return std::nullopt;
-    DecodedInsn out;
-    out.size = insn->length;
-    if (insn->target) out.target = *insn->target;
-    out.flow = insn->flow == dz::Flow::Halt ? formats::Flow::Halt : flow_of(insn->flow);
-    if (insn->mnemonic == "TRAP" && insn->flow == dz::Flow::Call) out.flow = formats::Flow::Branch;
-    return out;
-}
-
-// The R3000A: `pc` is the address the code runs at, so a jump's target is in the same 256 MB region. A jump, a return and an indirect jump
-// end the flow after their delay slot (which a code scan does not follow: it does not need to); a JALR is a call with no known target.
-std::optional<DecodedInsn> decode_mips(ByteView mem, std::uint32_t pc) {
-    const std::optional<decompile::mips::Insn> insn = decompile::mips::decode(mem, pc, pc);
-    if (!insn) return std::nullopt;
-    DecodedInsn out;
-    out.size = 4;
-    if (insn->target) out.target = *insn->target;
-    switch (insn->flow) {
-        case dz::Flow::Jump: out.flow = formats::Flow::Jump; break;
-        case dz::Flow::Branch: out.flow = formats::Flow::Branch; break;
-        case dz::Flow::Call: out.flow = formats::Flow::Call; break;
-        case dz::Flow::Return: out.flow = formats::Flow::Return; break;
-        case dz::Flow::Indirect: out.flow = formats::Flow::Indirect; break;
-        default: break;
-    }
-    return out;
-}
 
 // ---- encoders ---------------------------------------------------------------------------------------------------
 
@@ -247,11 +192,11 @@ public:
 }  // namespace
 
 const formats::Decoder& m6502_decoder() {
-    static const formats::Decoder decoder = decode_6502;
+    static const formats::Decoder decoder = processors::described_decoder(processors::find("6502"));   // (the one decoder: its SLEIGH description)
     return decoder;
 }
 const formats::Decoder& z80_decoder() {
-    static const formats::Decoder decoder = decode_z80;
+    static const formats::Decoder decoder = processors::described_decoder(processors::find("z80"));   // (the one decoder: its SLEIGH description)
     return decoder;
 }
 const formats::Decoder& sm83_decoder() {
@@ -259,7 +204,7 @@ const formats::Decoder& sm83_decoder() {
     return decoder;
 }
 const formats::Decoder& mips_decoder() {
-    static const formats::Decoder decoder = decode_mips;
+    static const formats::Decoder decoder = processors::described_decoder(processors::find("mips"));   // (the one decoder: its SLEIGH description)
     return decoder;
 }
 const formats::Decoder& arm_decoder() {
@@ -275,7 +220,7 @@ const formats::Decoder& arm11_decoder() {
     return decoder;
 }
 const formats::Decoder& m68k_decoder() {
-    static const formats::Decoder decoder = decode_68k;
+    static const formats::Decoder decoder = processors::described_decoder(processors::find("m68k"));   // (the one decoder: its SLEIGH description)
     return decoder;
 }
 

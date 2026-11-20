@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<language_definitions>
+
+  <language processor="F8"
+            endian="big"
+            size="16"
+            variant="default"
+            version="1.0"
+            slafile="f8.sla"
+            processorspec="f8.pspec"
+            id="F8:BE:16:default">
+    <description>Fairchild F8 (3850 CPU, 3851 PSU; Channel F)</description>
+    <compiler name="default" spec="f8.cspec" id="default"/>
+  </language>
+
+</language_definitions>

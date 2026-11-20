@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<processor_spec>
+
+  <programcounter register="PC"/>
+
+  <default_symbols>
+    <symbol name="RESET" address="ram:FFFFFFF0" entry="true"/>
+  </default_symbols>
+
+  <default_memory_blocks>
+    <memory_block name="VIP" start_address="ram:00000000" length="0x1000000" initialized="false"/>
+    <memory_block name="HARDWARE" start_address="ram:02000000" length="0x1000000" initialized="false"/>
+    <memory_block name="CARTRIDGE_EXP" start_address="ram:04000000" length="0x1000000" initialized="false"/>
+    <memory_block name="WRAM" start_address="ram:05000000" length="0x1000000" initialized="false"/>
+    <memory_block name="CARTRIDGE_RAM" start_address="ram:06000000" length="0x1000000" initialized="false"/>
+    <memory_block name="CARTRIDGE_ROM" start_address="ram:07000000" length="0x1000000" initialized="false"/>
+  </default_memory_blocks>
+
+</processor_spec>

@@ -95,7 +95,7 @@ CB_TEST("source.processors.the_sleigh_descriptions_read_what_the_own_tables_read
     }
     const Bytes ld = {0x3E, 0x12};
     CB_CHECK_EQ(read_described(find("z80"), ld, 0, 1).at(0).text, std::string("LD A,0x12"));
-    CB_CHECK_THROWS_AS(UsageError, (void)read_described(find("f8"), ld, 0, 1));   // (no description yet)
+    CB_CHECK_THROWS_AS(UsageError, (void)read_described(find("x86-64"), ld, 0, 1));   // (no description yet)
 });
 
 CB_TEST("source.processors.the_one_assembler_rebuilds_what_the_one_disassembler_writes", [] {
