@@ -267,6 +267,65 @@ std::string ctd_segments_by_name(const std::string& s, const CtdSegments& segs, 
     return out;
 }
 
+// `(int2 __near *)0x5162` -- a pointer constant into the data segment -- as the far pointer it is, DS:5162:
+// `(int2 *)CONCAT22(codebreaker_ds(),0x5162)`. OpenWatcom widens a near pointer *constant* to far with segment 0 (`xor dx, dx
+// / mov es, dx`), so `piVar1 = (int2 __near *)0x5162; *piVar1 -= 1` (piVar1 far) decremented 0000:5162 -- C1's sub_15FDD.
+// A near pointer variable widens with DS, as the original's code reads it; the null pointer (0) is left as it is.
+std::string ctd_near_constants(const std::string& s, std::size_t& count) {
+    static constexpr std::string_view kNear = " __near *)0x";
+    std::string out;
+    std::size_t at = 0;
+    for (std::size_t k = s.find(kNear); k != std::string::npos; k = s.find(kNear, k + kNear.size())) {
+        const std::size_t open = s.rfind('(', k);
+        if (open == std::string::npos) continue;
+        const std::string_view type = ctd_trim(std::string_view(s).substr(open + 1, k - open - 1));
+        if (type.empty() || type.find_first_of("()*,;=") != std::string_view::npos) continue;
+        std::size_t e = k + kNear.size();
+        const std::size_t digits = e;
+        while (e < s.size() && ctd_hex(s[e])) ++e;
+        if (e == digits || e - digits > 4 || (e < s.size() && ctd_word(s[e]))) continue;
+        if (open > 0 && s[open - 1] == '*') continue;   // (read through at once: the data segment's word, g_NNNN)
+        const std::uint32_t value = static_cast<std::uint32_t>(std::stoul(s.substr(digits, e - digits), nullptr, 16));
+        if (value == 0) continue;
+        out += s.substr(at, open - at);
+        out += std::format("(({} *)CONCAT22(codebreaker_ds(),0x{:x}))", type, value);
+        at = e;
+        ++count;
+    }
+    out += s.substr(at);
+    return out;
+}
+
+// The definition's heading with the two arguments a joined name reads as one (`_a1`: a1 and a2, the far pointer they make)
+// `volatile`: the body writes them through `*(T **)&a1` and reads them by name, and OpenWatcom kept a2 in a register across
+// such a write (C1's sub_075E9 walked its list on a stale segment and never ended). Only the definition: the prototype is the
+// same function (a parameter's qualifier is not its type).
+std::string ctd_volatile_joined(const std::string& signature, const std::set<std::string>& joined) {
+    if (joined.empty()) return signature;
+    const std::vector<std::string> params = ctd_params(signature);
+    std::set<std::size_t> marked;
+    for (std::size_t k = 0; k < params.size(); ++k)
+        if (joined.contains("_" + ctd_declared(params[k]))) {
+            marked.insert(k);
+            if (k + 1 < params.size()) marked.insert(k + 1);
+        }
+    if (marked.empty()) return signature;
+    const std::size_t open = signature.find('(');
+    const std::size_t close = signature.rfind(')');
+    if (open == std::string::npos || close == std::string::npos || close < open) return signature;
+    std::string list;
+    for (std::size_t k = 0; k < params.size(); ++k) {
+        std::string p = params[k];
+        if (marked.contains(k) && p.find('*') == std::string::npos && p.find("...") == std::string::npos) {
+            const std::string name = ctd_declared(p);
+            const std::size_t at = p.rfind(name);
+            if (at != std::string::npos) p = p.substr(0, at) + "volatile " + p.substr(at);
+        }
+        list += (k ? "," : "") + p;
+    }
+    return signature.substr(0, open + 1) + list + signature.substr(close);
+}
+
 CtdFrame ctd_stack_frame(const std::string& body, const std::set<std::string>& joined) {
     CtdFrame out{body, {}, {}};
     bool taken = std::any_of(joined.begin(), joined.end(), [](const std::string& j) { return j.find("Stack_") != std::string::npos; });
@@ -1296,7 +1355,7 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
         };
         for (const std::string& j : joined) out += "\n#define " + j + " (*(" + joined_type(j) + "*)&" + j.substr(1) + ")";
         out += frame.defines;
-        out += "\n" + f.signature + "\n" + frame.body;
+        out += "\n" + ctd_volatile_joined(f.signature, joined) + "\n" + frame.body;
         for (const std::string& j : joined) out += "#undef " + j + "\n";
         for (const std::string& n : frame.names) out += "#undef " + n + "\n";
         if (!file_of.empty()) {
@@ -1313,10 +1372,11 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     far_not_near(out);
     for (auto& [name, t] : file_texts) far_not_near(t);
     const std::size_t body_from = common.size();   // (the header's own lines name the segments; the functions' numbers go)
-    if (body_from <= out.size()) out = out.substr(0, body_from) + ctd_segments_by_name(out.substr(body_from), segment_names, r.segments_named);
+    if (body_from <= out.size())
+        out = out.substr(0, body_from) + ctd_near_constants(ctd_segments_by_name(out.substr(body_from), segment_names, r.segments_named), r.near_constants);
     for (auto& [name, t] : file_texts) {
         std::size_t ignored = 0;
-        t = ctd_segments_by_name(t, segment_names, ignored);
+        t = ctd_near_constants(ctd_segments_by_name(t, segment_names, ignored), ignored);
     }
     result.text = std::move(out);
     if (!file_of.empty()) result.files = ctd_source_files(common, file_order, file_texts, layout.stem.empty() ? "program" : layout.stem, file_notes);

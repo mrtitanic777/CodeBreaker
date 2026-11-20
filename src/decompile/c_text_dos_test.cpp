@@ -255,6 +255,18 @@ CB_TEST("decompile.c_text_dos.two_arguments_read_as_one_pointer_point_at_what_th
     CB_CHECK(ctdt_has(compilable(text, "").text, "#define _a1 (*(char **)&a1)"));
 });
 
+CB_TEST("decompile.c_text_dos.a_near_pointer_constant_is_the_data_segments", [] {
+    // (OpenWatcom widens a near pointer constant to far with segment 0: DS:5162 is written as the far pointer it is)
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far sub_00100(void)\n\n{\n  int2 *piVar1;\n  \n"
+        "  piVar1 = (int2 __near *)0x5162;\n  *piVar1 = *piVar1 + -1;\n  if (piVar1 != (int2 __near *)0x0) {\n    return;\n  }\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "piVar1 = ((int2 *)CONCAT22(codebreaker_ds(),0x5162));"));
+    CB_CHECK(ctdt_has(r.text, "(int2 __near *)0x0"));   // (the null pointer as it is)
+    CB_CHECK_EQ(r.report.near_constants, std::size_t{1});
+});
+
 CB_TEST("decompile.c_text_dos.the_programs_segments_are_written_by_name", [] {
     // (C1's 0x28e9 -- the segment at 18E9h of a program loaded at 1000h -- and its data segment 0x2a38: by name, so a build
     // that links the C's code in before them still points at them)
@@ -387,7 +399,8 @@ CB_TEST("decompile.c_text_dos.an_argument_pair_read_as_one_pointer_is_named_in_a
         "/* T.EXE */\n\n"
         "xunknown2 * __cdecl16far sub_00100(int2 a1,int2 a2)\n\n{\n  int2 iVar1;\n  \n  return _a1;\n}\n";
     const Result r = compilable(text, "");
-    CB_CHECK(ctdt_has(r.text, "#define _a1 (*(xunknown2 **)&a1)\nxunknown2 * __cdecl16far sub_00100(int2 a1,int2 a2)\n"));
+    // (a1 and a2 volatile in the definition: written through _a1, read by name -- not kept in a register across the write)
+    CB_CHECK(ctdt_has(r.text, "#define _a1 (*(xunknown2 **)&a1)\nxunknown2 * __cdecl16far sub_00100(int2 volatile a1,int2 volatile a2)\n"));
 });
 
 }  // namespace

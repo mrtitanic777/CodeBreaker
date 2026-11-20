@@ -48,6 +48,7 @@ struct Report {
     std::size_t stack_probes = 0;        // the compiler's stack probes (_chkstk) left out: not the source's
     std::size_t frames = 0;              // functions whose stack locals are written as the one frame they are (ctd_stack_frame)
     std::size_t segments_named = 0;      // the program's segment numbers written by name (ctd_segments_by_name)
+    std::size_t near_constants = 0;      // near pointer constants written as the far pointers into DS they are (ctd_near_constants)
 };
 
 struct Result {
