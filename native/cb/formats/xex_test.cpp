@@ -99,19 +99,17 @@ CB_TEST("formats.xex.probe", [] {
     CB_CHECK_EQ(read_header(dir.path() / "a.xex").imports.size(), 2u);
 });
 
-// A stand-in for the xex program: `extract <in> <out>` copies the file (a batch file; CreateProcess runs it).
+// A stand-in for the xex engine's unpacking: copies the file (working), or fails as a title with no key does.
 Tools fake_tools(const fs::ScopedTempDir& dir, bool working) {
-    const std::filesystem::path script = dir.path() / "xex.cmd";
-    // (cmd's copy wants backslashes; the program is handed forward slashes, which the real one takes as they are)
-    fs::write_text(script,
-                   working ? "@echo off\r\nset \"I=%~2\"\r\nset \"O=%~3\"\r\nset \"I=%I:/=\\%\"\r\nset \"O=%O:/=\\%\"\r\n"
-                             "if \"%1\"==\"extract\" copy /b \"%I%\" \"%O%\" >nul\r\nexit /b 0\r\n"
-                           : "@echo off\r\necho no key for this title 1>&2\r\nexit /b 3\r\n");
-    return {script, dir.path() / "unpacked"};
+    if (!working) {
+        return {dir.path() / "unpacked", [](const std::filesystem::path&, const std::filesystem::path&) {
+                    throw ToolError("xex", 3, "no key for this title", "no basefile");
+                }};
+    }
+    return {dir.path() / "unpacked", [](const std::filesystem::path& in, const std::filesystem::path& out) { fs::write_file(out, fs::read_file(in)); }};
 }
 
 CB_TEST("formats.xex.basefile_is_extracted_once_and_named_by_contents", [] {
-    CB_WINDOWS_ONLY("its stand-in xex tool is a .cmd file");
     fs::ScopedTempDir dir("xex-test");
     const std::filesystem::path xex = dir.path() / "Pac-Man CE.XEX";
     fs::write_file(xex, pacman_header());
@@ -139,13 +137,10 @@ CB_TEST("formats.xex.basefile_is_extracted_once_and_named_by_contents", [] {
 });
 
 CB_TEST("formats.xex.basefile_failures", [] {
-    CB_WINDOWS_ONLY("its stand-in xex tool is a .cmd file");
     fs::ScopedTempDir dir("xex-test");
     const std::filesystem::path xex = dir.path() / "a.xex";
     fs::write_file(xex, pacman_header());
-    // the program is not there
-    CB_CHECK_THROWS_AS(NotFoundError, (void)basefile(Tools{dir.path() / "nope.exe", dir.path() / "u"}, xex));
-    // the program fails: its message is carried
+    // the unpacking fails: its message is carried, and nothing is left behind
     try {
         (void)basefile(fake_tools(dir, false), xex);
         CB_CHECK(false);
@@ -153,6 +148,9 @@ CB_TEST("formats.xex.basefile_failures", [] {
         CB_CHECK_EQ(e.tool_exit_code(), 3u);
         CB_CHECK(e.output().find("no key") != std::string::npos);
     }
+    CB_CHECK(!std::filesystem::exists(dir.path() / "unpacked") || std::filesystem::is_empty(dir.path() / "unpacked"));
+    // the engine itself, on a file that is only a header: a ToolError, not a crash
+    CB_CHECK_THROWS_AS(ToolError, (void)basefile(Tools{dir.path() / "u2"}, xex));
 });
 
 CB_TEST("formats.xex.import_libraries_of_an_image_without_a_sidecar", [] {
@@ -168,11 +166,10 @@ CB_TEST("formats.xex.import_libraries_of_an_image_without_a_sidecar", [] {
 });
 
 CB_TEST("formats.xex.write_basic_puts_the_image_in_one_block", [] {
-    CB_WINDOWS_ONLY("its stand-in xex tool is a .cmd file");
     fs::ScopedTempDir dir("xex-test");
     const std::filesystem::path xex = dir.path() / "a.xex";
     Bytes file = pacman_header();
-    file.insert(file.end(), 100, 0x77);   // some "compressed image" bytes after the header (the fake program copies all of it)
+    file.insert(file.end(), 100, 0x77);   // some "compressed image" bytes after the header (the stand-in copies all of it)
     fs::write_file(xex, file);
     const Tools tools = fake_tools(dir, true);
     const std::filesystem::path out = dir.path() / "basic.xex";
@@ -212,14 +209,9 @@ CB_TEST("formats.xex.write_basic_errors", [] {
     CB_CHECK_THROWS_AS(FormatError, write_basic(tools, dir.path() / "bare.xex", dir.path() / "o.xex"));
 });
 
-CB_TEST("formats.xex.run_passes_the_arguments", [] {
-    CB_WINDOWS_ONLY("its stand-in xex tool is a .cmd file");
-    fs::ScopedTempDir dir("xex-test");
-    fs::write_text(dir.path() / "prog.cmd", "@echo off\r\nexit /b %1\r\n");
-    const Tools tools{dir.path() / "prog.cmd", dir.path() / "u"};
-    CB_CHECK_EQ(run(tools, {"7"}), 7);
-    CB_CHECK_EQ(run(tools, {"0"}), 0);
-    CB_CHECK_THROWS_AS(NotFoundError, (void)run(Tools{dir.path() / "none.cmd", {}}, {}));
+CB_TEST("formats.xex.run_is_the_engines_command_line", [] {
+    CB_CHECK_EQ(run({"selftest"}), 0);              // the crypto known-answer tests
+    CB_CHECK_EQ(run({"no-such-command", "x.xex"}), 1);
 });
 
 }  // namespace

@@ -460,20 +460,19 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // settings: the effective settings, where each comes from
     table.set(base::settings::command(base::settings::Environment{&config}));
 
-    // xex <command> <file.xex> [args]: the xex program, with this process's stdout and stderr
+    // xex <command> <file.xex> [args]: the xex engine's command line, in-process
     formats::xex::Tools xex_tools;
-    xex_tools.xex_program = config.path("xex_bin").value_or(std::filesystem::path{}) / "xex.exe";
     xex_tools.unpacked_dir = config.state() / "unpacked" / "xex";
-    table.set("xex", [xex_tools](std::span<const std::string> args) -> int {
+    table.set("xex", [](std::span<const std::string> args) -> int {
         flush_out();
-        return formats::xex::run(xex_tools, std::vector<std::string>(args.begin(), args.end()));
+        return formats::xex::run(std::vector<std::string>(args.begin(), args.end()));
     });
 
-    // xex-imports, xex-edit, ppc-calls, system-ui: Xbox 360 modules through the xex program; imports named from the console's ordinals
+    // xex-imports, xex-edit, ppc-calls, system-ui: Xbox 360 modules through the xex engine; imports named from the console's ordinals
     table.set(formats::xex_imports::command({xex_tools, console_ordinal_names(config)}));
     table.set(build::xex_edit::command({xex_tools}));
     table.set(analyze::ppc_calls::command({xex_tools, console_ordinal_names(config)}));
-    table.set(formats::xbox::system_ui::command({xex_tools}));
+    table.set(formats::xbox::system_ui::command({}));
 
     // disc, media, gfx, fonts: disc images, console media packages, graphics and font files
     table.set(build::disc_image::command());

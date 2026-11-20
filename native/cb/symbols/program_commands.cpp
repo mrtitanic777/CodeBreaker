@@ -18,7 +18,6 @@ namespace pi = formats::powerpc_image;
 
 formats::xex::Tools xex_tools(const config::Config& config) {
     formats::xex::Tools tools;
-    tools.xex_program = config.path("xex_bin").value_or(std::filesystem::path{}) / "xex.exe";
     tools.unpacked_dir = config.state() / "unpacked" / "xex";
     return tools;
 }

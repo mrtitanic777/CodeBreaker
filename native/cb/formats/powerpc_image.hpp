@@ -98,7 +98,7 @@ public:
     // header's.
     static Image read(const std::filesystem::path& file);
     // The image inside an .xex: its basefile (`xex::basefile`: unpacked once per distinct file, its load address beside it), read.
-    // NotFoundError if the xex program is not built; ToolError if it fails.
+    // ToolError if the xex engine cannot unpack it.
     static Image read_xex(const xex::Tools& tools, const std::filesystem::path& xex);
     // The same from the file's bytes (`name` only goes into messages). `base` overrides the header's load address.
     static Image parse(Bytes file, std::optional<Address> base = std::nullopt, std::string_view name = "image");

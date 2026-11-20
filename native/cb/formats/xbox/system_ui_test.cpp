@@ -47,24 +47,20 @@ std::string sysui_files(const std::string& name) {
     return out;
 }
 
-// A stand-in for the xex program: `resources <module> <folder>` writes two XUI packages and a file that is not one.
-system_ui::Environment sysui_fake(const fs::ScopedTempDir& dir) {
-    const std::filesystem::path script = dir.path() / "xex.cmd";
-    fs::write_text(script,
-                   "@echo off\r\nset \"O=%~3\"\r\nset \"O=%O:/=\\%\"\r\n"
-                   "echo XUIZ one> \"%O%\\skin\"\r\necho XUIZ two> \"%O%\\scene\"\r\necho something else> \"%O%\\media\"\r\nexit /b 0\r\n");
-    return system_ui::Environment{{script, dir.path() / "unpacked"}};
+// A stand-in for the xex engine's resource dump: every module carries two XUI packages (the third resource is not one, so it is not asked).
+system_ui::Environment sysui_fake() {
+    const auto blob = [](std::string_view text) { return Bytes(text.begin(), text.end()); };
+    return {[blob](ByteView) { return std::map<std::string, Bytes>{{"skin", blob("XUIZ one\r\n")}, {"scene", blob("XUIZ two\r\n")}}; }};
 }
 
 }  // namespace
 
 CB_TEST("formats.xbox.system_ui.a_system_update_gives_its_fonts_and_the_xui_packages_of_its_modules", [] {
-    CB_WINDOWS_ONLY("its stand-in tool is a .cmd file");
     const fs::ScopedTempDir dir{"cb-sysui"};
-    const system_ui::Environment env = sysui_fake(dir);   // (the modules of the update are junk: the stand-in answers for all of them)
+    const system_ui::Environment env = sysui_fake();   // (the modules of the update are junk: the stand-in answers for all of them)
     const std::filesystem::path package = sysui_data("su_full.bin");
     std::vector<std::string> lines;
-    const std::size_t count = system_ui::extract(env.tools, package, dir.path() / "out", std::nullopt, [&](const std::string& l) { lines.push_back(l); });
+    const std::size_t count = system_ui::extract(env, package, dir.path() / "out", std::nullopt, [&](const std::string& l) { lines.push_back(l); });
     // eight modules, two XUI packages each (the third resource is not one), then three fonts
     CB_CHECK_EQ(count, std::size_t{8 * 2 + 3});
     CB_CHECK_EQ(lines.front(), std::format("{:<40} {:>8}", "xam.scene.xzp", 10));
@@ -76,7 +72,7 @@ CB_TEST("formats.xbox.system_ui.a_system_update_gives_its_fonts_and_the_xui_pack
     fs::make_dirs(dir.path() / "online" / "17559");
     fs::write_file(dir.path() / "online" / "17559" / "GUIDE.friends.XEX", Bytes{1});
     lines.clear();
-    system_ui::extract(env.tools, package, dir.path() / "out2", dir.path() / "online", [&](const std::string& l) { lines.push_back(l); });
+    system_ui::extract(env, package, dir.path() / "out2", dir.path() / "online", [&](const std::string& l) { lines.push_back(l); });
     CB_CHECK(std::filesystem::exists(dir.path() / "out2" / "guide.friends.scene.xzp"));
     CB_CHECK_EQ(lines[lines.size() - 3], std::format("{:<40} {:>8}", "guide.friends.skin.xzp", 10));
     CB_CHECK(lines.back().starts_with(std::format("{:<40} (not in ", "Guide.Voicemail.xex")));
@@ -85,17 +81,16 @@ CB_TEST("formats.xbox.system_ui.a_system_update_gives_its_fonts_and_the_xui_pack
 CB_TEST("formats.xbox.system_ui.the_command_prints_the_recorded_output", [] {
     const fs::ScopedTempDir dir{"cb-sysui"};
     system_ui::Environment env;
-    env.tools = {dir.path() / "no-xex-program.exe", dir.path() / "unpacked"};   // (not asked: the modules are not XEX files... see below)
-    // the recorded answer for the junk modules: no resource found. Ours asks the xex program; one that is not there finds none either
+    // the junk modules carry no resources the xex engine can read: only the three fonts are written, and the count says so
     const std::string folder = fs::to_text(dir.path());
-    CB_CHECK_THROWS_AS(ToolError, testing::run_command(system_ui::command(env), {fs::to_text(sysui_data("su_full.bin")), folder + "/o1"}));
+    const std::string printed = testing::run_command(system_ui::command(env), {fs::to_text(sysui_data("su_full.bin")), folder + "/o1"});
+    CB_CHECK(printed.ends_with(std::format("3 files -> {}/o1\nexit=0\n", folder)));
+    CB_CHECK(!std::filesystem::exists(dir.path() / "o1" / "xam.skin.xzp"));
 });
 
 CB_TEST("formats.xbox.system_ui.the_junk_modules_have_no_resources_for_the_real_xex_program", [] {
     const fs::ScopedTempDir dir{"cb-sysui"};
-    const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
-    if (!tools) return;
-    system_ui::Environment env{*tools};
+    system_ui::Environment env;
     const std::string folder = fs::to_text(dir.path());
     const std::string package = fs::to_text(sysui_data("su_full.bin"));
     std::string printed = testing::run_command(system_ui::command(env), {package, folder + "/o1"});
@@ -113,11 +108,10 @@ CB_TEST("formats.xbox.system_ui.the_junk_modules_have_no_resources_for_the_real_
 
 CB_TEST("formats.xbox.system_ui.a_module_carries_its_xui_package_as_a_resource", [] {
     const fs::ScopedTempDir dir{"cb-sysui"};
-    const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
     const auto retail = testing::game_file("Minecraft Xbox 360 Edition/default.xex");
-    if (!tools || !retail) return;
+    if (!retail) return;
     // Minecraft's retail module has two resources: its title data (XDBF) and its media (a XUI package)
-    const auto packages = system_ui::xui_packages(*tools, fs::read_file(*retail));
+    const auto packages = system_ui::xui_packages(fs::read_file(*retail));
     CB_CHECK_EQ(packages.size(), std::size_t{1});
     CB_CHECK(packages.contains("media"));
     if (packages.contains("media")) {
@@ -128,11 +122,9 @@ CB_TEST("formats.xbox.system_ui.a_module_carries_its_xui_package_as_a_resource",
 
 CB_TEST("formats.xbox.system_ui.a_package_without_a_module_or_a_font_is_refused", [] {
     const fs::ScopedTempDir dir{"cb-sysui"};
-    const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
-    if (!tools) return;
     const auto report = [](const std::string&) {};
-    CB_CHECK_THROWS_AS(FormatError, system_ui::extract(*tools, sysui_data("su_other.bin"), dir.path() / "a", std::nullopt, report));
-    CB_CHECK_THROWS_AS(FormatError, system_ui::extract(*tools, sysui_data("su_nofont.bin"), dir.path() / "b", std::nullopt, report));
+    CB_CHECK_THROWS_AS(FormatError, system_ui::extract(system_ui::Environment{}, sysui_data("su_other.bin"), dir.path() / "a", std::nullopt, report));
+    CB_CHECK_THROWS_AS(FormatError, system_ui::extract(system_ui::Environment{}, sysui_data("su_nofont.bin"), dir.path() / "b", std::nullopt, report));
     CB_CHECK(std::filesystem::exists(dir.path() / "b" / "SegoeXbox-Light.xtt"));   // (written before the missing font was met)
-    CB_CHECK_THROWS_AS(FormatError, system_ui::extract(*tools, testing::data_path("formats/testdata/lz32.dll"), dir.path() / "c", std::nullopt, report));
+    CB_CHECK_THROWS_AS(FormatError, system_ui::extract(system_ui::Environment{}, testing::data_path("formats/testdata/lz32.dll"), dir.path() / "c", std::nullopt, report));
 });

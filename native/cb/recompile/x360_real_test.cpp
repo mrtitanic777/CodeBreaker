@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <format>
 #include <iostream>
-#include <regex>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -23,6 +22,7 @@
 #include "cb/formats/command_test_kit.hpp"
 #include "cb/formats/xex.hpp"
 #include "cb/recompile/xenon.hpp"
+#include "xex_file.h"   // formats/xex/src: the xex engine's parser
 
 namespace stdfs = std::filesystem;
 namespace xenon = cb::recompile::xenon;
@@ -74,22 +74,11 @@ std::vector<std::string> x3r_read_image_problems(const stdfs::path& program, con
         problems.push_back(std::format("image differs from the basefile ({} bytes, basefile {})", got.size(), want.size()));
     const cb::formats::xex::Header header = cb::formats::xex::read_header(path);
     if (header.base && *header.base != base) problems.push_back(std::format("base {:08X}, header {:08X}", base, *header.base));
-    // the resources as the xex engine lists them, under "Resources": "0) 90F90000 - 90FA284B : skin" (start, end)
-    cb::process::ProcessSpec list;
-    list.argv = {cb::fs::to_text(tools.xex_program), "list", cb::fs::to_text(path)};
-    const std::string listing = x3r_text(cb::process::run(list).out);
+    // the resources as the xex engine reads them from the header (what its `list` prints under "Resources")
     std::vector<std::tuple<std::string, std::uint32_t, std::uint32_t>> listed;
-    bool in_resources = false;
-    const std::regex row(R"(^\s+\d+\)\s+([0-9A-F]{8}) - ([0-9A-F]{8}) : (\S+)\s*$)");
-    for (const std::string_view raw : cb::text::lines(listing)) {
-        const std::string line(raw);
-        if (!line.empty() && line[0] != ' ' && line[0] != '\t') in_resources = line == "Resources";
-        std::smatch m;
-        if (in_resources && std::regex_match(line, m, row)) {
-            const std::uint32_t start = *cb::text::parse_int<std::uint32_t>(m[1].str(), 16), end = *cb::text::parse_int<std::uint32_t>(m[2].str(), 16);
-            listed.emplace_back(m[3].str(), start, end - start);
-        }
-    }
+    const cb::Bytes xex_bytes = cb::fs::read_file(path);
+    for (const ::xex::Resource& resource : ::xex::XexFile::parse(std::vector<std::uint8_t>(xex_bytes.begin(), xex_bytes.end())).resources())
+        listed.emplace_back(resource.name, resource.address, resource.size);
     std::sort(listed.begin(), listed.end());
     std::sort(read_resources.begin(), read_resources.end());
     if (read_resources != listed) problems.push_back(std::format("resources read: {}, listed: {}", read_resources.size(), listed.size()));
@@ -106,8 +95,8 @@ CB_TEST("recompile.x360.the_runtimes_read_image_is_the_xex_engines_basefile", []
     }
     const auto game = cb::testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
     cb::fs::ScopedTempDir dir("cb-x360-read-image");
-    const auto tools = cb::testing::real_xex_tools(dir.path() / "unpacked");
-    if (!game || !tools) {
+    const cb::formats::xex::Tools tools{dir.path() / "unpacked"};
+    if (!game) {
         std::cout << "SKIP no game image or no xex program here\n";
         return;
     }
@@ -139,7 +128,7 @@ CB_TEST("recompile.x360.the_runtimes_read_image_is_the_xex_engines_basefile", []
     if (const auto folder = cb::fs::get_env("CB_X360_CONVERTED"); folder && !folder->empty())   // XAM's own modules (the dashboard's SystemUpdate/converted)
         for (const char* name : {"xam.xex", "huduiskin.xex"}) modules.push_back(cb::fs::from_text(*folder) / name);
     for (const stdfs::path& module : modules) {
-        const std::vector<std::string> problems = x3r_read_image_problems(build / "xex_image_test.exe", module, dir.path(), *tools);
+        const std::vector<std::string> problems = x3r_read_image_problems(build / "xex_image_test.exe", module, dir.path(), tools);
         for (const std::string& p : problems) std::cout << cb::fs::to_text(module) << ": " << p << "\n";
         CB_CHECK(problems.empty());
     }

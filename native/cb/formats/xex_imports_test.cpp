@@ -21,10 +21,10 @@ std::string xex_imports_golden(const char* name) { return fs::read_text(testing:
 // Runs the command on a game's module; false when the module or the xex program is not here.
 bool xex_imports_run(const char* game_file, const char* golden_name, const fs::ScopedTempDir& dir) {
     const auto module = testing::game_file(game_file);
-    const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
-    if (!module || !tools) return false;
+    const formats::xex::Tools tools{dir.path() / "unpacked"};
+    if (!module) return false;
     xex_imports::Environment env;
-    env.tools = *tools;
+    env.tools = tools;
     env.ordinal_name = testing::console_ordinal_names();
     CB_CHECK_EQ(testing::run_command(xex_imports::command(env), {fs::to_text(*module)}), xex_imports_golden(golden_name));
     return true;
@@ -42,10 +42,10 @@ CB_TEST("formats.xex_imports.the_command_prints_the_recorded_output", [] {
 CB_TEST("formats.xex_imports.a_function_has_a_thunk_and_a_variable_only_a_slot", [] {
     const fs::ScopedTempDir dir{"cb-xex-imports"};
     const auto module = testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
-    const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
-    if (!module || !tools) return;
+    const formats::xex::Tools tools{dir.path() / "unpacked"};
+    if (!module) return;
     const Bytes file = fs::read_file(*module);
-    const auto image = formats::powerpc_image::Image::read_xex(*tools, *module);
+    const auto image = formats::powerpc_image::Image::read_xex(tools, *module);
     const auto found = xex_imports::imports(file, image, testing::console_ordinal_names());
     CB_CHECK(!found.empty());
     bool function = false, variable = false;
@@ -66,10 +66,10 @@ CB_TEST("formats.xex_imports.a_function_has_a_thunk_and_a_variable_only_a_slot",
 CB_TEST("formats.xex_imports.damaged_data_is_an_error", [] {
     const fs::ScopedTempDir dir{"cb-xex-imports"};
     const auto module = testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
-    const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
-    if (!module || !tools) return;
+    const formats::xex::Tools tools{dir.path() / "unpacked"};
+    if (!module) return;
     const Bytes file = fs::read_file(*module);
-    const auto image = formats::powerpc_image::Image::read_xex(*tools, *module);
+    const auto image = formats::powerpc_image::Image::read_xex(tools, *module);
     bool threw = false;
     try {
         (void)xex_imports::imports(ByteView(file).first(0x200), image, nullptr);

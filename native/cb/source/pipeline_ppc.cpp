@@ -233,7 +233,6 @@ private:
 stdfs::path ppc_image_path(World& world, const stdfs::path& path) {
     if (!text::iends_with(fs::to_text(path), ".xex")) return path;
     formats::xex::Tools tools;
-    tools.xex_program = world.config().path("xex_bin").value_or(stdfs::path{}) / "xex.exe";
     tools.unpacked_dir = world.config().state() / "unpacked" / "xex";
     return formats::xex::basefile(tools, path);
 }

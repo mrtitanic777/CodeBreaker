@@ -1,5 +1,5 @@
-// main.cpp - the xex program: CodeBreaker's Xbox 360 executable reader and converter,
-// run as `codebreaker xex <command>` (codebreaker/formats/xex.py).
+// command.cpp - the xex engine's command line: CodeBreaker's Xbox 360 executable reader and converter, run in-process as
+// `codebreaker xex <command>` (cb::formats::xex::run calls xex_command).
 //
 // File loading, XEX2 parsing and `info` are the foundation; crypto (AES/SHA-1/RSA), compression (LZX), patching and
 // extraction sit on the same parsed model.
@@ -62,9 +62,12 @@ bool read_file(const std::string& path, std::vector<uint8_t>& out) {
 
 } // namespace
 
+#include "command.h"
+
 int run_selftest(); // selftest.cpp
 
-int main(int argc, char** argv) {
+// `codebreaker xex <command> ...`: the whole of what the xex program did, in-process (argv[0] is the program's name, unused).
+int xex_command(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "selftest") return run_selftest();
 
     // patch <base.xex> <patch.xexp> <out.xex>

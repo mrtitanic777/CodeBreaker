@@ -18,9 +18,9 @@ namespace stdfs = std::filesystem;
 void make_settings_checkout(const stdfs::path& root) {
     cb::fs::make_dirs(root / "wc");
     cb::fs::make_dirs(root / "state");
-    cb::fs::make_dirs(root / "tools" / "xex");
+    cb::fs::make_dirs(root / "tools" / "ppc");
     cb::fs::write_text(root / "settings.json",
-                       R"({"openwatcom": "wc", "msc6": "missing-dir", "xex_bin": "tools/xex", "target": "win98", "threads": "4",
+                       R"({"openwatcom": "wc", "msc6": "missing-dir", "powerpc_tools": "tools/ppc", "target": "win98", "threads": "4",
                            "cache_max_gb": 3, "corpus": "corp95", "corpora": {"win95": "corp95", "win98": "corp98"},
                            "service_idle_minutes": 5})");
 }

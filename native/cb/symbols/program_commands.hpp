@@ -6,7 +6,7 @@
 //     table.set(program_commands::classes_command({.config = config}));
 //     table.set("xdk-match", program_commands::xdk_match_runner({.config = config}));
 //
-// Everything they run on comes from the configuration: the xex program (setting xex_bin) and the folder unpacked images are kept in
+// Everything they run on comes from the configuration: the folder unpacked images are kept in
 // (<state>/unpacked/xex), and the XDK's library folder (setting xdk_libs, else the XDK's usual install). An .xex is read through its
 // basefile; any other file is read as a PowerPC image.
 #pragma once

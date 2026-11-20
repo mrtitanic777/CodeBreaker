@@ -41,17 +41,20 @@ inline constexpr Font kFonts[] = {{"SegoeXbox-Light.xtt", "SegoeXbox-Light.xtt"}
 // Each line `extract` reports ("<file name, 40 wide> <size, 8 wide>" or "<module>.xex (not in <folder>)").
 using Report = std::function<void(const std::string&)>;
 
-// {resource name: bytes} of the XUI packages (XUIZ) a module's XEX carries, by running the xex program over it. The module's other resources
-// are not wanted. ToolError when the program cannot be started.
-std::map<std::string, Bytes> xui_packages(const xex::Tools& tools, ByteView module);
+// {resource name: bytes} of the XUI packages (XUIZ) a module's XEX carries, read by the xex engine. The module's other resources are not
+// wanted; a module the engine cannot read has none.
+std::map<std::string, Bytes> xui_packages(ByteView module);
 
 // Writes the assets of the update `package` into `out_dir` (made if need be) and reports each file; returns how many. FormatError when the
 // file is not an STFS package, or lacks a module or a font (a system update has them all); the files written before are left.
-std::size_t extract(const xex::Tools& tools, const std::filesystem::path& package, const std::filesystem::path& out_dir,
+struct Environment;
+std::size_t extract(const Environment& environment, const std::filesystem::path& package, const std::filesystem::path& out_dir,
                     const std::optional<std::filesystem::path>& online, const Report& report);
 
+// What reads a module's XUI packages: xui_packages (the xex engine); a test may hand its own.
+using XuiReader = std::function<std::map<std::string, Bytes>(ByteView module)>;
 struct Environment {
-    xex::Tools tools;   // the xex program, which dumps a module's resources
+    XuiReader read_xui = xui_packages;
 };
 
 // `system-ui <package> <out folder> [<online folder>]`: prints each file written and "N files -> <out folder>".

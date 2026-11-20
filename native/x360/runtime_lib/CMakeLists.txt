@@ -28,8 +28,8 @@ include("${X360_ROOT}/system/stfs/stfs.cmake")
 include("${X360_ROOT}/system/guide/guide.cmake")
 include("${X360_ROOT}/system/transition/transition.cmake")
 include("${X360_ROOT}/system/pads/pads.cmake")
-# the XEX reader, shared with the xex engine (native/xex): xex.cpp loads modules through it
-include("${X360_ROOT}/../xex/reader.cmake")
+# the XEX reader, shared with the xex engine (cb/formats/xex): xex.cpp loads modules through it
+include("${X360_ROOT}/../cb/formats/xex/reader.cmake")
 # the console's export names by ordinal (kernel::OrdinalName), from the repository's symbol data
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(ordinal_names "${CMAKE_CURRENT_BINARY_DIR}/ordinal_names.cpp")

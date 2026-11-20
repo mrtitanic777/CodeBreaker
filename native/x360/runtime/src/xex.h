@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-// The runtime's XEX2 loader: modules read by CodeBreaker's XEX reader (native/xex/reader.cmake), so any encryption and
+// The runtime's XEX2 loader: modules read by CodeBreaker's XEX reader (cb/formats/xex/reader.cmake), so any encryption and
 // basic or LZX compression; this file places them in guest memory and resolves their imports and exports.
 namespace xex
 {

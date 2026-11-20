@@ -47,13 +47,12 @@ std::optional<stdfs::path> corpus_file(const stdfs::path& root, std::string_view
 }  // namespace
 
 int main(int argc, char** argv) {
-    stdfs::path corpus, xex_bin, state = "state", nasm, openwatcom, design, ordinals;
+    stdfs::path corpus, state = "state", nasm, openwatcom, design, ordinals;
     int at = 1;
     for (; at + 1 < argc; at += 2) {
         const std::string flag = argv[at];
         const stdfs::path value = fs::from_text(argv[at + 1]);
         if (flag == "--corpus") corpus = value;
-        else if (flag == "--xex-bin") xex_bin = value;
         else if (flag == "--state") state = value;
         else if (flag == "--nasm") nasm = value;
         else if (flag == "--openwatcom") openwatcom = value;
@@ -64,7 +63,6 @@ int main(int argc, char** argv) {
     if (design.empty() && !corpus.empty()) design = corpus.parent_path().parent_path();
 
     formats::xex::Tools tools;
-    tools.xex_program = xex_bin / "xex.exe";
     tools.unpacked_dir = state / "unpacked" / "xex";
     formats::xex_imports::OrdinalNames names;
     if (!ordinals.empty()) {
@@ -83,7 +81,7 @@ int main(int argc, char** argv) {
     formats::xex_imports::Environment imports_env{tools, names};
     build::xex_edit::Environment edit_env{tools};
     analyze::ppc_calls::Environment calls_env{tools, names};
-    formats::xbox::system_ui::Environment system_ui_env{tools};
+    formats::xbox::system_ui::Environment system_ui_env;
     build::floppy::Environment floppy_env;
     floppy_env.corpus_root = corpus;
     floppy_env.design_dir = design;

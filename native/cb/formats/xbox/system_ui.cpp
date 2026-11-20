@@ -5,9 +5,9 @@
 
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
-#include "cb/core/process.hpp"
 #include "cb/core/text.hpp"
 #include "cb/formats/xbox/stfs.hpp"
+#include "extract.h"    // formats/xex/src: the xex engine's resource dump
 
 namespace cb::formats::xbox::system_ui {
 
@@ -36,14 +36,15 @@ void write_asset(const stdfs::path& out_dir, const std::string& name, ByteView d
 
 }  // namespace
 
-std::map<std::string, Bytes> xui_packages(const xex::Tools& tools, ByteView module) {
+std::map<std::string, Bytes> xui_packages(ByteView module) {
     const fs::ScopedTempDir work{"cb-sysui"};
-    const stdfs::path file = work.path() / "module.xex";
     const stdfs::path resources = work.path() / "res";
-    fs::write_file(file, module);
     fs::make_dirs(resources);
-    // (a module the program cannot read has no resources: whatever it says is not wanted)
-    (void)process::run({.argv = {fs::to_text(tools.xex_program), "resources", fs::to_text(file), fs::to_text(resources)}});
+    // (a module the engine cannot read has no resources: what it says about it is not wanted)
+    try {
+        ::xex::dump_resources(::xex::XexFile::parse(std::vector<std::uint8_t>(module.begin(), module.end())), fs::to_text(resources));
+    } catch (const std::exception&) {
+    }
     std::map<std::string, Bytes> found;
     for (const auto& entry : stdfs::directory_iterator(resources)) {
         if (!entry.is_regular_file()) continue;
@@ -53,7 +54,7 @@ std::map<std::string, Bytes> xui_packages(const xex::Tools& tools, ByteView modu
     return found;
 }
 
-std::size_t extract(const xex::Tools& tools, const stdfs::path& package, const stdfs::path& out_dir, const std::optional<stdfs::path>& online,
+std::size_t extract(const Environment& environment, const stdfs::path& package, const stdfs::path& out_dir, const std::optional<stdfs::path>& online,
                     const Report& report) {
     fs::make_dirs(out_dir);
     const stfs::Package update = stfs::Package::parse(fs::read_file(package));
@@ -63,7 +64,7 @@ std::size_t extract(const xex::Tools& tools, const stdfs::path& package, const s
     for (const std::string_view module : kModules) {
         const auto found = files.find(std::format("$flash_{}.xex", module));
         if (found == files.end()) throw FormatError("system_ui", 0, describe(package, std::format("no $flash_{}.xex (not a system update?)", module)));
-        for (const auto& [resource, blob] : xui_packages(tools, update.read_file(found->second))) {
+        for (const auto& [resource, blob] : environment.read_xui(update.read_file(found->second))) {
             write_asset(out_dir, std::format("{}.{}.xzp", module, resource), blob, report);
             ++written;
         }
@@ -83,7 +84,7 @@ std::size_t extract(const xex::Tools& tools, const stdfs::path& package, const s
                 report(std::format("{:<40} (not in {})", std::string(module) + ".xex", fs::to_text(*online)));
                 continue;
             }
-            for (const auto& [resource, blob] : xui_packages(tools, fs::read_file(found->second))) {
+            for (const auto& [resource, blob] : environment.read_xui(fs::read_file(found->second))) {
                 write_asset(out_dir, std::format("{}.{}.xzp", text::lower(module), resource), blob, report);
                 ++written;
             }
@@ -103,7 +104,7 @@ cli::Command command(const Environment& environment) {
     c.handler = [environment](const cli::Args& a) {
         const std::string target = a.required("folder");
         const std::optional<std::string> online = a.value("online");
-        const std::size_t count = extract(environment.tools, fs::from_text(a.required("package")), fs::from_text(target),
+        const std::size_t count = extract(environment, fs::from_text(a.required("package")), fs::from_text(target),
                                           online ? std::optional<stdfs::path>(fs::from_text(*online)) : std::nullopt, [](const std::string& line) { out("{}\n", line); });
         out("{} files -> {}\n", count, target);
         return kExitOk;

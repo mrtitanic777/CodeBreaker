@@ -39,16 +39,16 @@ struct XexEditWorld {
     fs::ScopedTempDir dir{"cb-xex-edit"};
     std::optional<std::filesystem::path> logan = testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
     std::optional<std::filesystem::path> retail = testing::game_file("Minecraft Xbox 360 Edition/default.xex");
-    std::optional<formats::xex::Tools> tools = testing::real_xex_tools(dir.path() / "unpacked");
+    const formats::xex::Tools tools{dir.path() / "unpacked"};
     std::map<std::string, std::string> golden = xex_edit_cases();
 
-    bool ready() const { return logan && retail && tools; }
+    bool ready() const { return logan && retail; }
     std::string out(const std::string& name) const { return fs::to_text(dir.path()) + "/" + name; }
 
     // Runs the command; its output with the folder written as <out>.
     std::string run(std::vector<std::string> args) const {
         xex_edit::Environment env;
-        env.tools = *tools;
+        env.tools = tools;
         std::string result = testing::run_command(xex_edit::command(env), std::move(args));
         return text::replace_all(result, fs::to_text(dir.path()) + "/", "<out>/");
     }

@@ -28,7 +28,6 @@ namespace rcfg = cb::recompile::config;
 
 formats::xex::Tools xex_tools(const cb::config::Config& config) {
     formats::xex::Tools tools;
-    tools.xex_program = config.path("xex_bin").value_or(stdfs::path{}) / "xex.exe";
     tools.unpacked_dir = config.state() / "unpacked" / "xex";
     return tools;
 }

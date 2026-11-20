@@ -22,17 +22,14 @@ namespace xl = cb::symbols::xdk_libraries;
 
 namespace {
 
-// The environment of a test: the checkout, with the xex program found as the other tests find it and a state folder of its own.
+// The environment of a test: the checkout, with a state folder of its own.
 struct Setup {
     fs::ScopedTempDir dir{"cb-program-commands"};
-    std::optional<fs::ScopedEnv> xex_bin, state;
+    std::optional<fs::ScopedEnv> state;
     pc::Environment environment;
     bool ok = false;
 
     Setup() {
-        const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
-        if (!tools) return;
-        xex_bin.emplace("CB_XEX_BIN", fs::to_text(tools->xex_program.parent_path()));
         state.emplace("CB_STATE", fs::to_text(dir.path() / "state"));
         environment.config = config::Config::load(testing::data_path("../.."));
         ok = true;

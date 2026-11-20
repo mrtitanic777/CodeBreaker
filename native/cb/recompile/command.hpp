@@ -9,7 +9,7 @@
 //     table.set("xenon-recompile", command::xenon_recompile_runner({.config = config}));
 //
 // Each is the module's command (powerpc::main, project::run_command, xenon::xenon_recompile_command) with everything it was given as a hook
-// made from the configuration: images read through cb::formats (an .xex through its basefile, the xex program of setting xex_bin), the Xenon
+// made from the configuration: images read through cb::formats (an .xex through its basefile, written by the xex engine), the Xenon
 // vector decoder, the Converted folder of the project (setting converted), the title finder over the Xbox containers, XenonRecomp's tool chain
 // (settings visual_studio, ppc_binutils; built on demand), the rexglue kernel core under native/rexglue, the console's ordinal names
 // (codebreaker/symbols/console_ordinals.json), and g++ (setting gpp, else PATH) for `--check`.
@@ -35,7 +35,7 @@ struct Environment {
 
 // ---- an image, as each module reads it ----------------------------------------------------------------------------------
 
-// A PowerPC image or an .xex (through its basefile, as setting xex_bin and the state folder give it).
+// A PowerPC image or an .xex (through its basefile, kept in the state folder).
 formats::powerpc_image::Image read_image(const std::filesystem::path& file, const Environment& environment);
 
 // What discovery, the disassembler and the recompiler read of an image.

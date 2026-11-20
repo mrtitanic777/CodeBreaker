@@ -48,19 +48,17 @@ std::string rc_manifest(const std::filesystem::path& folder, const std::vector<s
 
 std::string rc_sha1(const std::filesystem::path& file) { return crypto::to_hex(crypto::sha1(fs::read_file(file))); }
 
-// The environment of a test: the xex program found as the other tests find it, a state folder and a Converted folder of its own.
+// The environment of a test: a state folder and a Converted folder of its own.
 struct RcSetup {
     fs::ScopedTempDir dir{"cb-recompile-command"};
-    std::optional<fs::ScopedEnv> xex_bin, state, converted;
+    std::optional<fs::ScopedEnv> state, converted;
     rcmd::Environment environment;
     std::optional<std::filesystem::path> program;
     bool ok = false;
 
     explicit RcSetup(const std::filesystem::path& checkout = testing::data_path("../..")) {
         program = testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
-        const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
-        if (!program || !tools) return;
-        xex_bin.emplace("CB_XEX_BIN", fs::to_text(tools->xex_program.parent_path()));
+        if (!program) return;
         state.emplace("CB_STATE", fs::to_text(dir.path() / "state"));
         converted.emplace("CB_CONVERTED", fs::to_text(dir.path() / "Converted"));
         environment.config = config::Config::load(checkout);

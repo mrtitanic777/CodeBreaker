@@ -142,7 +142,7 @@ public:
     // ---- the signature carver ----------------------------------------------------
     // Step through the partition's data every `interval` bytes and carve files by their magic even where no dirent
     // survives (XEX / XBE / STFS / PE) into `<out_dir>/carved/`. `decrypt` is for measuring encrypted XEX exactly, which
-    // needs the title key (native/xex has it): not done here, those are measured by the other rules or skipped.
+    // needs the title key (the xex engine, formats/xex, has it): not done here, those are measured by the other rules or skipped.
     std::vector<Carved> carve(const Partition& p, const std::filesystem::path& out_dir, std::uint32_t interval = kPageSize, bool decrypt = false);
 
     // ---- writing -------------------------------------------------------------------

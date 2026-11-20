@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 get_filename_component(X360_RUNTIME "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-include("${X360_RUNTIME}/../../xex/reader.cmake")
+include("${X360_RUNTIME}/../../cb/formats/xex/reader.cmake")
 # xex.cpp as the runtime compiles it, with the guest memory it places modules in (Load; ReadImage does not use it)
 add_executable(xex_image_test xex_image_test.cpp "${X360_RUNTIME}/src/xex.cpp" "${X360_RUNTIME}/src/memory.cpp"
     "${X360_RUNTIME}/src/pool.cpp" ${XEX_READER_SOURCES})

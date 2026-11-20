@@ -23,11 +23,10 @@ using namespace cb;
 namespace stdfs = std::filesystem;
 namespace xt = cb::recompile::xenon_tools;
 
-// The xex program and the configuration of a test: the program found where the other tests find it (or in the main checkout's build), a state
-// folder of its own, XenonRecomp from the main checkout. ok is false when the program or the tools are not on this machine.
+// The configuration of a test: a state folder of its own, XenonRecomp from the main checkout. ok is false when the title is not on this machine.
 struct Setup {
     fs::ScopedTempDir dir{"cb-xenon-tools"};
-    std::optional<fs::ScopedEnv> xex_bin, state;
+    std::optional<fs::ScopedEnv> state;
     xt::Environment environment;
     std::optional<stdfs::path> xex;
     bool analyse_built = false;
@@ -38,20 +37,6 @@ struct Setup {
         if (!xex) return;
         const stdfs::path checkout = testing::data_path("../..");
         const stdfs::path main_checkout = config::Config::load(checkout).main_checkout();
-        std::vector<stdfs::path> folders;
-        if (const auto env = fs::get_env("CB_XEX_BIN")) folders.push_back(fs::from_text(*env));
-        folders.push_back(testing::data_path("../xex/build/bin"));
-        folders.push_back(main_checkout / "native" / "xex" / "build" / "bin");
-        std::optional<stdfs::path> bin;
-        for (const stdfs::path& folder : folders) {
-            std::error_code ec;
-            if (stdfs::is_regular_file(folder / "xex.exe", ec)) {
-                bin = folder;
-                break;
-            }
-        }
-        if (!bin) return;
-        xex_bin.emplace("CB_XEX_BIN", fs::to_text(*bin));
         state.emplace("CB_STATE", fs::to_text(dir.path() / "state"));
         environment.config = config::Config::load(main_checkout);
         std::error_code ec;

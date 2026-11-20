@@ -10,10 +10,12 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/io.hpp"
 #include "cb/core/json.hpp"
-#include "cb/core/process.hpp"
+#include <cstdio>
 #include "cb/core/text.hpp"
 #include "cb/formats/probe.hpp"
-#include "xex_file.h"   // native/xex/src: CodeBreaker's one XEX parser
+#include "command.h"    // formats/xex/src: the xex engine's command line
+#include "extract.h"    // formats/xex/src: the basefile writer
+#include "xex_file.h"   // formats/xex/src: CodeBreaker's one XEX parser
 
 namespace cb::formats::xex {
 
@@ -37,15 +39,6 @@ std::optional<std::string> plain_name(std::string_view raw) {
 }
 
 std::string version_text(const ::xex::Version& v) { return v.str().substr(1); }   // without the "v"
-
-const std::filesystem::path& program(const Tools& tools) {
-    if (!std::filesystem::is_regular_file(tools.xex_program)) {
-        throw NotFoundError(tools.xex_program, 0,
-                            "the xex program is not built: cmake -S native/xex -B native/xex/build "
-                            "&& cmake --build native/xex/build --config Release --target xex");
-    }
-    return tools.xex_program;
-}
 
 std::uint32_t be32_at(ByteView data, std::uint64_t at) {
     io::ByteReader r(data, kReader);
@@ -96,7 +89,7 @@ TitleIds ids(ByteView xex) {
 Header parse_header(ByteView xex) {
     std::optional<::xex::XexFile> parsed;
     try {
-        // The parser is native/xex's own and throws std::exception types: an isolation boundary, converted here.
+        // The parser is the xex engine's (formats/xex) and throws std::exception types: an isolation boundary, converted here.
         parsed = ::xex::XexFile::parse(std::vector<std::uint8_t>(xex.begin(), xex.end()));
     } catch (const std::exception& e) {
         throw FormatError(kReader, 0, e.what());
@@ -127,6 +120,16 @@ Header read_header(const std::filesystem::path& path) {
     return parse_header(file.view());
 }
 
+void unpack(const std::filesystem::path& xex, const std::filesystem::path& out) {
+    // The engine throws std::exception types: an isolation boundary, converted here.
+    try {
+        const Bytes data = fs::read_file(xex);
+        ::xex::extract_basefile(::xex::XexFile::parse(std::vector<std::uint8_t>(data.begin(), data.end())), fs::to_text(out));
+    } catch (const std::exception& e) {
+        throw ToolError("xex", 1, e.what(), "no basefile for " + path_text(xex));
+    }
+}
+
 std::filesystem::path basefile(const Tools& tools, const std::filesystem::path& xex) {
     const fs::MappedFile file(xex);
     const std::string stem = text::lower(fs::to_text(xex.stem()));
@@ -137,12 +140,14 @@ std::filesystem::path basefile(const Tools& tools, const std::filesystem::path& 
     fs::make_dirs(tools.unpacked_dir);
     std::filesystem::path part = out;
     part += ".part";
-    const process::ProcessResult r =
-        process::run({.argv = {fs::to_text(program(tools)), "extract", fs::to_text(xex), fs::to_text(part)}});
-    if (!r.ok() || !std::filesystem::is_regular_file(part)) {
-        const Bytes& said = r.err.empty() ? r.out : r.err;
-        throw ToolError("xex", r.exit_code, text::trim(text::from_latin1(said)), "no basefile for " + path_text(xex));
+    try {
+        tools.unpacker(xex, part);
+    } catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove(part, ignored);
+        throw;
     }
+    if (!std::filesystem::is_regular_file(part)) throw ToolError("xex", 1, "", "no basefile for " + path_text(xex));
     const Header h = parse_header(file.view());
     nlohmann::ordered_json sidecar;
     sidecar["xex"] = fs::to_text(std::filesystem::absolute(xex));
@@ -205,13 +210,20 @@ std::optional<std::vector<std::string>> import_libraries(const std::filesystem::
     return out;
 }
 
-int run(const Tools& tools, const std::vector<std::string>& args) {
-    process::ProcessSpec spec;
-    spec.argv.push_back(fs::to_text(program(tools)));
-    spec.argv.insert(spec.argv.end(), args.begin(), args.end());
-    spec.out = process::Capture::Inherit;
-    spec.err = process::Capture::Inherit;
-    return static_cast<int>(process::run(spec).exit_code);
+int run(const std::vector<std::string>& args) {
+    // the engine's own command line, in-process: argv[0] is its name, then the arguments as given
+    std::vector<std::string> owned;
+    owned.reserve(args.size() + 1);
+    owned.emplace_back("xex");
+    owned.insert(owned.end(), args.begin(), args.end());
+    std::vector<char*> argv;
+    for (std::string& a : owned) argv.push_back(a.data());
+    argv.push_back(nullptr);
+    std::fflush(stdout);
+    const int rc = xex_command(static_cast<int>(owned.size()), argv.data());
+    std::fflush(stdout);
+    std::fflush(stderr);
+    return rc;
 }
 
 }  // namespace cb::formats::xex

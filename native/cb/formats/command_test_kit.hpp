@@ -52,19 +52,6 @@ inline std::optional<std::filesystem::path> game_file(const char* relative) {
     return path;
 }
 
-// The xex program, for the tests that read a real .xex: the folder in CB_XEX_BIN, else the one built in the source tree. nullopt when
-// there is none (the test is then skipped). Unpacked images go under `unpacked`.
-inline std::optional<formats::xex::Tools> real_xex_tools(const std::filesystem::path& unpacked) {
-    std::vector<std::filesystem::path> folders;
-    if (const auto env = fs::get_env("CB_XEX_BIN")) folders.push_back(fs::from_text(*env));
-    folders.push_back(data_path("../xex/build/bin"));
-    for (const auto& folder : folders) {
-        std::error_code ec;
-        if (std::filesystem::is_regular_file(folder / "xex.exe", ec)) return formats::xex::Tools{folder / "xex.exe", unpacked};
-    }
-    return std::nullopt;
-}
-
 // The console ordinals the knowledge base keeps (codebreaker/symbols/console_ordinals.json): {library: {ordinal: name}}, as the function
 // the xex commands' environments take.
 inline formats::xex_imports::OrdinalNames console_ordinal_names() {

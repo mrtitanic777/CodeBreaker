@@ -18,10 +18,9 @@ namespace stdfs = std::filesystem;
 namespace pi = formats::powerpc_image;
 namespace rcfg = cb::recompile::config;
 
-// The xex program and where its unpacked images go: the settings `xex_bin` and the state folder.
+// Where unpacked images go: the state folder.
 formats::xex::Tools tools_of(const cb::config::Config& config) {
     formats::xex::Tools tools;
-    tools.xex_program = config.path("xex_bin").value_or(stdfs::path{}) / "xex.exe";
     tools.unpacked_dir = config.state() / "unpacked" / "xex";
     return tools;
 }

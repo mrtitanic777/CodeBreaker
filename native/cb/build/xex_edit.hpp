@@ -57,7 +57,7 @@ Bytes set_privileges(ByteView xex_file, std::span<const Change> changes);
 // A module written as a basic XEX: its header, then the whole image from `pe_offset`.
 class Image {
 public:
-    // The module written through the xex program (FormatError when it has no load address).
+    // The module written through the xex engine (FormatError when it has no load address).
     static Image open(const formats::xex::Tools& tools, const std::filesystem::path& xex);
     // For a basic XEX already in memory with its load address.
     Image(Bytes file, std::uint32_t base);
@@ -81,7 +81,7 @@ private:
 void hook(Image& image, std::uint32_t address, std::uint32_t cave, std::string_view asm_text);
 
 struct Environment {
-    formats::xex::Tools tools;   // the xex program, for the code edits
+    formats::xex::Tools tools;   // where unpacked images are kept, for the code edits
 };
 
 // `xex-edit <op> ...` as above. The arguments after the operation are the command's own (`-pal50` is a bit, not an option).

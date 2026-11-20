@@ -50,7 +50,7 @@ using OrdinalNames = std::function<std::optional<std::string>(std::string_view l
 std::vector<Import> imports(ByteView xex_file, const powerpc_image::Image& image, const OrdinalNames& names);
 
 struct Environment {
-    xex::Tools tools;            // where the xex program is and where unpacked images are kept (the basefile is read through them)
+    xex::Tools tools;            // where unpacked images are kept (the basefile is read through them)
     OrdinalNames ordinal_name;   // the knowledge base's console ordinals; without it every import is named <library>_<ordinal>
 };
 

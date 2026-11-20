@@ -2,15 +2,15 @@
 //
 // A .xex wraps a PE image in its own header: the image is compressed (LZX or by blocks), usually encrypted with a
 // per-title key, and the libraries its imports come from are named in the header, not in the image. Reading the
-// header is done here, over CodeBreaker's one XEX parser (native/xex/src/xex_file.h, which the xex program and the
-// recompiled-game runtime compile too). Decrypting and decompressing is the xex program's (native/xex, built with
-// CMake): `basefile` runs it once per distinct file and keeps the image, so the PowerPC lane reads a .xex like any
-// PowerPC image.
+// header is done here, over CodeBreaker's XEX engine (formats/xex, the library cb_xex; the recompiled-game runtime
+// compiles its parser too). Decrypting and decompressing is the engine's too: `basefile` writes the image once per
+// distinct file and keeps it, so the PowerPC lane reads a .xex like any PowerPC image.
 #pragma once
 
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -84,15 +84,20 @@ struct Header {
 Header parse_header(ByteView xex);
 Header read_header(const std::filesystem::path& path);
 
-// Where the xex program is and where unpacked images are kept (cb::paths will own these; callers pass them).
+// Writes the PowerPC image of the .xex `xex` (decrypted, decompressed) to `out`: the xex engine's, below. ToolError when it cannot.
+using Unpacker = std::function<void(const std::filesystem::path& xex, const std::filesystem::path& out)>;
+void unpack(const std::filesystem::path& xex, const std::filesystem::path& out);
+
+// Where unpacked images are kept (cb::paths will own this; callers pass it), and what unpacks them (the engine; a test may
+// hand its own).
 struct Tools {
-    std::filesystem::path xex_program;    // xex.exe
     std::filesystem::path unpacked_dir;   // state/unpacked/xex
+    Unpacker unpacker = unpack;
 };
 
 // The PowerPC image inside `xex`, extracted once per distinct file (named by its contents, so a changed .xex is a
-// new basefile and nothing is stale); the header's facts are written beside it as <image>.json. NotFoundError if the
-// xex program is not built; ToolError if it fails.
+// new basefile and nothing is stale); the header's facts are written beside it as <image>.json. ToolError if the
+// engine cannot write it (not an XEX2 file, an unknown key, a damaged image).
 std::filesystem::path basefile(const Tools& tools, const std::filesystem::path& xex);
 
 // Write `xex` as an unencrypted XEX with basic compression: every header byte kept (optional headers, security
@@ -105,8 +110,9 @@ void write_basic(const Tools& tools, const std::filesystem::path& xex, const std
 // that did not come from a .xex.
 std::optional<std::vector<std::string>> import_libraries(const std::filesystem::path& image);
 
-// Run `xex <args>` with the program's own stdout and stderr (info, list, extract, resources, xml, idc, compress,
-// decompress, binary, encrypt, decrypt, machine, remove-limits, bounding-path, patch, selftest); returns its exit code.
-int run(const Tools& tools, const std::vector<std::string>& args);
+// Run the engine's command line in-process, `xex <args>`, writing to this process's stdout and stderr (info, list,
+// extract, resources, xml, idc, compress, decompress, binary, encrypt, decrypt, machine, remove-limits, bounding-path,
+// patch, selftest); returns its exit code.
+int run(const std::vector<std::string>& args);
 
 }  // namespace cb::formats::xex

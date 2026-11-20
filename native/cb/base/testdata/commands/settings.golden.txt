@@ -24,7 +24,7 @@ settings: <ROOT>/settings.json
   ok openwatcom       <ROOT>/wc
   -- period_compiler  (not set)
   -- powerpc_lib      (not set)
-  -- powerpc_tools    (not set)
+  ok powerpc_tools    <ROOT>/tools/ppc
   !! ppc_binutils     <ROOT>/toolchains/binutils-ppc
   !! retromcp         <ROOT>/native/retromcp/build/libs/retromcp.jar
      service_idle_minutes 5
@@ -40,6 +40,5 @@ settings: <ROOT>/settings.json
   -- xbox360_keys     (not set)
   -- xbox360_sdk      (not set)
   -- xenix_c          (not set)
-  ok xex_bin          <ROOT>/tools/xex
   -- xna_overlays     (not set)
 ok = found, !! = set but not there, -- = not set (optional unless a command asks for it)

@@ -3,7 +3,7 @@
 #include "log.h"
 #include "memory.h"
 
-// CodeBreaker's XEX reader (native/xex/reader.cmake): the headers, security info, imports and the decoded image
+// CodeBreaker's XEX reader (cb/formats/xex/reader.cmake): the headers, security info, imports and the decoded image
 #include "basefile.h"
 #include "xex_file.h"
 

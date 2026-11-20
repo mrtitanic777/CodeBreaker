@@ -16,10 +16,10 @@ using namespace cb;
 CB_TEST("analyze.ppc_calls_command.a_module_is_analysed_as_recorded", [] {
     const fs::ScopedTempDir dir{"cb-ppc-calls"};
     const auto module = testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
-    const auto tools = testing::real_xex_tools(dir.path() / "unpacked");
-    if (!module || !tools) return;
+    const formats::xex::Tools tools{dir.path() / "unpacked"};
+    if (!module) return;
     analyze::ppc_calls::Environment env;
-    env.tools = *tools;
+    env.tools = tools;
     env.ordinal_name = testing::console_ordinal_names();
     const std::string tsv = fs::to_text(dir.path()) + "/c.tsv";
     std::string printed = testing::run_command(analyze::ppc_calls::command(env), {fs::to_text(*module), "-o", tsv});

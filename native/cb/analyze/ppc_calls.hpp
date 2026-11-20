@@ -116,7 +116,7 @@ std::string to_tsv(const Result& r);
 // ---- from a file ------------------------------------------------------------------------------------------------------
 
 struct Environment {
-    formats::xex::Tools tools;                       // where the xex program is: an .xex is read through its basefile
+    formats::xex::Tools tools;                       // where unpacked images are kept: an .xex is read through its basefile
     formats::xex_imports::OrdinalNames ordinal_name; // the console's ordinal names, which name an .xex's imports
 };
 

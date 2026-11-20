@@ -55,7 +55,6 @@ constexpr StWords kStWords[] = {
     {"build_cache", "Build cache", "Where finished build steps are remembered."},
     {"retromcp", "Retro tools folder", "The helper tools for retro consoles."},
     {"decompiler_bin", "Decompiler program", "The program that turns code into C."},
-    {"xex_bin", "Xbox 360 program tool", "Reads Xbox 360 programs."},
     {"tracer_bin", "Tracer program", "Runs code in the emulator to see what it does."},
     {"formats_bin", "File format tool", "Reads the file formats."},
     {"engine_bin", "Analysis engine", "The program behind the analysis."},

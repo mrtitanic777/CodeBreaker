@@ -33,7 +33,6 @@ struct Default {
 constexpr std::array kDefaults{
     Default{"corpus", "../Windows95/design/corpus/files"},
     Default{"decompiler_bin", "native/decompiler/build/bin"},
-    Default{"xex_bin", "native/xex/build/bin"},
     Default{"tracer_bin", "state/cxx/cb/bin"},
     Default{"formats_bin", "native/formats/build/bin"},
     Default{"engine_bin", "native/engine/build/bin"},
@@ -53,8 +52,8 @@ constexpr std::array kDefaults{
 
 // The settings whose value is a path (relative ones are taken against the checkout): the path keys, plus
 // "reference" (a relative one is taken against the checkout, not the working folder).
-constexpr std::array<std::string_view, 38> kPathSettings{
-    "corpus",        "openwatcom",   "build_cache",  "decompiler_bin", "xex_bin",          "tracer_bin",
+constexpr std::array<std::string_view, 37> kPathSettings{
+    "corpus",        "openwatcom",   "build_cache",  "decompiler_bin", "tracer_bin",
     "formats_bin",   "engine_bin",   "dosexec_bin",  "symbols_bin",    "invert_bin",       "analyze_bin",
     "state",         "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x",        "msc6",
     "xenix_c",       "masm",         "nasm",         "msvc152",        "java",             "retromcp",

@@ -127,7 +127,7 @@ set_property(GLOBAL PROPERTY CB_AREAS "")
 # area's library never takes their sources; each is added below with add_subdirectory or compiled by its own rules.
 set(CB_ENGINE_DIRS
   decompile/engine exact/emu/dosexec translate/l2 translate/frontends/python/pyfront formats/xex
-  recompile/x360 recompile/xenonrecomp recompile/rexglue build/nasm java/retromcp app/memcap third_party)
+  recompile/x360 recompile/xenonrecomp recompile/rexglue java/retromcp app/memcap third_party)
 function(cb_area dir)
   file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
   file(GLOB_RECURSE tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
@@ -147,17 +147,10 @@ function(cb_area dir)
   set_property(GLOBAL APPEND PROPERTY CB_AREA_TESTS_${dir} ${tests})   # for cb_tests_<area> (end of this file)
 endfunction()
 
-# CodeBreaker's one XEX reader (native/xex/reader.cmake: the parser, the basefile's decryption and decompression):
-# shared with the xex program and the recompiled-game runtime, so it is compiled as it is, under its own flags (not
-# /W4 /WX). cb::formats::xex wraps its parser; the tests of cb::formats::lzx use its decoder as the independent oracle.
-include("${CB_NATIVE_ROOT}/xex/reader.cmake")
-add_library(cb_xex_reader STATIC ${XEX_READER_SOURCES})
-set_target_properties(cb_xex_reader PROPERTIES CXX_STANDARD 20 MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-target_include_directories(cb_xex_reader PUBLIC "${XEX_READER_INCLUDE_DIR}")
-target_compile_options(cb_xex_reader PRIVATE ${CB_FLAGS_LIB})
-if(CB_ASAN)
-  target_compile_options(cb_xex_reader PRIVATE /fsanitize=address /Zi)
-endif()
+# CodeBreaker's XEX engine (formats/xex: the parser, the basefile's decryption and decompression, the conversions), the
+# library cb_xex: cb::formats::xex parses, writes basefiles and runs `codebreaker xex` with it; the tests of
+# cb::formats::lzx use its decoder as the independent oracle.
+include("${CMAKE_CURRENT_LIST_DIR}/formats/xex/CMakeLists.txt")
 
 # zlib 1.3.1 (MSZIP): the copy native/decompiler carries (as native/formats compiles it), with crc32() from
 # native/formats/core/zcrc32.c; a C library compiled as it is.
@@ -254,7 +247,7 @@ cb_area(emulate)
 target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile cb_formats cb_symbols cb_knowledge)   # (the tracer's module loader reads PE files, prototypes and the win32 model)
 
 cb_area(formats)
-target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
+target_link_libraries(cb_formats PUBLIC cb_core cb_xex cb_zlib)
 
 cb_area(recompile)
 target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_formats cb_decompile)   # (cb_base: the converted projects of the recompile-project command)
