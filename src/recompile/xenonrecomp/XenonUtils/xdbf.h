@@ -130,7 +130,7 @@ union XDBFTitleID
 {
     struct
     {
-        be<uint16_t> u16;
+        uint16_t u16;   // (big-endian on the console; a plain word here: GCC refuses be<> in an anonymous struct, and no tool reads it)
         char u8[0x02];
     };
 

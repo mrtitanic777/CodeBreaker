@@ -57,7 +57,7 @@ jobs:
       - name: codebreaker.exe and the unit tests (clang-cl)
         shell: cmd
         run: |
-          cmake -S src -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl "-DCMAKE_CXX_FLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH" || exit /b 1
+          cmake -S src -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /EHsc /GR -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH" || exit /b 1
           cmake --build build-clang --target codebreaker cb_tests -j 4 || exit /b 1
       - name: Unit tests
         shell: cmd

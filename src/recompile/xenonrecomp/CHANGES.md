@@ -61,6 +61,8 @@ CodeBreaker links XenonRecomp and XenonAnalyse into `codebreaker.exe` (MSVC, cla
 (`src/recompile/xenon_engine`); the programs still build on their own.
 
 - Builds with MSVC: `_byteswap_*` where there is no `__builtin_bswap*` (`XenonUtils/byteswap.h`).
+- Builds with GCC: `_XXOVERLAPPED`'s `Error` and `Length` (`XenonUtils/xbox.h`) and `XDBFTitleID`'s `u16` (`XenonUtils/xdbf.h`)
+  are plain words; GCC refuses a member with a constructor (`be<>`) in an anonymous struct, and no tool reads them.
 - The same code whichever compiler builds it: the alias form (`XENON_RECOMP_USE_ALIAS`) is chosen for the compiler of
   the code it writes (clang), not for its own; upstream switched it off when XenonRecomp itself was not built with clang.
   MSVC and clang-cl builds write byte-identical output (397 files of 7 Dashboard modules, `title_zune` and `xam` among them).

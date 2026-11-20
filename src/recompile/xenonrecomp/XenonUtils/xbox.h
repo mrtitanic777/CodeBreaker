@@ -245,8 +245,10 @@ typedef struct _XXOVERLAPPED {
     {
         struct
         {
-            be<uint32_t> Error;
-            be<uint32_t> Length;
+            // (big-endian on the console; plain words here: GCC refuses a member with a constructor, be<>, in an anonymous
+            // struct, and no tool reads these two)
+            uint32_t Error;
+            uint32_t Length;
         };
 
         struct
