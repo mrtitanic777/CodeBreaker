@@ -122,12 +122,22 @@ endfunction()
 # are collected for cb_tests.
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES "")
 set_property(GLOBAL PROPERTY CB_AREAS "")
+# The engines that live inside an area but are built by their own rules (their own CMakeLists.txt, flags and programs:
+# the decompiler, the DOS runner, the Python parser, the XEX tools, the Xbox 360 runtime, XenonRecomp, NASM...). An
+# area's library never takes their sources; each is added below with add_subdirectory or compiled by its own rules.
+set(CB_ENGINE_DIRS
+  decompile/engine exact/emu/dosexec translate/l2 translate/frontends/python/pyfront formats/xex
+  recompile/x360 recompile/xenonrecomp recompile/rexglue build/nasm java/retromcp app/memcap third_party)
 function(cb_area dir)
   file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
   file(GLOB_RECURSE tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
   list(FILTER sources EXCLUDE REGEX "(_test|_main)\\.cpp$")
   list(FILTER sources EXCLUDE REGEX "/testdata/")   # test inputs, not the area's code
   list(FILTER tests EXCLUDE REGEX "/testdata/")
+  foreach(engine IN LISTS CB_ENGINE_DIRS)
+    list(FILTER sources EXCLUDE REGEX "/cb/${engine}/")
+    list(FILTER tests EXCLUDE REGEX "/cb/${engine}/")
+  endforeach()
   add_library(cb_${dir} STATIC ${sources})
   cb_apply_flags(cb_${dir})
   cb_unity(cb_${dir} "${sources}")
