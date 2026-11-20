@@ -65,9 +65,17 @@ RetroMCP's own steps are not. Each engine is proven against the original on the 
 
 1. **Class files** (done: `java/classfile`): a class read into a tree and written back byte for byte; a method's code
    decoded into instructions and encoded back. Both engines stand on it. Proven on every class of the jars in the tree.
-2. **The decompiler**: Fernflower's passes (the class structure and its attributes, control flow into statements,
-   variables and their types, expressions, the class writer) in C++, each checked on the Java Fernflower writes for the
-   same classes.
+2. **The decompiler**: Fernflower, the build RetroMCP uses (github.com/Lassebq/Fernflower, master; package
+   `de.fernflower`, Apache-2.0 with the JetBrains headers; 211 files, about 42,000 lines; every class in RetroMCP's jar is
+   in it). The reference is that source built with the JDK (`javac --release 8`, `ConsoleDecompiler <jar> <out>`): the
+   C++ port writes the same Java for the same classes, a method the original cannot write included. In this order, each
+   layer proven before the next:
+   - the class structure (struct/, struct/attr, consts, gen, generics: about 4,400 lines) over `java/classfile`;
+   - the instructions and the control-flow graph (code/, code/optinstructions, code/cfg, code/interpreter: about 5,300);
+   - statements from the graph (modules/decompiler/decompose, stats, DomHelper, the loop, if, finally and label helpers);
+   - expressions and the stack (exps, ExprProcessor, StackVarsProcessor, sforms: SSA);
+   - variables and their types (vars), the simplify passes, the renamer;
+   - the class writer and the main driver (main/, rels, collectors, util), with RetroMCP's decompile options.
 3. **The compiler**: Java source to class files (parse, attribute, flow, lower, generate), checked by compiling with
    both and comparing what the classes do (and, where javac is deterministic, their bytes).
 
