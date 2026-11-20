@@ -66,7 +66,7 @@ z80::Bus bus_for(const Machine& machine, ByteView memory, Trace& trace) {
         [m, t](std::uint16_t port, std::uint8_t value) { t->ports.push_back(std::format("out {:x} {:x}", m->decodes_high_byte ? port : port & 0xFF, value)); });
 }
 
-z80::RunResult run(const Machine& machine, z80::Bus& bus, Trace& trace, std::uint16_t entry, z80::RunOptions options) {
+z80::RunOptions run_options(const Machine& machine, Trace& trace, z80::RunOptions options) {
     options.sp = machine.stack;
     const Machine* m = &machine;
     Trace* t = &trace;
@@ -78,7 +78,11 @@ z80::RunResult run(const Machine& machine, z80::Bus& bus, Trace& trace, std::uin
         }
         t->calls.push_back(name.empty() ? std::format("{:04x}", pc) : name);
     };
-    return z80::run(bus, entry, options);
+    return options;
+}
+
+z80::RunResult run(const Machine& machine, z80::Bus& bus, Trace& trace, std::uint16_t entry, z80::RunOptions options) {
+    return z80::run(bus, entry, run_options(machine, trace, std::move(options)));
 }
 
 }  // namespace cb::emulate::z80_machines

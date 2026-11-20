@@ -22,6 +22,7 @@
 #include "engine/lane_kit_internal.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu.hpp"
 #include "formats/gb.hpp"
 #include "formats/gba.hpp"
 #include "formats/genesis.hpp"
@@ -139,7 +140,7 @@ lanes::Effects nes_effects(const stdfs::path& path, std::uint32_t entry, const l
     options.x = static_cast<std::uint8_t>(at(state, "x"));
     options.y = static_cast<std::uint8_t>(at(state, "y"));
     options.max_steps = kSteps;
-    const emulate::m6502::RunResult run = emulate::m6502::run(bus, static_cast<std::uint16_t>(entry), options);
+    const emulate::m6502::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
     std::vector<std::string> io;
     for (const emulate::m6502::DeviceAccess& x : run.io) {
         io.push_back(io_line(x.kind == emulate::m6502::DeviceAccess::Kind::Read ? "r" : "w", x.address, x.value));
@@ -168,7 +169,7 @@ lanes::Effects sms_effects(const stdfs::path& path, std::uint32_t entry, const l
     options.regs.e = static_cast<std::uint8_t>(at(state, "e"));
     options.regs.h = static_cast<std::uint8_t>(at(state, "h"));
     options.regs.l = static_cast<std::uint8_t>(at(state, "l"));
-    const emulate::z80::RunResult run = emulate::z80::run(bus, static_cast<std::uint16_t>(entry), options);
+    const emulate::z80::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
     std::vector<std::string> io;
     for (const emulate::z80::BusAccess& x : run.io) {
         io.push_back(io_line(emulate::z80::to_text(x.kind), x.where, x.value));
@@ -368,7 +369,7 @@ lanes::Effects flat_effects(const stdfs::path& path, std::uint32_t entry, const 
     options.regs.e = static_cast<std::uint8_t>(at(state, "e"));
     options.regs.h = static_cast<std::uint8_t>(at(state, "h"));
     options.regs.l = static_cast<std::uint8_t>(at(state, "l"));
-    const emulate::z80::RunResult run = emulate::z80::run(bus, static_cast<std::uint16_t>(entry), options);
+    const emulate::z80::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
     // what the run changed (the program lives in this memory: an edited byte the function does not write is the source's difference, not the function's)
     std::vector<std::string> changed;
     for (std::size_t i = 0; i < 0x10000; ++i)
@@ -410,7 +411,7 @@ lanes::Effects model_effects(const emulate::z80_machines::Machine& machine, cons
     options.regs.e = static_cast<std::uint8_t>(at(state, "e"));
     options.regs.h = static_cast<std::uint8_t>(at(state, "h"));
     options.regs.l = static_cast<std::uint8_t>(at(state, "l"));
-    const emulate::z80::RunResult run = emulate::z80_machines::run(machine, bus, trace, static_cast<std::uint16_t>(entry), options);
+    const emulate::z80::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), emulate::z80_machines::run_options(machine, trace, options));
     std::vector<std::string> changed;
     for (std::size_t i = 0; i < 0x10000; ++i)
         if (before[i] != bus.memory()[i]) changed.push_back(std::format("{:04x}={:02x}", i, bus.memory()[i]));

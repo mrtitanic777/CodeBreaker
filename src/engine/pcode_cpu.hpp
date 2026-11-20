@@ -15,16 +15,18 @@
 // own core, which the description decides: ADC and SBC honour the D flag (the own core's `decimal` is off by default);
 // `Variant::Cmos` runs 65c02.sla.
 //
-// CB_PCODE_EMU=1 (or force(true)) makes call() use the emulator; unset or 0, the own core.
+// call() uses the emulator by default; CB_PCODE_EMU=0 (or force(false)) makes it use the own core (emulate/m6502, emulate/z80). Every 6502-family
+// and Z80-family lane (Atari 2600, 5200, 7800, NES, Lynx, Master System, SG-1000, MSX, ColecoVision, ZX Spectrum, Amstrad CPC) calls it.
 #pragma once
 
 #include <optional>
 
 #include "emulate/m6502.hpp"
+#include "emulate/z80.hpp"
 
 namespace cb::engine::pcode_cpu {
 
-// Whether call() runs on the emulator: force() if set, else the environment variable CB_PCODE_EMU ("1", "true", "yes").
+// Whether call() runs on the emulator: force() if set, else not CB_PCODE_EMU=0 ("0", "false", "no").
 bool enabled();
 // Override the environment (tests flip it); std::nullopt goes back to the environment.
 void force(std::optional<bool> on);
@@ -34,5 +36,15 @@ emulate::m6502::RunResult run(emulate::m6502::Bus& bus, std::uint16_t entry, con
 
 // emulate::m6502::run or run(), by enabled().
 emulate::m6502::RunResult call(emulate::m6502::Bus& bus, std::uint16_t entry, const emulate::m6502::RunOptions& options = {});
+
+// The same for the lanes' Z80 (emulate::z80::Bus), on z80.sla: the Bus is the emulator's read/write hook for the "ram" space and its
+// "io" space (IN and OUT; the port is all sixteen lines, as the description puts A or B on the high ones), the 64 KB of bus memory the
+// page map instructions are decoded from, kept current. The call is made as CALL makes it (return address pushed, kReturnAddress ends the
+// run), HALT stops the run with the Halt fault, an instruction the description lacks with Undecodable (a DD/FD in front of an instruction that
+// takes no index is skipped, most of the ED page is NOP; the NEG/RETN/IM mirrors in ED, IN/OUT (C) with no register, and the undocumented
+// DD CB copies into a register stay undecodable). R is counted by the adapter as the own core counts it; the interrupt flip-flops and mode
+// are tracked from the description's user operations (disable/enableMaskableInterrupts, setInterruptMode, getIFF2, halt).
+emulate::z80::RunResult run(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
+emulate::z80::RunResult call(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
 
 }  // namespace cb::engine::pcode_cpu

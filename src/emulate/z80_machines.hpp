@@ -62,6 +62,9 @@ void stub_firmware(const Machine& machine, ByteSpan memory);
 // A bus over a copy of `memory` whose ports answer as the machine's do and note themselves in `trace` (which must outlive the bus).
 z80::Bus bus_for(const Machine& machine, ByteView memory, Trace& trace);
 
+// The options a run on the machine takes: its stack, and each instruction fetched from firmware noted in `trace` as a call (`trace` must outlive the run).
+z80::RunOptions run_options(const Machine& machine, Trace& trace, z80::RunOptions options = {});
+
 // Call `entry` on the machine's stack, noting each instruction fetched from firmware as a call.
 z80::RunResult run(const Machine& machine, z80::Bus& bus, Trace& trace, std::uint16_t entry, z80::RunOptions options = {});
 

@@ -10,6 +10,7 @@
 #include "emulate/m6502.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/atari5200.hpp"
 #include "formats/atari5200.hpp"
@@ -110,7 +111,7 @@ vl::Effects a5200_effects(const stdfs::path& path, std::uint32_t entry, const vl
     options.x = static_cast<std::uint8_t>(d::at(state, "x"));
     options.y = static_cast<std::uint8_t>(d::at(state, "y"));
     options.max_steps = d::kSteps;
-    const emulate::m6502::RunResult run = emulate::m6502::run(bus, static_cast<std::uint16_t>(entry & 0xFFFF), options);
+    const emulate::m6502::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry & 0xFFFF), options);
     std::vector<std::string> io;
     for (const emulate::m6502::DeviceAccess& x : run.io) {
         io.push_back(std::format("{} {:x} {:x}", x.kind == emulate::m6502::DeviceAccess::Kind::Read ? "r" : "w", x.address, x.value));

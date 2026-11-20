@@ -12,6 +12,7 @@
 #include "emulate/m6502.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu.hpp"
 #include "platforms/lynx.hpp"
 #include "formats/lynx.hpp"
 #include "source/lynx_writer.hpp"
@@ -79,7 +80,7 @@ vl::Effects lynx_effects(const stdfs::path& path, std::uint32_t entry, const vl:
     options.max_steps = kSteps;
     options.decimal = true;
     options.variant = emulate::m6502::Variant::Cmos;
-    const emulate::m6502::RunResult run = emulate::m6502::run(bus, static_cast<std::uint16_t>(entry), options);
+    const emulate::m6502::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
     std::vector<std::string> io;
     for (const emulate::m6502::DeviceAccess& x : run.io) {
         io.push_back(std::format("{} {:x} {:x}", x.kind == emulate::m6502::DeviceAccess::Kind::Read ? "r" : "w", x.address, x.value));

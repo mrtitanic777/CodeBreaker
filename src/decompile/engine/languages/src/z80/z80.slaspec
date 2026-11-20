@@ -92,6 +92,7 @@ define pcodeop enableMaskableInterrupts;
 define pcodeop setInterruptMode;
 define pcodeop parity;
 define pcodeop sleep;
+define pcodeop getIFF2;
 define pcodeop halt;
 
 ################################################################
@@ -182,6 +183,15 @@ macro setParity(in_byte) {
 	$(PV_flag) = (tmp == 0);
 	
 #     $(PV_flag) = hasEvenParity(in_byte);
+}
+
+# the flags the block input and output instructions leave: S and Z from the count, N from the top bit of the byte moved, H and P/V clear
+macro ioBlockFlags(count, data) {
+   $(S_flag) = (count s< 0);
+   $(Z_flag) = (count == 0);
+   $(H_flag) = 0;
+   $(PV_flag) = 0;
+   $(N_flag) = (data s< 0);
 }
 
 macro ioWrite(addr,val) {
@@ -455,20 +465,20 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	A = val;
 	setResultFlags(val);
 	$(H_flag) = 0;
-#	$(PV_flag) = IFF2;
+	$(PV_flag) = getIFF2();   # the interrupt flip-flop is the machine's: a user operation
 	$(N_flag) = 0;
 }
 
-:LD A,R             is op0_8=0xed & A & R; op0_8=0x5f {
+:LD A,R            is op0_8=0xed & A & R; op0_8=0x5f {
 	local val = R;
 	A = val;
 	setResultFlags(val);
 	$(H_flag) = 0;
-#	$(PV_flag) = IFF2;
+	$(PV_flag) = getIFF2();
 	$(N_flag) = 0;
 }
 
-:LD I,A             is op0_8=0xed & A & I; op0_8=0x47 {
+:LD I,A            is op0_8=0xed & A & I; op0_8=0x47 {
 	I = A;
 }
 
@@ -1153,7 +1163,7 @@ local a_temp = A;
 
 :INC reg3_3         is op6_2=0x0 & reg3_3 & bits0_3=0x4 {
 	local r_temp = reg3_3;
-	additionFlags(r_temp, 1);
+	additionFlagsNoC(r_temp, 1);
 	r_temp = r_temp + 1;
 	reg3_3 = r_temp;
 	setResultFlags(r_temp);
@@ -1232,7 +1242,31 @@ local a_temp = A;
 :DAA                is op0_8=0x27 {
 	local a_temp = A;
 if (DECOMPILE_MODE) goto <forDecompilation>;
-	
+
+	# the adjustment the CPU makes: 6 for a low nibble past 9 or a half carry, 60 for a result past 99 or a carry; subtracted after a subtraction
+	local adjust:1 = 0;
+	local cOut:1 = $(C_flag);
+	local result:1 = a_temp;
+	if (!(($(H_flag) == 1) || ((a_temp & 0xF) > 9))) goto <lowOk>;
+	adjust = 0x06;
+<lowOk>
+	if (!(($(C_flag) == 1) || (a_temp > 0x99))) goto <highOk>;
+	adjust = adjust | 0x60;
+	cOut = 1;
+<highOk>
+	if ($(N_flag) == 1) goto <subtracting>;
+	result = a_temp + adjust;
+	goto <adjusted>;
+<subtracting>
+	result = a_temp - adjust;
+<adjusted>
+	$(H_flag) = ((a_temp ^ result) & 0x10) != 0;
+	$(C_flag) = cOut;
+	setResultFlags(result);
+	setParity(result);
+	A = result;
+	goto <endDAA>;
+
 	HN:1 = a_temp >> 4;     # high nibble
 	LN:1 = a_temp & 0xF;    # low nibbble
 	#
@@ -1341,6 +1375,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 }
 
 :CCF                is op0_8=0x3f {
+	$(H_flag) = $(C_flag);
 	$(C_flag) = !$(C_flag);
 	$(N_flag) = 0;
 }
@@ -1394,8 +1429,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	local HL_temp = HL;
 	local Reg_temp = sRegPair4_2;
 
-	additionFlagsNoPV(HL_temp, Reg_temp);
-	HL_temp = HL_temp + Reg_temp + zext($(C_flag));
+	additionWithCarry(HL_temp, Reg_temp, HL_temp);
 	setResultFlags(HL_temp);
 	HL = HL_temp;
 }
@@ -1848,6 +1882,8 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 :BIT bits3_3,reg0_3 is op0_8=0xcb; op6_2=0x1 & bits3_3 & reg0_3 {
 	mask:1 = (1 << bits3_3);
 	$(Z_flag) = ((reg0_3 & mask) == 0);
+	$(PV_flag) = $(Z_flag);
+	$(S_flag) = ((reg0_3 & mask & 0x80) != 0);
 	$(H_flag) = 1;
 	$(N_flag) = 0;
 }
@@ -1857,6 +1893,8 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	val:1 = 0;
 	MemRead(val,HL);
 	$(Z_flag) = ((val & mask) == 0);
+	$(PV_flag) = $(Z_flag);
+	$(S_flag) = ((val & mask & 0x80) != 0);
 	$(H_flag) = 1;
 	$(N_flag) = 0;
 }
@@ -1865,6 +1903,8 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	mask:1 = (1 << bits3_3);
 	val:1 = ixMem8;
 	$(Z_flag) = ((val & mask) == 0);
+	$(PV_flag) = $(Z_flag);
+	$(S_flag) = ((val & mask & 0x80) != 0);
 	$(H_flag) = 1;
 	$(N_flag) = 0;
 }
@@ -1873,6 +1913,8 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	mask:1 = (1 << bits3_3);
 	val:1 = iyMem8;
 	$(Z_flag) = ((val & mask) == 0);
+	$(PV_flag) = $(Z_flag);
+	$(S_flag) = ((val & mask & 0x80) != 0);
 	$(H_flag) = 1;
 	$(N_flag) = 0;
 }
@@ -2027,8 +2069,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	MemStore(HL,val);
 	B = B - 1;
 	HL = HL + 1;
-	$(Z_flag) = (B == 0);
-	$(N_flag) = (B s< 0);
+	ioBlockFlags(B, val);
 }
 
 :INIR               is op0_8=0xed & IOAddrC; op0_8=0xb2 {
@@ -2037,9 +2078,8 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	MemStore(HL,val);
 	B = B - 1;
 	HL = HL + 1;
+	ioBlockFlags(B, val);
 	if (B != 0) goto inst_start;
-	$(Z_flag) = 1;
-	$(N_flag) = 1;
 }
 
 :IND                is op0_8=0xed & IOAddrC; op0_8=0xaa {
@@ -2048,8 +2088,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	MemStore(HL,val);
 	B = B - 1;
 	HL = HL - 1;
-	$(Z_flag) = (B == 0);
-	$(N_flag) = (B s< 0);
+	ioBlockFlags(B, val);
 }
 
 :INDR               is op0_8=0xed & IOAddrC; op0_8=0xba {
@@ -2058,9 +2097,8 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	MemStore(HL,val);
 	B = B - 1;
 	HL = HL - 1;
+	ioBlockFlags(B, val);
 	if (B != 0) goto inst_start;
-	$(Z_flag) = 1;
-	$(N_flag) = 1;
 }
 
 :OUT IOAddr8a,A     is op0_8=0xd3 & A; IOAddr8a {
@@ -2079,8 +2117,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	
 	ioWrite(IOAddrC, val);
 	HL = HL + 1;
-	$(Z_flag) = (test == 0);
-	$(N_flag) = (test s< 0);
+	ioBlockFlags(test, val);
 }
 
 :OTIR               is op0_8=0xed & IOAddrC; op0_8=0xb3 {
@@ -2091,10 +2128,8 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	ioWrite(IOAddrC, val);
 	HL = HL + 1;
 	
+	ioBlockFlags(B, val);
 	if (B != 0) goto inst_start;
-	
-	$(Z_flag) = 1;
-	$(N_flag) = 1;
 }
 
 :OUTD               is op0_8=0xed & IOAddrC; op0_8=0xab {
@@ -2105,8 +2140,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	
 	ioWrite(IOAddrC, val);
 	HL = HL - 1;
-	$(Z_flag) = (test == 0);
-	$(N_flag) = (test s< 0);
+	ioBlockFlags(test, val);
 }
 
 :OTDR               is op0_8=0xed & IOAddrC; op0_8=0xbb {
@@ -2117,10 +2151,8 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	ioWrite(IOAddrC, val);
 	HL = HL - 1;
 	
+	ioBlockFlags(B, val);
 	if (B != 0) goto inst_start;
-	
-	$(Z_flag) = 1;
-	$(N_flag) = 1;
 }
 @if defined(Z180)
 
@@ -2319,7 +2351,7 @@ ixl_iyl: IYL is op0_8=0xfd & IYL { export IYL; }
 
 :INC ixh_iyh is ixh_iyh; op0_8=0x24 {
 	local val = ixh_iyh;
-	additionFlags(val, 1);
+	additionFlagsNoC(val, 1);
 	val = val + 1;
 	ixh_iyh = val;
 	setResultFlags(val);
@@ -2335,7 +2367,7 @@ ixl_iyl: IYL is op0_8=0xfd & IYL { export IYL; }
 
 :INC ixl_iyl is ixl_iyl; op0_8=0x2c {
 	local val = ixl_iyl;
-	additionFlags(val, 1);
+	additionFlagsNoC(val, 1);
 	val = val + 1;
 	ixl_iyl = val;
 	setResultFlags(val);
@@ -2395,6 +2427,23 @@ ixl_iyl: IYL is op0_8=0xfd & IYL { export IYL; }
 
 :LD ixl_iyl,reg0_3 is ixl_iyl; op6_2=0x1 & bits3_3=0x5 & reg0_3 {
 	ixl_iyl = reg0_3;
+}
+
+# LD IXH,IXH and its three kin change nothing (the general LD r,r' form above reads H and L where IXH and IXL belong)
+:LD_IXH_IXH is op0_8=0xdd; op0_8=0x64 {
+	IXH = IXH;
+}
+
+:LD_IYH_IYH is op0_8=0xfd; op0_8=0x64 {
+	IYH = IYH;
+}
+
+:LD_IXL_IXL is op0_8=0xdd; op0_8=0x6d {
+	IXL = IXL;
+}
+
+:LD_IYL_IYL is op0_8=0xfd; op0_8=0x6d {
+	IYL = IYL;
 }
 
 :LD ixh_iyh,ixl_iyl is ixh_iyh & ixl_iyl; op0_8=0x65 {
