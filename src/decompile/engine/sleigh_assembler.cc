@@ -1036,6 +1036,14 @@ std::vector<std::vector<std::uint8_t>> Assembler::assemble(std::string_view line
 
     State start;
     {
+        // Every line is assembled in the context the assembler began with. Disassembling a candidate to verify it (roundTrips) commits what an
+        // instruction changes for the ones after it (a 65816's REP and SEP: the widths m16 and x16), and that would stay in this database for
+        // the next line at these addresses; a source says its context itself (`.context`), so what an earlier line left is put back.
+        {
+            const uintm* defaults = static_cast<const ContextDatabase&>(I.context).defaultValues();
+            const Address from(I.space, address), to(I.space, address + static_cast<std::uint64_t>(kMaxInst));
+            for (int w = 0; w < I.context.getContextSize(); ++w) I.context.setContextRegion(from, to, w, ~static_cast<uintm>(0), defaults[w]);
+        }
         const uintm* words = I.context.getContext(Address(I.space, address));
         const int n = std::min(I.ctxBytes, kMaxCtx);
         for (int i = 0; i < n; ++i) {

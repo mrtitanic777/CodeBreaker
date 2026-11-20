@@ -174,6 +174,7 @@ protected:
   /// \return the memory region holding all the default context values
   virtual const uintm *getDefaultValue(void) const=0;
 public:
+  const uintm *defaultValues(void) const { return getDefaultValue(); }	///< CodeBreaker: the default context words (the assembler puts them back)
   virtual ~ContextDatabase() {}			///< Destructor
 
   /// \brief Retrieve the number of words (uintm) in a context \e blob

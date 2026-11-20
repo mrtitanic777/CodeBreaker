@@ -51,6 +51,11 @@ public:
     // `count` instructions (0: all) of the `size` bytes at `code`, the first at `base`. A place that does not decode is one
     // Instruction of length 0; the caller decides how far to step over it.
     std::vector<Instruction> read(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::size_t count) const;
+    // The same with context variables set over the whole of the bytes read (the 65816's register widths `m16` and `x16`): what an
+    // earlier read left in the translator's context at these addresses (a REP's or SEP's change for the instructions after it) is
+    // replaced, so the instruction is read in the context given, whatever was read before.
+    std::vector<Instruction> read(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::size_t count,
+                                  const std::vector<std::pair<std::string, int>>& context) const;
     // The one instruction at `address` of the `size` bytes at `code` (the first at `base`), as read() reads it. Reading again in
     // the same bytes keeps the translator's parses (a decoder following code calls this for every instruction of one image).
     Instruction at(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::uint64_t address) const;

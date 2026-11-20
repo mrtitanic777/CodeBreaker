@@ -182,6 +182,11 @@ Instruction Reader::at(const std::uint8_t* code, std::size_t size, std::uint64_t
 std::size_t Reader::alignment() const { return static_cast<std::size_t>(impl_->trans->getAlignment()); }
 
 std::vector<Instruction> Reader::read(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::size_t count) const {
+    return read(code, size, base, count, {});
+}
+
+std::vector<Instruction> Reader::read(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::size_t count,
+                                      const std::vector<std::pair<std::string, int>>& context) const {
     std::lock_guard hold(impl_->lock);
     impl_->window.set(code, size, base);
     impl_->trans->forgetParses();   // (other bytes may have been read at these addresses before)
@@ -189,6 +194,15 @@ std::vector<Instruction> Reader::read(const std::uint8_t* code, std::size_t size
     ghidra::AddrSpace* space = impl_->trans->getDefaultCodeSpace();
     // an address in the space's units (a word-addressed processor counts words, not bytes)
     const std::uint64_t unit = static_cast<std::uint64_t>(space->getWordSize());
+    if (!context.empty() && size != 0) {
+        try {
+            for (const auto& [variable, value] : context) {
+                impl_->context.setVariableRegion(variable, ghidra::Address(space, base), ghidra::Address(space, base + (size + 15) / unit), static_cast<ghidra::uintm>(value));
+            }
+        } catch (const ghidra::LowlevelError& e) {
+            throw std::runtime_error(std::string("context: ") + e.explain);
+        }
+    }
     std::vector<Instruction> out;
     for (std::uint64_t at = 0; at < size && (count == 0 || out.size() < count);) {
         Instruction ins;

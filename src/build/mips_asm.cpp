@@ -16,7 +16,7 @@ namespace cb::build::mips_asm {
 namespace {
 
 constexpr std::int64_t kMaxImageBytes = 16 * 1024 * 1024;
-constexpr std::int64_t kGuessDistance = 4;
+constexpr std::int64_t kGuessDistance = 8;
 
 class LineFault : public Error {
 public:
@@ -114,6 +114,20 @@ Bytes string_bytes(std::string_view quoted) {
     }
     return out;
 }
+
+// The encoder under the `.context` the source last set.
+class InContext final : public Encoder {
+public:
+    InContext(const Encoder& base, const std::string& context) : base_(base), context_(context) {}
+    Result<std::int64_t> value(std::string_view expr, const Labels& labels, std::int64_t pc) const override { return base_.value(expr, labels, pc); }
+    Result<Bytes> assemble(std::string_view line, std::int64_t pc, const Labels& labels) const override {
+        return base_.assemble_in(context_, line, pc, labels);
+    }
+
+private:
+    const Encoder& base_;
+    const std::string& context_;
+};
 
 class Pass {
 public:
@@ -218,6 +232,10 @@ private:
             const std::int64_t pad = (unit - (pc_ % unit)) % unit;
             return put(Bytes(static_cast<std::size_t>(pad), 0));
         }
+        if (text::iequals(head, ".context")) {   // `.context m16=1 x16=0`: what the processor's description is read in, from here on
+            context_ = std::string(rest);
+            return;
+        }
         if (head.starts_with('.')) fail("unknown directive " + std::string(head));
         instruction(text);
     }
@@ -244,8 +262,9 @@ private:
 
     void instruction(std::string_view text) {
         if (pc_ % alignment_ != 0) fail(std::format("an instruction at ${:X}, which is not a multiple of {}", pc_, alignment_));
-        Result<Bytes> r = isa_.assemble(text, pc_, labels_);
-        if (!r.ok() && is_undefined(r.error()) && !final_) r = assemble_with_guesses(isa_, text, pc_, labels_, pc_ + kGuessDistance);   // (size_guess's answer, without a copy of the labels)
+        const InContext isa{isa_, context_};
+        Result<Bytes> r = isa.assemble(text, pc_, labels_);
+        if (!r.ok() && is_undefined(r.error()) && !final_) r = assemble_with_guesses(isa, text, pc_, labels_, (pc_ & ~std::int64_t{3}) + kGuessDistance);   // (size_guess's answer, without a copy of the labels)
         if (!r.ok()) fail(r.error().what());
         const Bytes& code = r.value();
         if (!final_) {
@@ -263,6 +282,7 @@ private:
     ByteOrder order_;
     std::int64_t alignment_;
     Bytes image_;
+    std::string context_;   // (the last `.context`'s text; empty: the encoder's own)
     std::int64_t pc_ = 0;
     std::string_view current_;
     std::uint32_t line_number_ = 0;
@@ -291,7 +311,7 @@ Result<Bytes> size_guess(const Encoder& encoder, std::string_view line, std::int
         if (r.ok() || !is_undefined(r.error())) return r;
         const std::string& name = static_cast<const UndefinedSymbolError&>(r.error()).name();
         if (any.contains(name)) return r;
-        any[name] = pc + kGuessDistance;
+        any[name] = (pc & ~std::int64_t{3}) + kGuessDistance;   // (a word-aligned place just ahead: in reach of every branch and PC-relative load)
     }
 }
 

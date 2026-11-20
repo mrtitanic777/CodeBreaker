@@ -59,6 +59,11 @@ public:
     virtual Result<std::int64_t> value(std::string_view expr, const Labels& labels, std::int64_t pc) const = 0;
     // The bytes of one instruction line at address `pc`. UndefinedSymbolError for a label it needs and lacks.
     virtual Result<Bytes> assemble(std::string_view line, std::int64_t pc, const Labels& labels) const = 0;
+    // The same under a `.context name=value ...` the source set (the description's context variables: the 65816's register widths,
+    // ARM's Thumb mode). An encoder with no such state answers as assemble() does.
+    virtual Result<Bytes> assemble_in(std::string_view /*context*/, std::string_view line, std::int64_t pc, const Labels& labels) const {
+        return assemble(line, pc, labels);
+    }
 };
 
 inline bool is_undefined(const Error& error);

@@ -409,6 +409,11 @@ std::filesystem::path languages() {
 }  // namespace
 
 std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count) {
+    return read_described(processor, code, base, count, {});
+}
+
+std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count,
+                                 const std::vector<std::pair<std::string_view, int>>& over) {
     if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
     // one reader per description, kept (reading a description costs more than any listing)
     static std::mutex lock;
@@ -430,7 +435,9 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
     }
     std::vector<Line> out;
     const std::size_t unit = processor.name == "cp1610" ? 2 : 1;   // (a word-addressed processor: addresses count words)
-    for (const decompile::sleigh::Instruction& i : reader->read(code.data(), code.size(), base, count)) {
+    std::vector<std::pair<std::string, int>> here;   // the context set over the bytes read (what a read before left there is replaced)
+    for (const auto& [k, v] : over) here.emplace_back(std::string(k), v);
+    for (const decompile::sleigh::Instruction& i : reader->read(code.data(), code.size(), base, count, here)) {
         Line line;
         line.address = i.address;
         const std::size_t at = static_cast<std::size_t>((i.address - base) * unit);

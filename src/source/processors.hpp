@@ -67,6 +67,10 @@ struct Processor {
 // The instructions as the processor's SLEIGH description reads them (the decompiler core's own reader, in this program): the
 // same arguments as `disassemble`, the text in the description's syntax. UsageError for a processor with no description.
 std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count);
+// The same with context variables of the description set over the processor's own (the 65816's register widths: {{"m16", 1}, {"x16", 0}}).
+// The source for it sets them with `.context m16=1 x16=0` (assemble_described).
+std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count,
+                                 const std::vector<std::pair<std::string_view, int>>& context);
 
 // The image `source` assembles to through the processor's SLEIGH description: the one assembler (decompile/engine/
 // sleigh_assembler) under the one directive layer (build/mips_asm: labels, .org, data). The instructions are in the description's
