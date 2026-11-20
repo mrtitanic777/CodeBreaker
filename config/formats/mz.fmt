@@ -1,0 +1,37 @@
+# mz.fmt -- the DOS executable header (the "MZ" header) and its relocation table.
+# Sizes in the header are in 512-byte pages and 16-byte paragraphs; `header_size` and `image_size` are the byte values
+# the loader works with.
+
+format mz
+endian le
+
+struct File {
+    header : MzHeader
+}
+
+struct MzHeader {
+    magic             : str(2) == "MZ" | "ZM"
+    last_page_bytes   : u16
+    pages             : u16
+    reloc_count       : u16
+    header_paragraphs : u16
+    min_alloc         : u16
+    max_alloc         : u16
+    ss                : u16
+    sp                : u16
+    checksum          : u16
+    ip                : u16
+    cs                : u16
+    reloc_offset      : u16
+    overlay_number    : u16
+    relocs @ reloc_offset : Reloc[reloc_count]
+
+    let header_size = header_paragraphs * 16
+    let image_size  = pages * 512 - (last_page_bytes ? 512 - last_page_bytes : 0)
+}
+
+# A relocation: the word at segment:offset of the load module holds a segment the loader adds the load segment to.
+struct Reloc {
+    offset  : u16
+    segment : u16
+}

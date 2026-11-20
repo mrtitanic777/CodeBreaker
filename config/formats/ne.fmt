@@ -1,0 +1,98 @@
+# ne.fmt -- a 16-bit Windows / OS/2 "New Executable": the header, the segment table and the entry table.
+# Offsets in the header (the *_offset fields) are from the start of the NE header; a segment's data starts at
+# `sector << alignment_shift` of the file.
+
+format ne
+endian le
+use mz
+
+struct File {
+    dos : MzHeader
+    lfanew @ 0x3C : u32
+    ne @ lfanew : Ne
+}
+
+flags NeFlags { single_data = 0x1, multiple_data = 0x2, global_init = 0x4, protected_mode = 0x8, win_api_compat = 0x100,
+                win_api_uses = 0x200, win_api_full = 0x400, errors_in_first_segment = 0x800, private_library = 0x4000,
+                is_dll = 0x8000 }
+
+enum TargetOs { unknown = 0, os2 = 1, windows = 2, dos4 = 3, windows386 = 4, boss = 5 }
+
+struct Ne {
+    signature               : str(2) == "NE"
+    linker_version          : u8
+    linker_revision         : u8
+    entry_table_offset      : u16
+    entry_table_length      : u16
+    crc                     : u32
+    flags                   : u16 as NeFlags
+    autodata_segment        : u16
+    heap_size               : u16
+    stack_size              : u16
+    cs_ip                   : u32
+    ss_sp                   : u32
+    segment_count           : u16
+    module_ref_count        : u16
+    nonresident_size        : u16
+    segment_table_offset    : u16
+    resource_table_offset   : u16
+    resident_names_offset   : u16
+    module_ref_offset       : u16
+    imported_names_offset   : u16
+    nonresident_offset      : u32
+    movable_entries         : u16
+    alignment_shift         : u16
+    resource_segments       : u16
+    target_os               : u8 as TargetOs
+    os2_flags               : u8
+    gangload_offset         : u16
+    gangload_length         : u16
+    min_code_swap           : u16
+    expected_windows_version : u16
+
+    let shift = alignment_shift ? alignment_shift : 9      # a stored 0 means 9
+
+    segments    @ $start + segment_table_offset : Segment[segment_count]
+    entry_table @ $start + entry_table_offset   : Bundle[until _.count == 0] size(entry_table_length)
+}
+
+flags SegmentFlags { data = 0x1, allocated = 0x2, loaded = 0x4, iterated = 0x8, movable = 0x10, shareable = 0x20,
+                     preload = 0x40, read_only_or_execute_only = 0x80, relocations = 0x100, debug = 0x200,
+                     discardable = 0x1000 }
+
+struct Segment {
+    sector    : u16
+    length    : u16
+    flags     : u16 as SegmentFlags
+    min_alloc : u16
+
+    let file_offset = sector << _parent.shift            # 0 when the segment has no data in the file
+    let byte_length = length ? length : (sector ? 0x10000 : 0)
+}
+
+# The entry table: bundles of entries sharing a segment. A bundle is `count` entries, then (if count is not 0) what
+# kind: 0 = that many unused ordinals, 0xFF = moveable entries, anything else = fixed entries in that segment. A
+# count of 0 ends the table. Ordinals are numbered from 1 across the bundles.
+struct Bundle {
+    count : u8
+    if count != 0 {
+        kind : u8
+        if kind == 0xFF {
+            moveable : MoveableEntry[count]
+        } else if kind != 0 {
+            fixed : FixedEntry[count]
+        }
+    }
+}
+
+struct FixedEntry {
+    flags  : u8
+    offset : u16
+}
+
+struct MoveableEntry {
+    flags   : u8
+    int3f   : u16        # CD 3F
+    segment : u8
+    offset  : u16
+}

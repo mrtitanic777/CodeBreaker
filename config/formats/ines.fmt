@@ -1,0 +1,44 @@
+# ines.fmt -- NES cartridge images: iNES and NES 2.0 (.nes). A 16-byte header, an optional 512-byte trainer, the PRG
+# (16 KB units), the CHR (8 KB units), and whatever follows (some dumps carry a title).
+# NES 2.0 marks itself in byte 7 (bits 2-3 = 2) and widens the mapper number and the sizes.
+
+format ines
+endian le
+
+struct File {
+    header  : Header
+    trainer : bytes(512) if header.has_trainer
+    prg     : bytes(header.prg_size)
+    chr     : bytes(min(header.chr_size, $remaining))     # a trimmed dump keeps what CHR it has
+    extra   : bytes($remaining)
+}
+
+flags Flags6 { vertical = 0x1, battery = 0x2, trainer = 0x4, four_screen = 0x8 }
+flags Flags7 { vs_unisystem = 0x1, playchoice = 0x2 }
+
+struct Header {
+    magic    : bytes(4) == "NES\x1a"
+    prg_lsb  : u8
+    chr_lsb  : u8
+    flags6   : u8 as Flags6
+    flags7   : u8 as Flags7
+    byte8    : u8           # iNES: PRG RAM size; NES 2.0: mapper bits 8-11 and the submapper
+    byte9    : u8           # iNES: TV system;    NES 2.0: the high nibbles of the PRG and CHR sizes
+    byte10   : u8
+    byte11   : u8
+    byte12   : u8
+    byte13   : u8
+    byte14   : u8
+    byte15   : u8
+
+    let nes2         = (flags7 & 0x0C) == 0x08
+    let mapper       = (flags6 >> 4) | (flags7 & 0xF0) | (nes2 ? (byte8 & 0x0F) << 8 : 0)
+    let submapper    = nes2 ? byte8 >> 4 : 0
+    let prg_units    = prg_lsb | (nes2 ? (byte9 & 0x0F) << 8 : 0)
+    let chr_units    = chr_lsb | (nes2 ? (byte9 & 0xF0) << 4 : 0)
+    let prg_size     = prg_units * 16384
+    let chr_size     = chr_units * 8192
+    let has_trainer  = (flags6 & 0x04) != 0
+    let battery      = (flags6 & 0x02) != 0
+    let mirroring    = (flags6 & 0x08) ? 2 : (flags6 & 1)      # 0 horizontal, 1 vertical, 2 four-screen
+}

@@ -343,6 +343,9 @@ target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile cb_formats cb_symbo
 
 cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex cb_zlib)
+add_executable(format_check EXCLUDE_FROM_ALL formats/format_check_main.cpp)   # the format engine's tree of a file, diffed against the hand-written reader
+cb_apply_flags(format_check)
+target_link_libraries(format_check PRIVATE cb_formats cb_core)
 
 # XenonRecomp and XenonAnalyse (recompile/xenonrecomp, CodeBreaker's fork) as libraries: cb::recompile::xenon_engine calls
 # their mains in-process. Their own build (its third-party libraries, its flags); the programs build on request only.

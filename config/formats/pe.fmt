@@ -1,0 +1,115 @@
+# pe.fmt -- a Windows PE image: the DOS header, the COFF header, the optional header (PE32 and PE32+) with its data
+# directories, and the section table.
+
+format pe
+endian le
+use mz
+
+struct File {
+    dos        : MzHeader
+    lfanew @ 0x3C : u32
+    nt @ lfanew : NtHeaders
+}
+
+struct NtHeaders {
+    signature : bytes(4) == "PE\0\0"
+    coff      : Coff
+    optional  : Optional size(coff.opt_size)
+    sections  : Section[coff.n_sections]
+}
+
+enum Machine { unknown = 0, i386 = 0x14C, r3000 = 0x162, r4000 = 0x166, alpha = 0x184, arm = 0x1C0, ia64 = 0x200,
+               x64 = 0x8664, arm64 = 0xAA64 }
+
+flags FileFlags { relocs_stripped = 0x1, executable = 0x2, line_numbers_stripped = 0x4, local_syms_stripped = 0x8,
+                  large_address_aware = 0x20, bytes_reversed_lo = 0x80, machine_32bit = 0x100, debug_stripped = 0x200,
+                  system = 0x1000, dll = 0x2000, up_system_only = 0x4000, bytes_reversed_hi = 0x8000 }
+
+struct Coff {
+    machine        : u16 as Machine
+    n_sections     : u16
+    timestamp      : u32
+    symbol_table   : u32
+    n_symbols      : u32
+    opt_size       : u16
+    characteristics : u16 as FileFlags
+}
+
+enum OptMagic { pe32 = 0x10B, pe32_plus = 0x20B, rom = 0x107 }
+
+enum Subsystem { unknown = 0, native = 1, gui = 2, console = 3, os2 = 5, posix = 7, win9x = 8, ce_gui = 9, efi = 10,
+                 xbox = 14 }
+
+flags DllFlags { high_entropy_va = 0x20, dynamic_base = 0x40, force_integrity = 0x80, nx_compat = 0x100,
+                 no_isolation = 0x200, no_seh = 0x400, no_bind = 0x800, appcontainer = 0x1000, wdm_driver = 0x2000,
+                 guard_cf = 0x4000, terminal_server_aware = 0x8000 }
+
+struct Optional {
+    magic                   : u16 as OptMagic
+    linker_major            : u8
+    linker_minor            : u8
+    code_size               : u32
+    initialized_data_size   : u32
+    uninitialized_data_size : u32
+    entry_point             : u32
+    code_base               : u32
+    if magic == 0x20B {
+        image_base          : u64
+    } else {
+        data_base           : u32
+        image_base          : u32
+    }
+    section_alignment       : u32
+    file_alignment          : u32
+    os_major                : u16
+    os_minor                : u16
+    image_major             : u16
+    image_minor             : u16
+    subsystem_major         : u16
+    subsystem_minor         : u16
+    win32_version           : u32
+    image_size              : u32
+    headers_size            : u32
+    checksum                : u32
+    subsystem               : u16 as Subsystem
+    dll_characteristics     : u16 as DllFlags
+    if magic == 0x20B {
+        stack_reserve       : u64
+        stack_commit        : u64
+        heap_reserve        : u64
+        heap_commit         : u64
+    } else {
+        stack_reserve       : u32
+        stack_commit        : u32
+        heap_reserve        : u32
+        heap_commit         : u32
+    }
+    loader_flags            : u32
+    n_directories           : u32
+    directories             : DataDirectory[n_directories]
+    rest                    : bytes($end - $pos)       # anything the header carries past the directories
+}
+
+# The directories in order: export, import, resource, exception, certificate (a file offset), base relocation, debug,
+# architecture, global ptr, TLS, load config, bound import, IAT, delay import, CLR, reserved.
+struct DataDirectory {
+    rva  : u32
+    size : u32
+}
+
+flags SectionFlags { code = 0x20, initialized_data = 0x40, uninitialized_data = 0x80, link_remove = 0x800,
+                     discardable = 0x2000000, not_cached = 0x4000000, not_paged = 0x8000000, shared = 0x10000000,
+                     execute = 0x20000000, read = 0x40000000, write = 0x80000000 }
+
+struct Section {
+    name             : str(8)
+    virtual_size     : u32
+    virtual_address  : u32
+    raw_size         : u32
+    raw_ptr          : u32
+    reloc_ptr        : u32
+    line_numbers_ptr : u32
+    n_relocs         : u16
+    n_line_numbers   : u16
+    characteristics  : u32 as SectionFlags
+}
