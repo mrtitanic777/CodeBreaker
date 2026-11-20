@@ -64,6 +64,11 @@ int vt_family(int type, int array_dim) {
     }
 }
 
+VarType vt_constant(VarType t, int id) {
+    t.constant_id = id;
+    return t;
+}
+
 }  // namespace
 
 VarType::VarType(int type_, int array_dim_) : VarType(type_, array_dim_, vt_char(type_)) {}
@@ -101,12 +106,14 @@ VarType VarType::decrease_array_dim() const {
 
 VarType VarType::resize_array_dim(int new_array_dim) const {
     VarType t = *this;
+    t.constant_id = 0;
     t.array_dim = new_array_dim;   // (the family and stack size are kept, as the original does)
     return t;
 }
 
 VarType VarType::copy(bool force_false_boolean) const {
     VarType t = *this;
+    t.constant_id = 0;   // (a new object)
     t.false_boolean = false_boolean || force_false_boolean;
     return t;
 }
@@ -218,22 +225,22 @@ int VarType::type_of(char c) {
     }
 }
 
-const VarType VarType::UNKNOWN(cc::TYPE_UNKNOWN);
-const VarType VarType::INT(cc::TYPE_INT);
-const VarType VarType::FLOAT(cc::TYPE_FLOAT);
-const VarType VarType::LONG(cc::TYPE_LONG);
-const VarType VarType::DOUBLE(cc::TYPE_DOUBLE);
-const VarType VarType::BYTE(cc::TYPE_BYTE);
-const VarType VarType::CHAR(cc::TYPE_CHAR);
-const VarType VarType::SHORT(cc::TYPE_SHORT);
-const VarType VarType::BOOLEAN(cc::TYPE_BOOLEAN);
-const VarType VarType::BYTECHAR(cc::TYPE_BYTECHAR);
-const VarType VarType::SHORTCHAR(cc::TYPE_SHORTCHAR);
-const VarType VarType::NULL_TYPE(cc::TYPE_NULL, 0, std::nullopt);
-const VarType VarType::STRING(cc::TYPE_OBJECT, 0, "java/lang/String");
-const VarType VarType::CLASS(cc::TYPE_OBJECT, 0, "java/lang/Class");
-const VarType VarType::OBJECT(cc::TYPE_OBJECT, 0, "java/lang/Object");
-const VarType VarType::VOID(cc::TYPE_VOID);
+const VarType VarType::UNKNOWN = vt_constant(VarType(cc::TYPE_UNKNOWN), 1);
+const VarType VarType::INT = vt_constant(VarType(cc::TYPE_INT), 2);
+const VarType VarType::FLOAT = vt_constant(VarType(cc::TYPE_FLOAT), 3);
+const VarType VarType::LONG = vt_constant(VarType(cc::TYPE_LONG), 4);
+const VarType VarType::DOUBLE = vt_constant(VarType(cc::TYPE_DOUBLE), 5);
+const VarType VarType::BYTE = vt_constant(VarType(cc::TYPE_BYTE), 6);
+const VarType VarType::CHAR = vt_constant(VarType(cc::TYPE_CHAR), 7);
+const VarType VarType::SHORT = vt_constant(VarType(cc::TYPE_SHORT), 8);
+const VarType VarType::BOOLEAN = vt_constant(VarType(cc::TYPE_BOOLEAN), 9);
+const VarType VarType::BYTECHAR = vt_constant(VarType(cc::TYPE_BYTECHAR), 10);
+const VarType VarType::SHORTCHAR = vt_constant(VarType(cc::TYPE_SHORTCHAR), 11);
+const VarType VarType::NULL_TYPE = vt_constant(VarType(cc::TYPE_NULL, 0, std::nullopt), 12);
+const VarType VarType::STRING = vt_constant(VarType(cc::TYPE_OBJECT, 0, "java/lang/String"), 13);
+const VarType VarType::CLASS = vt_constant(VarType(cc::TYPE_OBJECT, 0, "java/lang/Class"), 14);
+const VarType VarType::OBJECT = vt_constant(VarType(cc::TYPE_OBJECT, 0, "java/lang/Object"), 15);
+const VarType VarType::VOID = vt_constant(VarType(cc::TYPE_VOID), 16);
 
 // ---- descriptors
 

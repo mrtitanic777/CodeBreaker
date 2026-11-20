@@ -72,10 +72,14 @@ RetroMCP's own steps are not. Each engine is proven against the original on the 
    layer proven before the next:
    - the class structure (struct/, struct/attr, consts, gen, generics: about 4,400 lines) over `java/classfile` -- done: `java/decompiler`, every class of the Gradle wrapper and of RetroMCP's jar read as the original reads it (its own dump the golden); the annotation attributes are read with the expressions;
    - the instructions and the control-flow graph (code/, code/optinstructions, code/cfg, code/interpreter: about 5,300) -- done: `java/decompiler` (instructions, cfg, exception_deobfuscator, dominators, context), every method of the Gradle wrapper and of RetroMCP's jar parsed and built into the graph the original builds before making statements; the jsr inlining is ported but no jar here has jsr;
-   - statements from the graph (modules/decompiler/decompose, stats, DomHelper, the loop, if, finally and label helpers);
-   - expressions and the stack (exps, ExprProcessor, StackVarsProcessor, sforms: SSA);
-   - variables and their types (vars), the simplify passes, the renamer;
-   - the class writer and the main driver (main/, rels, collectors, util), with RetroMCP's decompile options.
+   - statements from the graph, expressions and the stack (SSA), variables and their types, the simplify passes, the
+     renamer, the class writer and the main driver -- done: `java/decompiler` whole (`decompile(DecompileRequest)`,
+     decompiler.hpp). With RetroMCP's options (nco=1 rbr=0 asc=1 ovr=0 dgs=1, a tab indent) every class of the Gradle
+     wrapper (31, golden in testdata/java/gradle-wrapper) and of RetroMCP's jar (585) is written byte for byte as the
+     original writes it, the methods it cannot write and its StackOverflowError on a lambda that is its own parent included
+     (decompiler_test.cpp). Memory: what a class is written with is freed when it is written (a bump region per class,
+     `Arena::ClassRegion`): 890 MB at peak on RetroMCP's jar instead of 11 GB, about 13 s against Java's 10.
+   Still to do: the log lines' severity prefix and stack traces; `java port` switched to it.
 3. **The compiler**: Java source to class files (parse, attribute, flow, lower, generate), checked by compiling with
    both and comparing what the classes do (and, where javac is deterministic, their bytes).
 

@@ -25,6 +25,10 @@ public:
     int type_family = 0;
     int stack_size = 0;
     bool false_boolean = false;
+    // Which shared constant this is (VarType::NULL_TYPE ...), 0 for any other: the original compares one by identity (`== VarType.VARTYPE_NULL`), which
+    // a copy of the constant passes and an equal new type does not. A copy() or a new type is not the constant.
+    int constant_id = 0;
+    bool is_constant(const VarType& constant) const { return constant_id != 0 && constant_id == constant.constant_id; }
 
     VarType() = default;
     explicit VarType(int type, int array_dim = 0);

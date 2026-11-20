@@ -35,6 +35,14 @@ DecompilerContext& DecompilerContext::current() {
     return *g_dc_current;
 }
 
+void DecompilerContext::set_current(DecompilerContext* context) { g_dc_current = context; }
+
+IFernflowerLogger& DecompilerContext::get_logger() {
+    DecompilerContext& c = current();
+    if (c.fernflower_logger == nullptr) throw std::logic_error("no decompiler logger in this context");
+    return *c.fernflower_logger;
+}
+
 bool DecompilerContext::option(std::string_view key) {
     const auto& p = current().properties;
     const auto it = p.find(std::string(key));

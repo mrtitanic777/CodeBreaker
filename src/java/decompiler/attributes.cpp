@@ -1,6 +1,8 @@
 // java/decompiler/attributes.cpp -- see attributes.hpp. Ported from Fernflower (de.fernflower.struct.attr), Copyright 2000-2015 JetBrains s.r.o.,
 // Apache License 2.0.
+// cb-unity: alone (file-local helpers share names with the other decompiler sources)
 #include "java/decompiler/attributes.hpp"
+#include "java/decompiler/annotations.hpp"
 
 #include "core/error.hpp"
 #include "core/io.hpp"
@@ -23,12 +25,13 @@ std::unique_ptr<Attribute> Attribute::create(std::string_view name, ByteView inf
     if (name == attr::INNER_CLASSES) a = std::make_unique<InnerClassesAttribute>();
     else if (name == attr::CONSTANT_VALUE) a = std::make_unique<ConstantValueAttribute>();
     else if (name == attr::SIGNATURE) a = std::make_unique<GenericSignatureAttribute>();
-    else if (name == attr::ANNOTATION_DEFAULT) a = std::make_unique<AnnotationsAttribute>();
+    else if (name == attr::ANNOTATION_DEFAULT) a = std::make_unique<AnnotationDefaultAttribute>();
     else if (name == attr::EXCEPTIONS) a = std::make_unique<ExceptionsAttribute>();
     else if (name == attr::ENCLOSING_METHOD) a = std::make_unique<EnclosingMethodAttribute>();
-    else if (name == attr::RUNTIME_VISIBLE_ANNOTATIONS || name == attr::RUNTIME_INVISIBLE_ANNOTATIONS || name == attr::RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS ||
-             name == attr::RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS || name == attr::RUNTIME_VISIBLE_TYPE_ANNOTATIONS || name == attr::RUNTIME_INVISIBLE_TYPE_ANNOTATIONS)
-        a = std::make_unique<AnnotationsAttribute>();
+    else if (name == attr::RUNTIME_VISIBLE_ANNOTATIONS || name == attr::RUNTIME_INVISIBLE_ANNOTATIONS) a = std::make_unique<AnnotationAttribute>();
+    else if (name == attr::RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS || name == attr::RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS)
+        a = std::make_unique<AnnotationParameterAttribute>();
+    else if (name == attr::RUNTIME_VISIBLE_TYPE_ANNOTATIONS || name == attr::RUNTIME_INVISIBLE_TYPE_ANNOTATIONS) a = std::make_unique<AnnotationTypeAttribute>();
     else if (name == attr::LOCAL_VARIABLE_TABLE) a = std::make_unique<LocalVariableTableAttribute>();
     else if (name == attr::BOOTSTRAP_METHODS) a = std::make_unique<BootstrapMethodsAttribute>();
     else if (name == attr::SYNTHETIC || name == attr::DEPRECATED) a = std::make_unique<Attribute>();

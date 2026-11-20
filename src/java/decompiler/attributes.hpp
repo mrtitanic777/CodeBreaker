@@ -164,7 +164,6 @@ private:
     std::vector<std::vector<const PooledConstant*>> method_arguments_;
 };
 
-// RuntimeVisible/InvisibleAnnotations, the parameter and type ones, AnnotationDefault: read by the expression layer from info().
-class AnnotationsAttribute : public Attribute {};
+// (RuntimeVisible/InvisibleAnnotations, the parameter and type ones, AnnotationDefault: annotations.hpp.)
 
 }  // namespace cb::java::decompiler
