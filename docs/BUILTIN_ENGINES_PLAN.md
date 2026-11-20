@@ -70,7 +70,7 @@ RetroMCP's own steps are not. Each engine is proven against the original on the 
    in it). The reference is that source built with the JDK (`javac --release 8`, `ConsoleDecompiler <jar> <out>`): the
    C++ port writes the same Java for the same classes, a method the original cannot write included. In this order, each
    layer proven before the next:
-   - the class structure (struct/, struct/attr, consts, gen, generics: about 4,400 lines) over `java/classfile`;
+   - the class structure (struct/, struct/attr, consts, gen, generics: about 4,400 lines) over `java/classfile` -- done: `java/decompiler`, every class of the Gradle wrapper and of RetroMCP's jar read as the original reads it (its own dump the golden); the annotation attributes are read with the expressions;
    - the instructions and the control-flow graph (code/, code/optinstructions, code/cfg, code/interpreter: about 5,300);
    - statements from the graph (modules/decompiler/decompose, stats, DomHelper, the loop, if, finally and label helpers);
    - expressions and the stack (exps, ExprProcessor, StackVarsProcessor, sforms: SSA);
