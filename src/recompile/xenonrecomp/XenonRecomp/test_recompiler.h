@@ -1,5 +1,5 @@
 #pragma once
-#include "recompiler.h"
+#include "recompile/xenonrecomp/XenonRecomp/recompiler.h"
 
 struct TestRecompiler : Recompiler
 {

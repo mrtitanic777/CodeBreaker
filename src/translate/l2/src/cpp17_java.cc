@@ -27,8 +27,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "cpp17_jmodel.hpp"
-#include "json.hpp"
+#include "translate/l2/src/cpp17_jmodel.hpp"
+#include "translate/l2/src/json.hpp"
 
 namespace cpp17 {
 namespace {

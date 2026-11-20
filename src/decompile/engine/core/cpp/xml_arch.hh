@@ -18,8 +18,8 @@
 #ifndef __XML_ARCH_HH__
 #define __XML_ARCH_HH__
 
-#include "sleigh_arch.hh"
-#include "loadimage_xml.hh"
+#include "decompile/engine/core/cpp/sleigh_arch.hh"
+#include "decompile/engine/core/cpp/loadimage_xml.hh"
 
 namespace ghidra {
 

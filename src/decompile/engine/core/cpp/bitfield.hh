@@ -19,7 +19,7 @@
 #ifndef __BITFIELD_HH__
 #define __BITFIELD_HH__
 
-#include "ruleaction.hh"
+#include "decompile/engine/core/cpp/ruleaction.hh"
 
 namespace ghidra {
 

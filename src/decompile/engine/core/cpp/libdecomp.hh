@@ -20,9 +20,9 @@
 #ifndef __LIBDECOMP_HH__
 #define __LIBDECOMP_HH__
 
-#include "architecture.hh"
-#include "sleigh_arch.hh"
-#include "ifacedecomp.hh"
+#include "decompile/engine/core/cpp/architecture.hh"
+#include "decompile/engine/core/cpp/sleigh_arch.hh"
+#include "decompile/engine/core/cpp/ifacedecomp.hh"
 
 namespace ghidra {
 

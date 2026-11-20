@@ -19,7 +19,7 @@
 #ifndef __CPOOL_HH__
 #define __CPOOL_HH__
 
-#include "type.hh"
+#include "decompile/engine/core/cpp/type.hh"
 
 namespace ghidra {
 

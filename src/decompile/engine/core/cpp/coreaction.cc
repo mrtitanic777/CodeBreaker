@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "coreaction.hh"
-#include "condexe.hh"
-#include "double.hh"
-#include "subflow.hh"
-#include "constseq.hh"
-#include "bitfield.hh"
+#include "decompile/engine/core/cpp/coreaction.hh"
+#include "decompile/engine/core/cpp/condexe.hh"
+#include "decompile/engine/core/cpp/double.hh"
+#include "decompile/engine/core/cpp/subflow.hh"
+#include "decompile/engine/core/cpp/constseq.hh"
+#include "decompile/engine/core/cpp/bitfield.hh"
 
 namespace ghidra {
 

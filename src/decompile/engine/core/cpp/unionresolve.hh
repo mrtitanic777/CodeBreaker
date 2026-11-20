@@ -16,7 +16,7 @@
 #ifndef __UNIONRESOLVE_HH__
 #define __UNIONRESOLVE_HH__
 
-#include "op.hh"
+#include "decompile/engine/core/cpp/op.hh"
 
 namespace ghidra {
 

@@ -1,6 +1,6 @@
 // extract.h - basefile and resource extraction.
 #pragma once
-#include "xex_file.h"
+#include "formats/xex/src/xex_file.h"
 #include <string>
 
 namespace xex {

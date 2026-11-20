@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "test.hh"
-#include "libdecomp.hh"
+#include "decompile/engine/core/cpp/test.hh"
+#include "decompile/engine/core/cpp/libdecomp.hh"
 
 namespace ghidra {
 

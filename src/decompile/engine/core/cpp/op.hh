@@ -18,7 +18,7 @@
 #ifndef __OP_HH__
 #define __OP_HH__
 
-#include "typeop.hh"
+#include "decompile/engine/core/cpp/typeop.hh"
 
 namespace ghidra {
 

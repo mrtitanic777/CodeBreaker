@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "slghpattern.hh"
-#include "slaformat.hh"
+#include "decompile/engine/core/cpp/slghpattern.hh"
+#include "decompile/engine/core/cpp/slaformat.hh"
 
 namespace ghidra {
 

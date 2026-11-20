@@ -1,6 +1,6 @@
 // capi.cpp -- the C ABI over pyfront::parse / pyfront::dump.  See pyfront/pyfront.h.
-#include "pyfront/pyfront.h"
-#include "pyfront/pyfront.hpp"
+#include "translate/frontends/python/pyfront/include/pyfront/pyfront.h"
+#include "translate/frontends/python/pyfront/include/pyfront/pyfront.hpp"
 
 struct pyfront_tree {
     pyfront::ParseResult result;

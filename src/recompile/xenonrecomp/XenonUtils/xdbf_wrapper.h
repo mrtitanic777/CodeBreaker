@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include "xdbf.h"
+#include "recompile/xenonrecomp/XenonUtils/xdbf.h"
 
 struct Achievement
 {

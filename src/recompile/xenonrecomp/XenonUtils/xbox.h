@@ -3,7 +3,7 @@
 #include <type_traits>
 #include <bit>
 #include <string>
-#include "byteswap.h"
+#include "recompile/xenonrecomp/XenonUtils/byteswap.h"
 
 #ifdef _WIN32
     #include <windows.h>

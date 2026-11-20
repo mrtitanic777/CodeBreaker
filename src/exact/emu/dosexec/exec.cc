@@ -2,8 +2,8 @@
 // arena in guest RAM, serve INT 20h/21h (console, files by handle and by FCB, memory, EXEC, the
 // clock, the PSP calls) and run it on Unicorn to its exit.  With a DPMI host (dpmi.cc) the same
 // engine runs a DOS-extended program; the host routes its interrupts back here.
-#include "dosexec.h"
-#include "cbdos.h"
+#include "exact/emu/dosexec/dosexec.h"
+#include "exact/emu/dosexec/cbdos.h"
 
 #include <chrono>
 #include <condition_variable>

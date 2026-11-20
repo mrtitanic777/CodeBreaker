@@ -19,7 +19,7 @@
 #ifndef __SLEIGH_HH__
 #define __SLEIGH_HH__
 
-#include "sleighbase.hh"
+#include "decompile/engine/core/cpp/sleighbase.hh"
 
 namespace ghidra {
 

@@ -1,7 +1,7 @@
 // selftest.cpp - known-answer tests for the crypto primitives.
-#include "crypto/aes.h"
-#include "crypto/sha1.h"
-#include "crypto/keys.h"
+#include "formats/xex/src/crypto/aes.h"
+#include "formats/xex/src/crypto/sha1.h"
+#include "formats/xex/src/crypto/keys.h"
 #include <cstdio>
 #include <cstring>
 #include <string>

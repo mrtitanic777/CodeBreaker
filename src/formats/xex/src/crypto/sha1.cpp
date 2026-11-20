@@ -1,5 +1,5 @@
 // sha1.cpp - RFC 3174 SHA-1.
-#include "sha1.h"
+#include "formats/xex/src/crypto/sha1.h"
 #include <cstring>
 
 namespace xex::crypto {

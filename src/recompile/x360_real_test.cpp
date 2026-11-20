@@ -22,7 +22,7 @@
 #include "formats/command_test_kit.hpp"
 #include "formats/xex.hpp"
 #include "recompile/xenon.hpp"
-#include "xex_file.h"   // formats/xex/src: the xex engine's parser
+#include "formats/xex/src/xex_file.h"   // formats/xex/src: the xex engine's parser
 
 namespace stdfs = std::filesystem;
 namespace xenon = cb::recompile::xenon;

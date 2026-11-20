@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "jumptable.hh"
-#include "emulate.hh"
-#include "flow.hh"
+#include "decompile/engine/core/cpp/jumptable.hh"
+#include "decompile/engine/core/cpp/emulate.hh"
+#include "decompile/engine/core/cpp/flow.hh"
 
 namespace ghidra {
 

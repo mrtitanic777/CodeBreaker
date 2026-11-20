@@ -19,7 +19,7 @@
 #ifndef __COMMENT_HH__
 #define __COMMENT_HH__
 
-#include "address.hh"
+#include "decompile/engine/core/cpp/address.hh"
 
 namespace ghidra {
 

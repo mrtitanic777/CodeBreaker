@@ -18,7 +18,7 @@
 #ifndef __TRANSFORM_HH__
 #define __TRANSFORM_HH__
 
-#include "varnode.hh"
+#include "decompile/engine/core/cpp/varnode.hh"
 
 namespace ghidra {
 

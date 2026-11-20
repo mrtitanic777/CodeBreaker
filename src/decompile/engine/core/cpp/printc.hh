@@ -19,8 +19,8 @@
 #ifndef __PRINTC_HH__
 #define __PRINTC_HH__
 
-#include "printlanguage.hh"
-#include "comment.hh"
+#include "decompile/engine/core/cpp/printlanguage.hh"
+#include "decompile/engine/core/cpp/comment.hh"
 
 namespace ghidra {
 

@@ -1,8 +1,8 @@
 #pragma once
 #include <unordered_set>
 
-#include "pch.h"
-#include "recompiler_config.h"
+#include "recompile/xenonrecomp/XenonRecomp/pch.h"
+#include "recompile/xenonrecomp/XenonRecomp/recompiler_config.h"
 
 struct RecompilerLocalVariables
 {

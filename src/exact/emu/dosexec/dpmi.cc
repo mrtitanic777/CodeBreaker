@@ -9,8 +9,8 @@
 // flag.  A protected-mode INT n with a client handler (0205h) enters it as an interrupt gate would.
 // A selector is keyed by sel & 0xFFFC in the run's desc table, so the executive's lin() resolves a
 // protected-mode address to the linear byte the real-mode side sees.
-#include "dosexec.h"
-#include "cbdos.h"
+#include "exact/emu/dosexec/dosexec.h"
+#include "exact/emu/dosexec/cbdos.h"
 
 #include <cstdio>
 

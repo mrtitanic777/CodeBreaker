@@ -18,7 +18,7 @@
 #ifndef __CONDEXE_HH__
 #define __CONDEXE_HH__
 
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

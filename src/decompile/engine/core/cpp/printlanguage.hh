@@ -19,9 +19,9 @@
 #ifndef __PRINTLANGUAGE_HH__
 #define __PRINTLANGUAGE_HH__
 
-#include "capability.hh"
-#include "cast.hh"
-#include "prettyprint.hh"
+#include "decompile/engine/core/cpp/capability.hh"
+#include "decompile/engine/core/cpp/cast.hh"
+#include "decompile/engine/core/cpp/prettyprint.hh"
 
 namespace ghidra {
 

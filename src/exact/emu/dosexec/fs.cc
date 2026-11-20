@@ -4,8 +4,8 @@
 // Disk files are the CRT's own descriptors, opened as Python's open() opens them (_wsopen, share
 // read+write, binary).  Python's are buffered; these are not -- what a program writes is on the
 // disk at once, as under DOS (a child an EXEC starts sees all of its parent's writes).
-#include "dosexec.h"
-#include "cbdos.h"
+#include "exact/emu/dosexec/dosexec.h"
+#include "exact/emu/dosexec/cbdos.h"
 
 #include <cerrno>
 #include <cstring>

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #ifdef CPUI_RULECOMPILE
-#include "unify.hh"
+#include "decompile/engine/core/cpp/unify.hh"
 
 namespace ghidra {
 

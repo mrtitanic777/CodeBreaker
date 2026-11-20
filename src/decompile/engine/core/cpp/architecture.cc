@@ -15,10 +15,10 @@
  */
 // Set up decompiler for specific architectures
 
-#include "coreaction.hh"
-#include "flow.hh"
+#include "decompile/engine/core/cpp/coreaction.hh"
+#include "decompile/engine/core/cpp/flow.hh"
 #ifdef CPUI_RULECOMPILE
-#include "rulecompile.hh"
+#include "decompile/engine/core/cpp/rulecompile.hh"
 #endif
 #ifdef CPUI_STATISTICS
 #include <cmath>

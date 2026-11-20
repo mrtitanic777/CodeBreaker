@@ -19,13 +19,13 @@
 #ifndef __IFACEDECOMP_HH__
 #define __IFACEDECOMP_HH__
 
-#include "graph.hh"
-#include "grammar.hh"
-#include "callgraph.hh"
-#include "paramid.hh"
-#include "testfunction.hh"
+#include "decompile/engine/core/cpp/graph.hh"
+#include "decompile/engine/core/cpp/grammar.hh"
+#include "decompile/engine/core/cpp/callgraph.hh"
+#include "decompile/engine/core/cpp/paramid.hh"
+#include "decompile/engine/core/cpp/testfunction.hh"
 #ifdef CPUI_RULECOMPILE
-#include "rulecompile.hh"
+#include "decompile/engine/core/cpp/rulecompile.hh"
 #endif
 
 namespace ghidra {

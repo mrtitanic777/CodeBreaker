@@ -18,7 +18,7 @@
 #ifndef __RANGEUTIL_HH__
 #define __RANGEUTIL_HH__
 
-#include "op.hh"
+#include "decompile/engine/core/cpp/op.hh"
 
 namespace ghidra {
 

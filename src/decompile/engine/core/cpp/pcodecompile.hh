@@ -19,7 +19,7 @@
 #ifndef __PCODECOMPILE_HH__
 #define __PCODECOMPILE_HH__
 
-#include "slghsymbol.hh"
+#include "decompile/engine/core/cpp/slghsymbol.hh"
 
 namespace ghidra {
 

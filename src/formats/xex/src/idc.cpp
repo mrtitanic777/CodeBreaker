@@ -3,9 +3,9 @@
 // The script is mostly fixed boilerplate (idc_boilerplate.h, lifted verbatim
 // from a reference run). Only four things are derived from the XEX: the PE
 // section map, the resource map, the import thunks, and the entry point.
-#include "idc.h"
-#include "idc_boilerplate.h"
-#include "basefile.h"
+#include "formats/xex/src/idc.h"
+#include "formats/xex/src/idc_boilerplate.h"
+#include "formats/xex/src/basefile.h"
 #include <cstdio>
 #include <cstdarg>
 #include <cstring>

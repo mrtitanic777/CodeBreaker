@@ -8,12 +8,12 @@
 #include <string>
 
 #ifdef CBL2_CBACK
-#include "cback.hpp"
-#include "pyre.hpp"
+#include "translate/l2/src/cback.hpp"
+#include "translate/l2/src/pyre.hpp"
 #endif
-#include "json.hpp"
-#include "l2.hpp"
-#include "pystr.hpp"
+#include "translate/l2/src/json.hpp"
+#include "translate/l2/src/l2.hpp"
+#include "translate/l2/src/pystr.hpp"
 
 static int failures = 0, checks = 0;
 

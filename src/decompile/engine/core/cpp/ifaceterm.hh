@@ -19,7 +19,7 @@
 #ifndef __IFACETERM_HH__
 #define __IFACETERM_HH__
 
-#include "interface.hh"
+#include "decompile/engine/core/cpp/interface.hh"
 
 #ifdef __TERMINAL__
 extern "C" {

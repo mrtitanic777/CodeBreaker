@@ -18,8 +18,8 @@
 #ifndef __OPBEHAVIOR_HH__
 #define __OPBEHAVIOR_HH__
 
-#include "error.hh"
-#include "opcodes.hh"
+#include "decompile/engine/core/cpp/error.hh"
+#include "decompile/engine/core/cpp/opcodes.hh"
 
 namespace ghidra {
 

@@ -18,7 +18,7 @@ target_compile_definitions(XenonUtils
 
 target_include_directories(XenonUtils 
     PUBLIC
-        .
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../.."   # CodeBreaker's src/: headers by their path under it
         "${THIRDPARTY_ROOT}/simde"
     PRIVATE
         "${THIRDPARTY_ROOT}/libmspack/libmspack/mspack"

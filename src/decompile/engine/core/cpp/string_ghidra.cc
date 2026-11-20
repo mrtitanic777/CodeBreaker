@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "string_ghidra.hh"
+#include "decompile/engine/core/cpp/string_ghidra.hh"
 
 namespace ghidra {
 

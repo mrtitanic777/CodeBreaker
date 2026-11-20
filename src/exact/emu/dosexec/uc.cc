@@ -1,6 +1,6 @@
 // uc.cc -- Unicorn's entry points in the DLL Python loaded (LoadLibraryW of a path already loaded
 // hands back that same module), so a run here uses the very Unicorn the Python executive uses.
-#include "dosexec.h"
+#include "exact/emu/dosexec/dosexec.h"
 
 #include <cstdio>
 #define WIN32_LEAN_AND_MEAN

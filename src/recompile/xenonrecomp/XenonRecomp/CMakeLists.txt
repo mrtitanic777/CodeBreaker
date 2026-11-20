@@ -10,7 +10,7 @@ add_library(LibXenonRecomp STATIC
     "test_recompiler.cpp"
     "recompiler_config.cpp")
 target_compile_definitions(LibXenonRecomp PRIVATE XENON_RECOMP_LIBRARY)
-target_include_directories(LibXenonRecomp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(LibXenonRecomp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../../..")   # (CodeBreaker's src/: headers by their path under it)
 target_link_libraries(LibXenonRecomp PUBLIC
     LibXenonAnalyse
     XenonUtils

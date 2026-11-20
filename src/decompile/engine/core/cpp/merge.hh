@@ -19,8 +19,8 @@
 /// \file merge.hh
 /// \brief Utilities for merging low-level Varnodes into high-level variables
 
-#include "op.hh"
-#include "expression.hh"
+#include "decompile/engine/core/cpp/op.hh"
+#include "decompile/engine/core/cpp/expression.hh"
 
 namespace ghidra {
 

@@ -19,7 +19,7 @@
 #ifndef __PCODEINJECT_HH__
 #define __PCODEINJECT_HH__
 
-#include "emulateutil.hh"
+#include "decompile/engine/core/cpp/emulateutil.hh"
 
 namespace ghidra {
 

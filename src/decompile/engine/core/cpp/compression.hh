@@ -18,7 +18,7 @@
 #ifndef __COMPRESSION__
 #define __COMPRESSION__
 
-#include "error.hh"
+#include "decompile/engine/core/cpp/error.hh"
 #ifdef LOCAL_ZLIB
 #include "../zlib/zlib.h"
 #else

@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "database_ghidra.hh"
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/database_ghidra.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

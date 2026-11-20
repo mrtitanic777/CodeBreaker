@@ -19,9 +19,9 @@
 #ifndef __SLEIGH_ARCH_HH__
 #define __SLEIGH_ARCH_HH__
 
-#include "filemanage.hh"
-#include "architecture.hh"
-#include "sleigh.hh"
+#include "decompile/engine/core/cpp/filemanage.hh"
+#include "decompile/engine/core/cpp/architecture.hh"
+#include "decompile/engine/core/cpp/sleigh.hh"
 
 namespace ghidra {
 

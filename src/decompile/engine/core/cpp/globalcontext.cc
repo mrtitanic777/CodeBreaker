@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "globalcontext.hh"
+#include "decompile/engine/core/cpp/globalcontext.hh"
 
 namespace ghidra {
 

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "slaformat.hh"
+#include "decompile/engine/core/cpp/slaformat.hh"
 
 namespace ghidra {
 namespace sla {

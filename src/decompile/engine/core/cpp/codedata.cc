@@ -14,8 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "codedata.hh"
-#include "loadimage_bfd.hh"
+#include "decompile/engine/core/cpp/codedata.hh"
+#include "decompile/engine/core/cpp/loadimage_bfd.hh"
 
 namespace ghidra {
 

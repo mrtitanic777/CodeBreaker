@@ -4,8 +4,8 @@
 #include "memory.h"
 
 // CodeBreaker's XEX reader (cb/formats/xex/reader.cmake): the headers, security info, imports and the decoded image
-#include "basefile.h"
-#include "xex_file.h"
+#include "formats/xex/src/basefile.h"
+#include "formats/xex/src/xex_file.h"
 
 #include <cstring>
 #include <exception>

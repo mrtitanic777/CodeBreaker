@@ -1,10 +1,10 @@
-#include "pystr.hpp"
+#include "translate/l2/src/pystr.hpp"
 
 #include <charconv>
 #include <cmath>
 #include <cstring>
 
-#include "value.hpp"
+#include "translate/l2/src/value.hpp"
 
 namespace py {
 

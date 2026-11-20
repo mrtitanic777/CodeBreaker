@@ -6,10 +6,10 @@
 // `for` and `with` targets are parsed as expressions and then given Store context (or
 // refused), which accepts exactly the target grammar.  Two spots backtrack, as the PEG
 // grammar does: the parenthesized `with (a as b, ...)` form and the soft keyword `match`.
-#include "lexer.hpp"
-#include "literals.hpp"
-#include "unicode.hpp"
-#include "pyfront/pyfront.hpp"
+#include "translate/frontends/python/pyfront/src/lexer.hpp"
+#include "translate/frontends/python/pyfront/src/literals.hpp"
+#include "translate/frontends/python/pyfront/src/unicode.hpp"
+#include "translate/frontends/python/pyfront/include/pyfront/pyfront.hpp"
 
 #include <cctype>
 #include <cstring>

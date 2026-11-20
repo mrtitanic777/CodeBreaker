@@ -23,9 +23,9 @@
 #ifndef __DATABASE_HH__
 #define __DATABASE_HH__
 
-#include "variable.hh"
-#include "partmap.hh"
-#include "rangemap.hh"
+#include "decompile/engine/core/cpp/variable.hh"
+#include "decompile/engine/core/cpp/partmap.hh"
+#include "decompile/engine/core/cpp/rangemap.hh"
 
 namespace ghidra {
 

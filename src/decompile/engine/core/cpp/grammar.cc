@@ -91,7 +91,7 @@
 
 /* First part of user prologue.  */
 
-#include "grammar.hh"
+#include "decompile/engine/core/cpp/grammar.hh"
 
 namespace ghidra {
 

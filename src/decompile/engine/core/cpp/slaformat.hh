@@ -18,8 +18,8 @@
 #ifndef __SLAFORMAT__
 #define __SLAFORMAT__
 
-#include "compression.hh"
-#include "marshal.hh"
+#include "decompile/engine/core/cpp/compression.hh"
+#include "decompile/engine/core/cpp/marshal.hh"
 
 namespace ghidra {
 namespace sla {

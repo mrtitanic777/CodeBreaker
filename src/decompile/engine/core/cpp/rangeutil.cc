@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "rangeutil.hh"
-#include "block.hh"
+#include "decompile/engine/core/cpp/rangeutil.hh"
+#include "decompile/engine/core/cpp/block.hh"
 
 namespace ghidra {
 

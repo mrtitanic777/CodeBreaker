@@ -9,8 +9,8 @@
  ******************************************************************************
  */
 
-#include "xex_patcher.h"
-#include "xex.h"
+#include "recompile/xenonrecomp/XenonUtils/xex_patcher.h"
+#include "recompile/xenonrecomp/XenonUtils/xex.h"
 
 #include <bit>
 #include <cassert>
@@ -22,7 +22,7 @@
 #include <mspack.h>
 #include <TinySHA1.hpp>
 
-#include "memory_mapped_file.h"
+#include "recompile/xenonrecomp/XenonUtils/memory_mapped_file.h"
 
 struct mspack_memory_file
 {

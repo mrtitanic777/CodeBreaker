@@ -1,6 +1,6 @@
 // extract.cpp - basefile and resource extraction.
-#include "extract.h"
-#include "basefile.h"
+#include "formats/xex/src/extract.h"
+#include "formats/xex/src/basefile.h"
 #include <fstream>
 #include <stdexcept>
 

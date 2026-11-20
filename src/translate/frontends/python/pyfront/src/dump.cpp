@@ -2,8 +2,8 @@
 // ast.dump(tree, include_attributes=...) with its defaults (annotate_fields=True,
 // show_empty=False: a field that is None or an empty list is left out, except the value of
 // Constant and MatchSingleton).
-#include "literals.hpp"
-#include "pyfront/pyfront.hpp"
+#include "translate/frontends/python/pyfront/src/literals.hpp"
+#include "translate/frontends/python/pyfront/include/pyfront/pyfront.hpp"
 
 namespace pyfront {
 

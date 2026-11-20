@@ -20,7 +20,7 @@
 #ifndef __HERITAGE_HH__
 #define __HERITAGE_HH__
 
-#include "block.hh"
+#include "decompile/engine/core/cpp/block.hh"
 
 namespace ghidra {
 

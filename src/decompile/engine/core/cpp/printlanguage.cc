@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include <ctype.h>
-#include "printlanguage.hh"
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/printlanguage.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "heritage.hh"
-#include "funcdata.hh"
-#include "prefersplit.hh"
+#include "decompile/engine/core/cpp/heritage.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
+#include "decompile/engine/core/cpp/prefersplit.hh"
 
 namespace ghidra {
 

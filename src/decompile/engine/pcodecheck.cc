@@ -36,10 +36,10 @@
 #include <string>
 #include <vector>
 
-#include "sleigh.hh"
-#include "emulate.hh"
-#include "memstate.hh"
-#include "loadimage.hh"
+#include "decompile/engine/core/cpp/sleigh.hh"
+#include "decompile/engine/core/cpp/emulate.hh"
+#include "decompile/engine/core/cpp/memstate.hh"
+#include "decompile/engine/core/cpp/loadimage.hh"
 
 using namespace ghidra;
 

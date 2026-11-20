@@ -1,6 +1,6 @@
-#include "pch.h"
-#include "test_recompiler.h"
-#include <xenon_log.h>
+#include "recompile/xenonrecomp/XenonRecomp/pch.h"
+#include "recompile/xenonrecomp/XenonRecomp/test_recompiler.h"
+#include "recompile/xenonrecomp/XenonUtils/xenon_log.h"
 
 // As a library (XENON_RECOMP_LIBRARY: CodeBreaker links it in), the program's main is xenon_recomp_main.
 #ifdef XENON_RECOMP_LIBRARY

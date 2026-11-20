@@ -1,6 +1,6 @@
 // special.h - xex-specific "special" patches (`special`).
 #pragma once
-#include "xex_file.h"
+#include "formats/xex/src/xex_file.h"
 #include <string>
 #include <vector>
 #include <cstdint>

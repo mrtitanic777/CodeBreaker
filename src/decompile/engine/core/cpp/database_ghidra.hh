@@ -19,8 +19,8 @@
 #ifndef __DATABASE_GHIDRA_HH__
 #define __DATABASE_GHIDRA_HH__
 
-#include "database.hh"
-#include "ghidra_arch.hh"
+#include "decompile/engine/core/cpp/database.hh"
+#include "decompile/engine/core/cpp/ghidra_arch.hh"
 
 namespace ghidra {
 

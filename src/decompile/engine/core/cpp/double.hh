@@ -16,8 +16,8 @@
 #ifndef __DOUBLE_HH__
 #define __DOUBLE_HH__
 
-#include "ruleaction.hh"
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/ruleaction.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

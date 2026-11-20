@@ -3,7 +3,7 @@
 // The LZX decode path, per the documented format
 // (MS-PATCH / the public mspack algorithm). Used for XEX "normal" compression.
 // XEX streams do not use Intel-E8 call translation, so that step is omitted.
-#include "lzx.h"
+#include "formats/xex/src/compress/lzx.h"
 #include <stdexcept>
 #include <cstring>
 #include <cstdio>

@@ -16,7 +16,7 @@
 #ifndef __UNIFY_HH__
 #define __UNIFY_HH__
 
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

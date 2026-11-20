@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "sleigh.hh"
-#include "loadimage.hh"
+#include "decompile/engine/core/cpp/sleigh.hh"
+#include "decompile/engine/core/cpp/loadimage.hh"
 
 namespace ghidra {
 

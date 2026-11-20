@@ -67,10 +67,10 @@
 #include <string>
 #include <vector>
 
-#include "libdecomp.hh"
-#include "sleigh_arch.hh"
-#include "loadimage.hh"
-#include "printc.hh"
+#include "decompile/engine/core/cpp/libdecomp.hh"
+#include "decompile/engine/core/cpp/sleigh_arch.hh"
+#include "decompile/engine/core/cpp/loadimage.hh"
+#include "decompile/engine/core/cpp/printc.hh"
 
 #include <algorithm>
 #include <atomic>

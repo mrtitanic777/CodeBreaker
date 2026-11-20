@@ -19,11 +19,11 @@
 #ifndef __GHIDRA_PROCESS_HH__
 #define __GHIDRA_PROCESS_HH__
 
-#include "capability.hh"
-#include "ghidra_arch.hh"
-#include "typegrp_ghidra.hh"
-#include "grammar.hh"
-#include "paramid.hh"
+#include "decompile/engine/core/cpp/capability.hh"
+#include "decompile/engine/core/cpp/ghidra_arch.hh"
+#include "decompile/engine/core/cpp/typegrp_ghidra.hh"
+#include "decompile/engine/core/cpp/grammar.hh"
+#include "decompile/engine/core/cpp/paramid.hh"
 #include <iostream>
 #include <csignal>
 

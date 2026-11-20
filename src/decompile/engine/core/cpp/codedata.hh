@@ -16,7 +16,7 @@
 #ifndef __CODEDATA_HH__
 #define __CODEDATA_HH__
 
-#include "ifacedecomp.hh"
+#include "decompile/engine/core/cpp/ifacedecomp.hh"
 
 namespace ghidra {
 

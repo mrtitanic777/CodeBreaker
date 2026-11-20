@@ -18,7 +18,7 @@
 #ifndef __CAPABILITY_HH__
 #define __CAPABILITY_HH__
 
-#include "types.h"
+#include "decompile/engine/core/cpp/types.h"
 #include <vector>
 #include <string>
 

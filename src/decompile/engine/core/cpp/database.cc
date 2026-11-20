@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "database.hh"
-#include "funcdata.hh"
-#include "crc32.hh"
+#include "decompile/engine/core/cpp/database.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
+#include "decompile/engine/core/cpp/crc32.hh"
 #include <ctype.h>
 
 namespace ghidra {

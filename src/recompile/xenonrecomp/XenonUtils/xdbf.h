@@ -1,6 +1,6 @@
 #pragma once
 
-#include <xbox.h>
+#include "recompile/xenonrecomp/XenonUtils/xbox.h"
 
 #define XDBF_SIGNATURE 0x58444246
 #define XACH_SIGNATURE 0x58414348

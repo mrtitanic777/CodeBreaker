@@ -3,16 +3,16 @@
 //
 // File loading, XEX2 parsing and `info` are the foundation; crypto (AES/SHA-1/RSA), compression (LZX), patching and
 // extraction sit on the same parsed model.
-#include "xex_file.h"
-#include "info.h"
-#include "basefile.h"
-#include "extract.h"
-#include "xml.h"
-#include "modify.h"
-#include "idc.h"
-#include "special.h"
-#include "convert.h"
-#include "patch.h"
+#include "formats/xex/src/xex_file.h"
+#include "formats/xex/src/info.h"
+#include "formats/xex/src/basefile.h"
+#include "formats/xex/src/extract.h"
+#include "formats/xex/src/xml.h"
+#include "formats/xex/src/modify.h"
+#include "formats/xex/src/idc.h"
+#include "formats/xex/src/special.h"
+#include "formats/xex/src/convert.h"
+#include "formats/xex/src/patch.h"
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -62,7 +62,7 @@ bool read_file(const std::string& path, std::vector<uint8_t>& out) {
 
 } // namespace
 
-#include "command.h"
+#include "formats/xex/src/command.h"
 
 int run_selftest(); // selftest.cpp
 

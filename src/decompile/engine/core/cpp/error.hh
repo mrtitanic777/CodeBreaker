@@ -21,7 +21,7 @@
 #ifndef __ERROR_HH__
 #define __ERROR_HH__
 
-#include "types.h"
+#include "decompile/engine/core/cpp/types.h"
 #include <sstream>
 #include <fstream>
 #include <iomanip>

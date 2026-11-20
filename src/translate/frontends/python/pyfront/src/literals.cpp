@@ -1,6 +1,6 @@
 // literals.cpp -- Python literal decoding and repr().  See literals.hpp.
-#include "literals.hpp"
-#include "unicode.hpp"
+#include "translate/frontends/python/pyfront/src/literals.hpp"
+#include "translate/frontends/python/pyfront/src/unicode.hpp"
 
 #include <charconv>
 #include <cstdio>

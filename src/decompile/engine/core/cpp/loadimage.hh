@@ -19,7 +19,7 @@
 #ifndef __LOADIMAGE_HH__
 #define __LOADIMAGE_HH__
 
-#include "address.hh"
+#include "decompile/engine/core/cpp/address.hh"
 
 namespace ghidra {
 

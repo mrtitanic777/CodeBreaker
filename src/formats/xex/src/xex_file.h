@@ -1,7 +1,7 @@
 // xex_file.h - parsed model of a XEX2 file.
 #pragma once
-#include "byteio.h"
-#include "xex_format.h"
+#include "formats/xex/src/byteio.h"
+#include "formats/xex/src/xex_format.h"
 #include <cstdint>
 #include <map>
 #include <optional>

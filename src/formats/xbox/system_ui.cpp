@@ -7,7 +7,7 @@
 #include "core/log.hpp"
 #include "core/text.hpp"
 #include "formats/xbox/stfs.hpp"
-#include "extract.h"    // formats/xex/src: the xex engine's resource dump
+#include "formats/xex/src/extract.h"    // formats/xex/src: the xex engine's resource dump
 
 namespace cb::formats::xbox::system_ui {
 

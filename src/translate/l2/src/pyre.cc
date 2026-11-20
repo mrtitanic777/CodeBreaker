@@ -1,4 +1,4 @@
-#include "pyre.hpp"
+#include "translate/l2/src/pyre.hpp"
 #ifdef CB_RE_PROF
 #define NOMINMAX
 #include <windows.h>
@@ -14,9 +14,9 @@
 #include <string_view>
 #include <type_traits>
 
-#include "pystr.hpp"
+#include "translate/l2/src/pystr.hpp"
 #include "../../../../config/translate/runtime/cpp17/py_unicode.hpp"
-#include "value.hpp"
+#include "translate/l2/src/value.hpp"
 
 namespace re {
 

@@ -1,7 +1,7 @@
 // pyfmt.cc -- the text Python would have made: the messages a run reports (they reach callers,
 // e.g. port/verify.py keeps a run's error text as its console), and str operations on latin-1 text.
-#include "dosexec.h"
-#include "cbdos.h"
+#include "exact/emu/dosexec/dosexec.h"
+#include "exact/emu/dosexec/cbdos.h"
 
 #include <cstdarg>
 #include <cstdio>

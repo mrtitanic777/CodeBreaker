@@ -24,9 +24,9 @@
 #ifndef __COREACTION_HH__
 #define __COREACTION_HH__
 
-#include "ruleaction.hh"
-#include "blockaction.hh"
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/ruleaction.hh"
+#include "decompile/engine/core/cpp/blockaction.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

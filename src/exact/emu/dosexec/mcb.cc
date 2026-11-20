@@ -4,7 +4,7 @@
 // follows) or 'Z' (the last), +1 owner PSP (0 free, 8 DOS), +3 size in paragraphs, +8 name.  The
 // next header is at mcb + 1 + size.  Programs walk this chain themselves (a DOS extender's loader
 // sizes the memory it may take from it), so it is the one source of truth.
-#include "dosexec.h"
+#include "exact/emu/dosexec/dosexec.h"
 
 #include <algorithm>
 

@@ -4,7 +4,7 @@
 #include <functional>
 #include <set>
 
-#include "cpp17_jmodel.hpp"
+#include "translate/l2/src/cpp17_jmodel.hpp"
 
 namespace cpp17 {
 namespace jm {

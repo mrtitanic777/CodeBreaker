@@ -18,9 +18,9 @@
 #ifndef __TESTFUNCTION_HH__
 #define __TESTFUNCTION_HH__
 
-#include "ifaceterm.hh"
-#include "error.hh"
-#include "xml.hh"
+#include "decompile/engine/core/cpp/ifaceterm.hh"
+#include "decompile/engine/core/cpp/error.hh"
+#include "decompile/engine/core/cpp/xml.hh"
 #include <regex>
 
 namespace ghidra {

@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "slghpatexpress.hh"
-#include "sleighbase.hh"
+#include "decompile/engine/core/cpp/slghpatexpress.hh"
+#include "decompile/engine/core/cpp/sleighbase.hh"
 
 namespace ghidra {
 

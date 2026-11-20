@@ -18,8 +18,8 @@
 #ifndef __VARNODE_HH__
 #define __VARNODE_HH__
 
-#include "pcoderaw.hh"
-#include "cover.hh"
+#include "decompile/engine/core/cpp/pcoderaw.hh"
+#include "decompile/engine/core/cpp/cover.hh"
 
 namespace ghidra {
 

@@ -90,7 +90,7 @@
 
 /* First part of user prologue.  */
 
-#include "pcodeparse.hh"
+#include "decompile/engine/core/cpp/pcodeparse.hh"
 
 //#define YYERROR_VERBOSE
 namespace ghidra {

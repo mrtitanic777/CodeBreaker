@@ -19,8 +19,8 @@
 #ifndef __GHIDRA_TRANSLATE_HH__
 #define __GHIDRA_TRANSLATE_HH__
 
-#include "translate.hh"
-#include "ghidra_arch.hh"
+#include "decompile/engine/core/cpp/translate.hh"
+#include "decompile/engine/core/cpp/ghidra_arch.hh"
 
 namespace ghidra {
 

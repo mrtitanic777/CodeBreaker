@@ -16,8 +16,8 @@
 #ifndef __SLGHSYMBOL_HH__
 #define __SLGHSYMBOL_HH__
 
-#include "semantics.hh"
-#include "slghpatexpress.hh"
+#include "decompile/engine/core/cpp/semantics.hh"
+#include "decompile/engine/core/cpp/slghpatexpress.hh"
 
 namespace ghidra {
 

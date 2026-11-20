@@ -1,12 +1,12 @@
-#include <xenon_log.h>
+#include "recompile/xenonrecomp/XenonUtils/xenon_log.h"
 #include <cassert>
 #include <iterator>
-#include <file.h>
-#include <disasm.h>
-#include <image.h>
-#include <xbox.h>
+#include "recompile/xenonrecomp/XenonUtils/file.h"
+#include "recompile/xenonrecomp/XenonUtils/disasm.h"
+#include "recompile/xenonrecomp/XenonUtils/image.h"
+#include "recompile/xenonrecomp/XenonUtils/xbox.h"
 #include <fmt/core.h>
-#include "function.h"
+#include "recompile/xenonrecomp/XenonAnalyse/function.h"
 
 #define SWITCH_ABSOLUTE 0
 #define SWITCH_COMPUTED 1

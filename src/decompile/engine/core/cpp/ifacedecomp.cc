@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ifacedecomp.hh"
+#include "decompile/engine/core/cpp/ifacedecomp.hh"
 extern "C" {
 #include <time.h>
 }
-#include "pcodeparse.hh"
-#include "blockaction.hh"
+#include "decompile/engine/core/cpp/pcodeparse.hh"
+#include "decompile/engine/core/cpp/blockaction.hh"
 
 namespace ghidra {
 

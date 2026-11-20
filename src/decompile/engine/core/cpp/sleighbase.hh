@@ -18,9 +18,9 @@
 #ifndef __SLEIGHBASE_HH__
 #define __SLEIGHBASE_HH__
 
-#include "translate.hh"
-#include "slaformat.hh"
-#include "slghsymbol.hh"
+#include "decompile/engine/core/cpp/translate.hh"
+#include "decompile/engine/core/cpp/slaformat.hh"
+#include "decompile/engine/core/cpp/slghsymbol.hh"
 
 namespace ghidra {
 

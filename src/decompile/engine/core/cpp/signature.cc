@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "signature.hh"
-#include "crc32.hh"
+#include "decompile/engine/core/cpp/signature.hh"
+#include "decompile/engine/core/cpp/crc32.hh"
 
 namespace ghidra {
 

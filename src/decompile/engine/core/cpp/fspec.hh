@@ -19,8 +19,8 @@
 #ifndef __FSPEC_HH__
 #define __FSPEC_HH__
 
-#include "modelrules.hh"
-#include "rangemap.hh"
+#include "decompile/engine/core/cpp/modelrules.hh"
+#include "decompile/engine/core/cpp/rangemap.hh"
 
 namespace ghidra {
 

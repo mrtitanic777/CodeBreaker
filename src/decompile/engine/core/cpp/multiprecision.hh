@@ -18,7 +18,7 @@
 #ifndef __CPUI_MULTIPRECISION__
 #define __CPUI_MULTIPRECISION__
 
-#include "error.hh"
+#include "decompile/engine/core/cpp/error.hh"
 
 namespace ghidra {
 

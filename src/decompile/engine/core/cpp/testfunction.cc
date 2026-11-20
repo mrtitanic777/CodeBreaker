@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ifacedecomp.hh"
+#include "decompile/engine/core/cpp/ifacedecomp.hh"
 
 namespace ghidra {
 

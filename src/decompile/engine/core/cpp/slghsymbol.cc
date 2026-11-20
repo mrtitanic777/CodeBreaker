@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "slghsymbol.hh"
-#include "sleighbase.hh"
+#include "decompile/engine/core/cpp/slghsymbol.hh"
+#include "decompile/engine/core/cpp/sleighbase.hh"
 #include <cmath>
 
 namespace ghidra {

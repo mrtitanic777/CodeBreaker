@@ -1,10 +1,10 @@
-#include "function.h"
-#include <disasm.h>
+#include "recompile/xenonrecomp/XenonAnalyse/function.h"
+#include "recompile/xenonrecomp/XenonUtils/disasm.h"
 #include <vector>
 #include <bit>
 #include <algorithm>
 #include <cassert>
-#include <byteswap.h>
+#include "recompile/xenonrecomp/XenonUtils/byteswap.h"
 
 size_t Function::SearchBlock(size_t address) const
 {

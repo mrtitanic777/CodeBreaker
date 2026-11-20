@@ -19,9 +19,9 @@
 #ifndef __JUMPTABLE_HH__
 #define __JUMPTABLE_HH__
 
-#include "emulateutil.hh"
-#include "rangeutil.hh"
-#include "expression.hh"
+#include "decompile/engine/core/cpp/emulateutil.hh"
+#include "decompile/engine/core/cpp/rangeutil.hh"
+#include "decompile/engine/core/cpp/expression.hh"
 
 namespace ghidra {
 

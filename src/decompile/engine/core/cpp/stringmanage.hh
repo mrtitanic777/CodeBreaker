@@ -19,7 +19,7 @@
 #ifndef __STRINGMANAGE_HH__
 #define __STRINGMANAGE_HH__
 
-#include "type.hh"
+#include "decompile/engine/core/cpp/type.hh"
 
 namespace ghidra {
 

@@ -1,6 +1,6 @@
 // lexer.cpp -- pyfront's tokenizer.  See lexer.hpp.
-#include "lexer.hpp"
-#include "unicode.hpp"
+#include "translate/frontends/python/pyfront/src/lexer.hpp"
+#include "translate/frontends/python/pyfront/src/unicode.hpp"
 
 #include <algorithm>
 #include <cstdio>

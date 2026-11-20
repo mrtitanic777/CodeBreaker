@@ -4,13 +4,14 @@
 # compile it; neither has a reader of its own.
 #
 # Use from a CMakeLists.txt:
-#   include("<CodeBreaker>/native/xex/reader.cmake")
+#   include("<CodeBreaker>/src/formats/xex/reader.cmake")
 #   target_sources(<target> PRIVATE ${XEX_READER_SOURCES})
 #   target_include_directories(<target> PRIVATE ${XEX_READER_INCLUDE_DIR})
-# The sources compile with the including target's flags. Headers are included as "xex_file.h" and "basefile.h";
+# The sources compile with the including target's flags. Headers are included by their path under src/
+# ("formats/xex/src/xex_file.h", "formats/xex/src/basefile.h"): XEX_READER_INCLUDE_DIR is src/ itself;
 # errors are thrown as std::runtime_error / std::out_of_range.
 
-set(XEX_READER_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/src")
+get_filename_component(XEX_READER_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 set(XEX_READER_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/src/xex_file.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/src/basefile.cpp"

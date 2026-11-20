@@ -19,8 +19,8 @@
 #ifndef __MEMSTATE_HH__
 #define __MEMSTATE_HH__
 
-#include "pcoderaw.hh"
-#include "loadimage.hh"
+#include "decompile/engine/core/cpp/pcoderaw.hh"
+#include "decompile/engine/core/cpp/loadimage.hh"
 
 namespace ghidra {
 

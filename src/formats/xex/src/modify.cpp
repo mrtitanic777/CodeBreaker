@@ -1,8 +1,8 @@
 // modify.cpp - in-place XEX header modifications.
-#include "modify.h"
-#include "convert.h"
-#include "crypto/xex_sign.h"
-#include "crypto/sha1.h"
+#include "formats/xex/src/modify.h"
+#include "formats/xex/src/convert.h"
+#include "formats/xex/src/crypto/xex_sign.h"
+#include "formats/xex/src/crypto/sha1.h"
 #include <cstring>
 #include <algorithm>
 #include <array>

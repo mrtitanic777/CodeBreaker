@@ -1,9 +1,9 @@
-#include "l2.hpp"
+#include "translate/l2/src/l2.hpp"
 
 #include <cmath>
 #include <map>
 
-#include "pystr.hpp"
+#include "translate/l2/src/pystr.hpp"
 
 namespace l2 {
 

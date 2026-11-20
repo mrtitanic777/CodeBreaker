@@ -18,8 +18,8 @@
 #ifndef __PCODERAW_HH__
 #define __PCODERAW_HH__
 
-#include "address.hh"
-#include "opbehavior.hh"
+#include "decompile/engine/core/cpp/address.hh"
+#include "decompile/engine/core/cpp/opbehavior.hh"
 
 namespace ghidra {
 

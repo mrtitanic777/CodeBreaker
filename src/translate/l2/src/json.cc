@@ -1,4 +1,4 @@
-#include "json.hpp"
+#include "translate/l2/src/json.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -8,7 +8,7 @@
 #include <mutex>
 #include <vector>
 
-#include "pystr.hpp"
+#include "translate/l2/src/pystr.hpp"
 
 namespace py {
 

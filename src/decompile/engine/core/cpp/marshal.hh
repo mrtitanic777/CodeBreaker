@@ -16,8 +16,8 @@
 #ifndef __MARSHAL_HH__
 #define __MARSHAL_HH__
 
-#include "xml.hh"
-#include "opcodes.hh"
+#include "decompile/engine/core/cpp/xml.hh"
+#include "decompile/engine/core/cpp/opcodes.hh"
 #include <list>
 #include <unordered_map>
 

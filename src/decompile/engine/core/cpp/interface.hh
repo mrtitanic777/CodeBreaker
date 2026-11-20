@@ -19,7 +19,7 @@
 #ifndef __INTERFACE_HH__
 #define __INTERFACE_HH__
 
-#include "capability.hh"
+#include "decompile/engine/core/cpp/capability.hh"
 #include <map>
 #include <algorithm>
 #include <fstream>

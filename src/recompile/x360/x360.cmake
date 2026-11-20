@@ -112,7 +112,7 @@ namespace kernel
     add_executable(${target} "${stubs}" "${linked}")
     add_dependencies(${target} ${target}_runtime)
     target_include_directories(${target} PRIVATE "${X360_RUNTIME}/src" "${X360_PPC_SHARED}" "${settings_dir}"
-        "${X360_XENON}/XenonUtils" "${X360_XENON}/thirdparty/simde")
+        "${X360_XENON}/XenonUtils" "${X360_XENON}/../.." "${X360_XENON}/thirdparty/simde")
     # the whole library: objects nothing names directly (static registrations) must still be linked
     target_link_options(${target} PRIVATE "/WHOLEARCHIVE:${runtime_lib}")
     target_link_libraries(${target} PRIVATE ${target}_title ${module_libraries} "${runtime_lib}" winmm xinput bcrypt d3d12 dxgi d3dcompiler ole32 ws2_32)

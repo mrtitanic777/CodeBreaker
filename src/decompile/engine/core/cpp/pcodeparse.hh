@@ -16,8 +16,8 @@
 #ifndef __PCODEPARSE_HH__
 #define __PCODEPARSE_HH__
 
-#include "pcodecompile.hh"
-#include "sleighbase.hh"
+#include "decompile/engine/core/cpp/pcodecompile.hh"
+#include "decompile/engine/core/cpp/sleighbase.hh"
 
 namespace ghidra {
 

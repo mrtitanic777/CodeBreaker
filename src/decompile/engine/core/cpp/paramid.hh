@@ -16,7 +16,7 @@
 #ifndef __PARAMID_HH__
 #define __PARAMID_HH__
 
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

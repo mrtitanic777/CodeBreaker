@@ -1147,11 +1147,11 @@ char *yytext;
 static int isatty (int fildes) { return 0; }
 #endif
 
-#include "slgh_compile.hh"
+#include "decompile/engine/core/cpp/slgh_compile.hh"
 
 namespace ghidra {
 
-#include "slghparse.hh"
+#include "decompile/engine/core/cpp/slghparse.hh"
 
 struct FileStreamState {
   YY_BUFFER_STATE lastbuffer;	// Last lex buffer corresponding to the stream

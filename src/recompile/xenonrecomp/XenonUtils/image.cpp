@@ -1,6 +1,6 @@
-#include "image.h"
-#include "elf.h"
-#include "xex.h"
+#include "recompile/xenonrecomp/XenonUtils/image.h"
+#include "recompile/xenonrecomp/XenonUtils/elf.h"
+#include "recompile/xenonrecomp/XenonUtils/xex.h"
 #include <cassert>
 #include <cstring>
 

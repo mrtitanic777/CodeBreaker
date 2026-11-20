@@ -3,9 +3,9 @@
 
 #include <mutex>
 
-#include "xenon_analyse_main.h"   // recompile/xenonrecomp/XenonAnalyse: the program's main as a function
-#include "xenon_log.h"            // recompile/xenonrecomp/XenonUtils: where its messages go
-#include "xenon_recomp_main.h"    // recompile/xenonrecomp/XenonRecomp
+#include "recompile/xenonrecomp/XenonAnalyse/xenon_analyse_main.h"   // recompile/xenonrecomp/XenonAnalyse: the program's main as a function
+#include "recompile/xenonrecomp/XenonUtils/xenon_log.h"            // recompile/xenonrecomp/XenonUtils: where its messages go
+#include "recompile/xenonrecomp/XenonRecomp/xenon_recomp_main.h"    // recompile/xenonrecomp/XenonRecomp
 
 namespace cb::recompile::xenon_engine {
 namespace {

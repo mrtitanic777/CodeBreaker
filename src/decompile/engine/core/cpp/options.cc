@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "options.hh"
-#include "funcdata.hh"
-#include "flow.hh"
-#include "printc.hh"
+#include "decompile/engine/core/cpp/options.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
+#include "decompile/engine/core/cpp/flow.hh"
+#include "decompile/engine/core/cpp/printc.hh"
 
 namespace ghidra {
 

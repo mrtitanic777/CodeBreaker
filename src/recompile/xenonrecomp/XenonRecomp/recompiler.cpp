@@ -1,8 +1,8 @@
-#include <xenon_log.h>
-#include "pch.h"
+#include "recompile/xenonrecomp/XenonUtils/xenon_log.h"
+#include "recompile/xenonrecomp/XenonRecomp/pch.h"
 #include <unordered_set>
-#include "recompiler.h"
-#include <xex_patcher.h>
+#include "recompile/xenonrecomp/XenonRecomp/recompiler.h"
+#include "recompile/xenonrecomp/XenonUtils/xex_patcher.h"
 
 static uint64_t ComputeMask(uint32_t mstart, uint32_t mstop)
 {

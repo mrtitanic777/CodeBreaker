@@ -19,7 +19,7 @@
 #ifndef __PRINTJAVA_HH__
 #define __PRINTJAVA_HH__
 
-#include "printc.hh"
+#include "decompile/engine/core/cpp/printc.hh"
 
 namespace ghidra {
 

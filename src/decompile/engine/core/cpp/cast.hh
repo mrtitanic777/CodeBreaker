@@ -19,7 +19,7 @@
 #ifndef __CAST_HH__
 #define __CAST_HH__
 
-#include "type.hh"
+#include "decompile/engine/core/cpp/type.hh"
 
 namespace ghidra {
 

@@ -19,7 +19,7 @@
 #ifndef __CRC32_HH__
 #define __CRC32_HH__
 
-#include "types.h"
+#include "decompile/engine/core/cpp/types.h"
 
 namespace ghidra {
 

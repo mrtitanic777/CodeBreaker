@@ -18,7 +18,7 @@
 #ifndef __CONSTSEQ_HH__
 #define __CONSTSEQ_HH__
 
-#include "ruleaction.hh"
+#include "decompile/engine/core/cpp/ruleaction.hh"
 
 namespace ghidra {
 

@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "slgh_compile.hh"
-#include "filemanage.hh"
+#include "decompile/engine/core/cpp/slgh_compile.hh"
+#include "decompile/engine/core/cpp/filemanage.hh"
 #include <csignal>
 
 extern FILE *sleighin;		// Global pointer to file for lexer

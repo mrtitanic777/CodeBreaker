@@ -1,11 +1,11 @@
 // convert.cpp - basefile format conversions.
-#include "convert.h"
-#include "basefile.h"
-#include "crypto/aes.h"
-#include "crypto/keys.h"
-#include "crypto/sha1.h"
-#include "crypto/xex_sign.h"
-#include "compress/lzx.h"
+#include "formats/xex/src/convert.h"
+#include "formats/xex/src/basefile.h"
+#include "formats/xex/src/crypto/aes.h"
+#include "formats/xex/src/crypto/keys.h"
+#include "formats/xex/src/crypto/sha1.h"
+#include "formats/xex/src/crypto/xex_sign.h"
+#include "formats/xex/src/compress/lzx.h"
 #include <cstring>
 #include <algorithm>
 

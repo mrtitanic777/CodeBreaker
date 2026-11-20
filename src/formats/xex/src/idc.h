@@ -1,6 +1,6 @@
 // idc.h - generate an IDA IDC script describing the basefile (`idc`).
 #pragma once
-#include "xex_file.h"
+#include "formats/xex/src/xex_file.h"
 #include <string>
 
 namespace xex {

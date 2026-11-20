@@ -1,7 +1,7 @@
 // api.cc -- cbl2.dll's C interface (l2api.h): one entry, l2_call, dispatching by name to the L2 core
 // and the C back end. Each call runs on a thread of its own with a large stack (the writer and the
 // pattern matcher recurse as the Python did) and its own state.
-#include "l2api.h"
+#include "translate/l2/include/l2api.h"
 
 #include <cstdlib>
 #include <functional>
@@ -12,11 +12,11 @@
 #include <vector>
 
 #ifdef CBL2_CBACK
-#include "cback.hpp"
+#include "translate/l2/src/cback.hpp"
 #endif
-#include "cpp17.hpp"
-#include "json.hpp"
-#include "l2.hpp"
+#include "translate/l2/src/cpp17.hpp"
+#include "translate/l2/src/json.hpp"
+#include "translate/l2/src/l2.hpp"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN

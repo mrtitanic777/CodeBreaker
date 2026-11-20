@@ -13,8 +13,8 @@
 #include <string>
 #include <vector>
 
-#include "pyfront/pyfront.h"
-#include "pyfront/pyfront.hpp"
+#include "translate/frontends/python/pyfront/include/pyfront/pyfront.h"
+#include "translate/frontends/python/pyfront/include/pyfront/pyfront.hpp"
 
 namespace fs = std::filesystem;
 

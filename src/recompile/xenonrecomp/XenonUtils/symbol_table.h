@@ -1,5 +1,5 @@
 #pragma once
-#include "symbol.h"
+#include "recompile/xenonrecomp/XenonUtils/symbol.h"
 #include <set>
 
 class SymbolTable : public std::multiset<Symbol, SymbolComparer>

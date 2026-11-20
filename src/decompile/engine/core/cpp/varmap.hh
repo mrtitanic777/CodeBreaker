@@ -19,7 +19,7 @@
 #ifndef __VARMAP_HH__
 #define __VARMAP_HH__
 
-#include "database.hh"
+#include "decompile/engine/core/cpp/database.hh"
 
 namespace ghidra {
 

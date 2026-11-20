@@ -91,7 +91,7 @@
 
 /* First part of user prologue.  */
 
-#include "slgh_compile.hh"
+#include "decompile/engine/core/cpp/slgh_compile.hh"
 
 extern FILE *sleighin;
 extern int sleighlex(void);
@@ -125,7 +125,7 @@ extern int sleigherror(const char *str );
 #  endif
 # endif
 
-#include "slghparse.hh"
+#include "decompile/engine/core/cpp/slghparse.hh"
 /* Symbol kind.  */
 enum yysymbol_kind_t
 {

@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "analyzesigs.hh"
-#include "loadimage_bfd.hh"
+#include "decompile/engine/core/cpp/analyzesigs.hh"
+#include "decompile/engine/core/cpp/loadimage_bfd.hh"
 
 namespace ghidra {
 

@@ -18,7 +18,7 @@
 #ifndef __SIGNATURE_HH__
 #define __SIGNATURE_HH__
 
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

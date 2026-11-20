@@ -19,7 +19,7 @@
 /// \file blockaction.hh
 /// \brief Actions and classes associated with transforming and structuring the control-flow graph
 
-#include "action.hh"
+#include "decompile/engine/core/cpp/action.hh"
 
 namespace ghidra {
 

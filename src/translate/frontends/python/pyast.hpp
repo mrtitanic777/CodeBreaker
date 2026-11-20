@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include <pyfront/pyfront.hpp>
+#include "translate/frontends/python/pyfront/include/pyfront/pyfront.hpp"
 
 namespace cb::translate::frontends::python::pyast {
 

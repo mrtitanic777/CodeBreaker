@@ -16,7 +16,7 @@
 #ifndef __RULECOMPILE_HH__
 #define __RULECOMPILE_HH__
 
-#include "unify.hh"
+#include "decompile/engine/core/cpp/unify.hh"
 
 namespace ghidra {
 

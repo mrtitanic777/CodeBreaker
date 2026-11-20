@@ -21,8 +21,8 @@
 #ifndef __TRANSLATE_HH__
 #define __TRANSLATE_HH__
 
-#include "pcoderaw.hh"
-#include "float.hh"
+#include "decompile/engine/core/cpp/pcoderaw.hh"
+#include "decompile/engine/core/cpp/float.hh"
 
 namespace ghidra {
 

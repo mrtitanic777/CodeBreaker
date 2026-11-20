@@ -3,11 +3,11 @@
 // Ported from the documented algorithm in Xenia / XenonRecomp
 // (xex_patcher.cpp), using this project's own LZX, AES and SHA-1. Produces a
 // decrypted, uncompressed standalone XEX.
-#include "patch.h"
-#include "compress/lzx.h"
-#include "crypto/aes.h"
-#include "crypto/keys.h"
-#include "crypto/sha1.h"
+#include "formats/xex/src/patch.h"
+#include "formats/xex/src/compress/lzx.h"
+#include "formats/xex/src/crypto/aes.h"
+#include "formats/xex/src/crypto/keys.h"
+#include "formats/xex/src/crypto/sha1.h"
 #include <cstring>
 #include <stdexcept>
 #include <algorithm>

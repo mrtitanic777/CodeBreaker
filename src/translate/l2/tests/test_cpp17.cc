@@ -9,8 +9,8 @@
 #include <sstream>
 #include <string>
 
-#include "cpp17.hpp"
-#include "json.hpp"
+#include "translate/l2/src/cpp17.hpp"
+#include "translate/l2/src/json.hpp"
 
 static int failures = 0, checks = 0;
 

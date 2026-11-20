@@ -17,9 +17,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "pyre.hpp"
-#include "pystr.hpp"
-#include "value.hpp"
+#include "translate/l2/src/pyre.hpp"
+#include "translate/l2/src/pystr.hpp"
+#include "translate/l2/src/value.hpp"
 
 namespace cb {
 

@@ -6,7 +6,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/json.hpp"
-#include "l2api.h"   // translate/l2/include: the library's entry point
+#include "translate/l2/include/l2api.h"   // translate/l2/include: the library's entry point
 
 namespace cb::translate::native_l2 {
 namespace {

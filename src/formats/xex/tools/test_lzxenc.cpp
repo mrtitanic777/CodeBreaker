@@ -1,6 +1,6 @@
 // Standalone harness: round-trip + byte-identity test for the LZX encoder.
 //   test_lzxenc <input-basefile> <expected-lzx-stream|-> [maxbytes]
-#include "../src/compress/lzx.h"
+#include "formats/xex/src/compress/lzx.h"
 #include <cstdio>
 #include <cstdint>
 #include <cstring>

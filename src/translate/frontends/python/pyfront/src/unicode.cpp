@@ -1,5 +1,5 @@
 // unicode.cpp -- see unicode.hpp.
-#include "unicode.hpp"
+#include "translate/frontends/python/pyfront/src/unicode.hpp"
 
 #include <cctype>
 #include <cstring>

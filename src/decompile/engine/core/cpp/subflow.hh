@@ -18,9 +18,9 @@
 #ifndef __SUBFLOW_HH__
 #define __SUBFLOW_HH__
 
-#include "ruleaction.hh"
-#include "transform.hh"
-#include "unionresolve.hh"
+#include "decompile/engine/core/cpp/ruleaction.hh"
+#include "decompile/engine/core/cpp/transform.hh"
+#include "decompile/engine/core/cpp/unionresolve.hh"
 
 namespace ghidra {
 

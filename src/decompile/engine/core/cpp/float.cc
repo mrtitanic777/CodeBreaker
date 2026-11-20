@@ -14,8 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "float.hh"
-#include "address.hh"
+#include "decompile/engine/core/cpp/float.hh"
+#include "decompile/engine/core/cpp/address.hh"
 
 #include <cmath>
 #include <limits>

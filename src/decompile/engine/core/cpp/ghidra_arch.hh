@@ -19,7 +19,7 @@
 #ifndef __GHIDRA_ARCH_HH__
 #define __GHIDRA_ARCH_HH__
 
-#include "architecture.hh"
+#include "decompile/engine/core/cpp/architecture.hh"
 
 namespace ghidra {
 

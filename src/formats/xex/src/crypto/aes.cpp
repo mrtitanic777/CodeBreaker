@@ -1,5 +1,5 @@
 // aes.cpp - textbook AES-128 (FIPS-197). Clarity over speed.
-#include "aes.h"
+#include "formats/xex/src/crypto/aes.h"
 #include <cstring>
 
 namespace xex::crypto {

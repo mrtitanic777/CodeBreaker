@@ -19,8 +19,8 @@
 /// \file globalcontext.hh
 /// \brief Utilities for getting address-based context to the disassembler and decompiler
 
-#include "pcoderaw.hh"
-#include "partmap.hh"
+#include "decompile/engine/core/cpp/pcoderaw.hh"
+#include "decompile/engine/core/cpp/partmap.hh"
 
 namespace ghidra {
 

@@ -1,6 +1,6 @@
 // info.h - XEX information dump.
 #pragma once
-#include "xex_file.h"
+#include "formats/xex/src/xex_file.h"
 
 namespace xex {
 // Print a human-readable summary of a parsed XEX. `extended` adds the static

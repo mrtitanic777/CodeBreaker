@@ -2,8 +2,8 @@
 //
 // The <XexInfo> schema, so the engine can be driven from other
 // programs. Parse-only (no decryption), so it's fast.
-#include "xml.h"
-#include "basefile.h"
+#include "formats/xex/src/xml.h"
+#include "formats/xex/src/basefile.h"
 #include <cstdio>
 #include <string>
 

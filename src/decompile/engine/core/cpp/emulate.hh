@@ -19,8 +19,8 @@
 #ifndef __EMULATE_HH__
 #define __EMULATE_HH__
 
-#include "memstate.hh"
-#include "translate.hh"
+#include "decompile/engine/core/cpp/memstate.hh"
+#include "decompile/engine/core/cpp/translate.hh"
 
 namespace ghidra {
 

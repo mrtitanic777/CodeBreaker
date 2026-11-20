@@ -13,9 +13,9 @@
 #include <cstdio>
 #include "core/text.hpp"
 #include "formats/probe.hpp"
-#include "command.h"    // formats/xex/src: the xex engine's command line
-#include "extract.h"    // formats/xex/src: the basefile writer
-#include "xex_file.h"   // formats/xex/src: CodeBreaker's one XEX parser
+#include "formats/xex/src/command.h"    // formats/xex/src: the xex engine's command line
+#include "formats/xex/src/extract.h"    // formats/xex/src: the basefile writer
+#include "formats/xex/src/xex_file.h"   // formats/xex/src: CodeBreaker's one XEX parser
 
 namespace cb::formats::xex {
 

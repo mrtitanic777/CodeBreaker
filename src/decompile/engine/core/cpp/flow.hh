@@ -19,7 +19,7 @@
 #ifndef __FLOW_HH__
 #define __FLOW_HH__
 
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

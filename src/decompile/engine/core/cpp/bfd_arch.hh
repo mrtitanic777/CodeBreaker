@@ -19,8 +19,8 @@
 #ifndef __BFD_ARCH_HH__
 #define __BFD_ARCH_HH__
 
-#include "sleigh_arch.hh"
-#include "loadimage_bfd.hh"
+#include "decompile/engine/core/cpp/sleigh_arch.hh"
+#include "decompile/engine/core/cpp/loadimage_bfd.hh"
 
 namespace ghidra {
 

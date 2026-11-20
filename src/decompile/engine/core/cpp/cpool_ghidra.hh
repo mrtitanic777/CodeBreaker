@@ -19,7 +19,7 @@
 #ifndef __CPOOL_GHIDRA_HH__
 #define __CPOOL_GHIDRA_HH__
 
-#include "ghidra_arch.hh"
+#include "decompile/engine/core/cpp/ghidra_arch.hh"
 
 namespace ghidra {
 

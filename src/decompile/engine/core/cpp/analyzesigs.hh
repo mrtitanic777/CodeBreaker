@@ -18,8 +18,8 @@
 #ifndef __ANALYZESIGS_HH__
 #define __ANALYZESIGS_HH__
 
-#include "codedata.hh"
-#include "signature.hh"
+#include "decompile/engine/core/cpp/codedata.hh"
+#include "decompile/engine/core/cpp/signature.hh"
 
 namespace ghidra {
 

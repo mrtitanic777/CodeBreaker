@@ -16,7 +16,7 @@
 #ifndef __GRAPH_HH__
 #define __GRAPH_HH__
 
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

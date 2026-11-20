@@ -1,6 +1,6 @@
 // api.cc -- cbdos.h: the file system handed over, a run, its result.
-#include "cbdos.h"
-#include "dosexec.h"
+#include "exact/emu/dosexec/cbdos.h"
+#include "exact/emu/dosexec/dosexec.h"
 
 #include <cstdio>
 #include <cstring>

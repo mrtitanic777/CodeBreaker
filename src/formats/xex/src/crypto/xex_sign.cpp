@@ -1,6 +1,6 @@
 // xex_sign.cpp - XeCrypt devkit XEX header signing.
-#include "xex_sign.h"
-#include "sha1.h"
+#include "formats/xex/src/crypto/xex_sign.h"
+#include "formats/xex/src/crypto/sha1.h"
 #include <array>
 #include <cstring>
 

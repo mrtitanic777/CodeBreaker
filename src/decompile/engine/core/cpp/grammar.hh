@@ -16,7 +16,7 @@
 #ifndef __GRAMMAR_HH__
 #define __GRAMMAR_HH__
 
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

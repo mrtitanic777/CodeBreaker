@@ -19,7 +19,7 @@
 #ifndef __BLOCK_HH__
 #define __BLOCK_HH__
 
-#include "jumptable.hh"
+#include "decompile/engine/core/cpp/jumptable.hh"
 
 namespace ghidra {
 

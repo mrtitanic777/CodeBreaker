@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "loadimage_xml.hh"
-#include "translate.hh"
+#include "decompile/engine/core/cpp/loadimage_xml.hh"
+#include "decompile/engine/core/cpp/translate.hh"
 
 namespace ghidra {
 

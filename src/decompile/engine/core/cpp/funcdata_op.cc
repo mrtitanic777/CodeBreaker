@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "funcdata.hh"
-#include "flow.hh"
-#include "action.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
+#include "decompile/engine/core/cpp/flow.hh"
+#include "decompile/engine/core/cpp/action.hh"
 
 namespace ghidra {
 

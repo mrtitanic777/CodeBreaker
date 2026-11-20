@@ -19,7 +19,7 @@
 #ifndef __OVERRIDE_HH__
 #define __OVERRIDE_HH__
 
-#include "database.hh"
+#include "decompile/engine/core/cpp/database.hh"
 
 namespace ghidra {
 

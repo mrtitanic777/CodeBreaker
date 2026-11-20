@@ -19,7 +19,7 @@
 #ifndef __MODELRULES_HH__
 #define __MODELRULES_HH__
 
-#include "op.hh"
+#include "decompile/engine/core/cpp/op.hh"
 
 namespace ghidra {
 

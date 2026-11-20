@@ -8,7 +8,7 @@ add_library(cb_pyfront STATIC
   "${PYFRONT_DIR}/src/parser.cpp" "${PYFRONT_DIR}/src/dump.cpp" "${PYFRONT_DIR}/src/capi.cpp")
 set_target_properties(cb_pyfront PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-target_include_directories(cb_pyfront PUBLIC "${PYFRONT_DIR}/include")
+target_include_directories(cb_pyfront PUBLIC "${CB_NATIVE_ROOT}")   # (its headers by their path under src/)
 target_compile_options(cb_pyfront PRIVATE ${CB_FLAGS_LIB})
 if(CB_ASAN)
   target_compile_options(cb_pyfront PRIVATE /fsanitize=address /Zi)

@@ -18,7 +18,7 @@
 #ifndef __GHIDRA_SIGNATURES_HH__
 #define __GHIDRA_SIGNATURES_HH__
 
-#include "ghidra_process.hh"
+#include "decompile/engine/core/cpp/ghidra_process.hh"
 
 namespace ghidra {
 

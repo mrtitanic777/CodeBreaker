@@ -18,7 +18,7 @@
 #ifndef __XML_HH__
 #define __XML_HH__
 
-#include "types.h"
+#include "decompile/engine/core/cpp/types.h"
 #include <fstream>
 #include <iomanip>
 #include <string>

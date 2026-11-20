@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "action.hh"
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/action.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
-#include "coreaction.hh"
+#include "decompile/engine/core/cpp/coreaction.hh"
 
 namespace ghidra {
 

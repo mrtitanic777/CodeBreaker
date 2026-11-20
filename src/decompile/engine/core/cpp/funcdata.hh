@@ -19,12 +19,12 @@
 /// \file funcdata.hh
 /// \brief Utilities for processing data structures associated with a single function
 
-#include "architecture.hh"
-#include "override.hh"
-#include "heritage.hh"
-#include "merge.hh"
-#include "dynamic.hh"
-#include "unionresolve.hh"
+#include "decompile/engine/core/cpp/architecture.hh"
+#include "decompile/engine/core/cpp/override.hh"
+#include "decompile/engine/core/cpp/heritage.hh"
+#include "decompile/engine/core/cpp/merge.hh"
+#include "decompile/engine/core/cpp/dynamic.hh"
+#include "decompile/engine/core/cpp/unionresolve.hh"
 
 namespace ghidra {
 

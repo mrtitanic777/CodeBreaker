@@ -1,6 +1,6 @@
 // xml.h - machine-readable XML output.
 #pragma once
-#include "xex_file.h"
+#include "formats/xex/src/xex_file.h"
 #include <string>
 
 namespace xex {

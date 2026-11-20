@@ -19,8 +19,8 @@
 #ifndef __EMULATEUTIL_HH__
 #define __EMULATEUTIL_HH__
 
-#include "emulate.hh"
-#include "op.hh"
+#include "decompile/engine/core/cpp/emulate.hh"
+#include "decompile/engine/core/cpp/op.hh"
 
 namespace ghidra {
 

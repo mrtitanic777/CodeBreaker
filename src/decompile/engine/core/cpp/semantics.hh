@@ -19,8 +19,8 @@
 #ifndef __SEMANTICS_HH__
 #define __SEMANTICS_HH__
 
-#include "context.hh"
-#include "slaformat.hh"
+#include "decompile/engine/core/cpp/context.hh"
+#include "decompile/engine/core/cpp/slaformat.hh"
 
 namespace ghidra {
 

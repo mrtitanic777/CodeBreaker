@@ -16,7 +16,7 @@
 #ifndef __SLGHPATTERN_HH__
 #define __SLGHPATTERN_HH__
 
-#include "context.hh"
+#include "decompile/engine/core/cpp/context.hh"
 
 namespace ghidra {
 

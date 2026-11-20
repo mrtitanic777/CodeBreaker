@@ -19,7 +19,7 @@
 #ifndef __PRETTYPRINT_HH__
 #define __PRETTYPRINT_HH__
 
-#include "type.hh"
+#include "decompile/engine/core/cpp/type.hh"
 
 namespace ghidra {
 

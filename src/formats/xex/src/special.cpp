@@ -8,9 +8,9 @@
 // The patches themselves are pattern searches over the decompressed image, not
 // fixed offsets -- which is how they survive across builds of the same file. The
 // replacement code is built here at run time rather than stored as data.
-#include "special.h"
-#include "basefile.h"
-#include "convert.h"
+#include "formats/xex/src/special.h"
+#include "formats/xex/src/basefile.h"
+#include "formats/xex/src/convert.h"
 #include <cstring>
 #include <algorithm>
 

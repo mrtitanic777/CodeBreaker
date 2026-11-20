@@ -1,4 +1,4 @@
-#include "disasm.h"
+#include "recompile/xenonrecomp/XenonUtils/disasm.h"
 
 thread_local ppc::DisassemblerEngine ppc::gBigEndianDisassembler{ BFD_ENDIAN_BIG, "cell 64"};
 

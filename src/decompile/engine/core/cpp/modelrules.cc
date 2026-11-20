@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "modelrules.hh"
-#include "funcdata.hh"
+#include "decompile/engine/core/cpp/modelrules.hh"
+#include "decompile/engine/core/cpp/funcdata.hh"
 
 namespace ghidra {
 

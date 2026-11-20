@@ -18,7 +18,7 @@
 #ifndef __EXPRESSION_HH__
 #define __EXPRESSION_HH__
 
-#include "op.hh"
+#include "decompile/engine/core/cpp/op.hh"
 
 namespace ghidra {
 

@@ -1,5 +1,5 @@
-#include <xenon_log.h>
-#include "test_recompiler.h"
+#include "recompile/xenonrecomp/XenonUtils/xenon_log.h"
+#include "recompile/xenonrecomp/XenonRecomp/test_recompiler.h"
 
 void TestRecompiler::Analyse(const std::string_view& testName)
 {

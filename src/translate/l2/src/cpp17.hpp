@@ -26,10 +26,10 @@
 #include <string>
 #include <vector>
 
-#include "l2.hpp"
-#include "pyre.hpp"
-#include "pystr.hpp"
-#include "value.hpp"
+#include "translate/l2/src/l2.hpp"
+#include "translate/l2/src/pyre.hpp"
+#include "translate/l2/src/pystr.hpp"
+#include "translate/l2/src/value.hpp"
 
 namespace cpp17 {
 

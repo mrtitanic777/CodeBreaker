@@ -18,21 +18,21 @@
 #ifndef __ARCHITECTURE_HH__
 #define __ARCHITECTURE_HH__
 
-#include "capability.hh"
-#include "varmap.hh"
-#include "action.hh"
-#include "database.hh"
-#include "pcodeinject.hh"
-#include "fspec.hh"
-#include "translate.hh"
-#include "loadimage.hh"
-#include "globalcontext.hh"
-#include "comment.hh"
-#include "stringmanage.hh"
-#include "userop.hh"
-#include "options.hh"
-#include "transform.hh"
-#include "prefersplit.hh"
+#include "decompile/engine/core/cpp/capability.hh"
+#include "decompile/engine/core/cpp/varmap.hh"
+#include "decompile/engine/core/cpp/action.hh"
+#include "decompile/engine/core/cpp/database.hh"
+#include "decompile/engine/core/cpp/pcodeinject.hh"
+#include "decompile/engine/core/cpp/fspec.hh"
+#include "decompile/engine/core/cpp/translate.hh"
+#include "decompile/engine/core/cpp/loadimage.hh"
+#include "decompile/engine/core/cpp/globalcontext.hh"
+#include "decompile/engine/core/cpp/comment.hh"
+#include "decompile/engine/core/cpp/stringmanage.hh"
+#include "decompile/engine/core/cpp/userop.hh"
+#include "decompile/engine/core/cpp/options.hh"
+#include "decompile/engine/core/cpp/transform.hh"
+#include "decompile/engine/core/cpp/prefersplit.hh"
 
 namespace ghidra {
 

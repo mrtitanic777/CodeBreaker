@@ -26,7 +26,7 @@
 #ifndef __ADDRESS_HH__
 #define __ADDRESS_HH__
 
-#include "space.hh"
+#include "decompile/engine/core/cpp/space.hh"
 
 namespace ghidra {
 

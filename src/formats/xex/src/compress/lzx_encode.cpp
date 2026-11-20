@@ -11,7 +11,7 @@
 //
 // Verified byte-exact by compressing a 36 MB Xbox 360 basefile and diffing
 // against canonical `compress` output.
-#include "lzx_encode.h"
+#include "formats/xex/src/compress/lzx_encode.h"
 #include <cstring>
 #include <stdexcept>
 

@@ -14,7 +14,7 @@ if(WIN32)
     "${DOSEXEC_DIR}/exec.cc"     # the executive: load, INT 20h/21h, EXEC, the run loop
     "${DOSEXEC_DIR}/dpmi.cc")    # the DPMI host
   set_target_properties(cb_dosexec PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-  target_include_directories(cb_dosexec PRIVATE "${DOSEXEC_DIR}" "${CB_THIRD_PARTY}/include")
+  target_include_directories(cb_dosexec PRIVATE "${CB_NATIVE_ROOT}" "${CB_THIRD_PARTY}/include")   # (its own headers by their path under src/)
   target_compile_definitions(cb_dosexec PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX UNICODE _UNICODE)
   if(MSVC)
     target_compile_options(cb_dosexec PRIVATE /EHsc /W3 /utf-8)

@@ -1,6 +1,6 @@
 // basefile.h - reconstruct the raw basefile (PE image) from a XEX.
 #pragma once
-#include "xex_file.h"
+#include "formats/xex/src/xex_file.h"
 #include <vector>
 #include <cstdint>
 

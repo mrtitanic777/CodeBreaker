@@ -19,10 +19,10 @@
 #ifndef __TYPEOP_HH__
 #define __TYPEOP_HH__
 
-#include "cpool.hh"
-#include "variable.hh"
-#include "opbehavior.hh"
-#include "printlanguage.hh"
+#include "decompile/engine/core/cpp/cpool.hh"
+#include "decompile/engine/core/cpp/variable.hh"
+#include "decompile/engine/core/cpp/opbehavior.hh"
+#include "decompile/engine/core/cpp/printlanguage.hh"
 
 namespace ghidra {
 

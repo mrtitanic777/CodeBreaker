@@ -1,12 +1,12 @@
-#include "xex.h"
-#include "image.h"
+#include "recompile/xenonrecomp/XenonUtils/xex.h"
+#include "recompile/xenonrecomp/XenonUtils/image.h"
 #include <cassert>
 #include <cstring>
 #include <vector>
 #include <unordered_map>
 #include <aes.hpp>
 #include <TinySHA1.hpp>
-#include <xex_patcher.h>
+#include "recompile/xenonrecomp/XenonUtils/xex_patcher.h"
 
 #define STRINGIFY(X) #X
 #define XE_EXPORT(MODULE, ORDINAL, NAME, TYPE) { (ORDINAL), "__imp__" STRINGIFY(NAME) }
@@ -117,12 +117,12 @@ typedef struct _IMAGE_SECTION_HEADER {
 
 std::unordered_map<size_t, const char*> XamExports = 
 {
-    #include "xbox/xam_table.inc"
+    #include "recompile/xenonrecomp/XenonUtils/xbox/xam_table.inc"
 };
 
 std::unordered_map<size_t, const char*> XboxKernelExports =
 {
-    #include "xbox/xboxkrnl_table.inc"
+    #include "recompile/xenonrecomp/XenonUtils/xbox/xboxkrnl_table.inc"
 };
 
 Image Xex2LoadImage(const uint8_t* data, size_t dataSize)

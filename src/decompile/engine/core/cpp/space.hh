@@ -19,8 +19,8 @@
 #ifndef __SPACE_HH__
 #define __SPACE_HH__
 
-#include "error.hh"
-#include "marshal.hh"
+#include "decompile/engine/core/cpp/error.hh"
+#include "decompile/engine/core/cpp/marshal.hh"
 
 namespace ghidra {
 

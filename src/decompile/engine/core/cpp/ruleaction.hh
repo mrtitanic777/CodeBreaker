@@ -25,7 +25,7 @@
 #ifndef __RULEACTION_HH__
 #define __RULEACTION_HH__
 
-#include "action.hh"
+#include "decompile/engine/core/cpp/action.hh"
 
 namespace ghidra {
 

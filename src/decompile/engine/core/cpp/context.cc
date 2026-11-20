@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "context.hh"
-#include "slghsymbol.hh"
-#include "translate.hh"
+#include "decompile/engine/core/cpp/context.hh"
+#include "decompile/engine/core/cpp/slghsymbol.hh"
+#include "decompile/engine/core/cpp/translate.hh"
 
 namespace ghidra {
 

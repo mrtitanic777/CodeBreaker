@@ -19,8 +19,8 @@
 /// \file ghidra_context.hh
 /// \brief Obtaining context information from a Ghidra client
 
-#include "globalcontext.hh"
-#include "ghidra_arch.hh"
+#include "decompile/engine/core/cpp/globalcontext.hh"
+#include "decompile/engine/core/cpp/ghidra_arch.hh"
 
 namespace ghidra {
 

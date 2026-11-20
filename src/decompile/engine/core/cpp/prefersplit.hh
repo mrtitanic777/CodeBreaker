@@ -16,7 +16,7 @@
 #ifndef __PREFERSPLIT_HH__
 #define __PREFERSPLIT_HH__
 
-#include "varnode.hh"
+#include "decompile/engine/core/cpp/varnode.hh"
 
 namespace ghidra {
 

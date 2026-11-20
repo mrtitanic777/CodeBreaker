@@ -18,8 +18,8 @@
 #ifndef __LOADIMAGE_GHIDRA_HH__
 #define __LOADIMAGE_GHIDRA_HH__
 
-#include "loadimage.hh"
-#include "ghidra_arch.hh"
+#include "decompile/engine/core/cpp/loadimage.hh"
+#include "decompile/engine/core/cpp/ghidra_arch.hh"
 
 namespace ghidra {
 

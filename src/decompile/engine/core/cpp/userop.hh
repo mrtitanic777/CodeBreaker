@@ -19,7 +19,7 @@
 #ifndef __USEROP_HH__
 #define __USEROP_HH__
 
-#include "typeop.hh"
+#include "decompile/engine/core/cpp/typeop.hh"
 
 namespace ghidra {
 

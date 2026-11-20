@@ -19,7 +19,7 @@
 #ifndef __FLOAT_HH__
 #define __FLOAT_HH__
 
-#include "error.hh"
+#include "decompile/engine/core/cpp/error.hh"
 
 namespace ghidra {
 

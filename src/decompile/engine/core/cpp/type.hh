@@ -19,7 +19,7 @@
 #ifndef __TYPE_HH__
 #define __TYPE_HH__
 
-#include "address.hh"
+#include "decompile/engine/core/cpp/address.hh"
 
 namespace ghidra {
 

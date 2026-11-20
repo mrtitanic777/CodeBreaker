@@ -19,7 +19,7 @@
 #ifndef __LOADIMAGE_BFD_HH__
 #define __LOADIMAGE_BFD_HH__
 
-#include "loadimage.hh"
+#include "decompile/engine/core/cpp/loadimage.hh"
 
 // bfd.h requires PACKAGE/PACKAGE_VERSION to be defined
 // https://sourceware.org/bugzilla/show_bug.cgi?id=14243

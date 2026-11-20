@@ -3,7 +3,7 @@
 // These are well-known, publicly-documented Xbox 360 constants (the retail
 // AES title-key-wrap key and Microsoft/devkit RSA signature public keys).
 // Embedded for research and preservation. Generated; do not edit.
-#include "keys.h"
+#include "formats/xex/src/crypto/keys.h"
 
 namespace xex::crypto {
 

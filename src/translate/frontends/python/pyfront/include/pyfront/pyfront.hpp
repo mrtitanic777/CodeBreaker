@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-#include "pyfront/ast.hpp"
+#include "translate/frontends/python/pyfront/include/pyfront/ast.hpp"
 
 namespace pyfront {
 

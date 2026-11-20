@@ -2,8 +2,8 @@
 #include <memory>
 #include <string>
 #include <set>
-#include <section.h>
-#include "symbol_table.h"
+#include "recompile/xenonrecomp/XenonUtils/section.h"
+#include "recompile/xenonrecomp/XenonUtils/symbol_table.h"
 
 struct Image
 {

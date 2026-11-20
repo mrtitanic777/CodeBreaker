@@ -19,7 +19,7 @@
 #ifndef __LOADIMAGE_XML_HH__
 #define __LOADIMAGE_XML_HH__
 
-#include "loadimage.hh"
+#include "decompile/engine/core/cpp/loadimage.hh"
 
 namespace ghidra {
 

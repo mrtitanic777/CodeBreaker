@@ -15,7 +15,7 @@
  */
 #include <iostream>
 #include <cstdlib>
-#include "libdecomp.hh"
+#include "decompile/engine/core/cpp/libdecomp.hh"
 
 namespace ghidra {
 

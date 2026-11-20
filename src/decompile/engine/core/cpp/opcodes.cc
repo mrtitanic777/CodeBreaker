@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "opcodes.hh"
-#include "types.h"
+#include "decompile/engine/core/cpp/opcodes.hh"
+#include "decompile/engine/core/cpp/types.h"
 
 namespace ghidra {
 

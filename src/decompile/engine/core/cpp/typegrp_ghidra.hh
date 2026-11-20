@@ -19,8 +19,8 @@
 #ifndef __TYPEGRP_GHIDRA_HH__
 #define __TYPEGRP_GHIDRA_HH__
 
-#include "type.hh"
-#include "ghidra_arch.hh"
+#include "decompile/engine/core/cpp/type.hh"
+#include "decompile/engine/core/cpp/ghidra_arch.hh"
 
 namespace ghidra {
 

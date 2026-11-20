@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "paramid.hh"
+#include "decompile/engine/core/cpp/paramid.hh"
 
 namespace ghidra {
 

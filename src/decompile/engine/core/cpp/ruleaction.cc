@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ruleaction.hh"
-#include "coreaction.hh"
-#include "rangeutil.hh"
-#include "multiprecision.hh"
+#include "decompile/engine/core/cpp/ruleaction.hh"
+#include "decompile/engine/core/cpp/coreaction.hh"
+#include "decompile/engine/core/cpp/rangeutil.hh"
+#include "decompile/engine/core/cpp/multiprecision.hh"
 
 namespace ghidra {
 

@@ -18,8 +18,8 @@
 #ifndef __CONTEXT_HH__
 #define __CONTEXT_HH__
 
-#include "globalcontext.hh"
-#include "opcodes.hh"
+#include "decompile/engine/core/cpp/globalcontext.hh"
+#include "decompile/engine/core/cpp/opcodes.hh"
 
 namespace ghidra {
 

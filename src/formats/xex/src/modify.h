@@ -5,7 +5,7 @@
 // still-valid XEX with the requested limitations removed, rather than a fully
 // re-serialized and re-compressed one.
 #pragma once
-#include "xex_file.h"
+#include "formats/xex/src/xex_file.h"
 #include <string>
 #include <vector>
 

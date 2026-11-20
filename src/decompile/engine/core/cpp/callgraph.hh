@@ -16,7 +16,7 @@
 #ifndef __CALLGRAPH_HH__
 #define __CALLGRAPH_HH__
 
-#include "address.hh"
+#include "decompile/engine/core/cpp/address.hh"
 
 namespace ghidra {
 

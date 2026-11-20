@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "variable.hh"
-#include "op.hh"
-#include "expression.hh"
-#include "database.hh"
+#include "decompile/engine/core/cpp/variable.hh"
+#include "decompile/engine/core/cpp/op.hh"
+#include "decompile/engine/core/cpp/expression.hh"
+#include "decompile/engine/core/cpp/database.hh"
 
 namespace ghidra {
 

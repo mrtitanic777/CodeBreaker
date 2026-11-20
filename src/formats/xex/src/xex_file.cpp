@@ -1,5 +1,5 @@
 // xex_file.cpp - XEX2 parser implementation.
-#include "xex_file.h"
+#include "formats/xex/src/xex_file.h"
 #include <stdexcept>
 
 namespace xex {

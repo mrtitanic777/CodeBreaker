@@ -5,9 +5,9 @@
 #include <map>
 #include <random>
 
-#include "basefile.h"      // formats/xex: the xex engine's own decoder, an independent implementation (the oracle)
-#include "crypto/aes.h"
-#include "crypto/keys.h"
+#include "formats/xex/src/basefile.h"      // formats/xex: the xex engine's own decoder, an independent implementation (the oracle)
+#include "formats/xex/src/crypto/aes.h"
+#include "formats/xex/src/crypto/keys.h"
 #include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"

@@ -19,8 +19,8 @@
 #ifndef __INJECT_SLEIGH_HH__
 #define __INJECT_SLEIGH_HH__
 
-#include "pcodeinject.hh"
-#include "sleigh.hh"
+#include "decompile/engine/core/cpp/pcodeinject.hh"
+#include "decompile/engine/core/cpp/sleigh.hh"
 
 namespace ghidra {
 

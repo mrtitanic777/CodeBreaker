@@ -1,6 +1,6 @@
 // info.cpp - human-readable XEX information dump (the `info` command).
-#include "info.h"
-#include "basefile.h"
+#include "formats/xex/src/info.h"
+#include "formats/xex/src/basefile.h"
 #include <cstdio>
 #include <ctime>
 

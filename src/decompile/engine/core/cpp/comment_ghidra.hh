@@ -18,8 +18,8 @@
 #ifndef __COMMENT_GHIDRA_HH__
 #define __COMMENT_GHIDRA_HH__
 
-#include "comment.hh"
-#include "ghidra_arch.hh"
+#include "decompile/engine/core/cpp/comment.hh"
+#include "decompile/engine/core/cpp/ghidra_arch.hh"
 
 namespace ghidra {
 

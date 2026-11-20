@@ -1,5 +1,5 @@
-#include <xenon_log.h>
-#include "recompiler_config.h"
+#include "recompile/xenonrecomp/XenonUtils/xenon_log.h"
+#include "recompile/xenonrecomp/XenonRecomp/recompiler_config.h"
 #include <stdexcept>
 
 void RecompilerConfig::Load(const std::string_view& configFilePath)

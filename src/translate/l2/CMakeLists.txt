@@ -20,7 +20,7 @@ add_library(cb_l2 STATIC
   "${L2_DIR}/src/cpp17_java.cc"   # ... Java's rules
   "${L2_DIR}/src/api.cc")         # the entry point: l2_call(name, arguments) -> answer
 set_target_properties(cb_l2 PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-target_include_directories(cb_l2 PUBLIC "${L2_DIR}/include" PRIVATE "${L2_DIR}/src")
+target_include_directories(cb_l2 PUBLIC "${CB_NATIVE_ROOT}")   # (its headers by their path under src/: translate/l2/include/l2api.h)
 target_compile_definitions(cb_l2 PRIVATE CBL2_CBACK CB_NO_FASTALLOC)   # (operator new is the program's: app/allocator_main.cpp)
 if(MSVC)
   target_compile_options(cb_l2 PRIVATE /EHsc /bigobj /utf-8 /W3)
@@ -39,7 +39,6 @@ add_executable(cpp17_tests EXCLUDE_FROM_ALL "${L2_DIR}/tests/test_cpp17.cc")
 target_compile_definitions(cpp17_tests PRIVATE L2_TESTDATA="${L2_DIR}/tests/data" API_MAPS="${L2_DIR}/../../../config/java/api_maps")
 foreach(t l2_tests cpp17_tests)
   target_link_libraries(${t} PRIVATE cb_l2)
-  target_include_directories(${t} PRIVATE "${L2_DIR}/src")
   set_target_properties(${t} PROPERTIES CXX_STANDARD 17 MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   if(MSVC)
     target_compile_options(${t} PRIVATE /EHsc /utf-8)

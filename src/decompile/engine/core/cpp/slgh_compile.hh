@@ -18,9 +18,9 @@
 #ifndef __SLGH_COMPILE_HH__
 #define __SLGH_COMPILE_HH__
 
-#include "sleighbase.hh"
-#include "pcodecompile.hh"
-#include "filemanage.hh"
+#include "decompile/engine/core/cpp/sleighbase.hh"
+#include "decompile/engine/core/cpp/pcodecompile.hh"
+#include "decompile/engine/core/cpp/filemanage.hh"
 #include <iostream>
 #include <sstream>
 #include <string>
