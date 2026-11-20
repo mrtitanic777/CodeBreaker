@@ -63,6 +63,10 @@ struct PartialSymbolEntry {
 ///  - if/else structures
 ///  - loop structures
 ///  - etc.
+/// CodeBreaker: a real-mode program's 2-byte pointers print as `T __near *` -- an offset in the data segment, as the
+/// original used it; its C is compiled with far data pointers (the large model), where a bare `T *` is a far pointer
+extern bool print_near_pointers16;
+
 class PrintC : public PrintLanguage {
 protected:
   static OpToken hidden;		///< Hidden functional (that may force parentheses)

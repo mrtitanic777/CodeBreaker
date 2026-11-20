@@ -86,7 +86,7 @@ Bytes make(const Disk& disk, ByteView boot, const std::map<std::string, Bytes>& 
 struct Environment {
     std::filesystem::path corpus_root;   // the original floppy is <corpus_root>/setup/media/boot.img
     std::filesystem::path design_dir;    // the boot sector's source is <design_dir>/recon/bootdisk/msboot.asm
-    std::filesystem::path state;         // <state>/bootfloppy: original/, src/, msboot.bin, and boot95.img by default
+    std::filesystem::path state;         // <this>/bootfloppy (the work folder's win95_boot, else the state folder): original/, src/, msboot.bin, boot95.img
     source::dos_writer::Options writer;  // how a program of the floppy is written back as source and built
 };
 

@@ -16,7 +16,7 @@ namespace cb::app::convert {
 
 std::filesystem::path converted_root() {
     const config::Config& config = config::current();
-    return config.path("converted").value_or(config.checkout_root() / "Converted");
+    return config.path("converted").value_or(std::filesystem::path());
 }
 
 // ---- the per-user setting ----------------------------------------------------------------------------------------------------------------
@@ -113,7 +113,8 @@ int run_command(std::span<const std::string> args) {
         out_text(
             "usage: codebreaker convert FILE [--to LANG] [--out DIR] [--languages]\n\n"
             "Turn one file back into source code, as the CodeBreaker window does. The stages the file passes through and the share of the\n"
-            "work done are printed; the source goes to Converted/<file name>/ (or DIR), in a folder that did not exist before: a numbered\n"
+            "work done are printed; the source goes next to FILE as <file name>-converted/ (or under the folder the setting converted\n"
+            "names, or to DIR), in a folder that did not exist before: a numbered\n"
             "sibling (name_2, name_3 ...) when it would have. Exit code 0: done; 1: failed; 3: CodeBreaker cannot convert this kind of file.\n\n"
             "FILE may also be source code (.cs, .py ...): --to LANG says which language to translate it to (original, the default, keeps the\n"
             "file's own source and is for programs). The translator is asked which languages it can write for FILE; the translation is built and\n"

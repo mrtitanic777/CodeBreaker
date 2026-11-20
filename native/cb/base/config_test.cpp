@@ -30,7 +30,8 @@ CB_TEST("base.config.defaults_without_a_settings_file", [] {
     CB_CHECK_EQ(cfg.text("not_a_setting"), "");
     CB_CHECK(!cfg.path("openwatcom").has_value());   // no default: not set
     CB_CHECK(cfg.state() == (co.dir.path() / "state").lexically_normal());
-    CB_CHECK(cfg.path("corpus") == (co.dir.path() / "../Windows95/design/corpus/files").lexically_normal());
+    CB_CHECK(!cfg.path("corpus").has_value());        // no target is named by CodeBreaker: the work folder names its corpus
+    CB_CHECK(!cfg.work_folder().has_value());
 });
 
 CB_TEST("base.config.settings_file_values_and_kinds", [] {
@@ -146,4 +147,26 @@ CB_TEST("base.config.find_checkout_honours_the_environment", [] {
     const Checkout co;
     const cb::fs::ScopedEnv e("CB_CHECKOUT_ROOT", cb::fs::to_text(co.dir.path()));
     CB_CHECK(cb::config::find_checkout() == co.dir.path());
+});
+
+CB_TEST("base.config.the_work_folder_names_its_own_layout", [] {
+    const cb::fs::ScopedEnv w("CB_WORK_FOLDER", std::nullopt), c("CB_CORPUS", std::nullopt), t("CB_TARGET", std::nullopt),
+        i("CB_WIN95_SETUP_ISO", std::nullopt), b("CB_WIN95_BOOT", std::nullopt);
+    const Checkout co(R"({"work_folder": "../project", "win95_boot": "boot-here"})");
+    const stdfs::path work = (co.dir.path() / "../project").lexically_normal();
+    cb::fs::make_dirs(work);
+    cb::fs::write_text(work / "codebreaker.json", R"({"target": "win42", "corpus": "design/corpus/files",
+        "win95_setup_iso": "design/media/setup.iso", "win95_boot": "design/boot", "corpora": {"old": "olds"}})");
+    const Config cfg = co.load();
+    CB_CHECK(cfg.work_folder() == work);
+    CB_CHECK(cfg.work_file() == work / "codebreaker.json");
+    CB_CHECK_EQ(cfg.text("target"), "win42");                                       // the work folder's, over the default
+    CB_CHECK(cfg.path("corpus") == work / "design" / "corpus" / "files");           // relative to the work folder
+    CB_CHECK(cfg.path("win95_setup_iso") == work / "design" / "media" / "setup.iso");
+    CB_CHECK(cfg.path("win95_boot") == (co.dir.path() / "boot-here").lexically_normal());   // settings.json wins over it
+    CB_CHECK(cfg.corpora().at("old") == work / "olds");
+    CB_CHECK(cfg.corpora().at("win42") == work / "design" / "corpus" / "files");
+    CB_CHECK(cfg.has_corpora());
+    std::error_code ec;
+    stdfs::remove_all(work, ec);
 });

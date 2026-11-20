@@ -65,6 +65,9 @@ std::string rooted(std::string_view relative);
         if (::cb::testing::windows_only(reason)) return; \
     } while (false)
 std::filesystem::path beside_checkout(std::string_view relative);
+// A file of the configured corpus: CB_CORPUS, else the "corpus" that <checkout>/settings.json's work folder names in its
+// codebreaker.json (relative to it). Empty when none is configured. `work_corpus("setup/media/boot.img")`.
+std::filesystem::path work_corpus(std::string_view relative);
 
 // Captures what the code under test writes to stdout and stderr (through cb::out/cb::err/cb::log or the C
 // runtime's handles) for the life of the object; the originals are restored afterwards.

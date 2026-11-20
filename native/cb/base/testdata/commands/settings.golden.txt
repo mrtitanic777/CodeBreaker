@@ -1,10 +1,11 @@
 settings: <ROOT>/settings.json
   -- build_cache      (not set)
      cache_max_gb     3
-  !! converted        <ROOT>/Converted
+  -- converted        (not set)
      corpora          win95=corp95, win98=corp98
   !! corpus           <ROOT>/corp95
   -- decompiler_bin   (not set)
+  -- design           (not set)
   -- dosbox_x         (not set)
   -- host_cxx         (not set)
   -- ilspycmd         (not set)
@@ -28,7 +29,10 @@ settings: <ROOT>/settings.json
      threads          4
   !! tracer_bin       <ROOT>/state/cxx/cb/bin
   -- visual_studio    (not set)
+  -- win95_boot       (not set)
   -- win95_installed_hd (not set)
+  -- win95_setup_iso  (not set)
+  -- work_folder      (not set)
   -- xbox360_crypto_bin (not set)
   -- xbox360_keys     (not set)
   -- xbox360_sdk      (not set)

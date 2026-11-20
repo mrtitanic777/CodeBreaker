@@ -1,5 +1,5 @@
 {
-  "corpus": "../Windows95/design/corpus/files",
+  "work_folder": "../Windows95",
   "openwatcom": "<path to the OpenWatcom release tree (the folder holding binnt64/)>",
   "target": "win95",
   "corpora": {

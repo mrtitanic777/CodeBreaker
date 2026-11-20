@@ -16,7 +16,6 @@ std::optional<std::filesystem::path> DdkFolders::first_existing(const std::vecto
 DdkFolders DdkFolders::standard(const base::Corpus& corpus, const std::filesystem::path& checkout_parent) {
     DdkFolders ddk;
     ddk.inc = {corpus.reference({"Microsoft Windows 95 DDK", "INC32"}),
-               checkout_parent / "Windows95" / "design" / "reference" / "Microsoft Windows 95 DDK" / "INC32",
                checkout_parent / "docs" / "reference" / "win95ddk" / "INC32",
                checkout_parent / "docs" / "reference" / "loganxp" / "win95ddk" / "INC32"};
     ddk.debug = {corpus.reference({"Microsoft Windows 95 DDK", "DEBUG"}),

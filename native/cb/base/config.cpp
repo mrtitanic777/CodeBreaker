@@ -31,10 +31,8 @@ struct Default {
     std::string_view value;
 };
 constexpr std::array kDefaults{
-    Default{"corpus", "../Windows95/design/corpus/files"},
     Default{"tracer_bin", "state/cxx/cb/bin"},
     Default{"ppc_binutils", "toolchains/binutils-ppc"},
-    Default{"converted", "Converted"},
     Default{"retromcp", "native/cb/java/retromcp/build/libs/retromcp.jar"},
     Default{"state", "state"},
     Default{"threads", ""},
@@ -44,13 +42,13 @@ constexpr std::array kDefaults{
 
 // The settings whose value is a path (relative ones are taken against the checkout): the path keys, plus
 // "reference" (a relative one is taken against the checkout, not the working folder).
-constexpr std::array<std::string_view, 30> kPathSettings{
+constexpr std::array<std::string_view, 34> kPathSettings{
     "corpus",        "openwatcom",   "build_cache",  "decompiler_bin", "tracer_bin",
     "state",         "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x",        "msc6",
     "xenix_c",       "masm",         "msvc152",        "java",             "retromcp",
     "xbox360_sdk",   "host_cxx",     "msbuild",      "java_overlays",  "java_libs",        "visual_studio",
     "ppc_binutils",  "converted",    "xbox360_keys", "xbox360_crypto_bin", "ilspycmd",     "xna_overlays",
-    "win95_installed_hd", "reference"};
+    "win95_installed_hd", "work_folder", "win95_setup_iso", "win95_boot", "design", "reference"};
 
 std::string upper(std::string_view s) {
     std::string out(s);
@@ -90,12 +88,39 @@ bool Config::is_path_setting(std::string_view key) {
     return std::find(kPathSettings.begin(), kPathSettings.end(), key) != kPathSettings.end();
 }
 
-Config Config::load(const stdfs::path& checkout_root) {
-    Config c;
-    c.root_ = checkout_root;
-    const stdfs::path file = checkout_root / "settings.json";
-    std::error_code ec;
-    if (!stdfs::exists(file, ec)) return c;   // no settings.json: the defaults and the environment
+namespace {
+
+// A JSON object's scalar settings into `out` and its "corpora" into `corpora`, the other objects into `objects`
+// (when given). Path settings are made absolute against `base` when `absolute` (the work folder's file).
+void read_settings(const Json& doc, const stdfs::path& base, bool absolute, std::map<std::string, Value, std::less<>>& out,
+                   std::map<std::string, std::string, std::less<>>& corpora, std::map<std::string, std::string, std::less<>>* objects) {
+    auto folder = [&](const std::string& text) {
+        const stdfs::path f = fs::from_text(text);
+        return absolute && f.is_relative() ? fs::to_text((base / f).lexically_normal()) : text;
+    };
+    for (auto it = doc.begin(); it != doc.end(); ++it) {
+        const Json& v = it.value();
+        if (it.key() == "corpora") {
+            if (v.is_object())
+                for (auto ct = v.begin(); ct != v.end(); ++ct)
+                    if (ct.value().is_string()) corpora[ct.key()] = folder(ct.value().get<std::string>());
+            continue;
+        }
+        if (v.is_string()) out[it.key()] = Config::is_path_setting(it.key()) ? folder(v.get<std::string>()) : v.get<std::string>();
+        else if (v.is_boolean()) out[it.key()] = v.get<bool>();
+        else if (v.is_number_integer()) out[it.key()] = v.get<std::int64_t>();
+        else if (v.is_number_float()) out[it.key()] = v.get<double>();
+        else if (v.is_object() && objects) {   // shown by `settings`; read by whoever owns it (kits: exact/toolchain)
+            std::string text;
+            for (auto ot = v.begin(); ot != v.end(); ++ot)
+                text += (text.empty() ? "" : ", ") + ot.key() + "=" + (ot.value().is_string() ? ot.value().get<std::string>() : ot.value().dump());
+            (*objects)[it.key()] = text;
+        }
+        // (null and lists are not settings this reads: left unset)
+    }
+}
+
+Json load_object(const stdfs::path& file) {
     Json doc;
     try {
         doc = json::load(file);
@@ -103,32 +128,38 @@ Config Config::load(const stdfs::path& checkout_root) {
         throw FormatError(fs::to_text(file), 0, e.what());
     }
     if (!doc.is_object()) throw FormatError(fs::to_text(file), 0, "not a JSON object");
-    for (auto it = doc.begin(); it != doc.end(); ++it) {
-        const Json& v = it.value();
-        if (it.key() == "corpora") {
-            if (v.is_object())
-                for (auto ct = v.begin(); ct != v.end(); ++ct)
-                    if (ct.value().is_string()) c.file_corpora_[ct.key()] = ct.value().get<std::string>();
-            continue;
-        }
-        if (v.is_string()) c.file_[it.key()] = v.get<std::string>();
-        else if (v.is_boolean()) c.file_[it.key()] = v.get<bool>();
-        else if (v.is_number_integer()) c.file_[it.key()] = v.get<std::int64_t>();
-        else if (v.is_number_float()) c.file_[it.key()] = v.get<double>();
-        else if (v.is_object()) {   // shown by `settings`; read by whoever owns it (kits: exact/toolchain)
-            std::string text;
-            for (auto ot = v.begin(); ot != v.end(); ++ot)
-                text += (text.empty() ? "" : ", ") + ot.key() + "=" + (ot.value().is_string() ? ot.value().get<std::string>() : ot.value().dump());
-            c.file_objects_[it.key()] = text;
-        }
-        // (null and lists are not settings this reads: left unset)
-    }
+    return doc;
+}
+
+}  // namespace
+
+std::optional<stdfs::path> Config::work_file() const {
+    const auto folder = work_folder();
+    if (!folder) return std::nullopt;
+    return *folder / "codebreaker.json";
+}
+
+void Config::load_work_folder() {
+    const auto file = work_file();
+    std::error_code ec;
+    if (!file || !stdfs::is_regular_file(*file, ec)) return;   // no work folder, or one without a file: nothing it says
+    read_settings(load_object(*file), file->parent_path(), true, work_, work_corpora_, nullptr);
+}
+
+Config Config::load(const stdfs::path& checkout_root) {
+    Config c;
+    c.root_ = checkout_root;
+    const stdfs::path file = checkout_root / "settings.json";
+    std::error_code ec;
+    if (stdfs::exists(file, ec)) read_settings(load_object(file), checkout_root, false, c.file_, c.file_corpora_, &c.file_objects_);
+    c.load_work_folder();
     return c;
 }
 
 Value Config::value(std::string_view key) const {
     if (auto env = fs::get_env("CB_" + upper(key)); env && !env->empty()) return *env;
     if (auto it = file_.find(key); it != file_.end()) return it->second;
+    if (auto it = work_.find(key); it != work_.end()) return it->second;
     for (const Default& d : kDefaults)
         if (d.key == key) return std::string(d.value);
     return std::monostate{};
@@ -183,7 +214,8 @@ bool Config::truthy(std::string_view key) const {
 std::vector<std::string> Config::keys() const {
     std::set<std::string> all;
     for (const auto& [key, v] : file_) all.insert(key);
-    if (!file_corpora_.empty()) all.insert("corpora");
+    for (const auto& [key, v] : work_) all.insert(key);
+    if (!file_corpora_.empty() || !work_corpora_.empty()) all.insert("corpora");
     for (const auto& [key, v] : file_objects_) all.insert(key);
     for (const Default& d : kDefaults) all.insert(std::string(d.key));
     for (std::string_view key : kPathSettings)
@@ -212,6 +244,7 @@ stdfs::path Config::state(const stdfs::path& inside) const {
 
 std::map<std::string, stdfs::path> Config::corpora() const {
     std::map<std::string, stdfs::path> out;
+    for (const auto& [name, folder] : work_corpora_) out[name] = fs::from_text(folder).lexically_normal();
     for (const auto& [name, folder] : file_corpora_) {
         stdfs::path f = fs::from_text(folder);
         out[name] = (f.is_relative() ? root_ / f : f).lexically_normal();
@@ -225,6 +258,7 @@ std::map<std::string, stdfs::path> Config::corpora() const {
 cb::base::Products Config::products() const {
     cb::base::Products p;
     p.checkout_root = root_;
+    for (const auto& [name, folder] : work_corpora_) p.listed[name] = fs::from_text(folder).lexically_normal();
     for (const auto& [name, folder] : file_corpora_) {
         stdfs::path f = fs::from_text(folder);
         p.listed[name] = (f.is_relative() ? root_ / f : f).lexically_normal();
@@ -233,6 +267,7 @@ cb::base::Products Config::products() const {
     p.target_folder = path("corpus").value_or(stdfs::path{});
     p.state = state();
     p.reference = path("reference");
+    p.design = path("design");
     return p;
 }
 

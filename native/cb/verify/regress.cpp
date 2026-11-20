@@ -364,12 +364,15 @@ private:
 Services production_services(const config::Config& config) {
     Services s;
     const stdfs::path state = config.state();
+    // The Win95 boot files (the prepared disk, MINI.CAB and its originals, the boot floppy, Setup's originals, the runs):
+    // the work folder's (setting win95_boot), else the state folder.
+    const stdfs::path boot = config.path("win95_boot").value_or(state);
     const stdfs::path qemu = config.path("qemu").value_or(stdfs::path("C:/Program Files/qemu/qemu-system-i386.exe"));
     const std::optional<stdfs::path> iso = config.path("win95_setup_iso");
     s.work = state / "work" / "regress";
     s.lock_dir = s.work / "locks";
-    s.mini_original = state / "mini" / "original";
-    s.setup_original = state / "setup" / "original";
+    s.mini_original = boot / "mini" / "original";
+    s.setup_original = boot / "setup" / "original";
     auto kit = std::make_shared<engine::LaneKit>(config);
 
     s.build = [kit](const std::vector<std::string>& names, const stdfs::path& originals, const stdfs::path& outdir, bool all_assembly) {
@@ -422,7 +425,7 @@ Services production_services(const config::Config& config) {
     const std::string accel = config.text("qemu_accel");
     const bool unsafe_disk = config.truthy("qemu_unsafe_disk");
     const auto machine_config = [=]() {
-        setup16::Config machine = setup16::Config::in_state(state, qemu, iso.value_or(stdfs::path()));
+        setup16::Config machine = setup16::Config::in_state(boot, qemu, iso.value_or(stdfs::path()));
         machine.accel = accel;
         machine.unsafe_disk = unsafe_disk;
         return machine;
@@ -445,7 +448,7 @@ Services production_services(const config::Config& config) {
     s.passed_dir = state / "work" / "regress" / "passed";
     // The key of a tier's inputs: the bytes of every built image, of this program and of the fix disk; size and write time of the big fixed files
     // (the disk, the Setup CD, the floppies, MINI.CAB, the originals, the emulator); and the settings that change the machine or how it is driven.
-    s.inputs_key = [state, qemu, iso, fix95cpu, accel, unsafe_disk, recognise, preapply](Tier tier, const setup16::Replace& replace) {
+    s.inputs_key = [state, boot, qemu, iso, fix95cpu, accel, unsafe_disk, recognise, preapply](Tier tier, const setup16::Replace& replace) {
         std::string text = std::format("v1 {} accel={} unsafe_disk={} recognise={}\n", word(tier), accel, unsafe_disk, tier == Tier::Install && recognise);
         std::error_code ec;
         const auto content = [&](const stdfs::path& p) {
@@ -466,10 +469,10 @@ Services production_services(const config::Config& config) {
         stdfs::path x86_64 = qemu;
         x86_64.replace_filename(text::replace_all(fs::to_text(qemu.filename()), "i386", "x86_64"));
         if (accel.starts_with("whpx")) text += std::format("qemu64 {}\n", stat(x86_64));
-        text += std::format("iso {}\ndisk {}\ncab {}\nfloppy {}\n", stat(iso.value_or(stdfs::path())), stat(state / "mini" / "prepared_hd.img"),
-                            stat(state / "mini" / "MINI.CAB"), stat(state / "bootfloppy" / "boot95_is.img"));
+        text += std::format("iso {}\ndisk {}\ncab {}\nfloppy {}\n", stat(iso.value_or(stdfs::path())), stat(boot / "mini" / "prepared_hd.img"),
+                            stat(boot / "mini" / "MINI.CAB"), stat(boot / "bootfloppy" / "boot95_is.img"));
         if (tier == Tier::Install) text += std::format("fix95cpu {} preapply={}\n", content(fix95cpu), preapply);
-        for (const stdfs::path& dir : {state / "mini" / "original", state / "setup" / "original"}) {
+        for (const stdfs::path& dir : {boot / "mini" / "original", boot / "setup" / "original"}) {
             std::vector<stdfs::path> files;
             for (stdfs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
                 if (it->is_regular_file(ec)) files.push_back(it->path());
@@ -491,7 +494,7 @@ Services production_services(const config::Config& config) {
         return ec ? 0.0 : static_cast<double>(info.available) / (1024.0 * 1024.0 * 1024.0);
     };
 
-    s.missing = [qemu, iso, state, fix95cpu](Tier tier) {
+    s.missing = [qemu, iso, state, boot, fix95cpu](Tier tier) {
         std::vector<std::string> lacks;
         std::error_code ec;
         const auto need = [&](const stdfs::path& p, const char* what) {
@@ -500,13 +503,13 @@ Services production_services(const config::Config& config) {
         if (tier == Tier::Slow) return lacks;
         need(qemu, "qemu (setting qemu)");
         need(iso.value_or(stdfs::path()), "the Windows 95 Setup CD (setting win95_setup_iso)");
-        need(state / "mini" / "prepared_hd.img", "the prepared disk");
-        need(state / "mini" / "MINI.CAB", "MINI.CAB");
-        need(state / "bootfloppy" / "boot95_is.img", "the boot floppy");
-        for (const std::string& n : all15_names()) need(state / "mini" / "original" / n, "an original of MINI.CAB");
+        need(boot / "mini" / "prepared_hd.img", "the prepared disk");
+        need(boot / "mini" / "MINI.CAB", "MINI.CAB");
+        need(boot / "bootfloppy" / "boot95_is.img", "the boot floppy");
+        for (const std::string& n : all15_names()) need(boot / "mini" / "original" / n, "an original of MINI.CAB");
         if (tier == Tier::Install) need(fix95cpu, "FIX95CPU's disk, FIX95CPU.IMA of the Windows 95 design folder");
         if (tier == Tier::Setup || tier == Tier::Install)
-            for (const std::string& n : setup_names()) need(state / "setup" / "original" / n, "an original of Setup's programs");
+            for (const std::string& n : setup_names()) need(boot / "setup" / "original" / n, "an original of Setup's programs");
         return lacks;
     };
 

@@ -18,7 +18,7 @@ struct DdkFolders {
     std::vector<std::filesystem::path> inc;     // where INC32 (VMM.INC and the other includes) may be, best first
     std::vector<std::filesystem::path> debug;   // where the DDK's DEBUG folder (the .SYM files) may be, best first
 
-    // The reference folder's DDK, the sibling Windows95 repository's, and the folders the DDK was once unpacked to
+    // The reference folder's DDK (setting "reference": the work folder's), and the folders the DDK was once unpacked to
     // under `checkout_parent` (the folder the CodeBreaker checkout is in).
     static DdkFolders standard(const base::Corpus& corpus, const std::filesystem::path& checkout_parent);
 

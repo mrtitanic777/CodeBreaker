@@ -197,16 +197,16 @@ struct Production::Impl {
             return std::nullopt;
         }
     }
-    // The Windows 95 DDK (INC32, MSVC20, MASM611C, INC16): the reference folder's, else the sibling repository's.
+    // The Windows 95 DDK (INC32, MSVC20, MASM611C, INC16): the reference folder's (setting "reference", the work folder's).
     stdfs::path ddk_root() const {
         std::vector<stdfs::path> candidates;
         try {
             candidates.push_back(corpus->reference({"Microsoft Windows 95 DDK"}));
         } catch (const Error&) {
         }
-        candidates.push_back(config.main_checkout().parent_path() / "Windows95" / "design" / "reference" / "Microsoft Windows 95 DDK");
         for (const stdfs::path& c : candidates)
             if (commands_is_dir(c)) return c;
+        if (candidates.empty()) throw UsageError("no Windows 95 DDK: the work folder's codebreaker.json names no \"reference\"");
         return candidates.front();
     }
 
@@ -480,7 +480,7 @@ cli::Command Production::boot_floppy() const {
     build::floppy::Environment env;
     env.corpus_root = impl_->corpus->root();
     env.design_dir = impl_->design_dir().value_or(stdfs::path());
-    env.state = impl_->state();
+    env.state = impl_->config.path("win95_boot").value_or(impl_->state());   // (the work folder's boot files: bootfloppy/)
     env.writer = impl_->dos_options();
     return build::floppy::command(env);
 }

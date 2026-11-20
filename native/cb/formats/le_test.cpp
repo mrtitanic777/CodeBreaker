@@ -22,8 +22,8 @@ namespace {
 Bytes testdata(const char* name) { return fs::read_file(testing::data_path(std::string("formats/testdata/") + name)); }
 
 std::optional<Bytes> corpus_file(const char* relative) {
-    const std::filesystem::path p = cb::testing::beside_checkout("Windows95/design/corpus/files") / relative;
-    if (!std::filesystem::exists(p)) return std::nullopt;
+    const std::filesystem::path p = cb::testing::work_corpus(relative);
+    if (p.empty() || !std::filesystem::exists(p)) return std::nullopt;
     return fs::read_file(p);
 }
 

@@ -370,7 +370,12 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
                     const stdfs::path parent = request.out_dir->parent_path().empty() ? stdfs::path(".") : request.out_dir->parent_path();
                     out = unique_output_folder(parent, request.out_dir->filename().string());
                 } else {
-                    out = unique_output_folder(request.converted_root, request.input.stem().string() + plan.folder_suffix);
+                    if (request.converted_root.empty()) {   // (no "converted" setting: next to the input, <name>-converted)
+                        const stdfs::path beside = request.input.parent_path().empty() ? stdfs::path(".") : request.input.parent_path();
+                        out = unique_output_folder(beside, request.input.stem().string() + plan.folder_suffix + "-converted");
+                    } else {
+                        out = unique_output_folder(request.converted_root, request.input.stem().string() + plan.folder_suffix);
+                    }
                 }
                 staging = out;
                 staging += ".partial";

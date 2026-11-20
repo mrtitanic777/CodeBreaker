@@ -53,9 +53,10 @@ struct Products {
     std::string target;                                   // the product used when none is selected ("win95")
     std::filesystem::path target_folder;                  // setting "corpus": the target's folder when `listed` lacks it
     std::map<std::string, std::filesystem::path> listed;  // setting "corpora": {name: folder of original binaries}
-    std::filesystem::path checkout_root;                  // the CodeBreaker checkout (the sibling Windows95 repo is beside it)
+    std::filesystem::path checkout_root;                  // the CodeBreaker checkout
     std::filesystem::path state;                          // the state folder
     std::optional<std::filesystem::path> reference;       // setting "reference": the period SDK and DDK folders
+    std::optional<std::filesystem::path> design;          // setting "design": the target's folder of everything but its source
     friend bool operator==(const Products&, const Products&) = default;
 };
 

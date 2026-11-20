@@ -9,7 +9,8 @@
 //   --exe      the program (default: <repo>/state/cxx/codebreaker/build/codebreaker.exe)
 //   --repo     where inputs and cases live (default: the folder above native/, found from the current directory)
 //   --cases    default <repo>/tests/exe_gate/cases.txt        --golden  default <repo>/tests/exe_gate/golden
-//   --corpus   the Win95 corpus files (default: the CB_CORPUS environment variable, else ../Windows95/design/corpus/files);
+//   --corpus   the corpus files (default: the CB_CORPUS environment variable, else the "corpus" of the work folder that
+//              <repo>/settings.json names: its codebreaker.json, relative to it);
 //              cases that need it are skipped, and counted as skipped, when it is not there
 //   --jobs     cases run side by side (default: min(cores - 2, 12) when the machine is otherwise idle, else 4, the cap for a shared machine;
 //              the CB_GATE_JOBS environment variable also sets it)
@@ -64,10 +65,40 @@
 #include "cb/core/text.hpp"
 #include "cb/core/win.hpp"
 
+#include <nlohmann/json.hpp>
+
 namespace {
 
 namespace stdfs = std::filesystem;
 using namespace cb;
+
+std::string env_var(const char* name);
+
+// The corpus the checkout's configuration names: settings.json's "corpus", else its work folder's codebreaker.json's
+// (relative to that folder). Empty when neither names one.
+stdfs::path configured_corpus(const stdfs::path& repo) {
+    auto read = [](const stdfs::path& file) {
+        nlohmann::json doc;
+        try {
+            if (stdfs::is_regular_file(file)) doc = nlohmann::json::parse(fs::read_text(file));
+        } catch (...) {
+        }
+        return doc.is_object() ? doc : nlohmann::json::object();
+    };
+    auto relative_to = [](const stdfs::path& base, const std::string& text) {
+        const stdfs::path p = fs::from_text(text);
+        return (p.is_relative() ? base / p : p).lexically_normal();
+    };
+    const nlohmann::json settings = read(repo / "settings.json");
+    if (settings.contains("corpus") && settings["corpus"].is_string()) return relative_to(repo, settings["corpus"].get<std::string>());
+    std::string folder = env_var("CB_WORK_FOLDER");
+    if (folder.empty() && settings.contains("work_folder") && settings["work_folder"].is_string()) folder = settings["work_folder"].get<std::string>();
+    if (folder.empty()) return {};
+    const stdfs::path work = relative_to(repo, folder);
+    const nlohmann::json own = read(work / "codebreaker.json");
+    if (own.contains("corpus") && own["corpus"].is_string()) return relative_to(work, own["corpus"].get<std::string>());
+    return {};
+}
 
 using Vars = std::vector<std::pair<std::string, std::string>>;   // `name = value` lines of the cases file: {name} in words
 
@@ -507,9 +538,7 @@ int main(int argc, char** argv) {
         env.exe_root = exe_root ? stdfs::absolute(*exe_root).lexically_normal() : root_of_exe(env.exe);
         if (corpus) env.corpus = *corpus;
         else if (const std::string c = env_var("CB_CORPUS"); !c.empty()) env.corpus = c;
-        else env.corpus = env.repo.parent_path() / "Windows95" / "design" / "corpus" / "files";
-        if (!corpus && env_var("CB_CORPUS").empty() && !stdfs::exists(env.corpus))   // from a worktree: beside the main checkout
-            env.corpus = env.repo.parent_path().parent_path().parent_path().parent_path() / "Windows95" / "design" / "corpus" / "files";
+        else env.corpus = configured_corpus(env.repo);
         env.have_corpus = stdfs::exists(env.corpus);
         env.games = env_var("CB_GAMES").empty() ? stdfs::path("C:/Nexia360/Games") : stdfs::path(env_var("CB_GAMES"));
         env.have_games = stdfs::exists(env.games);

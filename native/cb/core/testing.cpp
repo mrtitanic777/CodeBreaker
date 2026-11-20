@@ -15,6 +15,8 @@
 #include <mutex>
 #include <set>
 
+#include <nlohmann/json.hpp>
+
 #ifndef CB_SOURCE_DIR
 #define CB_SOURCE_DIR "."
 #endif
@@ -120,6 +122,45 @@ std::filesystem::path local_input(std::string_view relative) {
 std::filesystem::path beside_checkout(std::string_view relative) {
     const std::filesystem::path parent = std::filesystem::path(CB_SOURCE_DIR).parent_path().parent_path();
     return (parent / fs::from_text(relative)).lexically_normal();
+}
+
+std::filesystem::path work_corpus(std::string_view relative) {
+    namespace stdfs = std::filesystem;
+    auto read = [](const stdfs::path& file) {
+        nlohmann::json doc;
+        try {
+            std::error_code ec;
+            if (stdfs::is_regular_file(file, ec)) doc = nlohmann::json::parse(fs::read_text(file));
+        } catch (...) {
+        }
+        return doc.is_object() ? doc : nlohmann::json::object();
+    };
+    auto text_of = [](const nlohmann::json& doc, const char* key) {
+        return doc.contains(key) && doc[key].is_string() ? doc[key].get<std::string>() : std::string();
+    };
+    auto against = [](const stdfs::path& base, const std::string& text) {
+        const stdfs::path p = fs::from_text(text);
+        return (p.is_relative() ? base / p : p).lexically_normal();
+    };
+    stdfs::path corpus;
+    if (const auto env = fs::get_env("CB_CORPUS"); env && !env->empty()) {
+        corpus = fs::from_text(*env);
+    } else {
+        const stdfs::path checkout = stdfs::path(CB_SOURCE_DIR).parent_path();
+        const nlohmann::json settings = read(checkout / "settings.json");
+        if (const std::string c = text_of(settings, "corpus"); !c.empty()) {
+            corpus = against(checkout, c);
+        } else {
+            std::string folder = fs::get_env("CB_WORK_FOLDER").value_or("");
+            if (folder.empty()) folder = text_of(settings, "work_folder");
+            if (folder.empty()) return {};
+            const stdfs::path work = against(checkout, folder);
+            const std::string own = text_of(read(work / "codebreaker.json"), "corpus");
+            if (own.empty()) return {};
+            corpus = against(work, own);
+        }
+    }
+    return (corpus / fs::from_text(relative)).lexically_normal();
 }
 
 std::string rooted(std::string_view relative) {

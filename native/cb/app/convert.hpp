@@ -161,7 +161,7 @@ double default_weight(State stage);
 struct Request {
     std::filesystem::path input;
     std::optional<std::filesystem::path> out_dir;      // where the source goes; default <converted_root>/<file stem>
-    std::filesystem::path converted_root;              // the Converted folder
+    std::filesystem::path converted_root;              // the "converted" setting's folder; empty: next to the input, <file stem>-converted
 };
 
 struct Outcome {
@@ -186,7 +186,7 @@ std::filesystem::path unique_output_folder(const std::filesystem::path& root, st
 // "a PNG image" from "PNG image": the right article before a format's name.
 std::string with_article(std::string_view what);
 
-// The Converted folder of the checkout (setting "converted").
+// The folder setting "converted" names; empty when it is not set (convert then writes next to the input file).
 std::filesystem::path converted_root();
 
 // `codebreaker convert FILE [--to LANG] [--out DIR]`: the words after `convert`; the exit code (0 done, 1 failed, 2 usage, 3 unsupported, 130 cancelled).

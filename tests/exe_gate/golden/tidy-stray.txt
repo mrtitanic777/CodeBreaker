@@ -3,6 +3,5 @@ exit: 0
 state/ (<work>/state): 1.1 MB
   driver_kit                       0.9 MB
   db                               0.3 MB
-<~>
 --- files
 --- stderr (not compared)

@@ -121,7 +121,7 @@ CB_TEST("source.vxd.symbols.ddk_folders", [] {
     products.reference = tmp.path() / "ref";
     const cb::base::Corpus corpus(products);
     const vxd::DdkFolders folders = vxd::DdkFolders::standard(corpus, tmp.path());
-    CB_CHECK_EQ(folders.inc.size(), std::size_t{4});
+    CB_CHECK_EQ(folders.inc.size(), std::size_t{3});
     CB_CHECK_EQ(folders.debug.size(), std::size_t{2});
     CB_CHECK(folders.inc[0] == tmp.path() / "ref" / "Microsoft Windows 95 DDK" / "INC32");
     CB_CHECK(vxd::DdkFolders::first_existing(folders.inc) == folders.inc[0]);   // the reference folder's is the one there

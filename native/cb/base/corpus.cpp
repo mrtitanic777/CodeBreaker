@@ -176,11 +176,10 @@ stdfs::path Corpus::root(const std::optional<std::string>& name_) const {
         throw UsageError("no corpus '" + name + "' (the configuration lists: " + known + ")");
     }
     if (auto env = non_empty_env("CB_CORPUS_ROOT"); env && is_dir(fs::from_text(*env))) return fs::from_text(*env);
-    const stdfs::path sibling =
-        products_.checkout_root.parent_path() / "Windows95" / "design" / "corpus" / "files";
-    if (is_dir(sibling)) return sibling;
+    if (const auto it = products_.listed.find(products_.target); it != products_.listed.end()) return it->second;
+    if (!products_.target_folder.empty()) return products_.target_folder;   // setting "corpus" (the work folder's)
     if (auto env = non_empty_env("WT_DATA_ROOT"); env && is_dir(fs::from_text(*env))) return fs::from_text(*env);
-    return sibling;   // a sensible path to report when nothing exists
+    return {};   // none configured: no work folder names a corpus (callers find nothing there)
 }
 
 stdfs::path Corpus::design_dir() const {
@@ -191,6 +190,7 @@ stdfs::path Corpus::design_dir() const {
     }
     if (name.empty()) name = non_empty_env(kEnvName).value_or("");
     if (!name.empty() && name != products_.target) return products_.state / "products" / name / "design";
+    if (products_.design && !products_.design->empty()) return *products_.design;
     return root().parent_path().parent_path();
 }
 
@@ -205,7 +205,12 @@ std::optional<std::string> Corpus::owner(const stdfs::path& path) const {
     const std::string wanted = normal_text(path);
     std::optional<std::pair<std::string, std::size_t>> best;
     for (const std::string& name : names()) {
-        const std::string folder = normal_text(root(name));
+        std::string folder;
+        try {
+            folder = normal_text(root(name));
+        } catch (const UsageError&) {
+            continue;   // (a product with no folder configured owns nothing)
+        }
         if (wanted.starts_with(folder + "/") && (!best || folder.size() > best->second)) best = {name, folder.size()};
     }
     return best ? std::optional<std::string>(best->first) : std::nullopt;

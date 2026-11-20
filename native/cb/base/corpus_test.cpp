@@ -247,22 +247,24 @@ CB_TEST("base.corpus.the_corpus_option_is_taken_out_of_a_command_line", [] {
 CB_TEST("base.corpus.root_of_the_default_product", [] {
     Tree t;
     Products p = t.products();
-    Corpus c(p, t.probes());
+    p.target_folder.clear();
+    Corpus none(p, t.probes());
     t.root_env.reset();   // (the other tests find their folder through it)
-    // nothing exists: the sibling Windows95 repo's corpus is reported
-    const stdfs::path sibling = t.dir.path() / "Windows95" / "design" / "corpus" / "files";
-    CB_CHECK(c.root() == sibling);
+    // nothing configured (no work folder names a corpus): no folder, and no sibling repository is guessed
+    CB_CHECK(none.root().empty());
+    const stdfs::path configured = t.dir.path() / "work" / "design" / "corpus" / "files";
+    p.target_folder = configured;
+    Corpus c(p, t.probes());
     {
         fs::ScopedTempDir data("cbdata");
         fs::ScopedEnv env("WT_DATA_ROOT", fs::to_text(data.path()));
-        CB_CHECK(c.root() == data.path());
-        fs::make_dirs(sibling);   // the sibling repo wins over WT_DATA_ROOT
-        CB_CHECK(c.root() == sibling);
+        CB_CHECK(none.root() == data.path());
+        CB_CHECK(c.root() == configured);   // the configured corpus wins over WT_DATA_ROOT
         fs::ScopedTempDir mine("cbmine");
         fs::ScopedEnv explicit_root("CB_CORPUS_ROOT", fs::to_text(mine.path()));   // and CB_CORPUS_ROOT over both
         CB_CHECK(c.root() == mine.path());
         fs::ScopedEnv not_a_dir("CB_CORPUS_ROOT", fs::to_text(mine.path() / "nope"));   // a name that is no folder is ignored
-        CB_CHECK(c.root() == sibling);
+        CB_CHECK(c.root() == configured);
     }
     CB_CHECK(!c.names().empty());
 });
@@ -274,7 +276,12 @@ CB_TEST("base.corpus.design_dir_reference_and_owner", [] {
     Products p = t.products();
     p.listed["win95"] = t.dir.path() / "Windows95" / "design" / "corpus" / "files";
     Corpus c(p, t.probes());
-    CB_CHECK(c.design_dir() == t.dir.path() / "Windows95" / "design");
+    CB_CHECK(c.design_dir() == t.dir.path() / "Windows95" / "design");   // (the corpus's design/, when no "design" is set)
+    {
+        Products q = p;
+        q.design = t.dir.path() / "elsewhere";
+        CB_CHECK(Corpus(q, t.probes()).design_dir() == t.dir.path() / "elsewhere");
+    }
     CB_CHECK(c.reference({"Microsoft Windows 95 DDK", "INC32"}) ==
              t.dir.path() / "Windows95" / "design" / "reference" / "Microsoft Windows 95 DDK" / "INC32");
     p.reference = t.dir.path() / "refs";

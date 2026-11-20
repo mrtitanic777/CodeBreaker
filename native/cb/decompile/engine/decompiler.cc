@@ -2555,6 +2555,7 @@ int main(int argc, char** argv) {
       for (++i; i < argc && argv[i][0] != '-'; ++i) d.only.insert(strtoull(argv[i], nullptr, 16));
   d.x86_32 = d.arch.rfind("x86:LE:32", 0) == 0;
   d.flat = d.arch.rfind("x86:LE:16", 0) != 0;      // (PowerPC's L2 too: flat pointers, a function by its address)
+  print_near_pointers16 = d.arch.find(":16:Real Mode") != std::string::npos;   // (a DOS program: its near pointers say so)
   if (const char* sv = std::getenv("CB_STRUCTS")) g_structs = std::atoi(sv) != 0;
   if (const char* lv = std::getenv("CB_L2")) g_l2 = std::atoi(lv) != 0;
   if (const char* fv = std::getenv("CB_FRAME16")) g_frame16 = std::atoi(fv) != 0;
