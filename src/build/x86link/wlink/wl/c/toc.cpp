@@ -31,7 +31,7 @@
 ****************************************************************************/
 
 
-#include <string.h>
+#include <cstring>
 #include "linkstd.h"
 #include "toc.h"
 #include "hash.h"
@@ -43,74 +43,182 @@
 #include "specials.h"
 #include "objpass1.h"
 #include "objstrip.h"
+#include "run_state.hpp"
 
 
-#define BOGUS  0xa5a5a5a5
-
-static pHTable  Toc;
-static char *   TocName;
-static symbol * TocSym;
+constexpr offset kBogus = 0xa5a5a5a5;
 
 offset TocSize;
 offset TocShift;
 
-typedef struct {
-    segdata *sdata;    // If sdata == NULL, use sym to get address
-                       // else use off and sdata->addr get address
-    union {
-        offset off;  // relative to sdata->addr
-        symbol *sym;
-    } u;
-} TocEntryId;
+namespace {
 
-typedef struct {
-    TocEntryId e;
-    int pos;
-} TocEntry;
+struct TocEntryId {
+    segdata *sdata;     // If sdata == nullptr, use sym to get address
+                        // else use off and sdata->addr get address
+    union {
+        symbol *sym;
+        offset off;     // relative to sdata->addr
+    } u;
+};
+
+struct TocEntry {
+    TocEntryId  e;
+    int         pos;
+};
+
+struct TocState {
+    pHTable         Toc;
+    const char      *TocName;
+    symbol          *TocSym;
+};
+
+TocState& state()
+{
+    return cb_wlink::RunState::part<TocState>();
+}
+
+// An id with every byte defined (the whole union), so the hash and the comparison of its bytes agree.
+TocEntryId make_id( segdata *sdata, symbol *sym )
+{
+    TocEntryId e{};
+    e.sdata = sdata;
+    e.u.sym = sym;
+    return e;
+}
+
+TocEntryId make_id( segdata *sdata, offset off )
+{
+    TocEntryId e{};
+    e.sdata = sdata;
+    e.u.off = off;
+    return e;
+}
+
+unsigned TocEntryHashFunc( void *_e, unsigned size )
+{
+    TocEntry *e = static_cast<TocEntry *>(_e);
+    return DataHashFunc( &e->e, sizeof( e->e ), size );
+}
+
+int TocEntryCmp( const void *_e1, const void *_e2 )
+{
+    const TocEntry *e1 = static_cast<const TocEntry *>(_e1);
+    const TocEntry *e2 = static_cast<const TocEntry *>(_e2);
+    return std::memcmp( &e1->e, &e2->e, sizeof( e1->e ) );
+}
+
+void AddToToc( const TocEntryId &e )
+{
+    TocState &st = state();
+    TocEntry searchEntry{};
+
+    searchEntry.e = e;
+
+    if( FindHTableElem( st.Toc, &searchEntry ) == nullptr ) {
+        TocEntry *entry = static_cast<TocEntry *>(MemAllocSafe( sizeof( *entry ) ));
+        *entry = TocEntry{};
+        entry->e = e;
+        entry->pos = static_cast<int>( TocSize );
+        TocSize += sizeof( offset );
+        AddHTableElem( st.Toc, entry );
+    }
+}
+
+void ConvertTocEntryId( TocEntryId *e )
+{
+    if( e->sdata != nullptr ) {
+        // do nothing: already in sdata/offset form
+    } else {
+        symbol *sym = e->u.sym;
+        segdata *seg = sym->p.seg;
+
+        if( IS_SYM_IMPORTED( sym )
+          || seg == nullptr ) {
+            // do not convert; keep symbol around
+        } else {
+            e->sdata = seg;
+            e->u = {};
+            e->u.off = sym->addr.off - seg->a.delta -
+                       seg->u.leader->seg_addr.off;
+        }
+    }
+}
+
+void ConvertTocEntry( void *e )
+{
+    ConvertTocEntryId( &static_cast<TocEntry *>(e)->e );
+}
+
+offset OffFromToc( offset off )
+{
+    offset toff = off - TocShift;
+    if( static_cast<signed_16>( toff ) != static_cast<signed_32>( toff ) ) {
+        LnkMsg( ERR+MSG_TOC_TOO_BIG, nullptr );
+    }
+    return toff;
+}
+
+offset FindEntryPosInToc( const TocEntryId &e )
+{
+    TocEntry searchEntry{};
+    searchEntry.e = e;
+    TocEntry *entry = static_cast<TocEntry *>(FindHTableElem( state().Toc, &searchEntry ));
+    if( entry != nullptr ) {
+        return OffFromToc( static_cast<offset>( entry->pos ) );
+    }
+    return kBogus; // return bogus position; likely to cause alignment exception
+}
+
+void WriteOutTokElem( void *_elem, void *buf )
+{
+    TocEntry   *elem = static_cast<TocEntry *>(_elem);
+    offset      addr;
+
+    if( elem->e.sdata != nullptr ) {
+        segdata *sdata = elem->e.sdata;
+        seg_leader *leader = sdata->u.leader;
+        addr = elem->e.u.off + sdata->a.delta + leader->group->linear
+                        + leader->seg_addr.off +  FmtData.base;
+    } else {
+        addr = SymbolAbsAddr( elem->e.u.sym );
+    }
+    DbgAssert( elem->pos >= 0 );
+    PutInfo( (*static_cast<virt_mem *>(buf)) + elem->pos, &addr, sizeof( addr ) );
+}
+
+}  // namespace
 
 
 void ResetToc( void )
 /**************************/
 {
-    Toc = NULL;
+    TocState &st = state();
+    st.Toc = nullptr;
     TocSize = 0;
-    TocName = NULL;
-    TocSym = NULL;
+    st.TocName = nullptr;
+    st.TocSym = nullptr;
 }
 
 void CleanToc( void )
 /**************************/
 {
-    ZapHTable( Toc, MemFree );
-}
-
-static unsigned TocEntryHashFunc( void *_e, unsigned size )
-/*********************************************************/
-{
-    TocEntry *e = (TocEntry *)(_e);
-    return( DataHashFunc( &e->e, sizeof( e->e ), size ) );
-}
-
-static int TocEntryCmp( const void *_e1, const void *_e2 )
-/********************************************************/
-{
-    const TocEntry *e1 = (const TocEntry *)(_e1);
-    const TocEntry *e2 = (const TocEntry *)(_e2);
-    return( memcmp( &e1->e, &e2->e, sizeof( e1->e ) ) );
+    ZapHTable( state().Toc, MemFree );
 }
 
 void InitToc( void )
 /***********************/
 {
-    Toc = CreateHTable( 1024, TocEntryHashFunc, TocEntryCmp, MemAllocSafe, MemFree );
+    TocState &st = state();
+    st.Toc = CreateHTable( 1024, TocEntryHashFunc, TocEntryCmp, MemAllocSafe, MemFree );
     TocSize = 0;
     if( (LinkState & LS_HAVE_PPC_CODE)
       && (FmtData.type & MK_PE) ) {
-        TocName = TocSymName;
+        st.TocName = TocSymName;
         TocShift = 0x8000;
     } else {
-        TocName = GotSymName;
-        TocShift = BOGUS;
+        st.TocName = GotSymName;
+        TocShift = kBogus;
         // It is an error to use TocShift until PrepareToc is called
     }
 }
@@ -118,10 +226,11 @@ void InitToc( void )
 void CheckIfTocSym( symbol *sym )
 /**************************************/
 {
-    if( TocName != NULL
-      && TocSym == NULL ) {
-        if( strcmp( sym->name.u.ptr, TocName ) == 0 ) {
-            TocSym = sym;
+    TocState &st = state();
+    if( st.TocName != nullptr
+      && st.TocSym == nullptr ) {
+        if( std::strcmp( sym->name.u.ptr, st.TocName ) == 0 ) {
+            st.TocSym = sym;
         }
     }
 }
@@ -129,111 +238,36 @@ void CheckIfTocSym( symbol *sym )
 bool IsTocSym( symbol *sym )
 /*********************************/
 {
-    return( TocSym == sym );
-}
-
-static void AddToToc( TocEntryId *e )
-/***********************************/
-{
-    TocEntry    searchEntry;
-    TocEntry *  entry;
-
-    searchEntry.e = *e;
-
-    if( FindHTableElem( Toc, &searchEntry ) == NULL ) {
-        entry = (TocEntry *)(MemAllocSafe( sizeof( *entry ) ));
-        entry->e = *e;
-        entry->pos = TocSize;
-        TocSize += sizeof( offset );
-        AddHTableElem( Toc, entry );
-    }
+    return state().TocSym == sym;
 }
 
 void AddSymToToc( symbol *sym )
 /************************************/
 {
-    TocEntryId e;
-
-    e.sdata = NULL;
-    e.u.sym = sym;
-    AddToToc( &e );
+    AddToToc( make_id( nullptr, sym ) );
 }
 
 void AddSdataOffToToc( segdata *sdata, offset off )
 /********************************************************/
 {
-    TocEntryId e;
-
-    DbgAssert( sdata != NULL );
-    e.sdata = sdata;
-    e.u.off = off;
-    AddToToc( &e );
+    DbgAssert( sdata != nullptr );
+    AddToToc( make_id( sdata, off ) );
 }
-
-
-static void ConvertTocEntryId( TocEntryId *e )
-/********************************************/
-{
-    if( e->sdata != NULL ) {
-        // do nothing: already in sdata/offset form
-    } else {
-        symbol *sym = e->u.sym;
-        segdata *seg = sym->p.seg;
-
-        if( IS_SYM_IMPORTED( sym )
-          || seg == NULL ) {
-            // do not convert; keep symbol around
-        } else {
-            e->sdata = seg;
-            e->u.off = sym->addr.off - seg->a.delta -
-                       seg->u.leader->seg_addr.off;
-        }
-    }
-    return;
-}
-
-static void ConvertTocEntry( void *e )
-/************************************/
-{
-    ConvertTocEntryId( &((TocEntry *)e)->e );
-}
-
-#define GOT_RESERVED_NEG_SIZE (2 * sizeof( long ))
-#define GOT_RESERVED_POS0_SIZE (3 * sizeof( long ))
-#define GOT_RESERVED_SIZE (GOT_RESERVED_NEG_SIZE + GOT_RESERVED_POS0_SIZE)
-
-#if 0 // OS/2 PPC development temporarly on hold
-static void AdjustGotEntry( TocEntry *e, offset *middle ) {
-    if( e->pos < *middle ) {
-        e->pos -= GOT_RESERVED_NEG_SIZE;
-    } else {
-        e->pos += GOT_RESERVED_POS0_SIZE;
-    }
-}
-#endif
 
 void PrepareToc( void )
 /****************************/
 {
-    if( Toc == NULL )
+    TocState &st = state();
+    if( st.Toc == nullptr )
         return;
-    WalkHTable( Toc, ConvertTocEntry );
-    RehashHTable( Toc );
-#if 0
-    if( (LinkState & LS_HAVE_PPC_CODE)
-      && (FmtData.type & (MK_NE | MK_OS2_FLAT)) ) {
-        // Development temporarly on hold
-        offset middle = ( TocSize / 2 ) & ~0x3;
-        WalkHTableCookie( Toc, AdjustGotEntry, &middle );
-        TocShift = middle + GOT_RESERVED_NEG_SIZE;
-        TocSize += GOT_RESERVED_SIZE;
-    }
-#endif
-    if( TocSym != NULL )  {
-        TocSym->info |= SYM_1_DCE_REF | SYM_DEFINED;
-        SetAddPubSym( TocSym, SYM_REGULAR, FakeModule, 0, 0 );
+    WalkHTable( st.Toc, ConvertTocEntry );
+    RehashHTable( st.Toc );
+    // (OS/2 PPC's GOT adjustment, development on hold in the original, is not carried.)
+    if( st.TocSym != nullptr )  {
+        st.TocSym->info |= SYM_1_DCE_REF | SYM_DEFINED;
+        SetAddPubSym( st.TocSym, SYM_REGULAR, FakeModule, 0, 0 );
         if( LinkFlags & LF_STRIP_CODE ) {
-            CleanStripInfo( TocSym );
+            CleanStripInfo( st.TocSym );
         }
     }
 }
@@ -241,101 +275,33 @@ void PrepareToc( void )
 void SetTocAddr( offset off, group_entry *group )
 /******************************************************/
 {
-    if( Toc != NULL
-      && TocSym != NULL ) {
-        SET_SYM_ADDR( TocSym, off + TocShift, group->addr.seg );
+    TocState &st = state();
+    if( st.Toc != nullptr
+      && st.TocSym != nullptr ) {
+        SET_SYM_ADDR( st.TocSym, off + TocShift, group->addr.seg );
     }
-}
-
-static offset OffFromToc( offset off )
-/***************************************/
-{
-    offset toff;
-
-    toff = off - TocShift;
-    if( (signed_16)toff != (signed_32)toff ) {
-        LnkMsg( ERR+MSG_TOC_TOO_BIG, NULL );
-    }
-    return( toff );
-}
-
-static offset FindEntryPosInToc( TocEntryId *e )
-/*************************************************/
-{
-    TocEntry    searchEntry;
-    TocEntry    *entry;
-
-    searchEntry.e = *e;
-    entry = (TocEntry *)(FindHTableElem( Toc, &searchEntry ));
-    if( entry != NULL ) {
-        return( OffFromToc( entry->pos ) );
-    } else {
-        return( BOGUS ); // return bogus position; likely to cause alignment exception
-    }
-
 }
 
 offset FindSdataOffPosInToc( segdata *sdata, offset off )
 /*****************************************************************/
 {
-    TocEntryId e;
-
-    DbgAssert( sdata != NULL );
-    e.sdata = sdata;
-    e.u.off = off;
-    return( FindEntryPosInToc( &e ) );
+    DbgAssert( sdata != nullptr );
+    return FindEntryPosInToc( make_id( sdata, off ) );
 }
 
 offset FindSymPosInToc( symbol * sym )
 /**********************************************/
 {
-    TocEntryId e;
-
-    e.sdata = NULL;
-    e.u.sym = sym;
+    TocEntryId e = make_id( nullptr, sym );
     ConvertTocEntryId( &e );
-    return( FindEntryPosInToc( &e ) );
-}
-
-static void WriteOutTokElem( void *_elem, void *buf )
-/***************************************************/
-{
-    TocEntry   *elem = (TocEntry *)(_elem);
-    offset      addr;
-    segdata *   sdata;
-    seg_leader *leader;
-
-    if( elem->e.sdata ) {
-        sdata = elem->e.sdata;
-        leader = sdata->u.leader;
-        addr = elem->e.u.off + sdata->a.delta + leader->group->linear
-                        + leader->seg_addr.off +  FmtData.base;
-    } else {
-        addr = SymbolAbsAddr( elem->e.u.sym );
-    }
-    DbgAssert( elem->pos >= 0 );
-    PutInfo( (*((virt_mem *)buf)) + elem->pos, &addr, sizeof( addr ) );
+    return FindEntryPosInToc( e );
 }
 
 void WriteToc( virt_mem buf )
 /**********************************/
 {
-    if( Toc == NULL )
+    if( state().Toc == nullptr )
         return;
-    WalkHTableCookie( Toc, WriteOutTokElem, &buf );
-#if 0
-    if( (LinkState & LS_HAVE_PPC_CODE)
-      && (FmtData.type & (MK_NE | MK_OS2_FLAT)) ) {
-        // Development temporarly on hold
-        offset res[GOT_RESERVED_SIZE / sizeof( offset )] = { 0 };
-        enum { zero = GOT_RESERVED_NEG_SIZE / sizeof( offset ) };
-        enum { blrl_opcode = 0x4E800021 };
-
-        DbgAssert( TocShift >= GOT_RESERVED_NEG_SIZE );
-
-        res[zero - 1] = blrl_opcode;
-        res[zero] = IDataGroup->linear + FmtData.base;
-        PutInfo( buf + TocShift - GOT_RESERVED_NEG_SIZE, res, GOT_RESERVED_SIZE );
-    }
-#endif
+    WalkHTableCookie( state().Toc, WriteOutTokElem, &buf );
+    // (OS/2 PPC's reserved GOT words, development on hold in the original, are not written.)
 }

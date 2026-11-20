@@ -41,26 +41,26 @@
 #include "toc.h"
 #include "strtab.h"
 #include <string.h>
+#include <array>
 
 
 #ifdef _ELF
 
-static unsigned_8       PrimeNos[] = {
+static constexpr std::array<unsigned_8, 55> PrimeNos = {{
   2,      3,      5,      7,     11,     13,     17,     19,     23,     29,
  31,     37,     41,     43,     47,     53,     59,     61,     67,     71,
  73,     79,     83,     89,     97,    101,    103,    107,    109,    113,
 127,    131,    137,    139,    149,    151,    157,    163,    167,    173,
 179,    181,    191,    193,    197,    199,    211,    223,    227,    229,
 233,    239,    241,    251,      0 /* terminator */
-};
+}};
 
 static unsigned FindClosestPrime( unsigned num )
 /**********************************************/
 {
-    unsigned_8 * primetab;
-    unsigned_8   prime;
+    const unsigned_8 *primetab = PrimeNos.data();
+    unsigned_8       prime;
 
-    primetab = PrimeNos;
     do {
         prime = *primetab;
         if( prime > num )
@@ -70,17 +70,15 @@ static unsigned FindClosestPrime( unsigned num )
     return( prime );
 }
 
-static unsigned_32 ElfHash( char *sym_name )
+static unsigned_32 ElfHash( const char *sym_name )
 /******************************************/
 // stolen from the ELF spec.
 {
-    unsigned_32 h;
+    unsigned_32 h = 0;
     unsigned_32 g;
-    char        *name;
 
-    h = 0;
-    for( name = sym_name; *name != '\0'; ++name ) {
-        h = (h << 4) + *(unsigned_8 *)name;
+    for( const char *name = sym_name; *name != '\0'; ++name ) {
+        h = (h << 4) + static_cast<unsigned_8>( *name );
         g = h & 0xF0000000;
         if( g != 0 ) {
             h ^= g >> 24;
@@ -95,15 +93,15 @@ ElfSymTable *CreateElfSymTable( unsigned maxElems, stringtable *strtab )
 {
     ElfSymTable *tab;
 
-    tab = (ElfSymTable *)(MemAllocSafe( sizeof( ElfSymTable ) ));
+    tab = static_cast<ElfSymTable *>( MemAllocSafe( sizeof( ElfSymTable ) ) );
     tab->numBuckets = FindClosestPrime( maxElems / 2 );
     tab->maxElems = maxElems + 1; // element 0 is NIL
     tab->numElems = 1;
-    tab->table = (symbol **)(MemAllocSafe( tab->maxElems * sizeof( tab->table[0] ) ));
+    tab->table = static_cast<symbol **>( MemAllocSafe( tab->maxElems * sizeof( tab->table[0] ) ) );
     memset( tab->table, 0, tab->maxElems * sizeof( tab->table[0] ) );
-    tab->buckets = (Elf32_Word *)(MemAllocSafe( tab->numBuckets * sizeof( Elf32_Word ) ));
+    tab->buckets = static_cast<Elf32_Word *>( MemAllocSafe( tab->numBuckets * sizeof( Elf32_Word ) ) );
     memset( tab->buckets, 0, tab->numBuckets * sizeof( unsigned_32 ) );
-    tab->chains = (Elf32_Word *)(MemAllocSafe( tab->maxElems * sizeof( unsigned_32 ) ));
+    tab->chains = static_cast<Elf32_Word *>( MemAllocSafe( tab->maxElems * sizeof( unsigned_32 ) ) );
     memset( tab->chains, 0, tab->maxElems * sizeof( unsigned_32 ) );
     tab->strtab = strtab;
     if( GetStringTableSize( tab->strtab ) == 0 ) {
@@ -135,7 +133,7 @@ unsigned FindSymIdxElfSymTable( ElfSymTable *tab, symbol *sym )
     hash = ElfHash( sym->name.u.ptr ) % tab->numBuckets;
     idx = tab->buckets[hash];
     DbgAssert( idx < tab->maxElems );
-    for( idxsym = tab->table[idx]; idxsym != NULL && idxsym != sym;
+    for( idxsym = tab->table[idx]; idxsym != nullptr && idxsym != sym;
         idx = tab->chains[idx], idxsym = tab->table[idx] ) {
         DbgAssert( idx < tab->maxElems );
     }
@@ -152,12 +150,12 @@ static unsigned_16 ElfSymSecNum( ElfHdr *hdr, symbol *sym, group_entry *group )
         return( SHN_UNDEF );
     } else if( IS_SYM_COMMUNAL( sym ) ) {
         return( SHN_COMMON );
-    } else if( group == NULL ) {
+    } else if( group == nullptr ) {
         return( SHN_ABS );
     } else {
         secnum += group->addr.seg - 1;
     }
-    DbgAssert(group != NULL);
+    DbgAssert(group != nullptr);
     return( secnum );
 }
 

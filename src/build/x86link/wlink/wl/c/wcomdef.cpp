@@ -29,8 +29,11 @@
 *
 ****************************************************************************/
 
-#include <string.h>
-#include <stdlib.h>
+
+
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include "linkstd.h"
 #include "virtmem.h"
 #include "pcobj.h"
@@ -47,103 +50,92 @@
 #include "omfreloc.h"
 #include "ring.h"
 #include "wcomdef.h"
+#include "run_state.hpp"
 
+
+namespace {
 
 /* these are handy constants used when processing comdat records */
-#define CDAT_ALLOC_MASK         0xF
-#define CDAT_CONTINUATION       0x1
-#define CDAT_ITERATED           0x2
-#define CDAT_STATIC             0x4
-#define CDAT_SELECT_MASK        0xF0
-#define CDAT_SELECT_SHIFT       12
+constexpr unsigned CDAT_ALLOC_MASK      = 0xF;
+constexpr unsigned CDAT_CONTINUATION    = 0x1;
+constexpr unsigned CDAT_ITERATED        = 0x2;
+constexpr unsigned CDAT_STATIC          = 0x4;
+constexpr unsigned CDAT_SELECT_MASK     = 0xF0;
+constexpr unsigned CDAT_SELECT_SHIFT    = 12;
 
-#if 0
-static char *   CDatClassNames[] = {
-        CodeClassName,
-        FarDataClassName,
-        CodeClassName,
-        DataClassName
+// The communal definitions in progress and the blocks given back for reuse.
+struct ComdefState {
+    comdat_info     *CDatList;
+    comdat_info     *FreedInfos;
+    comdat_piece    *FreedPieces;
 };
 
-static seg_leader *     CDatSegments[4];
-static unsigned         CDatSegNum;     /* for making the comdat seg. name */
+ComdefState &state()
+{
+    return cb_wlink::RunState::part<ComdefState>();
+}
 
-/* keep a base-36 number after the COMDAT_SEG to differentiate the segments*/
-/* 32-bit unsigned int gives a maximum of 7 digits in base 36. */
-#define CDAT_SEG_NAME "COMDAT_SEG\0\0\0\0\0\0\0\0"
-static char     CDatSegName[] = CDAT_SEG_NAME;
-
-#define CDAT_SEG_NAME_LEN sizeof( CDatSegName )
-#define CDAT_SEG_NUM_OFF  10
-#endif
-
-static comdat_info *    CDatList;
-static comdat_info *    FreedInfos;
-static comdat_piece *   FreedPieces;
+}  // namespace
 
 
 void ResetComdef( void )
 /**********************/
 {
-#if 0
-    memcpy( CDatSegName, CDAT_SEG_NAME, CDAT_SEG_NAME_LEN );
-    CDatSegments[0] = NULL;
-    CDatSegments[1] = NULL;
-    CDatSegments[2] = NULL;
-    CDatSegments[3] = NULL;
-    CDatSegNum = 0;
-#endif
-    CDatList = NULL;
-    FreedInfos = NULL;
-    FreedPieces = NULL;
+    state() = ComdefState{};
 }
 
-static comdat_info * AllocCDatInfo( void )
-/****************************************/
+static comdat_info *AllocCDatInfo( void )
+/***************************************/
 {
-    comdat_info *       info;
+    ComdefState     &st = state();
+    comdat_info     *info;
 
-    if( FreedInfos != NULL ) {
-        info = FreedInfos;
-        FreedInfos = info->next;
+    if( st.FreedInfos != nullptr ) {
+        info = st.FreedInfos;
+        st.FreedInfos = info->next;
     } else {
-        info = (comdat_info *)(Pass1Alloc( sizeof( comdat_info ) ));
+        info = static_cast<comdat_info *>( Pass1Alloc( sizeof( comdat_info ) ) );
     }
-    info->pieces = NULL;
+    info->pieces = nullptr;
     return( info );
 }
 
-static void FreeCDatInfo( comdat_info * info )
-/********************************************/
+static void FreeCDatInfo( comdat_info *info )
+/*******************************************/
 {
-    info->next = FreedInfos;
-    FreedInfos = info;
+    ComdefState     &st = state();
+
+    info->next = st.FreedInfos;
+    st.FreedInfos = info;
 }
 
-static comdat_piece * AllocCDatPiece( void )
-/******************************************/
+static comdat_piece *AllocCDatPiece( void )
+/*****************************************/
 {
-    comdat_piece *      piece;
+    ComdefState     &st = state();
+    comdat_piece    *piece;
 
-    if( FreedPieces != NULL ) {
-        piece = FreedPieces;
-        FreedPieces = piece->next;
+    if( st.FreedPieces != nullptr ) {
+        piece = st.FreedPieces;
+        st.FreedPieces = piece->next;
     } else {
-        piece = (comdat_piece *)(Pass1Alloc( sizeof( comdat_piece ) ));
+        piece = static_cast<comdat_piece *>( Pass1Alloc( sizeof( comdat_piece ) ) );
     }
-    memset( piece, 0, sizeof( comdat_piece ) );
+    std::memset( piece, 0, sizeof( comdat_piece ) );
     return( piece );
 }
 
-static void FreeCDatPiece( void * piec )
-/**************************************/
+static void FreeCDatPiece( void *piec )
+/*************************************/
 {
-    comdat_piece *piece = (comdat_piece *)(piec);
+    ComdefState     &st = state();
+    comdat_piece    *piece = static_cast<comdat_piece *>( piec );
+
     if( piece->free_data ) {
         MemFree( piece->data );
     }
-    piece->next = FreedPieces;
-    FreedPieces = piece;
+    piece->next = st.FreedPieces;
+    st.FreedPieces = piece;
 }
 
 static unsigned_32 GetLeaf( void )
@@ -162,7 +154,7 @@ static unsigned_32 GetLeaf( void )
     } else if( leaf == COMDEF_LEAF_3 ) {
         value = MGET_LE_U16_UN( ObjBuff );
         ObjBuff += sizeof( unsigned_16 );
-        value += ( (unsigned_32)*ObjBuff++ ) << 16;
+        value += static_cast<unsigned_32>( *ObjBuff++ ) << 16;
     } else if( leaf == COMDEF_LEAF_4 ) {
         value = MGET_LE_U32_UN( ObjBuff );
         ObjBuff += sizeof( unsigned_32 );
@@ -174,11 +166,11 @@ static byte COMDEF_bits( void )
 /*****************************/
 {
     SEGDATA *segs = CurrMod->segs;
-    SEGDATA *seg = NULL;
+    SEGDATA *seg = nullptr;
 
     for( ;; ) {
-        seg = (SEGDATA *)(Ring2Step( segs, seg ));
-        if( seg == NULL )
+        seg = static_cast<SEGDATA *>( Ring2Step( segs, seg ) );
+        if( seg == nullptr )
             break;
         // none of these are generated for Dwarf debug info so
         // we should not get confused when we are 16-bit
@@ -210,7 +202,7 @@ void ProcComdef( bool isstatic )
     }
     while( ObjBuff < EOObjRec ) {
         sym_len = *ObjBuff++;
-        sym_name = (char *)ObjBuff;
+        sym_name = reinterpret_cast<char *>( ObjBuff );
         ObjBuff += sym_len;
         SkipIdx();
         kind = *ObjBuff++;
@@ -220,14 +212,14 @@ void ProcComdef( bool isstatic )
         }
         sym = SymOp( symop, sym_name, sym_len );
         sym = MakeCommunalSym( sym, size, kind == COMDEF_FAR, bits );
-        ext = (extnode *)(AllocNode( ExtNodes ));
+        ext = static_cast<extnode *>( AllocNode( ExtNodes ) );
         ext->entry = sym;
         ext->ovlref = 0;
     }
 }
 
 void ProcLinsym( void )
-/****************************/
+/*********************/
 {
     list_of_names *     symname;
     symbol *            sym;
@@ -236,11 +228,11 @@ void ProcLinsym( void )
 
     ObjBuff++;          /* skip flags */
     symname = FindName( GetIdx() );
-    sym_len = strlen( symname->name );
+    sym_len = std::strlen( symname->name );
     sym = SymOp( ST_FIND | ST_STATIC, symname->name, sym_len );
-    if( sym == NULL )
+    if( sym == nullptr )
         sym = SymOp( ST_FIND, symname->name, sym_len );
-    if( sym == NULL ) {
+    if( sym == nullptr ) {
         BadObject();
         return;
     }
@@ -268,7 +260,8 @@ static void DoAltDef( comdat_info *info )
 static void FinishComdat( void *inf )
 /***********************************/
 {
-    comdat_info *info = (comdat_info *)(inf);
+    comdat_info *info = static_cast<comdat_info *>( inf );
+
     if( info->flags & SYM_DEAD ) {      // is redefined
         DoAltDef( info );
     } else {
@@ -279,68 +272,11 @@ static void FinishComdat( void *inf )
 }
 
 void ResolveComdats( void )
-/********************************/
+/*************************/
 {
-    RingWalk( CDatList, FinishComdat );
-    CDatList = NULL;
+    RingWalk( state().CDatList, FinishComdat );
+    state().CDatList = nullptr;
 }
-
-#if 0
-static char * GetNewName( void )
-/******************************/
-/* get a new name for an automatically defined comdat segment */
-{
-    CDatSegNum++;
-    ultoa( CDatSegNum, CDatSegName + CDAT_SEG_NUM_OFF, 36 );
-    return( CDatSegName );
-}
-
-static void AddToLinkerComdat( symbol *sym )
-/******************************************/
-/* this tries to add "size" bytes to an existing comdat segment, and if it
- * can't, it creates a new segment for the data */
-{
-    seg_leader *        leader;
-    class_entry *       class_;
-    offset              seglen;
-    section *           sect;
-    segdata *           sdata;
-    byte                alloc;
-    byte                align;
-
-    sdata = sym->p.seg;
-    alloc = sdata->alloc;
-    align = sdata->align;
-    leader = CDatSegments[alloc];
-    if( leader == NULL ) {
-        sdata->u.name = GetNewName();
-        sym->addr.off = 0;
-        sect = Root;
-#ifdef _EXE
-        if( (FmtData.type & MK_OVERLAYS)
-          && (alloc & 1) != 0 ) {
-            sect = NonSect;             /* data in an overlaid app */
-        }
-#endif
-        class_ = FindClass( sect, CDatClassNames[alloc], ( alloc > 2 ) ? BITS_32 : BITS_16, alloc & 1 );
-    } else {
-        class_ = leader->class_;
-        seglen = CAlign( leader->size, align ) + sdata->length;
-        if( seglen > 0xFFFF
-          && align <= 1 ) {
-            sdata->u.name = GetNewName();
-            sym->addr.off = 0;
-        } else {
-            sdata->u.name = leader->segname;
-            sym->addr.off = seglen - sdata->length;
-        }
-    }
-    AddSegment( sdata, class_ );
-    sdata->u1.vm_ptr = AllocStg( sdata->length );
-    CDatSegments[alloc] = sdata->u.leader;
-    sym->p.seg = sdata;
-}
-#endif
 
 static offset CountIDBlock( unsigned_8 **buffptr )
 /************************************************/
@@ -393,16 +329,16 @@ static offset CalcLIDataLength( void )
 static bool CompInfoSym( void *info, void *sym )
 /**********************************************/
 {
-    return( ((comdat_info *)info)->sym == (symbol *)sym );
+    return( static_cast<comdat_info *>( info )->sym == static_cast<symbol *>( sym ) );
 }
 
 #ifdef DEVBUILD
 static bool CheckSameComdat( void *info, void *sym )
-/***********************************************************/
+/**************************************************/
 {
-    if( (symbol *)sym == ((comdat_info *)info)->sym ) {
+    if( static_cast<symbol *>( sym ) == static_cast<comdat_info *>( info )->sym ) {
         LnkMsg( ERR+LOC_REC+MSG_INTERNAL, "s", "duplicate comdat found" );
-        LnkMsg( ERR+MSG_INTERNAL, "s", ((symbol *)sym)->name );
+        LnkMsg( ERR+MSG_INTERNAL, "s", static_cast<symbol *>( sym )->name );
     }
     return( false );
 }
@@ -411,7 +347,7 @@ static bool CheckSameComdat( void *info, void *sym )
 #define ST_COMDAT (ST_CREATE_REFERENCE | ST_NOALIAS)
 
 void ProcComdat( void )
-/****************************/
+/*********************/
 /* process a comdat record */
 {
     comdat_info *       info;
@@ -452,7 +388,7 @@ void ProcComdat( void )
         SkipIdx();                              /* get public base */
         segidx = GetIdx();
         if( segidx != 0 ) {
-            snode = (segnode *)FindNode( SegNodes, segidx );
+            snode = static_cast<segnode *>( FindNode( SegNodes, segidx ) );
             if( usealign ) {
                 align = snode->entry->align;
             }
@@ -466,7 +402,7 @@ void ProcComdat( void )
     }
     piece = AllocCDatPiece();
     symname = FindName( GetIdx() );
-    namelen = strlen( symname->name );
+    namelen = std::strlen( symname->name );
     symop = ST_COMDAT;
     if( flags & CDAT_STATIC ) {
         symop |= ST_STATIC;
@@ -478,14 +414,15 @@ void ProcComdat( void )
         piece->length = EOObjRec - ObjBuff;
     }
     if( !CacheIsPerm() ) {
-        piece->data = (unsigned_8 *)(MemAllocSafe( piece->length ));
-        memcpy( piece->data, ObjBuff, piece->length );
+        piece->data = static_cast<unsigned_8 *>( MemAllocSafe( piece->length ) );
+        std::memcpy( piece->data, ObjBuff, piece->length );
         piece->free_data = true;
     } else {
         piece->data = ObjBuff;
     }
+    comdat_info *&cdat_list = state().CDatList;
     if( flags & CDAT_CONTINUATION ) {
-        info = (comdat_info *)(RingLookup( CDatList, CompInfoSym, sym ));
+        info = static_cast<comdat_info *>( RingLookup( cdat_list, CompInfoSym, sym ) );
         RingAppend( &info->pieces, piece );
         info->sdata->length += piece->length;
     } else {
@@ -493,7 +430,7 @@ void ProcComdat( void )
         sdata->length = piece->length;
         sdata->combine = COMBINE_ADD;
         sdata->iscdat = true;
-        sdata->isabs = ( snode == NULL );
+        sdata->isabs = ( snode == nullptr );
         sdata->align = align;
         sdata->u.leader = snode->entry->u.leader;
         sdata->iscode = ( (snode->info & SEGINF_CODE) != 0 );
@@ -501,13 +438,13 @@ void ProcComdat( void )
         info = AllocCDatInfo();
         info->sdata = sdata;
         info->sym = sym;
-        info->flags = (sym_info)((attr & CDAT_SELECT_MASK) << CDAT_SELECT_SHIFT);
+        info->flags = static_cast<sym_info>( (attr & CDAT_SELECT_MASK) << CDAT_SELECT_SHIFT );
         info->flags |= SYM_DEAD;        // assume redefined
         RingAppend( &info->pieces, piece );
 #ifdef DEVBUILD
-        RingLookup( CDatList, CheckSameComdat, sym );
+        RingLookup( cdat_list, CheckSameComdat, sym );
 #endif
-        RingAppend( &CDatList, info );
+        RingAppend( &cdat_list, info );
         if( IS_SYM_COMDAT( sym ) ) {
             CheckComdatSym( sym, info->flags & ~SYM_DEAD );
         } else if( !(IS_SYM_REGULAR( sym )
@@ -520,12 +457,6 @@ void ProcComdat( void )
                 snode->entry->u.leader->info |= SEGINF_LXDATA_SEEN;
                 RingAppend( &sdata->u.leader->pieces, sdata );
                 Ring2Append( &CurrMod->segs, sdata );
-#if 0
-            } else {    /* add it to a linker defined segment */
-                sdata->iscode = ( (alloc & 1) != 0 );
-                sdata->alloc = --alloc;
-                AddToLinkerComdat( sym );
-#endif
             }
             sym->info |= (attr & CDAT_SELECT_MASK) << CDAT_SELECT_SHIFT;
             SetComdatSym( sym, sdata );

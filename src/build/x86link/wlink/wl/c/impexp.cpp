@@ -32,7 +32,8 @@
 
 #include <string.h>
 #include <ctype.h>
-#include "walloca.h"
+#include <string>
+#include <string_view>
 #include "linkstd.h"
 #include "specials.h"
 #include "fileio.h"
@@ -59,13 +60,13 @@ static entry_export *FindPlace( entry_export *exp )
     entry_export    *prev;
     entry_export    *ret;
 
-    ret = NULL;
-    prev = NULL;
+    ret = nullptr;
+    prev = nullptr;
     place = exp->next;
-    if( place != NULL && place->ordinal <= exp->ordinal ) {
+    if( place != nullptr && place->ordinal <= exp->ordinal ) {
         for( ;; ) {
             if( place->ordinal == exp->ordinal ) {
-                LnkMsg( WRN + MSG_DUP_EXP_ORDINAL, NULL );
+                LnkMsg( WRN + MSG_DUP_EXP_ORDINAL, nullptr );
                 exp->ordinal = 0;       // if duplicate, assign a new one later
                 break;
             }
@@ -75,10 +76,10 @@ static entry_export *FindPlace( entry_export *exp )
                 prev->next = exp;
                 break;
             }
-            if( place->next == NULL ) { // no more entries, so put on the
+            if( place->next == nullptr ) { // no more entries, so put on the
                 ret = exp->next;        // end, then break the loop.
                 place->next = exp;
-                exp->next = NULL;
+                exp->next = nullptr;
                 break;
             }
             prev = place;
@@ -105,7 +106,7 @@ void FreeExportList( void )
     entry_export    *exp;
 
     if( (LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        for( exp = FmtData.u.os2fam.exports; exp != NULL; ) {
+        for( exp = FmtData.u.os2fam.exports; exp != nullptr; ) {
             exp = FreeAnExport( exp );
         }
     }
@@ -120,9 +121,9 @@ void AddToExportList( entry_export *exp )
     size_t              len;
     size_t              currlen;
 
-    place = NULL;
+    place = nullptr;
     len = strlen( exp->name.u.ptr );
-    for( owner = &FmtData.u.os2fam.exports; (curr = *owner) != NULL; owner = &curr->next ) {
+    for( owner = &FmtData.u.os2fam.exports; (curr = *owner) != nullptr; owner = &curr->next ) {
         currlen = strlen( curr->name.u.ptr );
         if( currlen == len && (*CmpNRtn)( curr->name.u.ptr, exp->name.u.ptr, len ) == 0 ) {
             if( ObjFileFormat != FILE_FMT_INCREMENTAL ) {
@@ -133,13 +134,13 @@ void AddToExportList( entry_export *exp )
             }
             return;
         }
-        if( place == NULL ) {
+        if( place == nullptr ) {
             if( exp->ordinal == 0 ) {
                 if( curr->ordinal != 0 ) {
                     place = owner;
                 }
             } else if( curr->ordinal == exp->ordinal ) {
-                LnkMsg( WRN+MSG_DUP_EXP_ORDINAL, NULL );
+                LnkMsg( WRN+MSG_DUP_EXP_ORDINAL, nullptr );
                 exp->ordinal = 0;    // if duplicate, assign a new one later
                 place = &FmtData.u.os2fam.exports;
             } else if( curr->ordinal > exp->ordinal ) {
@@ -152,7 +153,7 @@ void AddToExportList( entry_export *exp )
     }
     exp->sym->e.export_ = exp;
     exp->sym->info |= SYM_EXPORTED;
-    if( place == NULL )
+    if( place == nullptr )
         place = owner;
     DEBUG(( DBG_NEW, "%s", exp->name ));
     exp->next = *place;
@@ -171,11 +172,11 @@ static size_t CheckStdCall( const char *name, size_t len )
     chop = 0;
     if( len > 3 ) {
         teststr = name + len - 1;
-        if( *name == '_' && isdigit( *(unsigned char *)teststr ) ) {
+        if( *name == '_' && isdigit( static_cast<unsigned char>( *teststr ) ) ) {
             teststr--;
             if( *teststr == '@' ) {
                 chop = 3;
-            } else if( isdigit( *(unsigned char *)teststr ) ) {
+            } else if( isdigit( static_cast<unsigned char>( *teststr ) ) ) {
                 teststr--;
                 if( *teststr == '@' ) {
                     chop = 4;
@@ -192,7 +193,7 @@ entry_export *AllocExport( const char *name, size_t len )
     entry_export    *exp;
     size_t          chop;
 
-    exp = (entry_export *)(CarveAlloc( CarveExportInfo ));
+    exp = static_cast<entry_export *>( CarveAlloc( CarveExportInfo ) );
     exp->isresident = false;
     exp->isexported = true;
     exp->ismovable = false;
@@ -201,8 +202,8 @@ entry_export *AllocExport( const char *name, size_t len )
     exp->isprivate = false;
     exp->isiopl = false;
     exp->isnodata = false;
-    if( name == NULL ) {
-        exp->name.u.ptr = NULL;
+    if( name == nullptr ) {
+        exp->name.u.ptr = nullptr;
     } else {
         if( (FmtData.type & MK_PE) && FmtData.u.pe.no_stdcall ) {
             chop = CheckStdCall( name, len );
@@ -213,15 +214,15 @@ entry_export *AllocExport( const char *name, size_t len )
         }
         exp->name.u.ptr = AddSymbolStringTable( &PermStrings, name, len );
     }
-    exp->impname = NULL;
+    exp->impname = nullptr;
     exp->iopl_words = 0;
     exp->ordinal = 0;
     return( exp );
 }
 
-#define EXPDEF_ORDINAL  0x80
-#define EXPDEF_RESIDENT 0x40
-#define EXPDEF_IOPLMASK 0x1F
+static constexpr unsigned EXPDEF_ORDINAL  = 0x80;
+static constexpr unsigned EXPDEF_RESIDENT = 0x40;
+static constexpr unsigned EXPDEF_IOPLMASK = 0x1F;
 
 void MSExportKeyword( const length_name *expname, const length_name *intname, unsigned flags, ordinal_t ordinal )
 /***************************************************************************************************************/
@@ -254,7 +255,7 @@ dll_sym_info *AllocDLLInfo( void )
 {
     dll_sym_info    *dll;
 
-    dll = (dll_sym_info *)(CarveAlloc( CarveDLLInfo ));
+    dll = static_cast<dll_sym_info *>( CarveAlloc( CarveDLLInfo ) );
     dll->isfree = false;
     return( dll );
 }
@@ -268,9 +269,6 @@ void FreeImport( dll_sym_info *dll )
 static symbol *GetIATSym( symbol *sym )
 /*************************************/
 {
-    char        *iatname;
-    size_t      prefixlen;
-    size_t      namelen;
     const char  *name;
 
     name = sym->name.u.ptr;
@@ -278,14 +276,9 @@ static symbol *GetIATSym( symbol *sym )
         DbgAssert(name[0] == '.' && name[1] == '.');
         name += 2;  // skip '..' at the beginning of the name
     }
-    prefixlen = sizeof( ImportSymPrefix ) - 1;
-    namelen = strlen( name );
-    iatname = (char *)(alloca( namelen + prefixlen + 1 ));
-    memcpy( iatname, ImportSymPrefix, prefixlen );
-    memcpy( iatname + prefixlen, name, namelen );
-    prefixlen += namelen;
-    iatname[prefixlen] = '\0';
-    return( SymOp( ST_CREATE, iatname, prefixlen ) );
+    std::string iatname( ImportSymPrefix, sizeof( ImportSymPrefix ) - 1 );
+    iatname += name;
+    return( SymOp( ST_CREATE, iatname.c_str(), iatname.size() ) );
 }
 
 void MSImportKeyword( symbol *sym, const length_name *modname, const length_name *extname, ordinal_t ordinal )
@@ -306,7 +299,7 @@ void MSImportKeyword( symbol *sym, const length_name *modname, const length_name
             dll->iatsym = GetIATSym( sym );
             dll->iatsym->info |= SYM_DEFINED | SYM_1_DCE_REF;
             SET_SYM_TYPE( dll->iatsym, SYM_IMPORTED );
-            dll->iatsym->p.import_dll = NULL;
+            dll->iatsym->p.import_dll = nullptr;
         }
         dll->m.modnum = AddNameTable( modname->name, modname->len, true, &FmtData.u.os2fam.mod_ref_list );
         if( ordinal == IMP_BY_NAME ) {
@@ -339,14 +332,14 @@ void CheckExport( const char *name, ordinal_t ordinal, bool cmpcase )
 
     DEBUG(( DBG_OLD, "Oldlib export %s ordinal %l", name, ordinal ));
     rtn = ( cmpcase ) ? strcmp : stricmp;
-    prev = NULL;
-    for( place = FmtData.u.os2fam.exports; place != NULL; place = place->next ) {
+    prev = nullptr;
+    for( place = FmtData.u.os2fam.exports; place != nullptr; place = place->next ) {
         if( rtn( place->name.u.ptr, name ) == 0 ) {
             if( place->ordinal == 0 ) {
                 place->ordinal = ordinal;
                 place = FindPlace( place );
-                if( place != NULL ) {
-                    if( prev == NULL ) {
+                if( place != nullptr ) {
+                    if( prev == nullptr ) {
                         FmtData.u.os2fam.exports = place;
                     } else {
                         prev->next = place;
@@ -367,7 +360,7 @@ ordinal_t FindEntryOrdinal( addr_type addr, group_entry *group )
     entry_export    *exp;
 
     max_ord = 0;
-    for( owner = &FmtData.u.os2fam.exports; (exp = *owner) != NULL; owner = &exp->next ) {
+    for( owner = &FmtData.u.os2fam.exports; (exp = *owner) != nullptr; owner = &exp->next ) {
         if( addr.seg == exp->addr.seg && addr.off == exp->addr.off ) {
             return( exp->ordinal );
         }
@@ -375,13 +368,13 @@ ordinal_t FindEntryOrdinal( addr_type addr, group_entry *group )
             max_ord = exp->ordinal;
         }
     }
-    exp = AllocExport( NULL, 0 );
-    exp->sym = NULL;
+    exp = AllocExport( nullptr, 0 );
+    exp->sym = nullptr;
     exp->isexported = false;
     exp->ordinal = max_ord + 1;
     if( group->segflags & SEG_MOVABLE )
         exp->ismovable = true;
-    exp->next = NULL;
+    exp->next = nullptr;
     exp->addr = addr;
     *owner = exp;
     return( exp->ordinal );

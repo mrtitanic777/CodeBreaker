@@ -36,8 +36,8 @@ set(CB_WLINK_DEFINES
   _BLDVER=1300 _CYEAR=2026 _BETAVER NDEBUG __FLAT__ _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS __NT__ WIN32_LEAN_AND_MEAN
   _WIN32_WINNT=0x0601 $<IF:$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>,__NT_X64__,__NT_386__>)
 
-add_library(cb_wlink_support STATIC ${CB_WLINK_LIBS})
-add_library(cb_wlink STATIC ${CB_WLINK_SOURCES} ${CB_WLINK_WITH} "${W}/cb/msgtable.cpp" "${W}/cb/run_state.cpp")
+add_library(cb_wlink_support STATIC ${CB_WLINK_LIBS} "${W}/cb/run_state.cpp")   # (the state of a run: every part of wlink keeps its own in it)
+add_library(cb_wlink STATIC ${CB_WLINK_SOURCES} ${CB_WLINK_WITH} "${W}/cb/msgtable.cpp")
 target_link_libraries(cb_wlink PUBLIC cb_wlink_support)
 foreach(t cb_wlink_support cb_wlink)
   set_target_properties(${t} PROPERTIES LINKER_LANGUAGE CXX CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

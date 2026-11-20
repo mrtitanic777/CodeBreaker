@@ -30,250 +30,168 @@
 ****************************************************************************/
 
 
-#define ZZ_LEN_3
+#include <array>
+#include <cstddef>
+#include <cstdio>
+#include <cstring>
+#include <string_view>
 
-#ifdef INSIDE_DIP
-#define __NO_STACK_CHECKING__
-#endif
-
-#include <assert.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <ctype.h>
 #include "watcom.h"
-#include "walloca.h"
 #include "demangle.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
+namespace {
 
-#if defined( _M_I86 )
-#define STRNCMP _fstrncmp
-#else
-#define STRNCMP strncmp
-#endif
+constexpr std::string_view kPrefixImpLower = "__imp_";
+constexpr std::string_view kPrefixImpUpper = "__IMP_";
+constexpr std::string_view kPrefixData = ".PREFIX_DATA.";
 
-#define SYM_PREFIX_IMP_STR_L    "__imp_"
-#define SYM_PREFIX_IMP_STR_U    "__IMP_"
-#define SYM_PREFIX_IMP_LEN      ( sizeof( SYM_PREFIX_IMP_STR_L ) - 1 )
-#define SYM_PREFIX_DATA_STR     ".PREFIX_DATA."
-#define SYM_PREFIX_DATA_LEN     ( sizeof( SYM_PREFIX_DATA_STR ) - 1 )
+constexpr size_t kAutoBufferSize = 80;
+constexpr int kSuppressLimit = 2;
+constexpr char kNul = '\0';
 
-typedef enum {
-    SYM_PREFIX_NONE,
-    SYM_PREFIX_IMP,
-    SYM_PREFIX_DATA
-} sym_prefix_val;
+constexpr size_t kTruncatedHashLen = 4;
 
-#define RECURSE_CHECK           (100*sizeof(int))
-#define AUTO_BUFFER_SIZE        80
-#define SUPPRESS_LIMIT          2
-#define NULL_CHAR               '\0'
+constexpr char kTruncatedPrefix1 = 'T';
+constexpr char kManglePrefix1 = 'W';
+constexpr char kManglePrefix2 = '?';
+constexpr char kPrefixEmbedded = '?';
+constexpr char kMemberPointer = 'M';
+constexpr char kUnderscore = '_';
+constexpr char kInternalPrefix = '.';
+constexpr char kPeriod = '.';
+constexpr char kScopePrefix = ':';
+constexpr char kTemplatePrefix = ':';
+constexpr char kTemplateInt = '0';
+constexpr char kTemplateType = '1';
+constexpr char kPositiveInt = 'Z';
+constexpr char kNegativeInt = 'Y';
+constexpr char kOpnamePrefix = '$';
+constexpr char kSymbolSuffix = '$';
+constexpr char kTypeNamePrefix = '$';
+constexpr char kTypeNameSuffix = '$';
+constexpr char kThisQualPrefix = '.';
+constexpr char kArrayPrefix = '[';
+constexpr char kArraySuffix = ']';
+constexpr char kFunctionPrefix = '(';
+constexpr char kFunctionSuffix = ')';
+constexpr char kOpFunPrefix = 'O';
+constexpr char kRelFunPrefix = 'R';
+constexpr char kSpecTypePrefix = 'T';
+constexpr char kWatFunPrefix = 'W';
+constexpr char kAsgnFunPrefix = 'A';
 
-#define TRUNCATED_HASH_LEN      4
+constexpr char kGroupCPrefix = 'C';
+constexpr char kCtorPrefix1 = 'C';
+constexpr char kCtorPrefix2 = 'T';
+constexpr char kOpConvertPrefix2 = 'V';
 
-#define TRUNCATED_PREFIX1       'T'
-#define MANGLE_PREFIX1          'W'
-#define MANGLE_PREFIX2          '?'
-#define PREFIX_EMBEDDED         '?'
-#define MEMBER_POINTER          'M'
-#define UNDERSCORE              '_'
-#define INTERNAL_PREFIX         '.'
-#define PERIOD                  '.'
-#define SCOPE_PREFIX            ':'
-#define TEMPLATE_PREFIX         ':'
-#define TEMPLATE_INT            '0'
-#define TEMPLATE_TYPE           '1'
-#define POSITIVE_INT            'Z'
-#define NEGATIVE_INT            'Y'
-#define OPNAME_PREFIX           '$'
-#define SYMBOL_SUFFIX           '$'
-#define MANGLE_RECURSE_SUFFIX   '$'
-#define TYPE_NAME_PREFIX        '$'
-#define TYPE_NAME_SUFFIX        '$'
-#define THIS_QUAL_PREFIX        '.'
-#define ARRAY_PREFIX            '['
-#define ARRAY_SUFFIX            ']'
-#define FUNCTION_PREFIX         '('
-#define FUNCTION_SUFFIX         ')'
-#define OP_FUN_PREFIX           'O'
-#define REL_FUN_PREFIX          'R'
-#define SPEC_TYPE_PREFIX        'T'
-#define WAT_FUN_PREFIX          'W'
-#define ASGN_FUN_PREFIX         'A'
+constexpr char kGroupDPrefix = 'D';
+constexpr char kDtorPrefix1 = 'D';
+constexpr char kDtorPrefix2 = 'T';
+constexpr char kOpDeletePrefix2 = 'L';
+constexpr char kArrayDeletePrefix2 = 'A';
 
-#define GROUP_C_PREFIX          'C'
-#define CTOR_PREFIX1            'C'
-#define OP_CONVERT_PREFIX1      'C'
-#define CTOR_PREFIX2            'T'
-#define OP_CONVERT_PREFIX2      'V'
+constexpr char kGroupNPrefix = 'N';
+constexpr char kOpNewPrefix2 = 'W';
+constexpr char kArrayNewPrefix2 = 'A';
 
-#define GROUP_D_PREFIX          'D'
-#define DTOR_PREFIX1            'D'
-#define OP_DELETE_PREFIX1       'D'
-#define ARRAY_DELETE_PREFIX1    'D'
-#define DTOR_PREFIX2            'T'
-#define OP_DELETE_PREFIX2       'L'
-#define ARRAY_DELETE_PREFIX2    'A'
+char upper(char c)
+{
+    return (c < 'a' || c > 'z') ? c : static_cast<char>(c - 0x20);
+}
 
-#define GROUP_N_PREFIX          'N'
-#define OP_NEW_PREFIX1          'N'
-#define ARRAY_NEW_PREFIX1       'N'
-#define OP_NEW_PREFIX2          'W'
-#define ARRAY_NEW_PREFIX2       'A'
+bool isDigitChar(char c)
+{
+    return c >= '0' && c <= '9';
+}
 
-#define mytoupper(c)    ((c < 'a' || c > 'z') ? c : c - 0x20)
+bool isIdentifier(char c)
+{
+    return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == kUnderscore || c == kPeriod;
+}
 
-typedef void *(*realloc_fn_t)( void *, size_t );
+bool startsWith(const char *p, std::string_view prefix)
+{
+    return std::strncmp(p, prefix.data(), prefix.size()) == 0;
+}
 
-typedef void (*outfunPtr)(void **, dm_pts, pointer_uint, char const *);
+using ReallocFn = void *(*)(void *, size_t);
 
-#define MAX_REPLICATE   10
+constexpr size_t kMaxReplicate = 10;
 
-typedef struct replicate_desc {
-    char const      *ptr;
-    size_t          len;
-} replicate_desc;
+struct Replicate {
+    const char *ptr;
+    size_t len;
+};
 
 /*
- * static R/W data
+ * what the demangler keeps between its nested calls: the realloc function and the names a mangled name can refer back to
  */
-static realloc_fn_t     user_realloc;
-static replicate_desc   replicate[MAX_REPLICATE];
-static int              next_replicate;
+struct DemangleState {
+    ReallocFn userRealloc = nullptr;
+    std::array<Replicate, kMaxReplicate> replicate{};
+    int nextReplicate = 0;
+};
 
-/*
- * Notes:
- *  demangler works in two modes, first "test" calculates required
- *      buffer size and second "write" demangle symbol to output buffer
- *  "test" mode doesn't get exact buffer size, but it guaranties size to
- *      output not overflow, the calculated size can be a few bytes higher
- *      then exact size
- *  demangler is in "test" mode if output buffer pointer is NULL
- *  demangleg uses an "index" field that acts as a cursor in the output
- *      buffer
- *  demangler uses insert mode in the output buffer, not overwrite, first
- *      making room in the output buffer (moving existing data) and then
- *      inserting data at the current cursor position.
- *
- *  the "output" field hold pointer to output buffer
- *  the "size" field hold length of output buffer (not used in "test" mode)
- *  the "index" field hold current output position
- *  the "count" field hold length of demangled string (virtual)
- */
-typedef struct output_desc {
-    outfunPtr       outfun;
-    void            *cookie;
-    char const      *input;
-    char const      *end;
-    char const      *scope_ptr;
-    char            *output;
-    size_t          size;       /* buffer length without null terminator */
-    size_t          count;      /* virtual length (may exceed size) */
-    size_t          index;
-    size_t          pending_loc;
-    size_t          scope_len;
-    int             suppress_output;
-    unsigned        scope_index;
-    boolbit         ctdt_pending    : 1;
-    boolbit         cv_pending      : 1;
-    boolbit         scope_name      : 1;
-    boolbit         base_name       : 1;
-    sym_prefix_val  sym_prefix;
-#if 0 || defined( TEST )
-    int             status;
-#endif
-} output_desc;
+enum class SymPrefix : unsigned char { None, Imp, Data };
 
-/*
- * the simple demangler uses these to output and count chars in the output buffer
- * the parser callback uses these to extract the structure of the name
- */
-#define _output1( _a         ) (data->outfun)( &(data->cookie), _a,  0,  0 )
-#define _output2( _a, _b     ) (data->outfun)( &(data->cookie), _a, _b,  0 )
-#define _output3( _a, _b, _c ) (data->outfun)( &(data->cookie), _a, _b, _c )
-
-typedef struct state_desc {
-    size_t          prefix;
-    size_t          suffix;
-    boolbit         right : 1;
-} state_desc;
-
-static char const _WCI86FAR dtorChar = '~';
-static char const _WCI86FAR openParen = '(';
-static char const _WCI86FAR closeParen = ')';
-static char const _WCI86FAR signedPrefix[] = "signed ";
-static char const _WCI86FAR operatorName[] = "operator ";
-static char const _WCI86FAR deleteFunction[] = "delete";
-static char const _WCI86FAR deleteArrayFunction[] = "delete []";
-static char const _WCI86FAR anonymousEnum[] = "__anonymous_enum ";
-static char const _WCI86FAR newFunction[] = "new";
-static char const _WCI86FAR newArrayFunction[] = "new []";
-static char const _WCI86FAR scopeSeparator[] = "::";
-static char const _WCI86FAR templatePrefix[] = "<";
-static char const _WCI86FAR templateSuffix[] = ">";
-static char const _WCI86FAR templateSeparator[] = ",";
-static char const _WCI86FAR arrayPrefix[] = "[";
-static char const _WCI86FAR arraySuffix[] = "]";
-static char const _WCI86FAR functionPrefix[] = "( ";
-static char const _WCI86FAR functionSuffix[] = ")";
-static char const _WCI86FAR functionSeparator[] = ", ";
-static char const _WCI86FAR basedSuffix[] = ") ";
-static char const _WCI86FAR basedStrPrefix[] = "\"";
-static char const _WCI86FAR basedStrSuffix[] = "\"";
-static char const _WCI86FAR basedSelf[] = "__self";
-static char const _WCI86FAR basedVoid[] = "void";
+/* where a type's pieces go in the output: the cursor before it, the length after it, and whether it is a right-hand piece */
+struct TypeState {
+    size_t prefix;
+    size_t suffix;
+    bool right;
+};
 
 /*
  * mangled character translations
  */
-typedef struct table_t {
-    char const _WCI86FAR    *string;    /* translated string */
-    char                    grouping;   /* flavour of character */
-} table_t;
+enum class CharGroup : unsigned char { Unused, BasicType, Pointer, Modifier };
 
-#define LOWER_TABLE_LIMIT   'A'
-
-static table_t const _WCI86FAR translate_type_encoding[] = {
-#define CHAR_UNUSED         0
-#define CHAR_BASIC_TYPE     1
-#define CHAR_POINTER        2
-#define CHAR_MODIFIER       3
-    /* 'A' */   { "char ",      CHAR_BASIC_TYPE },
-    /* 'B' */   { "float ",     CHAR_BASIC_TYPE },
-    /* 'C' */   { "char ",      CHAR_BASIC_TYPE },
-    /* 'D' */   { "double ",    CHAR_BASIC_TYPE },
-    /* 'E' */   { "... ",       CHAR_BASIC_TYPE },
-    /* 'F' */   { "__far ",     CHAR_MODIFIER },
-    /* 'G' */   { "__far16 ",   CHAR_MODIFIER },
-    /* 'H' */   { "__huge ",    CHAR_MODIFIER },
-    /* 'I' */   { "int ",       CHAR_BASIC_TYPE },
-    /* 'J' */   { "__based(",   CHAR_MODIFIER },
-    /* 'K' */   { NULL,         CHAR_UNUSED },
-    /* 'L' */   { "long ",      CHAR_BASIC_TYPE },
-    /* 'M' */   { "::* ",       CHAR_POINTER },
-    /* 'N' */   { "__near ",    CHAR_MODIFIER },
-    /* 'O' */   { NULL,         CHAR_UNUSED },
-    /* 'P' */   { "* ",         CHAR_POINTER },
-    /* 'Q' */   { "bool ",      CHAR_BASIC_TYPE },
-    /* 'R' */   { "& ",         CHAR_POINTER },
-    /* 'S' */   { "short ",     CHAR_BASIC_TYPE },
-    /* 'T' */   { "long double ",CHAR_BASIC_TYPE },
-    /* 'U' */   { "unsigned ",  CHAR_MODIFIER },
-    /* 'V' */   { "void ",      CHAR_BASIC_TYPE },
-    /* 'W' */   { "wchar_t ",   CHAR_BASIC_TYPE },
-    /* 'X' */   { "const ",     CHAR_MODIFIER },
-    /* 'Y' */   { "volatile ",  CHAR_MODIFIER },
-    /* 'Z' */   { "__int64 ",   CHAR_BASIC_TYPE },
-    /* '[' */   { NULL,         CHAR_UNUSED },
-    /* '\' */   { NULL,         CHAR_UNUSED },
-    /* ']' */   { NULL,         CHAR_UNUSED },
-    /* '^' */   { NULL,         CHAR_UNUSED },
-    /* '_' */   { "",           CHAR_BASIC_TYPE } /* for ctor/dtor return type */
+struct EncodingEntry {
+    const char *text;       /* translated string */
+    CharGroup group;        /* flavour of character */
 };
 
-static const char _WCI86FAR * const _WCI86FAR operatorFunction[] = {
+constexpr char kLowerTableLimit = 'A';
+
+constexpr std::array<EncodingEntry, 31> kTypeEncoding{{
+    /* 'A' */   { "char ",      CharGroup::BasicType },
+    /* 'B' */   { "float ",     CharGroup::BasicType },
+    /* 'C' */   { "char ",      CharGroup::BasicType },
+    /* 'D' */   { "double ",    CharGroup::BasicType },
+    /* 'E' */   { "... ",       CharGroup::BasicType },
+    /* 'F' */   { "__far ",     CharGroup::Modifier },
+    /* 'G' */   { "__far16 ",   CharGroup::Modifier },
+    /* 'H' */   { "__huge ",    CharGroup::Modifier },
+    /* 'I' */   { "int ",       CharGroup::BasicType },
+    /* 'J' */   { "__based(",   CharGroup::Modifier },
+    /* 'K' */   { nullptr,      CharGroup::Unused },
+    /* 'L' */   { "long ",      CharGroup::BasicType },
+    /* 'M' */   { "::* ",       CharGroup::Pointer },
+    /* 'N' */   { "__near ",    CharGroup::Modifier },
+    /* 'O' */   { nullptr,      CharGroup::Unused },
+    /* 'P' */   { "* ",         CharGroup::Pointer },
+    /* 'Q' */   { "bool ",      CharGroup::BasicType },
+    /* 'R' */   { "& ",         CharGroup::Pointer },
+    /* 'S' */   { "short ",     CharGroup::BasicType },
+    /* 'T' */   { "long double ", CharGroup::BasicType },
+    /* 'U' */   { "unsigned ",  CharGroup::Modifier },
+    /* 'V' */   { "void ",      CharGroup::BasicType },
+    /* 'W' */   { "wchar_t ",   CharGroup::BasicType },
+    /* 'X' */   { "const ",     CharGroup::Modifier },
+    /* 'Y' */   { "volatile ",  CharGroup::Modifier },
+    /* 'Z' */   { "__int64 ",   CharGroup::BasicType },
+    /* '[' */   { nullptr,      CharGroup::Unused },
+    /* '\' */   { nullptr,      CharGroup::Unused },
+    /* ']' */   { nullptr,      CharGroup::Unused },
+    /* '^' */   { nullptr,      CharGroup::Unused },
+    /* '_' */   { "",           CharGroup::BasicType }  /* for ctor/dtor return type */
+}};
+
+constexpr std::array<const char *, 21> kOperatorFunction{{
     /* A */ ">>",
     /* B */ "<<",
     /* C */ "!",
@@ -295,18 +213,18 @@ static const char _WCI86FAR * const _WCI86FAR operatorFunction[] = {
     /* S */ "|",
     /* T */ "&&",
     /* U */ "||"
-};
+}};
 
-static char const _WCI86FAR * const _WCI86FAR relationalFunction[] = {
+constexpr std::array<const char *, 6> kRelationalFunction{{
     /* A */ "==",
     /* B */ "!=",
     /* C */ "<",
     /* D */ "<=",
     /* E */ ">",
     /* F */ ">="
-};
+}};
 
-static char const _WCI86FAR * const _WCI86FAR assignmentFunction[] = {
+constexpr std::array<const char *, 11> kAssignmentFunction{{
     /* A */ "=",
     /* B */ "*=",
     /* C */ "+=",
@@ -318,1530 +236,1065 @@ static char const _WCI86FAR * const _WCI86FAR assignmentFunction[] = {
     /* I */ "&=",
     /* J */ "|=",
     /* K */ "^="
+}};
+
+struct WatcomObject {
+    const char *name;
+    char first;
+    char second;
 };
-#define num_elements( __a ) (int)(sizeof(__a) / sizeof(__a[0]))
 
-#define check_element(i,a)  (i >= 0 && i < num_elements( a ))
+constexpr std::array<WatcomObject, 19> kWatcomObject{{
+    { "__internal",     'A', '*' },
+    { "__onceonly",     'B', 'I' },
+    { "__arrdtorblk",   'D', 'A' },
+    { "__defarg",       'D', 'F' },
+    { "__debuginfo",    'D', 'I' },
+    { "__dtorobjblk",   'D', 'O' },
+    { "__mbrptrthunk",  'M', 'P' },
+    { "__staticinit",   'S', 'I' },
+    { "__throwblk",     'T', 'H' },
+    { "__typeid",       'T', 'I' },
+    { "__typesig",      'T', 'S' },
+    { "__rtti",         'V', 'A' },
+    { "__vbtbl",        'V', 'B' },
+    { "__vftbl",        'V', 'F' },
+    { "__vmtbl",        'V', 'M' },
+    { "__vfthunk",      'V', 'T' },
+    { "__typstattab",   'S', 'T' },
+    { "__stattabcmd",   'C', 'M' },
+    { "<unique>",       'U', 'N' }
+}};
 
-#define WATCOMOBJ_INITS \
-    WATCOMOBJ_INIT( 'A', '*', "__internal" ) \
-    WATCOMOBJ_INIT( 'B', 'I', "__onceonly" ) \
-    WATCOMOBJ_INIT( 'D', 'A', "__arrdtorblk" ) \
-    WATCOMOBJ_INIT( 'D', 'F', "__defarg" ) \
-    WATCOMOBJ_INIT( 'D', 'I', "__debuginfo" ) \
-    WATCOMOBJ_INIT( 'D', 'O', "__dtorobjblk" ) \
-    WATCOMOBJ_INIT( 'M', 'P', "__mbrptrthunk" ) \
-    WATCOMOBJ_INIT( 'S', 'I', "__staticinit" ) \
-    WATCOMOBJ_INIT( 'T', 'H', "__throwblk" ) \
-    WATCOMOBJ_INIT( 'T', 'I', "__typeid" ) \
-    WATCOMOBJ_INIT( 'T', 'S', "__typesig" ) \
-    WATCOMOBJ_INIT( 'V', 'A', "__rtti" ) \
-    WATCOMOBJ_INIT( 'V', 'B', "__vbtbl" ) \
-    WATCOMOBJ_INIT( 'V', 'F', "__vftbl" ) \
-    WATCOMOBJ_INIT( 'V', 'M', "__vmtbl" ) \
-    WATCOMOBJ_INIT( 'V', 'T', "__vfthunk" ) \
-    WATCOMOBJ_INIT( 'S', 'T', "__typstattab" ) \
-    WATCOMOBJ_INIT( 'C', 'M', "__stattabcmd" ) \
-    WATCOMOBJ_INIT( 'U', 'N', "<unique>" )
-
-#define WATCOMOBJ_INIT(a,b,c) {c,{a,b}},
-static const struct {
-    const char _WCI86FAR    *name;
-    union {
-        const char  str[2];
-        short       val;
-    } u;
-} _WCI86FAR   watcomObject[] = {
-    WATCOMOBJ_INITS
-};
-#undef WATCOMOBJ_INIT
-
-#define MAX_WATCOM_OBJECT       num_elements( watcomObject )
-
-#if 0 || defined( TEST ) || defined( DUMP )
-int no_errors;
-unsigned errors;
-#endif
-
-static bool scoped_name( output_desc *data, state_desc *state );
-static bool type_encoding( output_desc *data, state_desc *state );
-static bool recursive_mangled_name( output_desc *data, state_desc *state );
-static size_t terminateOutput( output_desc *data );
-
-static void zapSpace( output_desc *data )
+bool typeChar(char c, CharGroup group)
 {
-    /*
-     * if in test mode or no characters output then return (no action)
-     */
-    if( data->output == NULL
-      || data->index == 0 ) {
-        return;
-    }
-    if( data->index > data->size ) {
-        return;
-    }
-    if( data->output[data->index - 1] != ' ' ) {
-        return;
-    }
-    data->count--;
-    data->index--;
-    /*
-     * remove single space on index position, shrink string if possible
-     */
-    if( data->index != data->count ) {
-        size_t last = data->size;
-        if( last > data->count )
-            last = data->count;
-        if( last > data->index ) {
-            memmove( &data->output[data->index], &data->output[data->index + 1], last - data->index );
+    const int i = c - kLowerTableLimit;
+    if (i >= 0 && i < static_cast<int>(kTypeEncoding.size()))
+        return kTypeEncoding[static_cast<size_t>(i)].group == group;
+    return false;
+}
+
+unsigned charToDigit(char c)
+{
+    if (c >= '0' && c <= '9')
+        return static_cast<unsigned>(c - '0');
+    if (c >= 'A' && c <= 'Z')
+        return static_cast<unsigned>(c - 'A' + 10);
+    if (c >= 'a' && c <= 'z')
+        return static_cast<unsigned>(c - 'a' + 10);
+    return static_cast<unsigned>(-1);
+}
+
+/*
+ * One demangling: the mangled input, the output being built (in "test" mode, with no buffer, only its length is counted),
+ * and the parser's cursors.
+ *
+ * Notes:
+ *  demangler works in two modes, first "test" calculates required buffer size and second "write" demangle symbol to
+ *      output buffer
+ *  "test" mode doesn't get exact buffer size, but it guaranties size to output not overflow, the calculated size can
+ *      be a few bytes higher then exact size
+ *  demangler is in "test" mode if output buffer pointer is nullptr
+ *  the "index" field acts as a cursor in the output buffer
+ *  demangler uses insert mode in the output buffer, not overwrite, first making room in the output buffer (moving
+ *      existing data) and then inserting data at the current cursor position.
+ *
+ *  "output" is the output buffer, "size" its length (not used in "test" mode), "index" the current output position,
+ *  "count" the length of the demangled string (virtual)
+ */
+class Demangler {
+public:
+    Demangler(DemangleState &g, const char *in, size_t len, char *buff, size_t buffSize)
+        : input(in), output(buff), g_(g)
+    {
+        if (len != 0) {
+            /* length of mangled name is known */
+            end = in + len;
         }
+        if (buff != nullptr && buffSize > 0) {
+            size = buffSize - 1;
+            buff[0] = '\0';
+        }
+    }
+
+    const char *input;
+    const char *end = nullptr;
+    const char *scopePtr = nullptr;
+    char *output;
+    size_t size = 0;            /* buffer length without null terminator */
+    size_t count = 0;           /* virtual length (may exceed size) */
+    size_t index = 0;
+    size_t pendingLoc = 0;
+    size_t scopeLen = 0;
+    int suppressOutput = 1;
+    unsigned scopeIndex = 0;
+    bool ctdtPending = false;
+    bool cvPending = false;
+    bool scopeName = false;
+    bool baseName = false;
+    SymPrefix symPrefix = SymPrefix::None;
+
+    bool mangledName();
+    void fullMangledName();
+    void doCopy();
+    bool typeEncoding(TypeState &state);
+    size_t terminateOutput();
+
+private:
+    DemangleState &g_;
+
+    /* output */
+    void zapSpace();
+    void emitChar(char c);
+    void emitStr(const char *p);
+    void emitCopy(size_t idx, const char *ptr);
+    void emitInteger(long value);
+    void emitArraySize(size_t value);
+    void emitEncoding(size_t idx) { emitStr(kTypeEncoding[idx].text); }
+    void setIndex(size_t idx) { index = idx; }
+    void resetIndex(size_t offsetFromEnd);
+    void setSuppression()
+    {
+        if (suppressOutput)
+            suppressOutput++;
+    }
+    void resetSuppression()
+    {
+        if (suppressOutput)
+            --suppressOutput;
+    }
+    void forceSuppression()
+    {
+        if (suppressOutput <= kSuppressLimit)
+            suppressOutput += kSuppressLimit + 1;
+    }
+    void unforceSuppression()
+    {
+        if (suppressOutput > kSuppressLimit)
+            suppressOutput -= kSuppressLimit + 1;
+    }
+
+    /* input */
+    char prevChar() const { return upper(*(input - 1)); }
+    char currChar() const
+    {
+        if (end == nullptr || input < end)
+            return upper(*input);
+        return kNul;
+    }
+    void advanceChar()
+    {
+        if ((end == nullptr || input < end) && *input != kNul)
+            input++;
+    }
+    bool base32Num(long &value);
+    bool base10Num(size_t &value);
+    bool getZzLen(size_t &value);
+
+    /* the grammar */
+    bool basicType(TypeState &state);
+    bool pointer(TypeState &state);
+    bool dimension(TypeState &state);
+    bool array(TypeState &state);
+    bool function(TypeState &state);
+    bool tqFunction(TypeState &state);
+    bool unmodifiedType(TypeState &state);
+    bool basedEncoding(TypeState &state);
+    bool modifierList(TypeState &state);
+    bool templateArg(TypeState &state);
+    bool templateName(TypeState &state);
+    bool watcomObject(TypeState &state);
+    bool specialTypeNames(TypeState &state);
+    bool operatorTable(TypeState &state, const char *const *table, size_t n);
+    bool dtor(TypeState &state);
+    bool ctor();
+    bool userConversion(TypeState &state);
+    bool opNew(TypeState &state, const char *what);
+    bool opName(TypeState &state);
+    bool name(TypeState &state);
+    bool symName(TypeState &state);
+    bool scope(TypeState &state, size_t &symbolLength);
+    bool scopedName(TypeState &state);
+    bool recursiveMangledName(TypeState &state);
+    size_t demangleRecursive(const char *in, char *buff, size_t buffSize);
+};
+
+void Demangler::zapSpace()
+{
+    /* if in test mode or no characters output then return (no action) */
+    if (output == nullptr || index == 0)
+        return;
+    if (index > size)
+        return;
+    if (output[index - 1] != ' ')
+        return;
+    count--;
+    index--;
+    /* remove single space on index position, shrink string if possible */
+    if (index != count) {
+        size_t last = size;
+        if (last > count)
+            last = count;
+        if (last > index)
+            std::memmove(&output[index], &output[index + 1], last - index);
     }
 }
 
-#define START_ADJUST    ( 1 << 8 )
+constexpr size_t kStartAdjust = 1 << 8;
 
-static void emitChar( output_desc *data, char c )
+void Demangler::emitChar(char c)
 {
-    size_t  adjust_size;
-    size_t  test_size;
-    char    *test_realloc;
-
-    if( data->suppress_output > SUPPRESS_LIMIT ) {
+    if (suppressOutput > kSuppressLimit)
         return;
-    }
-    /*
-     * virtual length always increased
-     */
-    data->count++;
-    /*
-     * if in test mode then return (no output)
-     */
-    if( data->output == NULL ) {
+    /* virtual length always increased */
+    count++;
+    /* if in test mode then return (no output) */
+    if (output == nullptr)
         return;
-    }
-    /*
-     * check if physical buffer needs to grow
-     */
-    if( data->count > data->size ) {
-        if( user_realloc == NULL )
+    /* check if physical buffer needs to grow */
+    if (count > size) {
+        if (g_.userRealloc == nullptr)
             return;
-        adjust_size = START_ADJUST;
-        for( ;; ) {
-            if( adjust_size == 0 ) {
+        size_t adjustSize = kStartAdjust;
+        for (;;) {
+            if (adjustSize == 0)
                 return;
-            }
-            test_size = data->size + adjust_size;
-            /*
-             * allocate + 1 byte for null terminator
-             */
-            test_realloc = (char *)(user_realloc( data->output, test_size + 1 ));
-            if( test_realloc != NULL ) {
-                data->output = test_realloc;
-                data->size = test_size;
+            const size_t testSize = size + adjustSize;
+            /* allocate + 1 byte for null terminator */
+            char *testRealloc = static_cast<char *>(g_.userRealloc(output, testSize + 1));
+            if (testRealloc != nullptr) {
+                output = testRealloc;
+                size = testSize;
                 break;
             }
-            adjust_size >>= 1;
+            adjustSize >>= 1;
         }
     }
-    /*
-     * cannot write beyond physical buffer
-     */
-    if( data->index < data->size ) {
-        size_t last = data->size;
-        if( last > data->count - 1 )
-            last = data->count - 1;
-        if( last > data->index ) {
-            memmove( &data->output[data->index + 1], &data->output[data->index], last - data->index );
-        }
-        /*
-         * write character to output
-         */
-        data->output[data->index] = c;
-        data->index++;
+    /* cannot write beyond physical buffer */
+    if (index < size) {
+        size_t last = size;
+        if (last > count - 1)
+            last = count - 1;
+        if (last > index)
+            std::memmove(&output[index + 1], &output[index], last - index);
+        /* write character to output */
+        output[index] = c;
+        index++;
     }
 }
 
-static void emitStr( output_desc *data, const char _WCI86FAR *p )
+void Demangler::emitStr(const char *p)
 {
-    if( p != NULL ) {
-        while( *p != NULL_CHAR ) {
-            emitChar( data, *p );
+    if (p != nullptr) {
+        while (*p != kNul) {
+            emitChar(*p);
             ++p;
         }
     }
 }
 
-#define setEmitIndex( data, idx ) ((data)->index = (idx))
-
-static void resetEmitIndex( output_desc *data, size_t offset_from_end )
+void Demangler::resetIndex(size_t offsetFromEnd)
 {
-    size_t index;
-
-    index = data->count;
-    if( index > offset_from_end ) {
-        index -= offset_from_end;
-        if( index > data->size ) {
-            index = data->size;
-        }
+    size_t i = count;
+    if (i > offsetFromEnd) {
+        i -= offsetFromEnd;
+        if (i > size)
+            i = size;
     }
-    data->index = index;
+    index = i;
 }
 
-static void setSuppression( output_desc *data )
+/* an identifier (or any string): idx characters of ptr, or all of ptr when idx is 0 */
+void Demangler::emitCopy(size_t idx, const char *ptr)
 {
-    if( data->suppress_output ) {
-        data->suppress_output++;
-    }
-}
-
-static void resetSuppression( output_desc *data )
-{
-    if( data->suppress_output ) {
-        --data->suppress_output;
-    }
-}
-
-static void forceSuppression( output_desc *data )
-{
-    if( data->suppress_output <= SUPPRESS_LIMIT ) {
-        data->suppress_output += SUPPRESS_LIMIT + 1;
-    }
-}
-
-static void unforceSuppression( output_desc *data )
-{
-    if( data->suppress_output > SUPPRESS_LIMIT ) {
-        data->suppress_output -= SUPPRESS_LIMIT + 1;
-    }
-}
-
-static void demangleEmit( void **cookie, dm_pts dp, pointer_uint value, char const *ptr )
-{
-    output_desc *data = *((output_desc **)cookie);
-    size_t      idx = (size_t)value;
-
-    switch( dp ) {
-    case DM_BASIC_TYPE:
-    case DM_POINTER:
-    case DM_ARRAY:
-    case DM_FUNCTION:
-    case DM_THIS_FUNCTION:
-    case DM_UNMODIFIED_TYPE:
-    case DM_BASED_ENCODING:
-    case DM_MODIFIER_LIST:
-    case DM_TEMPLATE_ARG:
-    case DM_RECURSE_BEGIN:
-    case DM_RECURSE_END:
-    case DM_TEMPLATE_NAME:
-    case DM_DESTRUCTOR:
-    case DM_CONSTRUCTOR:
-    case DM_OPERATOR_CONVERT:
-    case DM_CTOR_DTOR_NAME:
-    case DM_SCOPED_NAME:
-    case DM_NAME:
-    case DM_SCOPE:
-    case DM_MANGLED_NAME:
-    case DM_TRUNCATED_NAME:
-        /* ignore these for demangling */
-        break;
-    case DM_TYPE_ENCODING:
-        if( data->base_name ) {
-            forceSuppression( data );
-        }
-        break;
-    case DM_SET_INDEX:
-        setEmitIndex( data, idx );
-        break;
-    case DM_RESET_INDEX:
-        resetEmitIndex( data, idx );
-        break;
-    case DM_ZAP_SPACE:
-        zapSpace( data );
-        break;
-    case DM_EMIT_SPACE:
-        emitChar( data, ' ' );
-        break;
-    case DM_IDENTIFIER:
-    case DM_COPY_STRING:
-        if( data->base_name
-          && data->ctdt_pending ) {
-            unforceSuppression( data );
-        }
-        if( idx == 0 ) {
-            emitStr( data, ptr );
-        } else {
-            if( data->output != NULL
-              && data->size > data->count ) {
-                if( idx > data->size - data->count ) {
-                    idx = data->size - data->count;
-                }
-            }
-            while( idx-- > 0 ) {
-                emitChar( data, *ptr++ );
-            }
-        }
-        if( data->base_name
-          && data->ctdt_pending ) {
-            forceSuppression( data );
-        }
-        break;
-    case DM_INTEGER:
-        {
-            char buff[12];
-
-#if defined( __WATCOMC__ )
-            ltoa( (long)value, buff, 10 );
-#else
-            sprintf( buff, "%ld", (long)value );
-#endif
-            emitStr( data, buff );
-        }
-        break;
-    case DM_ARRAY_SIZE:
-        if( value != 0 ) {
-            char buff[24];
-
-#if defined( __WATCOMC__ )
-            ultoa( (unsigned long)value, buff, 10 );
-#else
-            sprintf( buff, "%lu", (unsigned long)value );
-#endif
-            emitStr( data, buff );
-        }
-        break;
-    case DM_OPEN_PAREN:
-        emitChar( data, openParen );
-        break;
-    case DM_CLOSE_PAREN:
-        emitChar( data, closeParen );
-        break;
-    case DM_CHAR_ENCODING_SIGNED:
-        emitStr( data, signedPrefix );
-        break;
-    case DM_ARRAY_PREFIX:
-        emitStr( data, arrayPrefix );
-        break;
-    case DM_ARRAY_SUFFIX:
-        emitStr( data, arraySuffix );
-        break;
-    case DM_FUNCTION_PREFIX:
-        emitStr( data, functionPrefix );
-        break;
-    case DM_FUNCTION_SUFFIX:
-        emitStr( data, functionSuffix );
-        if( data->cv_pending ) {
-            unforceSuppression( data );
-        }
-        break;
-    case DM_FUNCTION_ARG_SEPARATOR:
-        emitStr( data, functionSeparator );
-        break;
-    case DM_BASED_SUFFIX:
-        emitStr( data, basedSuffix );
-        break;
-    case DM_BASED_STRING_PREFIX:
-        emitStr( data, basedStrPrefix );
-        break;
-    case DM_BASED_SELF:
-        emitStr( data, basedSelf );
-        break;
-    case DM_BASED_VOID:
-        emitStr( data, basedVoid );
-        break;
-    case DM_BASED_STRING_SUFFIX:
-        emitStr( data, basedStrSuffix );
-        break;
-    case DM_TEMPLATE_PREFIX:
-        emitStr( data, templatePrefix );
-        break;
-    case DM_TEMPLATE_SUFFIX:
-        emitStr( data, templateSuffix );
-        break;
-    case DM_TEMPLATE_ARG_SEPARATOR:
-        emitStr( data, templateSeparator );
-        break;
-    case DM_ANONYMOUS_ENUM:
-        emitStr( data, anonymousEnum );
-        break;
-    case DM_OPERATOR_PREFIX:
-        emitStr( data, operatorName );
-        break;
-    case DM_OPERATOR_NEW:
-        emitStr( data, newFunction );
-        break;
-    case DM_OPERATOR_NEW_ARRAY:
-        emitStr( data, newArrayFunction );
-        break;
-    case DM_OPERATOR_DELETE:
-        emitStr( data, deleteFunction );
-        break;
-    case DM_OPERATOR_DELETE_ARRAY:
-        emitStr( data, deleteArrayFunction );
-        break;
-    case DM_DESTRUCTOR_CHAR:
-        emitChar( data, dtorChar  );
-        break;
-    case DM_SCOPE_SEPARATOR:
-        if( data->base_name ) {
-            forceSuppression( data );
-        }
-        emitStr( data, scopeSeparator );
-        break;
-    case DM_CHAR_ENCODING:
-        emitStr( data, translate_type_encoding[idx].string );
-        break;
-    case DM_WATCOM_OBJECT:
-        emitStr( data, watcomObject[idx].name );
-        break;
-    case DM_OPERATOR_FUNCTION:
-        emitStr( data, operatorFunction[idx] );
-        break;
-    case DM_RELATIONAL_FUNCTION:
-        emitStr( data, relationalFunction[idx] );
-        break;
-    case DM_ASSIGNMENT_FUNCTION:
-        emitStr( data, assignmentFunction[idx] );
-        break;
-    case DM_DECLSPEC_IMPORT:
-        emitStr( data, "__declspec(dllimport) " );
-        break;
-    default:
-#if 0 || defined( TEST )
-        printf( "ERROR: demangleEmit unknown dm_pts(%d)\n", dp );
-        ++errors;
-#endif
-        break;
-    }
-}
-
-/*
- * ==========================================================================
- * everything before this point deals with output to the demangled name
- * ==========================================================================
- */
-static bool typeChar( char c, int grouping )
-{
-    int i;
-
-    i = c - LOWER_TABLE_LIMIT;
-    if( check_element( i, translate_type_encoding ) ) {
-        return( translate_type_encoding[i].grouping == grouping );
-    }
-    return( false );
-}
-
-static bool check_recurse( void )
-{
-#ifdef __NO_STACK_CHECKING__
-    return( true );
-#else
-    return( alloca( RECURSE_CHECK ) != NULL );
-#endif
-}
-
-static char prevChar( output_desc *data )
-{
-    char c;
-
-    c = *(data->input - 1);
-    return( mytoupper( c ) );
-}
-
-static char currChar( output_desc *data )
-{
-    char c;
-
-    c = *data->input;
-    if( data->end == NULL
-      || data->input < data->end ) {
-        c = mytoupper( c );
+    if (baseName && ctdtPending)
+        unforceSuppression();
+    if (idx == 0) {
+        emitStr(ptr);
     } else {
-        c = NULL_CHAR;
+        if (output != nullptr && size > count) {
+            if (idx > size - count)
+                idx = size - count;
+        }
+        while (idx-- > 0)
+            emitChar(*ptr++);
     }
-    return( c );
+    if (baseName && ctdtPending)
+        forceSuppression();
 }
 
-static void advanceChar( output_desc *data )
+void Demangler::emitInteger(long value)
 {
-    if( ( data->end == NULL
-      || data->input < data->end )
-      && *data->input != NULL_CHAR ) {
-        data->input++;
+    char buff[12];
+    std::sprintf(buff, "%ld", value);
+    emitStr(buff);
+}
+
+void Demangler::emitArraySize(size_t value)
+{
+    if (value != 0) {
+        char buff[24];
+        std::sprintf(buff, "%lu", static_cast<unsigned long>(value));
+        emitStr(buff);
     }
 }
 
-static bool is_identifier( char c )
+bool Demangler::base32Num(long &value)
 {
-    if( isalnum( c )
-      || c == UNDERSCORE
-      || c == PERIOD ) {
-        return( true );
-    } else {
-        return( false );
-    }
-}
+    unsigned dig;
+    unsigned long v = 0;
+    bool rc = false;
 
-static unsigned char_to_digit( char c )
-{
-    if( c >= '0'
-      && c <= '9' )
-        return( c - '0' );
-    if( c >= 'A'
-      && c <= 'Z' )
-        return( c - 'A' + 10 );
-    if( c >= 'a'
-      && c <= 'z' )
-        return( c - 'a' + 10 );
-    return( (unsigned)-1 );
-}
-
-static bool base_32_num( output_desc *data, long *value )
-{
-    unsigned    dig;
-    long        v;
-    bool        rc = false;
-
-    v = 0;
-    for( ; (dig = char_to_digit( currChar( data ) )) < 32; ) {
+    while ((dig = charToDigit(currChar())) < 32) {
         v = v * 32 + dig;
-        advanceChar( data );
+        advanceChar();
         rc = true;
     }
-    *value = v;
-    return( rc );
+    value = static_cast<long>(v);
+    return rc;
 }
 
-static bool base_10_num( output_desc *data, size_t *value )
+bool Demangler::base10Num(size_t &value)
 {
-    unsigned    dig;
-    size_t      v;
-    bool        rc = false;
+    unsigned dig;
+    size_t v = 0;
+    bool rc = false;
 
-    v = 0;
-    for( ; (dig = char_to_digit( currChar( data ) )) < 10; ) {
+    while ((dig = charToDigit(currChar())) < 10) {
         v = v * 10 + dig;
-        advanceChar( data );
+        advanceChar();
         rc = true;
     }
-    *value = v;
-    return( rc );
+    value = v;
+    return rc;
 }
 
-static bool get_zz_len( output_desc *data, size_t *pvalue )
+bool Demangler::getZzLen(size_t &pvalue)
 {
-    size_t      value;
-    unsigned    uvalue;
+    unsigned uvalue;
 
-    if( (uvalue = char_to_digit( currChar( data ) )) < 36 ) {
-        advanceChar( data );
-        value = uvalue;
-        if( (uvalue = char_to_digit( currChar( data ) )) < 36 ) {
-            advanceChar( data );
-#ifdef ZZ_LEN_3
+    if ((uvalue = charToDigit(currChar())) < 36) {
+        advanceChar();
+        size_t value = uvalue;
+        if ((uvalue = charToDigit(currChar())) < 36) {
+            advanceChar();
             value = value * 36 + uvalue;
-            if( (uvalue = char_to_digit( currChar( data ) )) < 36 ) {
-                advanceChar( data );
-#endif
-                *pvalue = value * 36 + uvalue;
-                return( true );
-#ifdef ZZ_LEN_3
-            }
-#endif
-        }
-    }
-    return( false );
-}
-
-static bool basic_type( output_desc *data, state_desc *state )
-{
-    char  c;
-
-    _output1( DM_BASIC_TYPE );
-    c = currChar( data );
-    if( typeChar( c, CHAR_BASIC_TYPE ) ) {
-        /*
-         * put a signed before signed char
-         */
-        if( c == 'C'
-          && prevChar( data ) != 'U' ) {
-            _output2( DM_SET_INDEX, state->prefix );
-            _output1( DM_CHAR_ENCODING_SIGNED );
-        }
-        advanceChar( data );
-        _output2( DM_SET_INDEX, state->prefix );
-        _output2( DM_CHAR_ENCODING, c - LOWER_TABLE_LIMIT );
-        return( true );
-    }
-    return( false );
-}
-
-static bool pointer( output_desc *data, state_desc *state )
-{
-    char  c;
-
-    _output1( DM_POINTER );
-    c = currChar( data );
-    if( typeChar( c, CHAR_POINTER ) ) {
-        advanceChar( data );
-        _output2( DM_SET_INDEX, state->prefix );
-        _output2( DM_CHAR_ENCODING, c - LOWER_TABLE_LIMIT );
-        if( c == MEMBER_POINTER ) {
-            if( currChar( data ) == TYPE_NAME_PREFIX ) {
-                advanceChar( data );
-                if( !scoped_name( data, state ) ) {
-                    return( false );
-                }
-                if( currChar( data ) != TYPE_NAME_PREFIX ) {
-                    return( false );
-                }
-                advanceChar( data );
-                _output1( DM_ZAP_SPACE );
+            if ((uvalue = charToDigit(currChar())) < 36) {
+                advanceChar();
+                pvalue = value * 36 + uvalue;
+                return true;
             }
         }
-        return( true );
     }
-    return( false );
+    return false;
 }
 
-static bool dimension( output_desc *data, state_desc *state )
+bool Demangler::basicType(TypeState &state)
+{
+    const char c = currChar();
+    if (typeChar(c, CharGroup::BasicType)) {
+        /* put a signed before signed char */
+        if (c == 'C' && prevChar() != 'U') {
+            setIndex(state.prefix);
+            emitStr("signed ");
+        }
+        advanceChar();
+        setIndex(state.prefix);
+        emitEncoding(static_cast<size_t>(c - kLowerTableLimit));
+        return true;
+    }
+    return false;
+}
+
+bool Demangler::pointer(TypeState &state)
+{
+    const char c = currChar();
+    if (typeChar(c, CharGroup::Pointer)) {
+        advanceChar();
+        setIndex(state.prefix);
+        emitEncoding(static_cast<size_t>(c - kLowerTableLimit));
+        if (c == kMemberPointer) {
+            if (currChar() == kTypeNamePrefix) {
+                advanceChar();
+                if (!scopedName(state))
+                    return false;
+                if (currChar() != kTypeNamePrefix)
+                    return false;
+                advanceChar();
+                zapSpace();
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool Demangler::dimension(TypeState &state)
 {
     size_t value;
 
-    _output2( DM_RESET_INDEX, state->suffix );
-    _output1( DM_ARRAY_PREFIX );
-    if( base_10_num( data, &value ) ) {
-        _output2( DM_ARRAY_SIZE, value );
+    resetIndex(state.suffix);
+    emitStr("[");
+    if (base10Num(value))
+        emitArraySize(value);
+    if (currChar() == kArraySuffix) {
+        advanceChar();
+        emitStr("]");
+        return true;
     }
-    if( currChar( data ) == ARRAY_SUFFIX ) {
-        advanceChar( data );
-        _output1( DM_ARRAY_SUFFIX );
-        return( true );
-    }
-    return( false );
+    return false;
 }
 
-static bool array( output_desc *data, state_desc *state )
+bool Demangler::array(TypeState &state)
 {
-    _output1( DM_ARRAY );
-    _output2( DM_RESET_INDEX, state->suffix );
-    _output1( DM_ZAP_SPACE );
-    if( state->right ) {
-        _output2( DM_SET_INDEX, state->prefix );
-        _output1( DM_OPEN_PAREN );
-        _output2( DM_RESET_INDEX, state->suffix );
-        _output1( DM_CLOSE_PAREN );
-        state->right = false;
+    resetIndex(state.suffix);
+    zapSpace();
+    if (state.right) {
+        setIndex(state.prefix);
+        emitChar('(');
+        resetIndex(state.suffix);
+        emitChar(')');
+        state.right = false;
     }
-    while( currChar( data ) == ARRAY_PREFIX ) {
-        advanceChar( data );
-        if( !dimension( data, state ) ) {
-            return( false );
-        }
+    while (currChar() == kArrayPrefix) {
+        advanceChar();
+        if (!dimension(state))
+            return false;
     }
-    return( type_encoding( data, state ) );
+    return typeEncoding(state);
 }
 
-static bool function( output_desc *data, state_desc *state )
+bool Demangler::function(TypeState &state)
 {
-    state_desc      new_state;
-    size_t          conv_offset = 0;
-    bool            first_arg;
+    size_t convOffset = 0;
 
-    _output1( DM_FUNCTION );
-    _output2( DM_RESET_INDEX, state->suffix );
-    if( data->cv_pending ) {
-        _output1( DM_EMIT_SPACE );
-        conv_offset = data->index;
+    resetIndex(state.suffix);
+    if (cvPending) {
+        emitChar(' ');
+        convOffset = index;
     } else {
-        _output1( DM_ZAP_SPACE );
+        zapSpace();
     }
-    if( state->right ) {
-        _output2( DM_SET_INDEX, state->prefix );
-        _output1( DM_OPEN_PAREN );
-        _output2( DM_RESET_INDEX, state->suffix );
-        _output1( DM_CLOSE_PAREN );
-        state->right = false;
+    if (state.right) {
+        setIndex(state.prefix);
+        emitChar('(');
+        resetIndex(state.suffix);
+        emitChar(')');
+        state.right = false;
     }
-    new_state = *state;
-    _output1( DM_FUNCTION_PREFIX );
-    setSuppression( data );
-    first_arg = false;
-    while( currChar( data ) != FUNCTION_SUFFIX ) {
-        if( first_arg ) {
-            _output2( DM_RESET_INDEX, state->suffix );
-            _output1( DM_ZAP_SPACE );
-            _output1( DM_FUNCTION_ARG_SEPARATOR );
+    TypeState newState = state;
+    emitStr("( ");
+    setSuppression();
+    bool firstArg = false;
+    while (currChar() != kFunctionSuffix) {
+        if (firstArg) {
+            resetIndex(state.suffix);
+            zapSpace();
+            emitStr(", ");
         }
-        new_state.prefix = data->index;
-        if( !type_encoding( data, &new_state ) ) {
-            return( false );
-        }
-        first_arg = true;
+        newState.prefix = index;
+        if (!typeEncoding(newState))
+            return false;
+        firstArg = true;
     }
-    advanceChar( data );
-    _output2( DM_RESET_INDEX, state->suffix );
-    if( !first_arg ) {
-        _output1( DM_ZAP_SPACE );
-    }
-    resetSuppression( data );
-    _output1( DM_FUNCTION_SUFFIX );
-    if( data->cv_pending ) {
-        _output2( DM_SET_INDEX, conv_offset );
+    advanceChar();
+    resetIndex(state.suffix);
+    if (!firstArg)
+        zapSpace();
+    resetSuppression();
+    emitStr(")");
+    if (cvPending) {
+        unforceSuppression();
+        setIndex(convOffset);
     } else {
-        _output2( DM_SET_INDEX, state->prefix );
+        setIndex(state.prefix);
     }
-    new_state.prefix = data->index;
-    if( type_encoding( data, &new_state ) ) {
-        data->cv_pending = false;
-        return( true );
-    } else {
-        return( false );
+    newState.prefix = index;
+    if (typeEncoding(newState)) {
+        cvPending = false;
+        return true;
     }
+    return false;
 }
 
-static bool tq_function( output_desc *data, state_desc *state )
+bool Demangler::tqFunction(TypeState &state)
 {
-    char        c;
-    char const  *tq_ptr;
-    size_t      tq_len;
-
-    _output1( DM_THIS_FUNCTION );
-    tq_ptr = data->input;
-    tq_len = 0;
-    c = currChar( data );
-    while( typeChar( c, CHAR_MODIFIER ) ) {
-        /*
-         * note: doesn't handle based modifiers
-         */
-        tq_len++;
-        advanceChar( data );
-        c = currChar( data );
+    const char *tqPtr = input;
+    size_t tqLen = 0;
+    char c = currChar();
+    while (typeChar(c, CharGroup::Modifier)) {
+        /* note: doesn't handle based modifiers */
+        tqLen++;
+        advanceChar();
+        c = currChar();
     }
-    if( c == FUNCTION_PREFIX ) {
-        advanceChar( data );
-        if( function( data, state ) ) {
-            _output2( DM_RESET_INDEX, state->suffix );
-            if( tq_len > 0 ) {
-                _output1( DM_EMIT_SPACE );
-                while( tq_len-- ) {
-                    c = *tq_ptr++;
-                    _output2( DM_CHAR_ENCODING, mytoupper( c ) - LOWER_TABLE_LIMIT );
+    if (c == kFunctionPrefix) {
+        advanceChar();
+        if (function(state)) {
+            resetIndex(state.suffix);
+            if (tqLen > 0) {
+                emitChar(' ');
+                while (tqLen--) {
+                    c = *tqPtr++;
+                    emitEncoding(static_cast<size_t>(upper(c) - kLowerTableLimit));
                 }
-                _output1( DM_ZAP_SPACE );
+                zapSpace();
             }
-            return( true );
+            return true;
         }
     }
-    return( false );
+    return false;
 }
 
-static bool unmodified_type( output_desc *data, state_desc *state )
+bool Demangler::unmodifiedType(TypeState &state)
 {
-    char c;
-
-    _output1( DM_UNMODIFIED_TYPE );
-    c = currChar( data );
-    if( c == TYPE_NAME_PREFIX ) {
-        advanceChar( data );
-        if( scoped_name( data, state ) ) {
-            if( currChar( data ) == TYPE_NAME_SUFFIX ) {
-                advanceChar( data );
-                return( true );
+    const char c = currChar();
+    if (c == kTypeNamePrefix) {
+        advanceChar();
+        if (scopedName(state)) {
+            if (currChar() == kTypeNameSuffix) {
+                advanceChar();
+                return true;
             }
         }
-    } else if( c == FUNCTION_PREFIX ) {
-        advanceChar( data );
-        return( function( data, state ) );
-    } else if( c == THIS_QUAL_PREFIX ) {
-        advanceChar( data );
-        return( tq_function( data, state ) );
-    } else if( c == ARRAY_PREFIX ) {
-        return( array( data, state ) );
-    } else if( typeChar( c, CHAR_POINTER ) ) {
-        if( pointer( data, state ) ) {
-            state->right = true;
-            return( type_encoding( data, state ) );
+    } else if (c == kFunctionPrefix) {
+        advanceChar();
+        return function(state);
+    } else if (c == kThisQualPrefix) {
+        advanceChar();
+        return tqFunction(state);
+    } else if (c == kArrayPrefix) {
+        return array(state);
+    } else if (typeChar(c, CharGroup::Pointer)) {
+        if (pointer(state)) {
+            state.right = true;
+            return typeEncoding(state);
         }
     } else {
-        return( basic_type( data, state ) );
+        return basicType(state);
     }
-    return( false );
+    return false;
 }
 
-static bool based_encoding( output_desc *data, state_desc *state )
+bool Demangler::basedEncoding(TypeState &state)
 {
-    char   c;
     size_t len;
 
-    _output1( DM_BASED_ENCODING );
-    c = currChar( data );
-    switch( c ) {
+    switch (currChar()) {
     case 'S':
-        advanceChar( data );
-        _output1( DM_BASED_SELF );
-        _output1( DM_BASED_SUFFIX );
-        return( true );
+        advanceChar();
+        emitStr("__self");
+        emitStr(") ");
+        return true;
     case 'V':
-        advanceChar( data );
-        _output1( DM_BASED_VOID );
-        _output1( DM_BASED_SUFFIX );
-        return( true );
+        advanceChar();
+        emitStr("void");
+        emitStr(") ");
+        return true;
     case 'L':
-        advanceChar( data );
-        if( get_zz_len( data, &len ) ) {
-            _output1( DM_BASED_STRING_PREFIX );
-            _output3( DM_IDENTIFIER, len, data->input );
-            while( len-- ) {
-                advanceChar( data );
-            }
-            _output1( DM_BASED_STRING_SUFFIX );
-            _output1( DM_BASED_SUFFIX );
-            return( true );
+        advanceChar();
+        if (getZzLen(len)) {
+            emitStr("\"");
+            emitCopy(len, input);
+            while (len--)
+                advanceChar();
+            emitStr("\"");
+            emitStr(") ");
+            return true;
         }
         break;
     case 'A':
     case 'F':
-        advanceChar( data );
-        if( currChar( data ) == TYPE_NAME_PREFIX ) {
-            state_desc new_state;
-
-            advanceChar( data );
-            new_state = *state;
-            new_state.prefix = data->index;
-            new_state.suffix = data->count - data->index;
-            if( scoped_name( data, &new_state ) ) {
-                _output2( DM_RESET_INDEX, new_state.suffix );
-                _output1( DM_ZAP_SPACE );
-                _output1( DM_BASED_SUFFIX );
-                return( true );
+        advanceChar();
+        if (currChar() == kTypeNamePrefix) {
+            advanceChar();
+            TypeState newState = state;
+            newState.prefix = index;
+            newState.suffix = count - index;
+            if (scopedName(newState)) {
+                resetIndex(newState.suffix);
+                zapSpace();
+                emitStr(") ");
+                return true;
             }
         }
         break;
     }
-    return( false );
+    return false;
 }
 
-static bool modifier_list( output_desc *data, state_desc *state )
+bool Demangler::modifierList(TypeState &state)
 {
-    char c;
-
-    _output1( DM_MODIFIER_LIST );
-    c = currChar( data );
-    while( typeChar( c, CHAR_MODIFIER ) ) {
-        advanceChar( data );
-        if( c == 'U'
-          && currChar( data ) == 'A' ) {
-            /*
-             * don't emit unsigned before default char
-             */
+    char c = currChar();
+    while (typeChar(c, CharGroup::Modifier)) {
+        advanceChar();
+        if (c == 'U' && currChar() == 'A') {
+            /* don't emit unsigned before default char */
         } else {
-            _output2( DM_SET_INDEX, state->prefix );
-            _output2( DM_CHAR_ENCODING, c - LOWER_TABLE_LIMIT );
+            setIndex(state.prefix);
+            emitEncoding(static_cast<size_t>(c - kLowerTableLimit));
         }
-        if( c == 'J' ) {
-            if( !based_encoding( data, state ) ) {
-                return( false );
-            }
+        if (c == 'J') {
+            if (!basedEncoding(state))
+                return false;
         }
-        c = currChar( data );
+        c = currChar();
     }
-    return( true );
+    return true;
 }
 
-static bool type_encoding( output_desc *data, state_desc *state )
+bool Demangler::typeEncoding(TypeState &state)
 {
-    bool ret;
-    char c;
+    bool ret = false;
 
-    ret = false;
-    _output1( DM_TYPE_ENCODING );
-    c = currChar( data );
-    if( typeChar( c, CHAR_MODIFIER ) ) {
-        if( modifier_list( data, state ) ) {
-            ret = unmodified_type( data, state );
-        }
+    if (baseName)
+        forceSuppression();
+    const char c = currChar();
+    if (typeChar(c, CharGroup::Modifier)) {
+        if (modifierList(state))
+            ret = unmodifiedType(state);
     } else {
-        ret = unmodified_type( data, state );
+        ret = unmodifiedType(state);
     }
-#if 0   /* afs; this isn't the right place for this but we should output this */
-    if( ret
-      && data->sym_prefix == SYM_PREFIX_IMP ) {
-        _output2( DM_SET_INDEX, state->prefix );
-        _output1( DM_DECLSPEC_IMPORT );
-        data->sym_prefix = SYM_PREFIX_NONE;
-    }
-#endif
-    return( ret );
+    return ret;
 }
 
-static bool template_arg( output_desc *data, state_desc *state )
+bool Demangler::templateArg(TypeState &state)
 {
-    char c;
-
-    _output1( DM_TEMPLATE_ARG );
-    c = currChar( data );
-    if( c == TEMPLATE_INT ) {
+    char c = currChar();
+    if (c == kTemplateInt) {
         long value;
-        advanceChar( data );
-        if( base_32_num( data, &value ) ) {
-            c = currChar( data );
-            if( c == POSITIVE_INT ) {
-                advanceChar( data );
-                _output2( DM_SET_INDEX, state->prefix );
-                _output2( DM_INTEGER, value );
-                return( true );
-            } else if( c == NEGATIVE_INT ) {
-                advanceChar( data );
-                _output2( DM_SET_INDEX, state->prefix );
-                _output2( DM_INTEGER, -value );
-                return( true );
+        advanceChar();
+        if (base32Num(value)) {
+            c = currChar();
+            if (c == kPositiveInt) {
+                advanceChar();
+                setIndex(state.prefix);
+                emitInteger(value);
+                return true;
+            } else if (c == kNegativeInt) {
+                advanceChar();
+                setIndex(state.prefix);
+                emitInteger(static_cast<long>(0UL - static_cast<unsigned long>(value)));
+                return true;
             }
         }
-    } else if( c == TEMPLATE_TYPE ) {
-        advanceChar( data );
-        return( type_encoding( data, state ) );
-    } else if( c == PREFIX_EMBEDDED ) {
-        advanceChar( data );
-        if( check_recurse() ) {
-            return( recursive_mangled_name( data, state ) );
-        }
+    } else if (c == kTemplateType) {
+        advanceChar();
+        return typeEncoding(state);
+    } else if (c == kPrefixEmbedded) {
+        advanceChar();
+        return recursiveMangledName(state);
     }
-    return( false );
+    return false;
 }
 
-static bool template_name( output_desc *data, state_desc *state )
+bool Demangler::templateName(TypeState &state)
 {
-    state_desc      new_state;
-    bool            first_arg;
-    char            c;
-
-    _output1( DM_TEMPLATE_NAME );
-    new_state = *state;
-    _output2( DM_RESET_INDEX, state->suffix );
-    _output1( DM_TEMPLATE_PREFIX );
-    first_arg = false;
-    c = currChar( data );
-    while( c == TEMPLATE_INT || c == TEMPLATE_TYPE || c == PREFIX_EMBEDDED ) {
-        if( first_arg ) {
-            _output2( DM_RESET_INDEX, state->suffix );
-            _output1( DM_ZAP_SPACE );
-            _output1( DM_TEMPLATE_ARG_SEPARATOR );
+    TypeState newState = state;
+    resetIndex(state.suffix);
+    emitStr("<");
+    bool firstArg = false;
+    char c = currChar();
+    while (c == kTemplateInt || c == kTemplateType || c == kPrefixEmbedded) {
+        if (firstArg) {
+            resetIndex(state.suffix);
+            zapSpace();
+            emitStr(",");
         }
-        new_state.prefix = data->index;
-        if( !template_arg( data, &new_state ) ) {
-            return( false );
-        }
-        first_arg = true;
-        c = currChar( data );
+        newState.prefix = index;
+        if (!templateArg(newState))
+            return false;
+        firstArg = true;
+        c = currChar();
     }
-    _output2( DM_RESET_INDEX, state->suffix );
-    if( !first_arg ) {
-        _output1( DM_ZAP_SPACE );
-    }
-    _output1( DM_TEMPLATE_SUFFIX );
-    return( true );
+    resetIndex(state.suffix);
+    if (!firstArg)
+        zapSpace();
+    emitStr(">");
+    return true;
 }
 
-static bool watcom_object( output_desc *data, state_desc *state )
+bool Demangler::watcomObject(TypeState &state)
 {
-    union {
-        char    c[2];
-        short   val;
-    } srch;
-    int      i;
-    size_t   len;
-    char     c;
+    size_t len;
+    const char c = currChar();
 
-    c = currChar( data );
-    if( c == 'A' ) {
-        advanceChar( data );
-        advanceChar( data );
-        _output2( DM_SET_INDEX, state->prefix );
-        _output2( DM_WATCOM_OBJECT, 0 );
+    if (c == 'A') {
+        advanceChar();
+        advanceChar();
+        setIndex(state.prefix);
+        emitStr(kWatcomObject[0].name);
     } else {
-        srch.c[0] = c;
-        advanceChar( data );
-        srch.c[1] = currChar( data );
-        advanceChar( data );
-        for( i = 1; i < MAX_WATCOM_OBJECT; i++ ) {
-            if( srch.val == watcomObject[i].u.val ) {
-                _output2( DM_SET_INDEX, state->prefix );
-                _output2( DM_WATCOM_OBJECT, i );
+        const char first = c;
+        advanceChar();
+        const char second = currChar();
+        advanceChar();
+        size_t i = 1;
+        for (; i < kWatcomObject.size(); i++) {
+            if (first == kWatcomObject[i].first && second == kWatcomObject[i].second) {
+                setIndex(state.prefix);
+                emitStr(kWatcomObject[i].name);
                 break;
             }
         }
-        /*
-         * check to make sure we found something
-         */
-        if( i == MAX_WATCOM_OBJECT ) {
-            _output2( DM_SET_INDEX, state->prefix );
-            _output2( DM_WATCOM_OBJECT, 0 );
+        /* check to make sure we found something */
+        if (i == kWatcomObject.size()) {
+            setIndex(state.prefix);
+            emitStr(kWatcomObject[0].name);
         }
     }
-    if( get_zz_len( data, &len ) ) {
-        while( len-- ) {
-            advanceChar( data );
-        }
-        if( currChar( data ) == TYPE_NAME_SUFFIX ) {
-            advanceChar( data );
-            return( true );
-        }
-    }
-    return( false );
-}
-
-static bool special_type_names( output_desc *data, state_desc *state )
-{
-    char c;
-
-    c = currChar( data );
-    if( c == 'E' ) {
-        advanceChar( data );
-        _output2( DM_SET_INDEX, state->prefix );
-        _output1( DM_ANONYMOUS_ENUM );
-        for( ; (c = currChar( data )) != NULL_CHAR; ) {
-            advanceChar( data );
-            if( c == TYPE_NAME_SUFFIX ) {
-                return( true );
-            }
+    if (getZzLen(len)) {
+        while (len--)
+            advanceChar();
+        if (currChar() == kTypeNameSuffix) {
+            advanceChar();
+            return true;
         }
     }
-    return( false );
+    return false;
 }
 
-static bool operator_function( output_desc *data, state_desc *state )
+bool Demangler::specialTypeNames(TypeState &state)
 {
-    int i;
-
-    i = currChar( data ) - LOWER_TABLE_LIMIT;
-    if( check_element( i, operatorFunction ) ) {
-        advanceChar( data );
-        _output2( DM_SET_INDEX, state->prefix );
-        _output1( DM_OPERATOR_PREFIX );
-        _output2( DM_OPERATOR_FUNCTION, i );
-        return( true );
+    char c = currChar();
+    if (c == 'E') {
+        advanceChar();
+        setIndex(state.prefix);
+        emitStr("__anonymous_enum ");
+        for (; (c = currChar()) != kNul;) {
+            advanceChar();
+            if (c == kTypeNameSuffix)
+                return true;
+        }
     }
-    return( false );
+    return false;
 }
 
-static bool relational_function( output_desc *data, state_desc *state )
+/* operator, relational or assignment function: the operator's name from its table */
+bool Demangler::operatorTable(TypeState &state, const char *const *table, size_t n)
 {
-    int i;
-
-    i = currChar( data ) - LOWER_TABLE_LIMIT;
-    if( check_element( i, relationalFunction ) ) {
-        advanceChar( data );
-        _output2( DM_SET_INDEX, state->prefix );
-        _output1( DM_OPERATOR_PREFIX );
-        _output2( DM_RELATIONAL_FUNCTION, i );
-        return( true );
+    const int i = currChar() - kLowerTableLimit;
+    if (i >= 0 && i < static_cast<int>(n)) {
+        advanceChar();
+        setIndex(state.prefix);
+        emitStr("operator ");
+        emitStr(table[i]);
+        return true;
     }
-    return( false );
+    return false;
 }
 
-static bool assignment_function( output_desc *data, state_desc *state )
+bool Demangler::dtor(TypeState &state)
 {
-    int i;
-
-    i = currChar( data ) - LOWER_TABLE_LIMIT;
-    if( check_element( i, assignmentFunction ) ) {
-        advanceChar( data );
-        _output2( DM_SET_INDEX, state->prefix );
-        _output1( DM_OPERATOR_PREFIX );
-        _output2( DM_ASSIGNMENT_FUNCTION, i );
-        return( true );
-    }
-    return( false );
+    setIndex(state.prefix);
+    emitChar('~');
+    pendingLoc = count - index;
+    ctdtPending = true;
+    return true;
 }
 
-static bool op_new( output_desc *data, state_desc *state )
+/* operator new / delete (and their array forms) */
+bool Demangler::opNew(TypeState &state, const char *what)
 {
-    _output2( DM_SET_INDEX, state->prefix );
-    _output1( DM_OPERATOR_PREFIX );
-    _output1( DM_OPERATOR_NEW );
-    return( true );
+    setIndex(state.prefix);
+    emitStr("operator ");
+    emitStr(what);
+    return true;
 }
 
-static bool op_new_array( output_desc *data, state_desc *state )
+bool Demangler::ctor()
 {
-    _output2( DM_SET_INDEX, state->prefix );
-    _output1( DM_OPERATOR_PREFIX );
-    _output1( DM_OPERATOR_NEW_ARRAY );
-    return( true );
+    pendingLoc = count - index;
+    ctdtPending = true;
+    return true;
 }
 
-static bool dtor( output_desc *data, state_desc *state )
+bool Demangler::userConversion(TypeState &state)
 {
-    _output2( DM_SET_INDEX, state->prefix );
-    _output1( DM_DESTRUCTOR_CHAR );
-    _output1( DM_DESTRUCTOR );
-    data->pending_loc = data->count - data->index;
-    data->ctdt_pending = true;
-    return( true );
+    setIndex(state.prefix);
+    emitStr("operator ");
+    cvPending = true;
+    return true;
 }
 
-static bool op_delete( output_desc *data, state_desc *state )
+bool Demangler::opName(TypeState &state)
 {
-    _output2( DM_SET_INDEX, state->prefix );
-    _output1( DM_OPERATOR_PREFIX );
-    _output1( DM_OPERATOR_DELETE );
-    return( true );
-}
-
-static bool op_delete_array( output_desc *data, state_desc *state )
-{
-    _output2( DM_SET_INDEX, state->prefix );
-    _output1( DM_OPERATOR_PREFIX );
-    _output1( DM_OPERATOR_DELETE_ARRAY );
-    return( true );
-}
-
-static bool ctor( output_desc *data, state_desc *state )
-{
-    /* unused parameters */ (void)state;
-
-    _output1( DM_CONSTRUCTOR );
-    data->pending_loc = data->count - data->index;
-    data->ctdt_pending = true;
-    return( true );
-}
-
-static bool user_conversion( output_desc *data, state_desc *state )
-{
-    _output2( DM_SET_INDEX, state->prefix );
-    _output1( DM_OPERATOR_PREFIX );
-    _output1( DM_OPERATOR_CONVERT );
-    data->cv_pending = true;
-    return( true );
-}
-
-static bool op_name( output_desc *data, state_desc *state )
-{
-    char c;
-
-    c = currChar( data );
-    switch( c ) {
-    case GROUP_C_PREFIX:
-        advanceChar( data );
-        c = currChar( data );
-        if( c == CTOR_PREFIX2 ) {
-            advanceChar( data );
-            return( ctor( data, state ) );
-        } else if( c == OP_CONVERT_PREFIX2 ) {
-            advanceChar( data );
-            return( user_conversion( data, state ) );
+    char c = currChar();
+    switch (c) {
+    case kGroupCPrefix:
+        advanceChar();
+        c = currChar();
+        if (c == kCtorPrefix2) {
+            advanceChar();
+            return ctor();
+        } else if (c == kOpConvertPrefix2) {
+            advanceChar();
+            return userConversion(state);
         }
         break;
-    case GROUP_D_PREFIX:
-        advanceChar( data );
-        c = currChar( data );
-        if( c == DTOR_PREFIX2 ) {
-            advanceChar( data );
-            return( dtor( data, state ) );
-        } else if( c == OP_DELETE_PREFIX2 ) {
-            advanceChar( data );
-            return( op_delete( data, state ) );
-        } else if( c == ARRAY_DELETE_PREFIX2 ) {
-            advanceChar( data );
-            return( op_delete_array( data, state ) );
+    case kGroupDPrefix:
+        advanceChar();
+        c = currChar();
+        if (c == kDtorPrefix2) {
+            advanceChar();
+            return dtor(state);
+        } else if (c == kOpDeletePrefix2) {
+            advanceChar();
+            return opNew(state, "delete");
+        } else if (c == kArrayDeletePrefix2) {
+            advanceChar();
+            return opNew(state, "delete []");
         }
         break;
-    case GROUP_N_PREFIX:
-        advanceChar( data );
-        c = currChar( data );
-        if( c == OP_NEW_PREFIX2 ) {
-            advanceChar( data );
-            return( op_new( data, state ) );
-        } else if( c == ARRAY_NEW_PREFIX2 ) {
-            advanceChar( data );
-            return( op_new_array( data, state ) );
+    case kGroupNPrefix:
+        advanceChar();
+        c = currChar();
+        if (c == kOpNewPrefix2) {
+            advanceChar();
+            return opNew(state, "new");
+        } else if (c == kArrayNewPrefix2) {
+            advanceChar();
+            return opNew(state, "new []");
         }
         break;
-    case ASGN_FUN_PREFIX:
-        advanceChar( data );
-        return( assignment_function( data, state ) );
-        break;
-    case REL_FUN_PREFIX:
-        advanceChar( data );
-        return( relational_function( data, state ) );
-        break;
-    case OP_FUN_PREFIX:
-        advanceChar( data );
-        return( operator_function( data, state ) );
-        break;
-    case SPEC_TYPE_PREFIX:
-        advanceChar( data );
-        return( special_type_names( data, state ) );
-        break;
-    case WAT_FUN_PREFIX:
-        advanceChar( data );
-        return( watcom_object( data, state ) );
-        break;
+    case kAsgnFunPrefix:
+        advanceChar();
+        return operatorTable(state, kAssignmentFunction.data(), kAssignmentFunction.size());
+    case kRelFunPrefix:
+        advanceChar();
+        return operatorTable(state, kRelationalFunction.data(), kRelationalFunction.size());
+    case kOpFunPrefix:
+        advanceChar();
+        return operatorTable(state, kOperatorFunction.data(), kOperatorFunction.size());
+    case kSpecTypePrefix:
+        advanceChar();
+        return specialTypeNames(state);
+    case kWatFunPrefix:
+        advanceChar();
+        return watcomObject(state);
     }
-    return( false );
+    return false;
 }
 
-static bool name( output_desc *data, state_desc *state )
+bool Demangler::name(TypeState &state)
 {
-    char c;
-
-    c = currChar( data );
-    if( isdigit( c ) ) {
-        size_t     len;
-        char const *id;
-        int        i;
-
-        i = c - '0';
-        /*
-         * in case C++ compiler and demangler don't match; don't crash
-         */
-        if( i < 0
-          || i >= next_replicate
-          || i >= MAX_REPLICATE ) {
+    char c = currChar();
+    if (isDigitChar(c)) {
+        const char *id;
+        size_t len;
+        const int i = c - '0';
+        /* in case C++ compiler and demangler don't match; don't crash */
+        if (i < 0 || i >= g_.nextReplicate || i >= static_cast<int>(kMaxReplicate)) {
             id = "@";
             len = 1;
         } else {
-            id = replicate[i].ptr;
-            len = replicate[i].len;
+            id = g_.replicate[static_cast<size_t>(i)].ptr;
+            len = g_.replicate[static_cast<size_t>(i)].len;
         }
-        if( data->ctdt_pending ) {
-            _output2( DM_RESET_INDEX, data->pending_loc );
-            _output1( DM_CTOR_DTOR_NAME );
-            _output3( DM_IDENTIFIER, len, id );
-            data->ctdt_pending = false;
+        if (ctdtPending) {
+            resetIndex(pendingLoc);
+            emitCopy(len, id);
+            ctdtPending = false;
         }
-        if( data->scope_name
-          && data->scope_index == 0 ) {
-            data->scope_name = false;
-            data->scope_ptr = id;
-            data->scope_len = len;
+        if (scopeName && scopeIndex == 0) {
+            scopeName = false;
+            scopePtr = id;
+            scopeLen = len;
         }
-        _output2( DM_SET_INDEX, state->prefix );
-        _output3( DM_IDENTIFIER, len, id );
-        _output1( DM_EMIT_SPACE );
-        advanceChar( data );
-        return( true );
-    } else {
-        char const *ptr = data->input;
-        size_t  len = 0;
-        while( is_identifier( c ) ) {
-            len++;
-            advanceChar( data );
-            c = currChar( data );
-        }
-        if( data->scope_name
-          && data->scope_index == 0 ) {
-            data->scope_name = false;
-            data->scope_ptr = ptr;
-            data->scope_len = len;
-        }
-        if( c == SYMBOL_SUFFIX ) {
-            advanceChar( data );
-            if( data->ctdt_pending ) {
-                _output2( DM_RESET_INDEX, data->pending_loc );
-                _output1( DM_CTOR_DTOR_NAME );
-                _output3( DM_IDENTIFIER, len, ptr );
-                data->ctdt_pending = false;
-            }
-            _output2( DM_SET_INDEX, state->prefix );
-            _output3( DM_IDENTIFIER, len, ptr );
-            _output1( DM_EMIT_SPACE );
-            if( next_replicate < MAX_REPLICATE ) {
-                replicate[next_replicate].ptr = ptr;
-                replicate[next_replicate].len = len;
-                next_replicate++;
-            }
-            return( true );
-        }
+        setIndex(state.prefix);
+        emitCopy(len, id);
+        emitChar(' ');
+        advanceChar();
+        return true;
     }
-    return( false );
-}
-
-static bool sym_name( output_desc *data, state_desc *state )
-{
-    _output1( DM_NAME );
-    if( currChar( data ) == OPNAME_PREFIX ) {
-        advanceChar( data );
-        return( op_name( data, state ) );
-    } else {
-        return( name( data, state ) ) ;
-    }
-}
-
-static bool scope( output_desc *data, state_desc *state, size_t *symbol_length )
-{
-    char c;
-
-    _output1( DM_SCOPE );
-    if( data->scope_name
-      && data->scope_index > 0 ) {
-        data->scope_index--;
-    }
-    c = currChar( data );
-    if( c == PREFIX_EMBEDDED ) {
-        advanceChar( data );
-        if( check_recurse() ) {
-            return( recursive_mangled_name( data, state ) );
-        }
-    } else if( c == TEMPLATE_PREFIX ) {
-        state_desc new_state;
-
-        advanceChar( data );
-        new_state = *state;
-        new_state.suffix = data->count - state->prefix - *symbol_length;
-        return( template_name( data, &new_state ) );
-    } else {
-        bool rc = sym_name( data, state );
-        *symbol_length = data->index - state->prefix - 1;
-        return( rc );
-    }
-    return( false );
-}
-
-static bool scoped_name( output_desc *data, state_desc *state )
-{
-    size_t symbol_length;
-
-    _output1( DM_SCOPED_NAME );
-    if( sym_name( data, state ) ) {
-        symbol_length = data->index - state->prefix - 1;
-        while( currChar( data ) == SCOPE_PREFIX ) {
-            advanceChar( data );
-            _output2( DM_SET_INDEX, state->prefix );
-            if( currChar( data ) != TEMPLATE_PREFIX ) {
-                _output1( DM_SCOPE_SEPARATOR );
-            }
-            if( !scope( data, state, &symbol_length ) ) {
-                return( false );
-            }
-            _output1( DM_ZAP_SPACE );
-        }
-        return( true );
-    }
-    return( false );
-}
-
-static bool mangled_name( output_desc *data )
-{
-    state_desc new_state;
-
-    _output1( DM_MANGLED_NAME );
-    new_state.prefix = 0;
-    new_state.suffix = 0;
-    new_state.right = false;
-    if( scoped_name( data, &new_state ) ) {
-        _output2( DM_RESET_INDEX, 0 );
-        _output1( DM_ZAP_SPACE );
-        return( type_encoding( data, &new_state ) );
-    }
-    return( false );
-}
-
-static void full_mangled_name( output_desc *data )
-{
-    unsigned advances;
-
-#if 0 || defined( TEST )
-    data->status = 0;
-#endif
-    advances = 1;
-    if( ( data->end == NULL
-      || ( data->end - data->input ) >= SYM_PREFIX_DATA_LEN )
-      && data->input[0] == '.'
-      && strncmp( data->input, SYM_PREFIX_DATA_STR, SYM_PREFIX_DATA_LEN ) == 0 ) {
-        data->input += SYM_PREFIX_DATA_LEN;
-        data->sym_prefix = SYM_PREFIX_DATA;
-    } else if( ( data->end == NULL
-      || ( data->end - data->input ) >= SYM_PREFIX_IMP_LEN )
-      && data->input[0] == '_'
-      && ( strncmp( data->input, SYM_PREFIX_IMP_STR_L, SYM_PREFIX_IMP_LEN ) == 0
-      || strncmp( data->input, SYM_PREFIX_IMP_STR_U, SYM_PREFIX_IMP_LEN ) == 0 ) ) {
-        data->input += SYM_PREFIX_IMP_LEN;
-        data->sym_prefix = SYM_PREFIX_IMP;
-    }
-    switch( currChar( data ) ) {
-    case TRUNCATED_PREFIX1:
-        advances += TRUNCATED_HASH_LEN;
-        _output1( DM_TRUNCATED_NAME );
-        /* fall through */
-    case MANGLE_PREFIX1:
-        advanceChar( data );
-        if( currChar( data ) == MANGLE_PREFIX2 ) {
-            for( ; advances != 0; --advances ) {
-                advanceChar( data );
-                if( currChar( data ) == NULL_CHAR ) {
-                    return;
-                }
-            }
-#if 0 || defined( TEST )
-            data->status = mangled_name( data );
-#else
-            mangled_name( data );
-#endif
-        }
-        break;
-    }
-}
-
-#if 0 || defined( TEST )
-static void disp_demangle_status( output_desc *data )
-{
-    char const *input = data->input;
-
-    if( data->status == -1 ) {
-    } else if( data->status == 0 ) {
-        if( ! no_errors ) {
-            ++errors;
-            printf( "ERROR: full_mangled_name failed\n" );
-            printf( "in:-->%s<--\n", input );
-            printf( "remaining:-->%s<--\n", data->input );
-            terminateOutput( data );
-            printf( "output:-->%s<--\n", data->output );
-        }
-    } else {
-        if( currChar( data ) != NULL_CHAR ) {
-            ++errors;
-            printf( "ERROR: full_mangled_name failed to consume all\n" );
-            printf( "-->%s<--\n", input );
-        }
-    }
-}
-#endif
-
-static void do_copy( output_desc *data )
-{
-    char const  *ptr;
-    size_t      len;
-    char        c;
-    size_t      max_len;
-
-#if 0 || defined( TEST )
-    data->status = -1;
-#endif
-    /*
-     * limit copy to available physical space if buffer exists
-     */
-    max_len = ~((size_t)0);
-    if( data->output != NULL
-      && data->size > data->count ) {
-        max_len = data->size - data->count;
-    }
-    ptr = data->input;
-    len = 0;
-    c = currChar( data );
-    while( c != NULL_CHAR && len < max_len ) {
-        advanceChar( data );
+    const char *ptr = input;
+    size_t len = 0;
+    while (isIdentifier(c)) {
         len++;
-        c = currChar( data );
+        advanceChar();
+        c = currChar();
     }
-    _output3( DM_COPY_STRING, len, ptr );
+    if (scopeName && scopeIndex == 0) {
+        scopeName = false;
+        scopePtr = ptr;
+        scopeLen = len;
+    }
+    if (c == kSymbolSuffix) {
+        advanceChar();
+        if (ctdtPending) {
+            resetIndex(pendingLoc);
+            emitCopy(len, ptr);
+            ctdtPending = false;
+        }
+        setIndex(state.prefix);
+        emitCopy(len, ptr);
+        emitChar(' ');
+        if (g_.nextReplicate < static_cast<int>(kMaxReplicate)) {
+            g_.replicate[static_cast<size_t>(g_.nextReplicate)] = Replicate{ ptr, len };
+            g_.nextReplicate++;
+        }
+        return true;
+    }
+    return false;
 }
 
-static void init_globals( realloc_fn_t reallocator )
+bool Demangler::symName(TypeState &state)
 {
-    next_replicate = 0;
-    user_realloc = reallocator;
+    if (currChar() == kOpnamePrefix) {
+        advanceChar();
+        return opName(state);
+    }
+    return name(state);
 }
 
-static void init_descriptor( output_desc *data,
-                             outfunPtr ofn, void *cookie,
-                             char const *input, size_t len,
-                             char *buff, size_t buff_size )
+bool Demangler::scope(TypeState &state, size_t &symbolLength)
 {
-#if 0 || defined( TEST )
-    data->status = 0;
-#endif
-    data->outfun = ofn;
-    data->cookie = cookie;
-    data->end = NULL;
-    if( len != 0 ) {
-        /*
-         * length of mangled name is known
-         */
-        data->end = input + len;
+    if (scopeName && scopeIndex > 0)
+        scopeIndex--;
+    const char c = currChar();
+    if (c == kPrefixEmbedded) {
+        advanceChar();
+        return recursiveMangledName(state);
+    } else if (c == kTemplatePrefix) {
+        advanceChar();
+        TypeState newState = state;
+        newState.suffix = count - state.prefix - symbolLength;
+        return templateName(newState);
     }
-    data->input = input;
-    data->output = buff;
-    data->size = 0;
-    if( buff != NULL
-      && buff_size > 0 ) {
-        data->size = buff_size - 1;
-        buff[0] = '\0';
-    }
-    data->scope_ptr = NULL;
-    data->count = 0;
-    data->index = 0;
-    data->pending_loc = 0;
-    data->scope_len = 0;
-    data->suppress_output = 1;
-    data->scope_index = 0;
-    data->ctdt_pending = false;
-    data->cv_pending = false;
-    data->scope_name = false;
-    data->base_name = false;
-    data->sym_prefix = SYM_PREFIX_NONE;
+    const bool rc = symName(state);
+    symbolLength = index - state.prefix - 1;
+    return rc;
 }
 
-static size_t terminateOutput( output_desc *data )
+bool Demangler::scopedName(TypeState &state)
 {
-    size_t outlen;
-
-    outlen = data->count;
-    if( data->output != NULL ) {
-        if( data->size > 0 ) {
-            if( outlen > data->size ) {
-                outlen = data->size;
+    if (symName(state)) {
+        size_t symbolLength = index - state.prefix - 1;
+        while (currChar() == kScopePrefix) {
+            advanceChar();
+            setIndex(state.prefix);
+            if (currChar() != kTemplatePrefix) {
+                if (baseName)
+                    forceSuppression();
+                emitStr("::");
             }
-            /*
-             * remove all trailing spaces
-             */
-            while( outlen > 0 && data->output[outlen - 1] == ' ' ) {
+            if (!scope(state, symbolLength))
+                return false;
+            zapSpace();
+        }
+        return true;
+    }
+    return false;
+}
+
+bool Demangler::mangledName()
+{
+    TypeState newState{ 0, 0, false };
+    if (scopedName(newState)) {
+        resetIndex(0);
+        zapSpace();
+        return typeEncoding(newState);
+    }
+    return false;
+}
+
+void Demangler::fullMangledName()
+{
+    size_t advances = 1;
+
+    if ((end == nullptr || static_cast<size_t>(end - input) >= kPrefixData.size()) && input[0] == '.' &&
+        startsWith(input, kPrefixData)) {
+        input += kPrefixData.size();
+        symPrefix = SymPrefix::Data;
+    } else if ((end == nullptr || static_cast<size_t>(end - input) >= kPrefixImpLower.size()) && input[0] == '_' &&
+               (startsWith(input, kPrefixImpLower) || startsWith(input, kPrefixImpUpper))) {
+        input += kPrefixImpLower.size();
+        symPrefix = SymPrefix::Imp;
+    }
+    const char first = currChar();
+    if (first == kTruncatedPrefix1 || first == kManglePrefix1) {
+        if (first == kTruncatedPrefix1)
+            advances += kTruncatedHashLen;
+        advanceChar();
+        if (currChar() == kManglePrefix2) {
+            for (; advances != 0; --advances) {
+                advanceChar();
+                if (currChar() == kNul)
+                    return;
+            }
+            mangledName();
+        }
+    }
+}
+
+void Demangler::doCopy()
+{
+    /* limit copy to available physical space if buffer exists */
+    size_t maxLen = ~static_cast<size_t>(0);
+    if (output != nullptr && size > count)
+        maxLen = size - count;
+    const char *ptr = input;
+    size_t len = 0;
+    char c = currChar();
+    while (c != kNul && len < maxLen) {
+        advanceChar();
+        len++;
+        c = currChar();
+    }
+    emitCopy(len, ptr);
+}
+
+size_t Demangler::terminateOutput()
+{
+    size_t outlen = count;
+    if (output != nullptr) {
+        if (size > 0) {
+            if (outlen > size)
+                outlen = size;
+            /* remove all trailing spaces */
+            while (outlen > 0 && output[outlen - 1] == ' ')
                 outlen--;
-            }
         } else {
             outlen = 0;
         }
-        data->output[outlen] = NULL_CHAR;
+        output[outlen] = kNul;
     }
-    /*
-     * size does not include '\0'
-     */
-    return( outlen );
+    /* size does not include '\0' */
+    return outlen;
 }
 
-static size_t demangle_recursive( char const *input, char *buff, size_t buff_size )
+size_t Demangler::demangleRecursive(const char *in, char *buff, size_t buffSize)
 {
-    realloc_fn_t save_reallocator;
-    output_desc data;
-
-    save_reallocator = user_realloc;
-    user_realloc = NULL;
-    init_descriptor( &data, &demangleEmit, &data, input, 0, buff, buff_size );
-#if 0 || defined( TEST )
-    if( !mangled_name( &data ) ) {
-        ++errors;
-        printf( "ERROR: mangled_name failed\n" );
-        printf( "-->%s<--\n", input );
-    }
-#else
-    mangled_name( &data );
-#endif
-    terminateOutput( &data );
-    user_realloc = save_reallocator;
-    return( data.input - input );
+    const ReallocFn saveReallocator = g_.userRealloc;
+    g_.userRealloc = nullptr;
+    Demangler data(g_, in, 0, buff, buffSize);
+    data.mangledName();
+    data.terminateOutput();
+    g_.userRealloc = saveReallocator;
+    return static_cast<size_t>(data.input - in);
 }
 
-static bool recursive_mangled_name( output_desc *data, state_desc *state )
+bool Demangler::recursiveMangledName(TypeState &state)
 {
-    char buff[AUTO_BUFFER_SIZE];
+    std::array<char, kAutoBufferSize> buff;
 
-    _output1( DM_RECURSE_BEGIN );
-    data->input += demangle_recursive( data->input, buff, sizeof( buff ) );
-    _output1( DM_RECURSE_END );
-    _output2( DM_SET_INDEX, state->prefix );
-    _output3( DM_COPY_STRING, 0, buff );
-    return( true );
+    input += demangleRecursive(input, buff.data(), buff.size());
+    setIndex(state.prefix);
+    emitCopy(0, buff.data());
+    return true;
 }
+
+/* each public call starts with the replicated names forgotten and the caller's realloc function */
+DemangleState &freshState(ReallocFn reallocator)
+{
+    DemangleState &g = cb_wlink::RunState::part<DemangleState>();
+    g.nextReplicate = 0;
+    g.userRealloc = reallocator;
+    return g;
+}
+
+}  // namespace
 
 size_t __demangle_l(            /* DEMANGLE A C++ NAME */
     char const *input,          /* - mangled C++ name */
@@ -1849,111 +1302,85 @@ size_t __demangle_l(            /* DEMANGLE A C++ NAME */
     char *buff,                 /* - output buffer for demangled C++ name */
     size_t buff_size )          /* - size of output buffer */
 {
-    size_t          outlen;
-    output_desc     data;
-
-    init_globals( NULL );
-    if( len == 0 )
-        len = strlen( input );
-    init_descriptor( &data, &demangleEmit, &data, input, len, buff, buff_size );
-    if( __is_mangled( input, len ) ) {
-        full_mangled_name( &data );
-    } else {
-        do_copy( &data );
-    }
-    outlen = terminateOutput( &data );
-#if 0 || defined( TEST )
-    disp_demangle_status( &data );
-#endif
-    /*
-     * size does not include '\0'
-     */
-    return( outlen );
+    DemangleState &g = freshState(nullptr);
+    if (len == 0)
+        len = std::strlen(input);
+    Demangler data(g, input, len, buff, buff_size);
+    if (__is_mangled(input, len))
+        data.fullMangledName();
+    else
+        data.doCopy();
+    /* size does not include '\0' */
+    return data.terminateOutput();
 }
 
 size_t __is_mangled( char const *name, size_t len )
 {
-    size_t  offset;
-
-    if( len > 2 ) {
+    if (len > 2) {
         len -= 2;
-        offset = 2;
-        if( len > SYM_PREFIX_DATA_LEN
-          && name[0] == '.'
-          && strncmp( name, SYM_PREFIX_DATA_STR, SYM_PREFIX_DATA_LEN ) == 0 ) {
-            len -= SYM_PREFIX_DATA_LEN;
-            name += SYM_PREFIX_DATA_LEN;
-            offset += SYM_PREFIX_DATA_LEN;
-        } else if( len > SYM_PREFIX_IMP_LEN
-          && name[0] == '_'
-          && ( strncmp( name, SYM_PREFIX_IMP_STR_L, SYM_PREFIX_IMP_LEN ) == 0
-          || strncmp( name, SYM_PREFIX_IMP_STR_U, SYM_PREFIX_IMP_LEN ) == 0 ) ) {
-            len -= SYM_PREFIX_IMP_LEN;
-            name += SYM_PREFIX_IMP_LEN;
-            offset += SYM_PREFIX_IMP_LEN;
+        size_t offset = 2;
+        if (len > kPrefixData.size() && name[0] == '.' && startsWith(name, kPrefixData)) {
+            len -= kPrefixData.size();
+            name += kPrefixData.size();
+            offset += kPrefixData.size();
+        } else if (len > kPrefixImpLower.size() && name[0] == '_' &&
+                   (startsWith(name, kPrefixImpLower) || startsWith(name, kPrefixImpUpper))) {
+            len -= kPrefixImpLower.size();
+            name += kPrefixImpLower.size();
+            offset += kPrefixImpLower.size();
         }
-        if( name[0] == MANGLE_PREFIX1
-          && name[1] == MANGLE_PREFIX2 ) {
-            return( offset );
-        } else if( len > TRUNCATED_HASH_LEN
-          && name[0] == TRUNCATED_PREFIX1
-          && name[1] == MANGLE_PREFIX2 ) {
-            return( offset + TRUNCATED_HASH_LEN );
-        }
+        if (name[0] == kManglePrefix1 && name[1] == kManglePrefix2)
+            return offset;
+        else if (len > kTruncatedHashLen && name[0] == kTruncatedPrefix1 && name[1] == kManglePrefix2)
+            return offset + kTruncatedHashLen;
     }
-    return( 0 );
+    return 0;
 }
 
 #if !defined( INSIDE_WLIB ) && !defined( INSIDE_WDIS )
 
-static mangled_type checkInternal( char const *p, size_t len )
-{
-    mangled_type    type;
+namespace {
 
-    if( p[0] == INTERNAL_PREFIX ) {
+mangled_type checkInternal(char const *p, size_t len)
+{
+    mangled_type type;
+
+    if (p[0] == kInternalPrefix) {
         len--;
         type = __MANGLED_INTERNAL;
-    } else if( p[0] == OPNAME_PREFIX
-      && mytoupper( p[1] ) == WAT_FUN_PREFIX ) {
+    } else if (p[0] == kOpnamePrefix && upper(p[1]) == kWatFunPrefix) {
         len -= 2;
         type = __MANGLED_INTERNAL;
-    } else if( p[0] == OPNAME_PREFIX
-      && mytoupper( p[1] ) == CTOR_PREFIX1
-      && mytoupper( p[2] ) == CTOR_PREFIX2 ) {
+    } else if (p[0] == kOpnamePrefix && upper(p[1]) == kCtorPrefix1 && upper(p[2]) == kCtorPrefix2) {
         len -= 3;
         type = __MANGLED_CTOR;
-    } else if( p[0] == OPNAME_PREFIX
-      && mytoupper( p[1] ) == DTOR_PREFIX1
-      && mytoupper( p[2] ) == DTOR_PREFIX2 ) {
+    } else if (p[0] == kOpnamePrefix && upper(p[1]) == kDtorPrefix1 && upper(p[2]) == kDtorPrefix2) {
         len -= 3;
         type = __MANGLED_DTOR;
     } else {
         type = __MANGLED;
     }
-    if( len == 0 )
+    if (len == 0)
         type = __NOT_MANGLED;
-    return( type );
+    return type;
 }
+
+}  // namespace
 
 mangled_type __is_mangled_internal( char const *name, size_t len )
 {
-    size_t          offset;
-
-    if( len > 2 ) {
+    if (len > 2) {
         len -= 2;
-        offset = 2;
-        if( name[0] == MANGLE_PREFIX1
-          && name[1] == MANGLE_PREFIX2 ) {
-            return( checkInternal( name + offset, len ) );
-        } else if( len > TRUNCATED_HASH_LEN
-          && name[0] == TRUNCATED_PREFIX1
-          && name[1] == MANGLE_PREFIX2 ) {
-            len -= TRUNCATED_HASH_LEN;
-            offset += TRUNCATED_HASH_LEN;
-            return( checkInternal( name + offset, len ) );
+        size_t offset = 2;
+        if (name[0] == kManglePrefix1 && name[1] == kManglePrefix2) {
+            return checkInternal(name + offset, len);
+        } else if (len > kTruncatedHashLen && name[0] == kTruncatedPrefix1 && name[1] == kManglePrefix2) {
+            len -= kTruncatedHashLen;
+            offset += kTruncatedHashLen;
+            return checkInternal(name + offset, len);
         }
     }
-    return( __NOT_MANGLED );
+    return __NOT_MANGLED;
 }
 
 bool __unmangled_name(          /* FIND UNMANGLED BASE NAME */
@@ -1962,68 +1389,51 @@ bool __unmangled_name(          /* FIND UNMANGLED BASE NAME */
     char const **basep,         /* - location of C++ base name */
     size_t *base_sizep )        /* - size of C++ base name */
 {                               /* return true if name mangled */
-    char const  *end;
-    size_t      mangled_prefix_len;
-    size_t      base_size;
-
-    if( len == 0 )
-        len = strlen( name );
-    mangled_prefix_len = __is_mangled( name, len );
-    if( mangled_prefix_len == 0 ) {
+    if (len == 0)
+        len = std::strlen(name);
+    const size_t mangledPrefixLen = __is_mangled(name, len);
+    if (mangledPrefixLen == 0) {
         *basep = name;
         *base_sizep = len;
-        return( false );
+        return false;
     }
-    end = name + len;
-    name += mangled_prefix_len; /* skip magic cookie */
+    const char *end = name + len;
+    name += mangledPrefixLen;   /* skip magic cookie */
     *basep = name;
-    base_size = 0;
-    if( *name == OPNAME_PREFIX ) {
-        base_size += 3;
+    size_t baseSize = 0;
+    if (*name == kOpnamePrefix) {
+        baseSize += 3;
         name++;
-        if( mytoupper( *name ) == WAT_FUN_PREFIX ) {
-            base_size++;
-        }
+        if (upper(*name) == kWatFunPrefix)
+            baseSize++;
     } else {
-        for( ; name != end; ++name ) {
-            if( *name == SYMBOL_SUFFIX )
+        for (; name != end; ++name) {
+            if (*name == kSymbolSuffix)
                 break;
-            base_size++;
+            baseSize++;
         }
     }
-    *base_sizep = base_size;
-    return( true );
+    *base_sizep = baseSize;
+    return true;
 }
 
 #if !defined( INSIDE_WLINK )
 
 #if !defined( INSIDE_DIP )
 
-#if defined( __WATCOMC__ )
-_WCRTLINK
-#endif
 size_t __demangle_t(            /* DEMANGLE A C++ TYPE */
     char const *input,          /* - mangled C++ type */
     size_t len,                 /* - length of mangled type */
     char *buff,                 /* - output buffer for demangled C++ type */
     size_t buff_size )          /* - size of output buffer */
 {
-    size_t          outlen;
-    output_desc     data;
-    state_desc      new_state;
-
-    init_globals( NULL );
-    init_descriptor( &data, &demangleEmit, &data, input, len, buff, buff_size );
-    data.suppress_output = 0;
-    new_state.prefix = 0;
-    new_state.suffix = 0;
-    new_state.right = false;
-    type_encoding( &data, &new_state );
-    outlen = terminateOutput( &data );
-    /*
-     * size does not include '\0'
-     */
-    return( outlen );
+    DemangleState &g = freshState(nullptr);
+    Demangler data(g, input, len, buff, buff_size);
+    data.suppressOutput = 0;
+    TypeState newState{ 0, 0, false };
+    data.typeEncoding(newState);
+    /* size does not include '\0' */
+    return data.terminateOutput();
 }
 
 size_t __demangle_r(            /* DEMANGLE A C++ NAME */
@@ -2033,35 +1443,23 @@ size_t __demangle_r(            /* DEMANGLE A C++ NAME */
     size_t buff_size,           /* - size of output buffer */
     void * (*realloc)( void *, size_t ) ) /* - size adjuster for output */
 {
-    char            *buff;
-    size_t          outlen;
-    output_desc     data;
-
-    init_globals( realloc );
-    if( len == 0 )
-        len = strlen( input );
-    buff = NULL;
-    if( buffp != NULL ) {
+    DemangleState &g = freshState(realloc);
+    if (len == 0)
+        len = std::strlen(input);
+    char *buff = nullptr;
+    if (buffp != nullptr)
         buff = *buffp;
-    }
-    init_descriptor( &data, &demangleEmit, &data, input, len, buff, buff_size );
-    data.suppress_output = 0;
-    if( __is_mangled( input, len ) ) {
-        full_mangled_name( &data );
-    } else {
-        do_copy( &data );
-    }
-    outlen = terminateOutput( &data );
-#if 0 || defined( TEST )
-    disp_demangle_status( &data );
-#endif
-    if( buffp != NULL ) {
+    Demangler data(g, input, len, buff, buff_size);
+    data.suppressOutput = 0;
+    if (__is_mangled(input, len))
+        data.fullMangledName();
+    else
+        data.doCopy();
+    const size_t outlen = data.terminateOutput();
+    if (buffp != nullptr)
         *buffp = data.output;
-    }
-    /*
-     * size does not include '\0'
-     */
-    return( outlen );
+    /* size does not include '\0' */
+    return outlen;
 }
 
 #endif /* !INSIDE_DIP */
@@ -2073,29 +1471,23 @@ bool __scope_name(              /* EXTRACT A C++ SCOPE */
     char const **scopep,        /* - location of C++ scope name */
     size_t *scope_sizep )       /* - size of C++ scope name */
 {                               /* returns true on success */
-    output_desc     data;
-
-    init_globals( NULL );
-    *scopep = NULL;
+    DemangleState &g = freshState(nullptr);
+    *scopep = nullptr;
     *scope_sizep = 0;
-    if( len == 0 )
-        len = strlen( input );
-    if( __is_mangled( input, len ) == 0 ) {
-        return( false );
+    if (len == 0)
+        len = std::strlen(input);
+    if (__is_mangled(input, len) == 0)
+        return false;
+    Demangler data(g, input, len, nullptr, 0);
+    data.scopeName = true;
+    data.scopeIndex = index;
+    data.fullMangledName();
+    if (data.scopeLen != 0) {
+        *scopep = data.scopePtr;
+        *scope_sizep = data.scopeLen;
+        return true;
     }
-    init_descriptor( &data, &demangleEmit, &data, input, len, NULL, 0 );
-    data.scope_name = true;
-    data.scope_index = index;
-    full_mangled_name( &data );
-#if 0 || defined( TEST )
-    disp_demangle_status( &data );
-#endif
-    if( data.scope_len != 0 ) {
-        *scopep = data.scope_ptr;
-        *scope_sizep = data.scope_len;
-        return( true );
-    }
-    return( false );
+    return false;
 }
 
 size_t __demangled_basename(    /* CREATE DEMANGLED BASE NAME */
@@ -2104,653 +1496,52 @@ size_t __demangled_basename(    /* CREATE DEMANGLED BASE NAME */
     char *buff,                 /* - output buffer for demangled C++ base name */
     size_t buff_size )          /* - size of output buffer */
 {                               /* return len of output */
-    size_t          outlen;
-    output_desc     data;
-
-    init_globals( NULL );
-    if( len == 0 )
-        len = strlen( input );
-    init_descriptor( &data, &demangleEmit, &data, input, len, buff, buff_size );
-    data.suppress_output = 0;
-    data.base_name = true;
-    if( __is_mangled( input, len ) ) {
-        full_mangled_name( &data );
-    } else {
-        do_copy( &data );
-    }
-    outlen = terminateOutput( &data );
-#if 0 || defined( TEST )
-    disp_demangle_status( &data );
-#endif
-    /*
-     * size does not include '\0'
-     */
-    return( outlen );
+    DemangleState &g = freshState(nullptr);
+    if (len == 0)
+        len = std::strlen(input);
+    Demangler data(g, input, len, buff, buff_size);
+    data.suppressOutput = 0;
+    data.baseName = true;
+    if (__is_mangled(input, len))
+        data.fullMangledName();
+    else
+        data.doCopy();
+    /* size does not include '\0' */
+    return data.terminateOutput();
 }
+
+namespace {
+
+/* the operator's mangled name when op is in the table (3 characters written to buff) */
+bool mangleFromTable(char const *op, size_t len, char *buff, const char *const *table, size_t n, char prefix)
+{
+    for (size_t i = 0; i < n; i++) {
+        if (std::strncmp(op, table[i], len) == 0 && table[i][len] == kNul) {
+            buff[0] = kOpnamePrefix;
+            buff[1] = prefix;
+            buff[2] = static_cast<char>(i + kLowerTableLimit);
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
 
 size_t __mangle_operator(       /* MANGLE OPERATOR NAME */
     char const *op,             /* - operator token */
     size_t len,                 /* - length of operator token */
     char *buff )                /* - output buffer for mangled operator name */
-                                /* return len of mangled operator name */
-{
-    int i;
-
-    if( len == 0 ) {
-        len = strlen( op );
-    }
-
-    for( i = 0; i < num_elements( operatorFunction ); i++ ) {
-        if( STRNCMP( op, operatorFunction[i], len ) == 0 ) {
-            if( operatorFunction[i][len] == NULL_CHAR ) {
-                *buff++ = OPNAME_PREFIX;
-                *buff++ = OP_FUN_PREFIX;
-                *buff++ = (char)( i + LOWER_TABLE_LIMIT );
-                return( 3 );
-            }
-        }
-    }
-    for( i = 0; i < num_elements( relationalFunction ); i++ ) {
-        if( STRNCMP( op, relationalFunction[i], len ) == 0 ) {
-            if( relationalFunction[i][len] == NULL_CHAR ) {
-                *buff++ = OPNAME_PREFIX;
-                *buff++ = REL_FUN_PREFIX;
-                *buff++ = (char)( i + LOWER_TABLE_LIMIT );
-                return( 3 );
-            }
-        }
-    }
-    for( i = 0; i < num_elements( assignmentFunction ); i++ ) {
-        if( STRNCMP( op, assignmentFunction[i], len ) == 0 ) {
-            if( assignmentFunction[i][len] == NULL_CHAR ) {
-                *buff++ = OPNAME_PREFIX;
-                *buff++ = ASGN_FUN_PREFIX;
-                *buff++ = (char)( i + LOWER_TABLE_LIMIT );
-                return( 3 );
-            }
-        }
-    }
-    return( 0 );
+{                               /* return len of mangled operator name; ZERO if not found */
+    if (len == 0)
+        len = std::strlen(op);
+    if (mangleFromTable(op, len, buff, kOperatorFunction.data(), kOperatorFunction.size(), kOpFunPrefix) ||
+        mangleFromTable(op, len, buff, kRelationalFunction.data(), kRelationalFunction.size(), kRelFunPrefix) ||
+        mangleFromTable(op, len, buff, kAssignmentFunction.data(), kAssignmentFunction.size(), kAsgnFunPrefix))
+        return 3;
+    return 0;
 }
 
 #endif /* !INSIDE_WLINK */
 
 #endif /* !INSIDE_WLIB && !INSIDE_WDIS */
-
-#if defined( TEST )
-
-void __parse_mangled_name(      /* PARSE MANGLED NAME */
-    char const *input,          /* - mangled C++ name */
-    size_t len,                 /* - length of mangled name */
-    void *cookie,               /* - data to carry around */
-    outfunPtr ofn )             /* - function to invoke */
-{
-    output_desc     data;
-
-    init_globals( NULL );
-    if( len == 0 )
-        len = strlen( input );
-    init_descriptor( &data, ofn, cookie, input, len, NULL, 0 );
-    data.suppress_output = 0;
-    if( __is_mangled( input, len ) ) {
-        full_mangled_name( &data );
-    } else {
-        do_copy( &data );
-    }
-#if 0 || defined( TEST )
-    disp_demangle_status( &data );
-#endif
-}
-
-#endif /* TEST */
-
-#if 0 || defined( TEST ) || defined( DUMP )
-void dump( output_desc *data )
-{
-    int i;
-
-    printf( "input:   [%x]>%s<\n", data->input, data->input );
-    printf( "end:     [%x]\n", data->end );
-    printf( "output:  [%x]>%s<\n", data->output, data->output );
-    printf( "realloc: [%x]\n", user_realloc );
-    printf( "size: %d, count: %d, index: %d, suppress_output: %d\n",
-            data->size,
-            data->count,
-            data->index,
-            data->suppress_output );
-    for( i = 0; i < next_replicate; i++ ) {
-        printf( "replicate#%d: ptr: [%x]>%s< len: %d\n",
-                i,
-                replicate[i].ptr,
-                replicate[i].ptr,
-                replicate[i].len );
-    }
-    printf( "pending_loc: %d, ctdt_pending: %d, cv_pending: %d, base_name: %d\n",
-            data->pending_loc,
-            data->ctdt_pending,
-            data->cv_pending,
-            data->base_name );
-    printf( "scope_name: %d, scope_index: %d, scope_ptr: %x, scope_len %d\n",
-            data->scope_name,
-            data->scope_index,
-            data->scope_ptr,
-            data->scope_len );
-}
-#endif
-
-#if 0 || defined( TEST )
-
-#define TRUNC_BUFFER    256
-#define GUARD_CHAR      '@'
-#define ALLOC_SIZE      2
-#define BUF_SIZE        256
-
-typedef struct test_stream {
-    char *mangle;               /* mangled name */
-    char *full_demangle;        /* complete demangled name */
-    char *unmangled;            /* unmangled name */
-    char *basename;             /* demangled basename */
-} test_stream;
-
-test_stream testVector[] = {
-#if 1
-    "W?foo$n(pn(uauaua)v)v",
-        "void __near foo( void (__near *)( char, char, char ))",
-        "foo",
-        "foo",
-    "W?a$ni",
-        "int __near a",
-        "a",
-        "a",
-    "W?$CT:S$n()_",
-        "__near S::S()",
-        "$CT",
-        "S",
-    "W?$DT:S$n()_",
-        "__near S::~S()",
-        "$DT",
-        "~S",
-    "W?$DLn(pv)v",
-        "void __near operator delete( void * )",
-        "$DL",
-        "operator delete",
-    "W?foo$n(iuipua)v",
-        "void __near foo( int, int unsigned, char * )",
-        "foo",
-        "foo",
-    "W?$CV:opCONV$n()i",
-        "__near opCONV::operator int ()",
-        "$CV",
-        "operator int",
-    "W?foo$n(pn$opCONV$$)pn$opCONV$$",
-        "opCONV __near * __near foo( opCONV __near * )",
-        "foo",
-        "foo",
-    "W?foo$n(pn$opCONV$$)pn$1$",
-        "opCONV __near * __near foo( opCONV __near * )",
-        "foo",
-        "foo",
-    "W?$NWn(ui)pnv",
-        "void __near * __near operator new( int unsigned )",
-        "$NW",
-        "operator new",
-    "W?bar$n($opnew$$)$1$",
-        "opnew __near bar( opnew )",
-        "bar",
-        "bar",
-    "W?foo$n(pn[2][3][4]ipn[6]ua)v",
-        "void __near foo( int (__near *)[2][3][4], char (__near *)[6])",
-        "foo",
-        "foo",
-    "W?bar$n(pn(uab)ipn(pn(d)it)v)v",
-        "void __near bar( int (__near *)( char, float ), void (__near *)( int (__near *)( double ), long double ))",
-        "bar",
-        "bar",
-    "W?pff$npn(db)ua",
-        "char (__near * __near pff)( double, float )",
-        "pff",
-        "pff",
-    "W?goo$nm$Base$$ni",
-        "int __near Base::* __near goo",
-        "goo",
-        "goo",
-    "W?goo$n(nm$Base$$ni)v",
-        "void __near goo( int __near Base::* __near )",
-        "goo",
-        "goo",
-    "W?$Wvm07:H$$:E$$nx[]ui",
-        "int unsigned const __near __vmtbl[]",
-        "$Wvm",
-        "__vmtbl",
-    "W?$Wvt0qset_v1:A$c$:A$set_v1$n(i)v$:V1$n(i)v",
-        "void __near V1::__vfthunk( int )",
-        "$Wvt",
-        "__vfthunk",
-    "W?foo$:S$n(ua)i",
-        "int __near S::foo( char )",
-        "foo",
-        "foo",
-    "W?foo$:S$n.x(ua)i",
-        "int __near S::foo( char ) const",
-        "foo",
-        "foo",
-    "W?$CV:S$n()i",
-        "__near S::operator int ()",
-        "$CV",
-        "operator int",
-    "W?$CV:S$n.x()i",
-        "__near S::operator int () const",
-        "$CV",
-        "operator int",
-    "W?$WAA19ios:$opDTOR$$istream:c$$istream:$$opDTOR$?n()$n()pnv",
-        "void __near * __near __internal()",
-        "$WAA",
-        "__internal",
-    "W?_trmem_open$n(pn(ui)pnvpn(pnv)vpn(pnvui)pnvpn(pnvui)pnvpnvpn(pnvpnxuaui)vui)pn$_trmem_internal$$",
-        "_trmem_internal __near * __near _trmem_open( void __near * (__near *)( int unsigned ), void (__near *)( void __near * ), void __near * (__near *)( void __near "
-        "*, int unsigned ), void __near * (__near *)( void __near *, int unsigned ), void __near *, void (__near *)( void __near *, char const __near *, int unsigned ), int unsigned )",
-        "_trmem_open",
-        "_trmem_open",
-    "W?s$n$Stack$::1ni0az?ok$n()v$",
-        "Stack<int __near,10,void __near ok()> __near s",
-        "s",
-        "s",
-    "W?dummy$:Stack$::1ni0az?ok$n()vn()v",
-        "void __near Stack<int __near,10,void __near ok()>::dummy()",
-        "dummy",
-        "dummy",
-    "W?$CT:Stack$::1ni0ay?ok$n()vn()_",
-        "__near Stack<int __near,-10,void __near ok()>::Stack()",
-        "$CT",
-        "Stack",
-    "W?s$n$Inner$:Stack$::1ni0az?ok$n()v:xyz$$",
-        "xyz::Stack<int __near,10,void __near ok()>::Inner __near s",
-        "s",
-        "s",
-    "W?s$n$Inner$:Stack$::1ni0az1n$xyz$::1ni$:abc$$",
-        "abc::Stack<int __near,10,xyz<int __near > __near >::Inner __near s",
-        "s",
-        "s",
-    "W?dummy$:Stack$::1ni0az?ok$n()v:xyz$n()v",
-        "void __near xyz::Stack<int __near,10,void __near ok()>::dummy()",
-        "dummy",
-        "dummy",
-    "W?dummy$:Stack$::1ni0az?ok$n()v:xyz$::1nin()v",
-        "void __near xyz<int __near >::Stack<int __near,10,void __near ok()>::dummy()",
-        "dummy",
-        "dummy",
-    "W?a$:.1$:?foo$n()vn[]i",
-        "int __near void __near foo()::.1::a[]",
-        "a",
-        "a",
-    "W?cout$n$ostream$$",
-        "ostream __near cout",
-        "cout",
-        "cout",
-    "W?$OB:ostream$n(pnxua)rn$ostream$$",
-        "ostream __near & __near ostream::operator <<( char const __near * )",
-        "$OB",
-        "operator <<",
-    "W?endl$n(rn$ostream$$)rn$ostream$$",
-        "ostream __near & __near endl( ostream __near & )",
-        "endl",
-        "endl",
-    "W?$OB:ostream$n(pn(rn$ostream$$)rn$ostream$$)rn$ostream$$",
-        "ostream __near & __near ostream::operator <<( ostream __near & (__near *)( ostream __near & ))",
-        "$OB",
-        "operator <<",
-    "W?m$n()pjvv",
-        "void __based(void) * __near m()",
-        "m",
-        "m",
-    "W?pv$npjvua",
-        "char __based(void) * __near pv",
-        "pv",
-        "pv",
-    "W?ps$npjsua",
-        "char __based(__self) * __near ps",
-        "ps",
-        "ps",
-    "W?pn$npjl03FOOuc",
-        "char unsigned __based(\"FOO\") * __near pn",
-        "pn",
-        "pn",
-    "W?pa$npjf$s$uc",
-        "char unsigned __based(s) * __near pa",
-        "pa",
-        "pa",
-    "W?pp$npja$b$ua",
-        "char __based(b) * __near pp",
-        "pp",
-        "pp",
-    "W?bar$n(uaua)v",
-        "void __near bar( char, char )",
-        "bar",
-        "bar",
-    "W?bar$n(cc)v",
-        "void __near bar( char signed, char signed )",
-        "bar",
-        "bar",
-    "W?bar$n(ucuc)v",
-        "void __near bar( char unsigned, char unsigned )",
-        "bar",
-        "bar",
-    "W?mpa$nm$S$$nxi",
-        "int const __near S::* __near mpa",
-        "mpa",
-        "mpa",
-    "W?mpb$nm$S$$nyi",
-        "int volatile __near S::* __near mpb",
-        "mpb",
-        "mpb",
-    "W?$Wmp05a$nxi$:S$n()pnxi",
-        "int const __near * __near S::__mbrptrthunk()",
-        "$Wmp",
-        "__mbrptrthunk",
-    "W?$Wmp05b$nyi$:S$n()pnyi",
-        "int volatile __near * __near S::__mbrptrthunk()",
-        "$Wmp",
-        "__mbrptrthunk",
-    "W?y$n$E$$",
-        "E __near y",
-        "y",
-        "y",
-    "W?y$n$$TE$$",
-        "__anonymous_enum __near y",
-        "y",
-        "y",
-    "W?setSymType$:KeySymbol$f($$TE$$)v",
-        "void __far KeySymbol::setSymType( __anonymous_enum )",
-        "setSymType",
-        "setSymType",
-    "W?y$n$$TEextratext$$",
-        "__anonymous_enum __near y",
-        "y",
-        "y",
-    "W?setSymType$:KeySymbol$f($$TEextra_stuff$$)v",
-        "void __far KeySymbol::setSymType( __anonymous_enum )",
-        "setSymType",
-        "setSymType",
-    "W?foo$n(pn$_123456789012345678901234567890_1$$pn$_123456789012345678901234567890_2$$pn$_123456789012345678901234567890_3$$pn$_1234567890123456789"
-    "01234567890_4$$pn$_123456789012345678901234567890_5$$pn$_123456789012345678901234567890_6$$pn$_123456789012345678901234567890_7$$)v",
-        "void __near foo( _123456789012345678901234567890_1 __near *, _123456789012345678901234567890_2 __near *, _123456789012345678901234567890_3 __near *, "
-        "_123456789012345678901234567890_4 __near *, _123456789012345678901234567890_5 __near *, _123456789012345678901234567890_6 __near *, _123456789012345678901234567890_7 __near * )",
-        "foo",
-        "foo",
-    "W?$nan(ui)pnv",
-        "void __near * __near operator new []( int unsigned )",
-        "$na",
-        "operator new []",
-    "W?$dan(pnv)v",
-        "void __near operator delete []( void __near * )",
-        "$da",
-        "operator delete []",
-    "W?$Wcm012$nx[]uc",
-        "char unsigned const __near __stattabcmd[]",
-        "$Wcm",
-        "__stattabcmd",
-    "W?$Wqq012$i",
-        "int __internal",
-        "$Wqq",
-        "__internal",
-    "W?$Wdi0vnql0f8@f__dlang_h_win_windows_h$na",
-        "char __near __debuginfo",
-        "$Wdi",
-        "__debuginfo",
-    "W?e$nuz",
-        "__int64 unsigned __near e",
-        "e",
-        "e",
-    "__imp_W?foo$n(iiapn(aas)i)i",
-        "int __near foo( int, int, char, int (__near *)( char, char, short ))",
-        "foo",
-        "foo",
-    "W?x$:$Wun0f1_dr061n1l8koys$:A$ni",
-        "int __near A::<unique>::x",
-        "x",
-        "x",
-#endif
-    "W?exprNodeAnalysis$:$Wun0e2o_eo9stv6l5hj$n(pn$ExprNode$$pnv)pn$1$",
-        "ExprNode __near * __near <unique>::exprNodeAnalysis( ExprNode __near *, void __near * )",
-        "exprNodeAnalysis",
-        "exprNodeAnalysis",
-#if 0 || defined( __INCLUDE_TRUNCATED_NAME )
-    "T?hhhhfoo$n(pn$_123456789012345678901234567890_1$$pn$_123456789012345678901234567890_2$$pn$_123456789012345678901234567890_3$$pn$_123456789012345"
-    "678901234567890_4$$pn$_123456789012345678901234567890_5$$pn$_123456789012345678901234567890_6$$pn$_12345678901",
-        "__near foo( _123456789012345678901234567890_1 __near *, _123456789012345678901234567890_2 __near *, _123456789012345678901234567890_3 __near *, _1234"
-        "56789012345678901234567890_4 __near *, _123456789012345678901234567890_5 __near *, _123456789012345678901234567890_6 __near *, __near * ",
-        "foo",
-        "foo",
-    "T?hhhhxx$n$S$::?foo$n(pn$_123456789012345678901234567890_1$$pn$_123456789012345678901234567890_2$$pn$_123456789012345678901234567890_3$$pn$_12345"
-    "6789012345678901234567890_4$$pn$_123456789012345678901234567890_5$$pn$_123456789012345678901234567890_6$$pn$_1",
-        "__near foo( _123456789012345678901234567890_1 __near *, _12345678901234567890123456>::S __near xx",
-        "xx",
-        "xx",
-#endif
-    NULL,
-        NULL,
-        NULL,
-        NULL
-};
-
-void testEmit( void **cookie, dm_pts dp, size_t value, char const *ptr )
-{
-    int **argc = (int **)cookie;
-    static const char *names[] = {
-        #define DM_DEF( id )    "\tDM_" #id ": %d\n",
-        DM_DEFS
-        #undef DM_DEF
-    };
-
-    ptr = ptr;
-    if( ((unsigned)dp) < DM_INVALID ) {
-        if( **argc > 1 ) {
-            printf( names[dp], value );
-        }
-#if 0 || defined( TEST )
-    } else {
-        ++errors;
-        printf( "ERROR: testEmit unknown dm_pts(%d)\n", dp );
-#endif
-    }
-}
-
-static char *typeTestVector[] = {
-    "$D$$", "D",
-    "pn$D$$", "D __near *",
-    NULL, NULL,
-};
-
-void main( int argc )
-{
-    static char buff[TRUNC_BUFFER + 2]; /* allow for two guard chars */
-    size_t len;
-    size_t trunc_len;
-    int i;
-    char *p;
-    char const *q;
-
-    printf( "To see all the results, invoke demangle.exe with a parameter\n" );
-    printf( "When executing with a parameter, no page fault is success.\n" );
-    printf( "Starting test...\n" );
-    assert((( sizeof( typeTestVector ) / sizeof( typeTestVector[0] ) ) & 1 ) == 0 );
-    errors = 0;
-    for( i = 0; testVector[i].mangle != NULL; ++i ) {
-        len = __demangle_l( testVector[i].mangle, 0, NULL, 0 );
-        if( argc > 1 ) {
-            printf( "%s -> (%u)\n", testVector[i].mangle, len );
-        }
-    }
-    for( trunc_len = TRUNC_BUFFER; trunc_len > 0; trunc_len-- ) {
-        for( i = 0; testVector[i].mangle != NULL; ++i ) {
-            buff[0] = buff[trunc_len + 1] = GUARD_CHAR;
-            len = __demangle_l( testVector[i].mangle, 0, buff + 1, trunc_len );
-            if( argc > 1 ) {
-                printf( "%s -->%s<-- (%u)\n", testVector[i].mangle, buff + 1, len );
-            }
-            if( len > trunc_len ) {
-                ++errors;
-                printf( "ERROR: returned length exceeds truncate length\n" );
-            }
-            if( buff[0] != GUARD_CHAR ) {
-                printf( "ERROR: ran off start of output buffer\n" );
-                ++errors;
-            }
-            if( buff[trunc_len + 1] != GUARD_CHAR ) {
-                printf( "ERROR: ran off end of output buffer\n" );
-                ++errors;
-            }
-        }
-        for( i = 0; typeTestVector[i] != NULL; i += 2 ) {
-            buff[0] = buff[trunc_len + 1] = GUARD_CHAR;
-            len = __demangle_t( typeTestVector[i], 0, buff + 1, trunc_len );
-            if( argc > 1 ) {
-                printf( "%s -->%s<-- (%u)\n", typeTestVector[i], buff + 1, len );
-            }
-            if( memcmp( buff + 1, typeTestVector[i + 1], len ) ) {
-                printf( "ERROR:\n%s\ndemangle should yield -->%s<--\n", typeTestVector[i], typeTestVector[i + 1] );
-                printf(             "          but yielded -->%s<-- (%u)\n", buff + 1, len );
-                ++errors;
-            }
-            if( len > trunc_len ) {
-                ++errors;
-                printf( "ERROR: returned length exceeds truncate length\n" );
-            }
-            if( buff[0] != GUARD_CHAR ) {
-                printf( "ERROR: ran off start of output buffer\n" );
-                ++errors;
-            }
-            if( buff[trunc_len + 1] != GUARD_CHAR ) {
-                printf( "ERROR: ran off end of output buffer\n" );
-                ++errors;
-            }
-        }
-    }
-    if( errors ) {
-        printf( "test failed!\n" );
-        exit( 1 );
-    }
-    for( i = 0; testVector[i].mangle != NULL; ++i ) {
-        p = malloc( ALLOC_SIZE );
-        len = __demangle_r( testVector[i].mangle, 0, &p, ALLOC_SIZE, realloc );
-        if( argc > 1 ) {
-            printf( "%s -->%s<-- (%u)\n", testVector[i].mangle, p, len );
-        }
-        free( p );
-    }
-    for( i = 0; testVector[i].mangle != NULL; ++i ) {
-        if( __unmangled_name( testVector[i].mangle, 0, &q, &len ) ) {
-            char buff[BUF_SIZE];
-            memcpy( buff, q, len );
-            buff[len] = 0;
-            if( argc > 1 ) {
-                printf( "%s -->%s<-- (%u) (unmangled name)\n", testVector[i].mangle, buff, len );
-            }
-        } else {
-            if( argc > 1 ) {
-                printf( "%s (not mangled)\n", testVector[i].mangle );
-            }
-        }
-    }
-    for( i = 0; testVector[i].mangle != NULL; ++i ) {
-        if( argc > 1 ) {
-            printf( "parsing -->%s<--\n", testVector[i].mangle );
-        }
-        __parse_mangled_name( testVector[i].mangle, 0, &argc, &testEmit );
-    }
-    for( i = 0; testVector[i].mangle != NULL; ++i ) {
-        p = malloc( ALLOC_SIZE );
-        len = __demangle_r( testVector[i].mangle, 0, &p, ALLOC_SIZE, realloc );
-        if( strcmp( p, testVector[i].full_demangle ) ) {
-            printf( "ERROR:\n%s\ndemangle should yield -->%s<--\n", testVector[i].mangle, testVector[i].full_demangle );
-            printf(             "          but yielded -->%s<-- (%u)\n", p, len );
-            ++errors;
-        }
-        free( p );
-        __unmangled_name( testVector[i].mangle, 0, &q, &len );
-        if( strncmp( q, testVector[i].unmangled, len ) ) {
-            char buff[BUF_SIZE];
-            memcpy( buff, q, len );
-            buff[len] = 0;
-            printf( "%s\nunmangle should yield -->%s<--\n", testVector[i].mangle, testVector[i].unmangled );
-            printf(     "          but yielded -->%s<-- (%u)\n", buff, len );
-            ++errors;
-        }
-        p = malloc( BUF_SIZE );
-        len = __demangled_basename( testVector[i].mangle, 0, p, BUF_SIZE );
-        if( strncmp( p, testVector[i].basename, len ) ) {
-            printf( "%s\nbasename should yield -->%s<--\n", testVector[i].mangle, testVector[i].basename );
-            printf(     "          but yielded -->%s<-- (%u)\n", p, len );
-            ++errors;
-        }
-        free( p );
-    }
-    if( errors ) {
-        printf( "test failed!\n" );
-        exit( 1 );
-    }
-    for( trunc_len = TRUNC_BUFFER; trunc_len > 0; trunc_len-- ) {
-        for( i = 0; testVector[i].mangle != NULL; ++i ) {
-            buff[0] = buff[trunc_len + 1] = GUARD_CHAR;
-            len = __demangle_l( testVector[i].mangle, 0, buff + 1, trunc_len );
-            if( len > trunc_len ) {
-                printf( "ERROR: returned length exceeds truncate length\n" );
-                ++errors;
-            }
-            if( buff[0] != GUARD_CHAR ) {
-                printf( "ERROR: ran off start of output buffer\n" );
-                ++errors;
-            }
-            if( buff[trunc_len + 1] != GUARD_CHAR ) {
-                printf( "ERROR: ran off end of output buffer\n" );
-                ++errors;
-            }
-            if( errors ) {
-                printf( "test failed!\n" );
-                exit( 1 );
-            }
-        }
-    }
-    if( argc > 1 ) {
-        no_errors = 1;
-        /*
-         * test truncated names
-         */
-        for( i = 0; testVector[i].mangle != NULL; ++i ) {
-            char *p1;
-            int j, max;
-            max = strlen( testVector[i].mangle );
-            p1 = malloc( max + 1 );
-            memcpy( p1, testVector[i].mangle, max + 1 );
-            for( j = max; j > 0; j-- ) {
-                p1[j] = NULL_CHAR;
-                p = malloc( ALLOC_SIZE );
-                len = __demangle_r( p1, 0, &p, ALLOC_SIZE, realloc );
-                printf( "truncated demangle yielded -->%s<-- (%u)\n", p, len );
-                free( p );
-            }
-            free( p1 );
-        }
-    }
-    printf( "...test completed.\n" );
-    exit( 0 );
-}
-#endif
-
-#if 0 || defined(UTIL)
-
-#define BUF_SIZE 4096
-
-void main( int argc, char **argv )
-{
-    char    buffer[BUF_SIZE];
-
-    if( argc < 2 ) {
-        printf( "Usage: demangle <mangled name>\n" );
-        return;
-    }
-    __demangle_l( argv[1], strlen( argv[1] ), buffer, sizeof( buffer ) );
-    puts( buffer );
-}
-
-#endif

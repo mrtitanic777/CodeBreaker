@@ -41,28 +41,42 @@
 #include "objio.h"
 #include "fileio.h"
 
+#include <array>
+#include "run_state.hpp"
 #include "clibext.h"
 
 
-static int      OpenFiles;      // the number of open files
-static unsigned LastResult;
-static bool     CaughtBreak;    // set to true if break hit.
+namespace {
 
-#define TOOMANY EMFILE
+struct NtIoState {
+    int         open_files = 0;         // the number of open files
+    unsigned    last_result = 0;
+    bool        caught_break = false;   // set to true if break hit.
+};
+
+NtIoState &state()
+{
+    return cb_wlink::RunState::part<NtIoState>();
+}
+
+}  // namespace
+
+static constexpr int TOOMANY = EMFILE;
 
 void TrapBreak( int sig_num )
 /***************************/
 {
     sig_num = sig_num;          // to avoid a warning, will be optimized out.
-    CaughtBreak = true;
+    state().caught_break = true;
 }
 
 void CheckBreak( void )
 /*********************/
 {
-    if( CaughtBreak ) {
-        CaughtBreak = false;                  /* prevent recursion */
-        LnkMsg( FTL+MSG_BREAK_HIT, NULL );    /* suicides */
+    NtIoState &st = state();
+    if( st.caught_break ) {
+        st.caught_break = false;                  /* prevent recursion */
+        LnkMsg( FTL+MSG_BREAK_HIT, nullptr );    /* suicides */
     }
 }
 
@@ -79,8 +93,9 @@ void RestoreBreak( void )
 void LnkFilesInit( void )
 /***********************/
 {
-    OpenFiles = 0;
-    CaughtBreak = false;
+    NtIoState &st = state();
+    st.open_files = 0;
+    st.caught_break = false;
 }
 
 void PrintIOError( unsigned msg, const char *types, const char *name )
@@ -92,6 +107,7 @@ void PrintIOError( unsigned msg, const char *types, const char *name )
 static int DoOpen( const char *name, unsigned mode, bool isexe )
 /**************************************************************/
 {
+    NtIoState &st = state();
     int     h;
     int     perm;
 
@@ -101,11 +117,11 @@ static int DoOpen( const char *name, unsigned mode, bool isexe )
     if( isexe )
         perm = PMODE_RWX;
     for( ;; ) {
-        if( OpenFiles >= MAX_OPEN_FILES )
+        if( st.open_files >= MAX_OPEN_FILES )
             CleanCachedHandles();
         h = open( name, mode, perm );
         if( h != -1 ) {
-            OpenFiles++;
+            st.open_files++;
             break;
         }
         if( errno != TOOMANY )
@@ -176,16 +192,16 @@ static ssize_t  posix_read( int fildes, void *buffer, size_t nbyte )
     size = 0;
     while( nbyte > 0 ) {
         if( amount > nbyte )
-            amount = (unsigned)nbyte;
+            amount = static_cast<unsigned>( nbyte );
         read_len = _read( fildes, buffer, amount );
-        if( read_len == (unsigned)-1 ) {
-            return( (ssize_t)-1 );
+        if( read_len == static_cast<unsigned>( -1 ) ) {
+            return( static_cast<ssize_t>( -1 ) );
         }
         size += read_len;
         if( read_len != amount ) {
             break;
         }
-        buffer = (char *)buffer + amount;
+        buffer = static_cast<char *>( buffer ) + amount;
         nbyte -= amount;
     }
     return( size );
@@ -201,16 +217,16 @@ static ssize_t  posix_write( int fildes, void const *buffer, size_t nbyte )
     size = 0;
     while( nbyte > 0 ) {
         if( amount > nbyte )
-            amount = (unsigned)nbyte;
+            amount = static_cast<unsigned>( nbyte );
         write_len = _write( fildes, buffer, amount );
-        if( write_len == (unsigned)-1 ) {
-            return( (ssize_t)-1 );
+        if( write_len == static_cast<unsigned>( -1 ) ) {
+            return( static_cast<ssize_t>( -1 ) );
         }
         size += write_len;
         if( write_len != amount ) {
             break;
         }
-        buffer = (char *)buffer + amount;
+        buffer = static_cast<const char *>( buffer ) + amount;
         nbyte -= amount;
     }
     return( size );
@@ -239,7 +255,7 @@ size_t QWrite( f_handle file, const void *buffer, size_t len, const char *name )
 /* write from far memory */
 {
     size_t      h;
-    char        rc_buff[RESOURCE_MAX_SIZE];
+    std::array<char, RESOURCE_MAX_SIZE> rc_buff;
 
     if( len == 0 )
         return( 0 );
@@ -259,12 +275,12 @@ size_t QWrite( f_handle file, const void *buffer, size_t len, const char *name )
 
     CheckBreak();
     h = posix_write( file, buffer, len );
-    if( name != NULL ) {
+    if( name != nullptr ) {
         if( h == IOERROR ) {
             LnkMsg( ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
-        } else if( (unsigned)h != len ) {
-            Msg_Get( MSG_IOERRLIST_7, rc_buff );
-            LnkMsg( (FTL+MSG_IO_PROBLEM) & ~OUT_MAP, "12", name, rc_buff );
+        } else if( static_cast<unsigned>( h ) != len ) {
+            Msg_Get( MSG_IOERRLIST_7, rc_buff.data() );
+            LnkMsg( (FTL+MSG_IO_PROBLEM) & ~OUT_MAP, "12", name, rc_buff.data() );
         }
     }
     return( h );
@@ -286,7 +302,7 @@ void QClose( f_handle file, const char *name )
 
     CheckBreak();
     h = close( file );
-    OpenFiles--;
+    state().open_files--;
     if( h != -1 )
         return;
     LnkMsg( ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
@@ -300,7 +316,7 @@ long QLSeek( f_handle file, long position, int start, const char *name )
     CheckBreak();
     h = lseek( file, position, start );
     if( h == -1L
-      && name != NULL ) {
+      && name != nullptr ) {
         LnkMsg( ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
     }
     return( h );
@@ -336,7 +352,7 @@ void QDelete( const char *name )
 {
     int   h;
 
-    if( name == NULL )
+    if( name == nullptr )
         return;
     h = remove( name );
     if( h == -1
@@ -383,7 +399,7 @@ static f_handle NSOpen( const char *name, unsigned mode )
     int         h;
 
     h = DoOpen( name, mode, false );
-    LastResult = h;
+    state().last_result = static_cast<unsigned>( h );
     if( h != -1 )
         return( h );
     return( NIL_FHANDLE );

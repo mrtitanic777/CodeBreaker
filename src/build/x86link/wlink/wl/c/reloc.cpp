@@ -31,7 +31,8 @@
 ****************************************************************************/
 
 
-#include <string.h>
+#include <cstddef>
+#include <cstring>
 #include "linkstd.h"
 #include "reloc.h"
 #include "fileio.h"
@@ -41,13 +42,24 @@
 #include "exeflat.h"
 
 
-typedef struct reloc_info_struct {
-    struct reloc_info_struct *next;
-    size_t              sizeleft;
+// A block of relocations: RELOC_PAGE_SIZE bytes, in memory or spilled to the spill file.
+struct reloc_info_struct {
+    reloc_info_struct   *next;
+    std::size_t         sizeleft;
     spilladdr           loc;
-} reloc_info_struct;
+};
 
-#define RELOC_PAGE_SIZE 512
+namespace {
+
+constexpr std::size_t RELOC_PAGE_SIZE = 512;
+
+// the bytes of a block that hold relocations
+inline std::size_t used_size( const reloc_info_struct *block )
+{
+    return RELOC_PAGE_SIZE - block->sizeleft;
+}
+
+}  // namespace
 
 unsigned        FmtRelocSize;
 #ifdef _QNX
@@ -60,7 +72,7 @@ void ResetReloc( void )
 /*********************/
 {
 #ifdef _QNX
-    FloatFixups = NULL;
+    FloatFixups = nullptr;
 #endif
 }
 
@@ -71,11 +83,11 @@ static reloc_info AllocRelocInfo( void )
 {
     reloc_info      reloclist;
 
-    reloclist = (reloc_info)(_PermAlloc( sizeof( reloc_info_struct ) ));       /* allocate more */
+    reloclist = static_cast<reloc_info>( _PermAlloc( sizeof( reloc_info_struct ) ) );       /* allocate more */
     reloclist->sizeleft = RELOC_PAGE_SIZE;
     reloclist->loc.spilled = false;
-    reloclist->loc.u.addr = (char *)(MemAlloc( RELOC_PAGE_SIZE ));
-    if( reloclist->loc.u.addr == NULL ) {
+    reloclist->loc.u.addr = static_cast<char *>( MemAlloc( RELOC_PAGE_SIZE ) );
+    if( reloclist->loc.u.addr == nullptr ) {
         reloclist->loc.u.spill = SpillAlloc( RELOC_PAGE_SIZE );
         reloclist->loc.spilled = true;
     }
@@ -87,12 +99,10 @@ static void *OS2PagedRelocInit( offset size, unsigned unitsize )
  * allocate simple array for all pages
  */
 {
-    void        *mem;
-    unsigned    allocsize;
+    const unsigned  allocsize = unitsize * OSF_PAGE_COUNT( size );
+    void            *mem = MemAllocSafe( allocsize );
 
-    allocsize = unitsize * OSF_PAGE_COUNT( size );
-    mem = MemAllocSafe( allocsize );
-    memset( mem, 0, allocsize );
+    std::memset( mem, 0, allocsize );
     return( mem );
 }
 
@@ -101,7 +111,7 @@ static os2_reloc_header *OS2FlatRelocInit( offset size )
  * initialize relocations for OS2 flat memory manager.
  */
 {
-    return( (os2_reloc_header *)OS2PagedRelocInit( size, sizeof( os2_reloc_header ) ) );
+    return( static_cast<os2_reloc_header *>( OS2PagedRelocInit( size, sizeof( os2_reloc_header ) ) ) );
 }
 
 static reloc_info *PERelocInit( offset size )
@@ -109,7 +119,7 @@ static reloc_info *PERelocInit( offset size )
  * initialize relocations for PE executable format
  */
 {
-    return( (reloc_info *)OS2PagedRelocInit( size, sizeof( reloc_info ) ) );
+    return( static_cast<reloc_info *>( OS2PagedRelocInit( size, sizeof( reloc_info ) ) ) );
 }
 
 static void DoWriteReloc( reloc_info *reloclist_head, const void *reloc, size_t size )
@@ -119,9 +129,9 @@ static void DoWriteReloc( reloc_info *reloclist_head, const void *reloc, size_t 
     size_t          offset;
 
     reloclist = *reloclist_head;
-    if( reloclist == NULL ) {
+    if( reloclist == nullptr ) {
         reloclist = AllocRelocInfo();
-        reloclist->next = NULL;
+        reloclist->next = nullptr;
         *reloclist_head = reloclist;
     }
     if( reloclist->sizeleft < size ) {     /* if no space */
@@ -129,11 +139,11 @@ static void DoWriteReloc( reloc_info *reloclist_head, const void *reloc, size_t 
         reloclist->next = *reloclist_head;
         *reloclist_head = reloclist;
     }
-    offset = RELOC_PAGE_SIZE - reloclist->sizeleft;
+    offset = used_size( reloclist );
     if( reloclist->loc.spilled ) {
         SpillWrite( reloclist->loc.u.spill, offset, reloc, size );
     } else {
-        memcpy( reloclist->loc.u.addr + offset, reloc, size );
+        std::memcpy( reloclist->loc.u.addr + offset, reloc, size );
     }
     reloclist->sizeleft -= size;
 }
@@ -151,7 +161,7 @@ void WriteReloc( group_entry *group, offset off, void *reloc, size_t size )
         reloc_info  *reloclist_head;
 
         reloclist_array = group->g.reloclist_array;
-        if( reloclist_array == NULL ) {
+        if( reloclist_array == nullptr ) {
            reloclist_array = PERelocInit( group->totalsize );
            group->g.reloclist_array = reloclist_array;
         }
@@ -166,15 +176,16 @@ void WriteReloc( group_entry *group, offset off, void *reloc, size_t size )
         reloc_info          *reloclist_head;
 
         pagelist_array = group->g.pagelist_array;
-        if( pagelist_array == NULL ) {
+        if( pagelist_array == nullptr ) {
             pagelist_array = OS2FlatRelocInit( group->totalsize );
             group->g.pagelist_array = pagelist_array;
         }
         idx = ( off - group->addr.off ) >> OSF_PAGE_SHIFT;
         reloclist_head = &pagelist_array[idx].externals;
-        switch( ((os2_flat_reloc_item *)reloc)->nr_flags & OSF_TARGET_MASK )  {
+        const os2_flat_reloc_item *item = static_cast<const os2_flat_reloc_item *>( reloc );
+        switch( item->nr_flags & OSF_TARGET_MASK )  {
         case OSF_TARGET_INTERNAL:
-            switch( ((os2_flat_reloc_item *)reloc)->nr_stype ) {
+            switch( item->nr_stype ) {
             case OSF_SOURCE_OFF_16:
             case OSF_SOURCE_OFF_32:
             case OSF_SOURCE_OFF_32_REL:
@@ -225,7 +236,7 @@ static bool FreeRelocList( reloc_info reloclist )
  * free any reloc blocks pointed to by reloclist
  */
 {
-    for( ; reloclist != NULL; reloclist = reloclist->next ) {
+    for( ; reloclist != nullptr; reloclist = reloclist->next ) {
         if( !reloclist->loc.spilled ) {
             MemFree( reloclist->loc.u.addr );
         }
@@ -251,7 +262,7 @@ bool TraverseOS2RelocList( group_entry *group, bool (*fn)(reloc_info) )
         os2_reloc_header    *pagelist_array;
 
         pagelist_array = group->g.pagelist_array;
-        if( pagelist_array != NULL ) {
+        if( pagelist_array != nullptr ) {
             while( numpages-- > 0 ) {
                 if( fn( pagelist_array->externals ) )
                     return( true );
@@ -264,7 +275,7 @@ bool TraverseOS2RelocList( group_entry *group, bool (*fn)(reloc_info) )
         reloc_info  *reloclist_array;
 
         reloclist_array = group->g.reloclist_array;
-        if( reloclist_array != NULL ) {
+        if( reloclist_array != nullptr ) {
             while( numpages-- > 0 ) {
                 if( fn( *reloclist_array++ ) ) {
                     return( true );
@@ -288,7 +299,7 @@ static void FreeGroupRelocs( group_entry *group )
 #ifdef _OS2
     if( FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
         TraverseOS2RelocList( group, FreeRelocList );
-        if( group->g.reloclist_array != NULL ) {
+        if( group->g.reloclist_array != nullptr ) {
             MemFree( group->g.reloclist_array );
         }
         return;
@@ -315,10 +326,10 @@ void FreeRelocInfo( void )
     if( (LinkState & LS_MAKE_RELOCS) == 0 )
         return;
     if( FmtData.type & (MK_ELF | MK_OS2_FLAT | MK_WIN_VXD | MK_PE | MK_NE | MK_QNX) ) {
-        for( group = Groups; group != NULL; group = group->next ) {
+        for( group = Groups; group != nullptr; group = group->next ) {
             FreeGroupRelocs( group );
         }
-    } else if( Root != NULL ) {
+    } else if( Root != nullptr ) {
         WalkAllSects( FreeRelocListSect );
     }
 #ifdef _QNX
@@ -337,8 +348,8 @@ unsigned RelocSize( reloc_info reloclist )
     unsigned        size;
 
     size = 0;
-    for( ; reloclist != NULL; reloclist = reloclist->next ) {
-        size += RELOC_PAGE_SIZE - reloclist->sizeleft;
+    for( ; reloclist != nullptr; reloclist = reloclist->next ) {
+        size += static_cast<unsigned>( used_size( reloclist ) );
     }
     return( size );
 }
@@ -353,8 +364,8 @@ unsigned DumpMaxRelocList( reloc_info *reloclist_head, unsigned max )
     reloc_info      reloclist;
 
     total = 0;
-    for( reloclist = *reloclist_head; reloclist != NULL; reloclist = reloclist->next ) {
-        size = RELOC_PAGE_SIZE - reloclist->sizeleft;
+    for( reloclist = *reloclist_head; reloclist != nullptr; reloclist = reloclist->next ) {
+        size = static_cast<unsigned>( used_size( reloclist ) );
         if( ( max != 0 ) && ( total != 0 ) && ( ( total + size ) >= max ) )
             break;
         if( size ) {
@@ -376,17 +387,15 @@ void CopyRelocList( reloc_info reloclist, void *buff )
  * CodeBreaker: copy the reloc information stored here into buff (RelocSize bytes)
  */
 {
-    unsigned        size;
-    char            *out;
+    char            *out = static_cast<char *>( buff );
 
-    out = (char *)(buff);
-    for( ; reloclist != NULL; reloclist = reloclist->next ) {
-        size = RELOC_PAGE_SIZE - reloclist->sizeleft;
+    for( ; reloclist != nullptr; reloclist = reloclist->next ) {
+        const std::size_t size = used_size( reloclist );
         if( size ) {
             if( reloclist->loc.spilled ) {
                 SpillRead( reloclist->loc.u.spill, 0, out, size );
             } else {
-                memcpy( out, reloclist->loc.u.addr, size );
+                std::memcpy( out, reloclist->loc.u.addr, size );
             }
             out += size;
         }
@@ -405,17 +414,14 @@ unsigned WalkRelocList( reloc_info *reloclist_head, bool (*fn)( void *data, size
  * walk the given reloc information list and call user fn for each reloc
  */
 {
-    size_t          size;
-    unsigned        total;
+    unsigned        total = 0;
     reloc_info      reloclist;
-    bool            quit;
+    bool            quit = false;
 
-    quit = false;
-    total = 0;
-    for( reloclist = *reloclist_head; reloclist != NULL; reloclist = reloclist->next ) {
+    for( reloclist = *reloclist_head; reloclist != nullptr; reloclist = reloclist->next ) {
         if( quit )
             break;
-        size = RELOC_PAGE_SIZE - reloclist->sizeleft;
+        const std::size_t size = used_size( reloclist );
         if( size ) {
             if( reloclist->loc.spilled ) {
                 SpillRead( reloclist->loc.u.spill, 0, TokBuff, size );
@@ -424,7 +430,7 @@ unsigned WalkRelocList( reloc_info *reloclist_head, bool (*fn)( void *data, size
                 quit = fn( reloclist->loc.u.addr, size, ctx );
             }
         }
-        total += (unsigned)size;
+        total += static_cast<unsigned>( size );
     }
     *reloclist_head = reloclist;
     return( total );
@@ -485,10 +491,10 @@ static bool SpillRelocList( reloc_info reloclist )
 {
     virt_mem_size   spill;
 
-    for( ; reloclist != NULL; reloclist = reloclist->next ) {
+    for( ; reloclist != nullptr; reloclist = reloclist->next ) {
         if( !reloclist->loc.spilled ) {
             spill = SpillAlloc( RELOC_PAGE_SIZE );
-            SpillWrite( spill, 0, reloclist->loc.u.addr, RELOC_PAGE_SIZE - reloclist->sizeleft );
+            SpillWrite( spill, 0, reloclist->loc.u.addr, used_size( reloclist ) );
             MemFree( reloclist->loc.u.addr );
             reloclist->loc.u.spill = spill;
             reloclist->loc.spilled = true;
@@ -508,7 +514,7 @@ static bool SpillSectRelocList( section *sect )
 static bool SpillSections( section *sect, bool (*rtn)( section * ) )
 /******************************************************************/
 {
-    for( ; sect != NULL; sect = sect->next ) {
+    for( ; sect != nullptr; sect = sect->next ) {
         if( rtn( sect ) )
             return( true );
         if( SpillAreas( sect->areas, rtn ) ) {
@@ -521,7 +527,7 @@ static bool SpillSections( section *sect, bool (*rtn)( section * ) )
 static bool SpillAreas( AREASECT *area, bool (*rtn)( section * ) )
 /****************************************************************/
 {
-    for( ; area != NULL; area = area->next ) {
+    for( ; area != nullptr; area = area->next ) {
         if( SpillSections( area->sections, rtn ) ) {
             return( true );
         }
@@ -537,13 +543,13 @@ bool SwapOutRelocs( void )
     if( (LinkState & LS_FMT_DECIDED) == 0 )
         return( false );
     if( FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
-        for( group = Groups; group != NULL; group = group->next ) {
+        for( group = Groups; group != nullptr; group = group->next ) {
             if( TraverseOS2RelocList( group, SpillRelocList ) ) {
                 return( true );
             }
         }
     } else if( FmtData.type & (MK_NE | MK_QNX) ) {
-        for( group = Groups; group != NULL; group = group->next ) {
+        for( group = Groups; group != nullptr; group = group->next ) {
             if( SpillRelocList( group->g.reloclist ) ) {
                 return( true );
             }

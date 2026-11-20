@@ -59,7 +59,6 @@ String table for sections
 */
 
 #include <string.h>
-#include "walloca.h"
 #include "linkstd.h"
 #include "exeelf.h"
 #include "loadelf.h"
@@ -75,19 +74,35 @@ String table for sections
 #include "dbgall.h"
 #include "dbgdwarf.h"
 #include "objcalc.h"
+#include "run_state.hpp"
+#include <string>
 
 
 #ifdef _ELF
 
-static stringtable      SymStrTab;
-static ElfSymTable      *ElfSymTab;
+namespace {
 
-static int              NumPhdr = 0;    /* just for now untill dynamic objects supported */
+// What this file keeps for one link (fresh at each run's start: the program header count was a static that a DLL link
+// set and no later link cleared).
+struct ElfState {
+    stringtable     SymStrTab;
+    ElfSymTable     *ElfSymTab = nullptr;
+    int             NumPhdr = 0;    /* just for now untill dynamic objects supported */
+};
+
+ElfState& state()
+{
+    return cb_wlink::RunState::part<ElfState>();
+}
 
 /* Put debugging info into section WITHIN the file instead of appending a
  * separate elf file at the end */
+bool injectElfDebug()
+{
+    return SymFileName == nullptr && (LinkFlags & LF_DWARF_DBI_FLAG) != 0;
+}
 
-#define INJECT_ELF_DEBUG ( SymFileName == NULL && (LinkFlags & LF_DWARF_DBI_FLAG) )
+}  // namespace
 
 static void InitSections( ElfHdr *hdr )
 /*************************************/
@@ -101,16 +116,16 @@ static void InitSections( ElfHdr *hdr )
     hdr->eh.e_shstrndx = hdr->i.secstr;
     hdr->i.grpbase = num;
     hdr->i.grpnum = NumGroups;
-    if( FmtData.dgroupsplitseg != NULL ) {
+    if( FmtData.dgroupsplitseg != nullptr ) {
         hdr->i.grpnum++;
-        if( StackSegPtr != NULL ) {
+        if( StackSegPtr != nullptr ) {
             hdr->i.grpnum++;
         }
     }
     num += hdr->i.grpnum;
     hdr->i.relbase = num;
-    for( group = Groups; group != NULL; group = group->next ) {
-        if( group->g.reloclist != NULL ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
+        if( group->g.reloclist != nullptr ) {
             hdr->i.relnum++;
         }
     }
@@ -118,7 +133,7 @@ static void InitSections( ElfHdr *hdr )
     hdr->i.symtab = num++;
     hdr->i.symstr = num++;
     hdr->i.symhash = num++;
-    if( INJECT_ELF_DEBUG ) {
+    if( injectElfDebug() ) {
         hdr->i.dbgnum = DwarfCountDebugSections();
     }
     hdr->i.dbgbegin = num;
@@ -126,7 +141,7 @@ static void InitSections( ElfHdr *hdr )
     num += FmtData.u.elf.extrasects;
     hdr->eh.e_shnum = num;
     hdr->sh_size = sizeof( Elf32_Shdr ) * hdr->eh.e_shnum;
-    hdr->sh = (Elf32_Shdr *)(MemAllocSafe( hdr->sh_size ));
+    hdr->sh = static_cast<Elf32_Shdr *>( MemAllocSafe( hdr->sh_size ) );
     memset( hdr->sh, 0, hdr->sh_size );
     hdr->sh[hdr->i.symtab].sh_name = AddSecName( hdr, ".symtab" );
 }
@@ -176,11 +191,11 @@ static void SetHeaders( ElfHdr *hdr )
     hdr->eh.e_ehsize = sizeof( Elf32_Ehdr );
     hdr->eh.e_phentsize = sizeof( Elf32_Phdr );
     hdr->eh.e_shentsize = sizeof( Elf32_Shdr );
-    hdr->eh.e_phnum = NumGroups + NumPhdr;
+    hdr->eh.e_phnum = NumGroups + state().NumPhdr;
     hdr->eh.e_phoff = sizeof( Elf32_Ehdr );
     hdr->ph_size = sizeof( Elf32_Phdr ) * hdr->eh.e_phnum;
-    hdr->ph = (Elf32_Phdr *)(MemAllocSafe( hdr->ph_size ));
-    if( NumPhdr ) {
+    hdr->ph = static_cast<Elf32_Phdr *>( MemAllocSafe( hdr->ph_size ) );
+    if( state().NumPhdr ) {
         hdr->ph->p_type = PT_PHDR;
         hdr->ph->p_offset = sizeof( Elf32_Ehdr );
         hdr->ph->p_vaddr = sizeof( Elf32_Ehdr ) + FmtData.base;
@@ -203,7 +218,7 @@ unsigned GetElfHeaderSize( void )
 {
     unsigned        size;
 
-    size = sizeof( Elf32_Ehdr ) + sizeof( Elf32_Phdr ) * ( NumGroups + NumPhdr );
+    size = sizeof( Elf32_Ehdr ) + sizeof( Elf32_Phdr ) * ( NumGroups + state().NumPhdr );
     return( __ROUND_UP_SIZE_PAGE( size ) );
 }
 
@@ -225,7 +240,7 @@ static void WriteSHStrings( ElfHdr *hdr, int str_idx, stringtable *strtab )
     sh->sh_type = SHT_STRTAB;
     sh->sh_size = GetStringTableSize( strtab );
     hdr->curr_off += sh->sh_size;
-    WriteStringTable( strtab, WriteLoad3, NULL );
+    WriteStringTable( strtab, WriteLoad3, nullptr );
 }
 
 static void SetGroupHeaders( group_entry *group, offset off, Elf32_Phdr *ph,
@@ -246,7 +261,7 @@ static void SetGroupHeaders( group_entry *group, offset off, Elf32_Phdr *ph,
     ph->p_type = PT_LOAD;
     ph->p_filesz = sh->sh_size = group->size;
     ph->p_memsz = group->totalsize;
-    if( group == DataGroup && StackSegPtr != NULL ) {
+    if( group == DataGroup && StackSegPtr != nullptr ) {
         ph->p_memsz -= StackSize;
     }
     sh->sh_link = SHN_UNDEF;
@@ -292,9 +307,9 @@ static void WriteELFGroups( ElfHdr *hdr )
     offset          linear;
 
     sh = hdr->sh + hdr->i.grpbase;
-    ph = hdr->ph + NumPhdr;
+    ph = hdr->ph + state().NumPhdr;
     off = hdr->curr_off;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         SetGroupHeaders( group, off, ph, sh );
@@ -302,13 +317,13 @@ static void WriteELFGroups( ElfHdr *hdr )
         off = OffsetAlign( off + group->size, FmtData.objalign );
         sh->sh_name = AddSecName( hdr, GroupSecName( group ) );
         sh++;
-        if( group == DataGroup && FmtData.dgroupsplitseg != NULL ) {
+        if( group == DataGroup && FmtData.dgroupsplitseg != nullptr ) {
             sh->sh_name = AddSecName( hdr, ".bss" );
             linear = ph->p_vaddr + __ROUND_UP_SIZE( ph->p_filesz, FmtData.objalign );
             InitBSSSect( sh, off, CalcSplitSize(), linear );
             linear = __ROUND_UP_SIZE( linear + sh->sh_size, FmtData.objalign);
             sh++;
-            if( StackSegPtr != NULL ) {
+            if( StackSegPtr != nullptr ) {
                 sh->sh_name = AddSecName( hdr, ".stack" );
                 InitBSSSect( sh, off, StackSize, linear );
                 sh++;
@@ -319,19 +334,13 @@ static void WriteELFGroups( ElfHdr *hdr )
     hdr->curr_off = off;
 }
 
-#define RELA_NAME_SIZE sizeof( RelASecName )
-
 static size_t AddRelocSectName( ElfHdr *hdr, const char *secname )
 /****************************************************************/
 {
-    size_t          len;
-    char            *name;
+    std::string     name( RelASecName );
 
-    len = strlen( secname );
-    name = (char *)(alloca( RELA_NAME_SIZE + len ));
-    memcpy( name, RelASecName, RELA_NAME_SIZE - 1 );
-    memcpy( name + RELA_NAME_SIZE - 1, secname, len + 1 );
-    return( AddSecName( hdr, name ) );
+    name += secname;
+    return( AddSecName( hdr, name.c_str() ) );
 }
 
 
@@ -345,9 +354,9 @@ static void WriteRelocsSections( ElfHdr *hdr )
 
     currgrp = hdr->i.grpbase;
     sh = hdr->sh + hdr->i.relbase;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         reloclist = group->g.reloclist;
-        if( reloclist != NULL ) {
+        if( reloclist != nullptr ) {
             sh->sh_offset = hdr->curr_off;
             sh->sh_entsize = sizeof( elf_reloc_item );
             sh->sh_type = SHT_RELA;
@@ -372,7 +381,7 @@ void FiniELFLoadFile( void )
     ElfHdr          hdr;
 
     if( FmtData.dll )
-        NumPhdr = 1;
+        state().NumPhdr = 1;
 
     SetHeaders( &hdr );
 #if 0
@@ -384,21 +393,21 @@ void FiniELFLoadFile( void )
 
     WriteELFGroups( &hdr ); // Write out all groups
     WriteRelocsSections( &hdr );        // Relocations
-    if( INJECT_ELF_DEBUG ) {            // Debug info
+    if( injectElfDebug() ) {            // Debug info
         hdr.curr_off = DwarfWriteElf( hdr.curr_off, &hdr.secstrtab, hdr.sh + hdr.i.dbgbegin );
     }
-    if( ElfSymTab != NULL ) {           // Symbol tables
-        WriteElfSymTable( ElfSymTab, &hdr, hdr.i.symhash, hdr.i.symtab, hdr.i.symstr );
-        ZapElfSymTable( ElfSymTab );
+    if( state().ElfSymTab != nullptr ) {           // Symbol tables
+        WriteElfSymTable( state().ElfSymTab, &hdr, hdr.i.symhash, hdr.i.symtab, hdr.i.symstr );
+        ZapElfSymTable( state().ElfSymTab );
     }
     if( hdr.i.symstr != 0 ) {           // String sections
-        WriteSHStrings( &hdr, hdr.i.symstr, &SymStrTab );
+        WriteSHStrings( &hdr, hdr.i.symstr, &state().SymStrTab );
     }
     WriteSHStrings( &hdr, hdr.i.secstr, &hdr.secstrtab );
     hdr.eh.e_shoff = hdr.curr_off;
     WriteLoad( hdr.sh, hdr.sh_size );
     hdr.curr_off += hdr.sh_size;
-    if( !INJECT_ELF_DEBUG ) {
+    if( !injectElfDebug() ) {
         DBIWrite();
     }
     SeekLoad( 0 );
@@ -407,7 +416,7 @@ void FiniELFLoadFile( void )
     MemFree( hdr.sh );
     MemFree( hdr.ph );
     FiniStringTable( &hdr.secstrtab );
-    FiniStringTable( &SymStrTab );
+    FiniStringTable( &state().SymStrTab );
     SeekLoad( hdr.curr_off );
 }
 
@@ -418,7 +427,7 @@ void ChkElfData( void )
     symbol          *sym;
 
     NumExports = NumImports = 0;
-    for( sym = HeadSym; sym != NULL; sym = sym->next ) {
+    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
         if( IsSymElfImported( sym ) ) {
             NumImports++;
         } else if( IsSymElfExported( sym ) ) {
@@ -428,24 +437,24 @@ void ChkElfData( void )
             NumExports++;
         }
     }
-    InitStringTable( &SymStrTab, false );
-    AddCharStringTable( &SymStrTab, '\0' );
-    ElfSymTab = CreateElfSymTable( NumImports + NumExports + NumGroups, &SymStrTab );
-    for( group = Groups; group != NULL; group = group->next ) {
+    InitStringTable( &state().SymStrTab, false );
+    AddCharStringTable( &state().SymStrTab, '\0' );
+    state().ElfSymTab = CreateElfSymTable( NumImports + NumExports + NumGroups, &state().SymStrTab );
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->totalsize != 0 ) {
-            AddSymElfSymTable( ElfSymTab, group->sym );
+            AddSymElfSymTable( state().ElfSymTab, group->sym );
         }
     }
     /* process local symbols */
-    for( sym = HeadSym; sym != NULL; sym = sym->next ) {
+    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
         if( IsSymElfImpExp( sym ) && (sym->info & SYM_STATIC) ) {
-            AddSymElfSymTable( ElfSymTab, sym );
+            AddSymElfSymTable( state().ElfSymTab, sym );
         }
     }
     /* process global symbols */
-    for( sym = HeadSym; sym != NULL; sym = sym->next ) {
+    for( sym = HeadSym; sym != nullptr; sym = sym->next ) {
         if( IsSymElfImpExp( sym ) && (sym->info & SYM_STATIC) == 0 ) {
-            AddSymElfSymTable( ElfSymTab, sym );
+            AddSymElfSymTable( state().ElfSymTab, sym );
         }
     }
 
@@ -454,7 +463,7 @@ void ChkElfData( void )
 int FindElfSymIdx( symbol *sym )
 /******************************/
 {
-    return( FindSymIdxElfSymTable( ElfSymTab, sym ) );
+    return( FindSymIdxElfSymTable( state().ElfSymTab, sym ) );
 }
 
 #endif

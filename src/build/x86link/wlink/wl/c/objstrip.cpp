@@ -30,90 +30,100 @@
 ****************************************************************************/
 
 
-#include <string.h>
-#include "walloca.h"
+
+#include <cstring>
+#include <string>
 #include "linkstd.h"
 #include "objstrip.h"
+#include "run_state.hpp"
 
+
+namespace {
 
 /* data structure used to keep track of all the edges in the call graph */
 
-typedef struct edgelist {
-    struct edgelist *next;
+struct edgelist {
+    edgelist    *next;
     union {
         segdata     *seg;
         symbol      *sym;
     } u;
-    boolbit         issym       : 1;    // true if contains a symbol
-    boolbit         reverse_dir : 1;    // true if edge points in the opposite direction
-} edgelist;
+    boolbit     issym       : 1;    // true if contains a symbol
+    boolbit     reverse_dir : 1;    // true if edge points in the opposite direction
+};
 
-static edgelist * FreedEdges;
+struct StripState {
+    edgelist    *FreedEdges;
+};
+
+StripState& state()
+{
+    return cb_wlink::RunState::part<StripState>();
+}
 
 /* some handy routines for dealing with edges. */
 
-void ResetObjStrip( void )
-/************************/
+edgelist *AllocEdge()
 {
-    FreedEdges = NULL;
-}
+    StripState &st = state();
+    edgelist *edge;
 
-static edgelist * AllocEdge( void )
-/*********************************/
-{
-    edgelist *  edge;
-
-    if( FreedEdges != NULL ) {
-        edge = FreedEdges;
-        FreedEdges = edge->next;
+    if( st.FreedEdges != nullptr ) {
+        edge = st.FreedEdges;
+        st.FreedEdges = edge->next;
     } else {
-        edge = (edgelist *)(Pass1Alloc( sizeof( edgelist ) ));
+        edge = static_cast<edgelist *>( Pass1Alloc( sizeof( edgelist ) ) );
     }
-    memset( edge, 0, sizeof( *edge ) );
-    return( edge );
+    std::memset( edge, 0, sizeof( *edge ) );
+    return edge;
 }
 
-static void FreeEdge( edgelist * edge )
-/*************************************/
 /* keep track of free edges on our own free list */
+void FreeEdge( edgelist *edge )
 {
-    edge->next = FreedEdges;
-    FreedEdges = edge;
+    StripState &st = state();
+    edge->next = st.FreedEdges;
+    st.FreedEdges = edge;
 }
 
-static void FreeEdgeList( edgelist * edge )
-/*****************************************/
 /* free a list of edges. */
+void FreeEdgeList( edgelist *edge )
 {
-    edgelist *  listend;
-
-    if( edge == NULL )
+    if( edge == nullptr )
         return;
-    for( listend = edge; listend->next != NULL; ) {
+    edgelist *listend = edge;
+    while( listend->next != nullptr ) {
         listend = listend->next;
     }
-    listend->next = FreedEdges;
-    FreedEdges = edge;
+    StripState &st = state();
+    listend->next = st.FreedEdges;
+    st.FreedEdges = edge;
 }
 
-static void PruneNonSymEdges( symbol * sym )
-/******************************************/
 /* remove any edges from the list which don't point to symbols */
+void PruneNonSymEdges( symbol *sym )
 {
-    edgelist *  list;
-    edgelist *  next;
+    edgelist *list = static_cast<edgelist *>( sym->p.edges );
+    edgelist *next;
 
-    list = (edgelist *)(sym->p.edges);
-    sym->p.edges = NULL;
-    for( ; list != NULL; list = next ) {
+    sym->p.edges = nullptr;
+    for( ; list != nullptr; list = next ) {
         next = list->next;
         if( list->issym ) {
-            list->next = (edgelist *)(sym->p.edges);
+            list->next = static_cast<edgelist *>( sym->p.edges );
             sym->p.edges = list;
         } else {
             FreeEdge( list );
         }
     }
+}
+
+}  // namespace
+
+void ResetObjStrip( void )
+/************************/
+{
+    state().FreedEdges = nullptr;
 }
 
 void RefSeg( segdata * seg )
@@ -131,13 +141,13 @@ void RefSeg( segdata * seg )
 //        return;
     seg->isrefd = true;
     seg->visited = true;
-    for( edge = (edgelist *)(seg->a.refs); edge != NULL; edge = next ) {
+    for( edge = static_cast<edgelist *>( seg->a.refs ); edge != nullptr; edge = next ) {
         DbgAssert( !edge->issym );
         next = edge->next;
         RefSeg( edge->u.seg );
         FreeEdge( edge );
     }
-    seg->a.refs = NULL;
+    seg->a.refs = nullptr;
     seg->visited = false;
 }
 
@@ -147,12 +157,9 @@ void DataRef( symbol * sym )
 {
     if( (LinkState & LS_HAVE_PPC_CODE)
       && (FmtData.type & MK_PE) ) {
-        size_t      len = strlen( sym->name.u.ptr ) + 3;
-        char        *s = (char *)(alloca( len ));
+        std::string s = std::string( ".." ) + sym->name.u.ptr;
 
-        s[0] = s[1] = '.';
-        strcpy( s + 2, sym->name.u.ptr );
-        sym = SymOp( ST_FIND, s, len - 1 );
+        sym = SymOp( ST_FIND, s.c_str(), s.size() );
     }
     if( (sym->info & SYM_DEFINED)
       && !IS_SYM_IMPORTED( sym ) ) {
@@ -170,7 +177,7 @@ void AddEdge( segdata * seg, symbol * sym )
     if( sym->info & SYM_DEFINED ) {
         if( !IS_SYM_IMPORTED( sym )
           && seg != sym->p.seg
-          && sym->p.seg != NULL ) {
+          && sym->p.seg != nullptr ) {
             if( seg->isrefd
               || !seg->iscode ) {
                 RefSeg( sym->p.seg );
@@ -178,7 +185,7 @@ void AddEdge( segdata * seg, symbol * sym )
                 edge = AllocEdge();
                 edge->u.seg = sym->p.seg;
                 edge->issym = false;
-                edge->next = (edgelist *)(seg->a.refs);
+                edge->next = static_cast<edgelist *>( seg->a.refs );
                 seg->a.refs = edge;
             }
         }
@@ -190,7 +197,7 @@ void AddEdge( segdata * seg, symbol * sym )
         } else {
             edge = AllocEdge();
             edge->u.seg = seg;
-            edge->next = (edgelist *)(sym->p.edges);
+            edge->next = static_cast<edgelist *>( sym->p.edges );
             edge->issym = false;
             edge->reverse_dir = true;
             sym->p.edges = edge;
@@ -210,7 +217,7 @@ void AddSymEdge( symbol * srcsym, symbol * targsym )
         edge = AllocEdge();
         edge->u.sym = targsym;
         edge->issym = true;
-        edge->next = (edgelist *)(srcsym->p.edges);
+        edge->next = static_cast<edgelist *>( srcsym->p.edges );
         srcsym->p.edges = edge;
     }
 }
@@ -229,10 +236,10 @@ void AddSymSegEdge( symbol *srcsym, segdata *targsdata )
     edge->u.seg = targsdata;
     edge->issym = false;
     if( srcsym->info & SYM_DEFINED ) {
-        edge->next = (edgelist *)(targsdata->a.refs);
+        edge->next = static_cast<edgelist *>( targsdata->a.refs );
         targsdata->a.refs = edge;
     } else {
-        edge->next = (edgelist *)(srcsym->p.edges);
+        edge->next = static_cast<edgelist *>( srcsym->p.edges );
         srcsym->p.edges = edge;
     }
 }
@@ -251,7 +258,7 @@ void DefStripSym( symbol * sym, segdata * seg )
     if( sym->info & SYM_1_DCE_REF ) {
         RefSeg( seg );
     }
-    for( list = (edgelist *)(sym->p.edges); list != NULL; list = next ) {
+    for( list = static_cast<edgelist *>( sym->p.edges ); list != nullptr; list = next ) {
         next = list->next;
         if( list->issym ) {
             DbgAssert(!list->reverse_dir); // for now this cannot happen
@@ -275,7 +282,7 @@ void DefStripSym( symbol * sym, segdata * seg )
                 } else {
                     list->reverse_dir = false;
                     list->u.seg = trg;  // make it point to this target.
-                    list->next = (edgelist *)(src->a.refs);   // & add it to the ref list
+                    list->next = static_cast<edgelist *>( src->a.refs );   // & add it to the ref list
                     src->a.refs = list;
                 }
             }
@@ -298,7 +305,7 @@ void DefStripImpSym( symbol * sym )
     edgelist *  list;
     edgelist *  next;
 
-    for( list = (edgelist *)(sym->p.edges); list != NULL; list = next ) {
+    for( list = static_cast<edgelist *>( sym->p.edges ); list != nullptr; list = next ) {
         next = list->next;
         if( !list->reverse_dir ) {
             if( list->issym ) {
@@ -309,13 +316,13 @@ void DefStripImpSym( symbol * sym )
         }
         FreeEdge( list );
     }
-    sym->p.edges = NULL;
+    sym->p.edges = nullptr;
 }
 
 void CleanStripInfo( symbol * sym )
 /****************************************/
 /* remove any stripping information from a symbol which does not need it */
 {
-    FreeEdgeList( (edgelist *)(sym->p.edges) );
-    sym->p.edges = NULL;
+    FreeEdgeList( static_cast<edgelist *>( sym->p.edges ) );
+    sym->p.edges = nullptr;
 }

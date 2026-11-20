@@ -51,9 +51,24 @@ Bytes without_link_time(Bytes image) {
     if (pe + 24 + 68 > image.size() || image[pe] != 'P' || (image[pe + 1] != 'E' && image[pe + 1] != 'L') || image[pe + 2] != 0 ||
         image[pe + 3] != 0)
         return image;
-    for (std::size_t i = 0; i < 4; ++i) {
-        image[pe + 8 + i] = 0;         // TimeDateStamp
-        image[pe + 24 + 64 + i] = 0;   // CheckSum
+    auto clear4 = [&](std::size_t at) {
+        for (std::size_t i = 0; i < 4 && at + i < image.size(); ++i) image[at + i] = 0;
+    };
+    clear4(pe + 8);         // TimeDateStamp
+    clear4(pe + 24 + 64);   // CheckSum
+    // ... and each debug directory entry's TimeDateStamp (debug codeview: the same link time, again)
+    auto u16 = [&](std::size_t at) -> std::uint32_t { return at + 2 <= image.size() ? image[at] | image[at + 1] << 8 : 0; };
+    const std::size_t opt = pe + 24;
+    const std::uint32_t magic = u16(opt);
+    const std::size_t dirs = opt + (magic == 0x20b ? 112 : 96);
+    const std::uint32_t debug_rva = u32(dirs + 6 * 8), debug_size = u32(dirs + 6 * 8 + 4);
+    const std::size_t sections = opt + u16(pe + 20);
+    for (std::uint32_t s = 0, n = u16(pe + 6); debug_rva != 0 && s < n; ++s) {
+        const std::size_t h = sections + s * 40;
+        const std::uint32_t va = u32(h + 12), vsize = std::max(u32(h + 8), u32(h + 16)), raw = u32(h + 20);
+        if (debug_rva < va || debug_rva >= va + vsize) continue;
+        for (std::uint32_t e = 0; e + 28 <= debug_size; e += 28) clear4(raw + (debug_rva - va) + e + 4);
+        break;
     }
     return image;
 }

@@ -97,7 +97,18 @@ extern char     *_end;
  */
 //extern int              __nheapblk;
 
-static const char   *ArgSave;
+namespace {
+
+struct WlinkState {
+    const char  *arg_save = nullptr;
+};
+
+WlinkState &state()
+{
+    return cb_wlink::RunState::part<WlinkState>();
+}
+
+}  // namespace
 
 static void PreAddrCalcFormatSpec( void )
 /****************************************
@@ -177,15 +188,15 @@ static void ResetMisc( void )
 {
     LinkFlags = LF_REDEFS_OK | LF_FAR_CALLS_FLAG;
     LinkState = LS_MAKE_RELOCS;
-    AbsGroups = NULL;
-    DataGroup = NULL;
-    IDataGroup = NULL;
-    OutFiles = NULL;
-    ObjLibFiles = NULL;
-    LibModules = NULL;
-    Groups = NULL;
+    AbsGroups = nullptr;
+    DataGroup = nullptr;
+    IDataGroup = nullptr;
+    OutFiles = nullptr;
+    ObjLibFiles = nullptr;
+    LibModules = nullptr;
+    Groups = nullptr;
     SET_ADDR_UNDEFINED( CurrLoc );
-    CurrMod = NULL;
+    CurrMod = nullptr;
     StackSize = DEF_STACK_SIZE;
     /* CodeBreaker: the stack address of the link before stayed (a .COM link after an EXE then warned W1087) */
     StackAddr.seg = 0;
@@ -210,7 +221,7 @@ static void DoDefaultSystem( void )
         }
         if( (LinkState & LS_FMT_DECIDED) == 0 ) {
             if( LinkState & LS_FMT_SPECIFIED ) {
-                LnkMsg( FTL+MSG_AMBIG_FORMAT, NULL );
+                LnkMsg( FTL+MSG_AMBIG_FORMAT, nullptr );
             }
             if( LinkState & LS_FMT_SEEN_64BIT ) {
                 ExecSystem( "64bit" );
@@ -413,18 +424,18 @@ static void LinkMeBaby( void )
 /****************************/
 {
     ResetSubSystems();
-    DoLink( ArgSave );
+    DoLink( state().arg_save );
 }
 
 void LinkMainLine( const char *cmds )
 /***********************************/
 {
     for( ;; ) {
-        ArgSave = cmds;         // bogus way to pass args to spawn
+        state().arg_save = cmds;         // bogus way to pass args to spawn
         Spawn( &LinkMeBaby );
         CleanSubSystems();
         cmds = GetNextLink();
-        if( cmds == NULL ) {
+        if( cmds == nullptr ) {
             break;
         }
     }

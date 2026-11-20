@@ -44,12 +44,24 @@
 #include "objpass1.h"
 #include "symmem.h"
 
+#include "run_state.hpp"
 #include "clibext.h"
 
 
 int                     NumGroups;
 
-static group_entry      *CurrGroup;
+namespace {
+
+struct AutoGrpState {
+    group_entry     *curr_group = nullptr;
+};
+
+AutoGrpState &state()
+{
+    return cb_wlink::RunState::part<AutoGrpState>();
+}
+
+}  // namespace
 
 static offset GetSegGroupPackLimit( seg_leader *seg )
 /***************************************************/
@@ -79,8 +91,8 @@ static offset GetSegGroupPackLimit( seg_leader *seg )
 static seg_leader *GetNextSeg( section *sect, seg_leader *seg )
 /*************************************************************/
 /*
- * if seg == NULL then get first segment in section
- * if seg != NULL then get next segment after seg
+ * if seg == nullptr then get first segment in section
+ * if seg != nullptr then get next segment after seg
  *
  * segments with debug info are skiped
  *
@@ -93,26 +105,26 @@ static seg_leader *GetNextSeg( section *sect, seg_leader *seg )
 {
     class_entry *class_;
 
-    if( seg == NULL ) {
-        for( class_ = sect->classes; class_ != NULL; class_ = class_->next ) {
+    if( seg == nullptr ) {
+        for( class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
             if( (class_->flags & CLASS_DEBUG_INFO) == 0 ) {
                 break;
             }
         }
-        if( class_ == NULL ) {
-            return( NULL );
+        if( class_ == nullptr ) {
+            return( nullptr );
         }
     } else {
         class_ = seg->class_;
     }
-    while( (seg = (seg_leader *)(RingStep( class_->segs, seg ))) == NULL ) {
-        for( class_ = class_->next; class_ != NULL; class_ = class_->next ) {
+    while( (seg = static_cast<seg_leader *>( RingStep( class_->segs, seg ) )) == nullptr ) {
+        for( class_ = class_->next; class_ != nullptr; class_ = class_->next ) {
             if( (class_->flags & CLASS_DEBUG_INFO) == 0 ) {
                 break;
             }
         }
-        if( class_ == NULL ) {
-            return( NULL );
+        if( class_ == nullptr ) {
+            return( nullptr );
         }
     }
     return( seg );
@@ -168,7 +180,7 @@ static group_entry *GetAutoGroup( bool abs_seg )
     }
     group = AllocGroup( AutoGrpName, grp_list );
     if( !abs_seg ) {
-        CurrGroup = group;
+        state().curr_group = group;
     }
     return( group );
 }
@@ -181,14 +193,14 @@ static void PackSegs( seg_leader *seg, unsigned num_segs )
     if( num_segs == 0 )
         return;
 
-    if( seg->group != NULL ) {
+    if( seg->group != nullptr ) {
         group = seg->group;
     } else {
         group = GetAutoGroup( seg->info & SEGINF_ABSOLUTE );
     }
     group->section = seg->class_->section;
     while( num_segs != 0 ) {
-        if( seg->group == NULL
+        if( seg->group == nullptr
           || seg->group == group ) {
             if( (seg->info & SEGINF_CODE) == 0 ) {
                 group->segflags |= SEG_DATA;
@@ -199,7 +211,7 @@ static void PackSegs( seg_leader *seg, unsigned num_segs )
             if( seg->class_->flags & CLASS_COPY ) {  // If class is copied, mark group accordingly
                 group->isdup = true;
             }
-            if( seg->group == NULL ) {              // if its not in a group add it to this one
+            if( seg->group == nullptr ) {              // if its not in a group add it to this one
                 seg->group = group;
                 Ring2Append( &group->leaders, seg );
             }
@@ -221,15 +233,15 @@ static void AutoGroupSect( section *sect )
     bool            lastseg = false;    // true iff this should be last seg in group.
     offset          limit = 0;
 
-    CurrentSeg = NULL;
+    CurrentSeg = nullptr;
     size = 0;
     num_segs = 0;
-    packstart = NULL;
-    for( seg = NULL; (seg = GetNextSeg( sect, seg )) != NULL; ) {
+    packstart = nullptr;
+    for( seg = nullptr; (seg = GetNextSeg( sect, seg )) != nullptr; ) {
         if( seg->info & SEGINF_ABSOLUTE ) {
             PackSegs( seg, 1 );
         } else {
-            if( packstart == NULL ) {
+            if( packstart == nullptr ) {
                 limit = GetSegGroupPackLimit( seg );
                 packstart = seg;
             }
@@ -272,7 +284,7 @@ static void InitGroup( group_entry *group )
     group->isfree = false;
     group->isautogrp = false;
     group->isdup = false;
-    group->g.reloclist = NULL;
+    group->g.reloclist = nullptr;
 }
 
 group_entry *AllocGroup( const char *name, group_entry **grp_list )
@@ -281,18 +293,18 @@ group_entry *AllocGroup( const char *name, group_entry **grp_list )
     group_entry *group;
     symbol      *sym;
 
-    group = (group_entry *)(CarveAlloc( CarveGroup ));
-    group->leaders = NULL;
-    sym = (symbol *)(_PermAlloc( sizeof( *sym ) )); // second class slave citizen
+    group = static_cast<group_entry *>( CarveAlloc( CarveGroup ) );
+    group->leaders = nullptr;
+    sym = static_cast<symbol *>( _PermAlloc( sizeof( *sym ) ) ); // second class slave citizen
     BasicInitSym( sym );
     sym->namelen_cmp = strlen( name );
     sym->name.u.ptr = AddBufferStringTable( &PermStrings, name, sym->namelen_cmp + 1 );
     SET_SYM_TYPE( sym, SYM_GROUP );
     sym->info |= SYM_STATIC;
-    group->next = NULL;
+    group->next = nullptr;
     InitGroup( group );
     group->sym = sym;
-    AppendList( (void **)grp_list, group );
+    AppendList( reinterpret_cast<void **>( grp_list ), group );
     if( stricmp( name, DataGrpName ) == 0 ) {
         DataGroup = group;
     } else if( name == AutoGrpName ) {
@@ -305,21 +317,22 @@ static void SortGroup( seg_leader *seg )
 /**************************************/
 // Go through the classes & segments, and rebuild the group list in sorted form
 {
-    if( seg->group == NULL )
+    if( seg->group == nullptr )
         return;
     if( seg->info & SEGINF_ABSOLUTE )
         return;
     Ring2Append( &seg->group->leaders, seg );
-    if( seg->group->next == NULL ) { // not in the list yet
-        if( CurrGroup == NULL ) {
-            Groups = CurrGroup = seg->group;
+    if( seg->group->next == nullptr ) { // not in the list yet
+        group_entry *&curr = state().curr_group;
+        if( curr == nullptr ) {
+            Groups = curr = seg->group;
         } else {
-            CurrGroup->next = seg->group;
-            CurrGroup = CurrGroup->next;
+            curr->next = seg->group;
+            curr = curr->next;
         }
         // Make the list circular so we have an easy way of telling if a node
         // is in the list.
-        CurrGroup->next = Groups;
+        curr->next = Groups;
         NumGroups--;
         DbgAssert( NumGroups >= 0 );
     }
@@ -333,20 +346,20 @@ static void SortGroupList( void )
     unsigned        number;
 
     NumGroups = 0;
-    if( Groups == NULL )
+    if( Groups == nullptr )
         return;
 
-    // first, set all of the links in the group list to NULL
-    while( (group = Groups) != NULL ) {
+    // first, set all of the links in the group list to nullptr
+    while( (group = Groups) != nullptr ) {
         Groups = Groups->next;  // Take group out of original ring
-        group->next = NULL;
-        group->leaders = NULL;
+        group->next = nullptr;
+        group->leaders = nullptr;
         NumGroups++;
     }
     number = NumGroups;
-    CurrGroup = NULL;
+    state().curr_group = nullptr;
     WalkLeaders( SortGroup );
-    CurrGroup->next = NULL;  // break the circular list.
+    state().curr_group->next = nullptr;  // break the circular list.
     NumGroups = number;            // save # of groups.
 }
 
@@ -354,7 +367,7 @@ static void SortGroupList( void )
 static bool CheckGroupSplit( void *leader, void *sect )
 /*****************************************************/
 {
-    return( ((seg_leader *)leader)->class_->section != (section *)sect );
+    return( static_cast<seg_leader *>( leader )->class_->section != static_cast<section *>( sect ) );
 }
 
 static void FindSplitGroups( void )
@@ -366,7 +379,7 @@ static void FindSplitGroups( void )
     group_entry     *group;
 
     if( FmtData.type & MK_OVERLAYS ) {
-        for( group = Groups; group != NULL; group = group->next ) {
+        for( group = Groups; group != nullptr; group = group->next ) {
             if( Ring2Lookup( group->leaders, CheckGroupSplit, group->section ) ) {
                 LnkMsg( ERR+MSG_OVL_GROUP_SPLIT, "s", group->sym->name );
             }
@@ -382,7 +395,7 @@ static void NumberNonAutos( void )
     unsigned            num;
 
     num = 0;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->isautogrp ) {
             group->num = 0;
         } else {
@@ -401,7 +414,7 @@ void AutoGroup( void )
     FindSplitGroups();
 #endif
     if( NumGroups == 0 ) {
-        LnkMsg( FTL+MSG_NO_CODE_OR_DATA, NULL );
+        LnkMsg( FTL+MSG_NO_CODE_OR_DATA, nullptr );
     }
     NumberNonAutos();
 }
