@@ -45,17 +45,17 @@ constexpr name_len make_name( const char ( &text )[N] )
 
 }  // namespace
 
-name_len str_coff_idata2 = make_name( ".idata$2" );
-name_len str_coff_idata3 = make_name( ".idata$3" );
-name_len str_coff_idata4 = make_name( ".idata$4" );
-name_len str_coff_idata5 = make_name( ".idata$5" );
-name_len str_coff_idata6 = make_name( ".idata$6" );
-name_len str_coff_text = make_name( ".text" );
-name_len str_coff_pdata = make_name( ".pdata" );
-name_len str_coff_reldata = make_name( ".reldata" );
-name_len str_coff_toc = make_name( ".toc" );
-name_len str_coff_ppc_prefix = make_name( ".." );
-name_len str_coff_imp_prefix = make_name( "__imp_" );
-name_len str_coff_null_thunk_data = make_name( "_NULL_THUNK_DATA" );
-name_len str_coff_import_descriptor = make_name( "__IMPORT_DESCRIPTOR_" );
-name_len str_coff_null_import_descriptor = make_name( "__NULL_IMPORT_DESCRIPTOR" );
+extern const name_len str_coff_idata2 = make_name( ".idata$2" );
+extern const name_len str_coff_idata3 = make_name( ".idata$3" );
+extern const name_len str_coff_idata4 = make_name( ".idata$4" );
+extern const name_len str_coff_idata5 = make_name( ".idata$5" );
+extern const name_len str_coff_idata6 = make_name( ".idata$6" );
+extern const name_len str_coff_text = make_name( ".text" );
+extern const name_len str_coff_pdata = make_name( ".pdata" );
+extern const name_len str_coff_reldata = make_name( ".reldata" );
+extern const name_len str_coff_toc = make_name( ".toc" );
+extern const name_len str_coff_ppc_prefix = make_name( ".." );
+extern const name_len str_coff_imp_prefix = make_name( "__imp_" );
+extern const name_len str_coff_null_thunk_data = make_name( "_NULL_THUNK_DATA" );
+extern const name_len str_coff_import_descriptor = make_name( "__IMPORT_DESCRIPTOR_" );
+extern const name_len str_coff_null_import_descriptor = make_name( "__NULL_IMPORT_DESCRIPTOR" );

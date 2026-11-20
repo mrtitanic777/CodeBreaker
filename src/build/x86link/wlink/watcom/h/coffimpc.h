@@ -52,7 +52,7 @@
     IMPLIB_STR( str_coff_import_descriptor,      "__IMPORT_DESCRIPTOR_" ) \
     IMPLIB_STR( str_coff_null_import_descriptor, "__NULL_IMPORT_DESCRIPTOR" )
 
-#define IMPLIB_STR(s,t) extern name_len s;
+#define IMPLIB_STR(s,t) extern const name_len s;   /* CodeBreaker: constants */
 IMPLIB_STRS
 #undef IMPLIB_STR
 

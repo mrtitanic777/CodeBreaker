@@ -153,3 +153,21 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    link with `option messages` had it or not as the heap fell. Two behaviours changed on purpose: every source is
    read whole (the line-by-line reading of command files over 64K is gone), and a link handed no command reads an
    empty one (wlink read the host process's command line: in codebreaker.exe, CodeBreaker's own).
+
+   **All of wlink is typed C++ (2026-11-20; Logan: "Start it. Do it all.").** Seven waves after the directive layer
+   (004207493 ... 5b6248071), each proven on both corpora before it landed; work/x86link4/WLINK_PLAN.md has the waves.
+   - Waves 1-6: every file of wl/c (64) and of the support libraries (ORL's OMF, COFF and ELF readers, wres, DWARF,
+     watcom/c, rc, the demangler) rewritten in place: constexpr tables, enum class flags, std::string / std::array /
+     std::vector for local text and buffers, typed casts, no alloca; each file's statics in the state of the run
+     (cb/run_state: `cb_wlink::RunState::part<T>()`, made new at each run's start).
+   - Wave 7: the 82 globals of a link's state are members of one `cb_wlink::Link` (cb/link.hpp), made new at each
+     run's start and reached as `wlink()` (one pointer load: the same speed); the names wlink only reads (the special
+     class and group names, the COFF section names, OMF's alignment table, the newline) are constants.
+   - Bugs fixed on the way, each where the in-process linker differed from wlink.exe or could fail: the map's
+     "Stub file" read through the wrong member of FmtData's union; the import library's temporary file was left when a
+     link failed (26 such and every `option implib` failed); CVDebugDirEntryPos and ELF's program-header count kept
+     from an earlier link; RDOS's sizes grew from link to link; CodeView's block was not cleared; the TOC's hash key
+     read stack bytes; each link printed its banner only once per process.
+   - Proof: every link of both corpora is the same in-process as wlink.exe, the gate's 47 and the directive corpus's
+     1,930 (directives_known.txt is empty), at wlink's speed. Next (phase 5): the modules into the folders of the table
+     above, and `Link&` passed instead of wlink() as each module's functions are reworked.

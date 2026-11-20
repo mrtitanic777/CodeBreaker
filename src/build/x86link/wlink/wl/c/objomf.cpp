@@ -69,7 +69,7 @@ inline ObjOMFState &st() { return cb_wlink::RunState::part<ObjOMFState>(); }
 
 }
 
-byte        OMFAlignTab[] = {0,0,1,4,8,2,12};
+extern const byte OMFAlignTab[] = {0,0,1,4,8,2,12};   // (a constant)
 
 void ResetObjOMF( void )
 /**********************/

@@ -350,7 +350,7 @@ void AllocSeg( void *_snode, void * )
 {
     segnode             *snode = static_cast<segnode *>( _snode );
     segdata             *sdata;
-    char                *clname;
+    const char          *clname;
     const char          *sname;
     group_entry         *group;
     bool                isdbi;

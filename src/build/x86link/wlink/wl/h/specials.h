@@ -35,11 +35,8 @@
     Magical names that the linker knows about
 */
 
-#ifdef export_
-#define SPECIAL( sym, val ) char sym[] = val
-#else
-#define SPECIAL( sym, val ) extern char sym[sizeof( val )]
-#endif
+/* CodeBreaker: constants, defined here once (C++17 inline variables): no global.cpp definition, nothing written */
+#define SPECIAL( sym, val ) inline constexpr char sym[] = val
 
 SPECIAL( AutoGrpName,           "AUTO" );
 SPECIAL( DataGrpName,           "DGROUP" );

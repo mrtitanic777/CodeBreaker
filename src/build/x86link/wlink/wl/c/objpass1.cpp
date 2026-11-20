@@ -862,7 +862,7 @@ void DefineSymbol( symbol *sym, segnode *snode, offset off, unsigned_16 frame )
     }
 }
 
-static segdata *GetSegment( char *seg_name, char *class_name, char *group_name,
+static segdata *GetSegment( const char *seg_name, const char *class_name, const char *group_name,
                         unsigned align, unsigned comb, symbol *sym_communal )
 /*****************************************************************************/
 {
@@ -882,7 +882,7 @@ static segdata *GetSegment( char *seg_name, char *class_name, char *group_name,
     bits = ( IS_SYM_COMM32( sym_communal ) ) ? BITS_32 : BITS_16;
     class_ = FindClass( sect, class_name, bits, false );
     sdata = AllocSegData();
-    sdata->u.name.u.ptr = seg_name;
+    sdata->u.name.u.ptr = const_cast<char *>( seg_name );   // (the name a segment keeps: never written through)
     sdata->bits = bits;
     sdata->align = align;
     sdata->combine = comb;

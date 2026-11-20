@@ -1632,7 +1632,7 @@ static void CreateIDataSection( void )
         sdata->align = ( wlink().LinkState & LS_HAVE_X64_CODE ) ? 4 : 2;
         sdata->bits = bits;
         sdata->length = st.IData.total_size;
-        sdata->u.name.u.ptr = CoffIDataSegName;
+        sdata->u.name.u.ptr = const_cast<char *>( CoffIDataSegName );   // (the name a segment keeps: never written through)
         sdata->combine = COMBINE_ADD;
         sdata->isabs = false;
         AddSegment( sdata, class_ );

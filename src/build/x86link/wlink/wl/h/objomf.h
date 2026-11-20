@@ -42,4 +42,4 @@ extern char             *GetOMFName( const file_list *, unsigned long * );
 extern void             OMFSkipObj( const file_list *, unsigned long * );
 extern void             ResetObjOMF( void );
 
-extern byte             OMFAlignTab[];
+extern const byte             OMFAlignTab[];

@@ -287,7 +287,7 @@ size_t QWrite( f_handle file, const void *buffer, size_t len, const char *name )
     return( h );
 }
 
-char NLSeq[] = { "\r\n" };
+extern const char NLSeq[3] = { "\r\n" };   // (a constant)
 
 void QWriteNL( f_handle file, const char *name )
 /**********************************************/

@@ -48,7 +48,7 @@
 
 #define IOERROR         ((size_t)-1)
 
-extern char     NLSeq[];
+extern const char NLSeq[3];
 
 /* i/o function prototypes */
 
