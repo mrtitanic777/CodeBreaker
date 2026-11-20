@@ -1,6 +1,7 @@
 #include "cb/recompile/x360project.hpp"
 
 #include <chrono>
+#include <map>
 
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -15,32 +16,36 @@ namespace {
 
 bool has(std::string_view haystack, std::string_view needle) { return haystack.find(needle) != std::string_view::npos; }
 
-// XenonRecomp's tool chain stood in for by batch files: the "analyser" writes its second argument, the "recompiler" writes a
-// ppc/ folder (two functions, one code file) and says two instructions are unimplemented.
+// XenonRecomp's tool chain stood in for in-process: the "analyser" writes its second argument, the "recompiler" writes the
+// configuration's ppc.new/ folder (two functions, one code file) and says two instructions are unimplemented. What it does
+// is plain data a test changes.
 struct Fake {
     fs::ScopedTempDir dir{"cbx360"};
     Recompiler rc;
-    int built = 0;
-    std::string recomp_body;
-    std::string code_text = "// code\r\n";
+    int analysed = 0;                                   // XenonAnalyse runs
+    std::map<std::string, std::string> files = {        // what XenonRecomp writes into ppc.new/
+        {"ppc_func_mapping.cpp", "{ 0x82000000, a },\r\n{ 0x82000010, b },\r\n"},
+        {"ppc_recomp.0.cpp", "// code\r\n"}};
+    std::string printed = "unimplemented bctr\r\nunimplemented sc\r\n";
+    int exit_code = 0;
+    std::string refuse;                                 // a configuration naming this file is refused (exit 4)
 
     Fake() {
-        recomp_body =
-            "@echo off\r\n"
-            "mkdir ppc.new 2>nul\r\n"
-            "> ppc.new\\ppc_func_mapping.cpp echo { 0x82000000, a },\r\n"
-            ">> ppc.new\\ppc_func_mapping.cpp echo { 0x82000010, b },\r\n"
-            "> ppc.new\\ppc_recomp.0.cpp echo // code\r\n"
-            "echo unimplemented bctr\r\n"
-            "echo unimplemented sc\r\n"
-            "exit /b 0\r\n";
-        write_tools();
-        rc.analyse = dir.path() / "analyse.bat";
-        rc.recomp = dir.path() / "recomp.bat";
+        rc.analyse = [this](const std::vector<std::string>& args) {
+            ++analysed;
+            fs::write_text(fs::from_text(args.at(1)), "# analysed \r\n");
+            return cb::recompile::xenon_engine::Run{0, ""};
+        };
+        rc.recomp = [this](const std::vector<std::string>& args) {
+            const stdfs::path cfg = fs::from_text(args.at(0));
+            if (!refuse.empty() && has(fs::read_text(cfg), refuse)) return cb::recompile::xenon_engine::Run{4, "cannot translate\r\n"};
+            if (exit_code != 0) return cb::recompile::xenon_engine::Run{exit_code, printed};
+            for (const auto& [name, text] : files) fs::write_text(cfg.parent_path() / "ppc.new" / name, text);
+            return cb::recompile::xenon_engine::Run{0, printed};
+        };
         rc.source = dir.path() / "XenonRecomp";
         rc.visual_studio = "C:/VS/Community";
         rc.runtime_cmake = "C:/cb/native/cb/recompile/x360/x360.cmake";
-        rc.ensure_built = [this] { ++built; };
         rc.write_basic = [](const stdfs::path& xex, const stdfs::path& out) { fs::write_file(out, fs::read_file(xex)); };
         rc.write_switch_tables = [](const stdfs::path& file, const stdfs::path&, const std::optional<std::string>& analysed) {
             fs::write_text(file, analysed ? "[analysed]\n" : "[none]\n");
@@ -50,10 +55,6 @@ struct Fake {
             return "out = \"" + std::string(out_dir) + "\"\ntables = \"" + std::string(tables) + "\"\nfile = \"" + std::string(file_path) + "\"\n";
         };
         rc.savegprlr_14_address = [](const stdfs::path&) { return 0x82ABCDEFu; };
-    }
-    void write_tools() {
-        fs::write_text(dir.path() / "analyse.bat", "@echo off\r\necho # analysed > %2\r\n");
-        fs::write_text(dir.path() / "recomp.bat", recomp_body);
     }
     stdfs::path xex() {
         const stdfs::path p = dir.path() / "Pac-Man C.E.xex";
@@ -98,7 +99,6 @@ CB_TEST("recompile.x360project.sync_rewrites_only_what_changed", [] {
 });
 
 CB_TEST("recompile.x360project.scaffold_writes_the_project", [] {
-    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     const stdfs::path title = fake.dir.path() / "title files";
     fs::write_text(title / "media" / "a.bin", "a");
@@ -111,7 +111,7 @@ CB_TEST("recompile.x360project.scaffold_writes_the_project", [] {
     CB_CHECK_EQ(info.functions, 2u);
     CB_CHECK_EQ(info.switches, 7u);          // found and added
     CB_CHECK_EQ(info.unimplemented, 2u);
-    CB_CHECK_EQ(fake.built, 2);
+    CB_CHECK_EQ(fake.analysed, 1);         // XenonAnalyse once, for the title
 
     const stdfs::path src = out / "src";
     CB_CHECK_EQ(fs::read_text(src / "default.xex"), "XEX2 fake");
@@ -143,7 +143,6 @@ CB_TEST("recompile.x360project.scaffold_writes_the_project", [] {
 });
 
 CB_TEST("recompile.x360project.the_other_modules_of_a_title_are_translated_and_listed", [] {
-    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     const stdfs::path title = fake.dir.path() / "title files";
     fs::write_text(title / "bin" / "Tier0_360.dll", "XEX2 program");
@@ -186,14 +185,12 @@ CB_TEST("recompile.x360project.the_other_modules_of_a_title_are_translated_and_l
 });
 
 CB_TEST("recompile.x360project.a_module_that_fails_to_translate_is_left_out_not_fatal", [] {
-    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     const stdfs::path title = fake.dir.path() / "title files";
     fs::write_text(title / "engine.dll", "XEX2 program");
     fake.rc.has_native_code = [](const stdfs::path&) { return true; };
     // the recompiler works for the title (a config naming default.xex) and fails for the module (image.xex)
-    fs::write_text(fake.dir.path() / "recomp.bat",
-                   "@echo off\r\nfindstr /c:image.xex %1 >nul && (echo cannot translate & exit /b 4)\r\n" + fake.recomp_body.substr(fake.recomp_body.find("mkdir")));
+    fake.refuse = "image.xex";
     const ScaffoldInfo info = scaffold(fake.rc, fake.xex(), fake.dir.path() / "project", {}, title);
     CB_CHECK_EQ(info.modules, 0u);
     CB_CHECK_EQ(info.functions, 2u);
@@ -202,7 +199,6 @@ CB_TEST("recompile.x360project.a_module_that_fails_to_translate_is_left_out_not_
 });
 
 CB_TEST("recompile.x360project.a_second_scaffold_rewrites_only_the_changed_code", [] {
-    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     const stdfs::path out = fake.dir.path() / "project";
     (void)scaffold(fake.rc, fake.xex(), out, "My Title");
@@ -210,9 +206,8 @@ CB_TEST("recompile.x360project.a_second_scaffold_rewrites_only_the_changed_code"
     const auto old_time = stdfs::file_time_type::clock::now() - std::chrono::hours(24);
     cb::fs::set_last_write_time(kept, old_time);
     // the recompiler now writes an extra file and gives the same one as before
-    fake.recomp_body += "";
-    fs::write_text(fake.dir.path() / "recomp.bat",
-                   fake.recomp_body.substr(0, fake.recomp_body.find("echo unimplemented")) + "> ppc.new\\ppc_recomp.1.cpp echo // more\r\nexit /b 0\r\n");
+    fake.files["ppc_recomp.1.cpp"] = "// more\r\n";
+    fake.printed.clear();
     const ScaffoldInfo again = scaffold(fake.rc, fake.xex(), out, "My Title");
     CB_CHECK_EQ(again.name, "My_Title");
     CB_CHECK_EQ(again.unimplemented, 0u);
@@ -221,16 +216,15 @@ CB_TEST("recompile.x360project.a_second_scaffold_rewrites_only_the_changed_code"
 });
 
 CB_TEST("recompile.x360project.default_is_not_a_target_name", [] {
-    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
     fs::write_text(fake.dir.path() / "default.xex", "XEX2");
     CB_CHECK_EQ(scaffold(fake.rc, fake.dir.path() / "default.xex", fake.dir.path() / "p", {}).name, "title");
 });
 
 CB_TEST("recompile.x360project.a_failed_recompile_is_a_tool_error_with_its_log", [] {
-    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files and Windows programs");
     Fake fake;
-    fs::write_text(fake.dir.path() / "recomp.bat", "@echo off\r\necho cannot read config\r\nexit /b 3\r\n");
+    fake.printed = "cannot read config\r\n";
+    fake.exit_code = 3;
     try {
         (void)scaffold(fake.rc, fake.xex(), fake.dir.path() / "project");
         CB_CHECK(false);
@@ -240,7 +234,8 @@ CB_TEST("recompile.x360project.a_failed_recompile_is_a_tool_error_with_its_log",
     }
     CB_CHECK(has(fs::read_text(fake.dir.path() / "project" / "reports" / "recompile.log"), "cannot read config"));
     // exit 0 but nothing written is a failure too
-    fs::write_text(fake.dir.path() / "recomp.bat", "@echo off\r\nexit /b 0\r\n");
+    fake.exit_code = 0;
+    fake.files.clear();
     CB_CHECK_THROWS_AS(ToolError, (void)scaffold(fake.rc, fake.xex(), fake.dir.path() / "project"));
 });
 

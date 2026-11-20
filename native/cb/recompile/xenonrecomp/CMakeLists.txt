@@ -24,6 +24,15 @@ add_subdirectory(${XENONANALYSE_ROOT})
 add_subdirectory(${XENONRECOMP_ROOT})
 add_subdirectory(${XENONUTILS_ROOT})
 
+# Inside another build (CodeBreaker's: it links LibXenonRecomp and LibXenonAnalyseMain in), the programs are built on
+# request only.
+if (NOT ${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_SOURCE_DIR})
+    set_target_properties(XenonRecomp XenonAnalyse PROPERTIES EXCLUDE_FROM_ALL ON)
+    if (TARGET xxhsum)
+        set_target_properties(xxhsum PROPERTIES EXCLUDE_FROM_ALL ON)
+    endif()
+endif()
+
 # Only tests if this is the top level project
 if (${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_SOURCE_DIR})
     add_subdirectory(XenonTests)

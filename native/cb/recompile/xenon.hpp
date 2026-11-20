@@ -1,8 +1,7 @@
 // cb/recompile/xenon.hpp -- XenonRecomp, the Xbox 360 recompiler CodeBreaker's projects are generated with.
 //
 //     Xenon xenon(config);
-//     xenon.build();                         // native/cb/recompile/xenonrecomp -> build/XenonRecomp/XenonRecomp.exe
-//     xenon.recompile(config_toml);          // runs it on a project's configuration (config.hpp writes one)
+//     xenon.recompile(config_toml);          // XenonRecomp on a project's configuration (config.hpp writes one)
 //     xenon.recompile_synced(config_toml);   // the same into a clean folder, then only the changed files into the
 //                                            // configuration's output folder (and the stale ones out)
 //     xenon.instruction_tests();             // Xenia's PowerPC tests through it
@@ -14,12 +13,13 @@
 // turns each guest instruction into one C++ statement on a PPCContext; the runtime (native/cb/recompile/x360) supplies the
 // kernel, XAM, GPU, audio and input.
 //
-// It is built with clang-cl from Visual Studio and Ninja. The instruction tests assemble Xenia's tests
+// It is linked into the program (LibXenonRecomp, LibXenonAnalyseMain) and runs in-process (xenon_engine.hpp). The
+// instruction tests assemble Xenia's tests
 // (native/cb/recompile/xenonrecomp/ppc_tests: inputs and the outputs measured on the console) with PowerPC binutils that know
 // VMX128, recompile them, build them and run them: every printed line is a mismatch.
 //
-// Every program runs through cb::process (a Job Object, a timeout); a program that cannot be started or that fails
-// is a ToolError carrying its output.
+// XenonRecomp failing is a ToolError carrying what it printed. The other programs (the binutils, clang-cl for the instruction
+// tests) run through cb::process (a Job Object, a timeout).
 #pragma once
 
 #include <chrono>
@@ -33,13 +33,14 @@
 #include <vector>
 
 #include "cb/core/process.hpp"
+#include "cb/recompile/xenon_engine.hpp"
 
 namespace cb::recompile::xenon {
 
 namespace stdfs = std::filesystem;
 
 // How a program is run: cb::process::run in production. The tests hand in an in-process stand-in that plays
-// cmake, XenonRecomp, clang-cl ... so that nothing has to be built or installed (and no fake .exe is dropped on
+// the binutils and clang-cl ... so that nothing has to be built or installed (and no fake .exe is dropped on
 // disk for a virus scanner to judge).
 using ToolRunner = std::function<process::ProcessResult(const process::ProcessSpec&)>;
 
@@ -49,11 +50,10 @@ struct Config {
     stdfs::path state_dir;                           // where the instruction tests are built (xenonrecomp/ppc_tests)
     std::optional<stdfs::path> visual_studio;        // the Visual Studio install with clang-cl; found by vswhere if not set
     std::optional<stdfs::path> ppc_binutils;         // the folder with powerpc-none-elf-as / -objdump (instruction tests only)
-    std::optional<unsigned> build_jobs;              // cmake --build -j; default: half the processors, at least 1
-    std::chrono::minutes build_timeout{120};         // building XenonRecomp
-    std::chrono::minutes recompile_timeout{180};     // one XenonRecomp run on a title
-    std::chrono::minutes tool_timeout{30};           // every other program
+    std::chrono::minutes tool_timeout{30};           // every program it starts (the binutils, clang-cl)
+    std::chrono::minutes compile_timeout{120};       // clang-cl building the instruction tests
     ToolRunner runner;                               // empty: cb::process::run
+    xenon_engine::Tool recomp = xenon_engine::recomp;   // XenonRecomp (a test hands its own)
 };
 
 // The environment vcvars64.bat sets up (the linker, the SDK's headers and libraries).
@@ -88,9 +88,6 @@ public:
 
     const Config& config() const { return config_; }
     stdfs::path source_dir() const { return config_.checkout_root / "native" / "cb" / "recompile" / "xenonrecomp"; }
-    stdfs::path build_dir() const { return source_dir() / "build"; }
-    stdfs::path recomp_exe() const { return build_dir() / "XenonRecomp" / "XenonRecomp.exe"; }
-    stdfs::path analyse_exe() const { return build_dir() / "XenonAnalyse" / "XenonAnalyse.exe"; }
     stdfs::path tests_dir() const { return source_dir() / "ppc_tests"; }
     // XenonUtils/ppc_context.h, the header every recompile is given
     stdfs::path context_header() const { return source_dir() / "XenonUtils" / "ppc_context.h"; }
@@ -101,10 +98,6 @@ public:
     stdfs::path clang_cl() const;
     // vcvars64's environment, read the first time it is asked for and kept.
     const Environment& msvc_env();
-
-    // Build XenonRecomp and XenonAnalyse, only when a source is newer than the executables (or `force`).
-    // -> the path of XenonRecomp.exe.
-    stdfs::path build(bool force = false);
 
     // Run XenonRecomp on a configuration file. -> its output (warnings, the unimplemented).
     std::string recompile(const stdfs::path& config_toml);

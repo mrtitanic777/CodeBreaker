@@ -116,15 +116,12 @@ std::vector<std::uint32_t> exported_functions(const stdfs::path& basic, const pi
 x360project::Recompiler make_recompiler(const Environment& environment, xenon::Xenon& tool) {
     const cb::config::Config& config = environment.config;
     x360project::Recompiler r;
-    r.analyse = tool.analyse_exe();
-    r.recomp = tool.recomp_exe();
     r.source = tool.source_dir();
     try {
         r.visual_studio = tool.visual_studio();
     } catch (const ToolError&) {   // the Build script names it; a title can still be recompiled without
     }
     r.runtime_cmake = config.checkout_root() / "native" / "cb" / "recompile" / "x360" / "x360.cmake";
-    r.ensure_built = [&tool] { tool.build(); };
     r.write_basic = [&environment](const stdfs::path& xex, const stdfs::path& out) {
         formats::xex::write_basic(xex_tools(environment.config), xex, out);
     };

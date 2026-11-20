@@ -54,3 +54,21 @@ The instruction tests are `ppc_tests` (Xenia's, and ours in `ppc_tests/own`), ru
 CR, CTR and XER in the context (Up's functions entered by a branch read the flags and CTR their caller set) is a
 configuration choice (`cr_as_local = false` and the rest, written by `codebreaker/recompile/config.py`), not a code
 change: the dashboard's modules keep theirs as locals.
+
+## Built into CodeBreaker (2026-11-20)
+
+CodeBreaker links XenonRecomp and XenonAnalyse into `codebreaker.exe` (MSVC, clang-cl or GCC) and calls them in-process
+(`native/cb/recompile/xenon_engine`); the programs still build on their own.
+
+- Builds with MSVC: `_byteswap_*` where there is no `__builtin_bswap*` (`XenonUtils/byteswap.h`).
+- The same code whichever compiler builds it: the alias form (`XENON_RECOMP_USE_ALIAS`) is chosen for the compiler of
+  the code it writes (clang), not for its own; upstream switched it off when XenonRecomp itself was not built with clang.
+  MSVC and clang-cl builds write byte-identical output (397 files of 7 Dashboard modules, `title_zune` and `xam` among them).
+- The programs are libraries too: `LibXenonRecomp` (`xenon_recomp_main`, `XenonRecomp/xenon_recomp_main.h`) and
+  `LibXenonAnalyseMain` (`xenon_analyse_main`, `XenonAnalyse/xenon_analyse_main.h`); the executables are the same code.
+- Messages go through `XenonUtils/xenon_log.h`: stdout, or a string the caller collects them in (per thread).
+- A missing configuration is an error the caller gets back (an exception, exit code 1), not `std::exit`.
+- An input that is not an XEX or ELF image (missing, empty) is refused with an error instead of read past its end
+  (`Image::ParseImage`, both programs).
+- XenonAnalyse's output buffer is cleared at the start of each run (it is a file-level static).
+- Inside another build the programs (and xxhsum) build on request only.

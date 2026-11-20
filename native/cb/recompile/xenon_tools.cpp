@@ -9,6 +9,7 @@
 #include "cb/formats/xex.hpp"
 #include "cb/recompile/disassemble.hpp"
 #include "cb/recompile/xenon.hpp"
+#include "cb/recompile/xenon_engine.hpp"
 
 namespace cb::recompile::xenon_tools {
 
@@ -86,22 +87,12 @@ cli::Command switch_tables_command(const Environment& environment) {
 
             // XenonAnalyse's tables for the bctr the finder leaves unresolved; where it cannot be had the finder's alone are written
             std::optional<std::string> with_analysed;
-            try {
-                const cb::config::Config& config = environment.config;
-                xenon::Config xc;
-                xc.checkout_root = config.checkout_root();
-                xc.state_dir = config.state();
-                xc.visual_studio = config.path("visual_studio");
-                xc.ppc_binutils = config.path("ppc_binutils");
-                xenon::Xenon tool(std::move(xc));
-                tool.build();
-                process::run({.argv = {fs::to_text(tool.analyse_exe()), fs::to_text(xex), fs::to_text(analysed)},
-                              .out = process::Capture::Discard,
-                              .err = process::Capture::Discard});
-                std::error_code ec;
-                if (stdfs::is_regular_file(analysed, ec)) with_analysed = fs::read_text(analysed);
-            } catch (const Error& e) {
-                cb::err("NOTE XenonAnalyse did not run ({}); switch tables from the finder alone\n", e.what());
+            const xenon_engine::Run analysis = xenon_engine::analyse({fs::to_text(stdfs::absolute(xex)), fs::to_text(stdfs::absolute(analysed))});
+            std::error_code ec;
+            if (analysis.code == 0 && stdfs::is_regular_file(analysed, ec)) {
+                with_analysed = fs::read_text(analysed);
+            } else {
+                cb::err("NOTE XenonAnalyse found nothing (exit {}); switch tables from the finder alone\n", analysis.code);
             }
             stdfs::path part = out;
             part += ".part";

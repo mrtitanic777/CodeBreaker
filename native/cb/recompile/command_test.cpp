@@ -147,10 +147,8 @@ CB_TEST("recompile.command.the_rexglue_project_matches_the_golden", [] {
 });
 
 CB_TEST("recompile.command.the_xbox_360_project_matches_the_golden", [] {
-    // the program is XenonRecomp's: built from native/cb/recompile/xenonrecomp (`xenon-recompile` builds it when it is not)
+    // the program is XenonRecomp's, linked in (recompile/xenon_engine)
     const std::filesystem::path checkout = config::find_checkout();
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(checkout / "native" / "cb" / "recompile" / "xenonrecomp" / "build" / "XenonRecomp" / "XenonRecomp.exe", ec)) return;
     RcSetup setup(checkout);
     if (!setup.ok) return;
     const std::filesystem::path out = setup.dir.path() / "project";

@@ -1,3 +1,4 @@
+#include <xenon_log.h>
 #include "pch.h"
 #include <unordered_set>
 #include "recompiler.h"
@@ -46,36 +47,36 @@ bool Recompiler::LoadConfig(const std::string_view& configFilePath)
                 }
                 else
                 {
-                    fmt::print("ERROR: Unable to apply the patch file, ");
+                    xenon_log::print("ERROR: Unable to apply the patch file, ");
 
                     switch (result)
                     {
                     case XexPatcher::Result::XexFileUnsupported:
-                        fmt::println("XEX file unsupported");
+                        xenon_log::println("XEX file unsupported");
                         break;
 
                     case XexPatcher::Result::XexFileInvalid:
-                        fmt::println("XEX file invalid");
+                        xenon_log::println("XEX file invalid");
                         break;
 
                     case XexPatcher::Result::PatchFileInvalid:
-                        fmt::println("patch file invalid");
+                        xenon_log::println("patch file invalid");
                         break;
 
                     case XexPatcher::Result::PatchIncompatible:
-                        fmt::println("patch file incompatible");
+                        xenon_log::println("patch file incompatible");
                         break;
 
                     case XexPatcher::Result::PatchFailed:
-                        fmt::println("patch failed");
+                        xenon_log::println("patch failed");
                         break;
 
                     case XexPatcher::Result::PatchUnsupported:
-                        fmt::println("patch unsupported");
+                        xenon_log::println("patch unsupported");
                         break;
 
                     default:
-                        fmt::println("reason unknown");
+                        xenon_log::println("reason unknown");
                         break;
                     }
 
@@ -84,20 +85,26 @@ bool Recompiler::LoadConfig(const std::string_view& configFilePath)
             }
             else
             {
-                fmt::println("ERROR: Unable to load the patch file");
+                xenon_log::println("ERROR: Unable to load the patch file");
                 return false;
             }
         }
     }
 
     image = Image::ParseImage(file.data(), file.size());
+    if (image.sections.empty())
+    {
+        // (no image to analyse: a missing file, or one that is not an XEX or ELF)
+        xenon_log::println("ERROR: {}{} is not an XEX or ELF image", config.directoryPath, config.filePath);
+        return false;
+    }
     return true;
 }
 
 void Recompiler::Analyse()
 {
     if (std::getenv("XENONRECOMP_PROGRESS"))
-        fmt::println("analysis: start ({} config functions)", config.functions.size());
+        xenon_log::println("analysis: start ({} config functions)", config.functions.size());
     for (size_t i = 14; i < 128; i++)
     {
         if (i < 32)
@@ -263,7 +270,7 @@ void Recompiler::Analyse()
             }
         }
         if (std::getenv("XENONRECOMP_PROGRESS"))
-            fmt::println("analysis: {} filter funclets given their own entry", added);
+            xenon_log::println("analysis: {} filter funclets given their own entry", added);
 
         // Callbacks only data points at (tables of function pointers, xam.xex 17559 0x818C9940): a word in a data
         // section that is the address of a code word inside a known function, right after a function's end (blr,
@@ -304,11 +311,11 @@ void Recompiler::Analyse()
             }
         }
         if (std::getenv("XENONRECOMP_PROGRESS"))
-            fmt::println("analysis: {} code addresses in data given their own entry", pointers);
+            xenon_log::println("analysis: {} code addresses in data given their own entry", pointers);
     }
 
     if (std::getenv("XENONRECOMP_PROGRESS"))
-        fmt::println("analysis: {} functions from the config and .pdata", functions.size());
+        xenon_log::println("analysis: {} functions from the config and .pdata", functions.size());
     std::vector<std::pair<size_t, size_t>> known;
     for (const auto& f : functions)
         known.emplace_back(f.base, f.base + f.size);
@@ -369,7 +376,7 @@ void Recompiler::Analyse()
                     {
                         static const bool progress = std::getenv("XENONRECOMP_PROGRESS") != nullptr;
                         if (progress)
-                            fmt::println("call target analysis at {:X}", address);
+                            xenon_log::println("call target analysis at {:X}", address);
                         auto data = section.data + address - section.base;
                         auto& fn = functions.emplace_back(Function::Analyze(data, section.base + section.size - address, address));
                         clampToNext(fn);
@@ -414,7 +421,7 @@ void Recompiler::Analyse()
             {
                 static const bool progress = std::getenv("XENONRECOMP_PROGRESS") != nullptr;
                 if (progress)
-                    fmt::println("gap analysis at {:X}", base);
+                    xenon_log::println("gap analysis at {:X}", base);
                 auto& fn = functions.emplace_back(Function::Analyze(data, dataEnd - data, base));
                 clampToNext(fn);
                 if (fn.size == 0)
@@ -428,7 +435,7 @@ void Recompiler::Analyse()
     }
 
     if (std::getenv("XENONRECOMP_PROGRESS"))
-        fmt::println("analysis: {} functions", functions.size());
+        xenon_log::println("analysis: {} functions", functions.size());
     std::sort(functions.begin(), functions.end(), [](auto& lhs, auto& rhs) { return lhs.base < rhs.base; });
     FindNonVolatileInContext();
 }
@@ -528,7 +535,7 @@ void Recompiler::FindNonVolatileInContext()
         if (symbol.type == Symbol_Function && (symbol.name.rfind("__save", 0) == 0 || symbol.name.rfind("__rest", 0) == 0))
             nonVolatileInContext.insert(uint32_t(symbol.address));
 
-    fmt::println("Non-volatile registers stay in the context in {} functions ({} SEH parents, {} funclets ({} from scope "
+    xenon_log::println("Non-volatile registers stay in the context in {} functions ({} SEH parents, {} funclets ({} from scope "
                  "tables), {} other callers of funclets, the save/restore helpers)", nonVolatileInContext.size(), parents,
                  funclets.size(), tableFunclets, callers);
 }
@@ -696,7 +703,7 @@ bool Recompiler::Recompile(
                     // the call silently vanished).
                     println("\tPPC_CALL_INDIRECT_FUNC({}); // no function known at {:X}",
                         config.relocatableCode ? Reloc(address) : fmt::format("0x{:X}u", address), address);
-                    fmt::println("WARNING: {:X} branches to {:X}, where no function is known", fn.base, address);
+                    xenon_log::println("WARNING: {:X} branches to {:X}, where no function is known", fn.base, address);
                 }
             }
         };
@@ -957,7 +964,7 @@ bool Recompiler::Recompile(
                 else if (label < fn.base || label > fn.base + fn.size)
                 {
                     println("\t\t// ERROR: 0x{:X}", label);
-                    fmt::println("ERROR: Switch case at {:X} is trying to jump outside function: {:X}", base, label);
+                    xenon_log::println("ERROR: Switch case at {:X} is trying to jump outside function: {:X}", base, label);
                     println("\t\treturn;");
                 }
                 else
@@ -2854,7 +2861,7 @@ bool Recompiler::Recompile(
         // operands: vD, vB, type, pack mode, shift
         if (insn.operands[3] == 0 || insn.operands[3] > 3 || insn.operands[4] > 3 || insn.operands[2] == 6 || insn.operands[2] > 6)
         {
-            fmt::println("Unsupported vpkd3d128 {},{},{} at {:X}", insn.operands[2], insn.operands[3], insn.operands[4], base);
+            xenon_log::println("Unsupported vpkd3d128 {},{},{} at {:X}", insn.operands[2], insn.operands[3], insn.operands[4], base);
             println("\t__builtin_debugtrap();");
             break;
         }
@@ -3029,7 +3036,7 @@ bool Recompiler::Recompile(
         // operands: vD, vB, immediate (type << 2)
         if ((insn.operands[2] >> 2) >= 6)
         {
-            fmt::println("Unsupported vupkd3d128 {} at {:X}", insn.operands[2], base);
+            xenon_log::println("Unsupported vupkd3d128 {} at {:X}", insn.operands[2], base);
             println("\t__builtin_debugtrap();");
             break;
         }
@@ -3090,7 +3097,7 @@ bool Recompiler::Recompile(
     {
         int lastLine = out.find_last_of('\n', out.size() - 2);
         if (out.find("cr0", lastLine + 1) == std::string::npos && out.find("cr6", lastLine + 1) == std::string::npos)
-            fmt::println("{} at {:X} has RC bit enabled but no comparison was generated", insn.opcode->name, base);
+            xenon_log::println("{} at {:X} has RC bit enabled but no comparison was generated", insn.opcode->name, base);
     }
 #endif
 
@@ -3237,13 +3244,13 @@ bool Recompiler::Recompile(const Function& fn)
             println("\t// {}", insn.op_str);
 #if 1
             if (*data != 0)
-                fmt::println("Unable to decode instruction {:X} at {:X}", *data, base);
+                xenon_log::println("Unable to decode instruction {:X} at {:X}", *data, base);
 #endif
         }
         else
         {
             if (insn.opcode->id == PPC_INST_BCTR && (*(data - 1) == 0x07008038 || *(data - 1) == 0x00000060) && switchTable == config.switchTables.end())
-                fmt::println("Found a switch jump table at {:X} with no switch table entry present", base);
+                xenon_log::println("Found a switch jump table at {:X} with no switch table entry present", base);
 
             const size_t start = out.size();
             const bool recompiled = Recompile(fn, base, insn, data, switchTable, localVariables, csrState);
@@ -3251,7 +3258,7 @@ bool Recompiler::Recompile(const Function& fn)
                 RelocateImmediate(ByteSwap(*data), start);
             if (!recompiled)
             {
-                fmt::println("Unrecognized instruction at 0x{:X}: {}", base, insn.opcode->name);
+                xenon_log::println("Unrecognized instruction at 0x{:X}: {}", base, insn.opcode->name);
                 allRecompiled = false;
             }
         }
@@ -3262,7 +3269,7 @@ bool Recompiler::Recompile(const Function& fn)
 
 #if 0
     if (insn.opcode == nullptr || (insn.opcode->id != PPC_INST_B && insn.opcode->id != PPC_INST_BCTR && insn.opcode->id != PPC_INST_BLR))
-        fmt::println("Function at {:X} ends prematurely with instruction {} at {:X}", fn.base, insn.opcode != nullptr ? insn.opcode->name : "INVALID", base - 4);
+        xenon_log::println("Function at {:X} ends prematurely with instruction {} at {:X}", fn.base, insn.opcode != nullptr ? insn.opcode->name : "INVALID", base - 4);
 #endif
 
     // A function that ends on an instruction the CPU can step past (a call, a conditional branch, anything but b,
@@ -3463,7 +3470,7 @@ void Recompiler::Recompile(const std::filesystem::path& headerFilePath)
         }
 
         if ((i % 2048) == 0 || (i == (functions.size() - 1)))
-            fmt::println("Recompiling functions... {}%", static_cast<float>(i + 1) / functions.size() * 100.0f);
+            xenon_log::println("Recompiling functions... {}%", static_cast<float>(i + 1) / functions.size() * 100.0f);
 
         Recompile(functions[i]);
     }

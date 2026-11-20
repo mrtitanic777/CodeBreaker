@@ -1,3 +1,4 @@
+#include <xenon_log.h>
 #include <cassert>
 #include <iterator>
 #include <file.h>
@@ -140,7 +141,7 @@ void MakeMask(const uint32_t* instructions, size_t count)
     for (size_t i = 0; i < count; i++)
     {
         ppc::Disassemble(&instructions[i], 0, insn);
-        fmt::println("0x{:X}, // {}", ByteSwap(insn.opcode->opcode | (insn.instruction & insn.opcode->mask)), insn.opcode->name);
+        xenon_log::println("0x{:X}, // {}", ByteSwap(insn.opcode->opcode | (insn.instruction & insn.opcode->mask)), insn.opcode->name);
     }
 }
 
@@ -181,16 +182,44 @@ static void println(fmt::format_string<Args...> fmt, Args&&... args)
     out += '\n';
 };
 
-int main(int argc, char** argv)
+// As a library (XENON_ANALYSE_LIBRARY: CodeBreaker links it in), the program's main is xenon_analyse_main.
+#ifdef XENON_ANALYSE_LIBRARY
+#define XENON_ANALYSE_MAIN xenon_analyse_main
+#else
+#define XENON_ANALYSE_MAIN main
+#endif
+
+static int analyse_run(int argc, char** argv);
+
+int XENON_ANALYSE_MAIN(int argc, char** argv)
 {
+    try
+    {
+        return analyse_run(argc, argv);
+    }
+    catch (const std::exception& e)
+    {
+        xenon_log::println("error: {}", e.what());
+        return 1;
+    }
+}
+
+static int analyse_run(int argc, char** argv)
+{
+    out.clear();   // (the output of a run before, when it runs in-process more than once)
     if (argc < 3)
     {
-        printf("Usage: XenonAnalyse [input XEX file path] [output jump table TOML file path]");
+        xenon_log::print("Usage: XenonAnalyse [input XEX file path] [output jump table TOML file path]");
         return EXIT_SUCCESS;
     }
 
     const auto file = LoadFile(argv[1]);
     auto image = Image::ParseImage(file.data(), file.size());
+    if (image.sections.empty())
+    {
+        xenon_log::println("error: {} is not an XEX or ELF image", argv[1]);
+        return 1;
+    }
 
     auto printTable = [&](const SwitchTable& table)
         {
@@ -235,7 +264,7 @@ int main(int argc, char** argv)
                         table.type = type;
                         ScanTable((uint32_t*)data, base + (data - dataStart), table);
 
-                        // fmt::println("{:X} ; jmptable - {}", base + (data - dataStart), table.labels.size());
+                        // xenon_log::println("{:X} ; jmptable - {}", base + (data - dataStart), table.labels.size());
                         if (table.base != 0)
                         {
                             ReadTable(image, table);

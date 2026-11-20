@@ -145,12 +145,10 @@ struct Translated {
 Translated translate(const Recompiler& rc, const stdfs::path& basic, const stdfs::path& work, const std::string& name, const std::string& suffix,
                      const stdfs::path& log_file) {
     // switch tables: the finder's, with XenonAnalyse's for any bctr it leaves unresolved
-    rc.ensure_built();
     const stdfs::path analysed = work / "switch_tables.analysed.toml";
-    try {   // optional: the finder locates nearly all of them by itself
-        process::run({.argv = {fs::to_text(rc.analyse), fs::to_text(basic), fs::to_text(analysed)}, .out = process::Capture::Discard, .err = process::Capture::Discard});
-    } catch (const ToolError& e) {
-        log::warn(std::format("XenonAnalyse did not run: {}; switch tables from the finder alone", e.what()));
+    // optional: the finder locates nearly all of them by itself
+    if (const xenon_engine::Run a = rc.analyse({fs::to_text(stdfs::absolute(basic)), fs::to_text(stdfs::absolute(analysed))}); a.code != 0) {
+        log::warn(std::format("XenonAnalyse failed (exit {}); switch tables from the finder alone", a.code));
     }
     std::error_code ec;
     const std::optional<std::string> with_analysed = stdfs::is_regular_file(analysed, ec) ? std::optional<std::string>(fs::read_text(analysed)) : std::nullopt;
@@ -168,12 +166,12 @@ Translated translate(const Recompiler& rc, const stdfs::path& basic, const stdfs
     const stdfs::path fresh = work / "ppc.new";
     stdfs::remove_all(fresh, ec);
     fs::make_dirs(fresh);
-    const process::ProcessResult r = process::run({.argv = {fs::to_text(rc.recomp), fs::to_text(cfg), fs::to_text(rc.source / "XenonUtils" / "ppc_context.h")}, .cwd = work});
+    const xenon_engine::Run r = rc.recomp({fs::to_text(stdfs::absolute(cfg)), fs::to_text(rc.source / "XenonUtils" / "ppc_context.h")});
     Translated out;
-    out.log = output_text(r.out) + output_text(r.err);
+    out.log = r.log;
     fs::write_text(log_file, out.log);   // also when it failed: the log says why
-    if (r.exit_code != 0 || !stdfs::is_regular_file(fresh / "ppc_func_mapping.cpp", ec)) {
-        throw ToolError("XenonRecomp", r.exit_code, out.log.size() > 3000 ? out.log.substr(out.log.size() - 3000) : out.log);
+    if (r.code != 0 || !stdfs::is_regular_file(fresh / "ppc_func_mapping.cpp", ec)) {
+        throw ToolError("XenonRecomp", static_cast<std::uint32_t>(r.code), out.log.size() > 3000 ? out.log.substr(out.log.size() - 3000) : out.log);
     }
     sync_folder(fresh, work / "ppc");
     stdfs::remove_all(fresh, ec);
@@ -293,13 +291,12 @@ std::vector<std::string> translate_modules(const Recompiler& rc, const stdfs::pa
 ScaffoldInfo scaffold(const Recompiler& rc, const stdfs::path& xex_path, const stdfs::path& out_dir_in, const std::string& name_in,
                       const std::optional<stdfs::path>& title_files) {
     const std::string name = target_name(name_in.empty() ? default_name(xex_path) : name_in);
-    const stdfs::path out_dir = stdfs::absolute(out_dir_in);   // XenonRecomp runs inside it and is given paths into it
+    const stdfs::path out_dir = stdfs::absolute(out_dir_in);   // XenonRecomp is given paths into it
     const stdfs::path recomp = out_dir / "src", game = out_dir / "assets", reports = out_dir / "reports";
     for (const stdfs::path& d : {recomp, game, reports}) fs::make_dirs(d);
     const stdfs::path basic = recomp / "default.xex";
     rc.write_basic(xex_path, basic);
 
-    rc.ensure_built();
     const Translated main = translate(rc, basic, recomp, name, "", reports / "recompile.log");
 
     fs::write_text(out_dir / "CMakeLists.txt", cmake_source(name, rc.runtime_cmake));

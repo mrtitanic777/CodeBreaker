@@ -1,4 +1,6 @@
+#include <xenon_log.h>
 #include "recompiler_config.h"
+#include <stdexcept>
 
 void RecompilerConfig::Load(const std::string_view& configFilePath)
 {
@@ -6,8 +8,8 @@ void RecompilerConfig::Load(const std::string_view& configFilePath)
     if (!std::filesystem::is_regular_file(std::filesystem::path(configFilePath)))
     {
         // (a missing file otherwise ends the program in the TOML parser, with no message)
-        fmt::println("Configuration file not found: {}", configFilePath);
-        std::exit(1);
+        xenon_log::println("Configuration file not found: {}", configFilePath);
+        throw std::runtime_error(fmt::format("configuration file not found: {}", configFilePath));
     }
     toml::table toml = toml::parse_file(configFilePath)
 #if !TOML_EXCEPTIONS
@@ -47,14 +49,14 @@ void RecompilerConfig::Load(const std::string_view& configFilePath)
         longJmpAddress = main["longjmp_address"].value_or(0u);
         setJmpAddress = main["setjmp_address"].value_or(0u);
 
-        if (restGpr14Address == 0) fmt::println("ERROR: __restgprlr_14 address is unspecified");
-        if (saveGpr14Address == 0) fmt::println("ERROR: __savegprlr_14 address is unspecified");
-        if (restFpr14Address == 0) fmt::println("ERROR: __restfpr_14 address is unspecified");
-        if (saveFpr14Address == 0) fmt::println("ERROR: __savefpr_14 address is unspecified");
-        if (restVmx14Address == 0) fmt::println("ERROR: __restvmx_14 address is unspecified");
-        if (saveVmx14Address == 0) fmt::println("ERROR: __savevmx_14 address is unspecified");
-        if (restVmx64Address == 0) fmt::println("ERROR: __restvmx_64 address is unspecified");
-        if (saveVmx64Address == 0) fmt::println("ERROR: __savevmx_64 address is unspecified");
+        if (restGpr14Address == 0) xenon_log::println("ERROR: __restgprlr_14 address is unspecified");
+        if (saveGpr14Address == 0) xenon_log::println("ERROR: __savegprlr_14 address is unspecified");
+        if (restFpr14Address == 0) xenon_log::println("ERROR: __restfpr_14 address is unspecified");
+        if (saveFpr14Address == 0) xenon_log::println("ERROR: __savefpr_14 address is unspecified");
+        if (restVmx14Address == 0) xenon_log::println("ERROR: __restvmx_14 address is unspecified");
+        if (saveVmx14Address == 0) xenon_log::println("ERROR: __savevmx_14 address is unspecified");
+        if (restVmx64Address == 0) xenon_log::println("ERROR: __restvmx_64 address is unspecified");
+        if (saveVmx64Address == 0) xenon_log::println("ERROR: __savevmx_64 address is unspecified");
 
         if (auto functionsArray = main["functions"].as_array())
         {
@@ -128,14 +130,14 @@ void RecompilerConfig::Load(const std::string_view& configFilePath)
                 (midAsmHook.returnOnTrue && midAsmHook.jumpAddressOnTrue != NULL) ||
                 (midAsmHook.returnOnFalse && midAsmHook.jumpAddressOnFalse != NULL))
             {
-                fmt::println("{}: can't return and jump at the same time", midAsmHook.name);
+                xenon_log::println("{}: can't return and jump at the same time", midAsmHook.name);
             }
 
             if ((midAsmHook.ret || midAsmHook.jumpAddress != NULL) &&
                 (midAsmHook.returnOnFalse != NULL || midAsmHook.returnOnTrue != NULL ||
                     midAsmHook.jumpAddressOnFalse != NULL || midAsmHook.jumpAddressOnTrue != NULL))
             {
-                fmt::println("{}: can't mix direct and conditional return/jump", midAsmHook.name);
+                xenon_log::println("{}: can't mix direct and conditional return/jump", midAsmHook.name);
             }
 
             midAsmHook.afterInstruction = table["after_instruction"].value_or(false);

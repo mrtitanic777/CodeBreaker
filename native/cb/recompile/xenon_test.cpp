@@ -1,6 +1,6 @@
-// Tests of cb/recompile/xenon. The module runs programs (cmake, XenonRecomp, clang-cl, the PowerPC binutils, vswhere),
-// so the tests hand it an in-process stand-in through Config::runner: it plays those programs, logs what it was asked
-// to run and in what environment, and writes the files they would write. What is checked is what the module does with
+// Tests of cb/recompile/xenon. The module runs programs (clang-cl, the PowerPC binutils, vswhere) and XenonRecomp in-process,
+// so the tests hand it stand-ins through Config::runner and Config::recomp: they play those programs, log what they were
+// asked to run and in what environment, and write the files they would write. What is checked is what the module does with
 // them: the arguments and environment it passes, how it reads their output, and what it leaves on disk. (One test runs
 // the real cmd.exe on a real batch file, the only program of the module that is always there.)
 
@@ -13,6 +13,7 @@
 #include "cb/core/fs.hpp"
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
+#include "cb/recompile/xenon_engine.hpp"
 
 using namespace cb;
 using namespace cb::recompile::xenon;
@@ -42,7 +43,6 @@ std::string text_of(const std::string& path) { return fs::read_text(fs::from_tex
 // The programs, in process. Each answers by the name of the program it is asked to run.
 struct FakeTools {
     std::vector<std::string> log;      // one line per run: the program's name, its arguments joined by '|', what matters of the environment
-    std::string cmake_fail;            // "configure" or "build": cmake fails at that step
     std::string vswhere_answer;        // what vswhere prints ('|' is a new line)
     bool cc_fail = false;              // clang-cl fails
 
@@ -61,30 +61,6 @@ struct FakeTools {
             log.push_back("vswhere " + text::join(a, "|"));
             return result(0, text::replace_all(vswhere_answer, "|", "\n"));
         }
-        if (name == "cmake") {
-            log.push_back("cmake " + text::join(a, "|") + " FAKEVAR=" + fakevar);
-            const bool configure = !a.empty() && a[0] == "-S";
-            const bool building = !a.empty() && a[0] == "--build";
-            if ((configure && cmake_fail == "configure") || (building && cmake_fail == "build")) {
-                return result(1, "CMake Error: " + cmake_fail + " failed " + std::string(3200, 'x') + "\n", "stderr of the failing cmake\n");
-            }
-            if (configure) {
-                for (std::size_t i = 0; i + 1 < a.size(); ++i) {
-                    if (a[i] == "-B") fs::write_text(fs::from_text(a[i + 1]) / "CMakeCache.txt", "cache\n");
-                }
-                return result(0, "-- Configuring done\n");
-            }
-            if (building) {
-                // "building" makes the programs new (the world put stand-in files there)
-                const stdfs::path b = fs::from_text(a.at(1));
-                for (const stdfs::path& p : {b / "XenonRecomp" / "XenonRecomp.exe", b / "XenonAnalyse" / "XenonAnalyse.exe"}) {
-                    if (stdfs::exists(p)) cb::fs::set_last_write_time(p, stdfs::file_time_type::clock::now());
-                }
-                return result(0, "[1/1] Linking\n");
-            }
-            return result(0);
-        }
-        if (name == "xenonrecomp") return run_xenonrecomp(a, spec, cwd_name);
         if (name == "clang-cl") {
             log.push_back("clang-cl " + text::join(a, "|") + " FAKEVAR=" + fakevar + " CWD=" + cwd_name);
             if (cc_fail) return result(2, "cc stdout\n", "cc stderr: error\n");
@@ -146,15 +122,17 @@ private:
         return m;
     }
 
-    ProcessResult run_xenonrecomp(const std::vector<std::string>& a, const ProcessSpec& spec, const std::string& cwd_name) {
-        log.push_back("xenonrecomp " + text::join(a, "|") + " CWD=" + cwd_name);
+public:
+    // XenonRecomp (the engine's seam): its arguments -> what it printed and its exit code, the files written as it would
+    cb::recompile::xenon_engine::Run recomp(const std::vector<std::string>& a) {
+        log.push_back("xenonrecomp " + text::join(a, "|"));
         if (!a.empty() && a[0].ends_with(".toml")) {
-            stdfs::path cfg = fs::from_text(a[0]);
-            if (cfg.is_relative()) cfg = *spec.cwd / cfg;
+            const stdfs::path cfg = fs::from_text(a[0]);
             auto m = parse_toml(fs::read_text(cfg));
             const stdfs::path out = cfg.parent_path() / fs::from_text(m["out_directory_path"]);
             fs::make_dirs(out);
-            std::string o = "Recompiling functions 1/3\nnote: cwd=" + cwd_name + " arg=" + a[0] + " arg2=" +
+            std::string o = "Recompiling functions 1/3\nnote: absolute=" + std::string(cfg.is_absolute() ? "yes" : "no") + " arg=" +
+                            cfg.filename().string() + " arg2=" +
                             (a.size() > 1 ? stdfs::path(a[1]).filename().string() : std::string("-")) + "\nRecompiling functions 3/3\n";
             if (!m["fake_files"].empty()) {
                 for (const std::string_view f : text::split(m["fake_files"], ',')) {
@@ -163,7 +141,7 @@ private:
             }
             const int n = m.contains("fake_warn") ? std::stoi(m["fake_warn"]) : 0;
             for (int i = 1; i <= n; ++i) o += "warning: line " + std::to_string(i) + " of the recompile\n";
-            return result(m.contains("fake_exit") ? std::stoi(m["fake_exit"]) : 0, o, m["fake_stderr"].empty() ? "" : m["fake_stderr"] + "\n");
+            return {m.contains("fake_exit") ? std::stoi(m["fake_exit"]) : 0, o + (m["fake_stderr"].empty() ? "" : m["fake_stderr"] + "\n")};
         }
         // XenonRecomp <objs> <out>: the .dis files recompiled
         const stdfs::path objs = fs::from_text(a.at(0)), out = fs::from_text(a.at(1));
@@ -179,12 +157,12 @@ private:
             else if (has(text, "UNIMPL")) o += "warning: instruction 'foo' has unimplemented encoding in " + stem + " at 0x100000\n";
             else fs::write_text(out / (stem + ".cpp"), "// " + stem + "\n");
         }
-        return result(0, o + "other line without the marker\n");
+        return {0, o + "other line without the marker\n"};
     }
 };
 
-// A scratch world: a checkout with a XenonRecomp source tree (and stand-in files where its programs would be), a
-// Visual Studio with a clang-cl and a vcvars64.bat, a folder of binutils, and the fake programs to run.
+// A scratch world: a checkout with XenonRecomp's context header, a Visual Studio with a clang-cl and a vcvars64.bat, a
+// folder of binutils, and the fake programs (and XenonRecomp) to run.
 struct World {
     fs::ScopedTempDir dir{"cb-xenon"};
     stdfs::path root = dir.path() / "r";
@@ -198,19 +176,7 @@ struct World {
         fs::write_text(vs / "VC" / "Auxiliary" / "Build" / "vcvars64.bat", "@echo off\r\nset FAKEVAR=fromvcvars\r\nset FAKEEQ=a=b=c\r\n");
         fs::write_text(binutils / "powerpc-none-elf-as.exe", "");
         fs::write_text(binutils / "powerpc-none-elf-objdump.exe", "");
-        const stdfs::path src = source();
-        fs::write_text(src / "XenonRecomp" / "a.cpp", "a");
-        fs::write_text(src / "XenonRecomp" / "sub" / "b.cpp", "b");
-        fs::write_text(src / "XenonRecomp" / ".hidden" / "c.cpp", "c");
-        fs::write_text(src / "XenonUtils" / "ppc_context.h", "h");
-        fs::write_text(src / "XenonAnalyse" / "x.cpp", "x");
-        fs::write_text(src / "CMakeLists.txt", "cm");
-        // the programs of an old build: older than the sources
-        for (const char* name : {"XenonRecomp", "XenonAnalyse"}) {
-            const stdfs::path exe = src / "build" / name / (std::string(name) + ".exe");
-            fs::write_text(exe, "");
-            cb::fs::set_last_write_time(exe, stdfs::file_time_type::clock::now() - std::chrono::hours(2));
-        }
+        fs::write_text(source() / "XenonUtils" / "ppc_context.h", "h");
     }
 
     stdfs::path source() const { return root / "native" / "cb" / "recompile" / "xenonrecomp"; }
@@ -221,14 +187,11 @@ struct World {
         c.state_dir = state;
         c.visual_studio = vs;
         c.ppc_binutils = binutils;
-        c.build_jobs = 3;
         c.runner = [this](const ProcessSpec& spec) { return tools(spec); };
+        c.recomp = [this](const std::vector<std::string>& args) { return tools.recomp(args); };
         return c;
     }
 };
-
-// make `p` newer than everything else in the world
-void touch_newer(const stdfs::path& p) { cb::fs::set_last_write_time(p, stdfs::file_time_type::clock::now() + std::chrono::hours(1)); }
 
 // a configuration `work/<name>` for the fake XenonRecomp (the lines after the first three say what it should do)
 stdfs::path write_config(const World& w, std::string_view extra, std::string_view name = "cfg.toml") {
@@ -242,9 +205,6 @@ stdfs::path write_config(const World& w, std::string_view extra, std::string_vie
 CB_TEST("recompile.xenon.locations_come_from_the_checkout", [] {
     const Xenon x(Config{.checkout_root = "C:/co", .state_dir = "C:/co/state"});
     CB_CHECK_EQ(fs::to_text(x.source_dir()), "C:/co/native/cb/recompile/xenonrecomp");
-    CB_CHECK_EQ(fs::to_text(x.build_dir()), "C:/co/native/cb/recompile/xenonrecomp/build");
-    CB_CHECK_EQ(fs::to_text(x.recomp_exe()), "C:/co/native/cb/recompile/xenonrecomp/build/XenonRecomp/XenonRecomp.exe");
-    CB_CHECK_EQ(fs::to_text(x.analyse_exe()), "C:/co/native/cb/recompile/xenonrecomp/build/XenonAnalyse/XenonAnalyse.exe");
     CB_CHECK_EQ(fs::to_text(x.tests_dir()), "C:/co/native/cb/recompile/xenonrecomp/ppc_tests");
     CB_CHECK_EQ(fs::to_text(x.context_header()), "C:/co/native/cb/recompile/xenonrecomp/XenonUtils/ppc_context.h");
     CB_CHECK_EQ(skipped_instruction_tests().size(), 2u);
@@ -319,80 +279,13 @@ CB_TEST("recompile.xenon.msvc_env_through_the_real_cmd", [] {
     CB_CHECK(env.contains("SystemRoot") || env.contains("SYSTEMROOT") || env.contains("windir"));
 });
 
-CB_TEST("recompile.xenon.build_configures_and_builds_once_per_change", [] {
-    World w;
-    Xenon x(w.config());
-    CB_CHECK(x.build() == x.recomp_exe());
-    std::string log = w.tools.joined();
-    const std::string src = x.source_dir().string(), bld = x.build_dir().string();
-    CB_CHECK(has(log, "cmake -S|" + src + "|-B|" + bld + "|-G|Ninja|-DCMAKE_BUILD_TYPE=Release|-DCMAKE_C_COMPILER="));
-    CB_CHECK(has(log, "FAKEVAR=fromvcvars"));        // run in the vcvars environment
-    CB_CHECK(has(log, "cmake --build|" + bld + "|-j|3"));
-
-    // up to date: nothing runs
-    w.tools.clear();
-    x.build();
-    CB_CHECK(w.tools.log.empty());
-
-    // a source newer than the programs: built again, without configuring again
-    touch_newer(x.source_dir() / "XenonRecomp" / "sub" / "b.cpp");
-    x.build();
-    log = w.tools.joined();
-    CB_CHECK(has(log, "cmake --build|"));
-    CB_CHECK(!has(log, "cmake -S|"));
-    cb::fs::set_last_write_time(x.source_dir() / "XenonRecomp" / "sub" / "b.cpp", stdfs::file_time_type::clock::now() - std::chrono::hours(1));
-
-    // a hidden file is not a source
-    w.tools.clear();
-    touch_newer(x.source_dir() / "XenonRecomp" / ".hidden" / "c.cpp");
-    x.build();
-    CB_CHECK(w.tools.log.empty());
-});
-
-CB_TEST("recompile.xenon.build_runs_when_the_programs_are_missing", [] {
-    World w;
-    Xenon x(w.config());
-    stdfs::remove(x.recomp_exe());
-    x.build();
-    CB_CHECK(has(w.tools.joined(), "cmake -S|"));       // configured and built: there was nothing to be up to date
-    CB_CHECK(has(w.tools.joined(), "cmake --build|"));
-});
-
-CB_TEST("recompile.xenon.build_forced_reconfigures_and_failures_are_tool_errors", [] {
-    World w;
-    Xenon x(w.config());
-    x.build();
-    w.tools.clear();
-    x.build(true);
-    CB_CHECK(has(w.tools.joined(), "cmake -S|"));
-    w.tools.cmake_fail = "configure";
-    try {
-        x.build(true);
-        CB_CHECK(false);
-    } catch (const ToolError& e) {
-        CB_CHECK_EQ(e.tool(), "cmake");
-        CB_CHECK_EQ(e.tool_exit_code(), 1u);
-        CB_CHECK(has(e.what(), "configuring XenonRecomp failed"));
-        CB_CHECK(e.output().size() <= 3000);                  // the end of a long output
-        CB_CHECK(has(e.output(), "stderr of the failing cmake"));
-    }
-    w.tools.cmake_fail = "build";
-    touch_newer(x.source_dir() / "CMakeLists.txt");
-    try {
-        x.build();
-        CB_CHECK(false);
-    } catch (const ToolError& e) {
-        CB_CHECK(has(e.what(), "building XenonRecomp failed"));
-    }
-});
-
-CB_TEST("recompile.xenon.recompile_runs_in_the_configurations_folder", [] {
+CB_TEST("recompile.xenon.recompile_is_given_the_configuration_by_its_full_path", [] {
     World w;
     Xenon x(w.config());
     const stdfs::path cfg = write_config(w, "fake_warn = 2\nfake_files = a.cpp\n");
     const std::string out = x.recompile(cfg);
     CB_CHECK(has(out, "Recompiling functions 1/3"));                // its output, whole
-    CB_CHECK(has(out, "note: cwd=work "));                          // run in the configuration's folder
+    CB_CHECK(has(out, "note: absolute=yes arg=cfg.toml "));         // the configuration by its full path (nothing depends on the working folder)
     CB_CHECK(has(out, "arg2=ppc_context.h"));                       // given the context header
     CB_CHECK(has(out, "warning: line 2 of the recompile"));
     CB_CHECK(stdfs::exists(w.dir.path() / "work" / "out" / "ppc" / "a.cpp"));
@@ -422,8 +315,7 @@ CB_TEST("recompile.xenon.recompile_synced_changes_only_what_changed", [] {
     CB_CHECK_EQ(r.changed, 2u);
     CB_CHECK(r.stale.empty());
     CB_CHECK_EQ(r.log.size(), 3u);                                  // its note and the two warnings, not the progress lines
-    CB_CHECK(has(r.log[0], "note: cwd=work "));
-    CB_CHECK(has(r.log[0], "arg=_recompile_tmp.toml"));             // run on the temporary copy, by its name
+    CB_CHECK(has(r.log[0], "note: absolute=yes arg=_recompile_tmp.toml"));   // run on the temporary copy beside the configuration
     CB_CHECK(!stdfs::exists(w.dir.path() / "work" / "_recompile_tmp.toml"));
     CB_CHECK_EQ(fs::read_text(out / "a.cpp"), "// fake a.cpp tag=1\n");
     CB_CHECK_EQ(shown.size(), 4u);                                  // the three lines and the summary
@@ -466,7 +358,7 @@ CB_TEST("recompile.xenon.recompile_synced_failures", [] {
     World w;
     Xenon x(w.config());
     const stdfs::path out = w.dir.path() / "work" / "out" / "ppc";
-    // XenonRecomp fails: a ToolError with the end of its log and its stderr; the output folder is untouched
+    // XenonRecomp fails: a ToolError with the end of what it printed; the output folder is untouched
     {
         const stdfs::path cfg = write_config(w, "fake_files = a.cpp\nfake_exit = 7\nfake_stderr = boom\n");
         try {
@@ -594,6 +486,6 @@ CB_TEST("recompile.xenon.the_command_takes_one_configuration", [] {
     const std::vector<std::string> one = {fs::to_text(cfg)};
     xenon_recompile_command(x, one);
     const std::string printed = captured.out();
-    CB_CHECK(has(printed, "note: cwd=work "));
+    CB_CHECK(has(printed, "note: absolute=yes arg=_recompile_tmp.toml"));
     CB_CHECK(has(printed, "1 files generated, 1 changed, 0 stale removed; 1 warning lines"));
 });

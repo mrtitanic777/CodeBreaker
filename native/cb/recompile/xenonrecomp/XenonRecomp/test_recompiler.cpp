@@ -1,3 +1,4 @@
+#include <xenon_log.h>
 #include "test_recompiler.h"
 
 void TestRecompiler::Analyse(const std::string_view& testName)
@@ -61,7 +62,7 @@ void TestRecompiler::RecompileTests(const char* srcDirectoryPath, const char* ds
                 }
                 else
                 {
-                    fmt::println("Function {:X} in {} has unimplemented instructions", fn.base, stem);
+                    xenon_log::println("Function {:X} in {} has unimplemented instructions", fn.base, stem);
                 }
             }
             stem += ".cpp";
@@ -93,7 +94,7 @@ void TestRecompiler::RecompileTests(const char* srcDirectoryPath, const char* ds
         }
         else
         {
-            fmt::println("Unable to locate disassembly file for {}", fn);
+            xenon_log::println("Unable to locate disassembly file for {}", fn);
         }
     }
 
@@ -108,8 +109,8 @@ void TestRecompiler::RecompileTests(const char* srcDirectoryPath, const char* ds
     fmt::println(file, "#include <sys/mman.h>");
     fmt::println(file, "#endif");
     fmt::println(file, "#include <fmt/core.h>\n");
-    fmt::println(file, "#define PPC_CHECK_VALUE_U(f, lhs, rhs) if (lhs != rhs) fmt::println(#f \" \" #lhs \" EXPECTED \" #rhs \" ACTUAL {{:X}}\", lhs)\n");
-    fmt::println(file, "#define PPC_CHECK_VALUE_F(f, lhs, rhs) if (lhs != rhs) fmt::println(#f \" \" #lhs \" EXPECTED \" #rhs \" ACTUAL {{}}\", lhs)\n");
+    fmt::println(file, "#define PPC_CHECK_VALUE_U(f, lhs, rhs) if (lhs != rhs) xenon_log::println(#f \" \" #lhs \" EXPECTED \" #rhs \" ACTUAL {{:X}}\", lhs)\n");
+    fmt::println(file, "#define PPC_CHECK_VALUE_F(f, lhs, rhs) if (lhs != rhs) xenon_log::println(#f \" \" #lhs \" EXPECTED \" #rhs \" ACTUAL {{}}\", lhs)\n");
 
     for (auto& [fn, addr] : functions)
     {
@@ -265,7 +266,7 @@ void TestRecompiler::RecompileTests(const char* srcDirectoryPath, const char* ds
                         }
                         else
                         {
-                            fmt::println("Found no symbol for {}", name);
+                            xenon_log::println("Found no symbol for {}", name);
                         }
                     }
                 }
@@ -273,7 +274,7 @@ void TestRecompiler::RecompileTests(const char* srcDirectoryPath, const char* ds
         }
         else
         {
-            fmt::println("Unable to locate source file for {}", fn);
+            xenon_log::println("Unable to locate source file for {}", fn);
         }
     }
 

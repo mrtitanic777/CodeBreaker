@@ -1,12 +1,35 @@
 #include "pch.h"
 #include "test_recompiler.h"
+#include <xenon_log.h>
 
-int main(int argc, char* argv[])
+// As a library (XENON_RECOMP_LIBRARY: CodeBreaker links it in), the program's main is xenon_recomp_main.
+#ifdef XENON_RECOMP_LIBRARY
+#define XENON_RECOMP_MAIN xenon_recomp_main
+#else
+#define XENON_RECOMP_MAIN main
+#endif
+
+static int recomp_run(int argc, char* argv[]);
+
+int XENON_RECOMP_MAIN(int argc, char* argv[])
+{
+    try
+    {
+        return recomp_run(argc, argv);
+    }
+    catch (const std::exception& e)
+    {
+        xenon_log::println("error: {}", e.what());
+        return 1;
+    }
+}
+
+static int recomp_run(int argc, char* argv[])
 {
 #ifndef XENON_RECOMP_CONFIG_FILE_PATH
     if (argc < 3)
     {
-        printf("Usage: XenonRecomp [input TOML file path] [PPC context header file path]");
+        xenon_log::print("Usage: XenonRecomp [input TOML file path] [PPC context header file path]");
         return EXIT_SUCCESS;
     }
 #endif

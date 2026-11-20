@@ -39,18 +39,18 @@
 #include <string_view>
 #include <vector>
 
+#include "cb/recompile/xenon_engine.hpp"
 #include "cb/core/ordered_map.hpp"
 
 namespace cb::recompile::x360project {
 
 struct Recompiler {
-    std::filesystem::path analyse;          // XenonAnalyse.exe
-    std::filesystem::path recomp;           // XenonRecomp.exe
+    xenon_engine::Tool analyse = xenon_engine::analyse;   // XenonAnalyse, in-process (a test hands its own)
+    xenon_engine::Tool recomp = xenon_engine::recomp;     // XenonRecomp, in-process
     std::filesystem::path source;           // XenonRecomp's source folder (XenonUtils/ppc_context.h is read from it)
     std::filesystem::path visual_studio;    // the Visual Studio folder the Build script loads vcvars64 from
     std::filesystem::path runtime_cmake;    // native/cb/recompile/x360/x360.cmake
 
-    std::function<void()> ensure_built;     // builds XenonRecomp and XenonAnalyse when they are not
     // `xex` as an unencrypted XEX with basic compression, the form XenonRecomp reads.
     std::function<void(const std::filesystem::path& xex, const std::filesystem::path& out)> write_basic;
     struct SwitchTables {

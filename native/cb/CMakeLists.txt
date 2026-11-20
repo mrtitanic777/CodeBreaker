@@ -264,7 +264,11 @@ target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile cb_formats cb_symbo
 cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex cb_zlib)
 
+# XenonRecomp and XenonAnalyse (recompile/xenonrecomp, CodeBreaker's fork) as libraries: cb::recompile::xenon_engine calls
+# their mains in-process. Their own build (its third-party libraries, its flags); the programs build on request only.
+add_subdirectory(recompile/xenonrecomp "${CMAKE_BINARY_DIR}/xenonrecomp")
 cb_area(recompile)
+target_link_libraries(cb_recompile PRIVATE LibXenonRecomp LibXenonAnalyseMain)
 target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_formats cb_decompile)   # (cb_base: the converted projects of the recompile-project command)
 
 # The recompiler's own pieces (builders, disassembler, the title project) and the source writers (placement, assembly,

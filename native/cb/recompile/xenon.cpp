@@ -6,7 +6,6 @@
 #include <array>
 #include <format>
 #include <set>
-#include <thread>
 
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
@@ -47,33 +46,6 @@ std::string slashes(const stdfs::path& p) { return fs::to_text(p); }   // the as
 bool is_hidden(const stdfs::path& p) {
     const std::string name = p.filename().string();
     return !name.empty() && name[0] == '.';
-}
-
-// The newest modification time of any file under the sources (names starting with a dot are left out, as a glob
-// leaves them out).
-stdfs::file_time_type newest_source(const stdfs::path& source) {
-    stdfs::file_time_type newest = stdfs::file_time_type::min();
-    auto note = [&](const stdfs::path& p) {
-        std::error_code ec;
-        const auto t = cb::fs::last_write_time(p, ec);
-        if (!ec) newest = std::max(newest, t);
-    };
-    for (const char* sub : {"XenonRecomp", "XenonUtils", "XenonAnalyse", "CMakeLists.txt"}) {
-        const stdfs::path path = source / sub;
-        std::error_code ec;
-        if (stdfs::is_regular_file(path, ec)) {
-            note(path);
-        } else if (stdfs::is_directory(path, ec)) {
-            for (stdfs::recursive_directory_iterator it(path, stdfs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)) {
-                if (is_hidden(it->path())) {
-                    if (it->is_directory(ec)) it.disable_recursion_pending();
-                    continue;
-                }
-                if (it->is_regular_file(ec)) note(it->path());
-            }
-        }
-    }
-    return newest;
 }
 
 bool same_content(const stdfs::path& a, const stdfs::path& b) {
@@ -188,39 +160,20 @@ const Environment& Xenon::msvc_env() {
     return *msvc_env_;
 }
 
-stdfs::path Xenon::build(bool force) {
-    const stdfs::path recomp = recomp_exe();
-    std::error_code ec;
-    if (!force && stdfs::is_regular_file(recomp, ec) && stdfs::is_regular_file(analyse_exe(), ec)) {
-        const auto oldest = std::min(cb::fs::last_write_time(recomp, ec), cb::fs::last_write_time(analyse_exe(), ec));
-        if (oldest >= newest_source(source_dir())) return recomp;
-    }
-    const Environment& env = msvc_env();
-    const std::string cc = clang_cl().string();
-    if (force || !stdfs::is_regular_file(build_dir() / "CMakeCache.txt", ec)) {
-        const Run r = run_program(config_, {"cmake", "-S", source_dir().string(), "-B", build_dir().string(), "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
-                                   "-DCMAKE_C_COMPILER=" + cc, "-DCMAKE_CXX_COMPILER=" + cc},
-                                  std::nullopt, &env, config_.build_timeout);
-        if (r.code != 0) throw ToolError("cmake", r.code, tail(r.out + r.err, 3000), "configuring XenonRecomp failed");
-    }
-    const unsigned jobs = config_.build_jobs.value_or(std::max(1u, std::thread::hardware_concurrency() / 2));
-    const Run r = run_program(config_, {"cmake", "--build", build_dir().string(), "-j", std::to_string(jobs)}, std::nullopt, &env, config_.build_timeout);
-    if (r.code != 0) throw ToolError("cmake", r.code, tail(r.out + r.err, 3000), "building XenonRecomp failed");
-    return recomp;
+// XenonRecomp in-process over `args`: a ToolError carrying the end of what it printed when it fails.
+static xenon_engine::Run recomp_or_throw(const Config& config, const std::vector<std::string>& args) {
+    xenon_engine::Run r = config.recomp(args);
+    if (r.code != 0) throw ToolError("XenonRecomp", static_cast<std::uint32_t>(r.code), tail(r.log, 3000), "failed");
+    return r;
 }
 
 std::string Xenon::recompile(const stdfs::path& config_toml) {
-    build();
-    // it runs in the configuration's folder: a relative path would not reach it
+    // the configuration's paths are joined to its own folder: given absolute, nothing depends on the working folder
     const stdfs::path config = stdfs::absolute(config_toml);
-    const Run r = run_program(config_, {recomp_exe().string(), config.string(), context_header().string()}, config.parent_path(), nullptr,
-                              config_.recompile_timeout);
-    if (r.code != 0) throw ToolError("XenonRecomp", r.code, tail(r.out + r.err, 3000), "failed");
-    return r.out;
+    return recomp_or_throw(config_, {fs::to_text(config), fs::to_text(context_header())}).log;
 }
 
 SyncResult Xenon::recompile_synced(const stdfs::path& config_toml, const ReportFn& report) {
-    build();
     const stdfs::path config = stdfs::absolute(config_toml);
     const stdfs::path folder = config.parent_path();
     const std::string toml = fs::read_text(config);
@@ -233,8 +186,8 @@ SyncResult Xenon::recompile_synced(const stdfs::path& config_toml, const ReportF
     fs::ScopedTempDir tmp("recompile", out_dir.parent_path());
     const stdfs::path fresh = tmp.path() / "ppc";
     fs::make_dirs(fresh);
-    // the same configuration beside the original (its relative paths still reach), with the fresh folder; passed by
-    // its name, as XenonRecomp joins the paths inside to the configuration's own
+    // the same configuration beside the original (its relative paths still reach), with the fresh folder: XenonRecomp joins
+    // the paths inside to the configuration's own folder
     const std::string work_name = "_recompile_tmp.toml";
     stdfs::path rel = fresh.lexically_relative(folder);
     const std::string fresh_text = rel.empty() ? fs::to_text(fresh) : fs::to_text(rel);
@@ -243,20 +196,20 @@ SyncResult Xenon::recompile_synced(const stdfs::path& config_toml, const ReportF
         rewritten_lines.push_back(parse_out_line(line).matches ? "out_directory_path = \"" + fresh_text + "\"" : std::string(line));
     }
     const std::string rewritten = text::join(rewritten_lines, "\n");
-    Run run;
+    xenon_engine::Run run;
     {
         const stdfs::path work = folder / work_name;
         const RemoveOnExit remove_work(work);
         fs::write_text(work, rewritten);
-        run = run_program(config_, {recomp_exe().string(), work_name, context_header().string()}, folder, nullptr, config_.recompile_timeout);
+        run = config_.recomp({fs::to_text(work), fs::to_text(context_header())});
     }
-    for (const std::string_view line : text::lines(run.out)) {
+    for (const std::string_view line : text::lines(run.log)) {
         if (!line.starts_with("Recompiling functions")) result.log.emplace_back(line);
     }
     if (run.code != 0) {
         const std::size_t from = result.log.size() > 40 ? result.log.size() - 40 : 0;
         const std::vector<std::string> last(result.log.begin() + static_cast<std::ptrdiff_t>(from), result.log.end());
-        throw ToolError("XenonRecomp", run.code, text::join(last, "\n") + run.err, "failed");
+        throw ToolError("XenonRecomp", static_cast<std::uint32_t>(run.code), text::join(last, "\n"), "failed");
     }
 
     fs::make_dirs(out_dir);
@@ -300,7 +253,6 @@ InstructionTestResult Xenon::instruction_tests(const InstructionTestOptions& opt
     const stdfs::path objdump = binutils / "powerpc-none-elf-objdump.exe";
     std::error_code ec;
     if (!stdfs::is_regular_file(as, ec)) throw ToolError("powerpc-none-elf-as", 0, "", "no PowerPC binutils at " + fs::to_text(binutils) + " (setting ppc_binutils)");
-    build();
     const stdfs::path work = options.work.value_or(config_.state_dir / "xenonrecomp" / "ppc_tests");
     const stdfs::path src = work / "src", objs = work / "src" / "bin", out = work / "out";
     for (const stdfs::path& d : {objs, out}) {
@@ -347,9 +299,9 @@ InstructionTestResult Xenon::instruction_tests(const InstructionTestOptions& opt
 
     // a test of an instruction XenonRecomp does not implement is left out (and listed): a title's own recompile
     // reports any instruction it uses
-    Run recomp = run_program(config_, {recomp_exe().string(), objs.string(), out.string()}, std::nullopt, nullptr, config_.recompile_timeout);
+    xenon_engine::Run recomp = config_.recomp({fs::to_text(objs), fs::to_text(out)});
     std::set<std::string> skipped_set;
-    for (const std::string_view line : text::lines(recomp.out)) {
+    for (const std::string_view line : text::lines(recomp.log)) {
         if (line.find("has unimplemented") == std::string_view::npos) continue;
         const auto in = line.find(" in ");
         if (in == std::string_view::npos) continue;
@@ -367,7 +319,7 @@ InstructionTestResult Xenon::instruction_tests(const InstructionTestOptions& opt
         }
         fs::remove_tree(out);
         fs::make_dirs(out);
-        recomp = run_program(config_, {recomp_exe().string(), objs.string(), out.string()}, std::nullopt, nullptr, config_.recompile_timeout);
+        recomp = config_.recomp({fs::to_text(objs), fs::to_text(out)});
     }
 
     const stdfs::path exe = work / "ppc_tests.exe";
@@ -383,7 +335,7 @@ InstructionTestResult Xenon::instruction_tests(const InstructionTestOptions& opt
     }
     std::sort(generated.begin(), generated.end());
     cc.insert(cc.end(), generated.begin(), generated.end());
-    const Run compiled = run_program(config_, std::move(cc), work, &msvc_env(), config_.build_timeout);
+    const Run compiled = run_program(config_, std::move(cc), work, &msvc_env(), config_.compile_timeout);
     if (compiled.code != 0) throw ToolError("clang-cl", compiled.code, tail(compiled.out + compiled.err, 4000), "building the instruction tests failed");
 
     const Run ran = run_program(config_, {exe.string()}, work, nullptr, config_.tool_timeout);

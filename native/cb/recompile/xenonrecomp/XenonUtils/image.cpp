@@ -31,6 +31,12 @@ const Section* Image::Find(const std::string_view& name) const
 
 Image Image::ParseImage(const uint8_t* data, size_t size)
 {
+    // (a missing or empty file is no image: nothing to read the magic of)
+    if (data == nullptr || size < 4)
+    {
+        return {};
+    }
+
     if (data[0] == ELFMAG0 && data[1] == ELFMAG1 && data[2] == ELFMAG2 && data[3] == ELFMAG3)
     {
         return ElfLoadImage(data, size);

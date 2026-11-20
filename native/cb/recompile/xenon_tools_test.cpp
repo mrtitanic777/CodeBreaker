@@ -29,7 +29,6 @@ struct Setup {
     std::optional<fs::ScopedEnv> state;
     xt::Environment environment;
     std::optional<stdfs::path> xex;
-    bool analyse_built = false;
     bool ok = false;
 
     Setup() {
@@ -39,8 +38,6 @@ struct Setup {
         const stdfs::path main_checkout = config::Config::load(checkout).main_checkout();
         state.emplace("CB_STATE", fs::to_text(dir.path() / "state"));
         environment.config = config::Config::load(main_checkout);
-        std::error_code ec;
-        analyse_built = stdfs::is_regular_file(main_checkout / "native" / "cb" / "recompile" / "xenonrecomp" / "build" / "XenonAnalyse" / "XenonAnalyse.exe", ec);
         ok = true;
     }
 };
@@ -110,7 +107,7 @@ CB_TEST("recompile.xenon_tools.xenon_config_writes_the_recorded_output", [] {
 
 CB_TEST("recompile.xenon_tools.switch_tables_write_the_finders_and_xenon_analyses_and_the_config_reads_them", [] {
     Setup s;
-    if (!s.ok || !s.analyse_built) return;
+    if (!s.ok) return;
     const std::string w = forward(fs::to_text(s.dir.path()));
     CB_CHECK_EQ(run_one(xt::xex_basic_command(s.environment), {fs::to_text(*s.xex), w + "/basic/default.xex"}), "exit=0\n");
     CB_CHECK_EQ(run_one(xt::switch_tables_command(s.environment), {w + "/basic/default.xex", w + "/basic/switch_tables.toml"}), "exit=0\n");
