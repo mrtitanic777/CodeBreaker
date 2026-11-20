@@ -3,6 +3,8 @@
 // line, fini; messages through the same callbacks, formatted by the same IdeMsgFormat.
 #include "build/x86link/x86link.hpp"
 
+#include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <mutex>
 #include <optional>
@@ -158,9 +160,29 @@ Run link(const std::vector<std::string>& args, const stdfs::path& folder, const 
     return std::move(host.run);
 }
 
+void install() {
+    process::set_in_process([](const process::ProcessSpec& spec) -> std::optional<process::ProcessResult> {
+        std::string program = stdfs::path(spec.argv[0]).filename().string();
+        for (char& ch : program) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (program != "wlink.exe" && program != "wlink") return std::nullopt;
+        if (const auto choice = fs::get_env("CB_WLINK"); choice && *choice == "exe") return std::nullopt;
+        const auto started = std::chrono::steady_clock::now();
+        const Run r = link(std::vector<std::string>(spec.argv.begin() + 1, spec.argv.end()),
+                           spec.cwd ? *spec.cwd : stdfs::current_path(), spec.env);
+        process::ProcessResult out;
+        out.exit_code = static_cast<std::uint32_t>(r.exit_code);
+        out.out.assign(r.out.begin(), r.out.end());
+        out.err.assign(r.err.begin(), r.err.end());
+        out.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
+        return out;
+    });
+}
+
 #else
 
 bool available() { return false; }
+
+void install() {}
 
 Run link(const std::vector<std::string>&, const stdfs::path&, const std::map<std::string, std::string>&) {
     throw Error("x86link: the in-process linker is built on Windows only");

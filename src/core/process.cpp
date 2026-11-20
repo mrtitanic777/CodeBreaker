@@ -2,6 +2,8 @@
 
 
 #include <algorithm>
+#include <cstdio>
+#include <filesystem>
 #include <format>
 #include <thread>
 
@@ -34,6 +36,49 @@ std::string quote_arg(std::string_view arg) {
     out.append(backslashes * 2, '\\');   // a trailing run must not escape the closing quote
     out.push_back('"');
     return out;
+}
+
+namespace {
+InProcess& in_process_hook() {
+    static InProcess hook;
+    return hook;
+}
+}  // namespace
+
+void set_in_process(InProcess hook) { in_process_hook() = std::move(hook); }
+
+std::optional<ProcessResult> run_in_process(const ProcessSpec& spec) {
+    const InProcess& hook = in_process_hook();
+    if (!hook || spec.argv.empty()) return std::nullopt;
+    std::optional<ProcessResult> r = hook(spec);
+    if (!r) return r;
+    // the streams where a started program's would have gone
+    if (spec.err.mode == Capture::Merge) {   // stderr into stdout
+        r->out.insert(r->out.end(), r->err.begin(), r->err.end());
+        r->err.clear();
+    }
+    auto deliver = [](const Capture& where, Bytes& text, std::FILE* console) {
+        switch (where.mode) {
+            case Capture::Collect:
+            case Capture::Merge: break;
+            case Capture::Inherit:
+                if (!text.empty()) std::fwrite(text.data(), 1, text.size(), console);
+                std::fflush(console);
+                text.clear();
+                break;
+            case Capture::Discard: text.clear(); break;
+            case Capture::File: {
+                Bytes all = where.append && std::filesystem::exists(where.file) ? fs::read_file(where.file) : Bytes{};
+                all.insert(all.end(), text.begin(), text.end());
+                fs::write_file(where.file, all);
+                text.clear();
+                break;
+            }
+        }
+    };
+    deliver(spec.out, r->out, stdout);
+    deliver(spec.err, r->err, stderr);
+    return r;
 }
 
 std::string command_line(const std::vector<std::string>& argv) {

@@ -92,5 +92,8 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    identical (files byte for byte but the PE link time; messages; exit code), 2 not replayable (their captures lack an
    `option resource` file; captures now keep it). One wlink fix: the reset between links now clears the stack address.
 3. Every caller on the in-process linker; `wlink.exe` is no longer started.
+   **Done (2026-11-20):** process::run asks an in-process hook first (core/process: set_in_process); x86link::install(),
+   called at codebreaker.exe's start, takes `wlink`/`wlink.exe`, so every caller (build driver, lanes, writers, owbuild)
+   links in-process with no change of its own (CB_WLINK=exe starts wlink.exe again). The gate: 6636/6636, 168/168.
 4. The refactoring, module by module (the table above), each re-proven on the corpus: the directives, the OMF reader (onto
    cb/formats/omf), the symbol passes, the layout and fixups, then each format (DOS, LE, NE, PE).

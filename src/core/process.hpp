@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -79,6 +80,14 @@ struct ProcessResult {
     std::chrono::milliseconds elapsed{0};
     bool ok() const { return exit_code == 0 && !timed_out; }
 };
+
+// A program this process runs itself instead of starting it: the hook answers for a spec it takes, and nullopt starts the
+// program as ever. One hook (set at startup: build/x86link installs one that runs wlink in-process); run() asks it first,
+// so every caller of a tool it takes gets the in-process one without a change of its own.
+using InProcess = std::function<std::optional<ProcessResult>(const ProcessSpec&)>;
+void set_in_process(InProcess hook);
+// The hook's answer for `spec` (nullopt: none set, or it does not take this program). run() calls it.
+std::optional<ProcessResult> run_in_process(const ProcessSpec& spec);
 
 // Run to completion. Throws ToolError only if the program cannot be started (not found, access denied).
 // A program that runs and fails is a ProcessResult with a non-zero exit_code, not an exception: the caller

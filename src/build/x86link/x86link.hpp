@@ -26,6 +26,10 @@ struct Run {
 
 bool available();
 
+// From now on process::run runs `wlink` / `wlink.exe` with this linker instead of starting it (every caller: the build
+// driver, the lanes, the writers), unless CB_WLINK=exe. The program calls it at startup (app/codebreaker_main.cpp).
+void install();
+
 // One link: wlink's arguments (what follows `wlink` on its command line), run in `folder`.
 Run link(const std::vector<std::string>& args, const std::filesystem::path& folder,
          const std::map<std::string, std::string>& environment = {});

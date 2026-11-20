@@ -321,6 +321,10 @@ bool wait_for(Process::Impl& impl, std::optional<std::chrono::milliseconds> time
 
 ProcessResult run(const ProcessSpec& spec) {
     auto capture = wlink_capture::before(spec);   // (CB_WLINK_CAPTURE: x86link's cases)
+    if (std::optional<ProcessResult> in = run_in_process(spec)) {   // (a program this process runs itself: x86link)
+        wlink_capture::after(std::move(capture), spec, *in);
+        return std::move(*in);
+    }
     auto impl = launch(spec, !spec.stdin_data.empty());
     ProcessResult result;
 
