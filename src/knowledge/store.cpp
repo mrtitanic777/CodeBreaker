@@ -4,12 +4,17 @@
 
 #include <algorithm>
 #include <chrono>
+#include <fstream>
 #include <map>
+
+#include <nlohmann/json.hpp>
 
 #include "base/sqlite.hpp"
 #include "core/crypto.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "core/json.hpp"
+#include "core/text.hpp"
 
 namespace cb::knowledge {
 
@@ -135,13 +140,152 @@ Store::Store(const std::filesystem::path& file, DataFolders folders)
         db_->database.exec(schema.substr(from, end + 1 - from));
         from = end + 1;
     }
+    carry_kept();
 }
 
 Store::~Store() = default;
 
-std::filesystem::path Store::default_path(const std::filesystem::path& state_dir) {
+std::filesystem::path Store::default_path(const DataFolders& folders) {
+    if (const std::optional<std::string> env = fs::get_env("CB_KNOWLEDGE_DB"); env && !env->empty()) return fs::from_text(*env);
+    return folders.index;
+}
+
+std::filesystem::path Store::in_state(const std::filesystem::path& state_dir) {
     if (const std::optional<std::string> env = fs::get_env("CB_KNOWLEDGE_DB"); env && !env->empty()) return fs::from_text(*env);
     return state_dir / "db" / "knowledge.v2.sqlite";
+}
+
+// ---- the kept text ------------------------------------------------------------------------------------------------------
+//
+//     <kept>/given.jsonl                  {"platform":..,"kind":..,"key":..,"value":<json>,"source":..}   a row given
+//                                         {"platform":..,"kind":..,"key":..,"forget":true}                a row forgotten
+//     <kept>/names.jsonl                  {"hash":..,"name":..,"source":..}                               a body named
+//
+// Only given knowledge is kept so: what a person decided. Learned rows (read once from a module's code) are found again by the
+// step that learned them, and name the target's own files, so they stay in the base alone.
+//
+// One line per write, in the order written (the last line of a key wins). A base opened over files it has not taken in (by
+// their sizes and times, kept in `loaded` as platform "kept") takes in every line; a base with rows of its own but no files
+// writes them out once (the base of a state folder, carried into config/).
+
+namespace {
+
+constexpr const char* kKeptFiles[] = {"given.jsonl", "names.jsonl"};
+
+std::string kept_stamp(const std::filesystem::path& kept) {
+    std::string stamp;
+    for (const char* name : kKeptFiles) {
+        std::error_code ec;
+        const std::filesystem::path f = kept / name;
+        if (!std::filesystem::is_regular_file(f, ec)) continue;
+        const auto size = std::filesystem::file_size(f, ec);
+        const auto time = std::filesystem::last_write_time(f, ec).time_since_epoch().count();
+        stamp += std::string(name) + ":" + std::to_string(size) + ":" + std::to_string(time) + ";";
+    }
+    return stamp;
+}
+
+nlohmann::ordered_json row_line(std::string_view platform, std::string_view kind, std::string_view key) {
+    nlohmann::ordered_json j;
+    j["platform"] = std::string(platform);
+    j["kind"] = std::string(kind);
+    j["key"] = std::string(key);
+    return j;
+}
+
+}  // namespace
+
+// Only the checkout's own base (its file the folders' index) keeps its learned and given knowledge in config/.
+bool Store::keeps_text() const {
+    const std::filesystem::path& index = sources_.folders().index;
+    if (index.empty()) return false;
+    std::error_code ec;
+    return std::filesystem::weakly_canonical(file_, ec) == std::filesystem::weakly_canonical(index, ec);
+}
+
+void Store::keep_line(std::string_view file_name, const std::string& line) {
+    const std::filesystem::path& kept = sources_.folders().kept;
+    if (kept.empty() || !keeps_text()) return;   // (a store of its own -- a test's, a migration's -- keeps nothing in config/)
+    fs::make_dirs(kept);
+    std::ofstream out(kept / std::string(file_name), std::ios::binary | std::ios::app);
+    out << line << '\n';
+    out.close();
+    db_->database.exec("INSERT OR REPLACE INTO loaded(platform, kind, stamp, source, made) VALUES('kept','files',?,?,?)",
+                       {kept_stamp(kept), fs::to_text(kept), seconds_now()});   // (what this base wrote it holds already)
+}
+
+void Store::carry_kept() {
+    const std::filesystem::path& kept = sources_.folders().kept;
+    if (kept.empty() || !keeps_text()) return;   // (a store of its own -- a test's, a migration's -- keeps nothing in config/)
+    std::lock_guard lock(mutex_);
+    const std::string stamp = kept_stamp(kept);
+    if (stamp.empty()) {   // no files yet: what this base learned and was given is written out, once
+        const auto rows = db_->database.query("SELECT platform, kind, key, value, source, origin FROM knowledge WHERE origin='given' ORDER BY rowid");
+        const auto names = db_->database.query("SELECT hash, name, source FROM body_name ORDER BY rowid");
+        if (rows.empty() && names.empty()) return;
+        fs::make_dirs(kept);
+        std::string given, named;
+        for (const sql::Row& r : rows) {
+            nlohmann::ordered_json j = row_line(cell_text(r[0]), cell_text(r[1]), cell_text(r[2]));
+            j["value"] = nlohmann::ordered_json::parse(decode_cell(r[3]).to_json_text());
+            j["source"] = cell_text(r[4]);
+            given += j.dump() + "\n";
+        }
+        for (const sql::Row& r : names) {
+            nlohmann::ordered_json j;
+            j["hash"] = cell_text(r[0]);
+            j["name"] = cell_text(r[1]);
+            j["source"] = cell_text(r[2]);
+            named += j.dump() + "\n";
+        }
+        if (!given.empty()) fs::write_text(kept / "given.jsonl", given);
+        if (!named.empty()) fs::write_text(kept / "names.jsonl", named);
+        db_->database.exec("INSERT OR REPLACE INTO loaded(platform, kind, stamp, source, made) VALUES('kept','files',?,?,?)",
+                           {kept_stamp(kept), fs::to_text(kept), seconds_now()});
+        return;
+    }
+    const auto seen = db_->database.query("SELECT stamp FROM loaded WHERE platform='kept' AND kind='files'");
+    if (!seen.empty() && cell_text(seen[0][0]) == stamp) return;   // taken in already
+    const double made = seconds_now();
+    sql::Database::Transaction tx(db_->database);
+    for (const char* name : {"given.jsonl"}) {
+        const std::filesystem::path f = kept / name;
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(f, ec)) continue;
+        const std::string origin = "given";
+        std::size_t line_no = 0;
+        const std::string all = fs::read_text(f);
+        for (std::string_view line : text::lines(all)) {
+            ++line_no;
+            if (text::trim(line).empty()) continue;
+            const nlohmann::json j = json::parse(line);
+            const std::string platform = j.at("platform").get<std::string>(), kind = j.at("kind").get<std::string>(),
+                              key = j.at("key").get<std::string>();
+            if (j.contains("forget")) {
+                db_->database.exec("DELETE FROM knowledge WHERE platform=? AND kind=? AND key=?", {platform, kind, key});
+                continue;
+            }
+            const Value value = Value::from_json_text(j.at("value").dump(), fs::to_text(f) + ":" + std::to_string(line_no));
+            db_->database.exec(
+                "INSERT OR REPLACE INTO knowledge(platform, kind, key, seq, hash, tag, value, source, origin, made) "
+                "VALUES(?,?,?,NULL,?,?,?,?,?,?)",
+                {platform, kind, key, value.digest(), std::string(kTagValue), value.encode(),
+                 j.value("source", std::string()), origin, made});
+        }
+    }
+    if (const std::filesystem::path f = kept / "names.jsonl"; std::filesystem::is_regular_file(f)) {
+        const std::string all = fs::read_text(f);
+        for (std::string_view line : text::lines(all)) {
+            if (text::trim(line).empty()) continue;
+            const nlohmann::json j = json::parse(line);
+            db_->database.exec("INSERT OR REPLACE INTO body_name(hash, name, source, ts) VALUES(?,?,?,?)",
+                               {j.at("hash").get<std::string>(), j.at("name").get<std::string>(), j.value("source", std::string()), made});
+        }
+    }
+    db_->database.exec("INSERT OR REPLACE INTO loaded(platform, kind, stamp, source, made) VALUES('kept','files',?,?,?)",
+                       {stamp, fs::to_text(kept), made});
+    tx.commit();
+    db_->hashes.clear();
 }
 
 std::filesystem::path Store::beside(const std::filesystem::path& function_store_file) {
@@ -193,6 +337,17 @@ void Store::put_many(std::string_view platform, std::string_view kind, const Row
     if (held != db_->hashes.end()) {
         for (const auto& [key, value] : values) held->second[key] = value.digest();
     }
+    // given knowledge is kept as text too (config/knowledge/kept): the base can be made again from it
+    if (origin == Origin::Given) {
+        std::string lines;
+        for (const auto& [key, value] : values) {
+            nlohmann::ordered_json j = row_line(platform, kind, key);
+            j["value"] = nlohmann::ordered_json::parse(value.to_json_text());
+            j["source"] = std::string(source);
+            lines += (lines.empty() ? "" : "\n") + j.dump();
+        }
+        if (!lines.empty()) keep_line("given.jsonl", lines);
+    }
 }
 
 void Store::forget(std::string_view platform, std::string_view kind, std::string_view key) {
@@ -205,6 +360,9 @@ void Store::forget(std::string_view platform, std::string_view kind, std::string
     }
     const auto held = db_->hashes.find({std::string(platform), std::string(kind)});
     if (held != db_->hashes.end()) held->second.erase(std::string(key));
+    nlohmann::ordered_json j = row_line(platform, kind, key);
+    j["forget"] = true;
+    keep_line("given.jsonl", j.dump());
 }
 
 std::optional<show::Provenance> Store::provenance(std::string_view platform, std::string_view kind, std::string_view key) {
@@ -361,6 +519,11 @@ void Store::name_body(std::string_view digest_text, std::string_view name_text, 
     std::lock_guard lock(mutex_);
     db_->database.exec("INSERT OR REPLACE INTO body_name(hash, name, source, ts) VALUES(?,?,?,?)",
                        {text_param(digest_text), text_param(name_text), text_param(source), seconds_now()});
+    nlohmann::ordered_json j;
+    j["hash"] = std::string(digest_text);
+    j["name"] = std::string(name_text);
+    j["source"] = std::string(source);
+    keep_line("names.jsonl", j.dump());
 }
 
 std::optional<BodyName> Store::name(std::string_view digest_text) {
@@ -509,7 +672,7 @@ show::Environment environment(const std::filesystem::path& state_dir, DataFolder
     };
     auto opened = std::make_shared<Opened>(Opened{state_dir, std::move(folders), nullptr});
     return show::Environment{.base = [opened]() -> show::Base& {
-        if (!opened->store) opened->store = std::make_unique<Store>(Store::default_path(opened->state), opened->folders);
+        if (!opened->store) opened->store = std::make_unique<Store>(Store::default_path(opened->folders), opened->folders);
         return *opened->store;
     }};
 }

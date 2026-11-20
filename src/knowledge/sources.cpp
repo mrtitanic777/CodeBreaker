@@ -56,7 +56,8 @@ Rows signature_rows(const Value& document, std::string_view bits, std::string_vi
 }  // namespace
 
 DataFolders DataFolders::under(const std::filesystem::path& checkout) {
-    return {checkout / "config" / "symbols", checkout / "config" / "knowledge" / "models"};
+    return {checkout / "config" / "symbols", checkout / "config" / "knowledge" / "models", checkout / "config" / "knowledge" / "kept",
+            checkout / "build" / "knowledge.v2.sqlite"};
 }
 
 DataFolders DataFolders::from_environment() {

@@ -1,3 +1,4 @@
+#include "base/config.hpp"
 #include "java/run.hpp"
 
 #include <algorithm>
@@ -172,8 +173,8 @@ std::vector<ToolDecl> declare() {
 
 // ---- the built-in tools --------------------------------------------------------------------------------------------------
 
-// The state folder of the checkout the Java lane is in: <checkout>/state/java.
-stdfs::path state_java() { return JavaData::locate().root().parent_path().parent_path() / "state" / "java"; }
+// The Java lane's part of the state folder (config.state(): the work folder's, else <checkout>/work/state).
+stdfs::path state_java() { return cb::config::current().state() / "java"; }
 
 int bugfix_ledger_tool(const cli::Args& a) {
     const stdfs::path repo = a.value("repo") ? fs::from_text(*a.value("repo")) : JavaData::locate().root();

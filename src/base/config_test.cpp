@@ -29,7 +29,7 @@ CB_TEST("base.config.defaults_without_a_settings_file", [] {
     CB_CHECK_EQ(cfg.text("struct_recovery"), "all");
     CB_CHECK_EQ(cfg.text("not_a_setting"), "");
     CB_CHECK(!cfg.path("openwatcom").has_value());   // no default: not set
-    CB_CHECK(cfg.state() == (co.dir.path() / "state").lexically_normal());
+    CB_CHECK(cfg.state() == (co.dir.path() / "work" / "state").lexically_normal());   // (no work folder, no "state" setting)
     CB_CHECK(!cfg.path("corpus").has_value());        // no target is named by CodeBreaker: the work folder names its corpus
     CB_CHECK(!cfg.work_folder().has_value());
 });

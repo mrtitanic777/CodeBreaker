@@ -1,6 +1,7 @@
 // knowledge/store.hpp -- the knowledge base's database: one SQLite file, every platform's knowledge keyed by platform.
 //
-//     Store kb(Store::default_path(config.state()), DataFolders::from_environment());
+//     const DataFolders folders = DataFolders::under(config.checkout_root());
+//     Store kb(Store::default_path(folders), folders);
 //     kb.get("win32", "prototype", "GetDlgItem");                          // a Value, or nullopt
 //     kb.put("win32", "argument_bytes.code", "USER32.FindWindowA", 8, "user32.dll's code", Origin::Learned);
 //     kb.table("win16", "prototype");                                      // {key: value} of a kind, in the order written
@@ -80,8 +81,11 @@ public:
     Store(const Store&) = delete;
     Store& operator=(const Store&) = delete;
 
-    // `$CB_KNOWLEDGE_DB` when set, else <state>/db/knowledge.v2.sqlite.
-    static std::filesystem::path default_path(const std::filesystem::path& state_dir);
+    // `$CB_KNOWLEDGE_DB` when set, else the folders' index (<checkout>/build/knowledge.v2.sqlite).
+    static std::filesystem::path default_path(const DataFolders& folders);
+    // Where a state folder kept the base before it moved into build/ (`$CB_KNOWLEDGE_DB` when set, else
+    // <state>/db/knowledge.v2.sqlite): what migrate writes to.
+    static std::filesystem::path in_state(const std::filesystem::path& state_dir);
     // The knowledge base of the state folder a function store is in (a test's own store in a folder of its own has a
     // knowledge base of its own).
     static std::filesystem::path beside(const std::filesystem::path& function_store_file);
@@ -152,6 +156,12 @@ private:
     struct Db;
     std::string whole_kind_digest_locked(std::string_view platform, std::string_view kind);
     Rows table_locked(std::string_view platform, std::string_view kind);
+
+    // The learned and given knowledge kept as text (DataFolders::kept): each such write is also a line there, and the base
+    // takes in what changed there when it opens (carry_kept) -- the base is an index of config/, made again from it.
+    void carry_kept();
+    void keep_line(std::string_view file_name, const std::string& line);
+    bool keeps_text() const;
 
     std::filesystem::path file_;
     AuthoredSources sources_;

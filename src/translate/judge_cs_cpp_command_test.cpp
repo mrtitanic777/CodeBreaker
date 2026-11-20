@@ -25,7 +25,7 @@ using cb::Json;
 jcc::Environment jcct_environment() { return {cb::config::Config::load(cb::testing::data_path(".."))}; }
 
 stdfs::path jcct_work(const std::string& name) {
-    const stdfs::path p = cb::testing::data_path("../state/work/judge-cs-cpp-tests") / name;
+    const stdfs::path p = cb::testing::data_path("../work/judge-cs-cpp-tests") / name;
     std::error_code ec;
     stdfs::remove_all(p, ec);
     cb::fs::make_dirs(p);

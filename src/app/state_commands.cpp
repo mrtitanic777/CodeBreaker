@@ -133,7 +133,7 @@ std::vector<cli::Command> state_commands(const config::Config& config, const std
     }
 
     // knowledge [platform [kind [key]]]
-    out.push_back(knowledge::show::command(knowledge::environment(config.state())));
+    out.push_back(knowledge::show::command(knowledge::environment(config.state(), knowledge::DataFolders::under(config.checkout_root()))));
 
     // coverage, progress: the ledger over the function store of the state folder
     const auto profiles = ui::mcp::wiring::verifier_profiles(config);
@@ -168,7 +168,8 @@ std::vector<cli::Command> state_commands(const config::Config& config, const std
 
     // driver-services [--generate] [FILE ...]
     {
-        const auto kb = std::make_shared<knowledge::Store>(knowledge::Store::default_path(config.state()), knowledge::DataFolders::from_environment());
+        const knowledge::DataFolders folders = knowledge::DataFolders::under(config.checkout_root());
+        const auto kb = std::make_shared<knowledge::Store>(knowledge::Store::default_path(folders), folders);
         stdfs::path reference;
         try {
             reference = corpus->design_dir() / "reference";

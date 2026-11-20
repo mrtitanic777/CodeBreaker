@@ -72,6 +72,9 @@ public:
     // A JSON document as a Value (the authored data files). Throws ParseError for malformed JSON and
     // FormatError for a number that does not fit (an integer past 64 bits).
     static Value from_json_text(std::string_view text, std::string_view file_name = "<json>");
+    // The value as one line of JSON (maps in their order), which from_json_text reads back as the same value. A double
+    // that is not finite (no JSON form) is written as null.
+    std::string to_json_text() const;
 
 private:
     Kind kind_ = Kind::Null;

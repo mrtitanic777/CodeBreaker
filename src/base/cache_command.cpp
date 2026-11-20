@@ -24,7 +24,7 @@ std::uint64_t cap_bytes(const cb::config::Config& configuration, std::string_vie
 Config settings_of(const cb::config::Config& configuration) {
     Config c;
     c.state_dir = configuration.state() / "cache";
-    c.shared_dir = configuration.path("build_cache").value_or(configuration.main_checkout() / "state" / "build_cache");
+    c.shared_dir = configuration.path("build_cache").value_or(configuration.state() / "build_cache");
     c.max_bytes = cap_bytes(configuration, "cache_max_gb", kDefaultMaxBytes);
     c.shared_max_bytes = cap_bytes(configuration, "build_cache_max_gb", kDefaultSharedMaxBytes);
     c.disabled = Config::disabled_by_environment();

@@ -82,7 +82,7 @@ by code, no `cmd`: go through the interface above, or put the code in a `_win.cp
 2026-11-15, Ubuntu 24.04 (WSL), GCC 13, packages `libssl-dev libcapstone-dev libunicorn-dev` (the last two only as headers' stand-ins:
 see the engine libraries below):
 
-    cmake -S src -B state/work/linux-build -G Ninja && cmake --build state/work/linux-build -j4
+    cmake -S src -B work/linux-build -G Ninja && cmake --build work/linux-build -j4
 
 - **Everything compiles and links**: `codebreaker`, `cb_tests`, the area test programs and the helper programs the tests start
   (`cb_worker_probe.exe` and the like: on Linux they are ELF files that keep the `.exe` name the tests give them). `codebreaker
@@ -97,11 +97,11 @@ see the engine libraries below):
   is only on the Windows source line.
 - **Engine libraries.** The headers in `src/third_party/include` are Capstone **5.0.7** and Unicorn **2.1.4** (the prebuilt DLLs);
   the distribution's `libcapstone4` and `libunicorn2` (2.0.1) lay their records out or behave differently, so `core/capstone_api.cpp`
-  refuses a Capstone of another major version. Build the right ones from source into `state/work/linux-deps/prefix` (CMake picks them up
+  refuses a Capstone of another major version. Build the right ones from source into `work/linux-deps/prefix` (CMake picks them up
   from `CB_LINUX_DEPS` and puts them beside every executable):
 
-      git clone --depth 1 --branch 5.0.7 https://github.com/capstone-engine/capstone.git state/work/linux-deps/src
-      cmake -S state/work/linux-deps/src -B /tmp/cs -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON             -DCAPSTONE_BUILD_TESTS=OFF -DCAPSTONE_BUILD_CSTOOL=OFF -DCMAKE_INSTALL_PREFIX=$PWD/state/work/linux-deps/prefix
+      git clone --depth 1 --branch 5.0.7 https://github.com/capstone-engine/capstone.git work/linux-deps/src
+      cmake -S work/linux-deps/src -B /tmp/cs -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON             -DCAPSTONE_BUILD_TESTS=OFF -DCAPSTONE_BUILD_CSTOOL=OFF -DCMAKE_INSTALL_PREFIX=$PWD/work/linux-deps/prefix
       cmake --build /tmp/cs && cmake --install /tmp/cs
 
   (Unicorn 2.1.4 builds the same way; its configure wants `pkg-config`, for which an `exit 1` stand-in on the PATH will do.) The

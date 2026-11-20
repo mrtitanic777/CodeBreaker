@@ -15,7 +15,7 @@ namespace stdfs = std::filesystem;
 
 struct KnowledgeCommandWorld {
     cb::fs::ScopedTempDir state{"cb-knowledge-command"};
-    cb::fs::ScopedEnv no_override{"CB_KNOWLEDGE_DB", std::nullopt};
+    cb::fs::ScopedEnv own_base{"CB_KNOWLEDGE_DB", cb::fs::to_text(state.path() / "db" / "knowledge.v2.sqlite")};   // (not the checkout's index)
     cb::cli::Cli cli{"codebreaker",
                      {cb::knowledge::show::command(cb::knowledge::environment(
                          state.path(), cb::knowledge::DataFolders::under(stdfs::path(CB_SOURCE_DIR).parent_path())))}};

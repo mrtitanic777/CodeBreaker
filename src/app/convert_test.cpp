@@ -331,7 +331,7 @@ CB_TEST("app.convert.a_32_bit_dll_is_disassembled_and_decompiled", [] {
 
 namespace cap = cb::translate::capability;
 
-// A fixture whose input is a source file of the repository's translator corpus, and whose output folder is under state/work.
+// A fixture whose input is a source file of the repository's translator corpus, and whose output folder is under work.
 struct CvTranslateFixture : CvFixture {
     CvTranslateFixture(const std::string& corpus_file) {
         input = testing::data_path("../tests/translate/corpus/" + corpus_file);

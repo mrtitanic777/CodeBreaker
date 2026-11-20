@@ -3,7 +3,7 @@
 2026-11-15. Every Xbox 360 title in `C:/Nexia360/Games` that `recompile-project` accepted, checked with
 `recompile-project <path> --check 120` (recompile, build, run headless for 120 s). Tetris Splash, BlockWorld and Up
 are left out as asked. "Frames" is what the title presented in 120 s (60 a second when it runs, so 6600 is the
-ceiling of this check). The first stop is the first thing that ended the run. Method: `state/work/recompile-track`
+ceiling of this check). The first stop is the first thing that ended the run. Method: `work/recompile-track`
 (scratch, deleted). Each project was deleted after its check (`build/`, and the whole project afterwards).
 
 ## Results (before the runtime changes of 2026-11-15)
@@ -304,7 +304,7 @@ Left: Happy Wars (rerun), L4D2 (rebuild with the stub fix and run), Forza past c
 
 ## Round 5 (2026-11-15 to 11-18)
 
-All 54 entries measured again with `--check 120` (one project at a time, deleted after; scratch `state/work/x360-r5`), after the changes below.
+All 54 entries measured again with `--check 120` (one project at a time, deleted after; scratch `work/x360-r5`), after the changes below.
 Frames are what the title presented in 120 s (the check's ceiling is about 7200; the log prints every 600). 46 of the 51 recompilable
 titles run the whole check with no stop (round 3: 40); the sweep ran before the Joy Ride Turbo and Game-on-Demand 423607D1 fixes, which
 are re-run by hand (below).

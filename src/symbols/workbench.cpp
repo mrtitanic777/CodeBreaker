@@ -39,7 +39,7 @@ Workbench::~Workbench() = default;
 knowledge::Store& Workbench::store() {
     if (!parts_->store) {
         std::filesystem::path file = environment_.knowledge_file;
-        if (file.empty()) file = knowledge::Store::default_path(environment_.config->state());
+        if (file.empty()) file = knowledge::Store::default_path(knowledge::DataFolders::under(environment_.config->checkout_root()));
         parts_->store = std::make_unique<knowledge::Store>(file, knowledge::DataFolders::under(environment_.config->checkout_root()));
     }
     return *parts_->store;

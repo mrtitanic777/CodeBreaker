@@ -1,5 +1,5 @@
 // app/window_render_win.cpp -- the CodeBreaker window drawn with Direct2D and DirectWrite (see window_render_win.hpp). The look is the approved
-// Windows 11 design (state/work/ui-mockup/win11.html): Segoe UI Variable text, Segoe Fluent Icons glyphs, Fluent card, button, field, progress bar and
+// Windows 11 design (work/ui-mockup/win11.html): Segoe UI Variable text, Segoe Fluent Icons glyphs, Fluent card, button, field, progress bar and
 // InfoBar styling, light and dark.
 #ifdef _WIN32
 #include "app/window_render_win.hpp"

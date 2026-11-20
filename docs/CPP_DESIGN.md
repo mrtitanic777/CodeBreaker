@@ -632,12 +632,12 @@ crossing into old code becomes the matching `py::` exception). Rules:
 
 ### 6.4 The refactor recipe (what each agent does, in order)
 
-For `codebreaker/<area>/<name>` (rules of `state/work/typed-port/BRIEF.md` still apply: edit only your own
+For `codebreaker/<area>/<name>` (rules of `work/typed-port/BRIEF.md` still apply: edit only your own
 worktree, never kill a process you did not start, one build at a time on the shared machine, scratch under
-`state/work/cpp-refactor/<module>/`, never the Temp scratchpad):
+`work/cpp-refactor/<module>/`, never the Temp scratchpad):
 
 1. **Read** the typed port, the original `.py` (for the *intent* and docstrings), the callers (`grep` the include
-   graph), the module's old harness (`state/work/typed-port/<module>/`: `expected.py`, `expected.txt`).
+   graph), the module's old harness (`work/typed-port/<module>/`: `expected.py`, `expected.txt`).
 2. **Decide the API** on a page: the public functions, the records, who owns what, which errors it raises
    (by section 3.6). The header is written first and is the review target; it contains no `py::`.
 3. **Write the new `.hpp/.cpp`** under `src/<area>/`, keeping the algorithm line for line where it is
@@ -717,7 +717,7 @@ suites, sweeps) runs at milestones only (a finished wave), not per module -- the
 
 ### 7.3 What replaces the per-module harnesses
 
-- The `state/work/typed-port/<module>/` harnesses (`expected.py` + `test.cpp` + compile + diff) **stop being
+- The `work/typed-port/<module>/` harnesses (`expected.py` + `test.cpp` + compile + diff) **stop being
   written**. Existing ones are an *input* (their `expected.txt` is harvested once, 7.1), then archived.
 - `tests/*.py` (the Python suites, including `tests/run_all.py`) are ported to C++ by the same fleet in two kinds:
   unit-level asserts join `cb_tests`; command-level ones become `tests/e2e/*.cb-test` (a small file: command

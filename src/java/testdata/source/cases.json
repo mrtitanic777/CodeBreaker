@@ -1,5 +1,5 @@
 {
-  "_comment": "Cases of cb/java/emit/source_test.cpp. Each renders `target` (parsed from <class>.java here) under the resolver described, with the fake back end of the test (see source_test.cpp). The expected <case>.cpp and <case>.events.txt are what the original codebreaker.java.emit.source produced for the same input (state/work/java_w3b8/golden_source.py).",
+  "_comment": "Cases of cb/java/emit/source_test.cpp. Each renders `target` (parsed from <class>.java here) under the resolver described, with the fake back end of the test (see source_test.cpp). The expected <case>.cpp and <case>.events.txt are what the original codebreaker.java.emit.source produced for the same input (work/java_w3b8/golden_source.py).",
   "cases": [
     {"name": "plain", "target": "Plain", "classes": ["Plain"], "year": 0, "platform": "",
      "resolver": {"known": ["Plain", "Base", "Foo", "Gap"], "values": ["Vec3D"], "members": {"Foo": {"fields": {"size": "int"}, "methods": {"make": "Foo"}}}, "method_renames": {"Plain": ["size"]}}},

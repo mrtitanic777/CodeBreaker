@@ -277,7 +277,7 @@ CB_TEST("store.migrate_state.the_knowledge_base_comes_over_without_replacing_wha
     const stdfs::path older_file = state / "db" / "knowledge.sqlite";
     make_older_knowledge(older_file);
     const cb::Bytes before = cb::fs::read_file(older_file);
-    const stdfs::path file = cb::knowledge::Store::default_path(state);
+    const stdfs::path file = cb::knowledge::Store::in_state(state);
     CB_CHECK(file != older_file);
     {
         // this program has indexed modB itself, named a body of its own, and found one export's size
@@ -363,7 +363,7 @@ CB_TEST("store.migrate_state.a_dry_run_makes_no_knowledge_base_and_one_named_for
     CB_CHECK_EQ(dry.knowledge.bodies, 4);
     CB_CHECK_EQ(dry.knowledge.names, 2);
     CB_CHECK_EQ(dry.knowledge.learned, 3);
-    CB_CHECK(!stdfs::exists(cb::knowledge::Store::default_path(state)));
+    CB_CHECK(!stdfs::exists(cb::knowledge::Store::in_state(state)));
     // CB_KNOWLEDGE_DB naming the Python's file: both are one file, nothing to carry
     cb::fs::ScopedEnv same("CB_KNOWLEDGE_DB", cb::fs::to_text(state / "db" / "knowledge.sqlite"));
     const mg::Report one = mg::migrate(mg::Services{.state_dir = state}, {});

@@ -64,7 +64,7 @@ exit /b %RC%
 rem The window (codebreaker.exe app) rendered to a PNG in each state and theme: the file must exist, be a PNG, not be empty, and be the size asked.
 :app
 set APP_RC=0
-set SHOTS=%ROOT%\state\work\gate-shots
+set SHOTS=%ROOT%\work\gate-shots
 if exist "%SHOTS%" rmdir /s /q "%SHOTS%"
 mkdir "%SHOTS%"
 set T0=%TIME%

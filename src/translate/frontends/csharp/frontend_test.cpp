@@ -28,7 +28,7 @@ namespace stdfs = std::filesystem;
 using cb::Json;
 
 stdfs::path csf_state_folder() {
-    const stdfs::path p = cb::testing::data_path("../state/work/csharp-front-tests");
+    const stdfs::path p = cb::testing::data_path("../work/csharp-front-tests");
     cb::fs::make_dirs(p);
     return p;
 }

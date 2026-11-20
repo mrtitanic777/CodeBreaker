@@ -17,12 +17,12 @@
 //   --shared   the old cap of 4 (other sessions are using the machine)
 //   --times    after the run, list the slowest cases, test shards and tests (seconds)
 //   --changed  only what a change can affect since the last passing gate: the cases and unit-test areas that depend on the files that differ from
-//              the record (--record FILE, default <repo>/state/work/gate-last.txt) -- gate_changed.hpp has the rules. Nothing recorded: everything runs.
+//              the record (--record FILE, default <repo>/work/gate-last.txt) -- gate_changed.hpp has the rules. Nothing recorded: everything runs.
 //   --no-record  do not write the record after a passing run (a run on an exe not built from this tree)
 //   A passing whole run (no --filter or --update, with --unit) writes the record: the tree it started on.
 //   --update   record the goldens of the selected cases from the program's current behaviour (review the diff!)
 //   --unit     also run the module tests (cb_tests) as N shards (default 8) in the same pool, so the whole gate is one run
-//   --keep     leave each case's scratch folder (state/work/exe_gate/run-PID) for inspection
+//   --keep     leave each case's scratch folder (work/exe_gate/run-PID) for inspection
 //
 // A case file line is `name: word word "a quoted word" @option ...`. Words may use {repo} (the inputs), {corpus},
 // {work} (the case's own scratch folder; CB_STATE is {work}/state, so no case touches the real state), and {out}
@@ -323,6 +323,8 @@ Outcome run_case(const Env& env, const Vars& vars, const Case& c, const stdfs::p
     }
     spec.cwd = c.cwd_work ? work_abs : env.repo;
     spec.env["CB_STATE"] = work_s + "/state";
+    // the case's own knowledge base too (the checkout's is build/knowledge.v2.sqlite, which a case must neither read nor change)
+    spec.env["CB_KNOWLEDGE_DB"] = work_s + "/state/db/knowledge.v2.sqlite";
     spec.env["CB_JOBS"] = "2";                  // each case is itself parallel inside; the gate holds the total down
     spec.env["PYTHONIOENCODING"] = "utf-8";
     fs::make_dirs(work_abs / "tmp");
@@ -524,7 +526,7 @@ int main(int argc, char** argv) {
         if (!env.repo.has_filename()) env.repo = env.repo.parent_path();
         env.cases = cases ? *cases : env.repo / "tests" / "exe_gate" / "cases.txt";
         env.golden = golden ? *golden : env.repo / "tests" / "exe_gate" / "golden";
-        env.scratch = env.repo / "state" / "work" / "exe_gate" / ("run-" + std::to_string(_getpid()));   // one gate at a time per process
+        env.scratch = env.repo / "work" / "exe_gate" / ("run-" + std::to_string(_getpid()));   // one gate at a time per process
         if (exe) env.exe = *exe;
         else {
             const stdfs::path rel = stdfs::path("build") / "codebreaker.exe";
@@ -560,7 +562,7 @@ int main(int argc, char** argv) {
         // The tree this run starts on, and (--changed) what changed since the last passing gate. A tree edited during the run is recorded as it was at the
         // start, so the edit counts as changed next time. See gate_changed.hpp.
         namespace gc = cb::app::gate_changed;
-        const stdfs::path record_file = record_file_arg ? *record_file_arg : env.repo / "state" / "work" / "gate-last.txt";
+        const stdfs::path record_file = record_file_arg ? *record_file_arg : env.repo / "work" / "gate-last.txt";
         const bool whole_run = !env.update && filter.empty() && !list_only;
         std::optional<gc::Record> tree;
         std::vector<std::string> unit_areas_to_run;   // empty with units_all false: none
@@ -628,8 +630,8 @@ int main(int argc, char** argv) {
         std::size_t nunit = (unit && !update_or_filtered(env, filter) && !units_none) ? static_cast<std::size_t>(unit_shards) : 0;
         if (nunit && !units_all) nunit = std::max<std::size_t>(1, nunit / 2);
         const std::string area_arg = text::join(unit_areas_to_run, ",");
-        const stdfs::path test_times_file = env.repo / "state" / "work" / "gate-test-times.txt";   // seconds per test, last run: "secs<TAB>name"
-        const stdfs::path case_times_file = env.repo / "state" / "work" / "gate-case-times.txt";   // seconds per case, last run: "secs<TAB>name"
+        const stdfs::path test_times_file = env.repo / "work" / "gate-test-times.txt";   // seconds per test, last run: "secs<TAB>name"
+        const stdfs::path case_times_file = env.repo / "work" / "gate-case-times.txt";   // seconds per case, last run: "secs<TAB>name"
         {   // the longest cases first (the pool takes them in order), so the last one started is a short one
             std::map<std::string, double> last;
             if (stdfs::exists(case_times_file))

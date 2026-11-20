@@ -241,14 +241,53 @@ CB_TEST("knowledge.store.a_reopened_file_has_what_was_written", [] {
     CB_CHECK_EQ(fs::to_text(s.file()), fs::to_text(file));
 });
 
+CB_TEST("knowledge.store.given_knowledge_is_kept_as_text_and_the_base_made_again_from_it", [] {
+    fs::ScopedTempDir dir("cb-knowledge-kept");
+    DataFolders folders = DataFolders::under(checkout());
+    folders.kept = dir.path() / "config" / "knowledge" / "kept";
+    folders.index = dir.path() / "build" / "knowledge.v2.sqlite";
+    fs::make_dirs(folders.index.parent_path());
+    {
+        Store s(folders.index, folders);
+        s.put("win32", "argument_bytes.code", "USER32.FindWindowA", 8, "user32.dll's code", Origin::Learned);
+        s.put("win32", "prototype", "MyOldProc", Value("void"), "a person", Origin::Given);
+        s.put("win16", "prototype", "MyProc", Value(Value::Map{{"returns", Value("int")}, {"args", Value(Value::List{Value("HWND")})}}),
+              "a person", Origin::Given);
+        s.forget("win32", "prototype", "MyOldProc");
+        s.name_body("abc123", "ParseHeader", "a person");
+    }
+    CB_CHECK(!std::filesystem::exists(folders.kept / "learned.jsonl"));   // learned rows are not kept: they are found again
+    CB_CHECK(std::filesystem::is_regular_file(folders.kept / "given.jsonl"));
+    CB_CHECK(fs::read_text(folders.kept / "names.jsonl").find("\"ParseHeader\"") != std::string::npos);
+    // the base is only an index: made again from the text, it holds the same knowledge
+    std::error_code ec;
+    for (const char* f : {"knowledge.v2.sqlite", "knowledge.v2.sqlite-wal", "knowledge.v2.sqlite-shm"}) std::filesystem::remove(folders.index.parent_path() / f, ec);
+    Store again(folders.index, folders);
+    CB_CHECK(!again.has("win32", "argument_bytes.code", "USER32.FindWindowA"));
+    CB_CHECK(!again.has("win32", "prototype", "MyOldProc"));   // forgotten stays forgotten
+    const auto proto = again.get("win16", "prototype", "MyProc");
+    CB_CHECK(proto.has_value() && proto->get("returns") != nullptr && *proto->get("returns") == Value("int"));
+    CB_CHECK(again.name("abc123").has_value() && again.name("abc123")->name == "ParseHeader");
+    // a store of its own (not the checkout's index) keeps nothing in config/
+    const std::string before = fs::read_text(folders.kept / "given.jsonl");
+    {
+        Store own(dir.path() / "own.sqlite", folders);
+        own.put("win32", "prototype", "Other", Value("int"), "test", Origin::Given);
+    }
+    CB_CHECK_EQ(fs::read_text(folders.kept / "given.jsonl"), before);
+});
+
 CB_TEST("knowledge.store.default_path_and_beside", [] {
+    const DataFolders folders = DataFolders::under(testing::rooted("repo"));
     {
         fs::ScopedEnv env("CB_KNOWLEDGE_DB", std::nullopt);
-        CB_CHECK_EQ(fs::to_text(Store::default_path(testing::rooted("state"))), testing::rooted("state/db/knowledge.v2.sqlite"));
+        CB_CHECK_EQ(fs::to_text(Store::default_path(folders)), testing::rooted("repo/build/knowledge.v2.sqlite"));
+        CB_CHECK_EQ(fs::to_text(folders.kept), testing::rooted("repo/config/knowledge/kept"));
+        CB_CHECK_EQ(fs::to_text(Store::in_state(testing::rooted("state"))), testing::rooted("state/db/knowledge.v2.sqlite"));
     }
     {
         fs::ScopedEnv env("CB_KNOWLEDGE_DB", testing::rooted("elsewhere/k.sqlite"));
-        CB_CHECK_EQ(fs::to_text(Store::default_path(testing::rooted("state"))), testing::rooted("elsewhere/k.sqlite"));
+        CB_CHECK_EQ(fs::to_text(Store::default_path(folders)), testing::rooted("elsewhere/k.sqlite"));
     }
     const auto beside = Store::beside(std::filesystem::path(testing::rooted("work/state/functions.sqlite")));
     CB_CHECK_EQ(fs::to_text(beside.lexically_normal().generic_string()), testing::rooted("work/state/db/knowledge.v2.sqlite"));

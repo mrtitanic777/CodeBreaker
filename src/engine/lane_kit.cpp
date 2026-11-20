@@ -79,7 +79,8 @@ base::cache::Cache& LaneKit::Impl::cache() {
 knowledge::Knowledge& LaneKit::Impl::knowledge() {
     std::lock_guard hold(lock);
     if (!knowledge_) {
-        store_ = std::make_unique<knowledge::Store>(knowledge::Store::default_path(config.state()), knowledge::DataFolders::under(config.checkout_root()));
+        store_ = std::make_unique<knowledge::Store>(knowledge::Store::default_path(knowledge::DataFolders::under(config.checkout_root())),
+                                                    knowledge::DataFolders::under(config.checkout_root()));
         const build::watcom::OpenWatcom ow = openwatcom();
         symbols::prototypes::HeaderFolders folders = symbols::prototypes::HeaderFolders::standard(ow.root(), corpus->reference());
         knowledge_ = std::make_unique<knowledge::Knowledge>(*store_, std::move(folders));

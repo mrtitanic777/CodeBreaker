@@ -22,7 +22,7 @@ const cap::Target* capt_find(const std::vector<cap::Target>& list, const std::st
 }
 
 stdfs::path capt_work(const std::string& name) {
-    const stdfs::path p = cb::testing::data_path("../state/work/translate-file-tests") / name;
+    const stdfs::path p = cb::testing::data_path("../work/translate-file-tests") / name;
     std::error_code ec;
     stdfs::remove_all(p, ec);
     cb::fs::make_dirs(p);

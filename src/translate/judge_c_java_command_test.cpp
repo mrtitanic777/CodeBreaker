@@ -39,7 +39,7 @@ CB_TEST("translate.judge_c_java.the_command_has_a_roundtrip_subcommand", [] {
 
 CB_TEST("translate.judge_c_java.default_inputs_are_the_fixture_classes", [] {
     const jc::Environment e = jct_environment();
-    cb::fs::ScopedTempDir staging{"jcj", cb::testing::data_path("../state/work/judge-c-java-tests")};
+    cb::fs::ScopedTempDir staging{"jcj", cb::testing::data_path("../work/judge-c-java-tests")};
     cb::fs::make_dirs(staging.path());
     const jc::RoundTripInputs inputs = jc::default_inputs(e, staging.path());
     CB_CHECK_EQ(inputs.main_class, std::string("sample.RoundTrip"));
@@ -53,10 +53,10 @@ CB_TEST("translate.judge_c_java.default_inputs_are_the_fixture_classes", [] {
 CB_TEST("translate.judge_c_java.the_roundtrip_command_gives_the_expected_verdict", [] {
     const jc::Environment e = jct_environment();
     if (!jct_machine_has_the_tools(e)) return;
-    cb::fs::make_dirs(cb::testing::data_path("../state/work/judge-c-java-tests"));
-    const stdfs::path work = cb::testing::data_path("../state/work/judge-c-java-tests/rt");
+    cb::fs::make_dirs(cb::testing::data_path("../work/judge-c-java-tests"));
+    const stdfs::path work = cb::testing::data_path("../work/judge-c-java-tests/rt");
     // the verdict and the Java it wrote
-    cb::fs::ScopedTempDir staging{"jcj", cb::testing::data_path("../state/work/judge-c-java-tests")};
+    cb::fs::ScopedTempDir staging{"jcj", cb::testing::data_path("../work/judge-c-java-tests")};
     const jc::RoundTripInputs inputs = jc::default_inputs(e, staging.path());
     const jc::ProductionHost made = jc::make_host(e);
     const auto v = cb::translate::judge_native_jvm::roundtrip(made.host, inputs.files, inputs.main_class, work);

@@ -233,4 +233,34 @@ Value Value::from_json_text(std::string_view text, std::string_view file_name) {
     return builder.take();
 }
 
+namespace {
+
+nlohmann::ordered_json json_of(const Value& v) {
+    switch (v.kind()) {
+        case Value::Kind::Null: return nullptr;
+        case Value::Kind::Bool: return *v.boolean();
+        case Value::Kind::Int: return *v.integer();
+        case Value::Kind::Double: {
+            const double d = *v.number();
+            return std::isfinite(d) ? nlohmann::ordered_json(d) : nlohmann::ordered_json(nullptr);
+        }
+        case Value::Kind::Text: return *v.text();
+        case Value::Kind::List: {
+            nlohmann::ordered_json out = nlohmann::ordered_json::array();
+            for (const Value& item : *v.list()) out.push_back(json_of(item));
+            return out;
+        }
+        case Value::Kind::Map: {
+            nlohmann::ordered_json out = nlohmann::ordered_json::object();
+            for (const auto& [key, item] : *v.map()) out[key] = json_of(item);
+            return out;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+std::string Value::to_json_text() const { return json_of(*this).dump(); }
+
 }  // namespace cb::knowledge

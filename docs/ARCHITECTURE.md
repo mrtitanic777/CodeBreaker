@@ -207,7 +207,7 @@ on the text, the back end can declare a local otherwise, rewrite the locals' dec
 text, rename a local's uses, put a statement before or after another, and ask what the text shows
 as it is written now (`_seen`: one layout on one line, where each name is written and what is
 before it). Gate: references recorded again from master 2d2a195fc (a copy in
-state/work/item3c/refs/); after each pass every function, header and table of LZEXPAND, KEYBOARD,
+work/item3c/refs/); after each pass every function, header and table of LZEXPAND, KEYBOARD,
 COMM, LZ32, KRNL386, GDI and USER the same, character for character. c_text.py is 2,178 lines.
 What is left in c_text: the module-wide assembly of the 16-bit module (`_caller_frame_slots`
 first -- the per-function passes now run before it, where c_text ran them after; no gated module
@@ -229,7 +229,7 @@ tree (`void` -> `int`, `__thiscall` / `__fastcall`, the structure gaps, the code
 comparisons as numbers). Gate: every function, header and table of the seven `l2c --made` modules
 the same after each pass; the 32-bit (six modules, five more with structures recovered) and
 PowerPC (the Xbox 360 HUD module) paths held to references recorded from master first
-(state/work/item3d/), all the same. c_text.py is 1,860 lines. Left: the 32-bit path's `_keep_frame`,
+(work/item3d/), all the same. c_text.py is 1,860 lines. Left: the 32-bit path's `_keep_frame`,
 global rules, `_fit_calls`, odd types and struct_text; the PowerPC path, which decompiles without
 L2 and is still text throughout; the module assembly itself (orchestration and the facts read from
 the bytes), which is no text pass but still lives in c_text.
@@ -936,7 +936,7 @@ readable.Readable), then the module as written (MethodDecl: C + status line; Com
 with none) and hands both back ends the facts. Hand-written asm stays asm: the trees hold the
 writers' own text.
 
-Gate (state/work/items610/gate.py, each case a process of its own, before = e93d9f5d7): every file
+Gate (work/items610/gate.py, each case a process of its own, before = e93d9f5d7): every file
 each writer wrote, its result, and the built image, compared byte for byte (the case's folder and
 the day of a status line normalised; two runs before the change agree with each other the same way):
 

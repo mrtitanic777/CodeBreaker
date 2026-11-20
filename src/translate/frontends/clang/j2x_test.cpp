@@ -253,7 +253,7 @@ CB_TEST("translate.j2x.the_native_round_trip_judge_gives_the_expected_verdict", 
     jj::Host host;
     host.jdk = {javac_text, java_text};
     host.runtime_sources = cb::testing::data_path("../config/translate/backends/java_runtime");
-    const stdfs::path state = cb::testing::data_path("../state/work/j2x-tests");
+    const stdfs::path state = cb::testing::data_path("../work/j2x-tests");
     cb::fs::make_dirs(state);
     host.state_folder = state / "state";
     host.java_options.library = &libc;

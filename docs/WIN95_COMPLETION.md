@@ -371,7 +371,7 @@ does not see; not found). They are listed in config/build/kept_as_asm.txt (the w
 (`CB_NO_DS_OWN=1` turns it off). `regress all15 --runs 2` with the switch on for all 13 callers and the two kept: PASS, PASS, USER C 574 / gated 40;
 default (no switch), rebuilt exe: PASS, PASS (5m23s), USER C 574 / gated 40 (+5 over 569), GDI unchanged. `regress install --runs 1` of this exe (`win95track-install-ds`): **PASS**, 1h27m, Setup to the desktop on all 22 modules; screen state/phase3/shots/win95track-install-ds-install-1.png.
 
-Also noted: regress has no option for a private state folder (its builds go to state/build/<module> and state/work/regress), so concurrent runs
+Also noted: regress has no option for a private state folder (its builds go to state/build/<module> and work/regress), so concurrent runs
 by two sessions can collide; run them one at a time.
 
 ### 16. The GDI shared-body `in_DX` entries (1:1260 / 1:1268): read by hand, still refused, switch left default off
@@ -559,7 +559,7 @@ it first does not move existing verdicts (as item 19 did: compare the gated name
 changes for a third function goes back to assembly. Alternatives if that finds nothing: trace the all-15 boot with the function as C and as assembly (QEMU or the
 isolated16 recorder) and compare the calls it makes from its first divergence; or bisect inside the function by keeping one `case` of its switch as instructions.
 
-Tools and habits learned this run (for the next agent): `bash state/work/locked.sh` for shared builds; `state/work/build_tests.cmd` (cb_tests) and
+Tools and habits learned this run (for the next agent): `bash work/locked.sh` for shared builds; `work/build_tests.cmd` (cb_tests) and
 `cmake --build build --target codebreaker` (the exe); run regress on a private copy of the exe (`cp build/codebreaker.exe *.dll` into your
 scratch folder) so another session's build cannot replace it; never run two series scripts at once (a stopped task leaves its child running); wait for a free
 decompile slot (state/slots, four for the whole machine: a regress install may queue behind other sessions' decompiles); a regress run prints each module's

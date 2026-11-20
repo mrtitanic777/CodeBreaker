@@ -83,7 +83,7 @@ Python hooks run (native_trace.why_not() says why). Build:
 
     tools\build_cb.cmd            (cbtrace.dll in build; was: cmake -S src/tracer ...)
 
-**The gate** (harness kept outside the repo, in state/work/native-trace2). Every function's (verdict,
+**The gate** (harness kept outside the repo, in work/native-trace2). Every function's (verdict,
 reason, limits, detail) with the switch off and on, fresh CB_STATE, CB_NO_FP_CACHE=1, the same
 decompiler binary, with two workers and again with one:
 
@@ -217,7 +217,7 @@ again, the other counters carry on as trace_function16's did) now run on the C++
 gone, as are `CB_NATIVE_TRACE`, `CB_NATIVE_TRACE16` and `CB_NATIVE_TRACE_DRV`: without cbtrace.dll a
 run raises (native_trace / native_win16 / native_driver / native_shadow `require()`, saying why).
 
-**The gate** (state/work/shadow-native: gate.py, runall.py; a fresh CB_STATE each, CB_NO_FP_CACHE=1,
+**The gate** (work/shadow-native: gate.py, runall.py; a fresh CB_STATE each, CB_NO_FP_CACHE=1,
 one worker in-process, the switch off vs on): every verdict row (verdict, reason, limits, detail),
 every exploration's kept inputs and summary, and every shadowed run's (trail, path, vars, lost, cut)
 through measure's own reconstruct.run:
@@ -338,7 +338,7 @@ DLL opening one now raises (native_engine.why_not() says why). Build:
 
     (then, before 2026-11-19: cmake -S src/engine -B native/engine/build -G Ninja; now the one build builds it)
 
-**The gate** (harness outside the repository, state/work/native-engine: gate.py, drive.py). `measure`
+**The gate** (harness outside the repository, work/native-engine: gate.py, drive.py). `measure`
 of eight modules from an empty state folder (the same folder path both times, so a path a fact
 keeps is the same), the switch off and then on, CB_NO_FP_CACHE=1, CB_LOW_LOAD=2, the same
 decompiler binary; then the warm re-run of every module; then one knowledge piece changed by hand
@@ -535,7 +535,7 @@ file of CPython's Lib that differs uses characters new in Unicode 16 that Window
 not know yet. Syntax errors are refused with CPython's line and offset: the 33 error cases
 in the tests all match, as do Lib/test's `badsyntax_*` files, message text included. CTest
 `pyfront_grammar` runs 301 grammar cases against dumps CPython made once. The gate script is
-`state/work/pyfront/gate.py`, and Python is used only as its oracle.
+`work/pyfront/gate.py`, and Python is used only as its oracle.
 
 **The API the next pieces consume** (src/translate/frontends/python/pyfront/README.md has the full version):
 
@@ -606,7 +606,7 @@ closures, variants beyond scalars.
 **Translated => compiles => agrees (2026-11-04).** The numbers above counted functions nothing had
 compiled. Now `l2cpp17` is linked into the engine: a function counts as translated only when the
 back end writes it (declines refuse that one function and its callers), `--cpp DIR` writes every
-module, and the judge (state/work/pyengine2/judge.py, oracle side) compiles all of it with MSVC,
+module, and the judge (work/pyengine2/judge.py, oracle side) compiles all of it with MSVC,
 links one driver and runs every module-level function on generated inputs beside the Python,
 comparing results and exception names; what does not compile or agree is refused through
 `native/pyengine/hints/refuse.json` with the judge's reason. Getting there was mostly back-end and
@@ -675,7 +675,7 @@ binary-facing ones of L2_BINARY_TYPES.md), `l2::Sym` a symbol's (kind, name, own
 ret, varargs, refs, flags). From Python: `native_l2.roundtrip_text(doc)` (= json.dumps(l2.to_json(
 l2.from_json(doc)))) and `native_l2.validate(doc)` -> (valid, why).
 
-**The core's gate** (state/work/native-l2/l2gate.py): every L2 document recorded from the decompiler on
+**The core's gate** (work/native-l2/l2gate.py): every L2 document recorded from the decompiler on
 the gate modules (the 16-bit set, the 32-bit set, the PowerPC module) and every one the translator kits'
 tests made or read (`pytest tests/translate`, recorded at l2.from_json / to_json / validate):
 
@@ -715,7 +715,7 @@ below). backends/c.py's entry points are native_l2's; without cbl2.dll a call ra
 answers in one call (`describe`), a module's large flat sets once and then by number; the deep entries
 run on a fiber with a 512 MB stack on the caller's own thread.
 
-**The gate** (state/work/native-l2/gate.py): each module made compilable twice, `CB_NATIVE_L2=0` and
+**The gate** (work/native-l2/gate.py): each module made compilable twice, `CB_NATIVE_L2=0` and
 `=1`, each in a fresh process (compilable16's cache bypassed), one worker; every function's C, the
 header and the module's tables (near, wide, novalue, exported prologue, interrupts, prototyped,
 selector imports, failed, code data and reads, declarations, imports, order; 32-bit: imports, in_ecx,
@@ -908,8 +908,8 @@ way reads back to the same files, that each side decodes the other's, and that a
 (`compress="none"`) cabinet is byte-identical (file dates masked). A block's short/stored choice
 follows the compressed size, so it can fall differently on data that barely compresses.
 
-**The gate** (state/work/formats-native2/gate2.py: the Python modules as they were, kept in
-state/work/formats-native2/orig/, against the shims; every answer compared with its type, or the
+**The gate** (work/formats-native2/gate2.py: the Python modules as they were, kept in
+work/formats-native2/orig/, against the shims; every answer compared with its type, or the
 exception's name; fallbacks counted and failing):
 
 | module | inputs | files | identical | fallbacks | Python s | C++ s |
@@ -925,7 +925,7 @@ Also with the shims: test_media 12/12 (put() into FAT16 partitions and FAT32), t
 test_xbox_formats 18/18 (4 skipped), test_plumbing 17/17, test_xna 9/9 (6 skipped), test_drivers
 16/16, test_frozen 22/22, test_native_formats 14/14, test_dos 20/20, check_imports 555/555, tidy
 clean; run_all --quick all but test_native_trace's test_same_record_lz32, which fails the same
-with group 2's Python put back (state/work/formats-native2/with_orig.py): not this change.
+with group 2's Python put back (work/formats-native2/with_orig.py): not this change.
 Outside callers checked: Windows95/tools/place_map.py (detect.format_of); Dashboard, Win95VM and
 XboxMCP use none of the five.
 
@@ -958,8 +958,8 @@ Differences, by design: `PeCarve(path, progress_cb)` and `disasm_whole32(..., pr
 from the module (nothing used it; `strings` does it in C++, ASCII-exact -- every string it is
 given is ASCII).
 
-**The gate** (state/work/formats-native3/gate3*.py: the Python modules as they were, kept in
-state/work/formats-native3/orig/, against the shims; every answer compared with its type and its
+**The gate** (work/formats-native3/gate3*.py: the Python modules as they were, kept in
+work/formats-native3/orig/, against the shims; every answer compared with its type and its
 order; fallbacks counted and failing):
 
 | module | inputs | files | identical | fallbacks | Python s | C++ s |
@@ -1018,14 +1018,14 @@ function names the symbols between two calls (`omf.symbol_names`, `omf.rename_sy
 | omf.patched / rename_symbols (1,200 objects and library members of the OMF corpora and Microsoft-Assemblers-Compilers, damaged copies, 5 renamers, 4 patches each) | 33,203 | 33,203 | 125 s | 28 s |
 | formats.xex (is_xex, ids, optional_headers, header) over the library: Library, Games, content, TUs, 17559Dash, the Dashboard's .xex | 400 | 400 | 27.6 s (xex.exe's listing) | 3.1 s |
 
-0 fallbacks.  The gates are state/work/formats-native4/gate4a.py .. gate4d.py over harvest.py's list of every Xbox file
+0 fallbacks.  The gates are work/formats-native4/gate4a.py .. gate4d.py over harvest.py's list of every Xbox file
 under the repo's neighbours (the Nexia360 library, the Dashboard, the SDK ...).  Where the C++ is slower (xdbf, xzp
 reading, gdf.read of a huge file) the file bytes cross the pickle: one copy per side more than Python's one read.  An
 error's message is the Python's (xnb.convert records it in its JSON).
 
 **HANDOFF: what is left of group 4, and group 5.**  (Logan, 2026-11-05: the rest is not to be hand-ported; CodeBreaker's port is
 moving to the automatic engine, a dynamic mode in native/pyengine.  Nothing below is started; it is the list for that engine, and
-the gates, harvest.py and orig copies in state/work/formats-native4/ are its check.)
+the gates, harvest.py and orig copies in work/formats-native4/ are its check.)
 
 - Group 4 left: **effect.py** (the D3DX effect reader: a Parameter / State / Pass / Technique object model over
   `_typedef` / `_value` / `_state`; src/formats/xbox would return a nested dict and the classes would be built from it,
@@ -1081,8 +1081,8 @@ pass, Python, shared with c_java and cpp03). Inside the Java transpiler (`conver
 the bodies are the C++03 back end's writer with the C++17 forms, now `cpp03.Bodies17` (the transpiler's
 declarations are C++03's; those bodies move to C++ with cpp03).
 
-**The gate -- identical generated text** (state/work/native-cpp17/gate.py against the capture of both
-Python back ends, state/work/cpp-port-gate/translator-before, 3,566 files; inputs as captured: the
+**The gate -- identical generated text** (work/native-cpp17/gate.py against the capture of both
+Python back ends, work/cpp-port-gate/translator-before, 3,566 files; inputs as captured: the
 Python front end over codebreaker/ at 514599a20):
 
 | group | what | files | identical | changed, judged equal | regressed |
@@ -1123,7 +1123,7 @@ file objects; what a program writes is on the disk at once, so an EXEC child see
 wrote (under Python a parent's last unflushed bytes were invisible to it).  No gated run differs.
 
 The switch is **`CB_NATIVE_DOSEXEC`** (default 1; 0 = the Python executive, as also without the
-DLL).  The gate (state/work/dos-native/gate*.py, Python vs C++, each in a fresh process, every
+DLL).  The gate (work/dos-native/gate*.py, Python vs C++, each in a fresh process, every
 output kept and compared whole):
 
 | set | entries | identical | Python | C++ |
@@ -1201,7 +1201,7 @@ exactly). The shim is codebreaker/symbols/native.py (`native.ask`); the folder i
     (then: cmake -S src/symbols -B native/symbols/build -G Ninja; now part of the one build)
 
 Each module was gated before its Python went, so there is no fallback and no switch: without the
-DLL the questions raise (native.why_not() says why). Gate harnesses: state/work/analyze-native/.
+DLL the questions raise (native.why_not() says why). Gate harnesses: work/analyze-native/.
 
 | module | what moved | gate | Python lines removed |
 |---|---|---|---|
@@ -1259,7 +1259,7 @@ which iterates in the very order Python's does for the same adds.
 | analyze/image | _convert, function decoding, _jump_table, discover, _held_code_addresses, _looks_like_code: image.cc. Kept: the loaders, Ins/Function/Image (made from the answer), definition, arguments, destination; new: Image.linear (n instructions straight on, which ui/mcp_server read through the removed `_md`/`_convert`) | every pe/ne/le file of the 5 corpora in settings.json, deduplicated by hash (3,680): the reference image.py (from git) and the DLL, whole images as JSON (names in order, functions, limits, discovered, every instruction, tables): 3,680 identical, 0 different; plus comctl32, shell32, user.exe, vmm32.vxd by hand | 256 (46 added: the shim's side, `linear` for ui/mcp_server's straight-on reads) |
 | analyze/call_graph | _build (calls, callers, users, refs, taken, Tarjan order and cycles, reach), _references, _relocated, _strongly_connected: call_graph.cc. Kept: Graph, READS/PURE_WRITES, analyse (the report) | the same 3,680 files: the reference module and the new one on the same image, the Graph whole and analyse() as JSON: 3,680 identical, 0 different; tests/test_analysis.py, test_mcp.py | 152 |
 | analyze/conventions | _functions and every helper it used (_frame, _argument_slots, _register_inputs, _returns, _result_use, _cleanup, _loaded_before, _pushed_inputs, _entry16, _callback): conventions.cc. Kept: stack_delta (structures uses it), duplicates, thunk_layer, analyse | the same 3,680 files: the reference module and the new one on the same image, the Graph whole and analyse() as JSON: 3,680 identical, 0 different; tests/test_analysis.py, test_mcp.py | 413 |
-| analyze/strings | _table (the referenced set unioned with the held pointers' targets, in CPython's set_merge order: PySet::merge), _uses, stack_strings with _assemble, _formats with _formatter, and image.definition/arguments for them: strings.cc. Kept: at (classes, module_writer), literal (dispatch), conversions, analyse | 368 files (every 10th of the 3,680: state/work/analyze-native3/sample.txt), on the commit's final code: the reference module and the new one on the same image: table (dict order) and uses, the table after uses (16-bit uses mark strings referenced), stack_strings, formats, analyse, and formats first on a fresh memo: 368 identical; tests/test_analysis.py, test_mcp.py | 156 (20 added) |
+| analyze/strings | _table (the referenced set unioned with the held pointers' targets, in CPython's set_merge order: PySet::merge), _uses, stack_strings with _assemble, _formats with _formatter, and image.definition/arguments for them: strings.cc. Kept: at (classes, module_writer), literal (dispatch), conversions, analyse | 368 files (every 10th of the 3,680: work/analyze-native3/sample.txt), on the commit's final code: the reference module and the new one on the same image: table (dict order) and uses, the table after uses (16-bit uses mark strings referenced), stack_strings, formats, analyse, and formats first on a fresh memo: 368 identical; tests/test_analysis.py, test_mcp.py | 156 (20 added) |
 | analyze/globals | _variables, _type, _operand, _dereferenced, _pointer_tables, _slot_kind: globals.cc (over strings.cc's table, kept per image in the DLL). Kept: variables (sets rebuilt from the answer's lists), pointer_tables, analyse | the same 368 files, the same way: variables (in order), pointer_tables, analyse: 368 identical; the same tests | 194 (15 added) |
 | analyze/resources | _uses (the loader and control calls, their identifiers among the pushes), _stem, _identifier: resources.cc. Kept: carried (the format readers), whether each load is present, uses, analyse | the same 368 files, on the commit's final code, strings, globals and resources together: analyse whole: 368 identical; the same tests | 68 (20 added) |
 
@@ -1307,7 +1307,7 @@ What was learned, for whoever (or whatever) ports the rest:
   (`h.names(img)`): passes read `va in img.names` and labels, which can change after discover.
 - strings.cc exports what later passes need: ensure_table/in_table, fam, Arg, definition and
   arguments (image.definition/arguments; dispatch and structures use them too).
-- The gates: state/work/analyze-native3/ (gate_pass.py: a pass's reference module, copied before
+- The gates: work/analyze-native3/ (gate_pass.py: a pass's reference module, copied before
   the edit, against the new one on the same image, with per-pass dumps for strings and globals;
   run_gate.py PASSES LIST TAG runs two workers and prints the counts; sample.txt is every 10th of
   files.txt; callers.py REGEX greps the other repositories and this tree). The sample takes about
@@ -1332,7 +1332,7 @@ instructions.  The one place the Python's answer hung on a set's order (ipdom's 
 only ambiguous for blocks that never reach an exit, whose candidate sets are dense small ints)
 is CPython's order there: ascending.
 
-The gate (state/work/invert-native/gate_flow16.py, both in one process, the switch toggled per
+The gate (work/invert-native/gate_flow16.py, both in one process, the switch toggled per
 call): every `push bp; mov bp,sp` chunk (to the next, at most 4 KB) of every NE code segment, DOS
 MZ load image and .COM file under the two corpora, decoded by Capstone, through build_cfg and
 structure with CMPSWITCH off and on, and with no SWITCH hook and with one reading a word table out
@@ -1368,7 +1368,7 @@ The Python modules are shims keeping their API and their self-tests (the compile
 msc6_idioms.py (compiles snippets, nothing else) and grammars.py (text enumeration, no decoder)
 stay Python.  Python 1,948 -> 282 lines over the seven modules (1,666 removed; the shim +66).
 
-The gate (state/work/invert-native2/gate_msc6.py and gate_small.py, both in one process, 2
+The gate (work/invert-native2/gate_msc6.py and gate_small.py, both in one process, 2
 workers): every CODE segment of the 388 NE modules of Windows95/design/corpus/files through
 infer_segment_sigs, and every chunk from a prologue (far loadds in both encodings, near loadds) to
 the next or 4 KB through segment_thunk verify and parse (+ emit_asm), whole_function.candidates,
@@ -1400,7 +1400,7 @@ only when none matched (a KeyError out of interp's `env["eax"]` reaches invert's
 The self-tests (battery, the frame battery, the oracle round trips) stay Python.  Python 2,021 ->
 325 lines over the three modules (1,696 removed; the shim +61).
 
-The gate (state/work/invert-native3/gate_msvc2.py, both sides in one process, 2 workers): every
+The gate (work/invert-native3/gate_msvc2.py, both sides in one process, 2 workers): every
 executable section of the 635 PE modules of Windows95/design/corpus/files; every chunk from
 `push ebp; mov ebp,esp` to the next or 1 KB, that chunk cut after its first ret, and every frameless
 chunk (after a ret and its padding, to the next ret); 204,359 distinct chunks (2,137 recovered).
@@ -1454,7 +1454,7 @@ local_decls, detect_copies, _fold_ladders, _MD, framemodel).  early_c_frame.py s
 frame-layout model and its self-test, used by early_c_check, early_c_round_trip and the tests with
 names of any type); to_c's copy of emit_local_decls is in C++.  Python 3,129 -> 89 lines.
 
-The gate (state/work/invert-native4/gate_early_c.py, both sides in one process, 2 workers): chunks
+The gate (work/invert-native4/gate_early_c.py, both sides in one process, 2 workers): chunks
 from every `push bp; mov bp,sp` / `push bp; sub sp,N` (to the next or 2 KB; at most 12 per code
 image, spread over it) of every NE CODE segment, MZ load image and .COM file; per chunk
 exact/draft.model_texts on each side (the model's real path: recover, recover_cfg with compare
@@ -1536,7 +1536,7 @@ Done (worktree branch, commits 8967cf243, 2231b87a2 and the one with this note):
   decoder's own mode in asm16's memo, the omf reader.
 - functions.omf_here: a kept OpenWatcom object rewritten as the tool writes it in this folder
   (THEADR and dependency paths, dates in UTC, checksums) -- identical to a fresh wcc/wasm run
-  (state/work/build-speed/here_test.py).
+  (work/build-speed/here_test.py).
 - The engine's function.object / function.never_set compile through the shared cache.
 - module.build_many: modules side by side, each in its own Python with its share of `workers`,
   largest first; `build A B C` uses it.

@@ -87,7 +87,7 @@ CB_TEST("store.migrate_state_proof.a_copy_of_the_real_state", [] {
     cb::base::Corpus corpus(cb::base::Products{});
     const auto read_all = [&](const char* when) {
         auto store = cb::store::functions::open(state, std::nullopt, true);
-        cb::knowledge::Store kb(cb::knowledge::Store::default_path(state), cb::knowledge::DataFolders::from_environment());
+        cb::knowledge::Store kb(cb::knowledge::Store::in_state(state), cb::knowledge::DataFolders::from_environment());
         cb::store::KnowledgeBodies bodies(kb);
         cb::store::VersionsLedger ledger({.corpus = corpus, .store = *store, .bodies = &bodies});
         std::cout << "\n== " << when << "\n";

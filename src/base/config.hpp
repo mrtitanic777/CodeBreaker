@@ -59,7 +59,8 @@ public:
     // The work folder's codebreaker.json (whether or not it is there); nullopt without a work folder.
     std::optional<std::filesystem::path> work_file() const;
 
-    // The state folder (setting "state"), and a path inside it whose folder is created.
+    // The state folder: setting "state", else <work folder>/codebreaker, else <checkout>/work/state; and a path inside it
+    // whose folder is created.
     std::filesystem::path state() const;
     std::filesystem::path state(const std::filesystem::path& inside) const;
 

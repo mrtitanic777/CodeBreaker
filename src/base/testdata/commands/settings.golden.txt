@@ -23,7 +23,7 @@ settings: <ROOT>/settings.json
   !! ppc_binutils     <ROOT>/toolchains/powerpc-binutils
   !! retromcp         <ROOT>/src/java/retromcp/build/libs/retromcp.jar
      service_idle_minutes 5
-  ok state            <ROOT>/state
+  -- state            (not set)
      struct_recovery  all
      target           win98
      threads          4

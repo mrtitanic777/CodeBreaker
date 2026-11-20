@@ -311,7 +311,7 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    written -- no gated module shows a difference, and moving `_caller_frame_slots` onto the
    tree next removes the question.
    Gate: the references were recorded again from master 2d2a195fc (the old ones were lost with
-   their worktree; a copy in state/work/item3c/refs/), and after every pass `l2c --made` gives
+   their worktree; a copy in work/item3c/refs/), and after every pass `l2c --made` gives
    LZEXPAND 55, KEYBOARD 79, COMM 50, LZ32 39, KRNL386 1,175, GDI 1,666 and USER 2,326 entries
    (functions, the header and the tables) the same as the reference character for character --
    none different, none in line breaks only. c_text.py is 2,178 lines (2,863 before).
@@ -355,9 +355,9 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    Gate: after every pass `l2c --made` gives LZEXPAND 55, KEYBOARD 79, COMM 50, LZ32 39, KRNL386
    1,175, GDI 1,666 and USER 2,326 entries the same as the references (master 2d2a195fc),
    character for character, and the 16-bit modules' code data, code reads, imports and segments
-   carried the same as master's; the 32-bit and PowerPC passes are held by state/work/item3d/gate.py
+   carried the same as master's; the 32-bit and PowerPC passes are held by work/item3d/gate.py
    to references recorded from master 1821606f9 before any change (a copy in
-   state/work/item3d/refs/): every text, the header and the tables of LZ32 44, VERSION 49, IMM32 78,
+   work/item3d/refs/): every text, the header and the tables of LZ32 44, VERSION 49, IMM32 78,
    TAPI32 191, WINSPOOL 87, MPR 231 entries; with structures recovered (struct_recovery 32) MPR,
    VERSION, TAPI32, WINSPOOL and COMDLG32 239; PowerPC: the Xbox 360 HUD module 670 -- all the same.
    No output changed. c_text.py is 1,860 lines (2,412 before).
@@ -404,7 +404,7 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    x86 (Description.flat), and a constant PrintC made up with no variable of its own no longer
    crashes PrintL2 (PrintL2::readType: two HUD functions died there with the notes on); on the Xbox
    360 HUD module the back end's C is the printed C for all 665 functions, character for character
-   (state/work/item3e/ppc_l2.py). compilable_powerpc writes each function from L2 with the passes
+   (work/item3e/ppc_l2.py). compilable_powerpc writes each function from L2 with the passes
    `backends/c.POWERPC` (the facts' `lane`): `_wide_address`, `_struct_gaps`, `_pieces` (spelled
    `PIECE(x, off, T)`), `_compare_as_numbers`, `_code_pointers`, `_homed_arguments` (the slot the
    caller keeps for a register argument is the argument), `uint8_result` (void is uint8, the facts'
@@ -417,7 +417,7 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    frozen fixtures; c_text no longer imports ctree. 16-bit: build/module declares each export
    with the declaration the back end wrote from the function's L2 heading (`Made.declarations`),
    not `declaration(text)`, which is deleted.
-   Gate (state/work/item3e, references from fcf307c52 re-verified before the first change): after
+   Gate (work/item3e, references from fcf307c52 re-verified before the first change): after
    each pass the seven 16-bit modules' 5,390 entries and tables the same; the 32-bit references
    (LZ32 44, VERSION 49, IMM32 78, TAPI32 191, WINSPOOL 87, MPR 231; with structures recovered MPR,
    VERSION, TAPI32, WINSPOOL, COMDLG32 239) and more recorded from fcf307c52 for rules the first set

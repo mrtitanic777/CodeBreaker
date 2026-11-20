@@ -71,8 +71,10 @@ struct AuthoredKind {
 
 // The folders the authored files are in.
 struct DataFolders {
-    std::filesystem::path symbols;   // <checkout>/data/symbols
-    std::filesystem::path models;    // <checkout>/data/knowledge/models
+    std::filesystem::path symbols;   // <checkout>/config/symbols
+    std::filesystem::path models;    // <checkout>/config/knowledge/models
+    std::filesystem::path kept;      // <checkout>/config/knowledge/kept: the given knowledge (what a person decided), as text (empty: none kept)
+    std::filesystem::path index;     // <checkout>/build/knowledge.v2.sqlite: the base, made from config/ (empty: none)
 
     static DataFolders under(const std::filesystem::path& checkout);
     // CB_CHECKOUT_ROOT when set, else the working folder.
@@ -82,6 +84,7 @@ struct DataFolders {
 class AuthoredSources {
 public:
     explicit AuthoredSources(DataFolders folders) : folders_(std::move(folders)) {}
+    const DataFolders& folders() const { return folders_; }
 
     // Every authored kind, in the order the catalogue lists them.
     static const std::vector<AuthoredKind>& catalogue();

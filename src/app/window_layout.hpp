@@ -2,7 +2,7 @@
 // pixels (1 = 1/96 inch), and which part a point is over. No operating-system API here, so it is tested on every system (window_layout_test.cpp);
 // the drawing (window_render_win.cpp) and the Win32 shell (window_win.cpp) are the Windows parts.
 //
-// The design is the approved Windows 11 one (state/work/ui-mockup/win11.html): a title bar 48 tall, two equal cards (8 radius) with 24 outer padding
+// The design is the approved Windows 11 one (work/ui-mockup/win11.html): a title bar 48 tall, two equal cards (8 radius) with 24 outer padding
 // and a 16 gap, a status bar 32 tall. The left card (Program) holds a dashed drop area, which becomes the progress view while a conversion runs, and an
 // InfoBar above it when a file cannot be converted or the run failed; the right card (Source) holds the output folder and its two buttons.
 #pragma once

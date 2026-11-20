@@ -595,7 +595,7 @@ void note_left(KnowledgeReport& report, std::string what, std::int64_t rows, std
 KnowledgeReport migrate_knowledge(const Services& services, bool dry) {
     KnowledgeReport report;
     const stdfs::path older_file = services.state_dir / "db" / "knowledge.sqlite";
-    const stdfs::path file = knowledge::Store::default_path(services.state_dir);
+    const stdfs::path file = knowledge::Store::in_state(services.state_dir);
     std::error_code ec;
     if (!stdfs::is_regular_file(older_file, ec)) return report;
     report.found = true;

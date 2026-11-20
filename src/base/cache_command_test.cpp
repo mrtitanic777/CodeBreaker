@@ -100,8 +100,7 @@ CB_TEST("base.cache_command.settings_give_the_folders_and_caps", [] {
         d("CB_BUILD_CACHE_MAX_GB", std::nullopt), e("CB_NO_CACHE", std::nullopt);
     const cachecmd::Config config = cachecmd::settings_of(cb::config::Config::load(dir.path()));
     CB_CHECK(config.state_dir == (dir.path() / "mystate" / "cache").lexically_normal());
-    CB_CHECK(config.shared_dir == (dir.path() / "state" / "build_cache").lexically_normal() ||
-             config.shared_dir == dir.path() / "state" / "build_cache");
+    CB_CHECK(config.shared_dir == (dir.path() / "mystate" / "build_cache").lexically_normal());   // (no build_cache setting: in the state folder)
     CB_CHECK_EQ(config.max_bytes, 3 * cachecmd::kGiB);
     CB_CHECK_EQ(config.shared_max_bytes, cachecmd::kGiB / 2);
     CB_CHECK(!config.disabled);

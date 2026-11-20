@@ -1,4 +1,4 @@
-// app/window_pages.hpp -- where everything of the Tools and Settings pages is (the design is state/work/ui-mockup/win11-tools.html): the layout of the two
+// app/window_pages.hpp -- where everything of the Tools and Settings pages is (the design is work/ui-mockup/win11-tools.html): the layout of the two
 // pages in device-independent pixels, the form layout they share, and which part a point is over. No operating-system API here (tested on every system:
 // window_pages_test.cpp); the drawing is window_render_win.cpp and the events are window_win.cpp.
 //
@@ -45,7 +45,7 @@ struct ToolsLayout {
 };
 ToolsLayout compute_tools_layout(const Layout& shell, const Model& model);
 
-// The Settings page has two views. The main one is rows (state/work/ui-mockup/feat-settings-*.png): "General" (Theme, where converted source goes,
+// The Settings page has two views. The main one is rows (work/ui-mockup/feat-settings-*.png): "General" (Theme, where converted source goes,
 // Keep the computer responsive: each a row with its label on the left and its control on the right), "What this computer can convert" (one row
 // per Model::capabilities, Locate... on a missing one) and the Advanced row. Advanced is Back, a title, and every other setting as a form.
 struct SettingsLayout {

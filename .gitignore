@@ -49,3 +49,5 @@ src/**/testdata/**/__pycache__/
 codebreaker/xna/bin/
 out_sw/
 src/*/build-linux/
+# the scratch of the people and sessions working on CodeBreaker (gate logs, test runs, scripts): git-ignored
+/work/

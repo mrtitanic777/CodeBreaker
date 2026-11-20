@@ -1,7 +1,7 @@
 // app/gate_changed.hpp -- what a change can affect: `tools\gate.cmd --changed` runs only the command cases and the unit-test areas that depend
 // on what changed since the last passing gate.
 //
-// THE RECORD. A passing gate writes the tree it passed (state/work/gate-last.txt): for every file the gate depends on, its size, write time and
+// THE RECORD. A passing gate writes the tree it passed (work/gate-last.txt): for every file the gate depends on, its size, write time and
 // SHA-1 (the hash is made again only when size or time differ), plus one entry per command case (a hash of its line and of the variables it
 // is read with). "Changed since" is the exact difference of that record and the tree now -- not a git diff, so a dirty tree, a reset and a
 // merge all mean what they say.

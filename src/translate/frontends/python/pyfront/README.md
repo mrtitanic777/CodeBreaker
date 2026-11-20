@@ -27,7 +27,7 @@ machine and load, reading the files not counted). CPython's own `Lib/` is an ext
 outside the gate: 2,435 / 2,436 identical. The one file that differs holds characters new
 in Unicode 16 that Windows' ICU does not know yet (see Unicode below).
 
-The gate script lives in the working folder (`state/work/pyfront/gate.py`, `--speed` for the
+The gate script lives in the working folder (`work/pyfront/gate.py`, `--speed` for the
 timing, `--root DIR` for another corpus). It is the only place Python runs.
 
 ## C++ API
@@ -114,7 +114,7 @@ there.
 and statement form, f-strings and t-strings, match statements, type parameters, numbers,
 escapes and errors. `tests/cases/*.expected` holds CPython's dump of each case, or
 `ERROR line offset` for a case CPython refuses. The expected files were made once by running
-CPython over the cases (`state/work/pyfront/make_expected.py`). After editing a cases file,
+CPython over the cases (`work/pyfront/make_expected.py`). After editing a cases file,
 regenerate them with that script and review the diff.
 
 ## Layout

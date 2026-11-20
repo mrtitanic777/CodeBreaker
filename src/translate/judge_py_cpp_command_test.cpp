@@ -54,7 +54,7 @@ CB_TEST("translate.judge_py_cpp.the_python_corpus_agrees", [] {
     CB_CHECK(!files.empty());
     for (const stdfs::path& f : files) {
         const std::string name = f.stem().string();
-        const stdfs::path work = cb::testing::data_path("../state/work/judge-py-cpp-tests") / name;
+        const stdfs::path work = cb::testing::data_path("../work/judge-py-cpp-tests") / name;
         const jpc::Score s = jpc::judge_module(jpct_environment(), *cxx, f, work);
         if (!s.agrees.value_or(false)) std::cerr << name << ": " << s.detail << "\n";
         CB_CHECK(s.agrees.value_or(false));

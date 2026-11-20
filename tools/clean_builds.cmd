@@ -5,7 +5,7 @@ rem checkout -- the DLLs the Python loads live there).
 rem
 rem   - every worktree under .claude\worktrees: its state\cxx and native\<lib>\build (except src\build, which is source)
 rem   - build-asan (the AddressSanitizer build) and old codebreaker.old-*.exe copies
-rem   - compiler output (.obj .exe .pdb .lib .ilk .idb .pch .dll .exp) under state\work
+rem   - compiler output (.obj .exe .pdb .lib .ilk .idb .pch .dll .exp) under work
 rem   - state\test-tmp
 setlocal
 set ROOT=%~dp0..
@@ -19,6 +19,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$tt = Join-Path $root 'state\test-tmp'; if (Test-Path $tt) { $dirs += $tt };" ^
   "foreach ($p in $dirs) { $i = Get-Item $p -Force; if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { Write-Host ('skipped link: ' + $p); continue }; cmd /c rmdir /s /q ('\"' + $p + '\"') 2>$null };" ^
   "Get-ChildItem (Join-Path $root 'build') -Filter 'codebreaker.old-*.exe' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue;" ^
-  "$work = Join-Path $root 'state\work'; if (Test-Path $work) { Get-ChildItem $work -Recurse -File -Include *.obj,*.exe,*.pdb,*.lib,*.ilk,*.idb,*.pch,*.dll,*.exp -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\_tools\\' } | Remove-Item -Force -ErrorAction SilentlyContinue };" ^
+  "$work = Join-Path $root 'work'; if (Test-Path $work) { Get-ChildItem $work -Recurse -File -Include *.obj,*.exe,*.pdb,*.lib,*.ilk,*.idb,*.pch,*.dll,*.exp -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\_tools\\' } | Remove-Item -Force -ErrorAction SilentlyContinue };" ^
   "$after = ([IO.DriveInfo]::new($root.Substring(0,2))).AvailableFreeSpace;" ^
   "'clean_builds: freed {0:N1} GB; {1:N1} GB free' -f (($after-$before)/1GB), ($after/1GB)"
