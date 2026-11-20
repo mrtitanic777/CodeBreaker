@@ -35,6 +35,7 @@
 #include "library.h"
 #include "overlays.h"
 #include "symtrace.h"
+#include "run_state.hpp"
 
 
 typedef struct trace_info {
@@ -52,25 +53,34 @@ typedef struct sym_trace_info {
     char                    *name;
 } sym_trace_info;
 
-static trace_info       *TraceList;
-static sym_trace_info   *TraceListSym;
+namespace {
+
+struct TraceState {
+    trace_info      *TraceList = nullptr;
+    sym_trace_info  *TraceListSym = nullptr;
+};
+
+inline TraceState &st() { return cb_wlink::RunState::part<TraceState>(); }
+
+}
 
 void ResetSymTrace( void )
 /************************/
 {
-    TraceListSym = NULL;
-    TraceList = NULL;
+    TraceState &s = st();
+    s.TraceListSym = nullptr;
+    s.TraceList = nullptr;
 }
 
 static void CheckFileTrace( section *sect, void *_info )
 /******************************************************/
 {
     file_list       *file;
-    trace_info      *info = (trace_info *)_info;
+    trace_info      *info = static_cast<trace_info *>(_info);
 
     if( info->found )
         return;
-    for( file = sect->files; file != NULL; file = file->next ) {
+    for( file = sect->files; file != nullptr; file = file->next ) {
         if( FNAMECMPSTR( file->infile->name.u.ptr, info->u.name ) == 0 ) {
             info->found = true;
             MemFree( info->u.name );
@@ -89,12 +99,12 @@ void AddTraceListMod( char *fname, char *membname )
      * it uses membname until tracing is finished
      * then CleanTraces free it
      */
-    info = (trace_info *)(MemAllocSafe( sizeof( trace_info ) ));
+    info = static_cast<trace_info *>(MemAllocSafe( sizeof( trace_info ) ));
     info->u.name = fname;
     info->membname = membname;
     info->found = false;        // used for matching libraries
-    info->next = TraceList;
-    TraceList = info;
+    info->next = st().TraceList;
+    st().TraceList = info;
 }
 
 void CheckTraces( void )
@@ -105,11 +115,12 @@ void CheckTraces( void )
     trace_info      *next;
     file_list       *file;
     trace_info **   prev;
+    TraceState      &s = st();
 
-    prev = &TraceList;
-    for( info = TraceList; info != NULL; info = next ) {
+    prev = &s.TraceList;
+    for( info = s.TraceList; info != nullptr; info = next ) {
         next = info->next;
-        if( info->membname == NULL ) {
+        if( info->membname == nullptr ) {
             ParmWalkAllSects( CheckFileTrace, info );
             if( !info->found ) {
                 LnkMsg( WRN+MSG_TRACE_OBJ_NOT_FOUND, "s", info->u.name );
@@ -117,7 +128,7 @@ void CheckTraces( void )
             }
             MemFree( info );
         } else {
-            for( file = ObjLibFiles; file != NULL; file = file->next ) {
+            for( file = ObjLibFiles; file != nullptr; file = file->next ) {
                 if( FNAMECMPSTR( file->infile->name.u.ptr, info->u.name ) == 0 ) {
                     info->found = true;
                     MemFree( info->u.name );
@@ -129,7 +140,7 @@ void CheckTraces( void )
             prev = &info->next;
         } /* if */
     } /* for */
-    *prev = NULL;
+    *prev = nullptr;
 }
 
 void CheckLibTrace( file_list *file )
@@ -137,7 +148,7 @@ void CheckLibTrace( file_list *file )
 {
     trace_info      *info;
 
-    for( info = TraceList; info != NULL; info = info->next ) {
+    for( info = st().TraceList; info != nullptr; info = info->next ) {
         if( !info->found ) {
             if( FNAMECMPSTR( info->u.name, file->infile->name.u.ptr ) == 0 ) {
                 info->found = true;
@@ -155,8 +166,8 @@ bool FindLibTrace( mod_entry *mod )
     trace_info **   prev;
     trace_info      *info;
 
-    prev = &TraceList;
-    for( info = TraceList; info != NULL; info = info->next ) {
+    prev = &st().TraceList;
+    for( info = st().TraceList; info != nullptr; info = info->next ) {
         if( info->found && info->u.file == mod->u1.source ) {
             if( ModNameCompare( mod->name.u.ptr, info->membname ) ) {
                 *prev = info->next;
@@ -175,10 +186,10 @@ void AddTraceListSym( char *symname )
 {
     sym_trace_info  *info;
 
-    info = (sym_trace_info *)(MemAllocSafe( sizeof( sym_trace_info ) ));
+    info = static_cast<sym_trace_info *>(MemAllocSafe( sizeof( sym_trace_info ) ));
     info->name = symname;
-    info->next = TraceListSym;
-    TraceListSym = info;
+    info->next = st().TraceListSym;
+    st().TraceListSym = info;
 }
 
 bool FindSymTrace( const char *symname )
@@ -187,8 +198,8 @@ bool FindSymTrace( const char *symname )
     sym_trace_info  *info;
     sym_trace_info  **prev;
 
-    prev = &TraceListSym;
-    for( info = TraceListSym; info != NULL; info = info->next ) {
+    prev = &st().TraceListSym;
+    for( info = st().TraceListSym; info != nullptr; info = info->next ) {
         if( strcmp( info->name, symname ) == 0 ) {
             *prev = info->next;
             MemFree( info->name );
@@ -206,10 +217,10 @@ void PrintBadTraces( void )
     sym_trace_info  *sym_info;
     trace_info      *info;
 
-    for( sym_info = TraceListSym; sym_info != NULL; sym_info = sym_info->next ) {
+    for( sym_info = st().TraceListSym; sym_info != nullptr; sym_info = sym_info->next ) {
         LnkMsg( WRN+MSG_TRACE_SYM_NOT_FOUND, "s", sym_info->name );
     }
-    for( info = TraceList; info != NULL; info = info->next ) {
+    for( info = st().TraceList; info != nullptr; info = info->next ) {
         if( info->found ) {
             LnkMsg( WRN+MSG_TRACE_LIB_NOT_FOUND, "12", info->u.file->infile->name.u.ptr, info->membname );
         } else {
@@ -222,19 +233,21 @@ void PrintBadTraces( void )
 void CleanTraces( void )
 /**********************/
 {
-    void    *next;
+    TraceState  &s = st();
 
-    for( ; TraceListSym != NULL; TraceListSym = (sym_trace_info *)(next) ) {
-        next = TraceListSym->next;
-        MemFree( TraceListSym->name );
-        MemFree( TraceListSym );
+    while( s.TraceListSym != nullptr ) {
+        sym_trace_info  *next = s.TraceListSym->next;
+        MemFree( s.TraceListSym->name );
+        MemFree( s.TraceListSym );
+        s.TraceListSym = next;
     }
-    for( ; TraceList != NULL; TraceList = (trace_info *)(next) ) {
-        next = TraceList->next;
-        if( !TraceList->found ) {
-            MemFree( TraceList->u.name );
+    while( s.TraceList != nullptr ) {
+        trace_info      *next = s.TraceList->next;
+        if( !s.TraceList->found ) {
+            MemFree( s.TraceList->u.name );
         }
-        MemFree( TraceList->membname );
-        MemFree( TraceList );
+        MemFree( s.TraceList->membname );
+        MemFree( s.TraceList );
+        s.TraceList = next;
     }
 }

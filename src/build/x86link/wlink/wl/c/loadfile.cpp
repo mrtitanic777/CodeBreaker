@@ -33,10 +33,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <array>
+#include <string>
+#include <string_view>
 #if !defined( __UNIX__ ) || defined(__WATCOMC__)
     #include <process.h>
 #endif
-#include "walloca.h"
 #include "linkstd.h"
 #include "ring.h"
 #include "pcobj.h"
@@ -66,78 +68,82 @@
 #include "permdata.h"
 #include "ideentry.h"
 #include "overlays.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
 
 #define IMPLIB_BUFSIZE  _4K
 
-typedef struct {
-    f_handle    handle;
-    char        *fname;
-    char        *buffer;
-    size_t      bufsize;
-    char        *module_name;
-    size_t      module_name_len;
-    boolbit     didone  : 1;
-} implibinfo;
+namespace {
 
-typedef struct  {
-    unsigned_32 grp_start;
-    unsigned_32 seg_start;
-    group_entry *last_group;       // used only for copy classes
-    boolbit     repos   : 1;
-    boolbit     copy    : 1;
-} grpwriteinfo;
+// the import library being collected for this run (its memory is wlink's: MemAlloc'd, freed by BuildImpLib)
+struct implibinfo {
+    f_handle    handle = NIL_FHANDLE;
+    char        *fname = nullptr;
+    char        *buffer = nullptr;
+    size_t      bufsize = 0;
+    char        *module_name = nullptr;
+    size_t      module_name_len = 0;
+    bool        didone = false;
+};
 
-typedef void *writebuffer_fn(void *, const void *, size_t);
+// what loadfile.cpp keeps for one run of the linker
+struct LoadFileState {
+    implibinfo  implib;
+    std::string entry;          // the text of one import library entry, kept to spare an allocation each time
+};
+
+struct grpwriteinfo {
+    unsigned_32 grp_start = 0;
+    unsigned_32 seg_start = 0;
+    group_entry *last_group = nullptr;      // used only for copy classes
+    bool        repos = false;
+    bool        copy = false;
+};
+
+using writebuffer_fn = void *(void *, const void *, size_t);
+
+LoadFileState &loadFileState()
+{
+    return cb_wlink::RunState::part<LoadFileState>();
+}
+
+}
 
 seg_leader      *StackSegPtr;
 startinfo       StartInfo;
 
-static implibinfo       ImpLib;
-
-#define TEMPFNAME       "IMP02112.xx`"          // "'" will be an "a" when processed.
-#define TEMPFNAME_SIZE  13
-
-static char *makeTempName( char *name )
-/*************************************/
-{
-    memcpy( name, TEMPFNAME, sizeof( TEMPFNAME ) ); // includes nullchar
-    return( name + sizeof( TEMPFNAME ) - 2 );       // pointer to "a"
-}
+// the "`" will be an "a" when processed.
+static constexpr std::string_view TEMPFNAME = "IMP02112.xx`";
 
 static f_handle openTempFile( char **fname )
 /******************************************/
 {
     const char  *ptr;
+    std::string path;
+    size_t      last;
     size_t      tlen;
-    char        *tptr;
     f_handle    fhdl;
 
     ptr = GetEnvString( "TMP" );
-    if( ptr == NULL )
+    if( ptr == nullptr )
         ptr = GetEnvString( "TMPDIR" );
-    if( ptr == NULL ) {
-        tptr = (char *)(MemAllocSafe( TEMPFNAME_SIZE ));
-        *fname = tptr;
-    } else {
-        tlen = strlen( ptr );
-        tptr = (char *)(MemAllocSafe( tlen + 1 + TEMPFNAME_SIZE ));
-        memcpy( tptr, ptr, tlen );
-        *fname = tptr;
-        tptr += tlen;
-        if( !IS_PATH_SEP( tptr[-1] ) ) {
-            *tptr++ = DIR_SEP;
+    if( ptr != nullptr ) {
+        path = ptr;
+        if( path.empty() || !IS_PATH_SEP( path.back() ) ) {
+            path += DIR_SEP;
         }
     }
-    tptr = makeTempName( tptr );
+    path += TEMPFNAME;
+    last = path.size() - 1;             // the extension character that is changed until the name is free
+    *fname = MemStrdupSafe( path.c_str() );
     tlen = 0;
     for( ;; ) {
         if( tlen >= 26 ) {
-            LnkMsg( FTL+MSG_TMP_ALREADY_EXISTS, NULL );
+            LnkMsg( FTL+MSG_TMP_ALREADY_EXISTS, nullptr );
         }
-        *tptr += 1;                     // change temp file extension
+        (*fname)[last] += 1;            // change temp file extension
         fhdl = TempFileOpen( *fname );
         if( fhdl == NIL_FHANDLE )
             break;
@@ -150,14 +156,15 @@ static f_handle openTempFile( char **fname )
 static void SetupImpLib( void )
 /*****************************/
 {
+    implibinfo  &ImpLib = loadFileState().implib;
     const char  *fname;
     size_t      namelen;
     unsigned    i;
 
     ImpLib.bufsize = 0;
     ImpLib.handle = NIL_FHANDLE;
-    ImpLib.buffer = NULL;
-    ImpLib.module_name = NULL;
+    ImpLib.buffer = nullptr;
+    ImpLib.module_name = nullptr;
     ImpLib.didone = false;
     if( FmtData.make_implib ) {
         if( FmtData.make_impfile ) {
@@ -167,7 +174,7 @@ static void SetupImpLib( void )
             ImpLib.handle = openTempFile( &ImpLib.fname );
         }
         if( ImpLib.handle != NIL_FHANDLE ) {
-            ImpLib.buffer = (char *)(MemAllocSafe( IMPLIB_BUFSIZE ));
+            ImpLib.buffer = static_cast<char *>( MemAllocSafe( IMPLIB_BUFSIZE ) );
             /*
              * for NE format (16-bit OS/2 and Windows 3.x)
              * - get base file name only
@@ -191,13 +198,13 @@ static void SetupImpLib( void )
                 namelen = strlen( fname );
             }
             ImpLib.module_name_len = namelen;
-            ImpLib.module_name = (char *)(MemAllocSafe( namelen ));
+            ImpLib.module_name = static_cast<char *>( MemAllocSafe( namelen ) );
             if( FmtData.type & (MK_NE | MK_OS2_FLAT | MK_WIN_VXD) ) {
                 /*
                  * upper-case module name
                  */
                 for( i = 0; i < namelen; i++ ) {
-                    ImpLib.module_name[i] = toupper( ((unsigned char *)fname)[i] );
+                    ImpLib.module_name[i] = static_cast<char>( toupper( static_cast<unsigned char>( fname[i] ) ) );
                 }
             } else { /* FmtData.type & MK_PE */
                 memcpy( ImpLib.module_name, fname, namelen );
@@ -217,17 +224,17 @@ static void DoCVPack( void )
 {
 #if !defined( __UNIX__ ) || defined(__WATCOMC__)
     int         retval;
-    char        *name;
+    const char  *name;
 
     if( (LinkFlags & LF_CVPACK_FLAG)
       && (LinkState & LS_LINK_ERROR) == 0 ) {
-        if( SymFileName != NULL ) {
+        if( SymFileName != nullptr ) {
             name = SymFileName;
         } else {
             name = Root->outfile->fname;
         }
-        retval = (int)spawnlp( P_WAIT, CVPACK_EXE, CVPACK_EXE, "/nologo",
-                          name, NULL );
+        retval = static_cast<int>( spawnlp( P_WAIT, CVPACK_EXE, CVPACK_EXE, "/nologo",
+                          name, nullptr ) );
         if( retval == -1 ) {
             PrintIOError( ERR+MSG_CANT_EXECUTE, "12", CVPACK_EXE );
         }
@@ -240,7 +247,7 @@ static void OpenOutFiles( void )
 {
     outfilelist   *fnode;
 
-    for( fnode = OutFiles; fnode != NULL; fnode = fnode->next ) {
+    for( fnode = OutFiles; fnode != nullptr; fnode = fnode->next ) {
         OpenBuffFile( fnode );
     }
 }
@@ -250,7 +257,7 @@ static void CloseOutFiles( void )
 {
     outfilelist     *fnode;
 
-    for( fnode = OutFiles; fnode != NULL; fnode = fnode->next ) {
+    for( fnode = OutFiles; fnode != nullptr; fnode = fnode->next ) {
         if( fnode->handle != NIL_FHANDLE ) {
             CloseBuffFile( fnode );
         }
@@ -380,22 +387,22 @@ static seg_leader *FindStack( section *sect )
     class_entry *class_;
     seg_leader  *seg;
 
-    for( class_ = sect->classes; class_ != NULL; class_ = class_->next ) {
+    for( class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         if( class_->flags & CLASS_STACK ) {
-            return(seg_leader *)(( RingFirst( class_->segs ) ));
+            return static_cast<seg_leader *>( RingFirst( class_->segs ) );
         }
     }
     if( (LinkState & LS_DOSSEG_FLAG) == 0 ) {
-        seg = NULL;
-        for( class_ = sect->classes; class_ != NULL; class_ = class_->next ) {
-            while( (seg = (seg_leader *)(RingStep( class_->segs, seg ))) != NULL ) {
+        seg = nullptr;
+        for( class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
+            while( (seg = static_cast<seg_leader *>( RingStep( class_->segs, seg ) )) != nullptr ) {
                 if( seg->combine == COMBINE_STACK ) {
                     return( seg );
                 }
             }
         }
     }
-    return( NULL );
+    return( nullptr );
 }
 
 static seg_leader *StackSegment( void )
@@ -406,7 +413,7 @@ static seg_leader *StackSegment( void )
     seg_leader  *seg;
 
     seg = FindStack( Root );
-    if( seg == NULL ) {
+    if( seg == nullptr ) {
 #ifdef _EXE
         if( FmtData.type & MK_OVERLAYS ) {
             seg = FindStack( NonSect );
@@ -423,7 +430,7 @@ void GetStkAddr( void )
 {
     if( (FmtData.type & MK_NOVELL) == 0
       && !FmtData.dll ) {
-        if( StackSegPtr != NULL ) {
+        if( StackSegPtr != nullptr ) {
             StackAddr.seg = StackSegPtr->seg_addr.seg;
             StackAddr.off = StackSegPtr->seg_addr.off + StackSegPtr->size;
         } else {
@@ -434,7 +441,7 @@ void GetStkAddr( void )
             } else {
 #endif
                 if( (FmtData.type & (MK_COM | MK_PE | MK_QNX | MK_ELF | MK_RDOS)) == 0 ) {
-                    LnkMsg( WRN+MSG_STACK_NOT_FOUND, NULL );
+                    LnkMsg( WRN+MSG_STACK_NOT_FOUND, nullptr );
                     StackAddr.seg = 0;
                     StackAddr.off = 0;
                 }
@@ -451,13 +458,13 @@ static class_entry *LocateBSSClass( void )
     class_entry *class_;
     section     *sect;
 
-    sect = (Root->areas == NULL) ? Root : NonSect;
-    for( class_ = sect->classes; class_ != NULL; class_ = class_->next ) {
+    sect = (Root->areas == nullptr) ? Root : NonSect;
+    for( class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         if( stricmp( class_->name.u.ptr, BSSClassName ) == 0 ) {
             return( class_ );
         }
     }
-    return( NULL );
+    return( nullptr );
 }
 
 static void DefABSSSym( const char *name )
@@ -504,11 +511,11 @@ static void CheckBSSInStart( symbol *sym, const char *name )
 {
     symbol      *chk;
 
-    chk = NULL;
-    if( StartInfo.mod != NULL ) {
-        chk = (symbol *)(Ring2Lookup( StartInfo.mod->publist, CompSymPtr, sym ));
+    chk = nullptr;
+    if( StartInfo.mod != nullptr ) {
+        chk = static_cast<symbol *>( Ring2Lookup( StartInfo.mod->publist, CompSymPtr, sym ) );
     }
-    if( chk == NULL ) {
+    if( chk == nullptr ) {
         LnkMsg( ERR+MSG_RESERVED_SYM_DEFINED, "s", name );
     }
 }
@@ -524,8 +531,8 @@ static void DefBSSStartSize( const char *name, class_entry *class_ )
     sym = FindISymbol( name );
     if( IS_ADDR_UNDEFINED( sym->addr ) ) {
         /* if the symbol was defined internally */
-        seg = (seg_leader *)RingFirst( class_->segs );
-        sym->p.seg = (segdata *)RingFirst( seg->pieces );
+        seg = static_cast<seg_leader *>( RingFirst( class_->segs ) );
+        sym->p.seg = static_cast<segdata *>( RingFirst( seg->pieces ) );
         sym->addr = seg->seg_addr;
         ConvertToFrame( &sym->addr, seg->group->addr.seg, ( (seg->info & SEGINF_USE_32) == 0 ) );
     } else if( LinkState & LS_DOSSEG_FLAG ) {
@@ -547,9 +554,9 @@ static void DefBSSEndSize( const char *name, class_entry *class_ )
          * if the symbol was defined internally
          * find last segment in BSS class
          */
-        seg = (seg_leader *)RingLast( class_->segs );
+        seg = static_cast<seg_leader *>( RingLast( class_->segs ) );
         /* set end of BSS class */
-        sym->p.seg = (segdata *)RingLast( seg->pieces );
+        sym->p.seg = static_cast<segdata *>( RingLast( seg->pieces ) );
         SET_SYM_ADDR( sym, seg->seg_addr.off + seg->size, seg->seg_addr.seg );
         ConvertToFrame( &sym->addr, seg->group->addr.seg, ( (seg->info & SEGINF_USE_32) == 0 ) );
     } else if( LinkState & LS_DOSSEG_FLAG ) {
@@ -565,7 +572,7 @@ void GetBSSSize( void )
     class_entry *class_;
 
     class_ = LocateBSSClass();
-    if( class_ != NULL ) {
+    if( class_ != nullptr ) {
         /* set start of BSS class */
         DefBSSStartSize( BSSStartSym, class_ );
         DefBSSStartSize( BSS_StartSym, class_ );
@@ -603,7 +610,7 @@ void SetStkSize( void )
 #endif
         }
     }
-    if( StackSegPtr != NULL ) {
+    if( StackSegPtr != nullptr ) {
         if( LinkFlags & LF_STK_SIZE_FLAG ) {
             if( (FmtData.type & MK_NOVELL) == 0 ) {
                 StackSegPtr->size = StackSize;
@@ -667,7 +674,7 @@ void GetStartAddr( void )
     case START_UNDEFED:         // NOTE: the possible fall through
         addoff = false;
         if( !FmtData.dll ) {
-            if( Groups == NULL
+            if( Groups == nullptr
               || (FmtData.type & MK_ELF) ) {
                 StartInfo.addr.seg = 0;
                 StartInfo.addr.off = 0;
@@ -684,7 +691,7 @@ void GetStartAddr( void )
         /* a group, adjust seg + off relative to start of group        */
         /* instead of start of seg. This allows far call optimization to work*/
         if( (StartInfo.targ.sdata->u.leader->seg_addr.seg > 0)
-          && (StartInfo.targ.sdata->u.leader->group != NULL) ) {
+          && (StartInfo.targ.sdata->u.leader->group != nullptr) ) {
             deltaseg = StartInfo.targ.sdata->u.leader->seg_addr.seg
               - StartInfo.targ.sdata->u.leader->group->addr.seg;
             if( (deltaseg > 0)
@@ -711,7 +718,7 @@ offset CalcGroupSize( group_entry *group )
     offset size;
 
     if(( group == DataGroup )
-      && ( FmtData.dgroupsplitseg != NULL )) {
+      && ( FmtData.dgroupsplitseg != nullptr )) {
         size = FmtData.dgroupsplitseg->seg_addr.off - group->addr.off - FmtData.bsspad;
         DbgAssert( size >= group->size );
     } else {
@@ -727,11 +734,11 @@ offset CalcSplitSize( void )
 {
     offset size;
 
-    if( FmtData.dgroupsplitseg == NULL ) {
+    if( FmtData.dgroupsplitseg == nullptr ) {
         return( 0 );
     } else {
         size = DataGroup->totalsize - (FmtData.dgroupsplitseg->seg_addr.off - DataGroup->addr.off);
-        if( StackSegPtr != NULL ) {
+        if( StackSegPtr != nullptr ) {
             size -= StackSize;
         }
         return( size );
@@ -771,17 +778,17 @@ void OrderGroups( bool (*lessthan)(addr_type *, addr_type *) )
 
     first_group = Groups;
     last_group = &Groups;
-    while( first_group != NULL ) {
+    while( first_group != nullptr ) {
         low_addr = &first_group->addr;
-        low_group = NULL;
-        for( group = first_group; group->next != NULL; group = group->next ) {
+        low_group = nullptr;
+        for( group = first_group; group->next != nullptr; group = group->next ) {
             group_addr = &group->next->addr;
             if( lessthan( group_addr, low_addr ) ) {
                 low_addr = group_addr;
                 low_group = group;
             }
         }
-        if( low_group == NULL ) {
+        if( low_group == nullptr ) {
             *last_group = first_group;
             last_group = &(first_group->next);
             first_group = *last_group;
@@ -846,8 +853,8 @@ unsigned_32 MemorySize( void )
     if( FmtData.type & MK_REAL_MODE ) {
         start = MK_REAL_ADDR( Root->sect_addr.seg, Root->sect_addr.off );
         end = start + Root->size;
-        for( area = Root->areas; area != NULL; area = area->next ) {
-            for( sect = area->sections; sect != NULL; sect = sect->next ) {
+        for( area = Root->areas; area != nullptr; area = area->next ) {
+            for( sect = area->sections; sect != nullptr; sect = sect->next ) {
                 curr = MK_REAL_ADDR( sect->sect_addr.seg, sect->sect_addr.off ) + sect->size;
                 if( curr > end ) {
                     end = curr;
@@ -867,7 +874,7 @@ unsigned_32 AppendToLoadFile( const char *name )
     unsigned_32     wrote;
 
     wrote = 0;
-    if( name != NULL ) {
+    if( name != nullptr ) {
         handle = QOpenR( name );
         wrote = CopyToLoad( handle, name );
         QClose( handle, name );
@@ -888,107 +895,69 @@ unsigned_32 AppendToLoadFile( const char *name )
 #define WLIB_EXE WLIB_NAME ".exe"
 #endif
 
+// the wlib option that names the machine of the import library
+static const char *wlibMachineOption( void )
+{
+    switch( LinkState & LS_HAVE_MACHTYPE_MASK ) {
+    case LS_HAVE_ALPHA_CODE:
+        return( "-ia" );
+    case LS_HAVE_MIPS_CODE:
+        return( "-im" );
+    case LS_HAVE_PPC_CODE:
+        return( "-ip" );
+    case LS_HAVE_X64_CODE:
+        return( "-i6" );
+    case LS_HAVE_X86_CODE:
+        return( "-ii" );
+    default:
+        return( "-ii" );
+    }
+}
+
 static void ExecWlib( void )
 /**************************/
 {
+    implibinfo  &ImpLib = loadFileState().implib;
 #if defined( DLLS_IMPLEMENTED )
-    char        *cmdline;
-    char        *temp;
-    size_t      namelen;
-    size_t      impnamelen;
+    std::string cmdline;
 
-    namelen = strlen( ImpLib.fname );
-    impnamelen = strlen( FmtData.implibname );
-    /*
-     * in the following: +19 for options, +2 for spaces, +1 for @, +4 for quotes
-     *                  and +1 for nullchar
-     */
-    cmdline = MemAllocSafe( namelen + impnamelen +19 +2 +1 +4 +1 );
-    memcpy( cmdline, "-c -b -n -q -pa -ii \"", 19 + 2 );
-    temp = cmdline + 19 - 1;
-    switch( LinkState & LS_HAVE_MACHTYPE_MASK ) {
-    case LS_HAVE_ALPHA_CODE:
-        *temp = 'a';
-        break;
-    case LS_HAVE_MIPS_CODE:
-        *temp = 'm';
-        break;
-    case LS_HAVE_PPC_CODE:
-        *temp = 'p';
-        break;
-    case LS_HAVE_X64_CODE:
-        *temp = '6';
-        break;
-    case LS_HAVE_X86_CODE:
-        *temp = 'i';
-        break;
-    default:
-        *temp = 'i';
-        break;
-    }
-    temp += 3;
-    memcpy( temp, FmtData.implibname, impnamelen );
-    temp += impnamelen;
-    *temp++ = '"';
-    *temp++ = ' ';
-    *temp++ = '@';
-    *temp++ = '"';
-    memcpy( temp, ImpLib.fname, namelen );
-    temp += namelen;
-    *temp++ = '"';
-    *temp = '\0';
-    if( ExecDLLPgm( WLIB_EXE, cmdline ) ) {
+    cmdline = "-c -b -n -q -pa ";
+    cmdline += wlibMachineOption();
+    cmdline += " \"";
+    cmdline += FmtData.implibname;
+    cmdline += "\" @\"";
+    cmdline += ImpLib.fname;
+    cmdline += '"';
+    if( ExecDLLPgm( WLIB_EXE, cmdline.c_str() ) ) {
         PrintIOError( ERR+MSG_CANT_EXECUTE, "12", WLIB_EXE );
     }
-    MemFree( cmdline );
 #else
-    char        *atfname;
-    size_t      namelen;
+    std::string atfname;
     int         retval;
-    const char  *libtype;
 
-    namelen = strlen( ImpLib.fname ) + 1;
-    atfname = (char *)(MemAllocSafe( namelen + 1 ));  // +1 for the @
-    *atfname = '@';
-    memcpy( atfname + 1, ImpLib.fname, namelen );
-    switch( LinkState & LS_HAVE_MACHTYPE_MASK ) {
-    case LS_HAVE_ALPHA_CODE:
-        libtype = "-ia";
-        break;
-    case LS_HAVE_MIPS_CODE:
-        libtype = "-im";
-        break;
-    case LS_HAVE_PPC_CODE:
-        libtype = "-ip";
-        break;
-    case LS_HAVE_X64_CODE:
-        libtype = "-i6";
-        break;
-    case LS_HAVE_X86_CODE:
-        libtype = "-ii";
-        break;
-    default:
-        libtype = "-ii";
-        break;
-    }
-    retval = (int)spawnlp( P_WAIT, WLIB_EXE, WLIB_EXE, "-c", "-b", "-n", "-q", "-pa",
-                  libtype, FmtData.implibname, atfname, NULL );
+    atfname = '@';
+    atfname += ImpLib.fname;
+    retval = static_cast<int>( spawnlp( P_WAIT, WLIB_EXE, WLIB_EXE, "-c", "-b", "-n", "-q", "-pa",
+                  wlibMachineOption(), FmtData.implibname, atfname.c_str(), nullptr ) );
     if( retval == -1 ) {
         PrintIOError( ERR+MSG_CANT_EXECUTE, "12", WLIB_EXE );
     }
-    MemFree( atfname );
 #endif
 }
 
 static void FlushImpBuffer( void )
 /********************************/
 {
+    implibinfo  &ImpLib = loadFileState().implib;
+
     QWrite( ImpLib.handle, ImpLib.buffer, ImpLib.bufsize, ImpLib.fname );
 }
 
 void BuildImpLib( void )
 /**********************/
 {
+    implibinfo  &ImpLib = loadFileState().implib;
+
     if( LinkState & LS_LINK_ERROR )
         return;
     if( FmtData.make_implib ) {
@@ -1014,6 +983,7 @@ void BuildImpLib( void )
 static void BufImpWrite( const char *buffer, size_t len )
 /*******************************************************/
 {
+    implibinfo  &ImpLib = loadFileState().implib;
     size_t      diff;
 
     if( ImpLib.bufsize + len >= IMPLIB_BUFSIZE ) {
@@ -1034,49 +1004,31 @@ static void BufImpWrite( const char *buffer, size_t len )
 void AddImpLibEntry( const char *intname, const char *extname, ordinal_t ordinal, bool by_name )
 /**********************************************************************************************/
 {
-    size_t      intlen;
-    size_t      otherlen;
-    char        *buff;
-    char        *currpos;
+    LoadFileState   &state = loadFileState();
+    implibinfo      &ImpLib = state.implib;
 
     if( FmtData.make_implib
       && ImpLib.handle != NIL_FHANDLE ) {
+        std::string &buff = state.entry;
+
         ImpLib.didone = true;
-        intlen = strlen( intname );
+        buff.assign( "++'" );
+        buff += intname;
+        buff += "'.'";
+        buff.append( ImpLib.module_name, ImpLib.module_name_len );
+        buff += "'.";
         if( by_name ) {
-            otherlen = strlen( extname );
+            buff += ".'";
+            buff += extname;
+            buff += '\'';
         } else {
-            otherlen = 10;          // max length of a 32-bit int.
-        }
-        buff = (char *)(alloca( intlen + otherlen + ImpLib.module_name_len + 13 ));
-        buff[0] = '+';
-        buff[1] = '+';
-        buff[2] = '\'';
-        currpos = buff + 3;
-        memcpy( currpos, intname, intlen );
-        currpos += intlen;
-        *currpos++ = '\'';
-        *currpos++ = '.';
-        *currpos++ = '\'';
-        memcpy( currpos, ImpLib.module_name, ImpLib.module_name_len );
-        currpos += ImpLib.module_name_len;
-        *currpos++ = '\'';
-        *currpos++ = '.';
-        if( by_name ) {
-            *currpos++ = '.';
-            *currpos++ = '\'';
-            memcpy( currpos, extname, otherlen );
-            currpos += otherlen;
-            *currpos++ = '\'';
-        } else {
-            sprintf( currpos, "%ld", (long)ordinal );
-            currpos += strlen( currpos );
+            buff += std::to_string( static_cast<long>( ordinal ) );
         }
 #if !defined( __UNIX__ )
-        *currpos++ = '\r';
+        buff += '\r';
 #endif
-        *currpos = '\n';
-        BufImpWrite( buff, currpos - buff + 1 );
+        buff += '\n';
+        BufImpWrite( buff.data(), buff.size() );
     }
 }
 
@@ -1135,8 +1087,8 @@ unsigned long OffsetAlign( unsigned long off, unsigned long align )
 static bool WriteSegData( void *_sdata, void *_info )
 /***************************************************/
 {
-    segdata         *sdata = (segdata *)(_sdata);
-    grpwriteinfo    *info = (grpwriteinfo *)(_info);
+    segdata         *sdata = static_cast<segdata *>( _sdata );
+    grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
     unsigned long   newpos;
     unsigned long   oldpos;
 
@@ -1173,17 +1125,15 @@ void WriteLeaderLoad( void *seg )
 {
     grpwriteinfo    info;
 
-    info.repos = false;
-    info.copy = false;
     info.seg_start = PosLoad();
-    DoWriteLeader( (seg_leader *)(seg), &info );
+    DoWriteLeader( static_cast<seg_leader *>( seg ), &info );
 }
 
 static bool DoGroupLeader( void *_seg, void *_info )
 /**************************************************/
 {
-    seg_leader      *seg = (seg_leader *)(_seg);
-    grpwriteinfo    *info = (grpwriteinfo *)(_info);
+    seg_leader      *seg = static_cast<seg_leader *>( _seg );
+    grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
     // If class or sector should not be output, skip it
     if( EMIT_CLASS( seg->class_ )
@@ -1200,10 +1150,10 @@ static bool DoDupGroupLeader( void *seg, void *_info )
  * As copies, they need to be output, so ignore their MOEMIT flag here
  */
 {
-    grpwriteinfo    *info = (grpwriteinfo *)(_info);
+    grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
-    info->seg_start = info->grp_start + SEG_GROUP_DELTA( (seg_leader *)seg );
-    DoWriteLeader( (seg_leader *)(seg), info );
+    info->seg_start = info->grp_start + SEG_GROUP_DELTA( static_cast<seg_leader *>( seg ) );
+    DoWriteLeader( static_cast<seg_leader *>( seg ), info );
     return( false );
 }
 
@@ -1213,8 +1163,8 @@ static bool WriteCopyGroups( void *_seg, void *_info )
  * that have more than one group in them
  */
 {
-    seg_leader      *seg = (seg_leader *)(_seg);
-    grpwriteinfo    *info = (grpwriteinfo *)(_info);
+    seg_leader      *seg = static_cast<seg_leader *>( _seg );
+    grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
     if( info->last_group != seg->group ) {   // Only interate new groups
         info->last_group = seg->group;
@@ -1239,7 +1189,7 @@ offset  WriteGroupLoad( group_entry *group, bool repos )
     class_ = group->leaders->class_;
     if( class_->flags & CLASS_COPY ) {
         info.copy = true;
-        info.last_group = NULL; // so it will use the first group
+        info.last_group = nullptr; // so it will use the first group
         RingLookup( class_->DupClass->segs->group->leaders, WriteCopyGroups, &info );
     } else {
         info.copy = false;
@@ -1254,7 +1204,7 @@ void FreeOutFiles( void )
     outfilelist     *fnode;
 
     CloseOutFiles();
-    for( fnode = OutFiles; fnode != NULL; fnode = OutFiles ) {
+    for( fnode = OutFiles; fnode != nullptr; fnode = OutFiles ) {
         if( LinkState & LS_LINK_ERROR ) {
             QDelete( fnode->fname );
         }
@@ -1268,7 +1218,13 @@ static void *SetToFillChar( void *dest, const void *data, size_t size )
 /*********************************************************************/
 {
     memset( dest, FmtData.FillChar, size );
-    return( (void *)data );
+    return( const_cast<void *>( data ) );
+}
+
+static void *CopyData( void *dest, const void *data, size_t size )
+/****************************************************************/
+{
+    return( memcpy( dest, data, size ) );
 }
 
 #define BUFF_BLOCK_SIZE _16K
@@ -1285,7 +1241,7 @@ static void WriteBuffer( const char *data, size_t len, outfilelist *outfile, wri
         adjust = BUFF_BLOCK_SIZE - modpos;
         rtn( outfile->buffer + modpos, data, adjust );
         QWrite( outfile->handle, outfile->buffer, BUFF_BLOCK_SIZE, outfile->fname );
-        if( data != NULL )
+        if( data != nullptr )
             data += adjust;
         len -= adjust;
         modpos = 0;
@@ -1305,13 +1261,13 @@ static void SeekBuffer( unsigned long len, outfilelist *outfile, writebuffer_fn 
     outfile->bufpos += len;
     while( modpos + len >= BUFF_BLOCK_SIZE ) {
         adjust = BUFF_BLOCK_SIZE - modpos;
-        rtn( outfile->buffer + modpos, NULL, adjust );
+        rtn( outfile->buffer + modpos, nullptr, adjust );
         QWrite( outfile->handle, outfile->buffer, BUFF_BLOCK_SIZE, outfile->fname );
         len -= adjust;
         modpos = 0;
     }
     if( len > 0 ) {
-        rtn( outfile->buffer + modpos, NULL, len );
+        rtn( outfile->buffer + modpos, nullptr, len );
     }
 }
 
@@ -1321,8 +1277,8 @@ void PadBuffFile( outfilelist *outfile, size_t size )
 {
     if( size == 0 )
         return;
-    if( outfile->buffer != NULL ) {
-        WriteBuffer( NULL, size, outfile, SetToFillChar );
+    if( outfile->buffer != nullptr ) {
+        WriteBuffer( nullptr, size, outfile, SetToFillChar );
     } else {
         WriteNulls( outfile->handle, size, outfile->fname );
     }
@@ -1344,8 +1300,8 @@ void WriteLoad( const void *buff, size_t size )
     outfilelist         *outfile;
 
     outfile = CurrSect->outfile;
-    if( outfile->buffer != NULL ) {
-        WriteBuffer( (const char *)(buff), size, outfile, memcpy );
+    if( outfile->buffer != nullptr ) {
+        WriteBuffer( static_cast<const char *>( buff ), size, outfile, CopyData );
     } else {
         QWrite( outfile->handle, buff, size, outfile->fname );
     }
@@ -1372,17 +1328,17 @@ void WriteLoadU32( unsigned_32 data )
 size_t WriteLoadU8Name( const char *data, size_t len, bool ucase )
 /****************************************************************/
 {
-    char            buff[255];
-    size_t          i;
+    std::array<char, 255>   buff;
+    size_t                  i;
 
     if( len > 255 )
         len = 255;
-    WriteLoadU8( len );
+    WriteLoadU8( static_cast<unsigned_8>( len ) );
     if( ucase ) {
         for( i = 0; i < len; ++i ) {
-            buff[i] = toupper( ((unsigned char *)data)[i] );
+            buff[i] = static_cast<char>( toupper( static_cast<unsigned char>( data[i] ) ) );
         }
-        data = buff;
+        data = buff.data();
     }
     WriteLoad( data, len );
     return( len + 1 );
@@ -1398,18 +1354,8 @@ static void FlushBuffFile( outfilelist *outfile )
         QWrite( outfile->handle, outfile->buffer, modpos, outfile->fname );
     }
     MemFree( outfile->buffer );
-    outfile->buffer = NULL;
+    outfile->buffer = nullptr;
 }
-
-#if 0
-static void *NullBuffFunc( void *dest, const void *dummy, size_t size )
-/*********************************************************************/
-{
-    /* unused parameters */ (void)dummy; (void)size;
-
-    return( dest );
-}
-#endif
 
 void SeekLoad( unsigned long offset )
 /***********************************/
@@ -1417,14 +1363,13 @@ void SeekLoad( unsigned long offset )
     outfilelist         *outfile;
 
     outfile = CurrSect->outfile;
-    if( outfile->buffer != NULL
+    if( outfile->buffer != nullptr
       && ( outfile->origin + offset ) < outfile->bufpos ) {
         FlushBuffFile( outfile );
     }
-    if( outfile->buffer == NULL ) {
+    if( outfile->buffer == nullptr ) {
         QSeek( outfile->handle, outfile->origin + offset, outfile->fname );
     } else {
-//        SeekBuffer( outfile->origin + offset - outfile->bufpos, outfile, NullBuffFunc );
         SeekBuffer( outfile->origin + offset - outfile->bufpos, outfile, SetToFillChar );
     }
 }
@@ -1435,11 +1380,11 @@ void SeekEndLoad( unsigned long offset )
     outfilelist         *outfile;
 
     outfile = CurrSect->outfile;
-    if( outfile->buffer != NULL
+    if( outfile->buffer != nullptr
       && offset > 0 ) {
         FlushBuffFile( outfile );
     }
-    if( outfile->buffer == NULL ) {
+    if( outfile->buffer == nullptr ) {
         QLSeek( outfile->handle, offset, LSEEK_END, outfile->fname );
     }
 }
@@ -1447,7 +1392,7 @@ void SeekEndLoad( unsigned long offset )
 unsigned long PosLoad( void )
 /***************************/
 {
-    if( CurrSect->outfile->buffer != NULL ) {
+    if( CurrSect->outfile->buffer != nullptr ) {
         return( CurrSect->outfile->bufpos - CurrSect->outfile->origin );
     } else {
         return( QPos( CurrSect->outfile->handle ) - CurrSect->outfile->origin );
@@ -1461,7 +1406,7 @@ void InitBuffFile( outfilelist *outfile, char *filename, bool executable )
     outfile->handle   = NIL_FHANDLE;
     outfile->file_loc = 0;
     outfile->bufpos   = 0;
-    outfile->buffer   = NULL;
+    outfile->buffer   = nullptr;
     outfile->ovlfnoff = 0;
     outfile->is_exe   = executable;
     outfile->origin   = 0;
@@ -1484,13 +1429,13 @@ void OpenBuffFile( outfilelist *outfile )
     if( outfile->handle == NIL_FHANDLE ) {
         PrintIOError( FTL+MSG_CANT_OPEN_NO_REASON, "s", outfile->fname );
     }
-    outfile->buffer = (char *)(MemAllocSafe( BUFF_BLOCK_SIZE ));
+    outfile->buffer = static_cast<char *>( MemAllocSafe( BUFF_BLOCK_SIZE ) );
 }
 
 void CloseBuffFile( outfilelist *outfile )
 /****************************************/
 {
-    if( outfile->buffer != NULL ) {
+    if( outfile->buffer != nullptr ) {
         FlushBuffFile( outfile );
     }
     QClose( outfile->handle, outfile->fname );

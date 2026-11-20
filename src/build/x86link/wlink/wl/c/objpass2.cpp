@@ -73,7 +73,7 @@ void ObjPass2( void )
 #ifdef _EXE
     }
 #endif
-    if( MapFile != NULL ) {
+    if( MapFile != nullptr ) {
         WriteMapTracedSyms();
     }
     PrintUndefinedSyms();
@@ -93,7 +93,7 @@ void PModList( mod_entry *head )
 {
     mod_entry           *obj;
 
-    for( obj = head; obj != NULL; obj = obj->u.next ) {
+    for( obj = head; obj != nullptr; obj = obj->u.next ) {
         PModule( obj );
     }
 }
@@ -117,11 +117,11 @@ bool LoadObj( segdata *seg )
     seg_leader *leader;
 
     leader = seg->u.leader;
-    if( ( leader == NULL )
+    if( ( leader == nullptr )
       || DBISkip( leader ) )
         return( false );
     CurrRec.seg = seg;
-    if( leader->group == NULL ) {
+    if( leader->group == nullptr ) {
         CurrRec.addr = leader->seg_addr;
 #ifdef DEVBUILD
         LnkMsg( WRN+MSG_INTERNAL, "s", "null leader group found" );

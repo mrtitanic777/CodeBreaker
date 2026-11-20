@@ -30,10 +30,12 @@
 ****************************************************************************/
 
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <ctype.h>
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
 #include "linkstd.h"
 #include "exedos.h"
 #include "exe16m.h"
@@ -47,6 +49,7 @@
 #include "objcalc.h"
 #include "dbgall.h"
 #include "ring.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
@@ -64,14 +67,26 @@
  * non-relocatable DOS/16M modules only run on VCPI or raw systems, not DPMI.
  */
 
-typedef dos_addr reloc_addr;
+namespace {
 
-typedef struct {
+using reloc_addr = dos_addr;
+
+struct context {
     reloc_addr      *reloc_data;
-} context;
+};
 
-static unsigned_32  LastSel = 0;
-static unsigned     reloc_fmt = 0;
+// what the DOS/16M writer keeps for one run
+struct D16MState {
+    unsigned_32     LastSel = 0;
+    unsigned        reloc_fmt = 0;
+};
+
+D16MState &state()
+{
+    return cb_wlink::RunState::part<D16MState>();
+}
+
+}   // namespace
 
 static void WriteGDT( unsigned_32 reloc_size )
 /********************************************/
@@ -79,10 +94,11 @@ static void WriteGDT( unsigned_32 reloc_size )
 {
     gdt_info        gdt;
     group_entry     *group;
+    const unsigned  reloc_fmt = state().reloc_fmt;
 
 // write program gdt's.
     gdt.gdtaddr_hi = 0;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->size > 0 ) {
             gdt.gdtlen = __ROUND_UP_SIZE_PARA( group->size ) - 1; // para align.
         } else {
@@ -136,7 +152,7 @@ static unsigned Write16MData( unsigned hdr_size )
     DEBUG(( DBG_BASE, "Writing DOS/16M data" ));
 
     SeekLoad( hdr_size );
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         WriteGroupLoad( group, false );
         NullAlign( 0x10 );          // paragraph alignment.
     }
@@ -146,7 +162,7 @@ static unsigned Write16MData( unsigned hdr_size )
 static bool RelocWalkFn( void *data, size_t size, void *ctx )
 /***********************************************************/
 {
-    context     *info = (context *)(ctx);
+    context     *info = static_cast<context *>( ctx );
 
     memcpy( info->reloc_data, data, size );
     info->reloc_data += size / sizeof( reloc_addr );
@@ -160,7 +176,7 @@ static void write_sel_reloc( unsigned_16 sel, reloc_addr *block_start, reloc_add
 
     if( sel != 0 ) {
         WriteLoadU16( sel );
-        block_cnt = block_end - block_start;
+        block_cnt = static_cast<unsigned_16>( block_end - block_start );
         WriteLoadU16( block_cnt );
         for( ; block_start < block_end; ++block_start ) {
             WriteLoadU16( block_start->off );
@@ -168,16 +184,16 @@ static void write_sel_reloc( unsigned_16 sel, reloc_addr *block_start, reloc_add
     }
 }
 
-static int cmp_reloc_entry( const void *a, const void *b )
-/********************************************************/
+static bool reloc_entry_less( const reloc_addr &a, const reloc_addr &b )
+/*********************************************************************/
 {
     int retval;
 
-    retval = ((reloc_addr *)a)->seg - ((reloc_addr *)b)->seg;
+    retval = a.seg - b.seg;
     if( retval == 0 ) {
-        retval = ((reloc_addr *)a)->off - ((reloc_addr *)b)->off;
+        retval = a.off - b.off;
     }
-    return( retval );
+    return( retval < 0 );
 }
 
 static unsigned GetRelocBlock( reloc_addr **reloc_data )
@@ -187,18 +203,18 @@ static unsigned GetRelocBlock( reloc_addr **reloc_data )
     size_t          num_relocs;
     context         info;
 
-    *reloc_data = NULL;
+    *reloc_data = nullptr;
     if( (LinkState & LS_MAKE_RELOCS) && Root->relocs ) {
         reloclist = Root->reloclist;
         num_relocs = Root->relocs;
-        *reloc_data = (reloc_addr *)(MemAllocSafe( sizeof( reloc_addr ) * num_relocs ));
-        if( *reloc_data != NULL ) {
+        *reloc_data = static_cast<reloc_addr *>( MemAllocSafe( sizeof( reloc_addr ) * num_relocs ) );
+        if( *reloc_data != nullptr ) {
             info.reloc_data = *reloc_data;
             WalkRelocList( &reloclist, RelocWalkFn, &info );
-            if( reloc_fmt == 1 ) {
+            if( state().reloc_fmt == 1 ) {
                 return( 2 );
             } else {
-                qsort( *reloc_data, num_relocs, sizeof( reloc_addr ), cmp_reloc_entry );
+                std::sort( *reloc_data, *reloc_data + num_relocs, reloc_entry_less );
                 // TODO: number of extra reloc segments should be
                 // properly calculated, now only one is set
                 // (max. relocs are nearly 2^15 items)
@@ -206,7 +222,7 @@ static unsigned GetRelocBlock( reloc_addr **reloc_data )
             }
         }
     }
-    reloc_fmt = 0;
+    state().reloc_fmt = 0;
     return( 0 );
 }
 
@@ -228,6 +244,7 @@ static unsigned_32 Write16MRelocs( reloc_addr *reloc_data )
     unsigned        i;
     unsigned_16     sel;
     unsigned        block_start;
+    const unsigned  reloc_fmt = state().reloc_fmt;
 
     pos = PosLoad();
     num_relocs = Root->relocs;
@@ -261,16 +278,16 @@ static unsigned_32 WriteStubProg( void )
 {
     unsigned_32 size;
     f_handle    fhandle;
-    char        fullname[PATH_MAX];
+    std::array<char, PATH_MAX> fullname;
 
     size = 0;
-    if( FmtData.u.d16m.stub != NULL ) {
-        fhandle = FindPath( FmtData.u.d16m.stub, fullname );
+    if( FmtData.u.d16m.stub != nullptr ) {
+        fhandle = FindPath( FmtData.u.d16m.stub, fullname.data() );
         if( fhandle == NIL_FHANDLE ) {
             LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", FmtData.u.d16m.stub );
         } else {
             MemFree( FmtData.u.d16m.stub );
-            FmtData.u.d16m.stub = MemStrdupSafe( fullname );
+            FmtData.u.d16m.stub = MemStrdupSafe( fullname.data() );
             size = CopyToLoad( fhandle, FmtData.u.d16m.stub );
             QClose( fhandle, FmtData.u.d16m.stub );
         }
@@ -288,6 +305,7 @@ void Fini16MLoadFile( void )
     unsigned            exe_size;
     dos16m_exe_header   exe_head;
     unsigned            extra_sels;
+    D16MState           &st = state();
     unsigned            stub_size;
     unsigned            reloc_size;
     reloc_addr          *reloc_data;
@@ -295,7 +313,7 @@ void Fini16MLoadFile( void )
     memset( &exe_head, 0, sizeof( exe_head ) );
     // TODO: add some parameter for reloc format switching
     // for now it is setup to RSI-2 reloc format
-    reloc_fmt = 2;
+    st.reloc_fmt = 2;
     extra_sels = GetRelocBlock( &reloc_data );
     stub_size = WriteStubProg();
     hdr_size = sizeof( exe_head ) + (NumGroups + extra_sels) * sizeof( gdt_info );
@@ -319,7 +337,7 @@ void Fini16MLoadFile( void )
     _HostU16toTarg( 0, exe_head.min_alloc );
     _HostU16toTarg( StartInfo.addr.off, exe_head.init_ip );
     _HostU16toTarg( StartInfo.addr.seg, exe_head.code_seg );
-    if( reloc_fmt == 2 ) {
+    if( st.reloc_fmt == 2 ) {
         temp = FmtData.u.d16m.selstart + NumGroups * sizeof( gdt_info );
     } else {
         temp = 0;
@@ -344,15 +362,15 @@ void Fini16MLoadFile( void )
     _HostU16toTarg( FmtData.u.d16m.buffer, exe_head.transfer_buffer_size );
     _HostU16toTarg( FmtData.u.d16m.strategy, exe_head.default_mem_strategy );
     while( extra_sels-- ) {
-        LastSel += sizeof( gdt_info );
-        if( LastSel > 0xFFFF ) {
-            LnkMsg( FTL + MSG_TOO_MANY_SELECTORS, NULL );
+        st.LastSel += sizeof( gdt_info );
+        if( st.LastSel > 0xFFFF ) {
+            LnkMsg( FTL + MSG_TOO_MANY_SELECTORS, nullptr );
         }
-        if( LastSel >= 0xA000 && (LastSel & 0x1FF) == 0 ) {   // check for reserved selector
-            LastSel += sizeof( gdt_info );
+        if( st.LastSel >= 0xA000 && (st.LastSel & 0x1FF) == 0 ) {   // check for reserved selector
+            st.LastSel += sizeof( gdt_info );
         }
     }
-    _HostU16toTarg( LastSel, exe_head.last_sel_used );
+    _HostU16toTarg( st.LastSel, exe_head.last_sel_used );
     /*
      * add original EXP name
      */
@@ -360,7 +378,7 @@ void Fini16MLoadFile( void )
     if( temp > sizeof( exe_head.EXP_path ) - 1 )
         temp = sizeof( exe_head.EXP_path ) - 1;
     for( i = 0; i < temp; i++ ) {
-        exe_head.EXP_path[i] = toupper( ((unsigned char *)FmtData.u.d16m.exp_name)[i] );
+        exe_head.EXP_path[i] = toupper( reinterpret_cast<unsigned char *>( FmtData.u.d16m.exp_name )[i] );
     }
     exe_head.EXP_path[temp] = '\0';
 
@@ -372,12 +390,13 @@ unsigned ToD16MSel( unsigned seg_num )
 /************************************/
 {
     unsigned_32    x;
+    unsigned_32    &LastSel = state().LastSel;
 
     LastSel = FmtData.u.d16m.selstart + ( seg_num - 1 ) * sizeof( gdt_info );
     for( x = 0xA000; LastSel >= x; x += 0x200 ) {   // check for reserved selector
         LastSel += sizeof( gdt_info );
         if( LastSel > 0xFFFF ) {
-            LnkMsg( FTL + MSG_TOO_MANY_SELECTORS, NULL );
+            LnkMsg( FTL + MSG_TOO_MANY_SELECTORS, nullptr );
         }
     }
     return( LastSel );
@@ -391,7 +410,7 @@ segment Find16MSeg( segment selector )
     segment         result;
 
     result = 0;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->addr.seg == selector ) {
             result = group->u.dos_segment;
             break;
@@ -409,7 +428,7 @@ void CalcGrpSegs( void )
     offset          addr;
 
     addr = 0;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         addr = __ROUND_UP_SIZE_PARA( addr );       // addr is paragraph aligned.
         group->u.dos_segment = addr >> 4;
         addr += group->totalsize;
@@ -419,7 +438,7 @@ void CalcGrpSegs( void )
 static void SetSegDataAbs( void *_sdata )
 /***************************************/
 {
-    segdata     *sdata = (segdata *)(_sdata);
+    segdata     *sdata = static_cast<segdata *>( _sdata );
 
     if( !sdata->isdead ) {
         sdata->isabs = true;
@@ -431,14 +450,14 @@ static void SetSegDataAbs( void *_sdata )
 static void RemapAliasSels( void *_leader )
 /*****************************************/
 {
-    seg_leader  *leader = (seg_leader *)(_leader);
+    seg_leader  *leader = static_cast<seg_leader *>( _leader );
     seg_leader  *seg;
     section     *sect;
 
     if( leader->info & SEGINF_ABSOLUTE ) {
         sect = Root;
-        while( (seg = FindSegment( sect, leader->segname.u.ptr )) != NULL ) {
-            sect = NULL;
+        while( (seg = FindSegment( sect, leader->segname.u.ptr )) != nullptr ) {
+            sect = nullptr;
             if( (seg->info & SEGINF_ABSOLUTE) == 0 ) {
                 seg->info |= SEGINF_ABSOLUTE;
                 seg->combine = COMBINE_INVALID;
@@ -457,7 +476,7 @@ void MakeDos16PM( void )
     /*
      * remap dos16m kernel selectors reference
      */
-    for( class_ = Root->classes; class_ != NULL; class_ = class_->next ) {
+    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( (class_->flags & CLASS_DEBUG_INFO) == 0 ) {
             RingWalk( class_->segs, RemapAliasSels );
         }
@@ -465,7 +484,7 @@ void MakeDos16PM( void )
     /*
      * change startup point
      */
-    if( FindISymbol( "_cstart_" ) != NULL ) {
+    if( FindISymbol( "_cstart_" ) != nullptr ) {
         StartInfo.type = START_UNDEFED;
         SetStartSym( "_cstart_" );
     }

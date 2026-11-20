@@ -30,14 +30,18 @@
 ****************************************************************************/
 
 
-#include <stddef.h>
+#include <array>
+#include <cstddef>
+#include <cstring>
 #include "linkstd.h"
 #include "exedos.h"
 #include "loadfile.h"
 #include "dosstub.h"
 
 
-static unsigned_8       DOSDefStub[] = {
+namespace {
+
+constexpr std::array<unsigned_8, 78> DOSDefStub = {
     0x4D, 0x5A, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00,
     0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
     0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -50,25 +54,26 @@ static unsigned_8       DOSDefStub[] = {
     0x21, 0xB8, 0x01, 0x4C, 0xCD, 0x21
 };
 
-static unsigned_32 doExeTypeString( void )
-/****************************************/
 /* make up the "program is %f" string, and put it in tokbuff.*/
+unsigned_32 doExeTypeString()
 {
-    char        rc_buff[RESOURCE_MAX_SIZE];
+    std::array<char, RESOURCE_MAX_SIZE> rc_buff;
     unsigned_32 msgsize;
 
-    Msg_Get( MSG_IS_A_EXE, rc_buff );
-    msgsize = FmtStr( TokBuff, TokSize, rc_buff );
+    Msg_Get( MSG_IS_A_EXE, rc_buff.data() );
+    msgsize = static_cast<unsigned_32>( FmtStr( TokBuff, TokSize, rc_buff.data() ) );
     TokBuff[msgsize++] = '\r';
     TokBuff[msgsize++] = '\n';
     TokBuff[msgsize] = '$';     /* end of string for int 21 fn. 9 */
-    return( msgsize + 1 );
+    return msgsize + 1;
 }
+
+}  // namespace
 
 unsigned_32 GetDOSDefStubSize( void )
 /***********************************/
 {
-    return( sizeof( DOSDefStub ) + doExeTypeString() );
+    return static_cast<unsigned_32>( DOSDefStub.size() ) + doExeTypeString();
 }
 
 unsigned_32 WriteDOSDefStub( unsigned_32 stub_align )
@@ -76,16 +81,14 @@ unsigned_32 WriteDOSDefStub( unsigned_32 stub_align )
  * write the default stub to the executable file
  */
 {
-    unsigned_32         msgsize;
-    unsigned_32         fullsize;
-    unsigned_32         *stubend;
+    const unsigned_32   stubsize = static_cast<unsigned_32>( DOSDefStub.size() );
+    const unsigned_32   msgsize = doExeTypeString();
+    const unsigned_32   fullsize = __ROUND_UP_SIZE( msgsize + stubsize, stub_align );
+    std::array<unsigned_8, DOSDefStub.size()>   stub = DOSDefStub;
 
-    msgsize = doExeTypeString();
-    fullsize = __ROUND_UP_SIZE( msgsize + sizeof( DOSDefStub ), stub_align );
-    stubend = (unsigned_32 *)( DOSDefStub + NE_HEADER_OFFSET );
-    *stubend = fullsize;
-    WriteLoad( DOSDefStub, sizeof( DOSDefStub ) );
+    std::memcpy( stub.data() + NE_HEADER_OFFSET, &fullsize, sizeof( fullsize ) );
+    WriteLoad( stub.data(), stub.size() );
     WriteLoad( TokBuff, msgsize );
-    PadLoad( fullsize - msgsize - sizeof( DOSDefStub ) );
-    return( fullsize );
+    PadLoad( fullsize - msgsize - stubsize );
+    return fullsize;
 }

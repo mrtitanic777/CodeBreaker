@@ -59,7 +59,7 @@ static unsigned_32 WriteDOSRootRelocs( unsigned_32 mz_hdr_size )
 
     DumpRelocList( Root->reloclist );
     NullAlign( 0x10 );
-    header_size = (unsigned long)Root->relocs * sizeof( dos_addr )
+    header_size = static_cast<unsigned long>( Root->relocs ) * sizeof( dos_addr )
                     + mz_hdr_size;
     return( __ROUND_UP_SIZE_PARA( header_size ) );
 }
@@ -126,14 +126,14 @@ static unsigned long WriteDOSData( unsigned_32 mz_hdr_size )
     header_size = WriteDOSRootRelocs( mz_hdr_size );
 
     Root->u.file_loc = header_size;
-    if( Root->areas != NULL ) {
+    if( Root->areas != nullptr ) {
         Root->outfile->file_loc = header_size + Root->size;
         WalkAreas( Root->areas, AssignFileLocs );
         OvlEmitTable();
     }
 
     /* keep track of positions within the file. */
-    for( fnode = OutFiles; fnode != NULL; fnode = fnode->next ) {
+    for( fnode = OutFiles; fnode != nullptr; fnode = fnode->next ) {
         fnode->file_loc = 0;
     }
     Root->outfile->file_loc = Root->u.file_loc;
@@ -141,13 +141,13 @@ static unsigned long WriteDOSData( unsigned_32 mz_hdr_size )
 
     /* write groups and relocations */
     root_size = 0;
-    for( group = Groups; group != NULL; group = next ) {
+    for( group = Groups; group != nullptr; group = next ) {
         next = group->next;
         sect = group->section;
         CurrSect = sect;
         fnode = sect->outfile;
         repos = WriteGroup( group );
-        if( ( next == NULL )
+        if( ( next == nullptr )
           || ( sect != next->section ) ) {
             if( sect == Root ) {
                 root_size = fnode->file_loc;
@@ -167,20 +167,35 @@ static unsigned long WriteDOSData( unsigned_32 mz_hdr_size )
  * code from loadfile to allow the front chunk of a group to be split off
 */
 
-static soffset      COMAmountWritten;
+namespace {
 
-static bool WriteSegData( void *_sdata, void *_start )
-/****************************************************/
+// what one group's copy keeps while it is written: where the group starts (chop) and how much has gone out so far
+struct COMWrite {
+    soffset         chop;
+    soffset         written;
+};
+
+// one segment leader's pieces: where the leader starts, and the group's running total
+struct COMLeader {
+    soffset         start;
+    soffset         &written;
+};
+
+}
+
+static bool WriteSegData( void *_sdata, void *_leader )
+/*****************************************************/
 {
-    segdata         *sdata = (segdata *)(_sdata);
-    soffset         *start = (soffset *)(_start);
+    segdata         *sdata = static_cast<segdata *>( _sdata );
+    COMLeader       *leader = static_cast<COMLeader *>( _leader );
+    soffset         &COMAmountWritten = leader->written;
     soffset         newpos;
     size_t          pad;
 
     if( !sdata->isuninit
       && !sdata->isdead ) {
-        newpos = *start + sdata->a.delta;
-        if( newpos + (soffset)sdata->length > 0 ) {
+        newpos = leader->start + sdata->a.delta;
+        if( newpos + static_cast<soffset>( sdata->length ) > 0 ) {
             if( newpos > COMAmountWritten ) {
                 pad = newpos - COMAmountWritten;
                 PadLoad( pad );
@@ -198,14 +213,14 @@ static bool WriteSegData( void *_sdata, void *_start )
     return( false );
 }
 
-static bool DoCOMGroup( void *_seg, void *chop )
-/**********************************************/
+static bool DoCOMGroup( void *_seg, void *_write )
+/************************************************/
 {
-    seg_leader  *seg = (seg_leader *)(_seg);
-    soffset     newstart;
+    seg_leader  *seg = static_cast<seg_leader *>( _seg );
+    COMWrite    *write = static_cast<COMWrite *>( _write );
+    COMLeader   leader = { write->chop + SEG_GROUP_DELTA( seg ), write->written };
 
-    newstart = *(soffset *)chop + SEG_GROUP_DELTA( seg );
-    RingLookup( seg->pieces, WriteSegData, &newstart );
+    RingLookup( seg->pieces, WriteSegData, &leader );
     return( false );
 }
 
@@ -233,9 +248,9 @@ static bool WriteCOMGroup( group_entry *group, soffset chop )
     }
     DEBUG((DBG_LOADDOS, "group %a section %d to %l in %s",
             &group->addr, sect->ovlref, file_loc, finfo->fname ));
-    COMAmountWritten = 0;
-    Ring2Lookup( group->leaders, DoCOMGroup, &chop );
-    file_loc += COMAmountWritten;
+    COMWrite write = { chop, 0 };
+    Ring2Lookup( group->leaders, DoCOMGroup, &write );
+    file_loc += write.written;
     if( file_loc > finfo->file_loc ) {
         finfo->file_loc = file_loc;
     }
@@ -253,12 +268,12 @@ static void WriteCOMFile( void )
     soffset             chop;
 
     if( StartInfo.addr.seg != 0 ) {
-        LnkMsg( ERR+MSG_INV_COM_START_ADDR, NULL );
+        LnkMsg( ERR+MSG_INV_COM_START_ADDR, nullptr );
         return;
     }
     if( ( StackAddr.seg != 0 )
       || ( StackAddr.off != 0 ) ) {
-        LnkMsg( WRN+MSG_STACK_SEG_IGNORED, NULL );
+        LnkMsg( WRN+MSG_STACK_SEG_IGNORED, nullptr );
     }
     OrderGroups( CompareDosSegments );
     CurrSect = Root;        // needed for WriteInfo.
@@ -267,12 +282,12 @@ static void WriteCOMFile( void )
     Root->sect_addr = Groups->addr;
 
     /* write groups */
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         chop = SUB_REAL_ADDR( group->addr, StartInfo.addr );
         if( chop > 0 ) {
             chop = 0;
         }
-        if( (soffset)group->size + chop > 0 ) {
+        if( static_cast<soffset>( group->size ) + chop > 0 ) {
             repos = WriteCOMGroup( group, chop );
             if( repos ) {
                 SeekLoad( fnode->file_loc );
@@ -280,7 +295,7 @@ static void WriteCOMFile( void )
         }
     }
     if( fnode->file_loc > (_64K - 0x200) ) {
-        LnkMsg( ERR+MSG_COM_TOO_LARGE, NULL );
+        LnkMsg( ERR+MSG_COM_TOO_LARGE, nullptr );
     }
     DBIWrite();
 }

@@ -72,42 +72,46 @@
 #include "implcoff.h"
 
 #include "clibext.h"
+#include "run_state.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <vector>
 
 
 #ifdef _OS2
 
-#define MINIMUM_SEG_SHIFT       2           /* Corresponds to 2^2 == 4 bytes */
-#define DEFAULT_SEG_SHIFT       9           /* Corresponds to 2^9 == 512 bytes */
+namespace {
 
-#define STUB_ALIGN              8U          /* for PE format */
+constexpr unsigned MINIMUM_SEG_SHIFT = 2;       /* Corresponds to 2^2 == 4 bytes */
+constexpr unsigned DEFAULT_SEG_SHIFT = 9;       /* Corresponds to 2^9 == 512 bytes */
 
-#define PE32_OPT_SIZE           sizeof(pe32_opt_header)
-#define PE64_OPT_SIZE           sizeof(pe64_opt_header)
-#define PE32_SIZE               (PE_HDR_SIZE + PE32_OPT_SIZE)
-#define PE64_SIZE               (PE_HDR_SIZE + PE64_OPT_SIZE)
+constexpr unsigned STUB_ALIGN = 8U;             /* for PE format */
+
+constexpr std::size_t PE32_OPT_SIZE = sizeof( pe32_opt_header );
+constexpr std::size_t PE64_OPT_SIZE = sizeof( pe64_opt_header );
+constexpr std::size_t PE32_SIZE = PE_HDR_SIZE + PE32_OPT_SIZE;
+constexpr std::size_t PE64_SIZE = PE_HDR_SIZE + PE64_OPT_SIZE;
 
 /* RDOS OS default major/minor version numbers */
-#define PE_RDOS_OS_MAJOR        8
-#define PE_RDOS_OS_MINOR        8
+constexpr unsigned PE_RDOS_OS_MAJOR = 8;
+constexpr unsigned PE_RDOS_OS_MINOR = 8;
 /* RDOS Subsystem default major/minor version numbers */
-#define PE_RDOS_SS_MAJOR        1
-#define PE_RDOS_SS_MINOR        0
+constexpr unsigned PE_RDOS_SS_MAJOR = 1;
+constexpr unsigned PE_RDOS_SS_MINOR = 0;
 
-typedef struct local_import {
-    struct local_import *next;
+constexpr char TRANSFER_SEGNAME[] = "TRANSFER CODE";
+
+struct local_import {
+    local_import        *next;
     symbol              *iatsym;
     symbol              *locsym;
-} local_import;
+};
 
-#define TRANSFER_SEGNAME "TRANSFER CODE"
-
-static module_import    *PEImpList;
-static unsigned         NumMods;
-static segdata          *XFerSegData;
-static local_import     *PELocalImpList;
-static unsigned         NumLocalImports;
-
-static struct {
+struct IDataInfo {
     offset      ilt_off;
     offset      eof_ilt_off;
     offset      iat_off;
@@ -115,67 +119,87 @@ static struct {
     offset      hint_off;
     offset      total_size;
     segdata     *sdata;
-} IData;
+};
+
+/* what this file keeps for one run of the linker */
+struct PEState {
+    module_import       *PEImpList = nullptr;
+    unsigned            NumMods = 0;
+    segdata             *XFerSegData = nullptr;
+    local_import        *PELocalImpList = nullptr;
+    unsigned            NumLocalImports = 0;
+    IDataInfo           IData{};
+};
+
+PEState &state()
+{
+    return cb_wlink::RunState::part<PEState>();
+}
+
+}  // namespace
 
 #define WALK_IMPORT_SYMBOLS(sym) \
-    for( (sym) = HeadSym; (sym) != NULL; (sym) = (sym)->next ) \
-        if( IS_SYM_IMPORTED(sym) && (sym)->p.import_dll != NULL \
+    for( (sym) = HeadSym; (sym) != nullptr; (sym) = (sym)->next ) \
+        if( IS_SYM_IMPORTED(sym) && (sym)->p.import_dll != nullptr \
             /*&& ((sym)->info & SYM_DEAD) == 0 */)
 
 static offset CalcIDataSize( void )
 /*********************************/
 {
+    PEState         &st = state();
     module_import   *mod;
     import_name     *imp;
     unsigned        iatsize;
     unsigned        size;
 
-    iatsize = ( NumImports + NumMods ) * sizeof( pe_va );
+    iatsize = ( NumImports + st.NumMods ) * sizeof( pe_va );
     if( 0 == iatsize ) {
         return( 0 );
     }
-    IData.ilt_off = ( NumMods + 1 ) * sizeof( pe_import_directory );
-    IData.eof_ilt_off = IData.ilt_off + iatsize;
-    IData.iat_off = IData.eof_ilt_off + TocSize;
-    IData.mod_name_off = IData.iat_off + iatsize;
+    st.IData.ilt_off = ( st.NumMods + 1 ) * sizeof( pe_import_directory );
+    st.IData.eof_ilt_off = st.IData.ilt_off + iatsize;
+    st.IData.iat_off = st.IData.eof_ilt_off + TocSize;
+    st.IData.mod_name_off = st.IData.iat_off + iatsize;
     size = 0;
-    for( mod = PEImpList; mod != NULL; mod = mod->next ) {
+    for( mod = st.PEImpList; mod != nullptr; mod = mod->next ) {
         size += mod->mod->len + 1;
     }
-    IData.hint_off = IData.mod_name_off + size;
-    size = IData.hint_off;
-    for( mod = PEImpList; mod != NULL; mod = mod->next ) {
-        for( imp = mod->imports; imp != NULL; imp = imp->next ) {
-            if( imp->imp != NULL ) {
+    st.IData.hint_off = st.IData.mod_name_off + size;
+    size = st.IData.hint_off;
+    for( mod = st.PEImpList; mod != nullptr; mod = mod->next ) {
+        for( imp = mod->imports; imp != nullptr; imp = imp->next ) {
+            if( imp->imp != nullptr ) {
                 size = __ROUND_UP_SIZE_EVEN( size );
                 size += imp->imp->len + sizeof( unsigned_16 ) + sizeof( unsigned_8 );
             }
         }
     }
-    IData.total_size = size;
-    return( IData.total_size );
+    st.IData.total_size = size;
+    return( st.IData.total_size );
 }
 
 void ResetLoadPE( void )
 /**********************/
 {
-    PEImpList = NULL;
-    XFerSegData = NULL;
-    NumMods = 0;
+    PEState         &st = state();
+    st.PEImpList = nullptr;
+    st.XFerSegData = nullptr;
+    st.NumMods = 0;
     NumImports = 0;
-    memset( &IData, 0, sizeof( IData ) );
+    memset( &st.IData, 0, sizeof( st.IData ) );
 }
 
 static offset CalcIATAbsOffset( void )
 /************************************/
 {
-    return( IDataGroup->linear + FmtData.base + IData.iat_off );
+    PEState         &st = state();
+    return( IDataGroup->linear + FmtData.base + st.IData.iat_off );
 }
 
 static void CalcImpOff( dll_sym_info *dll, offset *off )
 /******************************************************/
 {
-    if( dll != NULL) { // if not end of mod marker
+    if( dll != nullptr) { // if not end of mod marker
         SET_SYM_ADDR( dll->iatsym, *off, 0 );
     }
     *off += sizeof( pe_va );
@@ -218,7 +242,7 @@ static void *GetTransferGlueCode( void )
     case LS_HAVE_PPC_CODE:      return( CoffImportPpcText );
     case LS_HAVE_X64_CODE:      return( CoffImportX64Text ); // TODO
     case LS_HAVE_X86_CODE:      return( CoffImportX86Text );
-    default:                    DbgAssert( 0 ); return( NULL );
+    default:                    DbgAssert( 0 ); return( nullptr );
     }
 }
 
@@ -228,19 +252,21 @@ offset FindIATSymAbsOff( symbol *sym )
     dll_sym_info    *dll;
 
     dll = sym->p.import_dll;
-    DbgAssert( IS_SYM_IMPORTED( sym ) && dll != NULL );
+    DbgAssert( IS_SYM_IMPORTED( sym ) && dll != nullptr );
     return( dll->iatsym->addr.off );
 }
 
 offset FindSymPosInTocv( symbol *sym )
 /************************************/
 {
-    return( FindIATSymAbsOff( sym ) - IDataGroup->linear - FmtData.base - TocShift - IData.eof_ilt_off );
+    PEState         &st = state();
+    return( FindIATSymAbsOff( sym ) - IDataGroup->linear - FmtData.base - TocShift - st.IData.eof_ilt_off );
 }
 
 static void GenPETransferTable( void )
 /************************************/
 {
+    PEState         &st = state();
     offset          off;
     offset          base;
     symbol          *sym;
@@ -250,11 +276,11 @@ static void GenPETransferTable( void )
     local_import    *loc_imp;
     pe_va           addr;
 
-    if( XFerSegData == NULL )
+    if( st.XFerSegData == nullptr )
         return;
-    group = XFerSegData->u.leader->group;
-    base = XFerSegData->u.leader->seg_addr.off + XFerSegData->a.delta;
-    if( IDataGroup != NULL ) {
+    group = st.XFerSegData->u.leader->group;
+    base = st.XFerSegData->u.leader->seg_addr.off + st.XFerSegData->a.delta;
+    if( IDataGroup != nullptr ) {
         datalen = GetTransferGlueSize();
         data = GetTransferGlueCode();
         WALK_IMPORT_SYMBOLS( sym ) {
@@ -296,8 +322,8 @@ static void GenPETransferTable( void )
                 // TODO
               {
                 offset dest = FindIATSymAbsOff( sym );
-                ((unsigned_64 *)(CoffImportX64Text + 2))->u._32[0] = dest;
-                ((unsigned_64 *)(CoffImportX64Text + 2))->u._32[1] = 0;
+                reinterpret_cast<unsigned_64 *>( CoffImportX64Text + 2 )->u._32[0] = dest;
+                reinterpret_cast<unsigned_64 *>( CoffImportX64Text + 2 )->u._32[1] = 0;
                 if( LinkState & LS_MAKE_RELOCS ) {
                     XFerReloc( sym->addr.off + 2, group, PE_FIX_HIGHLOW, 0 );
                 }
@@ -317,17 +343,17 @@ static void GenPETransferTable( void )
                 break;
             }
             off = sym->addr.off - base;
-            PutInfo( XFerSegData->u1.vm_ptr + off, data, datalen );
+            PutInfo( st.XFerSegData->u1.vm_ptr + off, data, datalen );
         }
     }
     /* dump the local addresses table */
-    for( loc_imp = PELocalImpList; loc_imp != NULL; loc_imp = loc_imp->next ) {
+    for( loc_imp = st.PELocalImpList; loc_imp != nullptr; loc_imp = loc_imp->next ) {
         off = loc_imp->iatsym->addr.off - base;
         addr = FindLinearAddr( &loc_imp->locsym->addr ) + FmtData.base;
-        PutInfo( XFerSegData->u1.vm_ptr + off, &addr, sizeof( addr ) );
+        PutInfo( st.XFerSegData->u1.vm_ptr + off, &addr, sizeof( addr ) );
     }
     if( LinkState & LS_MAKE_RELOCS ) {
-        for( loc_imp = PELocalImpList; loc_imp != NULL; loc_imp = loc_imp->next ) {
+        for( loc_imp = st.PELocalImpList; loc_imp != nullptr; loc_imp = loc_imp->next ) {
             XFerReloc( loc_imp->iatsym->addr.off, group, PE_FIX_HIGHLOW, 0 );
         }
     }
@@ -366,24 +392,24 @@ static unsigned WriteDataPages( pe_exe_header *pehdr, pe_object *object, unsigne
     code_size = 0;
     code_base = 0xFFFFFFFFUL;
     data_base = 0xFFFFFFFFUL;
-    for( group = Groups; group != NULL; group = group->next) {
+    for( group = Groups; group != nullptr; group = group->next) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         name = group->sym->name.u.ptr;
-        if( name == NULL
+        if( name == nullptr
           || name[0] == 0 ) {
-            leader = (seg_leader *)(Ring2First( group->leaders ));
+            leader = static_cast<seg_leader *>( Ring2First( group->leaders ) );
             name = leader->segname.u.ptr;
-            if( name == NULL ) {
-                name = (char *)"";
+            if( name == nullptr ) {
+                name = const_cast<char *>( "" );
             }
         }
         strncpy( object->name, name, PE_OBJ_NAME_LEN );
         size_ph = CalcGroupSize( group );
         if( group == DataGroup
-          && FmtData.dgroupsplitseg != NULL ) {
+          && FmtData.dgroupsplitseg != nullptr ) {
             size_v = group->totalsize;
-            if( StackSegPtr != NULL ) {
+            if( StackSegPtr != nullptr ) {
                 size_v -= StackSize;
             }
         } else {
@@ -456,20 +482,22 @@ static void WalkImportsMods( void (*action)(dll_sym_info *, offset *),
                                                         offset *cookie )
 /**********************************************************************/
 {
+    PEState         &st = state();
     module_import   *mod;
     import_name     *imp;
 
-    for( mod = PEImpList; mod != NULL; mod = mod->next ) {
-        for( imp = mod->imports; imp != NULL; imp = imp->next ) {
+    for( mod = st.PEImpList; mod != nullptr; mod = mod->next ) {
+        for( imp = mod->imports; imp != nullptr; imp = imp->next ) {
             action( imp->dll, cookie );
         }
-        action( NULL, cookie );
+        action( nullptr, cookie );
     }
 }
 
 static void WriteIAT( virt_mem buf, offset linear )
 /*************************************************/
 {
+    PEState         &st = state();
     module_import   *mod;
     import_name     *imp;
     pe_va           iat;
@@ -477,10 +505,10 @@ static void WriteIAT( virt_mem buf, offset linear )
     offset          hint_rva ;
 
     pos = 0;
-    hint_rva = IData.hint_off + linear;
-    for( mod = PEImpList; mod != NULL; mod = mod->next ) {
-        for( imp = mod->imports; imp != NULL; imp = imp->next ) {
-            if( imp->imp != NULL ) {
+    hint_rva = st.IData.hint_off + linear;
+    for( mod = st.PEImpList; mod != nullptr; mod = mod->next ) {
+        for( imp = mod->imports; imp != nullptr; imp = imp->next ) {
+            if( imp->imp != nullptr ) {
                 hint_rva = __ROUND_UP_SIZE_EVEN( hint_rva );
                 iat = PE_IMPORT_BY_NAME | hint_rva;
                 hint_rva += imp->imp->len + ( sizeof( unsigned_16 ) + sizeof( unsigned_8 ) );
@@ -499,6 +527,7 @@ static void WriteIAT( virt_mem buf, offset linear )
 static void WriteImportInfo( void )
 /*********************************/
 {
+    PEState         &st = state();
     pe_import_directory dir;
     unsigned_16         hint;
     virt_mem            buf;
@@ -510,24 +539,24 @@ static void WriteImportInfo( void )
     unsigned            mod_name_rva;
     offset              linear;
 
-    if( IDataGroup == NULL ) {
+    if( IDataGroup == nullptr ) {
         return;
     }
     group = IDataGroup;
     linear = group->linear;
-    group->size = IData.total_size;
-    buf = IData.sdata->u1.vm_ptr;
+    group->size = st.IData.total_size;
+    buf = st.IData.sdata->u1.vm_ptr;
     pos = 0;
     dir.time_stamp = 0;
     dir.major = 0;
     dir.minor = 0;
     /* dump the directory table */
     size = 0;
-    mod_name_rva = IData.mod_name_off + linear;
-    for( mod = PEImpList; mod != NULL; mod = mod->next ) {
+    mod_name_rva = st.IData.mod_name_off + linear;
+    for( mod = st.PEImpList; mod != nullptr; mod = mod->next ) {
         dir.name_rva = mod_name_rva;
-        dir.import_lookup_table_rva = IData.ilt_off + size + linear;
-        dir.import_address_table_rva = IData.iat_off + size + linear;
+        dir.import_lookup_table_rva = st.IData.ilt_off + size + linear;
+        dir.import_address_table_rva = st.IData.iat_off + size + linear;
         size += ( mod->num_entries + 1 ) * sizeof( pe_va );
         mod_name_rva += mod->mod->len + 1;
         PutInfo( buf+pos, &dir, sizeof( dir ) );
@@ -535,23 +564,23 @@ static void WriteImportInfo( void )
     }
     PutInfoNulls( buf + pos, sizeof( dir ) );    /* NULL entry marks end of table */
     pos += sizeof( dir );
-    WriteIAT( buf + IData.ilt_off, linear ); // Import Lookup table
-    WriteToc( buf + IData.eof_ilt_off );
-    for( pos = IData.eof_ilt_off; pos < IData.iat_off; pos += sizeof( pe_va ) ) {
+    WriteIAT( buf + st.IData.ilt_off, linear ); // Import Lookup table
+    WriteToc( buf + st.IData.eof_ilt_off );
+    for( pos = st.IData.eof_ilt_off; pos < st.IData.iat_off; pos += sizeof( pe_va ) ) {
         XFerReloc( pos, group, PE_FIX_HIGHLOW, 0 );
     }
-    WriteIAT( buf + IData.iat_off, linear ); // Import Address table
-    pos = IData.mod_name_off;            /* write the module names */
-    for( mod = PEImpList; mod != NULL; mod = mod->next ) {
+    WriteIAT( buf + st.IData.iat_off, linear ); // Import Address table
+    pos = st.IData.mod_name_off;            /* write the module names */
+    for( mod = st.PEImpList; mod != nullptr; mod = mod->next ) {
         int name_size = mod->mod->len + 1;
         PutInfo( buf + pos, mod->mod->name.u.ptr, name_size );
         pos += name_size;
     }
-    pos = IData.hint_off;        /* write out the import names */
-    for( mod = PEImpList; mod != NULL; mod = mod->next ) {
+    pos = st.IData.hint_off;        /* write out the import names */
+    for( mod = st.PEImpList; mod != nullptr; mod = mod->next ) {
         hint = 1;
-        for( imp = mod->imports; imp != NULL; imp = imp->next ) {
-            if( imp->imp != NULL ) {
+        for( imp = mod->imports; imp != nullptr; imp = imp->next ) {
+            if( imp->imp != nullptr ) {
                 if( pos & 1 ) {         /* round up */
                     PutInfoNulls( buf + pos, 1 );
                     pos++;
@@ -572,7 +601,7 @@ static void WriteImportInfo( void )
 static int namecmp_exp( const void *pn1, const void *pn2 )
 /********************************************************/
 {
-    return( strcmp( (*(entry_export **)pn1)->name.u.ptr, (*(entry_export **)pn2)->name.u.ptr ) );
+    return( strcmp( (*static_cast<entry_export * const *>( pn1 ))->name.u.ptr, (*static_cast<entry_export * const *>( pn2 ))->name.u.ptr ) );
 }
 
 
@@ -583,7 +612,7 @@ static unsigned WriteExportInfo( pe_object *object, unsigned file_align, pe_dir_
     pe_export_directory dir;
     const char          *name;
     size_t              namelen;
-    entry_export        **sort;
+    std::vector<entry_export *> sort;
     entry_export        *exp;
     size_t              i;
     pe_va               eat;
@@ -600,7 +629,7 @@ static unsigned WriteExportInfo( pe_object *object, unsigned file_align, pe_dir_
     dir.minor = 0;
     dir.name_rva = object->rva + sizeof( dir );
     dir.ordinal_base = FmtData.u.os2fam.exports->ordinal;
-    if( FmtData.u.os2fam.module_name != NULL ) {
+    if( FmtData.u.os2fam.module_name != nullptr ) {
         name = FmtData.u.os2fam.module_name;
     } else {
         name = GetBaseName( Root->outfile->fname, 0, &namelen );
@@ -611,11 +640,11 @@ static unsigned WriteExportInfo( pe_object *object, unsigned file_align, pe_dir_
     namelen = strlen( name ) + 1;
     dir.address_table_rva = __ROUND_UP_SIZE( dir.name_rva + namelen, sizeof( pe_va ) );
     num_entries = 0;
-    for( exp = FmtData.u.os2fam.exports; exp != NULL; exp = exp->next ) {
+    for( exp = FmtData.u.os2fam.exports; exp != nullptr; exp = exp->next ) {
         high_ord = exp->ordinal;
         ++num_entries;
         if( !exp->isprivate ) {
-            if( exp->impname != NULL ) {
+            if( exp->impname != nullptr ) {
                 AddImpLibEntry( exp->impname, exp->name.u.ptr, 0, true );
             } else {
                 AddImpLibEntry( exp->sym->name.u.ptr, exp->name.u.ptr, 0, true );
@@ -626,7 +655,7 @@ static unsigned WriteExportInfo( pe_object *object, unsigned file_align, pe_dir_
     dir.num_name_ptrs = num_entries;
     dir.name_ptr_table_rva = dir.address_table_rva + dir.num_eat_entries * sizeof( pe_va );
     dir.ordinal_table_rva = dir.name_ptr_table_rva + num_entries * sizeof( pe_va );
-    sort = (entry_export **)(MemAllocSafe( sizeof( entry_export * ) * num_entries ));
+    sort.resize( num_entries );
     /* write the export directory table */
     WriteLoad( &dir, sizeof( dir ) );
     /* write the module name (includes null terminator) */
@@ -635,7 +664,7 @@ static unsigned WriteExportInfo( pe_object *object, unsigned file_align, pe_dir_
     /* write the export address table */
     i = 0;
     next_ord = dir.ordinal_base;
-    for( exp = FmtData.u.os2fam.exports; exp != NULL; exp = exp->next ) {
+    for( exp = FmtData.u.os2fam.exports; exp != nullptr; exp = exp->next ) {
         sort[i++] = exp;
         eat = exp->addr.off;
         if( next_ord < exp->ordinal ) {
@@ -644,7 +673,7 @@ static unsigned WriteExportInfo( pe_object *object, unsigned file_align, pe_dir_
         next_ord = exp->ordinal + 1;
         WriteLoadU32( eat );
     }
-    qsort( sort, num_entries, sizeof( entry_export * ), &namecmp_exp );
+    qsort( sort.data(), num_entries, sizeof( entry_export * ), &namecmp_exp );
     /* write out the export name ptr table */
     eat = dir.ordinal_table_rva + num_entries * sizeof( unsigned_16 );
     for( i = 0; i < num_entries; ++i ) {
@@ -661,7 +690,6 @@ static unsigned WriteExportInfo( pe_object *object, unsigned file_align, pe_dir_
         exp = sort[i];
         WriteLoad( exp->name.u.ptr, strlen( exp->name.u.ptr ) + 1 );
     }
-    MemFree( sort );
     size = eat - object->rva;
     object->physical_size = __ROUND_UP_SIZE( size, file_align );
     entry->size = size;
@@ -713,9 +741,9 @@ static unsigned WriteFixupInfo( pe_object *object, unsigned file_align, pe_dir_e
      * When using non-default object alignment, groups and pages need
      * not be in sync at all.
      */
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         reloclist_array = group->g.reloclist_array;
-        if( reloclist_array != NULL ) {
+        if( reloclist_array != nullptr ) {
             pagerva = group->linear;
             numpages = __ROUND_UP_SIZE_TO_4K( group->size );
             while( numpages-- > 0 ) {
@@ -750,7 +778,7 @@ bool RcPadFile( FILE *fp, size_t pad )
 {
     DbgAssert( FP2POSIX( fp ) == Root->outfile->handle );
 
-    /* unused parameters */ (void)fp;
+    /* unused parameters */ static_cast<void>( fp );
 
     PadLoad( pad );
     return( false );
@@ -758,7 +786,7 @@ bool RcPadFile( FILE *fp, size_t pad )
 
 void CheckDebugOffset( ExeFileInfo *info )
 {
-    /* unused parameters */ (void)info;
+    /* unused parameters */ static_cast<void>( info );
 }
 
 RcStatus CopyExeData( FILE *in_fp, FILE *out_fp, unsigned length )
@@ -767,7 +795,7 @@ RcStatus CopyExeData( FILE *in_fp, FILE *out_fp, unsigned length )
  * there are two implementation one in resource compiler and second in linker
  */
 {
-    /* unused parameters */ (void)out_fp;
+    /* unused parameters */ static_cast<void>( out_fp );
 
     for( ; length > MAX_HEADROOM; length -= MAX_HEADROOM ) {
         QRead( FP2POSIX( in_fp ), TokBuff, MAX_HEADROOM, "resource file" );
@@ -787,7 +815,7 @@ void DoAddResource( char *name )
     unsigned        len;
 
     len = strlen( name );
-    info = (list_of_names *)(_PermAlloc( sizeof( list_of_names ) + len ));
+    info = static_cast<list_of_names *>( _PermAlloc( sizeof( list_of_names ) + len ) );
     memcpy( info->name, name, len + 1 );
     info->next = FmtData.u.pe.resources;
     FmtData.u.pe.resources = info;
@@ -803,11 +831,11 @@ static unsigned WritePEResources( pe_exe_header *pehdr, pe_object *object, unsig
 
     memset( &einfo, 0, sizeof( einfo ) );
 
-    if( FmtData.resource != NULL ) {
+    if( FmtData.resource != nullptr ) {
         DoAddResource( FmtData.resource );
-        FmtData.resource = NULL;
+        FmtData.resource = nullptr;
     }
-    status = OpenResFiles( (ExtraRes *)FmtData.u.pe.resources, &rinfo, &allopen, EXE_TYPE_PE, Root->outfile->fname );
+    status = OpenResFiles( reinterpret_cast<ExtraRes *>( FmtData.u.pe.resources ), &rinfo, &allopen, EXE_TYPE_PE, Root->outfile->fname );
     if( !status )               // we had a problem opening
         return( 0 );
     einfo.fp = POSIX2FP( Root->outfile->handle );
@@ -826,7 +854,7 @@ static unsigned WriteDebugTable( pe_object *object, const char *symfilename,
     debug_directory dir;
     unsigned        size;
 
-    if( symfilename == NULL ) {
+    if( symfilename == nullptr ) {
         /* two entries */
         size = 2 * sizeof( debug_directory );
     } else {
@@ -852,7 +880,7 @@ static unsigned WriteDebugTable( pe_object *object, const char *symfilename,
     /* remember current file offset of this directory entry for later use */
     CVDebugDirEntryPos = PosLoad();
 
-    if( symfilename == NULL ) {
+    if( symfilename == nullptr ) {
         /* write debug dir entry for DEBUG_TYPE_CODEVIEW */
         dir.flags = 0;
         dir.time_stamp = time_stamp;
@@ -880,8 +908,8 @@ static void CheckNumRelocs( void )
 
     if( (LinkState & LS_MAKE_RELOCS) == 0 )
         return;
-    for( group = Groups; group != NULL; group = group->next ) {
-        if( group->g.reloclist_array != NULL ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
+        if( group->g.reloclist_array != nullptr ) {
             return;
         }
     }
@@ -899,7 +927,7 @@ static seg_leader *SetLeaderTable( const char *name, pe_dir_entry *entry )
     seg_leader      *leader;
 
     leader = FindSegment( Root, name );
-    if( leader != NULL ) {
+    if( leader != nullptr ) {
         entry->rva =  leader->group->linear + SEG_GROUP_DELTA( leader );
         entry->size = leader->size;
     }
@@ -912,9 +940,9 @@ static int CmpDesc( virt_mem a, virt_mem b )
     unsigned_32     a32;
     unsigned_32     b32;
 
-    GET32INFO( *((virt_mem *)a), a32 );
-    GET32INFO( *((virt_mem *)b), b32 );
-    return( (int)a32 - (int)b32 );
+    GET32INFO( *reinterpret_cast<virt_mem *>( a ), a32 );
+    GET32INFO( *reinterpret_cast<virt_mem *>( b ), b32 );
+    return( static_cast<int>( a32 ) - static_cast<int>( b32 ) );
 }
 
 static void SwapDesc( virt_mem a, virt_mem b )
@@ -922,8 +950,8 @@ static void SwapDesc( virt_mem a, virt_mem b )
 {
     procedure_descriptor    tmp;
 
-    a = *((virt_mem *)a);
-    b = *((virt_mem *)b);
+    a = *reinterpret_cast<virt_mem *>( a );
+    b = *reinterpret_cast<virt_mem *>( b );
     ReadInfo( a, &tmp, sizeof( procedure_descriptor ) );
     CopyInfo( a, b, sizeof( procedure_descriptor ) );
     PutInfo( b, &tmp, sizeof( procedure_descriptor ) );
@@ -932,8 +960,8 @@ static void SwapDesc( virt_mem a, virt_mem b )
 static bool SetPDataArray( void *_sdata, void *_array )
 /*****************************************************/
 {
-    segdata         *sdata = (segdata *)(_sdata);
-    virt_mem        **array = (virt_mem **)(_array);
+    segdata         *sdata = static_cast<segdata *>( _sdata );
+    virt_mem        **array = static_cast<virt_mem **>( _array );
     offset          size;
     virt_mem        data;
 
@@ -952,27 +980,25 @@ static void SetMiscTableEntries( pe_exe_header *pehdr )
 /*****************************************************/
 {
     seg_leader      *leader;
-    virt_mem        *sortarray;
     virt_mem        *temp;
     unsigned        numpdatas;
     symbol          *sym;
 
     SetLeaderTable( IDataGrpName, &PE_DIRECTORY( *pehdr, PE_TBL_IMPORT ) );
     sym = FindISymbol( TLSSym );
-    if( sym != NULL ) {
+    if( sym != nullptr ) {
         PE_DIRECTORY( *pehdr, PE_TBL_THREAD ).rva = FindLinearAddr( &sym->addr );
         PE_DIRECTORY( *pehdr, PE_TBL_THREAD ).size = sym->p.seg->length;
     }
     leader = SetLeaderTable( CoffPDataSegName, &PE_DIRECTORY( *pehdr, PE_TBL_EXCEPTION ) );
     /* The .pdata section may end up being empty if the symbols got optimized out */
-    if( leader != NULL
+    if( leader != nullptr
       && leader->size ) {
         numpdatas = leader->size / sizeof( procedure_descriptor );
-        sortarray = (virt_mem *)(MemAllocSafe( numpdatas * sizeof( virt_mem * ) ));
-        temp = sortarray;
+        std::vector<virt_mem> sortarray( numpdatas );
+        temp = sortarray.data();
         RingLookup( leader->pieces, SetPDataArray, &temp );
-        VMemQSort( (virt_mem)sortarray, numpdatas, sizeof( virt_mem * ), SwapDesc, CmpDesc );
-        MemFree( sortarray );
+        VMemQSort( reinterpret_cast<virt_mem>( sortarray.data() ), numpdatas, sizeof( virt_mem * ), SwapDesc, CmpDesc );
     }
 }
 
@@ -984,14 +1010,14 @@ static unsigned FindNumObjects( void )
     num_objects = NumGroups;
     if( LinkState & LS_MAKE_RELOCS )
         ++num_objects;
-    if( FmtData.u.os2fam.exports != NULL )
+    if( FmtData.u.os2fam.exports != nullptr )
         ++num_objects;
     if( LinkFlags & LF_CV_DBI_FLAG )
         ++num_objects;
-    if( FmtData.description != NULL )
+    if( FmtData.description != nullptr )
         ++num_objects;
-    if( FmtData.resource != NULL
-      || FmtData.u.pe.resources != NULL )
+    if( FmtData.resource != nullptr
+      || FmtData.u.pe.resources != nullptr )
         ++num_objects;
     return( num_objects );
 }
@@ -1065,7 +1091,7 @@ void FiniPELoadFile( void )
 {
     pe_exe_header   pehdr;
     unsigned        stub_len;
-    pe_object       *objects;
+    std::vector<pe_object> objects;
     unsigned        num_objects;
     pe_object       *tbl_obj;
     unsigned        head_size;
@@ -1083,7 +1109,7 @@ void FiniPELoadFile( void )
         PE64( pehdr ).magic = 0x20b;
         pehdr.fheader.cpu_type = PE_CPU_AMD64;
         pehdr.fheader.num_objects = num_objects;
-        pehdr.fheader.time_stamp = (unsigned_32)time( NULL );
+        pehdr.fheader.time_stamp = static_cast<unsigned_32>( std::time( nullptr ) );
         pehdr.fheader.opt_hdr_size = PE64_OPT_SIZE;
         pehdr.fheader.flags = PE_FLG_REVERSE_BYTE_LO | PE_FLG_32BIT_MACHINE | PE_FLG_LARGE_ADDRESS_AWARE;
         if( FmtData.u.pe.nolargeaddressaware ) {
@@ -1184,16 +1210,16 @@ void FiniPELoadFile( void )
         CurrSect = Root;
         SeekLoad( 0 );
         stub_len = WriteStubFile( STUB_ALIGN );
-        objects = (pe_object *)(MemAllocSafe( num_objects * sizeof( pe_object ) ));
-        memset( objects, 0, num_objects * sizeof( pe_object ) );
+        objects.resize( num_objects );
+        memset( objects.data(), 0, num_objects * sizeof( pe_object ) );
         /* leave space for the header and object table */
         PadLoad( head_size + num_objects * sizeof( pe_object ) );
         GenPETransferTable();
         WriteImportInfo();
         SetMiscTableEntries( &pehdr );
-        image_size = WriteDataPages( &pehdr, objects, file_align );
+        image_size = WriteDataPages( &pehdr, objects.data(), file_align );
         tbl_obj = &objects[NumGroups];
-        if( FmtData.u.os2fam.exports != NULL ) {
+        if( FmtData.u.os2fam.exports != nullptr ) {
             tbl_obj->rva = image_size;
             size = WriteExportInfo( tbl_obj, file_align, &PE_DIRECTORY( pehdr, PE_TBL_EXPORT ) );
             image_size += __ROUND_UP_SIZE( size, FmtData.objalign );
@@ -1205,14 +1231,14 @@ void FiniPELoadFile( void )
             image_size += __ROUND_UP_SIZE( size, FmtData.objalign );
             ++tbl_obj;
         }
-        if( FmtData.description != NULL ) {
+        if( FmtData.description != nullptr ) {
             tbl_obj->rva = image_size;
             size = WriteDescription( tbl_obj, file_align );
             image_size += __ROUND_UP_SIZE( size, FmtData.objalign );
             ++tbl_obj;
         }
-        if( FmtData.resource != NULL
-          || FmtData.u.pe.resources != NULL ) {
+        if( FmtData.resource != nullptr
+          || FmtData.u.pe.resources != nullptr ) {
             tbl_obj->rva = image_size;
             size = WritePEResources( &pehdr, tbl_obj, file_align );
             image_size += __ROUND_UP_SIZE( size, FmtData.objalign );
@@ -1254,7 +1280,7 @@ void FiniPELoadFile( void )
             break;
         }
         pehdr.fheader.num_objects = num_objects;
-        pehdr.fheader.time_stamp = (unsigned_32)time( NULL );
+        pehdr.fheader.time_stamp = static_cast<unsigned_32>( std::time( nullptr ) );
         pehdr.fheader.opt_hdr_size = PE32_OPT_SIZE;
         pehdr.fheader.flags = PE_FLG_REVERSE_BYTE_LO | PE_FLG_32BIT_MACHINE;
         if( FmtData.u.pe.largeaddressaware ) {
@@ -1359,16 +1385,16 @@ void FiniPELoadFile( void )
         CurrSect = Root;
         SeekLoad( 0 );
         stub_len = WriteStubFile( STUB_ALIGN );
-        objects = (pe_object *)(MemAllocSafe( num_objects * sizeof( pe_object ) ));
-        memset( objects, 0, num_objects * sizeof( pe_object ) );
+        objects.resize( num_objects );
+        memset( objects.data(), 0, num_objects * sizeof( pe_object ) );
         /* leave space for the header and object table */
         PadLoad( head_size + num_objects * sizeof( pe_object ) );
         GenPETransferTable();
         WriteImportInfo();
         SetMiscTableEntries( &pehdr );
-        image_size = WriteDataPages( &pehdr, objects, file_align );
+        image_size = WriteDataPages( &pehdr, objects.data(), file_align );
         tbl_obj = &objects[NumGroups];
-        if( FmtData.u.os2fam.exports != NULL ) {
+        if( FmtData.u.os2fam.exports != nullptr ) {
             tbl_obj->rva = image_size;
             size = WriteExportInfo( tbl_obj, file_align, &PE_DIRECTORY( pehdr, PE_TBL_EXPORT ) );
             image_size += __ROUND_UP_SIZE( size, FmtData.objalign );
@@ -1380,14 +1406,14 @@ void FiniPELoadFile( void )
             image_size += __ROUND_UP_SIZE( size, FmtData.objalign );
             ++tbl_obj;
         }
-        if( FmtData.description != NULL ) {
+        if( FmtData.description != nullptr ) {
             tbl_obj->rva = image_size;
             size = WriteDescription( tbl_obj, file_align );
             image_size += __ROUND_UP_SIZE( size, FmtData.objalign );
             ++tbl_obj;
         }
-        if( FmtData.resource != NULL
-          || FmtData.u.pe.resources != NULL ) {
+        if( FmtData.resource != nullptr
+          || FmtData.u.pe.resources != nullptr ) {
             tbl_obj->rva = image_size;
             size = WritePEResources( &pehdr, tbl_obj, file_align );
             image_size += __ROUND_UP_SIZE( size, FmtData.objalign );
@@ -1416,7 +1442,7 @@ void FiniPELoadFile( void )
     }
 
     WriteLoad( &pehdr, head_size );
-    WriteLoad( objects, num_objects * sizeof( pe_object ) );
+    WriteLoad( objects.data(), num_objects * sizeof( pe_object ) );
 
     if( FmtData.u.pe.checksumfile ) {
         unsigned        crc = 0L;
@@ -1424,7 +1450,7 @@ void FiniPELoadFile( void )
         unsigned long   currpos = 0L;
         unsigned long   totalsize = 0L;
         outfilelist     *outfile;
-        char            *buffer = NULL;
+        std::vector<char> buffer;
 
         /*
          *  Checksum required. We have already written the EXE header with a NULL checksum
@@ -1435,23 +1461,22 @@ void FiniPELoadFile( void )
          */
         SeekLoad( 0 ); /* Flush the buffer */
         outfile = CurrSect->outfile;
-        DbgAssert( outfile->buffer == NULL );
+        DbgAssert( outfile->buffer == nullptr );
 
         totalsize = QFileSize( outfile->handle );
 
-#define CRC_BUFF_SIZE   _16K
-        buffer = (char *)(MemAllocSafe( CRC_BUFF_SIZE ));
-        if( buffer != NULL ) {
+        constexpr std::size_t CRC_BUFF_SIZE = _16K;
+        buffer.resize( CRC_BUFF_SIZE );
+        {
             for( ; currpos < totalsize; currpos += buffsize ) {
-                memset( buffer, 0, CRC_BUFF_SIZE );
-                buffsize = QRead( outfile->handle, buffer, CRC_BUFF_SIZE, outfile->fname );
+                std::fill( buffer.begin(), buffer.end(), 0 );
+                buffsize = QRead( outfile->handle, buffer.data(), CRC_BUFF_SIZE, outfile->fname );
                 DbgAssert( buffsize == IOERROR );
                 DbgAssert( (buffsize % 2) != 1 ); /* check for odd length */
 
-                crc = CalcPEChecksum( crc, (unsigned short *)buffer, buffsize / sizeof( unsigned short ) );
+                crc = CalcPEChecksum( crc, reinterpret_cast<unsigned short *>( buffer.data() ), buffsize / sizeof( unsigned short ) );
             }
 
-            MemFree( buffer );
             crc += totalsize;
 
             if( LinkState & LS_HAVE_X64_CODE ) {
@@ -1464,7 +1489,6 @@ void FiniPELoadFile( void )
         }
     }
 
-    MemFree( objects );
 }
 
 static unsigned getStubSize( void )
@@ -1478,20 +1502,20 @@ static unsigned getStubSize( void )
     unsigned        read_len;
     unsigned        reloc_size;
     unsigned        code_start;
-    char            fullname[PATH_MAX];
+    std::array<char, PATH_MAX> fullname;
 
     if( FmtData.u.os2fam.no_stub ) {
         return( 0 );
     }
     stub_len = GetDOSDefStubSize();
-    if( FmtData.u.os2fam.stub_file_name != NULL
+    if( FmtData.u.os2fam.stub_file_name != nullptr
       && stricmp( FmtData.u.os2fam.stub_file_name, Root->outfile->fname ) != 0 ) {
-        the_file = FindPath( FmtData.u.os2fam.stub_file_name, fullname );
+        the_file = FindPath( FmtData.u.os2fam.stub_file_name, fullname.data() );
         if( the_file == NIL_FHANDLE ) {
             LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", FmtData.u.os2fam.stub_file_name );
         } else {
             MemFree( FmtData.u.os2fam.stub_file_name );
-            FmtData.u.os2fam.stub_file_name = MemStrdupSafe( fullname );
+            FmtData.u.os2fam.stub_file_name = MemStrdupSafe( fullname.data() );
             QRead( the_file, &dosheader, sizeof( dos_exe_header ), FmtData.u.os2fam.stub_file_name );
             if( dosheader.signature == EXESIGN_DOS ) {
                 code_start = dosheader.hdr_size * 16U;
@@ -1528,17 +1552,16 @@ static void ReadExports( unsigned namestart, unsigned nameend,
                          ordinal_t ord_base, f_handle file, const char *fname )
 /*****************************************************************************/
 {
-    unsigned_16     *ordbuf;
+    std::vector<unsigned_16> ordbuf( numords );
     unsigned_16     *ordptr;
     char            *nameptr;
 
-    ordbuf = (unsigned_16 *)(MemAllocSafe( numords * sizeof( unsigned_16 ) ));
     QSeek( file, ordstart, fname );
-    QRead( file, ordbuf, numords * sizeof( unsigned_16 ), fname );
+    QRead( file, ordbuf.data(), numords * sizeof( unsigned_16 ), fname );
     QSeek( file, namestart, fname );
     QRead( file, TokBuff, nameend - namestart, fname );
-    nameptr = TokBuff,
-    ordptr = ordbuf;
+    nameptr = TokBuff;
+    ordptr = ordbuf.data();
     for( ; numords > 0; --numords ) {
         CheckExport( nameptr, *ordptr + ord_base, true );
         while( *nameptr != '\0' )
@@ -1546,7 +1569,6 @@ static void ReadExports( unsigned namestart, unsigned nameend,
         nameptr++;
         ordptr++;
     }
-    MemFree( ordbuf );
 }
 
 void ReadPEExportTable( f_handle file, pe_dir_entry *export_dir )
@@ -1568,7 +1590,7 @@ void ReadPEExportTable( f_handle file, pe_dir_entry *export_dir )
     nameptrsize = table.num_name_ptrs * sizeof( unsigned_32 );
     if( nameptrsize == 0 )                      /* NOTE: <-- premature return */
         return;
-    nameptrs = (unsigned int *)(MemAllocSafe( nameptrsize + sizeof( unsigned_32 ) ));
+    nameptrs = static_cast<unsigned *>( MemAllocSafe( nameptrsize + sizeof( unsigned_32 ) ) );
     QSeek( file, table.name_ptr_table_rva - export_dir->rva, fname );
     QRead( file, nameptrs, nameptrsize, fname );
     numentries = 1;
@@ -1594,6 +1616,7 @@ void ReadPEExportTable( f_handle file, pe_dir_entry *export_dir )
 static void CreateIDataSection( void )
 /************************************/
 {
+    PEState         &st = state();
     segdata         *sdata;
     class_entry     *class_;
     byte            bits;
@@ -1607,13 +1630,13 @@ static void CreateIDataSection( void )
         sdata = AllocSegData();
         sdata->align = ( LinkState & LS_HAVE_X64_CODE ) ? 4 : 2;
         sdata->bits = bits;
-        sdata->length = IData.total_size;
+        sdata->length = st.IData.total_size;
         sdata->u.name.u.ptr = CoffIDataSegName;
         sdata->combine = COMBINE_ADD;
         sdata->isabs = false;
         AddSegment( sdata, class_ );
         sdata->u1.vm_ptr = AllocStg( sdata->length );
-        IData.sdata = sdata;
+        st.IData.sdata = sdata;
         AddToGroup( IDataGroup, sdata->u.leader );
     }
 }
@@ -1621,6 +1644,7 @@ static void CreateIDataSection( void )
 static void RegisterImport( dll_sym_info *dll )
 /*********************************************/
 {
+    PEState         &st = state();
     module_import   *mod;
     import_name     *imp;
     import_name     *chk;
@@ -1629,37 +1653,37 @@ static void RegisterImport( dll_sym_info *dll )
     int             cmp;
     unsigned        len;
 
-    for( mod = PEImpList; mod != NULL; mod = mod->next ) {
+    for( mod = st.PEImpList; mod != nullptr; mod = mod->next ) {
         if( mod->mod == dll->m.modnum ) {
             break;
         }
     }
-    if( mod == NULL ) {
-        ++NumMods;
-        mod = (module_import *)(_PermAlloc( sizeof( module_import ) ));
-        mod->next = PEImpList;
-        PEImpList = mod;
+    if( mod == nullptr ) {
+        ++st.NumMods;
+        mod = static_cast<module_import *>( _PermAlloc( sizeof( module_import ) ) );
+        mod->next = st.PEImpList;
+        st.PEImpList = mod;
         mod->mod = dll->m.modnum;
-        mod->imports = NULL;
+        mod->imports = nullptr;
         mod->num_entries = 0;
     }
     if( !dll->isordinal ) {
         os2_imp = dll->u.entry;
     } else {
-        os2_imp = NULL;
+        os2_imp = nullptr;
     }
     mod->num_entries++;
-    imp = (import_name *)(_PermAlloc( sizeof( import_name ) ));
+    imp = static_cast<import_name *>( _PermAlloc( sizeof( import_name ) ) );
     imp->dll = dll;
     imp->imp = os2_imp;
     /* keep the list sorted by name for calculating hint values */
     owner = &mod->imports;
-    if( os2_imp != NULL ) {
+    if( os2_imp != nullptr ) {
         for( ;; ) {
             chk = *owner;
-            if( chk == NULL )
+            if( chk == nullptr )
                 break;
-            if( chk->imp != NULL ) {
+            if( chk->imp != nullptr ) {
                 len = chk->imp->len;
                 if( len > os2_imp->len )
                     len = os2_imp->len;
@@ -1683,6 +1707,7 @@ static void RegisterImport( dll_sym_info *dll )
 
 static void CreateTransferSegment( class_entry *class_ )
 {
+    PEState         &st = state();
     offset          size;
     int             glue_size;
     symbol          *sym;
@@ -1695,19 +1720,19 @@ static void CreateTransferSegment( class_entry *class_ )
         RegisterImport( sym->p.import_dll );
         DBIAddGlobal( sym );
     }
-    size += NumLocalImports * sizeof( pe_va );
+    size += st.NumLocalImports * sizeof( pe_va );
     if( size != 0 ) {
         class_->flags |= CLASS_TRANSFER;
         sdata = AllocSegData();
         sdata->align = ( LinkState & LS_HAVE_X64_CODE ) ? 4 : 2;
         sdata->bits = ( LinkState & LS_HAVE_X64_CODE ) ? BITS_64 : BITS_32;
         sdata->length = size;
-        sdata->u.name.u.ptr = (char *)TRANSFER_SEGNAME;
+        sdata->u.name.u.ptr = const_cast<char *>( TRANSFER_SEGNAME );
         sdata->combine = COMBINE_ADD;
         sdata->isabs = false;
         AddSegment( sdata, class_ );
         sdata->u1.vm_ptr = AllocStg( sdata->length );
-        XFerSegData = sdata;
+        st.XFerSegData = sdata;
     }
 }
 
@@ -1717,23 +1742,24 @@ void ChkPEData( void )
     class_entry     *class_;
 
     /* find the last code class in the program */
-    for( class_ = Root->classes; class_ != NULL; class_ = class_->next ) {
+    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( class_->flags & CLASS_CODE ) {
             break;
         }
     }
-    if( class_ == NULL ) { // No code -- no need to do transfer stuff
+    if( class_ == nullptr ) { // No code -- no need to do transfer stuff
         return;
     }
     CurrMod = FakeModule;
     CreateTransferSegment( class_ );
     CreateIDataSection();
-    CurrMod = NULL;
+    CurrMod = nullptr;
 }
 
 void AllocPETransferTable( void )
 /*******************************/
 {
+    PEState         &st = state();
     symbol          *sym;
     class_entry     *class_;
     group_entry     *group;
@@ -1748,29 +1774,29 @@ void AllocPETransferTable( void )
     /*
      *  Moved export check here as otherwise flags don't get propagated
      */
-    if( XFerSegData == NULL ) {
+    if( st.XFerSegData == nullptr ) {
         return;
     }
-    for( class_ = Root->classes; class_ != NULL; class_ = class_->next ) {
+    for( class_ = Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( class_->flags & CLASS_TRANSFER ) {
             break;
         }
     }
-    if( class_ == NULL ) {
+    if( class_ == nullptr ) {
         return;
     }
-    lead = (seg_leader *)(RingLast( class_->segs ));
-    piece = (segdata *)(RingLast( lead->pieces ));
+    lead = static_cast<seg_leader *>( RingLast( class_->segs ) );
+    piece = static_cast<segdata *>( RingLast( lead->pieces ) );
     CurrMod = FakeModule;
     group = lead->group;
     seg = group->addr.seg;
     off = group->addr.off + group->totalsize;
     // now calc addresses for imported local symbols
-    for( loc_imp = PELocalImpList; loc_imp != NULL; loc_imp = loc_imp->next ) {
+    for( loc_imp = st.PELocalImpList; loc_imp != nullptr; loc_imp = loc_imp->next ) {
         off -= sizeof( pe_va );
         SET_SYM_ADDR( loc_imp->iatsym, off, seg );
     }
-    if( IDataGroup != NULL ) {
+    if( IDataGroup != nullptr ) {
         glue_size = GetTransferGlueSize();
         WALK_IMPORT_SYMBOLS( sym ) {
             off -= glue_size;
@@ -1782,23 +1808,24 @@ void AllocPETransferTable( void )
         }
         off = CalcIATAbsOffset();   // now calc addresses for IAT symbols
         WalkImportsMods( CalcImpOff, &off );
-        SetTocAddr( IData.eof_ilt_off, IDataGroup ); // Set toc's address.
+        SetTocAddr( st.IData.eof_ilt_off, IDataGroup ); // Set toc's address.
     }
-    CurrMod = NULL;
+    CurrMod = nullptr;
 }
 
-#define PREFIX_LEN  (sizeof( ImportSymPrefix ) - 1)
+static constexpr std::size_t PREFIX_LEN = sizeof( ImportSymPrefix ) - 1;
 
 void AddPEImportLocalSym( symbol *locsym, symbol *iatsym )
 /********************************************************/
 {
+    PEState         &st = state();
     local_import    *imp;
 
-    imp = (local_import *)(MemAllocSafe( sizeof( local_import ) ));
-    AppendList( (void **)&PELocalImpList, imp );
+    imp = static_cast<local_import *>( MemAllocSafe( sizeof( local_import ) ) );
+    AppendList( reinterpret_cast<void **>( &st.PELocalImpList ), imp );
     imp->iatsym = iatsym;
     imp->locsym = locsym;
-    ++NumLocalImports;
+    ++st.NumLocalImports;
 }
 
 bool ImportPELocalSym( symbol *iatsym )
@@ -1811,7 +1838,7 @@ bool ImportPELocalSym( symbol *iatsym )
     if( memcmp( name, ImportSymPrefix, PREFIX_LEN ) != 0 )
         return( false );
     sym = FindISymbol( name + PREFIX_LEN );
-    if( sym == NULL )
+    if( sym == nullptr )
         return( false );
     if( IS_SYM_IMPORTED( sym ) )
         return( false );
@@ -1827,9 +1854,10 @@ bool ImportPELocalSym( symbol *iatsym )
 void FreePELocalImports( void )
 /*****************************/
 {
-    FreeList( PELocalImpList );
-    PELocalImpList = NULL;
-    NumLocalImports = 0;
+    PEState         &st = state();
+    FreeList( st.PELocalImpList );
+    st.PELocalImpList = nullptr;
+    st.NumLocalImports = 0;
 }
 
 #endif

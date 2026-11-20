@@ -38,6 +38,7 @@
     #include <malloc.h>
 #endif
 #include "linkstd.h"
+#include "run_state.hpp"
 #include "fileio.h"
 #include "objpass2.h"
 #include "cmdline.h"
@@ -281,6 +282,7 @@ void InitSubSystems( void )
 #if defined( DEVBUILD ) && defined( __WATCOMC__ )
     memset( _edata, 0xA5, _end - _edata );      // don't rely on BSS == 0
 #endif
+    cb_wlink::RunState::begin_run();   /* CodeBreaker: nothing an earlier run in the process kept stays */
     LnkMemInit();
     LnkFilesInit();
     InitMsg();
