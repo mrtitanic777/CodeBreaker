@@ -386,7 +386,7 @@ target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_format
 # The recompiler's own pieces (builders, disassembler, the title project) and the source writers (placement, assembly,
 # the NE assembly tools).
 cb_area(source)
-target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats)
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_decompiler)   # (cb_decompiler: the SLEIGH reader of source/processors)
 
 cb_area(invert)
 target_link_libraries(cb_invert PUBLIC cb_core cb_base cb_formats cb_platforms cb_build cb_decompile cb_symbols cb_exact)   # (cb_platforms: the 16-bit decoder the models decode with)

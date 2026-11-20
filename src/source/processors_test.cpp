@@ -79,5 +79,24 @@ CB_TEST("source.processors.bytes_that_are_no_instruction_are_data", [] {
     CB_CHECK_EQ(lines[1].address, std::uint64_t{0x8001});
 });
 
+CB_TEST("source.processors.the_sleigh_descriptions_read_what_the_own_tables_read", [] {
+    // one program per processor that has a description, read both ways: the same instructions, the same lengths
+    for (const Case& c : kCases) {
+        const Processor& p = find(c.cpu);
+        if (p.sla.empty()) continue;
+        const Image image = p.assemble(c.source, ".");
+        const std::vector<Line> own = p.disassemble(image.data, image.base, c.texts.size());
+        const std::vector<Line> described = read_described(p, image.data, image.base, c.texts.size());
+        CB_CHECK_EQ(described.size(), own.size());
+        for (std::size_t k = 0; k < own.size() && k < described.size(); ++k) {
+            CB_CHECK_EQ(std::format("{}: {}", c.cpu, described[k].bytes.size()), std::format("{}: {}", c.cpu, own[k].bytes.size()));
+            CB_CHECK(!described[k].text.starts_with(".d"));
+        }
+    }
+    const Bytes ld = {0x3E, 0x12};
+    CB_CHECK_EQ(read_described(find("z80"), ld, 0, 1).at(0).text, std::string("LD A,0x12"));
+    CB_CHECK_THROWS_AS(UsageError, (void)read_described(find("f8"), ld, 0, 1));   // (no description yet)
+});
+
 }  // namespace
 }  // namespace cb::source::processors

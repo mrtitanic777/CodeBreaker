@@ -27,6 +27,7 @@ foreach(f ${CB_DECOMPILER_ALL})
   endif()
 endforeach()
 
+list(APPEND CB_DECOMPILER_SOURCES "${DECOMPILER_DIR}/sleigh_reader.cc")   # (ours: the SLEIGH translator as CodeBreaker's one instruction reader)
 add_library(cb_decompiler STATIC ${CB_DECOMPILER_SOURCES})
 set_target_properties(cb_decompiler PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_include_directories(cb_decompiler PUBLIC "${CB_NATIVE_ROOT}")   # (its headers by their path under src/: decompile/engine/core/cpp/...)

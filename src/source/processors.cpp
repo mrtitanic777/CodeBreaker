@@ -5,7 +5,11 @@
 
 #include <algorithm>
 #include <format>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <stdexcept>
 
 #include "build/a64_asm.hpp"
 #include "build/arm_asm.hpp"
@@ -24,10 +28,12 @@
 #include "build/x86asm/x86asm.hpp"
 #include "build/z80_asm.hpp"
 #include "build/asm_text.hpp"
+#include "base/config.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/a64.hpp"
+#include "decompile/engine/sleigh_reader.hh"
 #include "decompile/arm.hpp"
 #include "decompile/cp1610.hpp"
 #include "decompile/f8.hpp"
@@ -345,10 +351,71 @@ std::vector<Processor> make_table() {
              b::byte_asm::Image i = b::tlcs900_asm::build(s);
              return Image{i.base, std::move(i.data)};
          }});
+    // each processor's SLEIGH description (languages/), with the context its pspec starts the processor in
+    struct Described {
+        std::string_view name, sla;
+        std::vector<std::pair<std::string_view, int>> context;
+    };
+    const Described described[] = {
+        {"x86-16", "x86.sla", {{"addrsize", 0}, {"opsize", 0}}}, {"x86-32", "x86.sla", {{"addrsize", 1}, {"opsize", 1}}},
+        {"masm", "x86.sla", {{"addrsize", 0}, {"opsize", 0}}},   {"6502", "6502.sla", {}},
+        {"65c02", "65c02.sla", {}},                               {"z80", "z80.sla", {}},
+        {"m68k", "68020.sla", {}},                                {"m6809", "6809.sla", {}},
+        {"mips", "mips32le.sla", {}},                             {"r4300", "mips64be.sla", {}},
+        {"r5900", "mips64le.sla", {}},                            {"arm", "ARM4t_le.sla", {{"TMode", 0}}},
+        {"thumb", "ARM4t_le.sla", {{"TMode", 1}}},                {"arm9", "ARM5t_le.sla", {{"TMode", 0}}},
+        {"arm11", "ARM6_le.sla", {{"TMode", 0}}},                 {"armv7", "ARM7_le.sla", {{"TMode", 0}}},
+        {"a64", "AARCH64.sla", {}},                               {"ppc", "ppc_32_be.sla", {}},
+        {"sh2", "sh-2.sla", {}},                                  {"sh4", "SuperH4_le.sla", {}},
+        {"i8048", "8048.sla", {}},                                {"cp1610", "CP1600.sla", {}},
+    };
+    for (const Described& d : described)
+        for (Processor& p : t)
+            if (p.name == d.name) p.sla = d.sla, p.context = d.context;
     return t;
 }
 
+// The decompiler core's language files: CB_LANGUAGES_DIR, or the checkout's (decompile/decompiler.cpp finds them the same way).
+std::filesystem::path languages() {
+    if (const std::optional<std::string> env = cb::fs::get_env("CB_LANGUAGES_DIR"); env && !env->empty()) return cb::fs::from_text(*env);
+    return config::current().checkout_root() / "src" / "decompile" / "engine" / "languages";
+}
+
 }  // namespace
+
+std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count) {
+    if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
+    // one reader per description, kept (reading a description costs more than any listing)
+    static std::mutex lock;
+    static std::map<std::string, std::unique_ptr<decompile::sleigh::Reader>> readers;
+    decompile::sleigh::Reader* reader = nullptr;
+    {
+        std::lock_guard hold(lock);
+        std::unique_ptr<decompile::sleigh::Reader>& r = readers[std::string(processor.name)];
+        if (!r) {
+            std::vector<std::pair<std::string, int>> context;
+            for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
+            try {
+                r = std::make_unique<decompile::sleigh::Reader>(languages() / processor.sla, context);
+            } catch (const std::runtime_error& e) {
+                throw NotFoundError(languages() / processor.sla, 0, e.what());
+            }
+        }
+        reader = r.get();
+    }
+    std::vector<Line> out;
+    const std::size_t unit = processor.name == "cp1610" ? 2 : 1;   // (a word-addressed processor: addresses count words)
+    for (const decompile::sleigh::Instruction& i : reader->read(code.data(), code.size(), base, count)) {
+        Line line;
+        line.address = i.address;
+        const std::size_t at = static_cast<std::size_t>((i.address - base) * unit);
+        const std::size_t n = i.length != 0 ? i.length : std::min(std::max<std::size_t>(reader->alignment(), 1) * unit, code.size() - at);
+        line.bytes.assign(code.begin() + static_cast<std::ptrdiff_t>(at), code.begin() + static_cast<std::ptrdiff_t>(at + n));
+        line.text = i.length != 0 ? (i.operands.empty() ? i.mnemonic : i.mnemonic + " " + i.operands) : data_text(code.subspan(at, n));
+        out.push_back(std::move(line));
+    }
+    return out;
+}
 
 std::span<const Processor> all() {
     static const std::vector<Processor> table = make_table();

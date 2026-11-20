@@ -132,8 +132,53 @@ int list_processors() {
     return 0;
 }
 
+// The mnemonic of a line's text, lower case ("ld", "move.l"): what two syntaxes of one instruction share.
+std::string mnemonic_of(std::string_view text) {
+    const std::size_t end = text.find_first_of(" \t");
+    return text::lower(text.substr(0, end));
+}
+
+// Read `code` with the processor's own tables and with its SLEIGH description, instruction by instruction from the same place: each
+// step where both decode, whether they take the same bytes and name the same mnemonic. Where they part, both start again after the
+// longer one.
+int compare_readers(const px::Processor& cpu, ByteView code, std::uint64_t base, std::size_t count) {
+    std::size_t steps = 0, same_length = 0, same_mnemonic = 0, only_own = 0, only_sleigh = 0, neither = 0;
+    std::string shown;
+    const std::size_t unit = cpu.name == "cp1610" ? 2 : 1;   // (a word-addressed processor: an address counts words)
+    int shown_n = 0;
+    for (std::size_t at = 0; at < code.size() && (count == 0 || steps < count);) {
+        const std::vector<px::Line> own = cpu.disassemble(code.subspan(at), base + at / unit, 1);
+        const std::vector<px::Line> desc = px::read_described(cpu, code.subspan(at), base + at / unit, 1);
+        if (own.empty() || desc.empty()) break;
+        const bool own_ok = !own[0].text.starts_with(".d"), desc_ok = !desc[0].text.starts_with(".d");
+        ++steps;
+        std::size_t step = std::max(own[0].bytes.size(), desc[0].bytes.size());
+        if (own_ok && desc_ok) {
+            const bool len = own[0].bytes.size() == desc[0].bytes.size();
+            const bool mn = mnemonic_of(own[0].text) == mnemonic_of(desc[0].text);
+            same_length += len;
+            same_mnemonic += len && mn;
+            if (!len && shown_n++ < 20) shown += std::format("  {:08X}  own: {:<28} sleigh: {}\n", base + at / unit, own[0].text, desc[0].text);
+        } else if (own_ok) {
+            ++only_own;
+            if (shown_n++ < 20) shown += std::format("  {:08X}  own: {:<28} sleigh: (no instruction)\n", base + at / unit, own[0].text);
+        } else if (desc_ok) {
+            ++only_sleigh;
+        } else {
+            ++neither;
+        }
+        at += std::max<std::size_t>(step, 1);
+    }
+    const std::size_t both = steps - only_own - only_sleigh - neither;
+    out_text(std::format("{}: {} places read; both decode {}: same length {} ({:.2f}%), same length and mnemonic {} ({:.2f}%); only the own tables {}, "
+                         "only SLEIGH {}, neither {}\n{}",
+                         cpu.name, steps, both, same_length, both ? 100.0 * same_length / both : 0.0, same_mnemonic, both ? 100.0 * same_mnemonic / both : 0.0,
+                         only_own, only_sleigh, neither, shown));
+    return 0;
+}
+
 int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
-    const Words w = take(args, {"--cpu", "--at", "--count", "--offset", "--base", "--length", "--out", "-o"}, {"--list", "--help"});
+    const Words w = take(args, {"--cpu", "--at", "--count", "--offset", "--base", "--length", "--out", "-o"}, {"--list", "--help", "--sleigh", "--compare"});
     if (w.flags.contains("--list")) return list_processors();
     if (w.rest.size() != 1 || w.flags.contains("--help")) throw UsageError("disassemble FILE [--at ADDR] [--count N] | disassemble FILE --cpu NAME [--offset N] [--length N] [--base ADDR] [--count N] [--out FILE] | disassemble --list");
     const stdfs::path file = w.rest[0];
@@ -176,6 +221,17 @@ int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
         err_text(std::format("{}: {} ({})\n", fs::to_text(file.filename()), cpu->name, lane));
     }
     const Bytes data = fs::read_file(file);
+    // --sleigh: through the processor's SLEIGH description (the decompiler core's reader) instead of its own tables
+    const bool described = w.flags.contains("--sleigh");
+    auto read = [&](const px::Processor& p, ByteView bytes, std::uint64_t at) { return described ? px::read_described(p, bytes, at, count) : p.disassemble(bytes, at, count); };
+    if (w.flags.contains("--compare")) {   // both readers in step: where their instructions differ in length or mnemonic
+        const std::size_t off = value(w, "--offset") ? static_cast<std::size_t>(number("--offset", *value(w, "--offset"))) : dos_offset;
+        if (off > data.size()) throw UsageError("--offset is past the end of the file");
+        std::size_t len = data.size() - off;
+        if (auto l = value(w, "--length")) len = std::min<std::size_t>(len, static_cast<std::size_t>(number("--length", *l)));
+        const std::uint64_t b0 = value(w, "--base") ? number("--base", *value(w, "--base")) : dos_base.value_or(off);
+        return compare_readers(*cpu, ByteView(data).subspan(off, len), b0, count);
+    }
     const std::size_t offset = value(w, "--offset") ? static_cast<std::size_t>(number("--offset", *value(w, "--offset"))) : dos_offset;
     if (offset > data.size()) throw UsageError(std::format("--offset {} is past the end of the file ({} bytes)", offset, data.size()));
     std::size_t length = data.size() - offset;
@@ -186,10 +242,10 @@ int disassemble(const base::Corpus& corpus, std::span<const std::string> args) {
         const std::uint64_t at = number("--at", *a);
         if (at < base || at - base > length) throw UsageError(std::format("--at {:X} is not in the bytes read ({:X}..{:X})", at, base, base + length));
         const std::size_t skip = static_cast<std::size_t>(at - base);
-        print_lines(cpu->disassemble(ByteView(data).subspan(offset + skip, length - skip), at, count), out);
+        print_lines(read(*cpu, ByteView(data).subspan(offset + skip, length - skip), at), out);
         return 0;
     }
-    print_lines(cpu->disassemble(ByteView(data).subspan(offset, length), base, count), out);
+    print_lines(read(*cpu, ByteView(data).subspan(offset, length), base), out);
     return 0;
 }
 

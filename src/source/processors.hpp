@@ -15,6 +15,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core/bytes.hpp"
@@ -44,7 +45,15 @@ struct Processor {
     // The image `source` assembles to; `folder` is where an include or INCBIN is read from. AsmError (or the assembler's own
     // error) for source that does not assemble. Empty for a processor CodeBreaker reads but does not yet assemble.
     std::function<Image(std::string_view source, const std::filesystem::path& folder)> assemble;
+    // Its SLEIGH description (decompile/engine/languages/<sla>), the one the decompiler core reads, and the context variables it
+    // starts from; empty for a processor that has none yet. `read_described` reads through it.
+    std::string_view sla;
+    std::vector<std::pair<std::string_view, int>> context;
 };
+
+// The instructions as the processor's SLEIGH description reads them (the decompiler core's own reader, in this program): the
+// same arguments as `disassemble`, the text in the description's syntax. UsageError for a processor with no description.
+std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count);
 
 // Every processor, in a fixed order.
 std::span<const Processor> all();
