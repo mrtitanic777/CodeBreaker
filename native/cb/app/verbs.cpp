@@ -78,6 +78,7 @@ constexpr Mode kModes[] = {
     {"check", "",                "measure",           std::nullopt},
     {"check", "--bytes",         "match",             std::nullopt},
     {"check", "--exact",         "exact",             std::nullopt},
+    {"check", "--dos-run",       "dos-run",           std::nullopt},
     {"check", "--repair",        "repair",            std::nullopt},
     {"check", "--teeth",         "teeth",             std::nullopt},
     {"check", "--drivers",       "driver-judge",      std::nullopt},

@@ -1,7 +1,7 @@
 // cb/build/x86asm/insns_table.cpp -- the instruction tables of x86asm: NASM 3.02's templates, byte-code programs and
 // instruction flag sets, as C++ data.
 //
-// GENERATED -- do not edit. Made by state/work/x86asm-agents/encoder/gen_insns_table.py from NASM's own generated
+// GENERATED -- do not edit. Made by docs/history/x86asm-generators/gen_insns_table.py from NASM's own generated
 // tables (native/nasm/x86/insnsa.c, insnsb.c, iflag.c, insnsi.h, themselves made from insns.dat by insns.pl), so the
 // rows, their order and their byte-code offsets are exactly NASM's. 12320 templates, 73487 byte-code bytes, 655 flag sets.
 #include "cb/build/x86asm/insns.hpp"

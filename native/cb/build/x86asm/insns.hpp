@@ -3,7 +3,7 @@
 // NASM's x86/insns.dat is turned by insns.pl into three tables: every instruction template (NASM's struct itemplate: the
 // opcode, the operand flag words, the decorator flags, the byte-code program that says how to encode it, and an index
 // into the table of instruction flag sets), the byte-code programs themselves (nasm_bytecodes, see x86/bytecode.txt) and
-// the flag sets (insns_flags). They are generated into insns_table.cpp (the generator is state/work/x86asm-agents/
+// the flag sets (insns_flags). They are generated into insns_table.cpp (the generator is docs/history/x86asm-generators/
 // encoder/gen_insns_table.py, which reads NASM's own generated files, so the data is exactly NASM's). This header is the
 // way to get at them. The ItemTemplate structure itself is in types.hpp.
 #pragma once

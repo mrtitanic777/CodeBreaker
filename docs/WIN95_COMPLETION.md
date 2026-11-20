@@ -233,7 +233,7 @@ sub_1_1260/1268 `mov cx,..; mov dx,..` into one body, which "every way" does not
 
 ### 8. OpenWatcom: no BP frame for a routine whose stack parameters are never read
 
-The source is beside the rel tree (experiments/premise-proof/open-watcom-v2/bld, built in place by its own makefiles).
+The source is beside the rel tree (toolchains/open-watcom-v2/bld, built in place by its own makefiles).
 Cause: `NeedBPProlog()` (bld/cg/intel/c/x86proc.c) answered "yes" whenever `parms.size != 0`.
 Change: `ScanInstructions()` (which already walks every instruction of the routine before the prologue) records whether any
 instruction other than `OP_PARM_DEF` names a `STACK_PARM` temp (as operand, result, or the base/index of an indexed operand);

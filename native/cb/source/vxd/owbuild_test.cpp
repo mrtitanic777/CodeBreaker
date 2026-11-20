@@ -58,7 +58,7 @@ CB_TEST("source.vxd.owbuild.the_tools_of_an_openwatcom_tree", [] {
     CB_CHECK(tools.watcom == std::filesystem::path("D:/tools/open-watcom-v2") / "rel");
     // no setting: the tree of the premise experiment, in the checkout
     const ow::Tools fallback = ow::tools_from_settings("C:/cb", "");
-    CB_CHECK(fallback.wlink == std::filesystem::path("C:/cb") / "experiments" / "premise-proof" / "open-watcom-v2" / "rel" / "binnt64" / "wlink.exe");
+    CB_CHECK(fallback.wlink == std::filesystem::path("C:/cb") / "toolchains" / "open-watcom-v2" / "rel" / "binnt64" / "wlink.exe");
 });
 
 CB_TEST("source.vxd.owbuild.the_header_of_a_w3_bundle", [] {

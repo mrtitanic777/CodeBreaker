@@ -57,7 +57,7 @@ bool assemble_object(const stdfs::path& folder, const std::string& file, const s
 
 Tools tools_from_settings(const stdfs::path& checkout_root, std::string_view openwatcom_setting) {
     // <tree>/rel is what the setting names; the assembler lives in the tree's own build folder, beside rel
-    const stdfs::path tree = openwatcom_setting.empty() ? checkout_root / "experiments" / "premise-proof" / "open-watcom-v2"
+    const stdfs::path tree = openwatcom_setting.empty() ? checkout_root / "toolchains" / "open-watcom-v2"
                                                         : fs::from_text(openwatcom_setting).parent_path();
     Tools tools;
     tools.wasm = tree / "bld" / "wasm" / "nt386" / "wasm.exe";

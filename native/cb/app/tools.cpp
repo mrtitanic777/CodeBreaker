@@ -22,6 +22,7 @@ constexpr ToolRow kToolRows[] = {
 // The commands of the table that are not tools: the reason each makes no sense as a form.
 const std::vector<LeftOut> kLeftOut = {
     {"app", "it is the window itself"},
+    {"dos-run", "it runs a DOS program for scripts and checks, with the program's own command line, not a step people take in the window"},
     {"nasm", "it is the assembler for scripts and tests, with NASM's own command line, not a step people take in the window"},
     {"mcp", "it is a server that talks to an assistant over its standard input and output, which a form cannot be on the other end of"},
     {"inspect", "its steps are the tools of its own group, each under its plain-word title, which the form runs by name"},

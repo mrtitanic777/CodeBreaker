@@ -3,7 +3,9 @@
 // harness itself is tested on a case made here.
 #include "cb/build/x86asm/corpus.hpp"
 
+#include <filesystem>
 #include <format>
+#include <optional>
 
 #include "cb/core/fs.hpp"
 #include "cb/core/log.hpp"
@@ -38,14 +40,18 @@ CB_TEST("build.x86asm.corpus_loads_a_case_and_compares_outputs", [] {
 });
 
 CB_TEST("build.x86asm.corpus_replays_like_nasm", [] {
-    const auto root = fs::get_env("CB_X86ASM_CORPUS");
-    if (!root || root->empty()) {
-        cb::err_text("build.x86asm.corpus_replays_like_nasm: CB_X86ASM_CORPUS is not set; not run\n");
+    // the cases: CB_X86ASM_CORPUS's folder, else the gate's own (binaries/test-inputs/x86asm/gate: 234 runs, a few seconds; the
+    // 6,236 MASM runs beside it, x86asm/masm, are named by the variable when wanted -- they take minutes)
+    std::optional<std::filesystem::path> root;
+    if (const auto env = fs::get_env("CB_X86ASM_CORPUS"); env && !env->empty()) root = fs::from_text(*env);
+    else if (const auto local = cb::testing::local_input("x86asm/gate"); std::filesystem::is_directory(local)) root = local;
+    if (!root) {
+        cb::err_text("build.x86asm.corpus_replays_like_nasm: no cases here (binaries/test-inputs/x86asm/gate, or CB_X86ASM_CORPUS); not run\n");
         return;
     }
     std::size_t same = 0, total = 0;
     std::vector<std::string> failures;
-    for (const auto& folder : corpus::cases(fs::from_text(*root))) {
+    for (const auto& folder : corpus::cases(*root)) {
         ++total;
         const corpus::Case c = corpus::load(folder);
         const auto d = corpus::compare(c, cb::build::x86asm::assemble(c.request));

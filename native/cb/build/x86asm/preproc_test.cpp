@@ -1,7 +1,7 @@
 // cb/build/x86asm/preproc_test.cpp -- tests of the preprocessor against the real NASM.
 //
 // Each case is a source and what `nasm.exe -E` (preprocess only; `nasm.exe --masm -E` for the MASM cases) wrote for it, on
-// stdout and stderr, captured once by state/work/x86asm-agents/preproc/gen_test.py. The harness below does what nasm.c's
+// stdout and stderr, captured once by docs/history/x86asm-generators/gen_preproc_tests.py. The harness below does what nasm.c's
 // preprocess-only mode does (the %line markers, the blank-line rule) around `Preproc`, with a small expression evaluator
 // standing in for eval.c (integers and the usual operators), so the preprocessor is tested on its own.
 #include "cb/build/x86asm/preproc.hpp"

@@ -18,8 +18,10 @@ The proof is differential, never by eye:
   its input source, its options and the reference's output (and exit code, and messages). A gate run, a corpus sweep of the
   Win95 VxDs (`vxd corpus`, `vxd owbuild`) and the Win16 idioms (`ne-asm sweep`) gave 6,470: the PE/NE/LE/x64/WonderSwan
   writers' flat images, the boot floppy, the Win16 idioms (`--masm -f obj`), the VxD sources (`--masm -f win32`). x86asm
-  reproduces all of them byte for byte (the COFF header's time stamp set aside). The folders are kept under `state/work`;
-  `CB_X86ASM_CORPUS` names one and `cb_tests --filter corpus_replays` replays it.
+  reproduces all of them byte for byte (the COFF header's time stamp set aside). The cases are kept in
+  `binaries/test-inputs/x86asm/` (git-ignored, beside the other local test inputs): `gate/` (234) is replayed by
+  `cb_tests --filter corpus_replays` wherever it exists, `masm/` (6,236) when `CB_X86ASM_CORPUS` names it. They can no
+  longer be captured again -- nasm.exe is gone -- so they are the record x86asm is held to.
 - **NASM's own MASM-mode tests** (`native/cb/build/testdata/masm`: 85 fixtures and their golden bytes, assembled by x86asm).
 - `cb_tests` area `x86asm` runs every case through x86asm and compares bytes with the recorded output. A case that
   differs is a bug in x86asm; nothing is ever "close enough".

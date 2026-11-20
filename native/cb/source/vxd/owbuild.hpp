@@ -39,7 +39,7 @@ struct Tools {
     std::filesystem::path watcom;   // the tree's rel folder: the WATCOM variable, and its binnt64 first on PATH
 };
 
-// The tools of an OpenWatcom tree given by the `openwatcom` setting (its rel folder; empty: experiments/premise-proof/open-watcom-v2 of
+// The tools of an OpenWatcom tree given by the `openwatcom` setting (its rel folder; empty: toolchains/open-watcom-v2 of
 // the checkout). The byte-exact build assembles with x86asm, in this process.
 Tools tools_from_settings(const std::filesystem::path& checkout_root, std::string_view openwatcom_setting);
 

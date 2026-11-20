@@ -2,7 +2,7 @@
 // the real NASM 3.02 (native/nasm/build/bin/nasm.exe, `-f bin`) produced for the same line.
 //
 // The cases are in encode_cases.inc (a table of {bits, source line, expected bytes}); the expected bytes were captured from
-// nasm.exe by state/work/x86asm-agents/encoder/gen_encode_tests.py, which also lists the lines NASM rejects (expected
+// nasm.exe by docs/history/x86asm-generators/gen_encode_tests.py, which also lists the lines NASM rejects (expected
 // "!", the encoder must then fail too). The parser is another module, so the test carries a small operand reader of its
 // own (the NASM operand syntax: registers, numbers, `$`-relative jump targets, memory references with size words, segment
 // overrides, `rel`/`abs`/`nosplit`/`byte`/`dword` inside the brackets, AVX-512 decorators) that builds the Insn exactly as
