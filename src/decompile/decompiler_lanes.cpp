@@ -500,6 +500,22 @@ DosProgramC Decompiler::decompile_dos(const std::filesystem::path& module, const
     // the compiler's own library is named, not decompiled
     DosLibrary library = lanes_dos_library(*this, *d, context_.settings.checkout);
     lanes_dos_startup(*d, library);
+    // (the names given to its functions: an accepted proposal replaces a sub_ placeholder, everywhere the program calls it)
+    if (context_.environment != nullptr) {
+        for (const auto& [va, name] : context_.environment->program_names(module)) {
+            const auto now = d->names.find(va);
+            if (now == d->names.end() || !now->second.starts_with("sub_")) continue;
+            for (std::string& f_line : d->lines)
+                if (f_line.starts_with("F	" + hex(va) + "	")) {
+                    std::vector<std::string> f;
+                    for (const std::string_view p : text::split(f_line, '	')) f.emplace_back(p);
+                    if (f.size() > 2) f[2] = name;
+                    f_line = text::join(f, "	");
+                }
+            now->second = name;
+        }
+        d->write();
+    }
     lanes_dos_arguments(*d, library.skipped);
     std::vector<Va> own;
     for (const auto& [va, fn] : d->analysis->functions)

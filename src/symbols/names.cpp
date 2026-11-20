@@ -11,7 +11,10 @@
 #include "core/fs.hpp"
 #include "core/log.hpp"
 #include "core/text.hpp"
+#include "analyze/dos_functions.hpp"
 #include "decompile/describe.hpp"
+#include "formats/detect.hpp"
+#include "formats/dos.hpp"
 #include "formats/pe.hpp"
 #include "symbols/demangle.hpp"
 
@@ -246,6 +249,17 @@ struct Namer::Impl {
             }
             std::vector<Address> out;   // the functions the carve finds, in address order
             for (const auto& [start, function] : carves.get(module)->functions()) out.push_back(start);
+            return out;
+        }
+        // a real-mode program (the file says so itself: a PE or NE outside the corpus has no lane here, and its DOS stub is not
+        // the program): the functions its analysis follows, by linear address (as identify has them)
+        if ((!l || *l == base::Lane::Dos) && formats::detect::lane(module) == formats::detect::Lane::Dos) {
+            std::vector<Address> out;
+            try {
+                const formats::dos::Program program = formats::dos::read_program(fs::read_file(module), fs::to_text(module.filename()));
+                for (const auto& [va, fn] : analyze::dos_functions::discover(program).functions) out.push_back(static_cast<Address>(va));
+            } catch (const Error&) {   // (not a program the DOS reader knows: no functions)
+            }
             return out;
         }
         return {};
@@ -499,6 +513,7 @@ cli::Command declare_command(std::function<int(const cli::Args&)> run) {
          cli::Option{"--packets", "", "for each unnamed function, the evidence an assistant needs to propose a name (JSON, a line each); --c adds its C, --limit N stops after N", cli::Arg::Flag},
          cli::Option{"--proposals", "", "the module's proposed, accepted and rejected names", cli::Arg::Flag},
          cli::Option{"--suggest", "", "store an assistant's proposal for the function at ADDRESS; the name is the second argument, with --describe and --confidence", cli::Arg::Value, "ADDRESS"},
+         cli::Option{"--suggest-file", "", "store an assistant's proposals, one a line: ADDRESS, NAME, CONFIDENCE, DESCRIPTION (tab-separated)", cli::Arg::Value, "FILE"},
          cli::Option{"--describe", "", "the one-line description of a suggested name", cli::Arg::Value, "TEXT"},
          cli::Option{"--confidence", "", "how sure a suggestion is, in percent (default 50)", cli::Arg::Value, "PERCENT"},
          cli::Option{"--accept", "", "make the proposal for ADDRESS its function's name; `all` takes every proposal of at least --min-confidence percent (default 80)", cli::Arg::Value, "ADDRESS"},
@@ -529,7 +544,7 @@ int Namer::execute(const cli::Args& a) {
                 c.in_several, c.copies);
         return 0;
     }
-    for (const char* option : {"--propose", "--measure", "--packets", "--proposals", "--suggest", "--accept", "--reject"}) {
+    for (const char* option : {"--propose", "--measure", "--packets", "--proposals", "--suggest", "--suggest-file", "--accept", "--reject"}) {
         if (!a.flag(option)) continue;
         if (!self.s.proposals_command) throw UsageError("proposed names are not available here");
         return self.s.proposals_command(a);

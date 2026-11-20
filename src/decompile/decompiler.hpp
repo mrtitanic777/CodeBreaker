@@ -141,6 +141,12 @@ public:
         (void)starts;
         return {};
     }
+    // The names a person (or an assistant, accepted) gave a program's functions: {linear address: name}. A real-mode program's
+    // functions are named so where nothing else names them (its library's names come first). None by default.
+    virtual std::map<Va, std::string> program_names(const std::filesystem::path& module) {
+        (void)module;
+        return {};
+    }
     // A PE module has been described (what its description says of it: the names it gave its functions, those that take their first
     // argument in ECX, the imports by number). For whatever else wants to know what the description said.
     virtual void described(const std::filesystem::path& module, const describe::PeDescription& description) {

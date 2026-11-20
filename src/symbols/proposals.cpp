@@ -464,6 +464,25 @@ int Proposals::execute(const cli::Args& a) {
         cb::out("{} proposals\n", all.size());
         return 0;
     }
+    if (const auto file = a.value("--suggest-file")) {   // ADDRESS<tab>NAME<tab>CONFIDENCE<tab>DESCRIPTION a line: an assistant's whole reading
+        std::size_t made = 0, refused = 0;
+        const std::string all = fs::read_text(fs::from_text(*file));   // (kept: the lines are views of it)
+        for (const std::string_view raw : text::lines(all)) {
+            const std::string line = text::replace_all(std::string(raw), "\r", "");
+            const std::vector<std::string_view> f = text::split(line, '\t');
+            if (f.size() < 2 || f[0].empty() || f[0].front() == '#') continue;
+            try {
+                const int confidence = f.size() > 2 ? text::parse_int<int>(f[2], 10).value_or(50) : 50;
+                suggest(module, address_of(std::string(f[0])), f[1], f.size() > 3 ? f[3] : std::string_view(), confidence);
+                ++made;
+            } catch (const UsageError& e) {
+                ++refused;
+                cb::out("not proposed: {} {}: {}\n", f[0], f[1], e.what());
+            }
+        }
+        cb::out("{} proposed, {} refused\n", made, refused);
+        return refused == 0 ? 0 : 1;
+    }
     if (const auto at = a.value("--suggest")) {
         if (arguments.size() < 2) throw UsageError("--suggest needs the address and then the name");
         const store::Proposal p = suggest(module, address_of(*at), arguments[1], a.value_or("--describe", ""), static_cast<int>(a.integer<std::int64_t>("--confidence").value_or(50)));

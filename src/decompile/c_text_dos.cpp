@@ -930,6 +930,31 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     }
     r.functions = fns.size();
 
+    // a call the decompiler broke after its function's name (`is_unprototyped_func\n      (a1,...)`: a long name and long
+    // arguments) is one again -- the passes below read a call as the name and its `(`; `sub_0D4C4` never broke so
+    for (CtdFunction& f : fns) {
+        std::string joined;
+        joined.reserve(f.body.size());
+        for (std::size_t k = 0; k < f.body.size(); ++k) {
+            if (f.body[k] == '\n' && !joined.empty() && ctd_word(joined.back())) {
+                std::size_t e = k + 1;
+                while (e < f.body.size() && f.body[e] == ' ') ++e;
+                if (e < f.body.size() && f.body[e] == '(') {
+                    // (only after a name a call is made with: not after a keyword or a declaration's type)
+                    std::size_t b = joined.size();
+                    while (b > 0 && ctd_word(joined[b - 1])) --b;
+                    const std::string word = joined.substr(b);
+                    if (word != "if" && word != "while" && word != "for" && word != "switch" && word != "return" && word != "sizeof") {
+                        k = e - 1;
+                        continue;
+                    }
+                }
+            }
+            joined += f.body[k];
+        }
+        f.body = std::move(joined);
+    }
+
     // each function: its unused registers dropped, its far pointers and pieces written as C
     bool fac = false;   // a double's result read through as the address it was returned as
     for (CtdFunction& f : fns) {
@@ -1011,7 +1036,10 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
     }
     r.structures = structures.size();
 
-    // a function written void whose result a caller uses returns what it leaves in AX
+    // a function written void whose result a caller uses returns what it leaves in AX (the program's own functions, whatever
+    // they are called: a name given to one -- `parse_flag_number`, not `sub_0E1F6` -- is the same function)
+    std::set<std::string> defined;
+    for (const CtdFunction& f : fns) defined.insert(ctd_name(f.signature));
     std::set<std::string> used;
     for (const CtdFunction& f : fns)
         for (std::size_t k = f.body.find("= "); k != std::string::npos; k = f.body.find("= ", k + 2)) {
@@ -1021,10 +1049,9 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
                 if (close <= b + 2 || f.body[close - 2] != '*') continue;
                 b = close;
             }
-            if (f.body.compare(b, 4, "sub_") != 0) continue;
             std::size_t e = b;
             while (e < f.body.size() && ctd_word(f.body[e])) ++e;
-            if (e < f.body.size() && f.body[e] == '(') used.insert(f.body.substr(b, e - b));
+            if (e < f.body.size() && f.body[e] == '(' && defined.contains(f.body.substr(b, e - b))) used.insert(f.body.substr(b, e - b));
         }
     for (CtdFunction& f : fns)
         if (f.signature.starts_with("void ") && used.contains(ctd_name(f.signature))) f.signature = "xunknown2 " + f.signature.substr(5);
@@ -1059,8 +1086,6 @@ Result compilable(std::string_view text, std::string_view header, const Layout& 
 
     // the arguments each function is called with
     std::map<std::string, std::set<std::size_t>> calls;
-    std::set<std::string> defined;
-    for (const CtdFunction& f : fns) defined.insert(ctd_name(f.signature));
     for (const CtdFunction& f : fns) {
         for (const std::string_view id : ctd_identifiers(f.body)) {
             if (!defined.contains(std::string(id))) continue;

@@ -236,6 +236,19 @@ CB_TEST("decompile.c_text_dos.a_data_segment_word_read_after_a_cast_is_the_globa
     CB_CHECK(!ctdt_has(r.text, "(xunknown4 *)0x2564;"));
 });
 
+CB_TEST("decompile.c_text_dos.a_named_functions_call_broken_after_its_name_is_one_call", [] {
+    // (a long name the decompiler wrapped before its `(`: the arguments are still joined into the far pointer it takes, and a
+    // void function a caller reads the result of returns a word -- whatever the function is called, not only sub_...)
+    const std::string text =
+        "/* T.EXE */\n\n"
+        "void __cdecl16far is_unprototyped_func(void *a1)\n\n{\n  \n  return;\n}\n\n"
+        "void __cdecl16far check_arg_types(int2 a1,int2 a2)\n\n{\n  int2 iVar3;\n  \n"
+        "  iVar3 = is_unprototyped_func\n                    (a1,a2);\n  return;\n}\n";
+    const Result r = compilable(text, "");
+    CB_CHECK(ctdt_has(r.text, "iVar3 = is_unprototyped_func((void *)CONCAT22(a2,a1));"));
+    CB_CHECK(ctdt_has(r.text, "xunknown2 __cdecl16far is_unprototyped_func(void *a1)"));
+});
+
 CB_TEST("decompile.c_text_dos.a_comparisons_result_is_a_word", [] {
     const std::string text =
         "/* T.EXE */\n\n"

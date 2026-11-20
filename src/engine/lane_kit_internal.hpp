@@ -87,6 +87,7 @@ public:
     void described(const std::filesystem::path& module, const decompile::describe::PeDescription& description) override;
     std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> dos_library(const formats::dos::Program& program,
                                                                                             std::span<const decompile::decompiler::Va> starts) override;
+    std::map<decompile::decompiler::Va, std::string> program_names(const std::filesystem::path& module) override;
 
     // The link lines an object file of `module` needs for the imports its code calls (`used`: the imports its C calls).
     std::function<std::vector<std::string>(ByteView object)> import_lines(const std::filesystem::path& module,

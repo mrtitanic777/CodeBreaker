@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <mutex>
 
+#include "store/knowledge_proposals.hpp"
 #include "analyze/call_graph.hpp"
 #include "analyze/conventions.hpp"
 #include "analyze/image.hpp"
@@ -481,6 +482,20 @@ std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> KitE
     std::lock_guard hold(impl_->lock);
     if (!impl_->signatures16) impl_->signatures16 = symbols::runtime_library::SignatureTable::from_rows(impl_->kb.signatures("win16"));
     for (const auto& [offset, found] : symbols::runtime_library::identify_dos(*impl_->signatures16, image)) out[base + offset] = {found.name, found.library, found.bytes};
+    return out;
+}
+
+// The names accepted for a program's functions (names MODULE --suggest ... --accept): proposals the knowledge base keeps under the
+// program's hash, by the namer's key (a real-mode program's: its function's linear address in hex).
+std::map<decompile::decompiler::Va, std::string> KitEnvironment::program_names(const stdfs::path& module) {
+    std::map<decompile::decompiler::Va, std::string> out;
+    const std::optional<std::string> sha = impl_->corpus.sha(module);
+    if (!sha) return out;
+    store::KnowledgeProposals proposals(impl_->kb.store());
+    for (const store::Proposal& p : proposals.of_module(*sha)) {
+        if (p.state != store::ProposalState::Accepted || p.key.find(':') != std::string::npos) continue;
+        if (const auto va = text::parse_int<decompile::decompiler::Va>(p.key, 16)) out[*va] = p.name;
+    }
     return out;
 }
 

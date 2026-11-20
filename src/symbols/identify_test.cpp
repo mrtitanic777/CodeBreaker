@@ -202,7 +202,7 @@ CB_TEST("symbols.names.a_console_images_functions_and_imports_are_named", [] {
     CB_CHECK_EQ(w.run(cb::symbols::names::command(w.environment), {"natalsu.exe"}), idn_golden("names_natalsu.exe.txt"));
 });
 
-CB_TEST("symbols.names.a_dos_program_ends_the_report_with_an_empty_line", [] {
+CB_TEST("symbols.names.a_dos_programs_functions_are_listed_and_the_report_ends_with_an_empty_line", [] {
     IdnWorld w;
     CB_CHECK_EQ(w.run(cb::symbols::names::command(w.environment), {"find.exe"}), idn_golden("names_find.exe.txt"));
 });
