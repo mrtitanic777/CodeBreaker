@@ -30,7 +30,7 @@
 ****************************************************************************/
 
 
-#include <string.h>
+#include <cstring>
 #include "linkstd.h"
 #include "reloc.h"
 #include "exeflat.h"
@@ -43,14 +43,18 @@
 #include "ring.h"
 #include "dbgall.h"
 #include "vxd_ddb.h"
+#include "run_state.hpp"
 
 
 #ifdef _OS2
 
-#define STUB_ALIGN 16U
+static constexpr unsigned STUB_ALIGN = 16U;
 
-#define PAGE_COUNT( size )  (((size)+(OSF_DEF_PAGE_SIZE-1))>>OSF_PAGE_SHIFT)
-#define PAGEMAP_BUF_SIZE (MAX_HEADROOM / sizeof( map_entry ) * (unsigned long)OSF_DEF_PAGE_SIZE)
+static constexpr auto PAGE_COUNT( unsigned long size )
+{
+    return ( size + ( OSF_DEF_PAGE_SIZE - 1 ) ) >> OSF_PAGE_SHIFT;
+}
+static constexpr unsigned long PAGEMAP_BUF_SIZE = MAX_HEADROOM / sizeof( map_entry ) * static_cast<unsigned long>( OSF_DEF_PAGE_SIZE );
 
 
 static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
@@ -71,7 +75,7 @@ static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
             buf->le.page_num[1] = *start >> 8;
             buf->le.page_num[0] = *start >> 16;
             buf->le.flags = PAGE_VALID; //NYI: have to figure out how to fill in
-            buf = (map_entry *)((char *)buf + sizeof( le_map_entry ));
+            buf = reinterpret_cast<map_entry *>( reinterpret_cast<char *>( buf ) + sizeof( le_map_entry ) );
         }
     } else { /* FmtData.type & MK_OS2_LX */
         shift = FmtData.u.os2fam.segment_shift;
@@ -87,7 +91,7 @@ static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
             }
             *start += buf->lx.data_size;
             buf->lx.flags = PAGE_VALID; //NYI: have to figure out how to fill in
-            buf = (map_entry *)((char *)buf + sizeof( lx_map_entry ));
+            buf = reinterpret_cast<map_entry *>( reinterpret_cast<char *>( buf ) + sizeof( lx_map_entry ) );
         }
     }
     return( size );
@@ -112,12 +116,12 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
     numpages = 0;
     numobjects = 0;
     objrec.reserved = 0;
-    if( DataGroup != NULL ) {
+    if( DataGroup != nullptr ) {
         header->autodata_obj = DataGroup->addr.seg;
     } else {
         header->autodata_obj = 0;
     }
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         if( group->addr.seg == StackAddr.seg ) {
@@ -144,7 +148,7 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
          * segflags are in OS/2 V1.x format, we have to translate them
          * into the appropriate V2.0 bits
          */
-        leader = (seg_leader *)(Ring2First( group->leaders ));
+        leader = static_cast<seg_leader *>( Ring2First( group->leaders ) );
         if( leader->info & SEGINF_USE_32 ) {
             objrec.flags |= OBJ_BIG;
         } else { //if( group->u.os2flags & OS2_SEG_16_ALIAS ) {
@@ -193,15 +197,15 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
     loc += size;
     header->objmap_off = loc;
     start = 0;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         for( sizeleft = group->size; sizeleft > PAGEMAP_BUF_SIZE; sizeleft -= PAGEMAP_BUF_SIZE ) {
-            map_size = NumberBuf( &start, PAGEMAP_BUF_SIZE, (map_entry *)TokBuff );
+            map_size = NumberBuf( &start, PAGEMAP_BUF_SIZE, reinterpret_cast<map_entry *>( TokBuff ) );
             size += map_size;
             WriteLoad( TokBuff, map_size );
         }
-        map_size = NumberBuf( &start, sizeleft, (map_entry *)TokBuff );
+        map_size = NumberBuf( &start, sizeleft, reinterpret_cast<map_entry *>( TokBuff ) );
         size += map_size;
         WriteLoad( TokBuff, map_size );
     }
@@ -244,9 +248,9 @@ static unsigned long WriteFlatEntryTable( void )
      */
     size = 0;
     start = FmtData.u.os2fam.exports;
-    if( start != NULL ) {
+    if( start != nullptr ) {
         prevord = 0;
-        for( place = start; place != NULL; ) {
+        for( place = start; place != nullptr; ) {
             gap = place->ordinal - prevord;
             if( gap > 1 ) {  // fill in gaps in ordinals.
                 gap--;       // fix 'off by 1' problem.
@@ -256,14 +260,14 @@ static unsigned long WriteFlatEntryTable( void )
                     WriteLoad( &prefix.null, sizeof( prefix.null ) );
                     size += sizeof( prefix.null );
                 }
-                prefix.null.b32_cnt = (unsigned_8)gap;
+                prefix.null.b32_cnt = static_cast<unsigned_8>( gap );
                 WriteLoad( &prefix.null, sizeof( prefix.null ) );
                 size += sizeof( prefix.null );
             }
             // now get a bundle of ordinals.
             entries = 1;
             prev = start = place;
-            for( place = place->next; place != NULL; place = place->next ) {
+            for( place = place->next; place != nullptr; place = place->next ) {
                 if( entries >= 0xff )
                     break;
                 if( place->addr.seg != start->addr.seg )
@@ -346,13 +350,13 @@ static unsigned WriteFixupTables( os2_flat_header *header, unsigned long loc)
     header->fixpage_off = loc;
     numentries = 0;
     size = 0;
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         pagelist_array = group->g.pagelist_array;
         numpages = PAGE_COUNT( group->size );
         numentries += numpages;
         while( numpages-- > 0 ) {
             WriteLoadU32( size );
-            if( pagelist_array != NULL ) {
+            if( pagelist_array != nullptr ) {
                 size += RelocSize( pagelist_array->externals );
                 size += RelocSize( pagelist_array->internals );
                 pagelist_array++;
@@ -364,7 +368,7 @@ static unsigned WriteFixupTables( os2_flat_header *header, unsigned long loc)
     /* now that the page table is written out, do the fixups. */
     header->fixrec_off = loc + numentries * sizeof( unsigned_32 );
     size += numentries * sizeof( unsigned_32 );
-    for( group = Groups; group != NULL; group = group->next ) {
+    for( group = Groups; group != nullptr; group = group->next ) {
         TraverseOS2RelocList( group, DumpRelocList );
     }
     return( size );
@@ -380,7 +384,7 @@ static unsigned WriteDataPages( unsigned long loc )
     size_t      size;
 
     last_page = 0;
-    for( group = Groups; group != NULL; group = group->next) {
+    for( group = Groups; group != nullptr; group = group->next) {
         if( group->size != 0 ) {
             if( last_page != 0 ) {
                 if( FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
@@ -414,8 +418,21 @@ static unsigned WriteDataPages( unsigned long loc )
  * .vxd modules.  The PHYSdevice/VIRTdevice directives are not available in VxD
  * format, so without this every VxD would emit the generic 3.x flags (0x8020).
  */
-#define DDB_DYNAMIC_VXD     0x8000      /* DDB flags bit 15 */
-static bool VxDIsDynamic = false;
+static constexpr unsigned DDB_DYNAMIC_VXD = 0x8000;      /* DDB flags bit 15 */
+
+namespace {
+
+// what loadflat.cpp keeps for one run of the linker
+struct FlatState {
+    bool    vxdIsDynamic = false;
+};
+
+FlatState &flatState()
+{
+    return cb_wlink::RunState::part<FlatState>();
+}
+
+}
 
 static void SetHeaderVxDInfo( os2_flat_header *exe_head )
 /********************************************************
@@ -428,13 +445,13 @@ static void SetHeaderVxDInfo( os2_flat_header *exe_head )
     unsigned     vm_off;
 
     exp = FmtData.u.os2fam.exports;
-    if( ( exp != NULL ) && ( exp->sym != NULL ) ) {
+    if( ( exp != nullptr ) && ( exp->sym != nullptr ) ) {
         adjust = exp->sym->p.seg->u.leader->seg_addr.off + exp->sym->p.seg->a.delta;
         vm_off = exp->sym->addr.off - adjust;
         ReadInfo( (exp->sym->p.seg)->u1.vm_ptr + vm_off, &ddb, sizeof( ddb ) );
         exe_head->r.vxd.device_ID = ddb.req_device_number;
         exe_head->r.vxd.DDK_version = ddb.SDK_version;
-        VxDIsDynamic = ( ddb.flags & DDB_DYNAMIC_VXD ) != 0;
+        flatState().vxdIsDynamic = ( ddb.flags & DDB_DYNAMIC_VXD ) != 0;
     }
 
 }
@@ -543,7 +560,7 @@ void FiniOS2FlatLoadFile( void )
             exe_head.flags |= VXD_DEVICE_DRIVER_DYNAMIC;
         } else if( FmtData.u.os2fam.flags & PHYS_DEVICE ) {
             exe_head.flags |= VXD_DEVICE_DRIVER_STATIC;
-        } else if( VxDIsDynamic ) {
+        } else if( flatState().vxdIsDynamic ) {
             /* DDB has DDB_DYNAMIC_VXD set -> dynamically loadable (VXDLDR) */
             exe_head.flags |= VXD_DEVICE_DRIVER_DYNAMIC;
         } else {
@@ -608,8 +625,8 @@ bool FindOS2ExportSym( symbol *sym, dll_sym_info **pdll )
     if( sym->info & SYM_EXPORTED ) {
         dll = AllocDLLInfo();
         dll->isordinal = true;
-        dll->m.modnum = NULL;
-        dll->u.ordinal = ((entry_export *)sym->e.export_)->ordinal;
+        dll->m.modnum = nullptr;
+        dll->u.ordinal = static_cast<entry_export *>( sym->e.export_ )->ordinal;
         *pdll = dll;
         return( true );
     }

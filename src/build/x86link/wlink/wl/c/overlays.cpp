@@ -71,8 +71,8 @@ void OvlSetSegments( void )
 static void FillOutPtr( section *sect )
 /*************************************/
 {
-    if( sect->outfile == NULL ) {
-        if( sect->parent != NULL ) {
+    if( sect->outfile == nullptr ) {
+        if( sect->parent != nullptr ) {
             sect->outfile = sect->parent->outfile;  //same file as ancestor.
         } else {
             sect->outfile = Root->outfile;
@@ -99,7 +99,7 @@ void OvlTryDefVector( symbol *sym )
 void OvlTryUseVector( symbol *sym, extnode *newnode )
 /***************************************************/
 {
-    if( newnode != NULL ) {
+    if( newnode != nullptr ) {
         newnode->ovlref = 0;
         OvlUseVector( sym, newnode );
     }

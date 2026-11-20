@@ -67,7 +67,7 @@ static void FreeClasses( class_entry *class_ )
 {
     class_entry     *next;
 
-    for( ; class_ != NULL; class_ = next ) {
+    for( ; class_ != nullptr; class_ = next ) {
         next = class_->next;
         RingWalk( class_->segs, FreeLeader );
         CarveFree( CarveClass, class_ );
@@ -86,7 +86,7 @@ static void FreeMods( mod_entry *head )
 {
     void        *next;
 
-    for( ; head != NULL; head = (mod_entry *)(next) ) {
+    for( ; head != nullptr; head = static_cast<mod_entry *>( next ) ) {
         next = head->u.next;
         FreeAMod( head );
     }
@@ -97,10 +97,10 @@ static void FreeFiles( file_list *file )
 {
     void        *next;
 
-    for( ; file != NULL; file = (file_list *)(next) ) {
+    for( ; file != nullptr; file = static_cast<file_list *>( next ) ) {
         next = file->next;
         CacheClose( file, 3 );
-        if( (file->flags_file & STAT_HAS_MEMBER) && file->u.member != NULL ) {
+        if( (file->flags_file & STAT_HAS_MEMBER) && file->u.member != nullptr ) {
             FreeList( file->u.member );
         }
         _PermFree( file );
@@ -115,10 +115,12 @@ static void FreeSections( section *sect )
  */
 {
     section             *next;
-    ORDER_CLASS         *Class, *NextClass;
-    ORDER_SEGMENT       *Seg, *NextSeg;
+    ORDER_CLASS         *Class;
+    ORDER_CLASS         *NextClass;
+    ORDER_SEGMENT       *Seg;
+    ORDER_SEGMENT       *NextSeg;
 
-    for( ; sect != NULL; sect = next ) {
+    for( ; sect != nullptr; sect = next ) {
         next = sect->next;
         FreeFiles( sect->files );
         if( (LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
@@ -129,23 +131,23 @@ static void FreeSections( section *sect )
         FreeAreas( sect->areas );
         ZapHTable( sect->modFilesHashed, MemFree );
         // Free up any Order Class entries
-        for( Class = sect->orderlist; Class != NULL; Class = NextClass ) {
+        for( Class = sect->orderlist; Class != nullptr; Class = NextClass ) {
             NextClass = Class->NextClass;
-            if( Class->Name != NULL ) {   // Including members and sucessors
-                MemFree ( Class->Name );
+            if( Class->Name != nullptr ) {   // Including members and sucessors
+                MemFree( Class->Name );
             }
             if( Class->Copy ) {
-                MemFree ( Class->SrcName );
+                MemFree( Class->SrcName );
             }
             // Order Seg entries can also have members and sucessors
-            for( Seg = Class->SegList; Seg != NULL; Seg = NextSeg ) {
+            for( Seg = Class->SegList; Seg != nullptr; Seg = NextSeg ) {
                 NextSeg = Seg->NextSeg;
-                if( Seg->Name != NULL ) {
+                if( Seg->Name != nullptr ) {
                     MemFree( Seg->Name );
                 }
-                MemFree ( Seg );
+                MemFree( Seg );
             }
-            MemFree ( Class );
+            MemFree( Class );
         }
         MemFree( sect );
     }
@@ -156,7 +158,7 @@ static void FreeAreas( AREASECT *area )
 {
     AREASECT    *next;
 
-    for( ; area != NULL; area = next ) {
+    for( ; area != nullptr; area = next ) {
         next = area->next;
         FreeSections( area->sections );
     }
@@ -167,33 +169,33 @@ void CleanLinkStruct( void )
 /*********************************/
 /* free all structures */
 {
-    if( Root == NULL )
+    if( Root == nullptr )
         return;  /* haven't finished initializing */
     BurnLibs();
     FreeFiles( ObjLibFiles );
     FreeFiles( Root->files );
-    ObjLibFiles = NULL;
-    Root->files = NULL;
+    ObjLibFiles = nullptr;
+    Root->files = nullptr;
     if( (LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
         FreeMods( LibModules );
     }
-    if( SymFileName != NULL ) {
+    if( SymFileName != nullptr ) {
         MemFree( SymFileName );
     }
-    if( FmtData.osname != NULL ) {
+    if( FmtData.osname != nullptr ) {
         MemFree( FmtData.osname );
     }
-    if( FmtData.resource != NULL ) {
+    if( FmtData.resource != nullptr ) {
         MemFree( FmtData.resource );
     }
     FreeRelocInfo();
     FreeGroups( Groups );
     FreeGroups( AbsGroups );
-    Groups = NULL;
-    AbsGroups = NULL;
+    Groups = nullptr;
+    AbsGroups = nullptr;
     FreeSections( Root );
     DBICleanup();
-    Root = NULL;
+    Root = nullptr;
 #ifdef _EXE
     if( FmtData.type & MK_DOS ) {
         FreeOverlaySupp();
@@ -207,7 +209,7 @@ void FreeSegFlags( seg_flags_struct *curr )
 {
     seg_flags_struct    *next;
 
-    for( ; curr != NULL; curr = next ) {
+    for( ; curr != nullptr; curr = next ) {
         next = curr->next;
         MemFree( curr->name );
         MemFree( curr );
@@ -235,7 +237,7 @@ void FreeGroups( group_entry *group )
 {
     group_entry *next;
 
-    for( ; group != NULL; group = next ) {
+    for( ; group != nullptr; group = next ) {
         next = group->next;
         FreeAGroup( group );
     }

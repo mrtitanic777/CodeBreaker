@@ -32,8 +32,11 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <cstddef>
+#include <vector>
 #include "linkstd.h"
 #include "virtmem.h"
+#include "run_state.hpp"
 #if defined( USE_VIRTMEM )
     #include "walloca.h"
     #include "newmem.h"
@@ -44,13 +47,46 @@
 #endif
 
 
+namespace {
+
 #if defined( USE_VIRTMEM )
 
 /* flags used in the virtual memory structure */
-typedef enum {
-    VIRT_INMEM = 0x01,      /* virtual memory block is in RAM */
-    VIRT_HUGE  = 0x02       /* virtual memory block is a huge block */
-} virt_flags;
+enum class VirtFlags : unsigned {
+    None  = 0x00,
+    InMem = 0x01,           /* virtual memory block is in RAM */
+    Huge  = 0x02            /* virtual memory block is a huge block */
+};
+
+constexpr VirtFlags operator|( VirtFlags a, VirtFlags b )
+{
+    return static_cast<VirtFlags>( static_cast<unsigned>( a ) | static_cast<unsigned>( b ) );
+}
+
+constexpr VirtFlags operator&( VirtFlags a, VirtFlags b )
+{
+    return static_cast<VirtFlags>( static_cast<unsigned>( a ) & static_cast<unsigned>( b ) );
+}
+
+constexpr VirtFlags operator~( VirtFlags a )
+{
+    return static_cast<VirtFlags>( ~static_cast<unsigned>( a ) );
+}
+
+constexpr VirtFlags &operator|=( VirtFlags &a, VirtFlags b )
+{
+    return a = a | b;
+}
+
+constexpr VirtFlags &operator&=( VirtFlags &a, VirtFlags b )
+{
+    return a = a & b;
+}
+
+constexpr bool has( VirtFlags flags, VirtFlags f )
+{
+    return ( flags & f ) != VirtFlags::None;
+}
 
 /* this is for allocating very large memory requests (i.e. > 1 megabyte).
    virtual memory locations 0x80000000 and above are split into 1 megabyte
@@ -70,42 +106,37 @@ spill addresses, each of which points to a 32K-byte subpage of virtual memory.
  * the following structure is for "huge" virtual memory allocation
  * first two fields are shared with seg_table
  */
-typedef struct huge_table {
-    struct huge_table   *next;          /* next entry to swap. */
-    virt_flags          flags;
+struct huge_table {
+    huge_table          *next;          /* next entry to swap. */
+    VirtFlags           flags;
     unsigned_8          numthere;
     unsigned_8          numswapped;
     unsigned_16         sizelast;
     spilladdr           *page;
-} huge_table;
+};
 
-#define HUGE_OFFSET_SHIFT   20
-#define MAX_BIGNODE_SIZE    (1UL << HUGE_OFFSET_SHIFT)
-#define HUGE_OFFSET_MASK    (MAX_BIGNODE_SIZE - 1)
-#define HUGE_BIT_MASK       0x7FFFFFFFUL
-#define HUGE_PAGE           0x80000000UL
-#define HUGE_INITIAL_ALLOC  2
-#define HUGE_LIMIT          2048        /* max number of huge pages */
-#define HUGE_SUBPAGE_SHIFT  15
-#define HUGE_SUBPAGE_SIZE   (1 << HUGE_SUBPAGE_SHIFT)
-#define HUGE_SUBPAGE_MASK   (HUGE_SUBPAGE_SIZE - 1)
-#define HUGE_NUM_SUBPAGES   32
-
-#define BIGNODE( stg )      (&HugeTab[(stg & HUGE_BIT_MASK) >> HUGE_OFFSET_SHIFT])
-#define SUBPAGENUM( stg )   ((stg & HUGE_OFFSET_MASK) >> HUGE_SUBPAGE_SHIFT)
-
-#define BIGNODE_OFF( stg )  (stg & HUGE_SUBPAGE_MASK)
+constexpr unsigned long HUGE_OFFSET_SHIFT   = 20;
+constexpr unsigned long MAX_BIGNODE_SIZE    = 1UL << HUGE_OFFSET_SHIFT;
+constexpr unsigned long HUGE_OFFSET_MASK    = MAX_BIGNODE_SIZE - 1;
+constexpr unsigned long HUGE_BIT_MASK       = 0x7FFFFFFFUL;
+constexpr unsigned long HUGE_PAGE           = 0x80000000UL;
+constexpr unsigned      HUGE_INITIAL_ALLOC  = 2;
+constexpr unsigned      HUGE_LIMIT          = 2048;     /* max number of huge pages */
+constexpr unsigned      HUGE_SUBPAGE_SHIFT  = 15;
+constexpr unsigned      HUGE_SUBPAGE_SIZE   = 1U << HUGE_SUBPAGE_SHIFT;
+constexpr unsigned      HUGE_SUBPAGE_MASK   = HUGE_SUBPAGE_SIZE - 1;
+constexpr unsigned      HUGE_NUM_SUBPAGES   = 32;
 
 /*
  * the following structure is for "normal" virtual memory allocation
  * first two fields are shared with huge_table
  */
-typedef struct seg_table {
-    struct seg_table    *next;          /* next entry to swap out. */
-    virt_flags          flags;
+struct seg_table {
+    seg_table           *next;          /* next entry to swap out. */
+    VirtFlags           flags;
     unsigned_16         size;
     spilladdr           loc;
-} seg_table;
+};
 
 /* the seg tables are referenced by an array of pointers, something like
 SegTab --> 0 1 2 3 4 5 6 ...        <-- array elements are pointers
@@ -132,71 +163,80 @@ branch id 0 is not used
 
 */
 
-/* this structure is used for picking the high order word off a long */
-typedef struct {
-    unsigned_16 low;
-    unsigned_16 high;
-} wordpick;
+constexpr unsigned      OFFSET_SHIFT        = 12;
+constexpr unsigned      MAX_NODE_SIZE       = 1U << OFFSET_SHIFT;
+constexpr unsigned      MAX_LEAFS           = 16;       /* maximum # of leafs per branch */
+constexpr unsigned      SEG_LIMIT           = 32767;    /* maximum # of branches (leafs * 16) */
 
-/*
- * this is used instead of the virt_mem type inside this module, since it is
- * desirable to be able to get the high order word without having to do a
- * 16-bit shift. MAKE SURE THAT VIRT_MEM IS THE SAME SIZE AS THIS STRUCTURE!
- */
-typedef union {
-    unsigned_32     l;
-    wordpick        w;
-} virt_struct;
+constexpr unsigned      TINY_BLOCK_CUTOFF   = 256;
 
-#define OFFSET_SHIFT      12
-#define MAX_NODE_SIZE     (1U << OFFSET_SHIFT)
-#define MAX_LEAFS         16            /* maximum # of leafs per branch */
-#define SEG_LIMIT         32767         /* maximum # of branches (leafs * 16) */
+/* a virtual address of the "normal" kind: the high order word is the branch,
+   the low order word holds the leaf and the offset */
+constexpr unsigned_16 addr_high( virt_mem stg )
+{
+    return static_cast<unsigned_16>( stg >> 16 );
+}
 
-/* find the node for MEM_ADDR or FILE_ADDR */
-#define NODE( stg )         (&SegTab[stg.w.high][stg.w.low >> OFFSET_SHIFT])
-
-#define NODE_OFF( stg )     (stg.w.low & (MAX_NODE_SIZE - 1))
-
-#define TINY_BLOCK_CUTOFF 256
+constexpr unsigned_16 addr_low( virt_mem stg )
+{
+    return static_cast<unsigned_16>( stg & 0xFFFF );
+}
 
 #else
 
-#define TINY_ALLOC_CUTOFF _2K
+constexpr std::size_t TINY_ALLOC_CUTOFF = _2K;
 
-typedef struct vmemblock {
-    struct vmemblock    *next;
-    struct vmemblock    *prev;
+struct vmemblock {
+    vmemblock           *next;
+    vmemblock           *prev;
     char                mem[1];
-} vmemblock;
+};
 
 #endif
 
-
+// what the virtual memory keeps for one run of the linker
+struct VirtState {
 #if defined( USE_VIRTMEM )
-
-static huge_table       *HugeTab;
-static unsigned         NumHuge;
-static unsigned         NextHuge;
-static seg_table        **SegTab;
-static unsigned         NumBranches;
-/* start with branch # 1 so an address of zero can be illegal. */
-static unsigned         CurrBranch;
-static unsigned         NextLeaf;       /* next leaf # to be allocated. */
-static seg_table        *NextSwap;      /* next entry to swap out. */
-static unsigned         TinyLeft;
-static virt_mem         TinyAddr;
-
+    huge_table      *HugeTab;
+    unsigned        NumHuge;
+    unsigned        NextHuge;
+    seg_table       **SegTab;
+    unsigned        NumBranches;
+    /* start with branch # 1 so an address of zero can be illegal. */
+    unsigned        CurrBranch;
+    unsigned        NextLeaf;       /* next leaf # to be allocated. */
+    seg_table       *NextSwap;      /* next entry to swap out. */
+    unsigned        TinyLeft;
+    virt_mem        TinyAddr;
 #else
-
-static vmemblock        *VMemBlocks;
-
+    vmemblock       *VMemBlocks;
 #endif
+};
 
+VirtState &virt_state()
+{
+    return cb_wlink::RunState::part<VirtState>();
+}
 
 #if defined( USE_VIRTMEM )
 
-static void GetMoreBranches( void )
+/* find the node for an address */
+seg_table *node_of( const VirtState &vs, virt_mem stg )
+{
+    return &vs.SegTab[addr_high( stg )][addr_low( stg ) >> OFFSET_SHIFT];
+}
+
+huge_table *bignode_of( VirtState &vs, virt_mem stg )
+{
+    return &vs.HugeTab[( stg & HUGE_BIT_MASK ) >> HUGE_OFFSET_SHIFT];
+}
+
+unsigned subpage_num( virt_mem stg )
+{
+    return ( stg & HUGE_OFFSET_MASK ) >> HUGE_SUBPAGE_SHIFT;
+}
+
+void GetMoreBranches( VirtState &vs )
 /**********************************
  * make a larger array to hold branch pointers in.
  */
@@ -204,121 +244,124 @@ static void GetMoreBranches( void )
     seg_table       **branches;
     unsigned        alloc_size;
 
-    alloc_size = NumBranches * sizeof( seg_table * );
-    NumBranches = NumBranches * 2;      /* double the # of pointers. */
-    if( NumBranches > SEG_LIMIT ) {
-        LnkMsg( FTL+MSG_NO_VIRT_MEM, NULL );
+    alloc_size = vs.NumBranches * sizeof( seg_table * );
+    vs.NumBranches = vs.NumBranches * 2;      /* double the # of pointers. */
+    if( vs.NumBranches > SEG_LIMIT ) {
+        LnkMsg( FTL+MSG_NO_VIRT_MEM, nullptr );
     }
-    branches = MemAllocSafe( alloc_size * 2 );
-    memcpy( branches, SegTab, alloc_size );
-    memset( (char *)branches + alloc_size, 0, alloc_size ); /* null pointers */
-    MemFree( SegTab );
-    SegTab = branches;
+    branches = static_cast<seg_table **>( MemAllocSafe( alloc_size * 2 ) );
+    memcpy( branches, vs.SegTab, alloc_size );
+    memset( reinterpret_cast<char *>( branches ) + alloc_size, 0, alloc_size ); /* null pointers */
+    MemFree( vs.SegTab );
+    vs.SegTab = branches;
 }
 
-static virt_struct GetStg( virt_mem_size amt )
-/********************************************/
+virt_mem GetStg( VirtState &vs, virt_mem_size amt )
 {
     seg_table               *seg_entry;
     unsigned                alloc_size;
-    virt_struct             vmem;
+    virt_mem                vmem;
 
-    if( NextLeaf >= MAX_LEAFS ) {
-        NextLeaf = 0;
-        CurrBranch++;
-        if( CurrBranch >= NumBranches ) {
-            GetMoreBranches();
+    if( vs.NextLeaf >= MAX_LEAFS ) {
+        vs.NextLeaf = 0;
+        vs.CurrBranch++;
+        if( vs.CurrBranch >= vs.NumBranches ) {
+            GetMoreBranches( vs );
         }
         alloc_size = sizeof( seg_table ) * MAX_LEAFS;
-        seg_entry = PermAlloc( alloc_size );
+        seg_entry = static_cast<seg_table *>( PermAlloc( alloc_size ) );
         memset( seg_entry, 0, alloc_size ); /* set all flags false. */
-        SegTab[CurrBranch] = seg_entry;
+        vs.SegTab[vs.CurrBranch] = seg_entry;
     } else {
-        seg_entry = &SegTab[CurrBranch][NextLeaf];
+        seg_entry = &vs.SegTab[vs.CurrBranch][vs.NextLeaf];
     }
-    seg_entry->size = amt;
-    vmem.w.high = CurrBranch;
-    vmem.w.low = NextLeaf << OFFSET_SHIFT;
-    DEBUG((DBG_VIRTMEM, "virt %h amt %x", vmem.l, amt ));
-    NextLeaf++;
+    seg_entry->size = static_cast<unsigned_16>( amt );
+    vmem = ( static_cast<virt_mem>( static_cast<unsigned_16>( vs.CurrBranch ) ) << 16 )
+         | static_cast<unsigned_16>( vs.NextLeaf << OFFSET_SHIFT );
+    DEBUG((DBG_VIRTMEM, "virt %h amt %x", vmem, amt ));
+    vs.NextLeaf++;
     return( vmem );
 }
 
-static virt_struct GetBigStg( virt_mem_size size )
-/************************************************/
+virt_mem GetBigStg( VirtState &vs, virt_mem_size size )
 {
     unsigned        alloc_size;
     huge_table      *newtab;
     huge_table      *huge_entry;
-    virt_struct     vmem;
+    virt_mem        vmem;
 
-    if( NextHuge >= NumHuge ) {
-        alloc_size = NumHuge * sizeof( huge_table );
-        NumHuge *= 2;
-        if( NumHuge > HUGE_LIMIT ) {
-            LnkMsg( FTL+MSG_NO_VIRT_MEM, NULL );
+    if( vs.NextHuge >= vs.NumHuge ) {
+        alloc_size = vs.NumHuge * sizeof( huge_table );
+        vs.NumHuge *= 2;
+        if( vs.NumHuge > HUGE_LIMIT ) {
+            LnkMsg( FTL+MSG_NO_VIRT_MEM, nullptr );
         }
-        newtab = MemAllocSafe( alloc_size * 2 );
-        memcpy( newtab, HugeTab, alloc_size );
-        memset( (char *)newtab + alloc_size, 0, alloc_size );
-        MemFree( HugeTab );
-        HugeTab = newtab;
+        newtab = static_cast<huge_table *>( MemAllocSafe( alloc_size * 2 ) );
+        memcpy( newtab, vs.HugeTab, alloc_size );
+        memset( reinterpret_cast<char *>( newtab ) + alloc_size, 0, alloc_size );
+        MemFree( vs.HugeTab );
+        vs.HugeTab = newtab;
     }
-    huge_entry = &HugeTab[NextHuge];
-    vmem.l = ((unsigned long)NextHuge << HUGE_OFFSET_SHIFT) | HUGE_PAGE;
-    huge_entry->numthere = (size >> HUGE_SUBPAGE_SHIFT) + 1;
-    huge_entry->sizelast = size & HUGE_SUBPAGE_MASK;
+    huge_entry = &vs.HugeTab[vs.NextHuge];
+    vmem = static_cast<virt_mem>( ( static_cast<unsigned long>( vs.NextHuge ) << HUGE_OFFSET_SHIFT ) | HUGE_PAGE );
+    huge_entry->numthere = static_cast<unsigned_8>( ( size >> HUGE_SUBPAGE_SHIFT ) + 1 );
+    huge_entry->sizelast = static_cast<unsigned_16>( size & HUGE_SUBPAGE_MASK );
     if( huge_entry->sizelast == 0 ) {
         huge_entry->numthere--;
         huge_entry->sizelast = HUGE_SUBPAGE_SIZE;
     }
-    huge_entry->flags = VIRT_HUGE;
-    DEBUG((DBG_VIRTMEM, "huge virt %h amt %h", vmem.l, size ));
-    NextHuge++;
+    huge_entry->flags = VirtFlags::Huge;
+    DEBUG((DBG_VIRTMEM, "huge virt %h amt %h", vmem, size ));
+    vs.NextHuge++;
     return( vmem );
 }
 
-static virt_mem DoAllocStg( virt_struct (*allocfn)(virt_mem_size),
-                                   virt_mem_size size, virt_mem_size limit )
-/**************************************************************************/
+/* the two ways of getting storage for a piece of at most `limit` bytes */
+enum class StgKind { Normal, Big };
+
+virt_mem GetPiece( VirtState &vs, StgKind kind, virt_mem_size amt )
 {
-    virt_struct ret;
+    return( kind == StgKind::Big ? GetBigStg( vs, amt ) : GetStg( vs, amt ) );
+}
+
+virt_mem DoAllocStg( VirtState &vs, StgKind kind, virt_mem_size size, virt_mem_size limit )
+{
+    virt_mem    ret;
     bool        gotaddr;
 
-    ret.l = 0;
+    ret = 0;
     gotaddr = false;
     for( ; size > limit; size -= limit ) {
         if( !gotaddr ) {
             gotaddr = true;
-            ret = allocfn( limit );
+            ret = GetPiece( vs, kind, limit );
         } else {
-            allocfn( limit );
+            GetPiece( vs, kind, limit );
         }
     }
     if( !gotaddr ) {
-        ret = allocfn( size );
+        ret = GetPiece( vs, kind, size );
     } else {
-        allocfn( size );
+        GetPiece( vs, kind, size );
     }
-    return( ret.l );
+    return( ret );
 }
 
-static virt_mem AllocTinyStg( unsigned size )
-/*******************************************/
+virt_mem AllocTinyStg( VirtState &vs, unsigned size )
 {
     virt_mem    retval;
 
-    if( TinyLeft < size ) {
-        TinyAddr = DoAllocStg( GetStg, MAX_NODE_SIZE, MAX_NODE_SIZE );
-        TinyLeft = MAX_NODE_SIZE;
+    if( vs.TinyLeft < size ) {
+        vs.TinyAddr = DoAllocStg( vs, StgKind::Normal, MAX_NODE_SIZE, MAX_NODE_SIZE );
+        vs.TinyLeft = MAX_NODE_SIZE;
     }
-    retval = TinyAddr;
-    TinyAddr += size;
-    TinyLeft -= size;
+    retval = vs.TinyAddr;
+    vs.TinyAddr += size;
+    vs.TinyLeft -= size;
     return( retval );
 }
 
-static void AllocVMNode( seg_table *node )
+void AllocVMNode( VirtState &vs, seg_table *node )
 /*****************************************
  * allocate a regular 4K page
  */
@@ -326,17 +369,17 @@ static void AllocVMNode( seg_table *node )
     void        *mem;
 
     mem = MemAlloc( node->size );
-    if( mem == NULL ) {
+    if( mem == nullptr ) {
         node->loc.u.spill = SpillAlloc( node->size );
         node->loc.spilled = true;
     } else {
-        node->loc.u.addr = mem;
+        node->loc.u.addr = static_cast<char *>( mem );
         node->loc.spilled = false;
-        AppendList( (void **)&NextSwap, node );
+        AppendList( reinterpret_cast<void **>( &vs.NextSwap ), node );
     }
 }
 
-static void AllocHugeVMNode( huge_table *node )
+void AllocHugeVMNode( VirtState &vs, huge_table *node )
 /**********************************************
  * allocate a huge page
  */
@@ -346,20 +389,20 @@ static void AllocHugeVMNode( huge_table *node )
     spilladdr   *page;
     bool        nomem;
 
-    node->page = PermAlloc( HUGE_NUM_SUBPAGES * sizeof( spilladdr ) );
+    node->page = static_cast<spilladdr *>( PermAlloc( HUGE_NUM_SUBPAGES * sizeof( spilladdr ) ) );
     page = node->page;
     index = node->numthere - 1;         /* first try to allocate the last bit */
     mem = MemAlloc( node->sizelast );   /* on the end of the page. */
-    if( mem == NULL ) {
+    if( mem == nullptr ) {
         nomem = true;
-        node->flags &= ~VIRT_INMEM;
+        node->flags &= ~VirtFlags::InMem;
         node->numswapped = node->numthere;
         page[index].u.spill = SpillAlloc( node->sizelast );
     } else {
         nomem = false;
-        node->flags |= VIRT_INMEM;
-        page[index].u.addr = mem;
-        AppendList( (void **)&NextSwap, node );
+        node->flags |= VirtFlags::InMem;
+        page[index].u.addr = static_cast<char *>( mem );
+        AppendList( reinterpret_cast<void **>( &vs.NextSwap ), node );
     }
     page[index].spilled = nomem;
     /*
@@ -371,24 +414,26 @@ static void AllocHugeVMNode( huge_table *node )
             page[index].u.spill = SpillAlloc( HUGE_SUBPAGE_SIZE );
         } else {
             mem = MemAlloc( HUGE_SUBPAGE_SIZE );
-            if( mem == NULL ) {
+            if( mem == nullptr ) {
                 nomem = true;
-                node->numswapped = index + 1;
+                node->numswapped = static_cast<unsigned_8>( index + 1 );
                 page[index].u.spill = SpillAlloc( HUGE_SUBPAGE_SIZE );
             } else {
-                page[index].u.addr = mem;
+                page[index].u.addr = static_cast<char *>( mem );
             }
         }
         page[index].spilled = nomem;
     }
 }
 
-static bool ScanNodes( virt_mem mem, void *info, virt_mem_size len,
-               bool (*rtn)( void *, spilladdr, size_t, size_t ) )
+using NodeFn = bool (*)( void *, spilladdr, size_t, size_t );
+
+bool ScanNodes( virt_mem mem, void *info, virt_mem_size len, NodeFn rtn )
 /********************************************************************
  * go through the virtual memory nodes, reading or writing data
  */
 {
+    VirtState       &vs = virt_state();
     virt_mem_size   end_off;
     size_t          off;
     seg_table       *node;
@@ -397,24 +442,24 @@ static bool ScanNodes( virt_mem mem, void *info, virt_mem_size len,
     size_t          currlen;
     size_t          amt;
     unsigned        subpage;
-    virt_struct     stg;
+    virt_mem        stg;
     bool            retval;
 
-    stg.l = mem;
-    if( stg.l & HUGE_PAGE ) {  /* it is a huge page */
-        off = BIGNODE_OFF( stg.l );
+    stg = mem;
+    if( stg & HUGE_PAGE ) {  /* it is a huge page */
+        off = stg & HUGE_SUBPAGE_MASK;
         for( ;; ) {
-            bignode = BIGNODE( stg.l );
+            bignode = bignode_of( vs, stg );
             page = bignode->page;
-            subpage = SUBPAGENUM( stg.l );
-            if( subpage == bignode->numthere - 1 ) {
+            subpage = subpage_num( stg );
+            if( subpage == bignode->numthere - 1U ) {
                 currlen = bignode->sizelast;
             } else {
                 currlen = HUGE_SUBPAGE_SIZE;
             }
             end_off = off + len;
-            if( page == NULL ) {
-                AllocHugeVMNode( bignode );
+            if( page == nullptr ) {
+                AllocHugeVMNode( vs, bignode );
                 page = bignode->page;
             }
             if( end_off <= currlen )
@@ -423,18 +468,18 @@ static bool ScanNodes( virt_mem mem, void *info, virt_mem_size len,
             if( !rtn( info, page[subpage], off, amt ) )
                 return( false );
             len -= amt;
-            stg.l += amt;
-            info = (char *)info + amt;
+            stg += amt;
+            info = static_cast<char *>( info ) + amt;
             off = 0;
         }
         retval = rtn( info, page[subpage], off, len );
     } else {
-        off = NODE_OFF( stg );
+        off = addr_low( stg ) & ( MAX_NODE_SIZE - 1 );
         for( ;; ) {
-            node = NODE( stg );
+            node = node_of( vs, stg );
             end_off = off + len;
-            if( !node->loc.spilled && node->loc.u.addr == NULL ) {
-                AllocVMNode( node );
+            if( !node->loc.spilled && node->loc.u.addr == nullptr ) {
+                AllocVMNode( vs, node );
             }
             if( end_off <= node->size )
                 break;
@@ -443,8 +488,8 @@ static bool ScanNodes( virt_mem mem, void *info, virt_mem_size len,
                 return( false );
             }
             len -= amt;
-            stg.l += amt;
-            info = (char *)info + amt;
+            stg += amt;
+            info = static_cast<char *>( info ) + amt;
             off = 0;
         }
         retval = rtn( info, node->loc, off, len );
@@ -452,7 +497,7 @@ static bool ScanNodes( virt_mem mem, void *info, virt_mem_size len,
     return( retval );
 }
 
-static bool LoadInfo( void *info, spilladdr loc, size_t off, size_t len )
+bool LoadInfo( void *info, spilladdr loc, size_t off, size_t len )
 /************************************************************************
  * copy data to info from the memory or spillfile referenced by node & off
  */
@@ -467,15 +512,7 @@ static bool LoadInfo( void *info, spilladdr loc, size_t off, size_t len )
     return( true );
 }
 
-void ReadInfo( virt_mem stg, void *buf, virt_mem_size len )
-/**********************************************************
- * copy data into info from the memory or spillfile referenced by stg
- */
-{
-    ScanNodes( stg, buf, len, LoadInfo );
-}
-
-static bool SaveInfo( void *info, spilladdr loc, size_t off, size_t len )
+bool SaveInfo( void *info, spilladdr loc, size_t off, size_t len )
 /************************************************************************
  * copy data at info to the memory or spillfile referenced by node & off
  */
@@ -491,50 +528,23 @@ static bool SaveInfo( void *info, spilladdr loc, size_t off, size_t len )
     return( true );
 }
 
-void PutInfo( virt_mem stg, const void *info, virt_mem_size len )
-/****************************************************************
- * copy data at info to the memory or spillfile referenced by stg
- */
-{
-    ScanNodes( stg, (void *)info, len, SaveInfo );
-}
-
-void CopyInfo( virt_mem a, virt_mem b, size_t len )
-/*************************************************/
-{
-    void        *buf;
-
-    buf = MemAllocSafe( len );
-    ReadInfo( b, buf, len );
-    PutInfo( a, buf, len );
-    MemFree( buf );
-}
-
-static bool CompareBlock( void *info, spilladdr loc, size_t off, size_t len )
+bool CompareBlock( void *info, spilladdr loc, size_t off, size_t len )
 /****************************************************************************
  * compare data at info to the memory or spillfile referenced by node & off
  */
 {
-    void        *buf;
-
     if( len == 0 )
         return( true );
     if( loc.spilled ) {
-        buf = alloca( len );
-        SpillRead( loc.u.spill, off, buf, len );
-    } else {
-        buf = loc.u.addr + off;
+        std::vector<char>   buf( len );
+
+        SpillRead( loc.u.spill, off, buf.data(), len );
+        return( memcmp( buf.data(), info, len ) == 0 );
     }
-    return( memcmp( buf, info, len ) == 0 );
+    return( memcmp( loc.u.addr + off, info, len ) == 0 );
 }
 
-bool CompareInfo( virt_mem stg, const void *info, virt_mem_size len )
-/*******************************************************************/
-{
-    return( ScanNodes( stg, (void *)info, len, CompareBlock ) );
-}
-
-static bool OutInfo( void *dummy, spilladdr loc, size_t off, size_t len )
+bool OutInfo( void *dummy, spilladdr loc, size_t off, size_t len )
 /************************************************************************
  * copy data in memory or spillfile referenced by node & off to LoadFile
  */
@@ -561,15 +571,7 @@ static bool OutInfo( void *dummy, spilladdr loc, size_t off, size_t len )
     return( true );
 }
 
-void WriteInfoLoad( virt_mem stg, virt_mem_size len )
-/****************************************************
- * copy data in memory or spillfile referenced by stg to LoadFile
- */
-{
-    ScanNodes( stg, NULL, len, OutInfo );
-}
-
-static bool NullInfo( void *dummy, spilladdr loc, size_t off, size_t len )
+bool NullInfo( void *dummy, spilladdr loc, size_t off, size_t len )
 /*************************************************************************
  * write nulls to the location referenced by node and off.
  */
@@ -586,12 +588,59 @@ static bool NullInfo( void *dummy, spilladdr loc, size_t off, size_t len )
     return( true );
 }
 
+#endif
+
+} // namespace
+
+#if defined( USE_VIRTMEM )
+
+void ReadInfo( virt_mem stg, void *buf, virt_mem_size len )
+/**********************************************************
+ * copy data into info from the memory or spillfile referenced by stg
+ */
+{
+    ScanNodes( stg, buf, len, LoadInfo );
+}
+
+void PutInfo( virt_mem stg, const void *info, virt_mem_size len )
+/****************************************************************
+ * copy data at info to the memory or spillfile referenced by stg
+ */
+{
+    ScanNodes( stg, const_cast<void *>( info ), len, SaveInfo );
+}
+
+void CopyInfo( virt_mem a, virt_mem b, size_t len )
+/*************************************************/
+{
+    void        *buf;
+
+    buf = MemAllocSafe( len );
+    ReadInfo( b, buf, len );
+    PutInfo( a, buf, len );
+    MemFree( buf );
+}
+
+bool CompareInfo( virt_mem stg, const void *info, virt_mem_size len )
+/*******************************************************************/
+{
+    return( ScanNodes( stg, const_cast<void *>( info ), len, CompareBlock ) );
+}
+
+void WriteInfoLoad( virt_mem stg, virt_mem_size len )
+/****************************************************
+ * copy data in memory or spillfile referenced by stg to LoadFile
+ */
+{
+    ScanNodes( stg, nullptr, len, OutInfo );
+}
+
 void PutInfoNulls( virt_mem stg, virt_mem_size len )
 /***************************************************
  * copy NULLS in memory or spillfile referenced by stg
  */
 {
-    ScanNodes( stg, NULL, len, NullInfo );
+    ScanNodes( stg, nullptr, len, NullInfo );
 }
 
 #endif
@@ -600,45 +649,49 @@ void PutInfoNulls( virt_mem stg, virt_mem_size len )
 void     VirtMemInit( void )
 /**************************/
 {
+    VirtState &vs = virt_state();
+
 #if defined( USE_VIRTMEM )
     /***********************
      * Allocate space for the branch pointers.
      */
-    NumHuge = HUGE_INITIAL_ALLOC;
-    NextHuge = 0;
-    NumBranches = 127;
+    vs.NumHuge = HUGE_INITIAL_ALLOC;
+    vs.NextHuge = 0;
+    vs.NumBranches = 127;
     /*
      * start with branch # 1 so an virtual address of zero can be illegal
      * branch # 0 is not used
      */
-    CurrBranch = 1;
-    NextLeaf = 0;
-    NextSwap = NULL;
-    TinyLeft = 0;
-    SegTab = MemAllocSafe( NumBranches * sizeof( seg_table * ) );
-    memset( SegTab, 0, NumBranches * sizeof( seg_table * ) );
-    SegTab[1] = PermAlloc( sizeof( seg_table ) * MAX_LEAFS );
-    memset( SegTab[1], 0, sizeof( seg_table ) * MAX_LEAFS );
-    HugeTab = MemAllocSafe( NumHuge * sizeof( huge_table ) );
-    memset( HugeTab, 0, NumHuge * sizeof( huge_table ) );
+    vs.CurrBranch = 1;
+    vs.NextLeaf = 0;
+    vs.NextSwap = nullptr;
+    vs.TinyLeft = 0;
+    vs.SegTab = static_cast<seg_table **>( MemAllocSafe( vs.NumBranches * sizeof( seg_table * ) ) );
+    memset( vs.SegTab, 0, vs.NumBranches * sizeof( seg_table * ) );
+    vs.SegTab[1] = static_cast<seg_table *>( PermAlloc( sizeof( seg_table ) * MAX_LEAFS ) );
+    memset( vs.SegTab[1], 0, sizeof( seg_table ) * MAX_LEAFS );
+    vs.HugeTab = static_cast<huge_table *>( MemAllocSafe( vs.NumHuge * sizeof( huge_table ) ) );
+    memset( vs.HugeTab, 0, vs.NumHuge * sizeof( huge_table ) );
 #else
-    VMemBlocks = NULL;
+    vs.VMemBlocks = nullptr;
 #endif
 }
 
 virt_mem AllocStg( virt_mem_size size )
 /*************************************/
 {
+    VirtState &vs = virt_state();
+
 #if defined( USE_VIRTMEM )
     if( size == 0 )
         return( 0 );
     size = __ROUND_UP_SIZE_EVEN( size );
     if( size <= TINY_BLOCK_CUTOFF ) {
-        return( AllocTinyStg( size ) );
+        return( AllocTinyStg( vs, size ) );
     } else if( size >= MAX_BIGNODE_SIZE ) {
-        return( DoAllocStg( GetBigStg, size, MAX_BIGNODE_SIZE ) );
+        return( DoAllocStg( vs, StgKind::Big, size, MAX_BIGNODE_SIZE ) );
     } else {
-        return( DoAllocStg( GetStg, size, MAX_NODE_SIZE ) );
+        return( DoAllocStg( vs, StgKind::Normal, size, MAX_NODE_SIZE ) );
     }
 #else
     vmemblock * ptr;
@@ -646,18 +699,18 @@ virt_mem AllocStg( virt_mem_size size )
     if( size == 0 )
         return( 0 );
     if( size < TINY_ALLOC_CUTOFF ) {
-        ptr = (vmemblock *)(_PermAlloc( size + sizeof( vmemblock ) - 1 ));
+        ptr = static_cast<vmemblock *>( _PermAlloc( size + sizeof( vmemblock ) - 1 ) );
         ptr->next = ptr;
     } else {
-        ptr = (vmemblock *)(MemAllocSafe( size + sizeof( vmemblock ) - 1 ));
-        ptr->prev = NULL;
-        ptr->next = VMemBlocks;
-        if( VMemBlocks != NULL ) {
-            VMemBlocks->prev = ptr;
+        ptr = static_cast<vmemblock *>( MemAllocSafe( size + sizeof( vmemblock ) - 1 ) );
+        ptr->prev = nullptr;
+        ptr->next = vs.VMemBlocks;
+        if( vs.VMemBlocks != nullptr ) {
+            vs.VMemBlocks->prev = ptr;
         }
-        VMemBlocks = ptr;
+        vs.VMemBlocks = ptr;
     }
-    return( (virt_mem)ptr->mem );
+    return( ptr->mem );
 #endif
 }
 
@@ -671,23 +724,24 @@ void     ReleaseInfo( virt_mem stg )
 
     /* unused parameters */ (void)stg;
 #else
+    VirtState &vs = virt_state();
     vmemblock * ptr;
 
-    if( stg == 0 )
+    if( stg == nullptr )
         return;
-    if( VMemBlocks == NULL )
+    if( vs.VMemBlocks == nullptr )
         return;
-    ptr = (vmemblock *)( stg - offsetof( vmemblock, mem ) );
+    ptr = reinterpret_cast<vmemblock *>( stg - offsetof( vmemblock, mem ) );
     if( ptr->next == ptr )
         return;
-    if( ptr->prev == NULL ) {
-        VMemBlocks = ptr->next;
-        if( VMemBlocks != NULL ) {
-            VMemBlocks->prev = NULL;
+    if( ptr->prev == nullptr ) {
+        vs.VMemBlocks = ptr->next;
+        if( vs.VMemBlocks != nullptr ) {
+            vs.VMemBlocks->prev = nullptr;
         }
     } else {
         ptr->prev->next = ptr->next;
-        if( ptr->next != NULL ) {
+        if( ptr->next != nullptr ) {
             ptr->next->prev = ptr->prev;
         }
     }
@@ -703,22 +757,23 @@ bool     SwapOutVirt( void )
      * NOTE - this routine assumes that once something has been swapped out, it
      * will never be read back in again.
      */
+    VirtState       &vs = virt_state();
     spilladdr       *spillmem;
     void            *mem;
     seg_table       *seg_entry;
     huge_table      *huge_entry;
     size_t          size;
 
-    while( NextSwap != NULL ) {
-        seg_entry = NextSwap;
-        NextSwap = NextSwap->next;
-        if( seg_entry->flags & VIRT_HUGE ) {
-            huge_entry = (huge_table *)seg_entry;
-            if( huge_entry->flags & VIRT_INMEM ) {
+    while( vs.NextSwap != nullptr ) {
+        seg_entry = vs.NextSwap;
+        vs.NextSwap = vs.NextSwap->next;
+        if( has( seg_entry->flags, VirtFlags::Huge ) ) {
+            huge_entry = reinterpret_cast<huge_table *>( seg_entry );
+            if( has( huge_entry->flags, VirtFlags::InMem ) ) {
                 spillmem = &huge_entry->page[huge_entry->numswapped];
                 huge_entry->numswapped++;
                 if( huge_entry->numthere == huge_entry->numswapped ) {
-                    huge_entry->flags &= ~VIRT_INMEM;
+                    huge_entry->flags &= ~VirtFlags::InMem;
                     size = huge_entry->sizelast;
                 } else {
                     size = HUGE_SUBPAGE_SIZE;
@@ -732,7 +787,7 @@ bool     SwapOutVirt( void )
                 return( true );
             }
         } else {
-            if( !seg_entry->loc.spilled && seg_entry->loc.u.addr != NULL ) {
+            if( !seg_entry->loc.spilled && seg_entry->loc.u.addr != nullptr ) {
                 mem = seg_entry->loc.u.addr;
                 seg_entry->loc.u.spill = SpillAlloc( seg_entry->size );
                 seg_entry->loc.spilled = true;
@@ -750,6 +805,8 @@ bool     SwapOutVirt( void )
 void FreeVirtMem( void )
 /**********************/
 {
+    VirtState       &vs = virt_state();
+
 #if defined( USE_VIRTMEM )
     unsigned        index;
     unsigned        inner;
@@ -759,10 +816,10 @@ void FreeVirtMem( void )
     huge_table      *huge_entry;
     spilladdr       *page;
 
-    if( SegTab != NULL ) {
-        for( branch = 0; branch < NumBranches; branch++ ) {
-            seg_entry = SegTab[branch];
-            if( seg_entry != NULL ) {
+    if( vs.SegTab != nullptr ) {
+        for( branch = 0; branch < vs.NumBranches; branch++ ) {
+            seg_entry = vs.SegTab[branch];
+            if( seg_entry != nullptr ) {
                 for( leaf = 0; leaf < MAX_LEAFS; leaf++ ) {
                     if( !seg_entry->loc.spilled ) {
                         MemFree( seg_entry->loc.u.addr );
@@ -771,22 +828,22 @@ void FreeVirtMem( void )
                 }
             }
         }
-        MemFree( SegTab );
+        MemFree( vs.SegTab );
     }
-    if( HugeTab != NULL ) {
-        for( index = 0; index < NumHuge; index++ ) {
-            huge_entry = &HugeTab[index];
-            if( huge_entry->page != NULL ) {
+    if( vs.HugeTab != nullptr ) {
+        for( index = 0; index < vs.NumHuge; index++ ) {
+            huge_entry = &vs.HugeTab[index];
+            if( huge_entry->page != nullptr ) {
                 page = huge_entry->page;
                 for( inner = huge_entry->numswapped; inner < huge_entry->numthere; inner++ ) {
                     MemFree( page[inner].u.addr );
                 }
             }
         }
-        MemFree( HugeTab );
+        MemFree( vs.HugeTab );
     }
 #else
-    FreeList( VMemBlocks );
-    VMemBlocks = NULL;
+    FreeList( vs.VMemBlocks );
+    vs.VMemBlocks = nullptr;
 #endif
 }

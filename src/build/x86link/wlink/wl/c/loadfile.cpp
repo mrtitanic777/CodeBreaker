@@ -86,6 +86,7 @@ struct implibinfo {
     char        *module_name = nullptr;
     size_t      module_name_len = 0;
     bool        didone = false;
+    bool        temp = false;       // fname is the temporary file wlib reads (not `option impfile`'s): deleted when done
 };
 
 // what loadfile.cpp keeps for one run of the linker
@@ -172,6 +173,7 @@ static void SetupImpLib( void )
             ImpLib.handle = QOpenRW( ImpLib.fname );
         } else {
             ImpLib.handle = openTempFile( &ImpLib.fname );
+            ImpLib.temp = ( ImpLib.handle != NIL_FHANDLE );
         }
         if( ImpLib.handle != NIL_FHANDLE ) {
             ImpLib.buffer = static_cast<char *>( MemAllocSafe( IMPLIB_BUFSIZE ) );
@@ -272,7 +274,22 @@ void ResetLoadFile( void )
 
 void CleanLoadFile( void )
 /************************/
+/* CodeBreaker: the import library's temporary file goes whatever became of the link. wlink left it when the link had an
+ * error or stopped (BuildImpLib is not reached, or returns first): in one process, after 26 such links every name
+ * IMP02112.xx? was taken and each link with `option implib` failed ("cannot open temporary file"). */
 {
+    implibinfo  &ImpLib = loadFileState().implib;
+
+    if( ImpLib.temp ) {
+        if( ImpLib.handle != NIL_FHANDLE ) {
+            QClose( ImpLib.handle, ImpLib.fname );
+            ImpLib.handle = NIL_FHANDLE;
+        }
+        QDelete( ImpLib.fname );
+        MemFree( ImpLib.fname );
+        ImpLib.fname = nullptr;
+        ImpLib.temp = false;
+    }
 }
 
 void InitLoadFile( void )
@@ -966,16 +983,19 @@ void BuildImpLib( void )
                 FlushImpBuffer();
             }
             QClose( ImpLib.handle, ImpLib.fname );
+            ImpLib.handle = NIL_FHANDLE;
             if( !FmtData.make_impfile ) {
                 if( ImpLib.didone ) {
                     ExecWlib();
                 }
                 QDelete( ImpLib.fname );
+                ImpLib.temp = false;
             }
             MemFree( ImpLib.buffer );
             MemFree( ImpLib.module_name );
         }
         MemFree( ImpLib.fname );
+        ImpLib.fname = nullptr;
         MemFree( FmtData.implibname );
     }
 }

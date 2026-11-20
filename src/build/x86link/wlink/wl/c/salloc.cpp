@@ -37,17 +37,30 @@
 #include "ring.h"
 #include "objcalc.h"
 #include "salloc.h"
+#include "run_state.hpp"
 
 
-static addr_type    DataLoc;
-static addr_type    CodeLoc;
+namespace {
+
+// the running addresses of the ID split format, one run of the linker's
+struct AllocState {
+    addr_type   DataLoc;
+    addr_type   CodeLoc;
+};
+
+AllocState &alloc_state()
+{
+    return cb_wlink::RunState::part<AllocState>();
+}
+
+} // namespace
 
 void ResetAddr( void )
 /***************************/
 {
     CurrLoc.seg = 0;
     CurrLoc.off = 0;
-    CurrentSeg = NULL;
+    CurrentSeg = nullptr;
 }
 
 void NormalizeAddr( void )
@@ -61,9 +74,9 @@ void NormalizeAddr( void )
       || !FmtData.u.dos.ovl_short ) {
         new_seg = ( CurrLoc.off >> FmtData.SegShift ) + CurrLoc.seg;
         if( new_seg > 0xFFFF ) {
-            LnkMsg( ERR+MSG_APP_TOO_BIG_FOR_DOS, NULL );
+            LnkMsg( ERR+MSG_APP_TOO_BIG_FOR_DOS, nullptr );
         }
-        CurrLoc.seg = (segment)new_seg;
+        CurrLoc.seg = static_cast<segment>( new_seg );
         CurrLoc.off &= FmtData.SegMask;
     }
 }
@@ -73,11 +86,11 @@ static offset BumpUp( offset ptr, offset size )
 /*********************************************/
 {
     ptr += size;
-    if( CurrentSeg != NULL
+    if( CurrentSeg != nullptr
       && (CurrentSeg->info & SEGINF_USE_32) == 0
       && (FmtData.type & MK_RAW) == 0
       && ptr > 0x10000 ) {
-        LnkMsg( ERR+MSG_SEG_TOO_BIG, "sl", CurrentSeg->segname, (unsigned long)( ptr - 0x10000 ) );
+        LnkMsg( ERR+MSG_SEG_TOO_BIG, "sl", CurrentSeg->segname, static_cast<unsigned long>( ptr - 0x10000 ) );
     }
     return( ptr );
 }
@@ -97,7 +110,7 @@ offset CAlign( offset off, unsigned align )
     unsigned        part;
 
     if( align > 0 ) {
-        align = 1 << align;
+        align = 1U << align;
         part = off & ( align - 1 );
         if( part != 0 ) {
             off = BumpUp( off, align - part );
@@ -125,10 +138,12 @@ void StartMemMap( void )
 /*****************************/
 {
     if( FmtData.type & MK_ID_SPLIT ) {
-        CodeLoc.seg = CODE_SEGMENT;
-        CodeLoc.off = 0;
-        DataLoc.seg = DATA_SEGMENT;
-        DataLoc.off = 0;
+        AllocState &st = alloc_state();
+
+        st.CodeLoc.seg = CODE_SEGMENT;
+        st.CodeLoc.off = 0;
+        st.DataLoc.seg = DATA_SEGMENT;
+        st.DataLoc.off = 0;
     } else {
         CurrLoc.seg = ( FmtData.type & MK_PROT_MODE ) ? 1 : 0;
         CurrLoc.off = ( FmtData.type & MK_FLAT_OFFS ) ? FmtData.base : 0;
@@ -140,14 +155,12 @@ static addr_type *GetIDLoc( group_entry *group )
  * return a pointer to the current address for ID split format
  */
 {
-    addr_type       *addr;
+    AllocState      &st = alloc_state();
 
     if( group->segflags & SEG_DATA ) {
-        addr = &DataLoc;
-    } else {
-        addr = &CodeLoc;
+        return( &st.DataLoc );
     }
-    return( addr );
+    return( &st.CodeLoc );
 }
 
 void ChkLocated( addr_type *seg_addr, bool fixed )
@@ -178,7 +191,7 @@ void NewSegment( seg_leader *seg )
 
     group = seg->group;
     if( IS_DBG_INFO( seg ) ) {
-        CurrentSeg = NULL;
+        CurrentSeg = nullptr;
         Align( seg->align );
         ChkLocated( &seg->seg_addr, ( (seg->info & SEGINF_FIXED) != 0 ) );
         AddSize( seg->size );

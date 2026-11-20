@@ -30,8 +30,15 @@
 ****************************************************************************/
 
 
-#include <string.h>
 #include <setjmp.h>
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstring>
+#include <setjmp.h>
+#include <string>
+#include <string_view>
+#include <vector>
 #include "walloca.h"
 #include "linkstd.h"
 #include "objcalc.h"
@@ -49,6 +56,7 @@
 #include "fileio.h"
 #include "loadelf.h"
 #include "specials.h"
+#include "run_state.hpp"
 
 #include "clibext.h"
 
@@ -58,70 +66,90 @@
 #define WLINK_PRODUCER  DWARF_WATCOM_PRODUCER
 #endif
 
-static class_entry  *DBIClass;       // Assume there is only one!
+// seen through objstruc.h as DWARFMODINFO, so these stay at global scope
 
-typedef struct {
+struct dwarfsect {
     virt_mem_ptr    u;
     virt_mem_size   size;
-} dwarfsect;
+};
 
-typedef struct dwarfmodinfo {
+struct dwarfmodinfo {
     dwarfsect   pubsym;
     dwarfsect   dasi;
     dwarfsect   arange;
-} dwarfmodinfo;
+};
+
+namespace {
 
 // this used to hold information about linker generated debugging information.
 
-typedef struct {
-    virt_mem        vm_ptr; // virt. mem. block containing genned info.
-    virt_mem_size   size;   // size of linker generated info.
-    virt_mem_size   start;  // start of linker generated info - compiler stuff 1st
-    const char      *name;
-} sectioninfo;
-
-static sectioninfo SectionTable[] = {
-    { 0, 0, 0, ".debug_info" },
-    { 0, 0, 0, ".debug_abbrev" },
-    { 0, 0, 0, ".debug_line" },
-    { 0, 0, 0, ".debug_aranges" }
+struct sectioninfo {
+    virt_mem        vm_ptr = 0;     // virt. mem. block containing genned info.
+    virt_mem_size   size = 0;       // size of linker generated info.
+    virt_mem_size   start = 0;      // start of linker generated info - compiler stuff 1st
+    const char      *name = nullptr;
 };
 
-enum {
-    SECT_DEBUG_INFO,    // assumed to be in the same order as segment flags!
-    SECT_DEBUG_ABBREV,
-    SECT_DEBUG_LINE,
-    SECT_DEBUG_ARANGE,
-    SECT_NUM_SECTIONS
+enum class Sect : unsigned {
+    info,       // assumed to be in the same order as segment flags!
+    abbrev,
+    line,
+    aranges,
 };
+
+constexpr std::size_t NUM_SECTIONS = 4;
+
+constexpr std::size_t idx( Sect s )
+{
+    return static_cast<std::size_t>( s );
+}
+
+// what dbgdwarf.cpp keeps for one run of the linker
+struct DwarfState {
+    class_entry                             *dbiClass = nullptr;    // Assume there is only one!
+    std::array<sectioninfo, NUM_SECTIONS>   sections{ {
+        { 0, 0, 0, ".debug_info" },
+        { 0, 0, 0, ".debug_abbrev" },
+        { 0, 0, 0, ".debug_line" },
+        { 0, 0, 0, ".debug_aranges" }
+    } };
+
+    sectioninfo &sect( Sect s ) { return sections[idx( s )]; }
+};
+
+DwarfState &dwarfState()
+{
+    return cb_wlink::RunState::part<DwarfState>();
+}
+
+constexpr std::string_view  PRODUCER = WLINK_PRODUCER;      // the literal's NUL follows the view
 
 // die information
 
 #include "pushpck1.h"
 
-typedef struct {
+struct symbol_die {
     unsigned_8  abbrev_code;
     offset      off;
     unsigned_8  isexternal;
 //    char      name[1];
-} symbol_die;
+};
 
-typedef struct {
+struct symbol_seg {
     unsigned_8  len_u8;
     unsigned_8  loc_op;
     unsigned_16 seg;
-} symbol_seg;
+};
 
 // the abbrev codes used in the linker's autogenned stuff.
 
+constexpr unsigned_8 NULL_ABBREV_CODE       = 0;
+constexpr unsigned_8 COMPUNIT_ABBREV_CODE   = 1;
+constexpr unsigned_8 CU_NOLINE_ABBREV_CODE  = 2;
+constexpr unsigned_8 LABEL_ABBREV_CODE      = 3;
+constexpr unsigned_8 VARIABLE_ABBREV_CODE   = 4;
 
-#define NULL_ABBREV_CODE        0
-#define COMPUNIT_ABBREV_CODE    1
-#define CU_NOLINE_ABBREV_CODE   2
-#define LABEL_ABBREV_CODE       3
-#define VARIABLE_ABBREV_CODE    4
-
-static char SegmentedStandardAbbrevs[] = {
+constexpr auto SegmentedStandardAbbrevs = std::to_array<char>( {
     COMPUNIT_ABBREV_CODE,
     DW_TAG_compile_unit,
     DW_CHILDREN_yes,
@@ -151,9 +179,9 @@ static char SegmentedStandardAbbrevs[] = {
     DW_AT_segment,      DW_FORM_block1,
     DW_AT_name,         DW_FORM_string,
     0,                  0
-};
+} );
 
-static char FlatStandardAbbrevs[] = {
+constexpr auto FlatStandardAbbrevs = std::to_array<char>( {
     COMPUNIT_ABBREV_CODE,
     DW_TAG_compile_unit,
     DW_CHILDREN_yes,
@@ -181,37 +209,47 @@ static char FlatStandardAbbrevs[] = {
     DW_AT_external,     DW_FORM_flag,
     DW_AT_name,         DW_FORM_string,
     0,                  0
-};
+} );
 
 #include "poppck.h"
 
+constexpr std::array<unsigned_8, 9> STD_OPCODE_LENGTHS{ 0, 1, 1, 1, 1, 0, 0, 0, 0 };
+
+inline std::size_t nameLength( const char *s )
+{
+    return std::string_view( s ).size();
+}
+
+}
 
 void DwarfInit( void )
 /***************************/
 {
-    int index;
+    DwarfState &st = dwarfState();
 
-    DBIClass = NULL;
-    for( index = 0; index < SECT_NUM_SECTIONS; index++ ) {
-        SectionTable[index].vm_ptr = 0;
-        SectionTable[index].size = 0;
-        SectionTable[index].start = 0;
+    st.dbiClass = nullptr;
+    for( sectioninfo &s : st.sections ) {
+        s.vm_ptr = 0;
+        s.size = 0;
+        s.start = 0;
     }
 }
 
 void DwarfInitModule( mod_entry *mod )
 /*******************************************/
 {
-    mod->u3.d = (DWARFMODINFO *)(_PermAlloc( sizeof( dwarfmodinfo ) ));
-    memset( mod->u3.d, 0, sizeof( dwarfmodinfo ) );
+    mod->u3.d = static_cast<DWARFMODINFO *>( _PermAlloc( sizeof( dwarfmodinfo ) ) );
+    std::memset( mod->u3.d, 0, sizeof( dwarfmodinfo ) );
 }
 
 virt_mem DwarfGetLineInfo( virt_mem_size *size )
 /**********************************************/
 {
-    if( SectionTable[SECT_DEBUG_LINE].size ) {
-        *size = SectionTable[SECT_DEBUG_LINE].size;
-        return( SectionTable[SECT_DEBUG_LINE].vm_ptr );
+    sectioninfo &line = dwarfState().sect( Sect::line );
+
+    if( line.size ) {
+        *size = line.size;
+        return( line.vm_ptr );
     } else {
         *size = 0;
         return( 0 );
@@ -229,7 +267,7 @@ static int GetStmtHeaderSize( mod_entry *mod )
     int         len;
 
     len = sizeof( stmt_prologue );  // fixed size
-    len += 1 + strlen( mod->name.u.ptr ) + 1 + 3 + 1;
+    len += 1 + nameLength( mod->name.u.ptr ) + 1 + 3 + 1;
     return( len );
 }
 
@@ -239,7 +277,7 @@ static void DwarfAddLines( lineinfo *info )
 {
     ln_off_pair _WCUNALIGNED *lineptr;
     unsigned_32         dwsize;
-    unsigned_8          buff[3 + 2 * MAX_LEB128];
+    std::array<unsigned_8, 3 + 2 * MAX_LEB128> buff;
     dw_linenum_delta    linedelta;
     dw_addr_delta       addrdelta;
     ln_off_386          prevline;
@@ -256,7 +294,7 @@ static void DwarfAddLines( lineinfo *info )
     if( (FmtData.type & MK_SEGMENTED) == 0 ) {
         dwsize -= 5;    // size of LNE_segment burst
     }
-    lineptr = (ln_off_pair *)info->data;
+    lineptr = reinterpret_cast<ln_off_pair *>( info->data );
     if( info->size & LINE_IS_32BIT ) {
         item_size = sizeof( ln_off_386 );
     } else {
@@ -264,16 +302,16 @@ static void DwarfAddLines( lineinfo *info )
     }
     for( size = info->size & ~LINE_IS_32BIT; size > 0; size -= item_size ) {
         if( info->size & LINE_IS_32BIT ) {
-            linedelta = (signed_32)lineptr->_386.linnum - prevline.linnum;
+            linedelta = static_cast<signed_32>( lineptr->_386.linnum ) - prevline.linnum;
             addrdelta = lineptr->_386.off - prevline.off;
         } else {
-            linedelta = (signed_32)lineptr->_286.linnum - prevline.linnum;
+            linedelta = static_cast<signed_32>( lineptr->_286.linnum ) - prevline.linnum;
             addrdelta = lineptr->_286.off - prevline.off;
         }
         prevline.linnum += linedelta;
         prevline.off += addrdelta;
-        dwsize += DWLineGen( linedelta, addrdelta, buff ) - buff;
-        lineptr = (ln_off_pair *)((void *)( (char *)lineptr + item_size ));
+        dwsize += DWLineGen( linedelta, addrdelta, buff.data() ) - buff.data();
+        lineptr = reinterpret_cast<ln_off_pair *>( reinterpret_cast<char *>( lineptr ) + item_size );
     }
     CurrMod->u3.d->dasi.size += dwsize;
 }
@@ -281,45 +319,49 @@ static void DwarfAddLines( lineinfo *info )
 void DwarfP1ModuleFinished( mod_entry *mod )
 /*************************************************/
 {
+    DwarfState  &st = dwarfState();
+
     if( MOD_NOT_DEBUGGABLE( mod ) )
         return;
     CurrMod = mod;
     if( mod->flags_mod & MOD_DBI_SEEN )
         return;
-    DBILineWalk( (lineinfo *)(mod->lines), DwarfAddLines );
+    DBILineWalk( reinterpret_cast<lineinfo *>( mod->lines ), DwarfAddLines );
     Ring2Walk( mod->publist, DBIModGlobal );
     if( FmtData.type & MK_SEGMENTED ) {
-        SectionTable[SECT_DEBUG_ABBREV].size = sizeof( SegmentedStandardAbbrevs );
+        st.sect( Sect::abbrev ).size = SegmentedStandardAbbrevs.size();
     } else {
-        SectionTable[SECT_DEBUG_ABBREV].size = sizeof( FlatStandardAbbrevs );
+        st.sect( Sect::abbrev ).size = FlatStandardAbbrevs.size();
     }
     /* add length of compile unit header, abrrev code, module name, producer, stmts offset and reserve one byte for end */
-    mod->u3.d->pubsym.u.vm_offs = SectionTable[SECT_DEBUG_INFO].size;
-    mod->u3.d->pubsym.size += sizeof( comp_unit_prologue ) + sizeof( unsigned_8 ) + strlen( mod->name.u.ptr ) + 1 + sizeof( WLINK_PRODUCER ) + 1;
+    mod->u3.d->pubsym.u.vm_offs = st.sect( Sect::info ).size;
+    mod->u3.d->pubsym.size += sizeof( comp_unit_prologue ) + sizeof( unsigned_8 ) + nameLength( mod->name.u.ptr ) + 1 + PRODUCER.size() + 1 + 1;
     if( mod->u3.d->dasi.size > 0 )
         mod->u3.d->pubsym.size += sizeof( unsigned_32 ); // DW_AT_STMT_LIST
-    SectionTable[SECT_DEBUG_INFO].size += mod->u3.d->pubsym.size;
+    st.sect( Sect::info ).size += mod->u3.d->pubsym.size;
     /* add length of lines info */
     if( mod->u3.d->dasi.size > 0 ) {
-        mod->u3.d->dasi.u.vm_offs = SectionTable[SECT_DEBUG_LINE].size;
+        mod->u3.d->dasi.u.vm_offs = st.sect( Sect::line ).size;
         mod->u3.d->dasi.size += GetStmtHeaderSize( mod );
-        SectionTable[SECT_DEBUG_LINE].size += mod->u3.d->dasi.size;
+        st.sect( Sect::line ).size += mod->u3.d->dasi.size;
     }
 }
 
 void DwarfStoreAddrInfo( mod_entry *mod )
 /**********************************************/
 {
+    sectioninfo &aranges = dwarfState().sect( Sect::aranges );
+
     if( (mod->flags_mod & MOD_DBI_SEEN) == 0 ) {
         if( mod->u3.d->arange.size > 0 ) {
-            mod->u3.d->arange.u.vm_offs = SectionTable[SECT_DEBUG_ARANGE].size;
+            mod->u3.d->arange.u.vm_offs = aranges.size;
             mod->u3.d->arange.size += sizeof( arange_prologue );
             if( FmtData.type & MK_SEGMENTED ) {
                 mod->u3.d->arange.size += sizeof( segmented_arange_tuple );
             } else {
                 mod->u3.d->arange.size += sizeof( flat_arange_tuple );
             }
-            SectionTable[SECT_DEBUG_ARANGE].size += mod->u3.d->arange.size;
+            aranges.size += mod->u3.d->arange.size;
         }
     }
 }
@@ -328,22 +370,22 @@ void DwarfAddModule( mod_entry *mod, section *sect )
 /**************************************************/
 // this generates the headers needed in the individual sections
 {
+    DwarfState          &st = dwarfState();
     arange_prologue     arange_hdr;
     stmt_prologue       stmt_hdr;
     comp_unit_prologue  compuhdr;
     unsigned_8          abbrev_code;
     size_t              namelen;
-    char *              buff;
     unsigned_32         stmt_list;
 
     /* unused parameters */ (void)sect;
 
     if( (mod->flags_mod & MOD_DBI_SEEN) == 0 ) {
         if( mod->u3.d->arange.size > 0 ) {
-            mod->u3.d->arange.u.vm_ptr = SectionTable[SECT_DEBUG_ARANGE].vm_ptr + mod->u3.d->arange.u.vm_offs;
+            mod->u3.d->arange.u.vm_ptr = st.sect( Sect::aranges ).vm_ptr + mod->u3.d->arange.u.vm_offs;
             arange_hdr.length = mod->u3.d->arange.size - sizeof( unsigned_32 );
             arange_hdr.version = 2;
-            arange_hdr.debug_offset = mod->u3.d->pubsym.u.vm_offs + SectionTable[SECT_DEBUG_INFO].start;
+            arange_hdr.debug_offset = mod->u3.d->pubsym.u.vm_offs + st.sect( Sect::info ).start;
             arange_hdr.offset_size = sizeof( offset );
             if( FmtData.type & MK_SEGMENTED ) {
                 arange_hdr.segment_size = sizeof( segment );
@@ -351,15 +393,15 @@ void DwarfAddModule( mod_entry *mod, section *sect )
                 arange_hdr.segment_size = 0;
             }
 //          memset( arange_hdr.padding, 0, sizeof( arange_hdr.padding ) );
-            PutInfo( mod->u3.d->arange.u.vm_ptr, (void *)&arange_hdr, sizeof( arange_prologue ) );
+            PutInfo( mod->u3.d->arange.u.vm_ptr, &arange_hdr, sizeof( arange_prologue ) );
             mod->u3.d->arange.u.vm_ptr += sizeof( arange_prologue );
         }
-        mod->u3.d->pubsym.u.vm_ptr = SectionTable[SECT_DEBUG_INFO].vm_ptr + mod->u3.d->pubsym.u.vm_offs;
+        mod->u3.d->pubsym.u.vm_ptr = st.sect( Sect::info ).vm_ptr + mod->u3.d->pubsym.u.vm_offs;
         compuhdr.length = mod->u3.d->pubsym.size - sizeof( unsigned_32 );
         compuhdr.version = 2;
-        compuhdr.abbrev_offset = SectionTable[SECT_DEBUG_ABBREV].start;
+        compuhdr.abbrev_offset = st.sect( Sect::abbrev ).start;
         compuhdr.addr_size = sizeof( offset );
-        PutInfo( mod->u3.d->pubsym.u.vm_ptr, (void *)&compuhdr, sizeof( comp_unit_prologue ) );
+        PutInfo( mod->u3.d->pubsym.u.vm_ptr, &compuhdr, sizeof( comp_unit_prologue ) );
         mod->u3.d->pubsym.u.vm_ptr += sizeof( comp_unit_prologue );
         /* output abbrev code */
         if( mod->u3.d->dasi.size > 0 ) {
@@ -370,19 +412,19 @@ void DwarfAddModule( mod_entry *mod, section *sect )
         PutInfo( mod->u3.d->pubsym.u.vm_ptr, &abbrev_code, sizeof( abbrev_code ) );
         mod->u3.d->pubsym.u.vm_ptr += sizeof( abbrev_code );
         /* output module name */
-        namelen = strlen( mod->name.u.ptr ) + 1;
+        namelen = nameLength( mod->name.u.ptr ) + 1;
         PutInfo( mod->u3.d->pubsym.u.vm_ptr, mod->name.u.ptr, namelen );
         mod->u3.d->pubsym.u.vm_ptr += namelen;
         /* output producer */
-        PutInfo( mod->u3.d->pubsym.u.vm_ptr, WLINK_PRODUCER, sizeof( WLINK_PRODUCER ) );
-        mod->u3.d->pubsym.u.vm_ptr += sizeof( WLINK_PRODUCER );
+        PutInfo( mod->u3.d->pubsym.u.vm_ptr, PRODUCER.data(), PRODUCER.size() + 1 );
+        mod->u3.d->pubsym.u.vm_ptr += PRODUCER.size() + 1;
         if( mod->u3.d->dasi.size > 0 ) {
             /* output stmts offset */
-            stmt_list = mod->u3.d->dasi.u.vm_offs + SectionTable[SECT_DEBUG_LINE].start;
+            stmt_list = mod->u3.d->dasi.u.vm_offs + st.sect( Sect::line ).start;
             PutInfo( mod->u3.d->pubsym.u.vm_ptr, &stmt_list, sizeof( unsigned_32 ) );
             mod->u3.d->pubsym.u.vm_ptr += sizeof( unsigned_32 );
             /* output stmts header */
-            mod->u3.d->dasi.u.vm_ptr = SectionTable[SECT_DEBUG_LINE].vm_ptr + mod->u3.d->dasi.u.vm_offs;
+            mod->u3.d->dasi.u.vm_ptr = st.sect( Sect::line ).vm_ptr + mod->u3.d->dasi.u.vm_offs;
             stmt_hdr.total_length = mod->u3.d->dasi.size - sizeof( unsigned_32 );
             stmt_hdr.version = 2;
             stmt_hdr.prologue_length = GetStmtHeaderSize( mod ) - offsetof( stmt_prologue, minimum_instruction_length );
@@ -391,25 +433,15 @@ void DwarfAddModule( mod_entry *mod, section *sect )
             stmt_hdr.line_base = DWLINE_BASE;
             stmt_hdr.line_range = DWLINE_RANGE;
             stmt_hdr.opcode_base = DWLINE_OPCODE_BASE;
-            stmt_hdr.standard_opcode_lengths[0] = 0;
-            stmt_hdr.standard_opcode_lengths[1] = 1;
-            stmt_hdr.standard_opcode_lengths[2] = 1;
-            stmt_hdr.standard_opcode_lengths[3] = 1;
-            stmt_hdr.standard_opcode_lengths[4] = 1;
-            stmt_hdr.standard_opcode_lengths[5] = 0;
-            stmt_hdr.standard_opcode_lengths[6] = 0;
-            stmt_hdr.standard_opcode_lengths[7] = 0;
-            stmt_hdr.standard_opcode_lengths[8] = 0;
-            PutInfo( mod->u3.d->dasi.u.vm_ptr, (void *)&stmt_hdr, sizeof( stmt_prologue ) );
+            std::copy( STD_OPCODE_LENGTHS.begin(), STD_OPCODE_LENGTHS.end(), stmt_hdr.standard_opcode_lengths );
+            PutInfo( mod->u3.d->dasi.u.vm_ptr, &stmt_hdr, sizeof( stmt_prologue ) );
             mod->u3.d->dasi.u.vm_ptr += sizeof( stmt_prologue );
             PutInfoNulls( mod->u3.d->dasi.u.vm_ptr, 1 );  // no include directories;
             mod->u3.d->dasi.u.vm_ptr += 1;
-            buff = (char *)(alloca( namelen + 3 ));
-            memcpy( &buff[0], mod->name.u.ptr, namelen );
-            buff[namelen + 0] = 0;          // no directory index
-            buff[namelen + 1] = 0;          // no time
-            buff[namelen + 2] = 0;          // no length
-            PutInfo( mod->u3.d->dasi.u.vm_ptr, buff, namelen + 3 );
+            // the file name, then no directory index, no time, no length
+            std::string buff( namelen + 3, '\0' );
+            std::memcpy( buff.data(), mod->name.u.ptr, namelen );
+            PutInfo( mod->u3.d->dasi.u.vm_ptr, buff.data(), namelen + 3 );
             mod->u3.d->dasi.u.vm_ptr += namelen + 3;
             PutInfoNulls( mod->u3.d->dasi.u.vm_ptr, 1 );  // no more file names
             mod->u3.d->dasi.u.vm_ptr += 1;
@@ -441,16 +473,16 @@ void DwarfGenModule( void )
 static void DefAClass( void *_seg )
 /*********************************/
 {
-    seg_leader  *seg = (seg_leader *)(_seg);
-    int         index;
+    DwarfState  &st = dwarfState();
+    seg_leader  *seg = static_cast<seg_leader *>( _seg );
 
     seg->group = AllocGroup( AutoGrpName, &DBIGroups );
     seg->group->addr.seg = 0;
-    if( SectionTable[SECT_DEBUG_INFO].size > 0 ) {
-        for( index = 0; index < SECT_NUM_SECTIONS; index++ ) {
-            if( stricmp( seg->segname.u.ptr, SectionTable[index].name ) == 0 ) {
+    if( st.sect( Sect::info ).size > 0 ) {
+        for( std::size_t index = 0; index < NUM_SECTIONS; index++ ) {
+            if( stricmp( seg->segname.u.ptr, st.sections[index].name ) == 0 ) {
                 seg->dbgtype = index + DWARF_DEBUG_INFO;
-                SectionTable[index].start = seg->size;
+                st.sections[index].start = seg->size;
                 break;
             }
         }
@@ -465,7 +497,7 @@ void DwarfDefClass( class_entry *class_, unsigned_32 size )
     /* unused parameters */ (void)size;
 
     if( class_->flags & CLASS_DWARF ) {
-        DBIClass = class_;
+        dwarfState().dbiClass = class_;
         RingWalk( class_->segs, DefAClass );
     }
 }
@@ -473,7 +505,7 @@ void DwarfDefClass( class_entry *class_, unsigned_32 size )
 void DwarfAddGlobal( symbol *sym )
 /********************************/
 {
-    CurrMod->u3.d->pubsym.size += strlen( sym->name.u.ptr ) + sizeof( symbol_die ) + 1;
+    CurrMod->u3.d->pubsym.size += nameLength( sym->name.u.ptr ) + sizeof( symbol_die ) + 1;
     if( FmtData.type & MK_SEGMENTED ) {
         CurrMod->u3.d->pubsym.size += sizeof( symbol_seg );
     }
@@ -489,7 +521,7 @@ static offset GetLinearGroupOffset( group_entry *group )
     offset      off;
 
     off = 0;
-    if( group != NULL ) {
+    if( group != nullptr ) {
         off = group->linear - group->addr.off;
         if( FmtData.type & MK_ELF ) {
             off += FmtData.base;
@@ -511,7 +543,7 @@ void DwarfGenGlobal( symbol *sym, section *sect )
     /* unused parameters */ (void)sect;
 
     if( (CurrMod->flags_mod & MOD_DBI_SEEN) == 0 ) {
-        if( ( sym->p.seg == NULL )
+        if( ( sym->p.seg == nullptr )
           || ( sym->p.seg->iscode ) ) {
             die.abbrev_code = LABEL_ABBREV_CODE;
         } else {
@@ -532,7 +564,7 @@ void DwarfGenGlobal( symbol *sym, section *sect )
             PutInfo( vmem_addr, &symseg, sizeof( symbol_seg ) );
             vmem_addr += sizeof( symbol_seg );
         }
-        len = strlen( sym->name.u.ptr ) + 1;
+        len = nameLength( sym->name.u.ptr ) + 1;
         PutInfo( vmem_addr, sym->name.u.ptr, len );
         CurrMod->u3.d->pubsym.u.vm_ptr = vmem_addr + len;
     }
@@ -548,7 +580,7 @@ void DwarfGenLines( lineinfo *info )
     virt_mem            vmem_addr;
     ln_off_386          prevline;
     offset              off;
-    unsigned_8          buff[3 + 2 * MAX_LEB128];
+    std::array<unsigned_8, 3 + 2 * MAX_LEB128> buff;
     unsigned            size;
     segdata             *seg;
     unsigned            item_size;
@@ -569,23 +601,23 @@ void DwarfGenLines( lineinfo *info )
     buff[1] = dwsize;
     buff[2] = DW_LNE_set_address;
     if( FmtData.type & MK_16BIT ) {
-        MPUT_16_UN( buff + 3, seg->a.delta + seg->u.leader->seg_addr.off );
+        MPUT_16_UN( buff.data() + 3, seg->a.delta + seg->u.leader->seg_addr.off );
     } else {
         off = seg->a.delta + seg->u.leader->seg_addr.off;
         if( FmtData.type & (MK_PE | MK_QNX_FLAT | MK_ELF) ) {
             off += GetLinearGroupOffset( seg->u.leader->group );
         }
-        MPUT_32_UN( buff + 3, off );
+        MPUT_32_UN( buff.data() + 3, off );
     }
     dwsize += 2;
-    PutInfo( vmem_addr, buff, dwsize );
+    PutInfo( vmem_addr, buff.data(), dwsize );
     vmem_addr += dwsize;
     if( FmtData.type & MK_SEGMENTED ) {
         buff[1] = 3;
         buff[2] = DW_LNE_WATCOM_set_segment_OLD;
 //        buff[2] = DW_LNE_WATCOM_set_segment;
-        MPUT_16_UN( buff + 3, seg->u.leader->seg_addr.seg );
-        PutInfo( vmem_addr, buff, 5 );
+        MPUT_16_UN( buff.data() + 3, seg->u.leader->seg_addr.seg );
+        PutInfo( vmem_addr, buff.data(), 5 );
         vmem_addr += 5;
     }
     if( info->size & LINE_IS_32BIT ) {
@@ -593,26 +625,26 @@ void DwarfGenLines( lineinfo *info )
     } else {
         item_size = sizeof( ln_off_286 );
     }
-    lineptr = (ln_off_pair *)info->data;
+    lineptr = reinterpret_cast<ln_off_pair *>( info->data );
     for( size = info->size & ~LINE_IS_32BIT; size > 0; size -= item_size ) {
         if( info->size & LINE_IS_32BIT ) {
-            linedelta = (signed_32) lineptr->_386.linnum - prevline.linnum;
+            linedelta = static_cast<signed_32>( lineptr->_386.linnum ) - prevline.linnum;
             addrdelta = lineptr->_386.off - prevline.off;
         } else {
-            linedelta = (signed_32) lineptr->_286.linnum - prevline.linnum;
+            linedelta = static_cast<signed_32>( lineptr->_286.linnum ) - prevline.linnum;
             addrdelta = lineptr->_286.off - prevline.off;
         }
         prevline.linnum += linedelta;
         prevline.off += addrdelta;
-        dwsize = DWLineGen( linedelta, addrdelta, buff ) - buff;
-        PutInfo( vmem_addr, buff, dwsize );
+        dwsize = DWLineGen( linedelta, addrdelta, buff.data() ) - buff.data();
+        PutInfo( vmem_addr, buff.data(), dwsize );
         vmem_addr += dwsize;
-        lineptr = (ln_off_pair *)((void *)( (char *)lineptr + item_size ));
+        lineptr = reinterpret_cast<ln_off_pair *>( reinterpret_cast<char *>( lineptr ) + item_size );
     }
     buff[0] = 0;        // extended opcode
     buff[1] = 1;        // size 1
     buff[2] = DW_LNE_end_sequence;
-    PutInfo( vmem_addr, buff, 3 );
+    PutInfo( vmem_addr, buff.data(), 3 );
     CurrMod->u3.d->dasi.u.vm_ptr = vmem_addr + 3;
 }
 
@@ -641,7 +673,7 @@ static void DwarfAddAddrAdd( segdata *sdata, offset delta, offset size,
 void DwarfAddAddrInfo( seg_leader *seg )
 /*********************************************/
 {
-    DBIAddrInfoScan( seg, DwarfAddAddrInit, DwarfAddAddrAdd, NULL );
+    DBIAddrInfoScan( seg, DwarfAddAddrInit, DwarfAddAddrAdd, nullptr );
 }
 
 static offset GetNewAddrOffset( segdata *sdata, offset delta )
@@ -659,7 +691,7 @@ static offset GetNewAddrOffset( segdata *sdata, offset delta )
 static void DwarfGenAddrInit( segdata *sdata, void *_tuple )
 /**********************************************************/
 {
-    arange_tuple *tuple = (arange_tuple *)(_tuple);
+    arange_tuple *tuple = static_cast<arange_tuple *>( _tuple );
 
     if( FmtData.type & MK_SEGMENTED ) {
         tuple->s.v2.segment = sdata->u.leader->seg_addr.seg;
@@ -673,7 +705,7 @@ static void DwarfGenAddrAdd( segdata *sdata, offset delta, offset size,
                              void *_tuple, bool isnewmod )
 /*********************************************************************/
 {
-    arange_tuple *tuple = (arange_tuple *)(_tuple);
+    arange_tuple *tuple = static_cast<arange_tuple *>( _tuple );
     mod_entry * mod;
     unsigned    tup_size;
 
@@ -724,13 +756,13 @@ void DwarfAddrSectStart( section *sect )
 /*********************************************/
 // This allocates space for the dwarf information
 {
-    int index;
+    DwarfState  &st = dwarfState();
 
     if( ( sect == Root )
-      && ( SectionTable[SECT_DEBUG_ABBREV].size > 0 ) ) {
-        for( index = 0; index < SECT_NUM_SECTIONS; index++ ) {
-            if( index != SECT_DEBUG_ABBREV ) {
-                SectionTable[index].vm_ptr = DBIAlloc( SectionTable[index].size );
+      && ( st.sect( Sect::abbrev ).size > 0 ) ) {
+        for( std::size_t index = 0; index < NUM_SECTIONS; index++ ) {
+            if( index != idx( Sect::abbrev ) ) {
+                st.sections[index].vm_ptr = DBIAlloc( st.sections[index].size );
             }
         }
     }
@@ -754,14 +786,14 @@ static void FillHeader( Elf32_Shdr *hdr, const char *name, stringtable *strtab,
 static void WriteDwarfSect( unsigned addidx, unsigned_32 size )
 /*************************************************************/
 {
-    if( addidx == SECT_DEBUG_ABBREV ) {
+    if( addidx == idx( Sect::abbrev ) ) {
         if( FmtData.type & MK_SEGMENTED ) {
-            WriteLoad( SegmentedStandardAbbrevs, size );
+            WriteLoad( SegmentedStandardAbbrevs.data(), size );
         } else {
-            WriteLoad( FlatStandardAbbrevs, size );
+            WriteLoad( FlatStandardAbbrevs.data(), size );
         }
     } else {
-        WriteInfoLoad( SectionTable[addidx].vm_ptr, size );
+        WriteInfoLoad( dwarfState().sections[addidx].vm_ptr, size );
     }
 }
 
@@ -770,16 +802,17 @@ static unsigned_32 WriteELFSections( unsigned_32 file_off, unsigned_32 curr_off,
 /******************************************************************************/
 // write out all of the individual section in the debugging information
 {
+    DwarfState  &st = dwarfState();
     seg_leader *seg;
     unsigned    addidx;
     unsigned_32 addsize;
 
-    if( DBIClass != NULL ) {
-        for( seg = NULL; (seg = (seg_leader *)(RingStep( DBIClass->segs, seg ))) != NULL; ) {
+    if( st.dbiClass != nullptr ) {
+        for( seg = nullptr; (seg = static_cast<seg_leader *>( RingStep( st.dbiClass->segs, seg ) )) != nullptr; ) {
             addsize = 0;
             addidx = seg->dbgtype - DWARF_DEBUG_INFO;
-            if( addidx < SECT_NUM_SECTIONS ) {
-                addsize = SectionTable[addidx].size;
+            if( addidx < NUM_SECTIONS ) {
+                addsize = st.sections[addidx].size;
             }
             if( seg->size != 0 ) {
                 FillHeader( hdr, seg->segname.u.ptr, strtab, curr_off );
@@ -794,11 +827,11 @@ static unsigned_32 WriteELFSections( unsigned_32 file_off, unsigned_32 curr_off,
             }
         }
     }
-    for( addidx = 0; addidx < SECT_NUM_SECTIONS; addidx++ ) {
-        if( ( SectionTable[addidx].size != 0 )
-          && ( SectionTable[addidx].start == 0 ) ) {
-            FillHeader( hdr, SectionTable[addidx].name, strtab, curr_off );
-            hdr->sh_size = SectionTable[addidx].size;
+    for( addidx = 0; addidx < NUM_SECTIONS; addidx++ ) {
+        if( ( st.sections[addidx].size != 0 )
+          && ( st.sections[addidx].start == 0 ) ) {
+            FillHeader( hdr, st.sections[addidx].name, strtab, curr_off );
+            hdr->sh_size = st.sections[addidx].size;
             WriteDwarfSect( addidx, hdr->sh_size );
             curr_off += hdr->sh_size;
             hdr++;
@@ -810,8 +843,8 @@ static unsigned_32 WriteELFSections( unsigned_32 file_off, unsigned_32 curr_off,
 static bool CheckDBISeg( void *seg, void *num )
 /*********************************************/
 {
-    if( ((seg_leader *)seg)->size != 0 ) {
-        (*(int *)num)++;
+    if( static_cast<seg_leader *>( seg )->size != 0 ) {
+        ( *static_cast<int *>( num ) )++;
     }
     return( false );
 }
@@ -819,16 +852,16 @@ static bool CheckDBISeg( void *seg, void *num )
 int DwarfCountDebugSections( void )
 /****************************************/
 {
+    DwarfState  &st = dwarfState();
     int num;
-    int index;
 
     num = 0;
-    if( DBIClass != NULL ) {
-        RingLookup( DBIClass->segs, CheckDBISeg, &num );
+    if( st.dbiClass != nullptr ) {
+        RingLookup( st.dbiClass->segs, CheckDBISeg, &num );
     }
-    for( index = 0; index < SECT_NUM_SECTIONS; index++ ) {
-        if( ( SectionTable[index].size != 0 )
-          && ( SectionTable[index].start == 0 ) ) {
+    for( const sectioninfo &s : st.sections ) {
+        if( ( s.size != 0 )
+          && ( s.start == 0 ) ) {
             num++;
         }
     }
@@ -866,14 +899,13 @@ void DwarfWrite( void )
 /*********************/
 {
     Elf32_Ehdr          elf_header;
-    Elf32_Shdr *        sect_header;
     Elf32_Shdr *        sh;
     size_t              shdr_size;
     unsigned_32         virt_off;
     stringtable         strtab;
     unsigned long       savepos;
 
-    memcpy( elf_header.e_ident, ELF_SIGNATURE, ELF_SIGNATURE_LEN );
+    std::memcpy( elf_header.e_ident, ELF_SIGNATURE, ELF_SIGNATURE_LEN );
     elf_header.e_ident[EI_CLASS] = ELFCLASS32;
 #ifdef __BIG_ENDIAN__
     elf_header.e_ident[EI_DATA] = ELFDATA2MSB;
@@ -883,7 +915,7 @@ void DwarfWrite( void )
     elf_header.e_ident[EI_VERSION] = EV_CURRENT;
     elf_header.e_ident[EI_OSABI] = ELFOSABI_NONE;
     elf_header.e_ident[EI_ABIVERSION] = 0;
-    memset( &elf_header.e_ident[EI_PAD], 0, EI_NIDENT - EI_PAD );
+    std::memset( &elf_header.e_ident[EI_PAD], 0, EI_NIDENT - EI_PAD );
     elf_header.e_type = ET_EXEC;
     elf_header.e_machine = EM_386;
     elf_header.e_version = EV_CURRENT;
@@ -900,23 +932,21 @@ void DwarfWrite( void )
     elf_header.e_shstrndx = elf_header.e_shnum - 1;     // last entry
     WriteLoad( &elf_header, sizeof( Elf32_Ehdr ) );
     shdr_size = sizeof( Elf32_Shdr ) * elf_header.e_shnum;
-    sect_header = (Elf32_Shdr *)(MemAllocSafe( shdr_size ));
+    std::vector<Elf32_Shdr> sect_header( elf_header.e_shnum );   // the first is the null section
     savepos = PosLoad() + shdr_size;
     SeekLoad( savepos );
-    memset( sect_header, 0, sizeof( Elf32_Shdr ) );   // first fill in the null section
     InitStringTable( &strtab, false );
     AddCharStringTable( &strtab, '\0' );
     virt_off = sizeof( Elf32_Ehdr ) + shdr_size;
-    virt_off = WriteELFSections( savepos, virt_off, sect_header+1, &strtab );
-    sh = sect_header + elf_header.e_shstrndx;
+    virt_off = WriteELFSections( savepos, virt_off, sect_header.data() + 1, &strtab );
+    sh = sect_header.data() + elf_header.e_shstrndx;
     FillHeader( sh, ".shstrtab", &strtab, virt_off );
     sh->sh_type = SHT_STRTAB;
     sh->sh_size = GetStringTableSize( &strtab );
-    WriteStringTable( &strtab, WriteLoad3, NULL );
+    WriteStringTable( &strtab, WriteLoad3, nullptr );
     FiniStringTable( &strtab );
     virt_off += sh->sh_size;
     virt_off += DwarfWriteTrailer( virt_off );
     SeekLoad( savepos - shdr_size );
-    WriteLoad( sect_header, shdr_size );
-    MemFree( sect_header );
+    WriteLoad( sect_header.data(), shdr_size );
 }
