@@ -71,7 +71,6 @@ CB_TEST("engine.machine_x64.functions_run_with_their_imports_and_syscalls_logged
 });
 
 CB_TEST("engine.machine_x64.an_elf_comes_back_identical_and_an_edit_diverges", [] {
-    if (!source::x64_writer::find_nasm()) return;   // (no assembler here)
     fs::ScopedTempDir dir("cb_x64_lane");
     const verify::lanes::ImageLane lane(ps4_lane_spec());
     const stdfs::path original = dir.path() / "tool.elf";
@@ -125,7 +124,6 @@ CB_TEST("engine.machine_x64.xbox_functions_run_with_the_windows_calling_conventi
 });
 
 CB_TEST("engine.machine_x64.a_pe_comes_back_identical_and_an_edit_diverges", [] {
-    if (!source::x64_writer::find_nasm()) return;
     fs::ScopedTempDir dir("cb_x64_xbox_lane");
     const verify::lanes::ImageLane lane(xboxone_lane_spec());
     const stdfs::path original = dir.path() / "app.exe";

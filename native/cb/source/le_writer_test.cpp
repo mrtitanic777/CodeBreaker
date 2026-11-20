@@ -108,9 +108,8 @@ CB_TEST("source.le_writer.drivers_build_back_the_same_and_the_source_is_what_the
     }
 });
 
-CB_TEST("source.le_writer.errors_a_missing_assembler_and_a_file_that_is_not_a_driver", [] {
+CB_TEST("source.le_writer.errors_a_file_that_is_not_a_driver", [] {
     fs::ScopedTempDir dir("cb_le_writer");
-    CB_CHECK_THROWS_AS(NotFoundError, reconstruct(driver_file("srammtd.vxd"), dir.path(), {.nasm = dir.path() / "no-nasm.exe"}));
     fs::write_file(dir.path() / "junk.vxd", Bytes(512, 0x41));
     CB_CHECK_THROWS_AS(FormatError, Image::open(dir.path() / "junk.vxd"));
     CB_CHECK_THROWS_AS(NotFoundError, Image::open(dir.path() / "absent.vxd"));

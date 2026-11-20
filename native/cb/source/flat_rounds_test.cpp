@@ -1,5 +1,5 @@
-// Tests of the rounds that write an x86 file whole against NASM. The helpers are tested without an assembler; the rounds themselves
-// run NASM (settings: nasm; the main checkout's build of it, or CB_NASM) and are skipped where there is none.
+// Tests of the rounds that write an x86 file whole and assemble it back with x86asm, CodeBreaker's own assembler (build/x86asm):
+// nothing outside CodeBreaker is needed, so every test runs.
 
 #include "cb/source/flat_rounds.hpp"
 
@@ -13,17 +13,6 @@
 namespace cb::source::flat_rounds {
 namespace {
 
-std::optional<std::filesystem::path> find_nasm() {
-    if (const auto env = fs::get_env("CB_NASM"); env && !env->empty()) return fs::from_text(*env);
-    try {
-        const config::Config main = config::Config::load(config::current().main_checkout());
-        if (const auto configured = main.path("nasm"); configured && std::filesystem::is_regular_file(*configured)) return configured;
-        const std::filesystem::path built = main.checkout_root() / "native" / "nasm" / "build" / "bin" / "nasm.exe";
-        if (std::filesystem::is_regular_file(built)) return built;
-    } catch (const Error&) {   // (no configuration to read: no assembler to test against)
-    }
-    return std::nullopt;
-}
 
 CB_TEST("source.flat_rounds.error_lines_are_the_lines_nasm_blames", [] {
     const std::string said = "x.asm:12: error: parser: instruction expected\nx.asm:40: warning: not this\nx.asm:7: error: symbol `foo' undefined\n";
@@ -126,13 +115,10 @@ Bytes toy_original() {
 }
 
 CB_TEST("source.flat_rounds.rounds_write_as_bytes_what_nasm_rejects_or_gives_back_different", [] {
-    const auto nasm = find_nasm();
-    if (!nasm) return;   // (no assembler here)
     fs::ScopedTempDir dir("cb_flat");
     ToyFile file;
     std::vector<std::string> said;
     FlatOptions options;
-    options.nasm = *nasm;
     options.say = [&](std::string_view line) { said.emplace_back(line); };
     const FlatResult<int> r = flat<int>(toy_original(), file, dir.path(), "toy", options);
     CB_CHECK(r.same);
@@ -157,30 +143,27 @@ public:
 };
 
 CB_TEST("source.flat_rounds.an_error_no_instruction_owns_stops_the_rounds", [] {
-    const auto nasm = find_nasm();
-    if (!nasm) return;
     fs::ScopedTempDir dir("cb_flat");
     BrokenFile file;
     FlatOptions options;
-    options.nasm = *nasm;
     CB_CHECK_THROWS_AS(ToolError, flat<int>(Bytes{0x90}, file, dir.path(), "broken", options));
 });
 
-CB_TEST("source.flat_rounds.a_missing_assembler_is_a_tool_error", [] {
+CB_TEST("source.flat_rounds.no_assembler_outside_codebreaker_is_needed", [] {
     fs::ScopedTempDir dir("cb_flat");
-    CB_CHECK_THROWS_AS(ToolError, assemble(dir.path() / "no-such-nasm.exe", "bits 32\nret\n", dir.path(), "x"));
+    const Assembled a = assemble(dir.path() / "no-such-nasm.exe", "bits 32\nret\n", dir.path(), "x");   // (the path is not used)
+    CB_CHECK(a.file.has_value());
+    CB_CHECK((read_all(*a.file) == Bytes{0xC3}));
 });
 
 CB_TEST("source.flat_rounds.assemble_gives_the_image_and_the_map", [] {
-    const auto nasm = find_nasm();
-    if (!nasm) return;
     fs::ScopedTempDir dir("cb_flat");
-    const Assembled a = assemble(*nasm, "bits 32\norg 0\nstart: nop\nnext: ret\n", dir.path(), "tiny");
+    const Assembled a = assemble({}, "bits 32\norg 0\nstart: nop\nnext: ret\n", dir.path(), "tiny");
     CB_CHECK(a.file.has_value());
     CB_CHECK((read_all(*a.file) == Bytes{0x90, 0xC3}));
     const LabelMap labels = read_map(a.map);
     CB_CHECK(labels.at("start").address == 0 && labels.at("next").address == 1);
-    const Assembled bad = assemble(*nasm, "bits 32\nmov eax, ebx, ecx\n", dir.path(), "bad");
+    const Assembled bad = assemble({}, "bits 32\nmov eax, ebx, ecx\n", dir.path(), "bad");
     CB_CHECK(!bad.file.has_value());
     CB_CHECK(!error_lines(bad.said).empty());
 });

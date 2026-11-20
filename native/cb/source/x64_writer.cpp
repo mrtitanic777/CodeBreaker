@@ -434,18 +434,6 @@ bool nasm_label(const std::string& name) {
 
 }  // namespace
 
-std::optional<std::filesystem::path> find_nasm() {
-    if (const auto env = fs::get_env("CB_NASM"); env && !env->empty()) return fs::from_text(*env);
-    try {
-        const config::Config main = config::Config::load(config::current().main_checkout());
-        if (const auto configured = main.path("nasm"); configured && std::filesystem::is_regular_file(*configured)) return configured;
-        const std::filesystem::path built = main.checkout_root() / "native" / "nasm" / "build" / "bin" / "nasm.exe";
-        if (std::filesystem::is_regular_file(built)) return built;
-    } catch (const Error&) {   // (no configuration: no assembler)
-    }
-    return std::nullopt;
-}
-
 iw::Written write(const Image& image, const std::filesystem::path& folder) {
     fs::make_dirs(folder);
     const Flow flow(image);
@@ -502,15 +490,7 @@ iw::Written write(const Image& image, const std::filesystem::path& folder) {
     r.functions = functions;
     r.image_bytes = image.file.size();
     for (const auto& [at, insn] : code) r.code_bytes += insn.size;
-    const std::optional<std::filesystem::path> nasm = find_nasm();
-    if (!nasm) {
-        r.source = folder / (image.name + ".asm");
-        fs::write_text(r.source, source.write({}, true).text);
-        r.notes.push_back("NASM was not found (settings: nasm, or CB_NASM): the source is written and not built");
-        return r;
-    }
     flat_rounds::FlatOptions options;
-    options.nasm = *nasm;
     flat_rounds::FlatResult<std::uint32_t> flat = flat_rounds::flat(image.file, source, folder, image.name, options);
     r.source = flat.source;
     r.linked = flat.image.has_value();

@@ -40,6 +40,7 @@
     {"le-source", "le-source <driver>", "a VxD's (or VMM32.VXD's) file as assembly source (NASM), built and compared byte for byte"},
     {"origin", "origin <module> [--list]", "which of a 16-bit module's functions were written in assembly"},
     {"boot-floppy", "boot-floppy", "the Win95 Setup boot floppy, made from the rebuilt files"},
+    {"nasm", "nasm <NASM's arguments>", "x86asm, CodeBreaker's own x86 assembler, run on files as NASM is (NASM 3.02 with the MASM mode: --masm)"},
     {"driver-build", "driver-build <folder or .asm>", "assemble and link a driver, check it against the original"},
     {"driver-judge", "driver-judge <rebuilt> <orig>", "run every entry point of both drivers and compare"},
     {"resources", "resources <module> [--out DIR]", "a module's resources as .rc and files, compiled and compared"},

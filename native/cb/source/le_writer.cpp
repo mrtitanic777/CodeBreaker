@@ -735,7 +735,6 @@ flat_rounds::FlatReport Result::report() const {
 }
 
 Result reconstruct(const std::filesystem::path& driver, const std::filesystem::path& outdir_, const Options& options) {
-    if (!std::filesystem::is_regular_file(options.nasm)) throw NotFoundError(options.nasm, 0, "no assembler (settings: nasm)");
     const std::function<void(std::string_view)> say = options.say ? options.say : [](std::string_view) {};
     const std::filesystem::path outdir = std::filesystem::absolute(outdir_);
     fs::make_dirs(outdir);

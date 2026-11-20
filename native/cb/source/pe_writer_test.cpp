@@ -159,9 +159,8 @@ CB_TEST("source.pe_writer.the_stub_finder_is_asked_with_the_file_and_where_its_h
     CB_CHECK_EQ(asked_header, Image::open(pe_lz32()).pe().header().e_lfanew);
 });
 
-CB_TEST("source.pe_writer.errors_a_missing_assembler_and_files_that_are_not_pe_programs", [] {
+CB_TEST("source.pe_writer.errors_files_that_are_not_pe_programs", [] {
     fs::ScopedTempDir dir("cb_pe_writer");
-    CB_CHECK_THROWS_AS(NotFoundError, reconstruct(pe_lz32(), dir.path(), {.nasm = dir.path() / "no-nasm.exe"}));
     fs::write_file(dir.path() / "junk.dll", Bytes(512, 0x41));
     CB_CHECK_THROWS_AS(FormatError, Image::open(dir.path() / "junk.dll"));
     CB_CHECK_THROWS_AS(NotFoundError, Image::open(dir.path() / "absent.dll"));

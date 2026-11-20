@@ -143,9 +143,8 @@ CB_TEST("source.ne_writer.the_stub_finder_is_asked_with_the_file_and_where_its_h
     CB_CHECK_EQ(asked_header, Image::open(lzexpand()).module().ne_offset());
 });
 
-CB_TEST("source.ne_writer.errors_a_missing_assembler_and_a_file_that_is_not_an_ne_program", [] {
+CB_TEST("source.ne_writer.errors_a_file_that_is_not_an_ne_program", [] {
     fs::ScopedTempDir dir("cb_ne_writer");
-    CB_CHECK_THROWS_AS(NotFoundError, reconstruct(lzexpand(), dir.path(), {.nasm = dir.path() / "no-nasm.exe"}));
     fs::write_file(dir.path() / "junk.dll", Bytes(512, 0x41));
     CB_CHECK_THROWS_AS(FormatError, Image::open(dir.path() / "junk.dll"));
     CB_CHECK_THROWS_AS(NotFoundError, Image::open(dir.path() / "absent.dll"));

@@ -32,7 +32,6 @@ CB_TEST("source.wonderswan_writer.the_code_scan_finds_the_start_and_the_call", [
 });
 
 CB_TEST("source.wonderswan_writer.the_program_comes_back_as_source_that_builds_the_same_file", [] {
-    if (!find_nasm()) return;   // (no assembler here)
     fs::ScopedTempDir dir("cb_ws_writer");
     const image_writer::Written r = write(formats::wonderswan::parse(program()), "demo.ws", dir.path());
     CB_CHECK(r.linked && r.same);

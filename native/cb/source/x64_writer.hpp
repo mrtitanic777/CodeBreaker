@@ -49,9 +49,6 @@ struct Image {
     std::string first_entry_name = "start";           // what the first entry is called when it has no name of its own
 };
 
-// Where NASM is: CB_NASM, the settings, or the checkout's own build.
-std::optional<std::filesystem::path> find_nasm();
-
 image_writer::Written write(const Image& image, const std::filesystem::path& folder);
 
 }  // namespace cb::source::x64_writer

@@ -24,6 +24,7 @@ struct Pending {
     std::filesystem::path folder;
     std::filesystem::path cwd;
     std::vector<std::pair<std::string, Bytes>> inputs;   // (name as the case keeps it, bytes)
+    std::filesystem::file_time_type started;             // an output older than this was not written by the run
 };
 
 // Null unless this run is to be captured. Never throws: capturing must not change what the run does.

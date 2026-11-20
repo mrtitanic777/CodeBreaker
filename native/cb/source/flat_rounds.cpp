@@ -4,6 +4,7 @@
 
 #include <format>
 
+#include "cb/build/x86asm/x86asm.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/process.hpp"
 #include "cb/core/text.hpp"
@@ -22,19 +23,31 @@ Bytes read_all(const std::filesystem::path& path) { return fs::read_file(path); 
 
 std::string tail(std::string_view said, std::size_t n) { return std::string(said.size() > n ? said.substr(said.size() - n) : said); }
 
-Assembled assemble(const std::filesystem::path& nasm, std::string_view source, const std::filesystem::path& work, std::string_view name) {
+Assembled assemble(const std::filesystem::path&, std::string_view source, const std::filesystem::path& work, std::string_view name) {
     Assembled out;
     const std::filesystem::path asm_file = work / (std::string(name) + ".asm");
     const std::filesystem::path image = work / std::string(name);
     out.map = work / (std::string(name) + ".map");
     fs::make_dirs(work);
-    fs::write_file(asm_file, text::to_latin1("[map symbols " + fs::to_text(out.map) + "]\n" + std::string(source)));
+    const auto text = text::to_latin1("[map symbols " + fs::to_text(out.map) + "]\n" + std::string(source));
+    fs::write_file(asm_file, text);   // (the source is kept: the writers hand it over)
     std::filesystem::remove(image);
     std::filesystem::remove(out.map);
-    const process::ProcessResult r = process::run({.argv = {fs::to_text(nasm), "-f", "bin", "-w-all", "-o", fs::to_text(image), fs::to_text(asm_file)},
-                                                   .cwd = work});
-    out.said = std::string(as_text(r.err)) + std::string(as_text(r.out));
-    if (r.exit_code == 0 && std::filesystem::is_regular_file(image)) out.file = image;
+    // x86asm, CodeBreaker's own assembler (build/x86asm), in memory: the image and the map come back as data. A file the
+    // source pulls in by name (`incbin` of a stub) is read from the disk.
+    build::x86asm::Request request;
+    request.cwd = work.generic_string();
+    request.args = {"-f", "bin", "-w-all", "-o", fs::to_text(image), fs::to_text(asm_file)};
+    request.files[asm_file.generic_string()] = Bytes(text.begin(), text.end());
+    request.read = [](const std::string& path) -> std::optional<Bytes> {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(fs::from_text(path), ec)) return std::nullopt;
+        return fs::read_file(fs::from_text(path));
+    };
+    const build::x86asm::Result r = build::x86asm::assemble(request);
+    for (const auto& [file, bytes] : r.files) fs::write_file(fs::from_text(file), bytes);
+    out.said = r.messages;
+    if (r.exit == 0 && std::filesystem::is_regular_file(image)) out.file = image;
     return out;
 }
 

@@ -59,9 +59,12 @@ std::unique_ptr<Pending> before(const ProcessSpec& spec) {
     try {
         const auto root = fs::get_env("CB_NASM_CAPTURE");
         if (!root || root->empty() || spec.argv.empty()) return nullptr;
-        if (!lower(stdfs::path(spec.argv[0]).stem().string()).starts_with("nasm")) return nullptr;
+        // (CodeBreaker's own NASM -- native/nasm's build, what x86asm replaces -- not another assembler a lane probes)
+        const std::string program = lower(stdfs::path(spec.argv[0]).generic_string());
+        if (!program.ends_with("native/nasm/build/bin/nasm.exe") && !program.ends_with("native/nasm/build/bin/nasm")) return nullptr;
         auto p = std::make_unique<Pending>();
         p->cwd = spec.cwd ? *spec.cwd : stdfs::current_path();
+        p->started = stdfs::file_time_type::clock::now() - std::chrono::seconds(2);   // (a file system's times are coarse)
         std::vector<stdfs::path> dirs = {p->cwd};
         for (const std::string& inc : values_of(spec.argv, "-I")) dirs.push_back(resolve(p->cwd, inc));
         std::set<std::string> seen;
@@ -157,6 +160,7 @@ void after(std::unique_ptr<Pending> pending, const ProcessSpec& spec, const Proc
         for (const std::string& o : outputs) {
             const stdfs::path path = resolve(pending->cwd, o);
             if (!stdfs::is_regular_file(path, ec)) continue;
+            if (stdfs::last_write_time(path, ec) < pending->started) continue;   // (left there by an earlier run)
             fs::write_file(pending->folder / "out" / path.filename(), fs::read_file(path));
             made.push_back({{"as", o}, {"file", path.filename().string()}});
         }

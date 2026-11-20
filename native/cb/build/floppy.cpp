@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 
+#include "cb/build/x86asm/x86asm.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/io.hpp"
 #include "cb/core/log.hpp"
@@ -153,15 +154,22 @@ Bytes make(const Disk& disk, ByteView boot, const std::map<std::string, Bytes>& 
 
 namespace {
 
-// The boot sector assembled from its source (nasm): (its bytes, the source's path).
+// The boot sector assembled from its source by x86asm (CodeBreaker's own assembler): (its bytes, the source's path).
 std::pair<Bytes, stdfs::path> boot_sector(const Environment& env) {
     const stdfs::path source = env.design_dir / "recon" / "bootdisk" / "msboot.asm";
-    stdfs::path nasm = env.nasm.empty() ? stdfs::path("nasm") : env.nasm;
-    if (stdfs::is_directory(nasm)) nasm /= "nasm.exe";
     fs::make_dirs(env.state / "bootfloppy");
     const stdfs::path out = env.state / "bootfloppy" / "msboot.bin";
-    const process::ProcessResult result = process::run({.argv = {fs::to_text(nasm), "-f", "bin", fs::to_text(source), "-o", fs::to_text(out)}});
-    if (!result.ok()) throw ToolError("nasm", result.exit_code, text::from_latin1(result.err), "the boot sector did not assemble");
+    x86asm::Request request;
+    request.cwd = stdfs::current_path().generic_string();
+    request.args = {"-f", "bin", fs::to_text(source), "-o", fs::to_text(out)};
+    request.read = [](const std::string& path) -> std::optional<Bytes> {   // (the source, and anything it includes, from the disk)
+        std::error_code ec;
+        if (!stdfs::is_regular_file(fs::from_text(path), ec)) return std::nullopt;
+        return fs::read_file(fs::from_text(path));
+    };
+    const x86asm::Result result = x86asm::assemble(request);
+    if (result.exit != 0) throw ToolError("x86asm", static_cast<std::uint32_t>(result.exit), result.messages, "the boot sector did not assemble");
+    for (const auto& [file, bytes] : result.files) fs::write_file(fs::from_text(file), bytes);
     return {fs::read_file(out), source};
 }
 

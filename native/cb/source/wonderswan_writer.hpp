@@ -35,9 +35,6 @@ const std::map<std::uint32_t, std::string>& ports();
 // The x86 instruction table the format's code scan reads: Capstone's 16-bit decoder over a memory image, for code running in the segment at `code_base`.
 formats::Decoder decoder(std::uint32_t code_base);
 
-// NASM from CB_NASM, the settings or the checkout's own build; nothing when there is none.
-std::optional<std::filesystem::path> find_nasm();
-
 image_writer::Written write(const formats::wonderswan::Rom& rom, std::string_view file_name, const std::filesystem::path& folder);
 image_writer::Written reconstruct(const std::filesystem::path& rom_file, const std::filesystem::path& folder);
 

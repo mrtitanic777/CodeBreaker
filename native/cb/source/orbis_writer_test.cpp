@@ -14,7 +14,6 @@ namespace cb::source::orbis_writer {
 namespace ot = formats::orbis_test;
 
 CB_TEST("source.orbis_writer.an_elf_comes_back_as_source_that_builds_the_same_file", [] {
-    if (!x64_writer::find_nasm()) return;   // (no assembler here)
     fs::ScopedTempDir dir("cb_orbis_writer");
     const image_writer::Written r = write(formats::orbis::parse(ot::elf()), "demo.elf", dir.path());
     CB_CHECK(r.linked && r.same);
@@ -32,7 +31,6 @@ CB_TEST("source.orbis_writer.an_elf_comes_back_as_source_that_builds_the_same_fi
 });
 
 CB_TEST("source.orbis_writer.a_fake_self_is_written_as_the_elf_it_holds", [] {
-    if (!x64_writer::find_nasm()) return;
     fs::ScopedTempDir dir("cb_orbis_writer_self");
     const Bytes elf = ot::elf();
     fs::write_file(dir.path() / "eboot.bin", ot::fself(elf));
@@ -43,7 +41,7 @@ CB_TEST("source.orbis_writer.a_fake_self_is_written_as_the_elf_it_holds", [] {
 });
 
 CB_TEST("source.orbis_writer.the_source_is_written_without_an_assembler_too", [] {
-    // the writer's text side does not need NASM: with CB_NASM pointing at nothing it still writes the source and says it was not built
+    // the source is written beside the image the writer builds (with x86asm, CodeBreaker's own assembler: always)
     fs::ScopedTempDir dir("cb_orbis_writer_text");
     x64_writer::Image image;
     image.name = "demo";
@@ -51,11 +49,10 @@ CB_TEST("source.orbis_writer.the_source_is_written_without_an_assembler_too", []
     image.runs = {{0, 0x1000, 0, false, false}, {0x1000, 0x80, 0x1000, true, true}, {0x1080, static_cast<std::uint32_t>(ot::kElfSize - 0x1080), 0, false, false}};
     image.entries = {0x1000};
     image.head = "; test";
-    const std::optional<std::filesystem::path> nasm = x64_writer::find_nasm();
     const image_writer::Written r = x64_writer::write(image, dir.path());
     CB_CHECK(std::filesystem::is_regular_file(r.source));
     CB_CHECK_EQ(r.functions.size(), 2u);   // _start and its call's target
-    if (nasm) CB_CHECK(r.same);
+    CB_CHECK(r.same);
 });
 
 }  // namespace cb::source::orbis_writer

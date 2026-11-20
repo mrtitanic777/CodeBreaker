@@ -57,7 +57,6 @@ CB_TEST("engine.machine_wonderswan.an_edit_diverges_and_a_function_agrees_with_i
 });
 
 CB_TEST("engine.machine_wonderswan.a_cartridge_comes_back_identical", [] {
-    if (!source::wonderswan_writer::find_nasm()) return;   // (no assembler here)
     fs::ScopedTempDir dir("cb_ws_lane2");
     const verify::lanes::ImageLane lane(wonderswan_lane_spec());
     const stdfs::path original = dir.path() / "game.ws";

@@ -14,7 +14,6 @@ namespace cb::source::xboxone_writer {
 namespace xt = formats::xboxone_test;
 
 CB_TEST("source.xboxone_writer.a_pe_comes_back_as_source_that_builds_the_same_file", [] {
-    if (!x64_writer::find_nasm()) return;   // (no assembler here)
     fs::ScopedTempDir dir("cb_xboxone_writer");
     const image_writer::Written r = write(formats::xboxone::parse(xt::pe()), "app.exe", dir.path());
     CB_CHECK(r.linked && r.same);
@@ -30,7 +29,6 @@ CB_TEST("source.xboxone_writer.a_pe_comes_back_as_source_that_builds_the_same_fi
 });
 
 CB_TEST("source.xboxone_writer.a_package_member_is_written_from_inside_its_package", [] {
-    if (!x64_writer::find_nasm()) return;
     fs::ScopedTempDir dir("cb_xboxone_writer_pkg");
     fs::write_file(dir.path() / "demo.msix", xt::msix());
     const image_writer::Written r = reconstruct(dir.path() / "demo.msix", dir.path() / "out");

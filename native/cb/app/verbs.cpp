@@ -71,6 +71,7 @@ constexpr Mode kModes[] = {
     {"build", "--driver",        "driver-build",      std::nullopt},
     {"build", "--resources",     "resources",         std::nullopt},
     {"build", "--floppy",        "boot-floppy",       std::nullopt},
+    {"build", "--nasm",          "nasm",              std::nullopt},
     {"build", "--disc",          "disc",              std::nullopt},
     {"build", "--xenon",         "xenon-recompile",   std::nullopt},
     // check FILE: prove it behaves (or matches bytes)

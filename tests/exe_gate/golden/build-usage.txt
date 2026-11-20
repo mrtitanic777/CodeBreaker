@@ -13,6 +13,8 @@ options:
   --driver          assemble and link a driver, check it against the original
   --resources       a module's resources as .rc and files, compiled and compared
   --floppy          the Win95 Setup boot floppy, made from the rebuilt files
+  --nasm            x86asm, CodeBreaker's own x86 assembler, run on files as NASM is (NASM 3.02 with the MASM mode:
+                    --masm)
   --disc            write a CD image (also --list, --extract)
   --xenon           XenonRecomp on a configuration, its output folder synced (changed files in, stale ones out): what
                     a build runs, the Xbox 360 Dashboard's modules too
@@ -22,6 +24,7 @@ Old names (they still work, and print what they always did):
   driver-build       = build FILE --driver
   resources          = build FILE --resources
   boot-floppy        = build FILE --floppy
+  nasm               = build FILE --nasm
   disc               = build FILE --disc
   xenon-recompile    = build FILE --xenon
 --- files

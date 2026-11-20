@@ -25,6 +25,7 @@
 #include "cb/translate/judge_py_cpp_command.hpp"
 #include "cb/analyze/ppc_calls.hpp"
 #include "cb/build/disc_image.hpp"
+#include "cb/build/x86asm/command.hpp"
 #include "cb/build/period16.hpp"
 #include "cb/build/xex_edit.hpp"
 #include "cb/core/json.hpp"
@@ -78,7 +79,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java", "judge-cs-cpp", "judge-py-cpp", "convert", "app", "inspect", "extract", "check", "compare", "corpus", "lookup", "xbox"});   // (counted by the compiler)
+constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java", "judge-cs-cpp", "judge-py-cpp", "nasm", "convert", "app", "inspect", "extract", "check", "compare", "corpus", "lookup", "xbox"});   // (counted by the compiler)
 
 // The console's ordinal names (data/symbols/console_ordinals.json, {library: {ordinal: name}}), read the first time a name is asked for.
 formats::xex_imports::OrdinalNames console_ordinal_names(const config::Config& config) {
@@ -397,6 +398,8 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     table.set("ne-asm", [production](std::span<const std::string> args) -> int { return production->ne_asm()(args); });
     table.set("driver-source", [production](std::span<const std::string> args) -> int { return production->driver_source()(args); });
     table.set("dos-source", [production](std::span<const std::string> args) -> int { return production->dos_source()(args); });
+    // x86asm, CodeBreaker's own assembler, as nasm.exe was (NASM 3.02 with the MASM mode): `codebreaker nasm -f bin x.asm`
+    table.set("nasm", [](std::span<const std::string> args) -> int { return build::x86asm::run_nasm_command(args); });
     table.set(production->dos_build());
     table.set(production->boot_floppy());
     table.set(production->driver_judge());

@@ -7,8 +7,16 @@ release is made. Each entry lists what a user notices: new commands and lanes, f
 
 ### Added
 
-- The start of x86asm, CodeBreaker's own x86 assembler (docs/X86ASM_DESIGN.md), which is to replace the separate NASM
-  program CodeBreaker starts to check the assembly it writes. `CB_NASM_CAPTURE=<folder>` saves every NASM run as a case
+- **x86asm, CodeBreaker's own x86 assembler, built into the program** (native/cb/build/x86asm, docs/X86ASM_DESIGN.md): NASM 3.02
+  with CodeBreaker's MASM mode ported to C++ as one of CodeBreaker's engines -- the preprocessor and MASM mode, the scanner,
+  expressions, floats and labels, the instruction tables (12,320 forms, from NASM's own data) and encoder, the parser,
+  directives, listings, the pass loop, and the `bin`, `obj` (OMF) and `win32`/`win64` (COFF) formats -- with no global state,
+  so any number of assemblies run at once, in memory. It gives the same bytes as NASM for every captured run (234 of 234,
+  with the COFF header's time stamp set aside) and in 15,000 instruction cases. `convert` (the PE, NE, LE, x64 and
+  WonderSwan writers' self-check) and the Win95 boot floppy now assemble with it: converting a Windows program needs no
+  separate NASM. `codebreaker nasm <NASM's arguments>` runs it on files, as nasm.exe did. (The MASM-mode callers -- the Win16
+  idioms and the VxD builds -- still start nasm.exe, until they move too.)
+- `CB_NASM_CAPTURE=<folder>` saves every NASM run as a case
   (its arguments, the files it read under the paths it read them by -- sources, `incbin`s, includes -- and what NASM
   wrote): the cases x86asm must reproduce byte for byte. A gate run gives 236 cases.
 
