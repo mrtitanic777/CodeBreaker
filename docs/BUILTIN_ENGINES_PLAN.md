@@ -26,10 +26,9 @@ What has to be solved:
   CodeBreaker. The engine runs each batch on a worker thread with structured-exception and C++ exception guards, and a
   function that faults is reported as not decompiled — the same outcome as now.
 - **Speed.** Parallel decompilation keeps working: the core's state is per-architecture object, so several run at once.
-- **The core's origin.** The core is Ghidra's C++ decompiler library. The standing rule says "no Ghidra anywhere"
-  (the Ghidra application, its Java, its installs). Under the absorbed-projects rule the core becomes a CodeBreaker
-  engine in its own folder, its licence and notice kept. **Logan to confirm** this is acceptable, or whether the core
-  must instead be replaced — a far larger project.
+- **The core's origin.** The core is CodeBreaker's fork of the Ghidra C++ decompiler (docs/GHIDRA_FORK.md): our code,
+  its licence and notice kept, not a Ghidra dependency. Logan confirmed (2026-11-19): it is absorbed into
+  `codebreaker.exe` as a built-in engine.
 
 ## 2. OpenWatcom's assembler and linker (wasm, wlink)
 
