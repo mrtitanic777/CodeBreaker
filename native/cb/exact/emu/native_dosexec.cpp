@@ -33,12 +33,6 @@ dos::Limits limits_from_environment(double fast_limit) {
 Places locate(const config::Config& config) {
     Places p;
     const std::filesystem::path root = config.checkout_root();
-    if (const auto env = fs::get_env("CB_CBDOS_DLL"); env && !env->empty()) {
-        p.cbdos = fs::from_text(*env);
-    } else {
-        const auto bin = config.path("dosexec_bin");
-        p.cbdos = (bin ? *bin : root / "native" / "dosexec" / "build" / "bin") / "cbdos.dll";
-    }
     if (const auto env = fs::get_env("CB_UNICORN_DLL"); env && !env->empty()) p.unicorn = fs::from_text(*env);
     else p.unicorn = root / "native" / "cb" / "third_party" / "bin" / "unicorn.dll";
     return p;
@@ -51,8 +45,8 @@ Opened open(const Places& places, const dos::Limits& limits) {
         return out;
     }
     try {
-        out.executive = dos::Executive::load(places.cbdos, places.unicorn, limits);
-    } catch (const Error& e) {   // a DLL that is missing or is not the executive: the way the lanes fall back is by this reason
+        out.executive = dos::Executive::load(places.unicorn, limits);
+    } catch (const Error& e) {   // a Unicorn that is missing or will not start, or no executive here: the lanes fall back by this reason
         out.why.push_back(e.what());
     }
     return out;

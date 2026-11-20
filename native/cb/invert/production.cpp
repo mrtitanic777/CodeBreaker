@@ -280,7 +280,7 @@ struct ProductionState {
         const auto places = exact::emu::native_dosexec::locate(config);
         std::error_code ec;
         return !tools.msc6.empty() && stdfs::is_regular_file(tools.msc6 / "BIN" / "CL.EXE", ec) && !exact::emu::native_dosexec::switched_off() &&
-               stdfs::is_regular_file(places.cbdos, ec) && stdfs::is_regular_file(places.unicorn, ec);
+               stdfs::is_regular_file(places.unicorn, ec);
     }
 
     // ---- Microsoft C 2.03 ----
@@ -293,7 +293,7 @@ struct ProductionState {
             return false;
         }
         const auto places = exact::emu::native_dosexec::locate(config);
-        return !exact::emu::native_dosexec::switched_off() && stdfs::is_regular_file(places.cbdos, ec) && stdfs::is_regular_file(places.unicorn, ec);
+        return !exact::emu::native_dosexec::switched_off() && stdfs::is_regular_file(places.unicorn, ec);
     }
 
     std::optional<Bytes> compile_mc203(std::string_view source) {

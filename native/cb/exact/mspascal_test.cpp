@@ -2,7 +2,7 @@
 // Tests of cb::exact::mspascal: the Microsoft Pascal compiler as a toolchain. The pure parts -- the order a source's procedures are
 // emitted in, the PUBDEF written into an object, naming the procedures from a listing or from where the code calls the entry helper --
 // are tested on small objects made here; the orchestration (the kit's folder, the two passes, the errors, the cache) with a pass runner
-// that is not the DOS executive. With the real kit and executive (CB_KIT_MSPASCAL and CB_CBDOS_DLL name them) the 3.11 compiler compiles a
+// that is not the DOS executive. With the real kit and executive (CB_KIT_MSPASCAL names the kit) the 3.11 compiler compiles a
 // small program and its procedures come out named.
 //
 // Hand-checked: the helpers' bytes, the order of emit_order for nested procedures, forward declarations, records and
@@ -342,10 +342,10 @@ CB_TEST("exact.mspascal.registered_as_a_plugin_and_as_the_joiner_reads_it", [] {
 // With the real kit and the real executive: the 3.11 compiler compiles a small program, and its procedures come out named.
 CB_TEST("exact.mspascal.the_real_compiler", [] {
     const auto kit = cfs::get_env("CB_KIT_MSPASCAL");
-    const auto dll = cfs::get_env("CB_CBDOS_DLL");
-    if (!kit || !dll) return;   // (not set up: nothing to run)
+    if (!kit) return;   // (not set up: nothing to run)
+    CB_WINDOWS_ONLY("the DOS executive is built on Windows only");
     const auto unicorn = cfs::get_env("CB_UNICORN_DLL");
-    const auto executive = cb::exact::emu::dos::Executive::load(cfs::from_text(*dll), unicorn ? cfs::from_text(*unicorn) : cb::testing::data_path("third_party/bin/unicorn.dll"));
+    const auto executive = cb::exact::emu::dos::Executive::load(unicorn ? cfs::from_text(*unicorn) : cb::testing::data_path("third_party/bin/unicorn.dll"));
     const tc::ExecutiveRunner runner(*executive);
     cfs::ScopedTempDir dir("cbpascalreal");
     tc::Locations locations;

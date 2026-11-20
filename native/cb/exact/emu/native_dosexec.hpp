@@ -6,7 +6,7 @@
 //     else for (const std::string& reason : opened.why) log::warn(reason);
 //
 // The executive (PSP, MCB arena, program load, INT 20h/21h over the MemFS or the disk, EXEC, the console and clock) and its DPMI
-// host are C++ in native/dosexec (cbdos.dll, running on unicorn.dll); `dos::Executive` (emu/dos.hpp) is the program's view of them.
+// host are C++ in exact/emu/dosexec (linked in, running on unicorn.dll); `dos::Executive` (emu/dos.hpp) is the program's view of them.
 // What is here is what surrounds it: the switch that turns it off, the two places to look for the DLLs, the knobs it has always
 // been run under, and a start that reports a DLL that cannot be used as a reason, not as a crash.
 #pragma once
@@ -30,10 +30,10 @@ bool switched_off();
 dos::Limits limits_from_environment(double fast_limit = 20);
 
 struct Places {
-    std::filesystem::path cbdos, unicorn;
+    std::filesystem::path unicorn;
 };
-// Where the DLLs are: cbdos.dll is CB_CBDOS_DLL, else `dosexec_bin` of the configuration (default native/dosexec/build/bin of the
-// checkout) with cbdos.dll; unicorn.dll is CB_UNICORN_DLL, else native/cb/third_party/bin/unicorn.dll of the checkout.
+// Where the Unicorn the executive runs on is: CB_UNICORN_DLL, else native/cb/third_party/bin/unicorn.dll of the checkout. (The
+// executive itself is linked in: exact/emu/dosexec.)
 Places locate(const config::Config& config);
 
 struct Opened {

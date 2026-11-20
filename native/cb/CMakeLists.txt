@@ -245,7 +245,13 @@ target_link_libraries(cb_decompile PUBLIC cb_core cb_base cb_formats cb_platform
 cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile cb_jobs cb_emulate cb_recompile)   # (cb_recompile: function discovery and the disassembler of the ppc-calls command; cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
 
+# The DOS executive (exact/emu/dosexec): cb_dosexec, on Windows, which cb::exact::emu::dos calls in-process.
+include("${CMAKE_CURRENT_LIST_DIR}/exact/emu/dosexec/CMakeLists.txt")
 cb_area(exact)
+if(TARGET cb_dosexec)
+  target_link_libraries(cb_exact PUBLIC cb_dosexec)
+  target_compile_definitions(cb_exact PRIVATE CB_DOSEXEC)
+endif()
 target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats cb_java cb_invert)   # (cb_invert: the early-C model the draft stage reads the code with, draft/early_c_model)   # (omf_object: an OMF module as the lanes' object record; cb_java: the zip reader of the pre-release Pascal kit, command.cpp -- static libraries may be cyclic)
 
 cb_area(compare)
@@ -269,6 +275,10 @@ target_link_libraries(cb_invert PUBLIC cb_core cb_base cb_formats cb_platforms c
 
 cb_area(port)
 target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
+if(TARGET cb_dosexec)
+  target_link_libraries(cb_port PUBLIC cb_dosexec)   # (port/verify runs the originals on the DOS executive)
+  target_compile_definitions(cb_port PRIVATE CB_DOSEXEC)
+endif()
 
 cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source cb_store)   # (cb_source: the NE disassembler of debug_build)

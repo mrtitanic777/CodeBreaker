@@ -6,7 +6,7 @@
 // every basic block it executes is recorded, so the reconstruction can be checked against behaviour (which function runs
 // for which statement; what the output is).
 //
-// The executive itself is native/dosexec (cbdos.dll: the PSP, the MCB arena, program load, INT 20h/21h over the MemFS or
+// The executive itself is exact/emu/dosexec (linked in on Windows: the PSP, the MCB arena, program load, INT 20h/21h over the MemFS or
 // the disk, EXEC, the console and the clock, and the DPMI host of cb/exact/emu/dpmi). What is here is what surrounds it:
 //
 //   * `Executive`  loads the DLL and runs a program - the arguments in a `RunSpec`, what it did in a `Result` - handing it
@@ -211,9 +211,10 @@ struct Limits {
 
 class Executive {
 public:
-    // Load cbdos.dll, with the Unicorn it runs on. NotFoundError when a file is missing; ToolError when the DLL is not the
-    // executive or cannot start.
-    static std::unique_ptr<Executive> load(const std::filesystem::path& cbdos_dll, const std::filesystem::path& unicorn_dll, const Limits& limits = {});
+    // Start the executive (exact/emu/dosexec, linked in) on the Unicorn at `unicorn_dll`. NotFoundError when that file is
+    // missing; ToolError when it is not Unicorn or the executive cannot start; UnsupportedError where the executive is not
+    // built (it is Windows-only).
+    static std::unique_ptr<Executive> load(const std::filesystem::path& unicorn_dll, const Limits& limits = {});
     ~Executive();
     Executive(const Executive&) = delete;
     Executive& operator=(const Executive&) = delete;

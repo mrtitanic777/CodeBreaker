@@ -7,7 +7,7 @@
 // is a raw runner and not a declared cli::Command. Everything it runs on is made when it runs, from the configuration alone:
 //
 //   * the toolchain profiles and kits of the checkout, the plugins (plm86, mspascal, xenix_c) and the hooks the profiles name;
-//   * the DOS executive (cbdos.dll over unicorn.dll, where the settings say) that runs the period compilers and linkers; without it a stage
+//   * the DOS executive (exact/emu/dosexec, linked in, over unicorn.dll) that runs the period compilers and linkers; without it a stage
 //     that has to run one says why it cannot;
 //   * the stages: ledger, library, carve, modules, bss, data, repair, names, identify, bench, seed, readable, link and draft.
 //

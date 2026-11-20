@@ -5,13 +5,12 @@
 #include <format>
 #include <thread>
 
-#include "cb/core/dynlib.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
 #ifdef _WIN32
 #include "cb/core/win.hpp"
 #endif
-#include "dosexec/cbdos.h"
+#include "cb/exact/emu/dosexec/cbdos.h"   // the DOS executive (exact/emu/dosexec, linked in on Windows)
 
 namespace cb::exact::emu::dos {
 
@@ -337,7 +336,6 @@ void MemFS::replace(const stdfs::path& from, const stdfs::path& to) const {
 // ---- the run -----------------------------------------------------------------------------------------------------
 
 struct Executive::Impl {
-    DynLib lib;
     Limits limits;
     cbd_result* (*run)(const cbd_args*) = nullptr;
     void (*free_result)(cbd_result*) = nullptr;
@@ -351,32 +349,36 @@ struct Executive::Impl {
     std::int64_t (*fs_ngone)(void*) = nullptr;
     const wchar_t* (*fs_gone_at)(void*, std::int64_t) = nullptr;
 
-    explicit Impl(DynLib l, const Limits& lim) : lib(std::move(l)), limits(lim) {}
+    explicit Impl(const Limits& lim) : limits(lim) {}
 };
 
 Executive::Executive(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 Executive::~Executive() = default;
 
-std::unique_ptr<Executive> Executive::load(const stdfs::path& cbdos_dll, const stdfs::path& unicorn_dll, const Limits& limits) {
-    for (const stdfs::path& p : {cbdos_dll, unicorn_dll})
-        if (!stdfs::exists(p)) throw NotFoundError(p, 2, "the DOS executive needs this file");
-    auto impl = std::make_unique<Impl>(DynLib::load(stdfs::absolute(cbdos_dll)), limits);
+std::unique_ptr<Executive> Executive::load(const stdfs::path& unicorn_dll, const Limits& limits) {
+#ifdef CB_DOSEXEC
+    if (!stdfs::exists(unicorn_dll)) throw NotFoundError(unicorn_dll, 2, "the DOS executive needs this file");
+    auto impl = std::make_unique<Impl>(limits);
     Impl& i = *impl;
-    const auto init = i.lib.function<int (*)(const wchar_t*, char*, int)>("cbd_init");
-    i.run = i.lib.function<cbd_result* (*)(const cbd_args*)>("cbd_run");
-    i.free_result = i.lib.function<void (*)(cbd_result*)>("cbd_free");
-    i.fs_new = i.lib.function<void* (*)()>("cbd_fs_new");
-    i.fs_free = i.lib.function<void (*)(void*)>("cbd_fs_free");
-    i.fs_hide = i.lib.function<void (*)(void*, const wchar_t*)>("cbd_fs_hide");
-    i.fs_put = i.lib.function<void (*)(void*, const wchar_t*, const std::uint8_t*, std::int64_t)>("cbd_fs_put");
-    i.fs_gone = i.lib.function<void (*)(void*, const wchar_t*)>("cbd_fs_gone");
-    i.fs_changed = i.lib.function<std::int64_t (*)(void*)>("cbd_fs_changed");
-    i.fs_entry = i.lib.function<int (*)(void*, std::int64_t, const wchar_t**, const std::uint8_t**, std::int64_t*)>("cbd_fs_entry");
-    i.fs_ngone = i.lib.function<std::int64_t (*)(void*)>("cbd_fs_ngone");
-    i.fs_gone_at = i.lib.function<const wchar_t* (*)(void*, std::int64_t)>("cbd_fs_gone_at");
+    i.run = &cbd_run;
+    i.free_result = &cbd_free;
+    i.fs_new = &cbd_fs_new;
+    i.fs_free = &cbd_fs_free;
+    i.fs_hide = &cbd_fs_hide;
+    i.fs_put = &cbd_fs_put;
+    i.fs_gone = &cbd_fs_gone;
+    i.fs_changed = &cbd_fs_changed;
+    i.fs_entry = &cbd_fs_entry;
+    i.fs_ngone = &cbd_fs_ngone;
+    i.fs_gone_at = &cbd_fs_gone_at;
     char err[256] = {};
-    if (init(stdfs::absolute(unicorn_dll).wstring().c_str(), err, sizeof err) != 0) throw ToolError(fs::to_text(cbdos_dll), 1, err, "could not start");
+    if (cbd_init(stdfs::absolute(unicorn_dll).wstring().c_str(), err, sizeof err) != 0) throw ToolError(fs::to_text(unicorn_dll), 1, err, "the DOS executive could not start");
     return std::unique_ptr<Executive>(new Executive(std::move(impl)));
+#else
+    (void)unicorn_dll;
+    (void)limits;
+    throw UnsupportedError("dos", 0, "the DOS executive is built on Windows only");
+#endif
 }
 
 namespace {

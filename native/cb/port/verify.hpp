@@ -123,16 +123,16 @@ public:
                     ByteView stdin_data) const = 0;
 };
 
-// The emulator of native/dosexec (cbdos.dll, with the Unicorn it loads at run time).
+// The DOS executive (exact/emu/dosexec, linked in on Windows), with the Unicorn it loads at run time.
 class CbdosRunner final : public OriginalRunner {
 public:
     struct Settings {
-        std::filesystem::path dll;       // cbdos.dll
         std::filesystem::path unicorn;   // the unicorn.dll it runs on
         std::uint64_t max_blocks = 60'000'000;         // a run is stopped after this many basic blocks (when it counts them)
         std::chrono::seconds time_limit{20};           // and after this long
     };
-    // Throws NotFoundError when a file is missing, ToolError when the emulator does not start.
+    // Throws NotFoundError when Unicorn is missing, ToolError when the emulator does not start, UnsupportedError where the
+    // executive is not built (it is Windows-only).
     static std::unique_ptr<CbdosRunner> load(const Settings& settings);
     ~CbdosRunner() override;
     std::string identity() const override;

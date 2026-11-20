@@ -58,7 +58,6 @@ constexpr StWords kStWords[] = {
     {"tracer_bin", "Tracer program", "Runs code in the emulator to see what it does."},
     {"formats_bin", "File format tool", "Reads the file formats."},
     {"engine_bin", "Analysis engine", "The program behind the analysis."},
-    {"dosexec_bin", "DOS runner", "Runs DOS programs for checking."},
     {"symbols_bin", "Symbols tool", "Reads symbol and debug information."},
     {"invert_bin", "Source reader", "Reads compiled code back into source."},
     {"analyze_bin", "Analyzer program", "Maps what a program does."},

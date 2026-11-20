@@ -609,12 +609,12 @@ CB_TEST("port.verify.command", [] {
 
 // ---- the real emulator --------------------------------------------------------------------------------------------------
 
-// Set CB_CBDOS_DLL (and CB_UNICORN_DLL; the prebuilt one beside the sources is the default) to run these.
+// The DOS executive, on the Unicorn beside the sources (CB_UNICORN_DLL names another); none where it is not built.
 std::unique_ptr<v::CbdosRunner> real_emulator() {
-    const std::optional<std::string> dll = cb::fs::get_env("CB_CBDOS_DLL");
-    if (!dll) return nullptr;
+#ifndef _WIN32
+    return nullptr;
+#endif
     v::CbdosRunner::Settings s;
-    s.dll = cb::fs::from_text(*dll);
     const std::optional<std::string> unicorn = cb::fs::get_env("CB_UNICORN_DLL");
     s.unicorn = unicorn ? cb::fs::from_text(*unicorn) : cb::testing::data_path("third_party/bin/unicorn.dll");
     return v::CbdosRunner::load(s);
@@ -653,7 +653,6 @@ CB_TEST("port.verify.cbdos_original_against_a_port_in_cases", [] {
 
 CB_TEST("port.verify.cbdos_missing_files", [] {
     v::CbdosRunner::Settings s;
-    s.dll = "C:/no/such/cbdos.dll";
     s.unicorn = "C:/no/such/unicorn.dll";
     CB_CHECK_THROWS_AS(cb::NotFoundError, (void)v::CbdosRunner::load(s));
 });

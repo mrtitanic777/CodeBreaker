@@ -9,7 +9,6 @@
 #include <nlohmann/json.hpp>
 
 #include "cb/core/crypto.hpp"
-#include "cb/core/dynlib.hpp"
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/json.hpp"
@@ -18,7 +17,7 @@
 #include "cb/core/process.hpp"
 #include "cb/core/regex.hpp"
 #include "cb/core/text.hpp"
-#include "dosexec/cbdos.h"
+#include "cb/exact/emu/dosexec/cbdos.h"   // the DOS executive (exact/emu/dosexec)
 
 namespace cb::port::verify {
 
@@ -141,37 +140,38 @@ std::string Exit::text() const {
     return "?";
 }
 
-// ---- the emulator of native/dosexec -------------------------------------------------------------------------------
+// ---- the DOS executive (exact/emu/dosexec) ---------------------------------------------------------------------------
 
 struct CbdosRunner::Impl {
     Settings settings;
-    DynLib lib;
-    cbd_result* (*run)(const cbd_args*) = nullptr;
+    cbd_result* (*run)(const cbd_args*) = nullptr;   // (the executive's, set by load where it is built)
     void (*free_result)(cbd_result*) = nullptr;
     std::string id;
 
-    Impl(Settings s, DynLib l) : settings(std::move(s)), lib(std::move(l)) {}
+    explicit Impl(Settings s) : settings(std::move(s)) {}
 };
 
 CbdosRunner::CbdosRunner(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 CbdosRunner::~CbdosRunner() = default;
 
 std::unique_ptr<CbdosRunner> CbdosRunner::load(const Settings& settings) {
-    for (const stdfs::path& p : {settings.dll, settings.unicorn})
-        if (!stdfs::exists(p)) throw NotFoundError(p, 2, "the DOS emulator needs this file");
-    auto impl = std::make_unique<Impl>(settings, DynLib::load(stdfs::absolute(settings.dll)));
-    using Init = int (*)(const wchar_t*, char*, int);
-    const auto init = impl->lib.function<Init>("cbd_init");
-    impl->run = impl->lib.function<cbd_result* (*)(const cbd_args*)>("cbd_run");
-    impl->free_result = impl->lib.function<void (*)(cbd_result*)>("cbd_free");
-    if (!init || !impl->run || !impl->free_result) throw ToolError(fs::to_text(settings.dll), 1, "", "is not the DOS emulator");
+#ifdef CB_DOSEXEC
+    if (!stdfs::exists(settings.unicorn)) throw NotFoundError(settings.unicorn, 2, "the DOS emulator needs this file");
+    auto impl = std::make_unique<Impl>(settings);
+    impl->run = &cbd_run;
+    impl->free_result = &cbd_free;
     char err[256] = {};
-    if (init(stdfs::absolute(settings.unicorn).wstring().c_str(), err, sizeof err) != 0)
-        throw ToolError(fs::to_text(settings.dll), 1, err, "could not start");
-    // what the emulator is: its bytes and the limits it runs under (a run kept under another is not this one)
-    const Bytes dll = fs::read_file(settings.dll);
-    impl->id = std::format("cbdos:{}:{}:{}", crypto::to_hex(crypto::sha256(dll)), settings.max_blocks, settings.time_limit.count());
+    if (cbd_init(stdfs::absolute(settings.unicorn).wstring().c_str(), err, sizeof err) != 0)
+        throw ToolError(fs::to_text(settings.unicorn), 1, err, "the DOS emulator could not start");
+    // what the emulator is: the program it is linked into (its bytes, once) and the limits it runs under (a run kept under
+    // another is not this one)
+    static const std::string program = crypto::to_hex(crypto::sha256(fs::read_file(fs::executable_path())));
+    impl->id = std::format("cbdos:{}:{}:{}", program, settings.max_blocks, settings.time_limit.count());
     return std::unique_ptr<CbdosRunner>(new CbdosRunner(std::move(impl)));
+#else
+    (void)settings;
+    throw UnsupportedError("dos", 0, "the DOS executive is built on Windows only");
+#endif
 }
 
 std::string CbdosRunner::identity() const { return impl_->id; }

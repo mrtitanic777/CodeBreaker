@@ -11,7 +11,7 @@ namespace stdfs = std::filesystem;
 
 // The arena is the one the executive keeps in guest RAM, here over an `Engine`; the cases
 // are laid out by hand and read through for what DOS does with the chain. The files are a MemFS. The executive
-// (native/dosexec) runs the way the verify lane runs it: set CB_CBDOS_DLL to run the cases that need cbdos.dll.
+// (exact/emu/dosexec, linked in) runs the way the verify lane runs it, on Windows.
 //
 // Design notes: the one process-wide cache of the tools' files is a `DiskCache` a session shares; a run that
 // the executive stops (the block cap, the time limit) is an EmulationError;
@@ -243,15 +243,14 @@ CB_TEST("exact.emu.dos.the_summary_line", [] {
 });
 
 CB_TEST("exact.emu.dos.an_executive_needs_its_files", [] {
-    CB_CHECK_THROWS_AS(NotFoundError, (void)dos::Executive::load("C:/no/such/cbdos.dll", "C:/no/such/unicorn.dll"));
+    CB_CHECK_THROWS_AS(NotFoundError, (void)dos::Executive::load("C:/no/such/unicorn.dll"));
 });
 
-// The real executive: CB_CBDOS_DLL names cbdos.dll (CB_UNICORN_DLL the unicorn.dll; the one beside the sources by default).
+// The real executive, on the Unicorn beside the sources (CB_UNICORN_DLL names another).
 CB_TEST("exact.emu.dos.the_executive_runs_a_program_and_hands_files_back", [] {
-    const auto dll = fs::get_env("CB_CBDOS_DLL");
-    if (!dll) return;
+    CB_WINDOWS_ONLY("the DOS executive is built on Windows only");
     const auto unicorn = fs::get_env("CB_UNICORN_DLL");
-    const auto executive = dos::Executive::load(fs::from_text(*dll), unicorn ? fs::from_text(*unicorn) : testing::data_path("third_party/bin/unicorn.dll"));
+    const auto executive = dos::Executive::load(unicorn ? fs::from_text(*unicorn) : testing::data_path("third_party/bin/unicorn.dll"));
     fs::ScopedTempDir dir("dostest");
     dos::RunSpec spec;
     spec.exe = testing::data_path("port/testdata/verify/hello.exe");

@@ -12,7 +12,7 @@ namespace nd = cb::exact::emu::native_dosexec;
 // nothing the environment says may reach the cases below
 struct CleanEnvironment {
     fs::ScopedEnv a{"CB_NATIVE_DOSEXEC", std::nullopt}, b{"DOSRUN_DPMI_LIMIT", std::nullopt}, c{"DOSRUN_DRIVE", std::nullopt},
-        d{"DOSRUN_DEBUG", std::nullopt}, e{"CB_CBDOS_DLL", std::nullopt}, f{"CB_UNICORN_DLL", std::nullopt};
+        d{"DOSRUN_DEBUG", std::nullopt}, f{"CB_UNICORN_DLL", std::nullopt};
 };
 
 }  // namespace
@@ -56,39 +56,27 @@ CB_TEST("exact.emu.native_dosexec.the_limits_come_from_the_environment_and_a_bad
     CB_CHECK(!bad.debug);
 });
 
-CB_TEST("exact.emu.native_dosexec.the_dlls_are_found_by_environment_or_in_the_checkout", [] {
+CB_TEST("exact.emu.native_dosexec.unicorn_is_found_by_environment_or_in_the_checkout", [] {
     CleanEnvironment clean;
     fs::ScopedTempDir dir("dosexec");
-    const config::Config config = config::Config::load(dir.path());
-    const nd::Places by_default = nd::locate(config);
-    CB_CHECK(fs::same_path(by_default.cbdos, dir.path() / "native" / "dosexec" / "build" / "bin" / "cbdos.dll"));
+    const nd::Places by_default = nd::locate(config::Config::load(dir.path()));
     CB_CHECK(fs::same_path(by_default.unicorn, dir.path() / "native" / "cb" / "third_party" / "bin" / "unicorn.dll"));
-
-    fs::write_text(dir.path() / "settings.json", R"({"dosexec_bin": "elsewhere/bin"})");
-    const nd::Places by_setting = nd::locate(config::Config::load(dir.path()));
-    CB_CHECK(fs::same_path(by_setting.cbdos, dir.path() / "elsewhere" / "bin" / "cbdos.dll"));
-
-    fs::ScopedEnv cbdos("CB_CBDOS_DLL", "C:/mine/cbdos.dll");
     fs::ScopedEnv unicorn("CB_UNICORN_DLL", "C:/mine/unicorn.dll");
-    const nd::Places by_env = nd::locate(config::Config::load(dir.path()));
-    CB_CHECK(fs::same_path(by_env.cbdos, "C:/mine/cbdos.dll"));
-    CB_CHECK(fs::same_path(by_env.unicorn, "C:/mine/unicorn.dll"));
+    CB_CHECK(fs::same_path(nd::locate(config::Config::load(dir.path())).unicorn, "C:/mine/unicorn.dll"));
 });
 
-CB_TEST("exact.emu.native_dosexec.a_dll_that_is_not_there_is_a_reason_not_a_crash", [] {
+CB_TEST("exact.emu.native_dosexec.a_unicorn_that_is_not_there_is_a_reason_not_a_crash", [] {
     CleanEnvironment clean;
-    const nd::Opened opened = nd::open({"C:/no/such/cbdos.dll", "C:/no/such/unicorn.dll"});
+    const nd::Opened opened = nd::open({"C:/no/such/unicorn.dll"});
     CB_CHECK(!opened.usable());
     CB_CHECK_EQ(opened.why.size(), 1u);
-    CB_CHECK(opened.why[0].find("cbdos.dll") != std::string::npos);
 });
 
-CB_TEST("exact.emu.native_dosexec.a_file_that_is_not_the_executive_is_a_reason", [] {
+CB_TEST("exact.emu.native_dosexec.a_file_that_is_not_unicorn_is_a_reason", [] {
     CleanEnvironment clean;
     fs::ScopedTempDir dir("dosexec-bad");
-    fs::write_file(dir.path() / "cbdos.dll", Bytes{1, 2, 3});
     fs::write_file(dir.path() / "unicorn.dll", Bytes{4, 5, 6});
-    const nd::Opened opened = nd::open({dir.path() / "cbdos.dll", dir.path() / "unicorn.dll"});
+    const nd::Opened opened = nd::open({dir.path() / "unicorn.dll"});
     CB_CHECK(!opened.usable());
     CB_CHECK_EQ(opened.why.size(), 1u);
 });
@@ -96,17 +84,15 @@ CB_TEST("exact.emu.native_dosexec.a_file_that_is_not_the_executive_is_a_reason",
 CB_TEST("exact.emu.native_dosexec.switched_off_it_loads_nothing_and_says_so", [] {
     CleanEnvironment clean;
     fs::ScopedEnv off("CB_NATIVE_DOSEXEC", "0");
-    const nd::Opened opened = nd::open({"C:/no/such/cbdos.dll", "C:/no/such/unicorn.dll"});
+    const nd::Opened opened = nd::open({"C:/no/such/unicorn.dll"});
     CB_CHECK(!opened.usable());
     CB_CHECK(opened.why[0].find("switched off") != std::string::npos);
 });
 
-// The real executive: CB_CBDOS_DLL names cbdos.dll (the case is skipped when it is not set, as dos_test.cpp's).
+// The real executive, on the Unicorn beside the sources.
 CB_TEST("exact.emu.native_dosexec.the_real_executive_starts", [] {
-    const auto dll = fs::get_env("CB_CBDOS_DLL");
-    if (!dll) return;
-    const auto unicorn = fs::get_env("CB_UNICORN_DLL");
-    const nd::Opened opened = nd::open({fs::from_text(*dll), unicorn ? fs::from_text(*unicorn) : testing::data_path("third_party/bin/unicorn.dll")});
+    CB_WINDOWS_ONLY("the DOS executive is built on Windows only");
+    const nd::Opened opened = nd::open({testing::data_path("third_party/bin/unicorn.dll")});
     CB_CHECK(opened.usable());
     CB_CHECK(opened.why.empty());
 });

@@ -57,7 +57,7 @@ namespace stdfs = std::filesystem;
 
 namespace {
 
-// CodeBreaker's own DOS executive (native/dosexec, on Unicorn) behind the interface the assemblers and compilers take. When its DLLs are not there (or it is
+// CodeBreaker's own DOS executive (exact/emu/dosexec, linked in, on Unicorn) behind the interface the assemblers and compilers take. When Unicorn is not there (or it is
 // switched off, CB_NATIVE_DOSEXEC=0) it says it is not available, and those programs run under DOSBox-X instead.
 class CommandsNativeDos final : public build::native_dos::DosExecutive {
 public:

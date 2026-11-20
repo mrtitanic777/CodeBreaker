@@ -7,7 +7,6 @@ settings: <ROOT>/settings.json
   !! corpus           <ROOT>/corp95
   !! decompiler_bin   <ROOT>/native/decompiler/build/bin
   -- dosbox_x         (not set)
-  !! dosexec_bin      <ROOT>/native/dosexec/build/bin
   !! engine_bin       <ROOT>/native/engine/build/bin
   !! formats_bin      <ROOT>/native/formats/build/bin
   -- host_cxx         (not set)
