@@ -20,6 +20,7 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/process.hpp"
+#include "cb/core/nasm_capture.hpp"
 #include "cb/core/text.hpp"
 
 extern char** environ;
@@ -319,6 +320,7 @@ bool wait_for(Process::Impl& impl, std::optional<std::chrono::milliseconds> time
 }  // namespace
 
 ProcessResult run(const ProcessSpec& spec) {
+    auto capture = nasm_capture::before(spec);   // (CB_NASM_CAPTURE: x86asm's cases)
     auto impl = launch(spec, !spec.stdin_data.empty());
     ProcessResult result;
 
@@ -351,6 +353,7 @@ ProcessResult run(const ProcessSpec& spec) {
     result.out = std::move(out_bytes);
     result.err = std::move(err_bytes);
     result.elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - impl->started);
+    nasm_capture::after(std::move(capture), spec, result);
     return result;
 }
 

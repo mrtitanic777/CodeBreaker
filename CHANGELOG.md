@@ -5,6 +5,13 @@ release is made. Each entry lists what a user notices: new commands and lanes, f
 
 ## Unreleased
 
+### Added
+
+- The start of x86asm, CodeBreaker's own x86 assembler (docs/X86ASM_DESIGN.md), which is to replace the separate NASM
+  program CodeBreaker starts to check the assembly it writes. `CB_NASM_CAPTURE=<folder>` saves every NASM run as a case
+  (its arguments, the files it read under the paths it read them by -- sources, `incbin`s, includes -- and what NASM
+  wrote): the cases x86asm must reproduce byte for byte. A gate run gives 236 cases.
+
 ### Fixed
 - Library code carried unchanged from one compiler to the next is named as the compiler a program was linked with. Learning signatures (`identify --learn`, and `--add`) kept only the first library a routine's bytes were seen in, so Microsoft C 4.0's and 5.0's copies of routines Visual C++ 1.5 also has were not in the table, and C1.EXE's `strncpy` was called Visual C++ 1.5's `_fstrncpy`. Each library now keeps its own row (a single match still finds the first); Microsoft C 4.0's and 5.0's libraries are learned again (16-bit signatures 5694 → 6970). C1.EXE: 63 functions from Microsoft C 4.0's libraries, and the 3 long shifts no Microsoft C library before Visual C++ 1.5 has are said to be "the same code as in" it.
 
