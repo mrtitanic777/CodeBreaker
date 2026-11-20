@@ -199,7 +199,7 @@ that it notices.
 | The path | `formats` → `symbols`, `analyze` → `decompile` → `source`, `port`, `exact` → `build` → `emulate`, `compare`, `verify` | reconstruct, rebuild, judge, record |
 | Lanes | `recompile`, `xna`, `java`, `translate`, `platforms`, `invert` | Xbox 360 recompilation, XNA ports, Java, the translator, platform descriptions, compiler inversion |
 | Engine | `engine`, `store`, `knowledge`, `coverage`, `jobs`, `core`, `base` | incremental engine and program database, function store, knowledge base, scoreboards, jobs, the C++ foundation |
-| Native engines | `native/decompiler`, `native/l2`, `native/xenonrecomp`, `native/rexglue`, `native/x360`, `native/nasm`, `native/dosexec` | SLEIGH decompiler, the L2 IR, the Xbox 360 recompiler and runtime, a MASM-dialect NASM, DOS execution |
+| Native engines | `native/cb/decompile/engine`, `native/cb/translate/l2`, `native/cb/recompile/xenonrecomp`, `native/cb/recompile/rexglue`, `native/cb/recompile/x360`, `native/cb/exact/emu/dosexec`, `native/nasm` | SLEIGH decompiler, the L2 IR, the Xbox 360 recompiler and runtime, DOS execution (libraries linked into `codebreaker.exe`), and a MASM-dialect NASM |
 
 `native/cb` alone is about 505,000 lines of C++ across 26 areas, with 5,450 unit tests.
 
@@ -271,8 +271,9 @@ tools\build_native.cmd
 tools\build_codebreaker_exe.cmd
 ```
 
-The first builds the engines the program calls (the decompiler, L2, the format and DOS libraries, XEX,
-NASM); the second builds the program. The program is installed as `state\cxx\codebreaker\build\codebreaker.exe` (add that folder to `PATH`). Copy
+The first builds the one native tree (the program, the decompiler and `pcodecheck`, the trace tool) and NASM; the
+second installs the program with the decompiler beside it. The engines (L2, the format, XEX and DOS libraries) are linked
+into `codebreaker.exe`. The program is installed as `state\cxx\codebreaker\build\codebreaker.exe` (add that folder to `PATH`). Copy
 `settings.example.json` to `settings.json` and point it at your corpus and tools, then:
 
 ```bash
@@ -329,11 +330,11 @@ Nine verbs, one program. Each works out what to do from what you give it (a file
 ## Repository layout
 
 ```
-native/cb/          the program: 26 areas of C++20 (see the system map)
-native/decompiler/  SLEIGH processor specs and the decompiler core
-native/l2/          L2, the typed intermediate form, and its back ends
-native/x360/, native/xenonrecomp/, native/rexglue/   the Xbox 360 recompiler and runtime
-native/nasm/        NASM with a MASM dialect, for reconstructed assembly
+native/cb/                    the program: 26 areas of C++20 and its third-party code (see the system map)
+native/cb/decompile/engine/   SLEIGH processor specs and the decompiler core
+native/cb/translate/l2/       L2, the typed intermediate form, and its back ends
+native/cb/recompile/          the Xbox 360 recompiler and runtime (x360, xenonrecomp, rexglue)
+native/nasm/                  NASM with a MASM dialect, for reconstructed assembly
 data/               tables CodeBreaker reads: API maps, symbol tables, runtimes for translated code
 targets/            programs being taken back to source, with their research notes
 tests/              everything for testing: the command cases and goldens, fixtures

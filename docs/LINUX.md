@@ -95,7 +95,7 @@ see the engine libraries below):
   OpenSSL's libcrypto in `crypto_cipher_posix.cpp`); the DOS engine's wide paths; `codebreaker`'s Python terminal launch. The static
   libraries reach into one another in a cycle, so on Linux the executables are linked with `--start-group`. `app/allocator_main.cpp`
   is only on the Windows source line.
-- **Engine libraries.** The headers in `native/third_party/include` are Capstone **5.0.7** and Unicorn **2.1.4** (the prebuilt DLLs);
+- **Engine libraries.** The headers in `native/cb/third_party/include` are Capstone **5.0.7** and Unicorn **2.1.4** (the prebuilt DLLs);
   the distribution's `libcapstone4` and `libunicorn2` (2.0.1) lay their records out or behave differently, so `core/capstone_api.cpp`
   refuses a Capstone of another major version. Build the right ones from source into `state/work/linux-deps/prefix` (CMake picks them up
   from `CB_LINUX_DEPS` and puts them beside every executable):
@@ -105,9 +105,9 @@ see the engine libraries below):
       cmake --build /tmp/cs && cmake --install /tmp/cs
 
   (Unicorn 2.1.4 builds the same way; its configure wants `pkg-config`, for which an `exit 1` stand-in on the PATH will do.) The
-  native L2 library (`native/l2`) builds on Linux too: `cmake -S native/l2 -B native/l2/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release`
-  gives `native/l2/build-linux/bin/libcbl2.so`, which `translate/native_l2` looks for there (Windows: `native/l2/build/bin/cbl2.dll`).
-  The DOS engine (`native/dosexec`) has no Linux build yet (phase 3).
+  L2 library (`native/cb/translate/l2`, `cb_l2`) is linked into the program like the rest, so it builds on Linux with the one tree
+  (`cmake -S native -B state/cxx/cb -G Ninja -DCMAKE_BUILD_TYPE=Release`) and there is no separate L2 library to build or find.
+  The DOS engine (`native/cb/exact/emu/dosexec`, `cb_dosexec`) is Windows only and has no Linux build yet (phase 3).
 - **Tests** (`cb_tests --filter "<area>."`, one process per area; 2026-11-18, Capstone 5.0.7 and Unicorn 2.1.4 built from source, the L2
   library built for Linux): **6,572 pass, 5 fail, no crash**, in all 27 areas. Tests of something Windows by nature (`.cmd`/`.bat`
   stand-in tools, PowerShell, `cmd`, the p-code lifting program, a case-insensitive disk, a drive-lettered path the code must keep)
@@ -115,7 +115,7 @@ see the engine libraries below):
   `CB_CHECK_EQ` compares inside one call, so a view of a temporary (`as_text(f.read(2))`) is alive while it is compared. What the
   Linux run found in the code, now fixed: a dangling `initializer_list` (`exact/draft/prove.cpp`), `engine::native_text` writing
   backslashes into paths the lanes read back, a directory-order dependence in `translate/dotnet` (`names_in` is sorted),
-  a character constant written as a raw tab and a raw carriage return in `native/l2/src/pyre.cc`, and several tests that held views of temporaries.
+  a character constant written as a raw tab and a raw carriage return in `native/cb/translate/l2/src/pyre.cc`, and several tests that held views of temporaries.
   Left: `ui.mcp` (2: `reading_what_was_made`, `one_function_is_decompiled_now_as_recorded`).
 
-Next, in order: the DOS engine and the other DLL engines as shared libraries (roadmap track 8, phase 3); `tools/` shell equivalents.
+Next, in order: the DOS engine on Linux (roadmap track 8, phase 3); `tools/` shell equivalents.

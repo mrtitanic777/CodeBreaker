@@ -30,7 +30,7 @@ model of the machine for the judge, and source that rebuilds byte for byte.
 A title goes from disc or package to a PC build that plays, in one command, with input, audio and graphics working.
 
 1. A playability report per title: what the headless check sees (frames, unimplemented imports, the first stop).
-2. Close the gaps the report names in the Xbox 360 runtime (native/x360), title by title, starting with Minecraft.
+2. Close the gaps the report names in the Xbox 360 runtime (native/cb/recompile/x360), title by title, starting with Minecraft.
 3. Packaging: the built game as a folder that runs anywhere (its assets, its runtime), and the drop-in flow.
 
 ## 4. The universal translator, every front end to every back end

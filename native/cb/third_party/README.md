@@ -1,11 +1,11 @@
-# native/third_party
+# native/cb/third_party
 
 Everything here is somebody else's code, copied into the tree (nothing is downloaded by the build). The program
 that needs each piece, its version and its licence:
 
 | Piece | Where | Version | Licence | Used by |
 |---|---|---|---|---|
-| nlohmann/json | `nlohmann/json.hpp` | 3.10.5 | MIT | `cb/core/json` (the one JSON library; `cb::Json` = `ordered_json`). Moved here from `native/x360/system/live/third_party` on 2026-11-11; the x360 live client reads it from here. |
+| nlohmann/json | `nlohmann/json.hpp` | 3.10.5 | MIT | `cb/core/json` (the one JSON library; `cb::Json` = `ordered_json`). Moved here from `native/x360/system/live/third_party` (now `native/cb/recompile/x360/system/live`) on 2026-11-11; the x360 live client reads it from here. |
 | Unicorn (prebuilt DLL) | `bin/unicorn.dll`, headers `include/unicorn/` | 2.1.4 (library reports 2.1) | LGPL-2.0 (headers say "released under LGPL2") | `cb/core/unicorn_api` -> `cb/emulate` |
 | Capstone (prebuilt DLL) | `bin/capstone.dll`, headers `include/capstone/` | 5.0.7 | BSD-3-Clause (`bin/capstone-LICENSE.txt`) | `cb/core/capstone_api` -> `cb/decompile`, `cb/analyze` |
 | Z3 (prebuilt DLL) | `bin/libz3.dll`, headers `include/z3/` (the C headers only, not `z3++.h`) | 5.3.2 | MIT | `cb/core/z3_api` -> `cb/verify` |
@@ -45,3 +45,6 @@ Notes:
 subfolder, the directory in the `CB_THIRD_PARTY_BIN` environment variable, and this folder's `bin/` (compiled in,
 so a test run from the build tree works). A missing DLL is a `NotFoundError` that lists the places searched; a
 DLL older than the API table in `cb/core/<name>_api.hpp` fails at load with the name of the missing function.
+
+zlib 1.3.1 (MSZIP, plus `crc32()` from `zlib/zcrc32.c`) is in `zlib/`, built as the static library `cb_zlib` and shared by the program
+and the decompiler engine.

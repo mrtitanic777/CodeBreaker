@@ -11,7 +11,7 @@ C cannot write without a goto unless the code is reshaped first.
 
 ## Where gotos come from
 
-`CollapseStructure` (native/decompiler/core/cpp/blockaction.cc) folds the flow graph with its
+`CollapseStructure` (native/cb/decompile/engine/core/cpp/blockaction.cc) folds the flow graph with its
 shape rules -- ruleBlockCat, ruleBlockOr, ruleBlockProperIf, ruleBlockIfElse, ruleBlockWhileDo,
 ruleBlockDoWhile, ruleBlockInfLoop, ruleBlockSwitch, ruleCaseFallthru -- until one block is left.
 When no rule fits, `selectGoto()` marks an edge as a goto and folding goes on. Every goto is born

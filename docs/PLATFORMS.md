@@ -15,7 +15,7 @@ line and nothing above it.
 |---|---|---|
 | Unpack | containers: tapes, disks, cartridge and arcade ROM sets, discs, XEX, ELF, PE, NE, LE, APK, IPA, Mach-O | yes: a reader in `formats/` |
 | Identify | which CPU, OS, SDK, compiler and runtime made it -- and, per function, whether it was written in assembly or compiled | yes: signatures in `symbols/` |
-| CPU front end | the instruction set as SLEIGH, lifted to p-code | yes: a processor spec in `native/decompiler` (upstream Ghidra already has most: 6502, Z80, 68000, MIPS, SuperH, ARM, AArch64, 8051, AVR, PIC, Dalvik -- the work is compiling them in and checking them, not writing them) |
+| CPU front end | the instruction set as SLEIGH, lifted to p-code | yes: a processor spec in `native/cb/decompile/engine` (upstream Ghidra already has most: 6502, Z80, 68000, MIPS, SuperH, ARM, AArch64, 8051, AVR, PIC, Dalvik -- the work is compiling them in and checking them, not writing them) |
 | ---------------- | ---------------- | ---------------- |
 | Shared form | p-code, one intermediate code for every CPU | no |
 | Analyze and name | functions, types, structures, calls into the SDK and hardware | no (fed by the platform's names) |
@@ -90,7 +90,7 @@ line and nothing above it.
    emulator core, driven the way `emulate/` drives Unicorn.
 3. **Arcade**: ROM sets (MAME's set descriptions say which CPU and where each ROM loads) on the
    same 8/16-bit CPUs; Z80 and 68000.
-4. **Xbox and Xbox 360 completed**: XEX (native/xex, docs/XEX.md) + the PowerPC already here; the
+4. **Xbox and Xbox 360 completed**: XEX (native/cb/formats/xex, docs/XEX.md) + the PowerPC already here; the
    original Xbox is x86 already handled -- only the XBE reader and the kernel's imports are new.
 5. **64-bit and ARM**: x86-64 PE/ELF, AArch64 ELF/Mach-O; then Android (Dalvik) and iOS.
 6. **The rest of the consoles**, family by family: MIPS (PS1 done: R3000A; N64 done: R4300i; PS2 done: R5900; PSP done: Allegrex), SuperH (32X, Saturn and Dreamcast done: SH-2, SH-4),

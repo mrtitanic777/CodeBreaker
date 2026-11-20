@@ -4,8 +4,8 @@
 > Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
 > `codebreaker <command>`. The design stands; see README.md for the current layout.
 
-The engine is Ghidra's decompiler core (C++, ~190,000 lines, `native/decompiler/core`) driven by
-`native/decompiler/decompiler.cc`. It was built for flat memory. CodeBreaker's executables are
+The engine is Ghidra's decompiler core (C++, ~190,000 lines, `native/cb/decompile/engine/core`) driven by
+`native/cb/decompile/engine/decompiler.cc`. It was built for flat memory. CodeBreaker's executables are
 mostly not flat -- Win16 NE modules and DOS programs are segmented, VxDs call the system through
 `int 20h` -- and today the gap is closed *after* the core: 32 passes in
 `codebreaker/decompile/c_text.py` rewrite its C with regular expressions, and much of the

@@ -3,7 +3,7 @@
 A `.xex` wraps a PowerPC PE image -- the basefile -- in a header of its own: the image is
 compressed (LZX, or in blocks) and usually encrypted with a per-title key, and the libraries its
 imports come from are named in the header rather than in the image. CodeBreaker's XEX engine
-(`native/xex`, C++17, built with CMake) reads, converts, patches and re-signs it.
+(`native/cb/formats/xex`, the library `cb_xex`, C++) reads, converts, patches and re-signs it.
 
 ## On CodeBreaker's path
 
@@ -24,16 +24,16 @@ What the header adds over the basefile alone:
 ## Building
 
 ```
-cmake -S native/xex -B native/xex/build -G "Visual Studio 18 2026"
-cmake --build native/xex/build --config Release --target xex
+toolsuild_native.cmd cb
 ```
 
-`xex.exe` lands in `native/xex/build/bin` (settings.json `xex_bin` to put it elsewhere).
+The engine is a library linked into `codebreaker.exe`; there is no separate `xex.exe` and no setting for one.
+`codebreaker xex <command>` runs its command line in-process.
 The parsing and the basefile (`xex_file`, `basefile`, LZX decoding, the crypto) are the reader,
-`native/xex/reader.cmake`: built here as `xexreader`, and compiled into the recompiled-game
-runtime (`native/x360/runtime_lib`), whose loader (`runtime/src/xex.cpp`) has no parser of its own.
+`native/cb/formats/xex/reader.cmake`: compiled into the library `cb_xex`, and into the recompiled-game
+runtime (`native/cb/recompile/x360/runtime_lib`), whose loader (`runtime/src/xex.cpp`) has no parser of its own.
 `test_lzxenc` and `test_sign` are hand-run byte-identity harnesses against samples kept outside
-the repository (`native/xex/_re/`, gitignored).
+the repository (`native/cb/formats/xex/_re/`, gitignored).
 
 ## Commands
 
@@ -91,5 +91,5 @@ Recorded nowhere else:
   LZX path writes the base image at the new header size; both only show when a patch changes the
   header size.
 
-Copies of games and system files never enter the repository (`native/xex/.gitignore`).
-MIT -- `native/xex/LICENSE`.
+Copies of games and system files never enter the repository (`native/cb/formats/xex/.gitignore`).
+MIT -- `native/cb/formats/xex/LICENSE`.

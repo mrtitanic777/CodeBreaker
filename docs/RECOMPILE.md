@@ -31,7 +31,7 @@ implement yet, and what stopped it -- the triage for a title nobody has tuned:
 
 Two tools were merged, each giving what it does best:
 
-- **XenonRecomp** (`native/xenonrecomp`, hedge-dev's, MIT, with the Xbox 360 ports' changes)
+- **XenonRecomp** (`native/cb/recompile/xenonrecomp`, hedge-dev's, MIT, with the Xbox 360 ports' changes)
   translates. Each guest instruction becomes one C++ statement on a `PPCContext`; guest memory
   is one flat big-endian 4 GB space; every function takes the whole context, so any branch
   target can be a function and a branch to it a tail call; a `bctr` through a table becomes a
@@ -51,18 +51,18 @@ Two tools were merged, each giving what it does best:
   - The register settings: which registers are locals of each function. The non-volatile ones
     stay in the context: a compiler-generated `__finally` block is called with `bl` and reads its
     parent's `r30`/`r31`.
-- **The runtime** (`native/x360`, CodeBreaker's Xbox 360 runtime, from the Xbox 360 ports) runs
+- **The runtime** (`native/cb/recompile/x360`, CodeBreaker's Xbox 360 runtime, from the Xbox 360 ports) runs
   the result: the kernel and XAM reimplemented export by export, the Xenos GPU on Direct3D 12,
   XMA audio, input, the file system (the title's folder is `game:`), the system UI.
-  `x360.cmake` builds a title's program; `native/x360/README.md` lists its switches.
+  `x360.cmake` builds a title's program; `native/cb/recompile/x360/README.md` lists its switches.
 - **Hooks**: XenonRecomp emits every function as `__imp__sub_X` plus a weak `sub_X`, so a host
   function defined as `sub_X` replaces it; `midasm_hook` tables in a title's configuration put
   host code at single instructions.
 - **XEX**: the runtime loads any XEX (encrypted or not, basic or LZX) through CodeBreaker's one
-  XEX reader (`native/xex/reader.cmake`); XenonRecomp reads only unencrypted, basic-compressed
+  XEX reader (`native/cb/formats/xex/reader.cmake`); XenonRecomp reads only unencrypted, basic-compressed
   files, and `codebreaker xex` (native/cb/formats/xex.cpp) rewrites any XEX that way.
 
-The rexglue SDK's kernel core (`native/rexglue`) and CodeBreaker's own per-instruction
+The rexglue SDK's kernel core (`native/cb/recompile/rexglue`) and CodeBreaker's own per-instruction
 translator (`powerpc.cpp`, its builders derived from rexglue's code generator) remain:
 `recompile` translates functions on their own (and the `native/cb/recompile` unit tests run them), and
 `recompile-project --runtime rexglue` still makes the earlier project form.
@@ -70,7 +70,7 @@ translator (`powerpc.cpp`, its builders derived from rexglue's code generator) r
 ## Checking the translation
 
 `xenon.instruction_tests()` runs Xenia's PowerPC instruction tests (inputs and the outputs
-measured on the console; `native/xenonrecomp/ppc_tests`) through XenonRecomp: each test is
+measured on the console; `native/cb/recompile/xenonrecomp/ppc_tests`) through XenonRecomp: each test is
 assembled with PowerPC binutils that know VMX128 (setting `ppc_binutils`, default
 `toolchains/binutils-ppc`), recompiled, built and run, with CodeBreaker's own tests beside them
 (`ppc_tests/own`: divides, `frsqrte`, the dashboard's VMX). Today: 162 test files, 0 mismatches; 8 are

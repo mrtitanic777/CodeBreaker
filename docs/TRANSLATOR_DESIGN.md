@@ -215,7 +215,7 @@ Each target language has **one** back end, and every front end pairs with it: an
 forms: declarations, statements, expressions, its idioms) plus one rule set per source language, chosen
 by the unit's `Unit.lang` -- what the source's arithmetic, integers, strings, collection order and
 construction mean in the target, and which runtime holds the rest. The C++17 back end is the model, and
-it is C++ (native/l2/src/cpp17_*.cc in cbl2.dll, since 2026-10-31; docs/NATIVE.md step 5): `Emitter`
+it is C++ (native/cb/translate/l2/src/cpp17_*.cc, library `cb_l2` (cbl2.dll until 2026-11-19), since 2026-10-31; docs/NATIVE.md step 5): `Emitter`
 writes the block, the if/else-if chain, while, the range-for (with a structured binding), `auto`,
 lambdas and immediately invoked ones, `std::make_shared`, `std::optional` for every source; the Python
 rules (`cpp17_python.cc`, py.hpp: int64_t where the range is proved, floor division and modulo signs,
@@ -346,7 +346,7 @@ number of working pairs.
    sequences the operands into temporaries); without it every world differed from Java's for the same
    seed, on the 360 as well. Still to do: the C++17 back end proper, Boehm GC, modern Java front-end
    features.)
-   (Progress 2026-10-31: **the C++17 back end proper for Java**, two ways in (since the same day one back end with the Python front end's, in C++: native/l2/src/cpp17_java.cc; the transpiler's bodies are cpp03.Bodies17).
+   (Progress 2026-10-31: **the C++17 back end proper for Java**, two ways in (since the same day one back end with the Python front end's, in C++: native/cb/translate/l2/src/cpp17_java.cc; the transpiler's bodies are cpp03.Bodies17).
    *Inside the transpiler* (`convert(..., cpp_std='C++17')`): cpp17.Bodies, cpp03's Writer with the C++17
    forms -- a for-each over a container as a range-for, a switch expression as an immediately invoked
    lambda, `auto` where the initialiser spells the type, nullptr against pointers (the runtime's value

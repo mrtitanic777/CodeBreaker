@@ -3,6 +3,11 @@
 > Note (2026-11-14): written while CodeBreaker was Python. Module and file names below that end in `.py`, and the
 > Python-side mechanisms they describe, are now native C++ under `native/cb` (same area names, `.cpp`); commands read
 > `codebreaker <command>`. The design stands; see README.md for the current layout.
+> Note (2026-11-19): the separate native folders this plan names (`native/formats`, `native/engine`, `native/l2`,
+> `native/dosexec`, `native/x360`, `native/xenonrecomp`, `native/third_party`, `native/pyfront` ...) were merged into
+> `native/cb` (their code lives in the areas of the same names, or under `translate/l2`, `exact/emu/dosexec`,
+> `recompile/`); the engines are static libraries linked into `codebreaker.exe`, not DLLs. Where a section below
+> says `native/<x>`, read it as the path it had when written.
 
 Design note, 2026-11-11. Logan's rule: CodeBreaker is a complete C++ rewrite, "as if the Python was never
 written" -- idiomatic C++, no code that mimics Python. About 365 modules (742 files, 168k lines) were
@@ -730,7 +735,7 @@ suites, sweeps) runs at milestones only (a finished wave), not per module -- the
 (`cb_core`, `cb_formats`, `cb_analyze`, `cb_decompile`, `cb_translate`, `cb_emulate`, `cb_verify`, `cb_build`,
 `cb_exact`, `cb_java`, `cb_app` ...) so incremental builds touch only what changed, linked into **one executable
 target `codebreaker`** (`native/cb/app/main.cpp`) and one test target `cb_tests` that links the same libraries.
-Vendored third-party code lives in `native/third_party/` (nlohmann, sqlite3, and what section 9 adds) as static libs.
+Vendored third-party code lives in `native/cb/third_party/` (nlohmann, sqlite3, and what section 9 adds) as static libs.
 Unity batches stay (they cut the cold build) but are applied per library, off for the test target.
 `tools/build_codebreaker_exe.cmd` shrinks to `cmake --build` of this target.
 
@@ -762,7 +767,7 @@ line, which is also how the exe gate stays meaningful.
 ## 9. Decisions (Logan, 2026-11-11)
 
 1. **Unicorn and Capstone: prebuilt DLLs.** The exe ships the release `unicorn.dll` / `capstone.dll` next to itself
-   (in `native/third_party/bin/`), loaded through one loader (`cb::emu::unicorn`, `cb::disasm::capstone`); nothing is
+   (in `native/cb/third_party/bin/`), loaded through one loader (`cb::emu::unicorn`, `cb::disasm::capstone`); nothing is
    read from Python's site-packages. Not built from source.
 2. **Z3: prebuilt `libz3.dll`**, shipped next to the exe the same way.
 3. **The interface is the Windows app, in C++ (2026-11-18).** The terminal UI (`ui/terminal.py`, Textual) was the one Python part and is gone:
@@ -821,8 +826,8 @@ line, which is also how the exe gate stays meaningful.
   (py renamed pyt) and links every `CB_AREAS` library into it privately (so C++20 and `UNICODE` stay inside it); the
   whole executable takes the static CRT the cb libraries use. A native module whose port became a header-only shim
   has no `.cpp`: its glue includes the header. `cbtrace.dll` is the `cbtrace` target of `native/cb`
-  (`tools\build_cb.cmd`, or `tools\build_native.cmd cb` for that target alone; `state/cxx/cb/bin`, the `tracer_bin` default).
-- Third-party headers/DLLs: `native/third_party/README.md` (Capstone is now 5.0.7, not the 4.0.2 the old decompiler
+  (`tools\build_cb.cmd`, or `tools\build_native.cmd cb` for that part alone; `state/cxx/cb/bin`, the `tracer_bin` default).
+- Third-party headers/DLLs: `native/cb/third_party/README.md` (Capstone is now 5.0.7, not the 4.0.2 the old decompiler
   was written against).
 
 **Recipe for a wave-1 module**

@@ -19,7 +19,7 @@ source.c / .cpp
   imagexex      packs the PE as a XEX2 (compressed, page-hashed, signed)
 ```
 
-CodeBreaker works this chain backwards. `native/xex` unpacks the XEX2 to the PE ("basefile").
+CodeBreaker works this chain backwards. `native/cb/formats/xex` unpacks the XEX2 to the PE ("basefile").
 `native/cb/formats/powerpc_image.cpp` reads the PE. The decompiler turns the PE's functions back into C.
 `native/cb/build/functions.cpp` compiles that C with the same `cl.exe` and links it with the same
 `link.exe`, and `native/cb/verify/lanes/powerpc.cpp` runs both images side by side.
@@ -94,7 +94,7 @@ that chain survives, `powerpc_image.virtual_methods` names every slot (`Class_vf
 use Microsoft's decoration scheme, the one `native/cb/symbols/demangle.cpp` reads.
 
 **The packager.** The XEX2 container (zero-omitted pages, LZX, AES, the page-hash chain, the
-signature) is `native/xex`'s subject; see docs/XEX.md.
+signature) is `native/cb/formats/xex`'s subject; see docs/XEX.md.
 
 ## The other tools of the SDK
 

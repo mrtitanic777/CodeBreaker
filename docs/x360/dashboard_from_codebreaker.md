@@ -10,20 +10,20 @@ dashboard builds and runs from CodeBreaker and the owner agrees.
 
 | Shared (Shared-unified) | CodeBreaker |
 |---|---|
-| `tools/XenonRecomp` (branch `dashboard`, b904d22, patches 0001-0022) | `native/xenonrecomp` -- merged with CodeBreaker's line; every change from upstream in `native/xenonrecomp/CHANGES.md` |
-| `tools/build_xenonrecomp.bat` | `python -c "from codebreaker.recompile import xenon; xenon.build()"` (clang-cl and Ninja; builds `native/xenonrecomp/build/XenonRecomp/XenonRecomp.exe`) |
-| `tools/ppc_tests` | `native/xenonrecomp/ppc_tests/own` (both files there; `xenon.instruction_tests()` runs them with Xenia's) |
+| `tools/XenonRecomp` (branch `dashboard`, b904d22, patches 0001-0022) | `native/cb/recompile/xenonrecomp` -- merged with CodeBreaker's line; every change from upstream in `native/cb/recompile/xenonrecomp/CHANGES.md` |
+| `tools/build_xenonrecomp.bat` | `python -c "from codebreaker.recompile import xenon; xenon.build()"` (clang-cl and Ninja; builds `native/cb/recompile/xenonrecomp/build/XenonRecomp/XenonRecomp.exe`) |
+| `tools/ppc_tests` | `native/cb/recompile/xenonrecomp/ppc_tests/own` (both files there; `xenon.instruction_tests()` runs them with Xenia's) |
 | `tools/scripts/recompile.py <config>` | `codebreaker xenon-recompile <config>` (the same: a clean run, changed files synced, stale ones removed) |
-| `tools/scripts/gen_import_stubs.py [--forward]` | `native/x360/tools/gen_import_stubs.py` (the same arguments, `--forward` included) |
+| `tools/scripts/gen_import_stubs.py [--forward]` | `native/cb/recompile/x360/tools/gen_import_stubs.py` (the same arguments, `--forward` included) |
 | `tools/scripts/xex_basic.py` | `codebreaker.formats.xex.basic(path, out)` |
 | `tools/scripts/find_switch_tables.py` | `codebreaker.recompile.switches` (`find`, `write`) |
 | `tools/scripts/gen_function_bounds.py` | `codebreaker.recompile.config` (CodeBreaker's own function analysis, no Ghidra); the dashboard's configs keep their generated blocks as they are |
 | `tools/scripts/xex_resources.py`, `xex_patch.py`, `xex_info.py` | `codebreaker xex ...` (the native XEX engine: retail, devkit and XEX1 keys tried, as the two XEX1 fixes do) |
 | `tools/scripts/stfs_extract.py`, `xzp_extract.py`, `nand_fs_extract.py` | `codebreaker.formats.media` (STFS, XZP and NAND are media volumes) |
 | `tools/scripts/xdk_libmatch.py`, `rtti_vtables.py`, `xex_imports.py`, `extract_system_ui.py` | `xdk-match`, `classes`, `xex-imports`, `system-ui` |
-| `runtime/{xui,guide,live,stfs,pads,transition}` | `native/x360/system/` -- Shared-unified's at 96547b0, whole |
+| `runtime/{xui,guide,live,stfs,pads,transition}` | `native/cb/recompile/x360/system/` -- Shared-unified's at 96547b0, whole |
 | `docs/` | `docs/x360/` |
-| (the server, already) | `native/x360/server/` (`live_server.py`, `xboxunity.py`) |
+| (the server, already) | `native/cb/recompile/x360/server/` (`live_server.py`, `xboxunity.py`) |
 
 Not moved: `references/` (XDK symbols and console captures: Microsoft's, never committed), `ghidra_scripts`
 (CodeBreaker does not use Ghidra), `binutils-ppc-cygwin` (a tool: CodeBreaker's setting `ppc_binutils` names it),
@@ -54,11 +54,11 @@ the patch files (their history carries session and co-author lines; `CHANGES.md`
    `python -c "from codebreaker.recompile import xenon; xenon.build()"`.
 2. In `Xbox 360 Dashboard/CMakeLists.txt` and `tools/game_module/CMakeLists.txt`, point the two roots at CodeBreaker:
    - `DASH_SHARED_TOOLS` to `<CodeBreaker>/native` (so `XenonRecomp/...` becomes `xenonrecomp/...`: rename those
-     uses), or a new `DASH_XENONRECOMP` = `<CodeBreaker>/native/xenonrecomp` for the `thirdparty/simde`, `XenonUtils`
+     uses), or a new `DASH_XENONRECOMP` = `<CodeBreaker>/native/cb/recompile/xenonrecomp` for the `thirdparty/simde`, `XenonUtils`
      and `XenonUtils/xbox/*.inc` uses;
-   - `DASH_SHARED_RUNTIME` to `<CodeBreaker>/native/x360/system` (and the six `include(".../runtime/<lib>/<lib>.cmake")`
+   - `DASH_SHARED_RUNTIME` to `<CodeBreaker>/native/cb/recompile/x360/system` (and the six `include(".../runtime/<lib>/<lib>.cmake")`
      in `DashRecomp/CMakeLists.txt` to `${DASH_SHARED_RUNTIME}/<lib>/<lib>.cmake`);
-   - `gen_import_stubs.py` to `<CodeBreaker>/native/x360/tools/gen_import_stubs.py`.
+   - `gen_import_stubs.py` to `<CodeBreaker>/native/cb/recompile/x360/tools/gen_import_stubs.py`.
 3. The module builds: each `python -I ../Shared/tools/scripts/recompile.py <config>` becomes
    `codebreaker xenon-recompile <config>`; `build_xenonrecomp.bat` becomes
    step 1; `prepare_unified.py` and `prepare_module.py` call `codebreaker.recompile.xenon.recompile_synced(config)`.

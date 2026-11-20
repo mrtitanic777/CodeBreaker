@@ -1,7 +1,7 @@
 # CodeBreaker's Xbox 360 runtime
 
 A statically recompiled Xbox 360 title (its PowerPC code turned into C++ by XenonRecomp,
-`native/xenonrecomp`, configured by `codebreaker/recompile/config.py`) runs on this runtime as a
+`native/cb/recompile/xenonrecomp`, configured by `codebreaker/recompile/config.py`) runs on this runtime as a
 Windows program. The runtime is native code: the Xbox kernel and XAM are reimplemented export by
 export (HLE), nothing of the console's system software runs in it unless a module is itself
 recompiled and linked in.
@@ -43,4 +43,4 @@ A fault reports the guest address, the guest function and the host stack (offset
 program; `llvm-symbolizer --relative-address` turns them into the recompiled functions).
 
 The FFmpeg-derived WMA Pro tables (`runtime/src/audio/wmapro_tables.inc`) are LGPL-2.1+;
-`native/third_party/nlohmann` is MIT (NOTICE).
+`native/cb/third_party/nlohmann` is MIT (NOTICE).

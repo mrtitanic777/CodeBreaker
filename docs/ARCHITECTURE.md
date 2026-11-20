@@ -302,7 +302,7 @@ compare the two. The 32-bit and PowerPC lanes still guess (below; since then the
 
 **The pieces.**
 
-    native/decompiler/pcodecheck.cc  x86-16-real-lift (and x86-32-flat-lift): an instruction's p-code from
+    native/cb/decompile/engine/pcodecheck.cc  x86-16-real-lift (and x86-32-flat-lift): an instruction's p-code from
                                      the decompiler's own SLEIGH specification -- the one SLEIGH_VERIFY.md
                                      checks against the processor -- one long-running process per Python
     emulate/pcode.py                 the lifter's client: every instruction lifted once, by its bytes and offset
@@ -390,8 +390,8 @@ input counts is sampled, not all; the lifter's p-code; a jump's condition throug
 real 16-bit code in Unicorn, solved to its other side; a run with its shadow is the same run, on
 LZEXPAND's functions). test_verification, test_drivers, test_frozen, test_engine pass.
 
-**Left for after.** The pcodecheck in the setting decompiler_bin needs rebuilding for the lift
-mode (`cmake --build native/decompiler/build --config Release --target pcodecheck`; until then
+**Left for after.** The pcodecheck beside the program (or in the setting decompiler_bin) needs rebuilding for the lift
+mode (`cmake --build state/cxx/cb --config Release --target pcodecheck`; until then
 the lanes guess as before, or CB_PCODECHECK names a built one). z3-solver is a dependency
 (requirements.txt). The 32-bit lane (win32.py) and PowerPC still guess: x86-32-flat-lift is there
 and the shadow's evaluator is processor-blind past the register table and `segment`, so a
@@ -442,7 +442,7 @@ PowerPC register's upper word is not part of an address). Shadow16 (unchanged in
 ShadowLE (a driver: a service answers EAX and carry, both inputs) and ShadowPPC (64-bit `ret` in
 r3) say only where an answered call's result lands and what it clobbers.
 
-    native/decompiler/pcodecheck.cc  ppc-be-64-lift (ppc_64_xenon_be.sla): the PowerPC registers named, XER
+    native/cb/decompile/engine/pcodecheck.cc  ppc-be-64-lift (ppc_64_xenon_be.sla): the PowerPC registers named, XER
     emulate/pcode.py                 lifter(mode) with the specification each mode reads (SLA)
     emulate/emulator.py              trace_function(shadow=): stepped per instruction (not fast), told of
                                      each import or callback answered and of what the answer wrote
@@ -531,8 +531,8 @@ registers and p-code). check_imports, test_verification (23), test_drivers (16),
 test_platforms (9), test_frozen (47), test_z80, test_m68k, test_nes pass; tidy reports only what
 it reported before.
 
-Left for after: the pcodecheck in the setting decompiler_bin needs rebuilding for ppc-be-64-lift
-(`cmake --build native/decompiler/build --config Release --target pcodecheck`; until then the
+Left for after: the pcodecheck beside the program (or in the setting decompiler_bin) needs rebuilding for ppc-be-64-lift
+(`cmake --build state/cxx/cb --config Release --target pcodecheck`; until then the
 PowerPC lane guesses as before, the x86 lanes explore). Handing the 32-bit explorer's runs back
 as fingerprints would save about a quarter of lz32's original runs again.
 
@@ -1143,7 +1143,7 @@ test_plumbing (17), check_imports (524); l2c --made lzexpand/keyboard/comm/lz32 
 ## Built: the engine and the store in C++ (2026-10-31)
 
 NATIVE.md step 6. The program database, the engine's core, the function store, the knowledge
-base's database and the verdict vocabulary are `native/engine` (cbengine.dll, on SQLite's C API;
+base's database and the verdict vocabulary are `native/cb/engine` (cbengine.dll when this was written, now linked into the program; on SQLite's C API;
 the shim is engine/native_engine.py). The Python engine and store it replaced, and the
 `CB_NATIVE_ENGINE` switch, were deleted at the 2026-11-04 milestone: the DLL is required. The
 on-disk schema is unchanged: every database, store and knowledge base written before reads
@@ -1174,16 +1174,16 @@ the cold run did not record.
 check the always-run profile step and the decoding of the values asked for are most of the time, so
 the C++ core alone is level with the Python there. The value encoding (JSON, pickles) is Python's
 while values are Python objects. The Python Database, Run/Context, FunctionStore and KnowledgeBase
-go at the next milestone. SQLite comes from an installed toolchain (MSYS2's UCRT64 header and DLL);
-vendoring the amalgamation would make native/engine build alone.
+go at the next milestone. SQLite came from an installed toolchain (MSYS2's UCRT64 header and DLL) then; the amalgamation is
+now vendored in native/cb/third_party/sqlite.
 
 ## Built: the L2 core and the C back end in C++ (2026-10-31)
 
 NATIVE.md step 5. The L2 tree -- ir.py's node model, l2.to_json / from_json, l2.validate -- is
-`native/l2`'s `l2core` (value.hpp: a value with Python's semantics; json.hpp: Python's json; l2.hpp:
+`native/cb/translate/l2`'s `l2core` (value.hpp: a value with Python's semantics; json.hpp: Python's json; l2.hpp:
 the nodes, types, symbols and the schema), the base the translator back ends sit on (the C++17 back end,
 `l2cpp17`, already does). The decompiler's C writer, backends/c.py with every c_text pass done on the
-tree, is `l2c` on it, in cbl2.dll; backends/c.py's entry points are its (shim: translate/native_l2.py;
+tree, is `l2c` on it, in cbl2.dll then, now the library `cb_l2` linked into the program; backends/c.py's entry points are its (shim: translate/native_l2.py;
 the Python writer and the `CB_NATIVE_L2` switch were deleted at the 2026-11-04 milestone). So decompile -> L2 -> C is C++
 but for c_text's module assembly, which stays the Python glue that calls the writer.
 
@@ -1206,9 +1206,9 @@ The Python writer goes at the next milestone.
   milestone; Python keeps the glue (command line, terminal UI, MCP). The plan, in measured-cost
   order, is docs/NATIVE.md. Step 1 is done: the 32-bit run recorder (native/tracer, cbtrace.dll:
   trace_function's hooks, `CB_NATIVE_TRACE`). Step 6 is gated and the default: the engine and the
-  store (native/engine, cbengine.dll; "Built: the engine and the store in C++"), its Python deleted
+  store (native/cb/engine, cbengine.dll then; "Built: the engine and the store in C++"), its Python deleted
   at the 2026-11-04 milestone. Step 5 is gated and the default: the L2 core and the C back end
-  (native/l2, cbl2.dll; "Built: the L2 core and the C back end in C++"), the Python writer deleted
+  (native/cb/translate/l2, cbl2.dll then; "Built: the L2 core and the C back end in C++"), the Python writer deleted
   at the same milestone.
 - SQLite, not a server database: one file per binary is easy to delete, copy and inspect.
 - Open: how a fact made by a period compiler (DOSBox-X) is keyed (the kit's files' hashes); how the

@@ -104,6 +104,6 @@ session scratchpad). They belong in `native/cb/verify` as commands:
 
 - Function facts: `native/cb/decompile/describe.cpp` (pops, thunks, result sizes, `callers_say`)
 - Origin (asm or C): `native/cb/analyze/origin.cpp`
-- C text: `native/cb/decompile/c_text_*.cpp`; Ghidra core: `native/decompiler/core/cpp/varmap.cc`
+- C text: `native/cb/decompile/c_text_*.cpp`; Ghidra core: `native/cb/decompile/engine/core/cpp/varmap.cc`
 - Frames: `native/cb/build/asm16.cpp`; link order, gates, caches: `native/cb/build` (the module build)
 - Checks: `native/cb/verify/gate16/isolated16.cpp`, `contract16.cpp`, `setup16.cpp`

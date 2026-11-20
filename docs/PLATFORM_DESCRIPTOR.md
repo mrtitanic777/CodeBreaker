@@ -105,7 +105,7 @@ and module.build ask them; verdicts and images are unchanged (ARCHITECTURE.md, "
    test gate staying green and `identify()` agreeing with today's `kind_name` on the whole
    Windows 95 corpus.
 2. **6502 in the decompiler.** Ghidra's 6502 SLEIGH spec compiled with the core's own SLEIGH
-   compiler into `native/decompiler/languages`; a test that decompiles a hand-written routine.
+   compiler into `native/cb/decompile/engine/languages`; a test that decompiles a hand-written routine.
 3. **The NES container.** An iNES reader (header, PRG/CHR banks, mapper number); NROM first
    (mapper 0: 16 or 32 KB of code at $8000, no bank switching), the reset/NMI/IRQ vectors as
    entry points.

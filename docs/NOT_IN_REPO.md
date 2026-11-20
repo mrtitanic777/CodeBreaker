@@ -73,5 +73,4 @@ runs delete their disk copies; `codebreaker tidy-state` shows it part by part an
 what is stale (README: What is kept, and how big it gets). The reconstructed Windows 95
 source is written into the Windows 95 tree (`../Windows95`), where it is kept and curated.
 
-The native decompiler is built from `native/decompiler` into `native/decompiler/build/bin`
-(setting `decompiler_bin`); the build output is not tracked.
+The native decompiler is built from `native/cb/decompile/engine` by the one build into `state/cxx/cb/bin`, beside `codebreaker.exe` (the optional setting `decompiler_bin` points elsewhere); the build output is not tracked.
