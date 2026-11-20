@@ -1,5 +1,5 @@
 // cb/emulate/pcode_test.cpp -- the p-code lifter, against the real pcodecheck when this machine has it built
-// (CB_PCODECHECK, or native/decompiler/build/bin/pcodecheck.exe of the checkout); the tests that need it return
+// (CB_PCODECHECK, or the pcodecheck.exe built beside the tests); the tests that need it return
 // quietly when it is not there, the rest run anywhere.
 #include "cb/emulate/pcode.hpp"
 
@@ -17,22 +17,15 @@ using namespace cb::emulate::pcode;
 namespace sfs = std::filesystem;
 
 namespace {
-
-// The built pcodecheck: the environment's, else the first native/decompiler/build/bin/pcodecheck.exe found from the
-// source tree upwards (a worktree of the checkout keeps the build in the main checkout).
+// The built pcodecheck: the environment's, else the one beside the test program (the one build puts it there).
 sfs::path find_exe() {
     if (auto env = cb::fs::get_env("CB_PCODECHECK"); env && !env->empty()) return *env;
-    sfs::path dir = sfs::path(CB_SOURCE_DIR);
-    for (int i = 0; i < 6 && !dir.empty(); ++i, dir = dir.parent_path()) {
-        const sfs::path exe = dir / "native" / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-        if (sfs::exists(exe)) return exe;
-        const sfs::path direct = dir / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-        if (sfs::exists(direct)) return direct;
-    }
-    return {};
+    // (the one build puts pcodecheck.exe beside the test program)
+    const sfs::path beside = cb::fs::executable_path().parent_path() / "pcodecheck.exe";
+    return sfs::exists(beside) ? beside : sfs::path();
 }
 
-sfs::path languages() { return sfs::path(CB_SOURCE_DIR) / "decompiler" / "languages"; }
+sfs::path languages() { return sfs::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages"; }
 
 PcodeConfig config() { return PcodeConfig{find_exe(), languages()}; }
 

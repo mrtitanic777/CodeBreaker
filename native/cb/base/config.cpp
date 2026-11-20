@@ -32,7 +32,6 @@ struct Default {
 };
 constexpr std::array kDefaults{
     Default{"corpus", "../Windows95/design/corpus/files"},
-    Default{"decompiler_bin", "native/decompiler/build/bin"},
     Default{"tracer_bin", "state/cxx/cb/bin"},
     Default{"formats_bin", "native/formats/build/bin"},
     Default{"engine_bin", "native/engine/build/bin"},

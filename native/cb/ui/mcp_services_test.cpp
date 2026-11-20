@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <nlohmann/json.hpp>
 
+#include "cb/decompile/decompiler.hpp"
 #include "cb/base/config.hpp"
 #include "cb/base/corpus.hpp"
 #include "cb/core/fs.hpp"
@@ -129,7 +130,7 @@ CB_TEST("ui.mcp.two_builds_are_compared_and_one_function_shown_side_by_side", []
 CB_TEST("ui.mcp.one_function_is_decompiled_now_as_recorded", [] {
     SvcFixture f;
     // (the decompiler is the checkout's program: without it there is nothing to ask)
-    if (!sfs::exists(f.config.path("decompiler_bin").value_or(sfs::path()) / "decompiler.exe")) return;
+    if (!sfs::exists(cb::decompile::decompiler::engine_bin(f.config) / "decompiler.exe")) return;
     if (!f.has_corpus()) return;
     const std::string lz32 = data("lz32.dll"), expand = data("lzexpand.dll");
     CB_CHECK_EQ(f.call("decompile_function", Json{{"module", lz32}, {"addr", "bfea1000"}}).first, f.recorded("call 34 decompile_function"));   // a 32-bit function by itself

@@ -3,8 +3,8 @@
 // and the native decompiler's C of it.
 //
 // The program is decompile/testdata/m6502_demo.s, hand-written for the lane, built with CodeBreaker's own assembler (engine/testdata/lane_kit/
-// nes_demo.cfg lays it out). The tests that need the native decompiler (native/decompiler/build/bin: decompiler.exe, pcodecheck.exe, of this
-// checkout or the main one) print SKIP when it is not built; the lane's judge on this cartridge is
+// nes_demo.cfg lays it out). The tests that need the native decompiler (decompiler.exe and pcodecheck.exe, built beside the tests)
+// print SKIP when it is not built; the lane's judge on this cartridge is
 // engine.lane_kit.machines.the_nes_demo_cartridge_is_judged.
 //
 // Names here are file-local to this unity unit: every one starts with `nd_`.
@@ -68,15 +68,12 @@ cb::formats::Decoder nd_decoder() {
     };
 }
 
-// The native decompiler's folder: CB_DECOMPILER_BIN, this checkout's, the main checkout's; nullopt when none has what is asked.
+// The native decompiler's folder: CB_DECOMPILER_BIN, else beside the tests (the one build puts it there); nullopt when none has what
+// is asked.
 std::optional<stdfs::path> nd_native_bin(const char* program) {
     std::vector<stdfs::path> candidates;
     if (const auto given = cb::fs::get_env("CB_DECOMPILER_BIN"); given && !given->empty()) candidates.push_back(cb::fs::from_text(*given));
-    candidates.push_back(stdfs::path(CB_SOURCE_DIR).parent_path() / "native" / "decompiler" / "build" / "bin");
-    try {
-        candidates.push_back(cb::config::current().main_checkout() / "native" / "decompiler" / "build" / "bin");
-    } catch (const cb::Error&) {
-    }
+    candidates.push_back(cb::fs::executable_path().parent_path());
     for (const stdfs::path& dir : candidates) {
         std::error_code ec;
         if (stdfs::is_regular_file(dir / program, ec)) return dir;
@@ -84,7 +81,7 @@ std::optional<stdfs::path> nd_native_bin(const char* program) {
     return std::nullopt;
 }
 
-stdfs::path nd_languages() { return stdfs::path(CB_SOURCE_DIR).parent_path() / "native" / "decompiler" / "languages"; }
+stdfs::path nd_languages() { return stdfs::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages"; }
 
 // ---- the SLEIGH 6502 against the interpreter -----------------------------------------------------------------------------------------
 
@@ -270,7 +267,7 @@ CB_TEST("engine.nes_demo.sleigh_6502_agrees_with_the_interpreter", [] {
     CB_WINDOWS_ONLY("it needs the p-code lifting program (a Windows executable)");
     const std::optional<stdfs::path> bin = nd_native_bin("pcodecheck.exe");
     if (!bin) {
-        std::cout << "SKIP pcodecheck is not built (native/decompiler/CMakeLists.txt)\n";
+        std::cout << "SKIP pcodecheck is not built (decompile/engine/CMakeLists.txt)\n";
         return;
     }
     std::mt19937 rnd(6502);
@@ -339,7 +336,7 @@ CB_TEST("engine.nes_demo.the_native_decompiler_gives_the_c", [] {
     CB_WINDOWS_ONLY("it needs the decompiler program (a Windows executable)");
     const std::optional<stdfs::path> bin = nd_native_bin("decompiler.exe");
     if (!bin) {
-        std::cout << "SKIP decompiler.exe is not built (native/decompiler/CMakeLists.txt)\n";
+        std::cout << "SKIP decompiler.exe is not built (decompile/engine/CMakeLists.txt)\n";
         return;
     }
     cb::fs::ScopedTempDir dir("cb-nes-demo");

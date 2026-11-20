@@ -12,7 +12,7 @@
 // compiler's stubs -- is recorded beside it (verdicts.json) and given here as answers: the lane's own work is what is compared. The fingerprint
 // cache is off on both sides.
 //
-// They need the symbolic lifter (native/decompiler: pcodecheck.exe and its languages) and the emulator's libraries (unicorn, z3, cbtrace);
+// They need the symbolic lifter (decompile/engine: pcodecheck.exe and its languages) and the emulator's libraries (unicorn, z3, cbtrace);
 // without the lifter they say so and pass.
 //
 // Design notes:
@@ -227,8 +227,8 @@ std::string word_of(cb::verify::Verdict v) { return std::string(cb::verify::word
 
 // One module: every function recorded as judged, judged again here.
 void check_module(const std::string& folder, const stdfs::path& original) {
-    const stdfs::path decompiler_bin = cb::testing::data_path("../decompiler/build/bin");
-    const stdfs::path languages = cb::testing::data_path("../decompiler/languages");
+    const stdfs::path decompiler_bin = cb::fs::executable_path().parent_path();   // (pcodecheck.exe is built beside the tests)
+    const stdfs::path languages = cb::testing::data_path("decompile/engine/languages");
     cb::emulate::pcode::LifterSet lifters(cb::emulate::pcode::PcodeConfig::from_environment(decompiler_bin, languages));
     if (lifters.get(cb::emulate::pcode::Mode::X86Flat32) == nullptr) {
         std::cerr << "win32 tests: no x86 lifter (" << decompiler_bin.string() << "); skipped\n";
@@ -347,19 +347,16 @@ CB_TEST("verify.win32.the_kind", [] {
 
 // ---- the shadow and the path explorer on LZ32 ---------------------------------------------------------------------
 //
-// The lifter is pcodecheck as the pcode tests find it (the environment's, else native/decompiler/build/bin of the checkout, a worktree's build being
-// in the main one); without it these say so and pass.
+// The lifter is pcodecheck as the pcode tests find it (the environment's, else the one built beside the tests);
+// without it these say so and pass.
 
 namespace {
 
 stdfs::path w32sh_pcodecheck() {
     if (auto env = cb::fs::get_env("CB_PCODECHECK"); env && !env->empty()) return *env;
-    stdfs::path dir = stdfs::path(CB_SOURCE_DIR);
-    for (int i = 0; i < 6 && !dir.empty(); ++i, dir = dir.parent_path()) {
-        const stdfs::path exe = dir / "native" / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-        if (stdfs::exists(exe)) return exe;
-    }
-    return {};
+    // (the one build puts pcodecheck.exe beside the test program)
+    const stdfs::path beside = cb::fs::executable_path().parent_path() / "pcodecheck.exe";
+    return stdfs::exists(beside) ? beside : stdfs::path();
 }
 
 // LZ32 as the judge has it: its lifter, the imports' argument counts and the thunk stubs recorded for it.
@@ -373,7 +370,7 @@ struct W32ShRig {
     stdfs::path module = cb::testing::data_path("formats/testdata/lz32.dll");
 
     explicit W32ShRig(const stdfs::path& exe)
-        : lifters(cb::emulate::pcode::PcodeConfig::from_environment(exe.parent_path(), stdfs::path(CB_SOURCE_DIR) / "decompiler" / "languages")),
+        : lifters(cb::emulate::pcode::PcodeConfig::from_environment(exe.parent_path(), stdfs::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages")),
           services{decompiler, builder, {}, {}, nullptr, nullptr, &lifters, {}, nullptr} {
         const Json golden = cb::json::load(data("lz32/verdicts.json"));
         for (const auto& [key, value] : golden["environment"]["argc"].items())
@@ -426,7 +423,7 @@ std::string w32sh_seen(const cb::emulate::Run& r) {
 CB_TEST("verify.win32.a_32_bit_run_with_its_shadow_is_the_same_run", [] {
     const stdfs::path exe = w32sh_pcodecheck();
     if (exe.empty()) {
-        std::cerr << "win32 shadow test: no pcodecheck (native/decompiler); skipped\n";
+        std::cerr << "win32 shadow test: no pcodecheck (decompile/engine); skipped\n";
         return;
     }
     W32ShRig rig(exe);
@@ -462,7 +459,7 @@ CB_TEST("verify.win32.a_32_bit_run_with_its_shadow_is_the_same_run", [] {
 CB_TEST("verify.win32.the_explorer_finds_every_path_of_lzopenfile", [] {
     const stdfs::path exe = w32sh_pcodecheck();
     if (exe.empty()) {
-        std::cerr << "win32 explorer test: no pcodecheck (native/decompiler); skipped\n";
+        std::cerr << "win32 explorer test: no pcodecheck (decompile/engine); skipped\n";
         return;
     }
     W32ShRig rig(exe);

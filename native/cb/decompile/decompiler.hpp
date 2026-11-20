@@ -4,7 +4,7 @@
 //     AsC c = decompiler.as_c("lz32.dll");                         // any executable the readers know, as the text of one .c file
 //     c_text::Compilable32 m = decompiler.compilable32(path);      // a 32-bit module made compilable (c_text, with this as its Services)
 //
-// One decompiler for everything. The native program (native/decompiler) knows processors, not file formats: this module
+// One decompiler for everything. The native program (decompile/engine) knows processors, not file formats: this module
 // takes the file apart with the readers in cb/formats, describes it (decompile/describe), runs the native program on the
 // description, takes what it said of each function besides its C (`/*@G ... */` notes: split_notes) and, for the lanes that
 // ask for it, has the L2 library's C back end write each function's C from its L2 document (c_from_l2).
@@ -78,6 +78,14 @@ inline constexpr int kProcessMegabytes = 1536;
 
 // ---- what it is run with ------------------------------------------------------------------------------------------------
 
+// Where the decompiler engine's programs are (decompiler.exe, pcodecheck.exe): the decompiler_bin setting, else beside
+// this program (the one build puts them there).
+std::filesystem::path engine_bin(const config::Config& config);
+// The engine's own language files: <checkout>/native/cb/decompile/engine/languages.
+std::filesystem::path own_languages(const std::filesystem::path& checkout);
+// The language files a run reads: CB_LANGUAGES_DIR (an older decompiler's, to compare), else the engine's own.
+std::filesystem::path languages(const config::Config& config);
+
 // The native program and the settings that decide what it is asked.
 struct Settings {
     std::filesystem::path checkout;   // the checkout the program belongs to (the project's own data files)
@@ -85,8 +93,7 @@ struct Settings {
     std::filesystem::path languages;  // its language files (CB_LANGUAGES_DIR names another folder: an older decompiler's)
     std::string struct_recovery = "all";   // "off", "32" (32-bit x86 only) or "all"
     std::string threads;              // functions analysed at once in one process, by hand; empty: processes share the functions
-    // `<settings decompiler_bin>/decompiler.exe`, CB_LANGUAGES_DIR else `<checkout>/native/decompiler/languages`, and the settings
-    // "struct_recovery" and "threads".
+    // `engine_bin/decompiler.exe`, `languages`, and the settings "struct_recovery" and "threads".
     static Settings from_config(const config::Config& config);
 };
 

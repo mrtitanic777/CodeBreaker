@@ -102,7 +102,7 @@ CB_TEST("decompile.vmx128.coverage", [] {
 
 CB_TEST("decompile.vmx128.sleigh_is_the_checked_in_language", [] {
     // the generated text is what languages/src/ppc/vmx128.sinc holds, given the operations its sibling files define
-    const std::filesystem::path sinc = cb::testing::data_path("../decompiler/languages/src/ppc/vmx128.sinc");
+    const std::filesystem::path sinc = cb::testing::data_path("decompile/engine/languages/src/ppc/vmx128.sinc");
     if (!std::filesystem::exists(sinc)) return;   // (a checkout without the decompiler's languages)
     std::set<string> declared;
     for (const auto& entry : std::filesystem::directory_iterator(sinc.parent_path())) {

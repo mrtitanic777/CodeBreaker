@@ -1,7 +1,7 @@
 // cb/decompile/decompiler.cpp -- the native program: what it is asked, how it is run, what is kept of it, what it said of each
 // function; and a function's C written from its L2 document.
 //
-// The native program (native/decompiler/decompiler.exe) is given a description of a module (decompile/describe) and writes each
+// The native program (decompile/engine/decompiler.exe) is given a description of a module (decompile/describe) and writes each
 // function as a block of text: a line `/*@@ <name> <hex address> */`, the notes on lines of their own, then the C. See decompiler.hpp.
 #include <algorithm>
 #include <cctype>
@@ -36,12 +36,24 @@ using internal::is_word_char;
 
 // ---- settings and switches ------------------------------------------------------------------------------------------------
 
+std::filesystem::path engine_bin(const config::Config& config) {
+    return config.path("decompiler_bin").value_or(fs::executable_path().parent_path());
+}
+
+std::filesystem::path own_languages(const std::filesystem::path& checkout) {
+    return checkout / "native" / "cb" / "decompile" / "engine" / "languages";
+}
+
+std::filesystem::path languages(const config::Config& config) {
+    const std::optional<std::string> env = fs::get_env("CB_LANGUAGES_DIR");
+    return env && !env->empty() ? fs::from_text(*env) : own_languages(config.checkout_root());
+}
+
 Settings Settings::from_config(const config::Config& config) {
     Settings s;
     s.checkout = config.checkout_root();
-    s.program = config.path("decompiler_bin").value_or(s.checkout / "native" / "decompiler" / "build" / "bin") / "decompiler.exe";
-    const std::optional<std::string> languages = fs::get_env("CB_LANGUAGES_DIR");
-    s.languages = languages && !languages->empty() ? fs::from_text(*languages) : s.checkout / "native" / "decompiler" / "languages";
+    s.program = engine_bin(config) / "decompiler.exe";
+    s.languages = decompiler::languages(config);
     const std::string recovery = config.text("struct_recovery");
     s.struct_recovery = recovery.empty() ? "off" : recovery;
     const std::string threads = config.text("threads");
@@ -294,7 +306,7 @@ Decompiler::Generation Decompiler::generation() const {
     Generation g;
     g.program = base::cache::tool_id(context_.settings.program);
     // (not the folder of CB_LANGUAGES_DIR: a run that compares another folder of them shares the generation of now)
-    const std::filesystem::path own = context_.settings.checkout / "native" / "decompiler" / "languages";
+    const std::filesystem::path own = own_languages(context_.settings.checkout);
     g.languages = fs::same_path(own, context_.settings.languages) ? language_stamp() : base::cache::folder_id(own);
     return g;
 }

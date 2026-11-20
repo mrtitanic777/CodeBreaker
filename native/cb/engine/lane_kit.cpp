@@ -12,6 +12,7 @@
 #include "cb/core/error.hpp"
 #include "cb/core/fs.hpp"
 #include "cb/core/text.hpp"
+#include "cb/decompile/decompiler.hpp"
 #include "cb/engine/lane_kit_internal.hpp"
 #include "cb/engine/lane_registry.hpp"
 #include "cb/engine/machine_lanes.hpp"
@@ -91,10 +92,8 @@ build::watcom::OpenWatcom LaneKit::Impl::openwatcom() const { return build::watc
 emulate::pcode::LifterSet* LaneKit::Impl::lifters() {
     std::lock_guard hold(lock);
     if (!lifters_) {
-        const stdfs::path bin = config.path("decompiler_bin").value_or(config.checkout_root() / "native" / "decompiler" / "build" / "bin");
-        const std::optional<std::string> languages = fs::get_env("CB_LANGUAGES_DIR");
-        const stdfs::path folder = languages && !languages->empty() ? fs::from_text(*languages) : config.checkout_root() / "native" / "decompiler" / "languages";
-        lifters_ = std::make_unique<emulate::pcode::LifterSet>(emulate::pcode::PcodeConfig::from_environment(bin, folder));
+        lifters_ = std::make_unique<emulate::pcode::LifterSet>(emulate::pcode::PcodeConfig::from_environment(
+            decompile::decompiler::engine_bin(config), decompile::decompiler::languages(config)));
     }
     std::error_code ec;
     return stdfs::exists(lifters_->config().exe, ec) ? lifters_.get() : nullptr;

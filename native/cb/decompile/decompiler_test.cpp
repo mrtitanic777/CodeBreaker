@@ -709,7 +709,7 @@ CB_TEST("decompile.decompiler.settings", [] {
     cb::fs::write_text(dir.path() / "settings.json", R"({"decompiler_bin": "tools/bin", "struct_recovery": "32", "threads": 4})");
     const dc::Settings s = dc::Settings::from_config(cb::config::Config::load(dir.path()));
     CB_CHECK(cb::fs::same_path(s.program, dir.path() / "tools" / "bin" / "decompiler.exe"));
-    CB_CHECK(cb::fs::same_path(s.languages, dir.path() / "native" / "decompiler" / "languages") || cb::fs::get_env("CB_LANGUAGES_DIR").has_value());
+    CB_CHECK(cb::fs::same_path(s.languages, dir.path() / "native" / "cb" / "decompile" / "engine" / "languages") || cb::fs::get_env("CB_LANGUAGES_DIR").has_value());
     CB_CHECK(cb::fs::same_path(s.checkout, dir.path()));
     CB_CHECK_EQ(s.struct_recovery, "32");
     CB_CHECK_EQ(s.threads, "4");

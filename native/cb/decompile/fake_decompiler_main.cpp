@@ -1,4 +1,4 @@
-// fake_decompiler_main.cpp -- TEST ONLY: stands in for native/decompiler/decompiler.exe in decompiler_test.cpp (cb_fake_decompiler.exe, built
+// fake_decompiler_main.cpp -- TEST ONLY: stands in for decompile/engine/decompiler.exe in decompiler_test.cpp (cb_fake_decompiler.exe, built
 // beside the tests). It reads a description the way the real program does (`F <hex> <name> ...` lines; `--at <hex>...` limits it to those),
 // writes a block for each function -- the line `/*@@ <name> <hex> */`, notes, a C body -- and can be told, by environment variables, to
 // behave as the real one does at its worst:

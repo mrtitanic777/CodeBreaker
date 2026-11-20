@@ -628,15 +628,12 @@ CB_TEST("emulate.windows16.the_run_record_carries_what_the_judge_compares", [] {
 
 namespace {
 
-// pcodecheck as the pcode tests find it: the environment's, else native/decompiler/build/bin of the checkout (a worktree's build is in the main one).
+// pcodecheck as the pcode tests find it: the environment's, else the one built beside the tests.
 std::filesystem::path w16shadow_pcodecheck() {
     if (auto env = fs::get_env("CB_PCODECHECK"); env && !env->empty()) return *env;
-    sfs::path dir = sfs::path(CB_SOURCE_DIR);
-    for (int i = 0; i < 6 && !dir.empty(); ++i, dir = dir.parent_path()) {
-        const sfs::path exe = dir / "native" / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-        if (sfs::exists(exe)) return exe;
-    }
-    return {};
+    // (the one build puts pcodecheck.exe beside the test program)
+    const sfs::path beside = cb::fs::executable_path().parent_path() / "pcodecheck.exe";
+    return sfs::exists(beside) ? beside : sfs::path();
 }
 
 // What the judge compares of a run: its end, steps, the calls out, the writes, the registers it hands back.
@@ -660,10 +657,10 @@ std::string w16shadow_seen(const Run& r) {
 CB_TEST("emulate.windows16.a_run_with_its_shadow_is_the_same_run", [] {
     const sfs::path exe = w16shadow_pcodecheck();
     if (exe.empty()) {
-        std::cerr << "windows16 shadow test: no pcodecheck (native/decompiler); skipped\n";
+        std::cerr << "windows16 shadow test: no pcodecheck (decompile/engine); skipped\n";
         return;
     }
-    pcode::LifterSet lifters(pcode::PcodeConfig::from_environment(exe.parent_path(), sfs::path(CB_SOURCE_DIR) / "decompiler" / "languages"));
+    pcode::LifterSet lifters(pcode::PcodeConfig::from_environment(exe.parent_path(), sfs::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages"));
     if (lifters.get(pcode::Mode::X86Real16) == nullptr) {
         std::cerr << "windows16 shadow test: no x86 real-mode lift; skipped\n";
         return;

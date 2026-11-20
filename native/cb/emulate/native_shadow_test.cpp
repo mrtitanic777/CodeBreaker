@@ -149,14 +149,9 @@ namespace {
 
 sfs::path find_pcodecheck() {
     if (auto env = fs::get_env("CB_PCODECHECK"); env && !env->empty()) return *env;
-    sfs::path dir = sfs::path(CB_SOURCE_DIR);
-    for (int i = 0; i < 6 && !dir.empty(); ++i, dir = dir.parent_path()) {
-        const sfs::path exe = dir / "native" / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-        if (sfs::exists(exe)) return exe;
-        const sfs::path direct = dir / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-        if (sfs::exists(direct)) return direct;
-    }
-    return {};
+    // (the one build puts pcodecheck.exe beside the test program)
+    const sfs::path beside = cb::fs::executable_path().parent_path() / "pcodecheck.exe";
+    return sfs::exists(beside) ? beside : sfs::path();
 }
 
 Place register_input(const std::string& name, std::uint64_t value) {
@@ -193,7 +188,7 @@ std::shared_ptr<const Run> follow(pcode::Lifter& lifter, std::uint64_t eax, std:
 
 CB_TEST("emulate.native_shadow.follows_a_compare_and_jump", [] {
     const sfs::path exe = find_pcodecheck();
-    const sfs::path languages = sfs::path(CB_SOURCE_DIR) / "decompiler" / "languages";
+    const sfs::path languages = sfs::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages";
     if (exe.empty() || !sfs::exists(languages / "x86.sla")) {
         std::cerr << "native_shadow tests: pcodecheck is not built here; the live run is skipped\n";
         return;

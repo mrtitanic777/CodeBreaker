@@ -30,5 +30,7 @@ if exist "%OUT%\codebreaker.exe" (
 )
 copy /y "%B%\bin\codebreaker.exe" "%OUT%\codebreaker.exe" >nul || exit /b 1
 for %%D in (unicorn capstone libz3) do copy /y "%B%\bin\%%D.dll" "%OUT%\" >nul
+rem the decompiler engine's programs, which the program starts from beside itself
+for %%P in (decompiler pcodecheck) do copy /y "%B%\bin\%%P.exe" "%OUT%\" >nul
 echo installed %OUT%\codebreaker.exe
 exit /b 0

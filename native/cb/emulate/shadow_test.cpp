@@ -31,25 +31,20 @@ namespace {
 
 sfs::path sh_find_exe() {
     if (auto env = cb::fs::get_env("CB_PCODECHECK"); env && !env->empty()) return *env;
-    sfs::path dir = sfs::path(CB_SOURCE_DIR);
-    for (int i = 0; i < 6 && !dir.empty(); ++i, dir = dir.parent_path()) {
-        const sfs::path exe = dir / "native" / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-        if (sfs::exists(exe)) return exe;
-        const sfs::path direct = dir / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-        if (sfs::exists(direct)) return direct;
-    }
-    return {};
+    // (the one build puts pcodecheck.exe beside the test program)
+    const sfs::path beside = cb::fs::executable_path().parent_path() / "pcodecheck.exe";
+    return sfs::exists(beside) ? beside : sfs::path();
 }
 
 // The ppc-be-64 lifter, or null when this machine has none.
 pcode::Lifter* sh_lifter() {
-    static pcode::LifterSet set(pcode::PcodeConfig{sh_find_exe(), sfs::path(CB_SOURCE_DIR) / "decompiler" / "languages"});
+    static pcode::LifterSet set(pcode::PcodeConfig{sh_find_exe(), sfs::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages"});
     static const bool have = !sh_find_exe().empty();
     return have ? set.get(pcode::Mode::PpcBe64) : nullptr;
 }
 
 pcode::Lifter* sh_x86_lifter() {
-    static pcode::LifterSet set(pcode::PcodeConfig{sh_find_exe(), sfs::path(CB_SOURCE_DIR) / "decompiler" / "languages"});
+    static pcode::LifterSet set(pcode::PcodeConfig{sh_find_exe(), sfs::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages"});
     static const bool have = !sh_find_exe().empty();
     return have ? set.get(pcode::Mode::X86Flat32) : nullptr;
 }

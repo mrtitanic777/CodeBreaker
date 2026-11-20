@@ -1,5 +1,4 @@
-/* zcrc32.c -- zlib's crc32(), for the zlib copy formats.dll compiles (native/decompiler's carries no
-   crc32.c).  Only a gzip stream checks it; MSZIP is raw deflate, so this is never on a hot path. */
+/* zcrc32.c -- zlib's crc32(), for this zlib copy (it carries no crc32.c).  Only a gzip stream checks it; MSZIP is raw deflate, so this is never on a hot path. */
 #include "zlib.h"
 
 uLong ZEXPORT crc32(uLong crc, const Bytef *buf, uInt len) {

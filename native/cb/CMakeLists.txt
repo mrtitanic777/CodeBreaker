@@ -152,16 +152,16 @@ endfunction()
 # cb::formats::lzx use its decoder as the independent oracle.
 include("${CMAKE_CURRENT_LIST_DIR}/formats/xex/CMakeLists.txt")
 
-# zlib 1.3.1 (MSZIP): the copy native/decompiler carries (as native/formats compiles it), with crc32() from
-# native/formats/core/zcrc32.c; a C library compiled as it is.
+# zlib 1.3.1 (MSZIP; third_party/zlib, with crc32() from its zcrc32.c): the program's and the decompiler engine's; a C
+# library compiled as it is.
 enable_language(C)
 if(WIN32)
   enable_language(RC)   # (codebreaker.exe's icon and version information: app/codebreaker.rc)
 endif()
-file(GLOB CB_ZLIB_SOURCES CONFIGURE_DEPENDS "${CB_NATIVE_ROOT}/decompiler/core/zlib/*.c")
-add_library(cb_zlib STATIC ${CB_ZLIB_SOURCES} "${CB_NATIVE_ROOT}/formats/core/zcrc32.c")
+file(GLOB CB_ZLIB_SOURCES CONFIGURE_DEPENDS "${CB_THIRD_PARTY}/zlib/*.c")
+add_library(cb_zlib STATIC ${CB_ZLIB_SOURCES})
 set_target_properties(cb_zlib PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-target_include_directories(cb_zlib PUBLIC "${CB_NATIVE_ROOT}/decompiler/core/zlib")
+target_include_directories(cb_zlib PUBLIC "${CB_THIRD_PARTY}/zlib")
 target_compile_options(cb_zlib PRIVATE ${CB_FLAGS_QUIET})
 target_compile_definitions(cb_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
 
@@ -239,6 +239,9 @@ cb_area(java)
 target_link_libraries(cb_java PUBLIC cb_core cb_base cb_translate cb_decompile PRIVATE cb_zlib)   # (cb_base: the configuration the tools are made from; cb_decompile: the Minecraft decompiler of `java decompile` -- static libraries may be cyclic)
 
 
+# The decompiler engine (decompile/engine): cb_decompiler, and decompiler.exe and pcodecheck.exe, which cb::decompile and
+# cb::emulate::pcode start (they are built beside the program and its tests).
+include("${CMAKE_CURRENT_LIST_DIR}/decompile/engine/CMakeLists.txt")
 cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_build cb_translate cb_symbols cb_knowledge)   # (cb_symbols, cb_knowledge, cb_base: environment.cpp reads the argument sizes, ordinal and driver tables the base keeps; cb_platforms: the Capstone decoder; cb_analyze: the DOS functions; cb_build: the relocation places of a data segment; cb_translate: the L2 library client and the module model c_text writes)
 
@@ -383,7 +386,7 @@ add_executable(cb_source_commands EXCLUDE_FROM_ALL source/commands_main.cpp)
 cb_apply_flags(cb_source_commands)
 target_link_libraries(cb_source_commands PRIVATE cb_source cb_core)
 cb_copy_prebuilt_dlls(cb_source_commands)
-add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker cb_observe_worker)
+add_dependencies(cb_tests cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker cb_observe_worker decompiler pcodecheck)
 if(NOT WIN32)
   # (the tests name these helper programs with .exe, as on Windows; an ELF file takes any name)
   set_target_properties(cb_worker_probe cb_fake_qemu cb_fake_decompiler cb_lane_worker cb_observe_worker PROPERTIES SUFFIX ".exe")
@@ -407,6 +410,7 @@ endif()
 cb_apply_flags(codebreaker)
 target_link_libraries(codebreaker PRIVATE cb_app cb_core)
 cb_copy_prebuilt_dlls(codebreaker)
+add_dependencies(codebreaker decompiler pcodecheck)   # (the programs it starts, beside it)
 
 # exe_gate: runs the real codebreaker.exe on the command cases of tests/exe_gate and compares goldens (tools\gate.cmd).
 add_executable(cb_exe_gate EXCLUDE_FROM_ALL app/exe_gate_main.cpp app/gate_changed.cpp)

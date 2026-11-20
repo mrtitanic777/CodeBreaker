@@ -8,7 +8,7 @@
 // The judge's path explorer follows what an instruction does to the values made from a function's inputs. What an
 // instruction does is already written down once, and checked against the processor instruction by instruction
 // (docs/SLEIGH_VERIFY.md): the specification the decompiler lifts with. So the explorer asks for the same p-code --
-// native/decompiler/pcodecheck.cc in its lift mode, one long-running process per Lifter, every instruction lifted
+// decompile/engine/pcodecheck.cc in its lift mode, one long-running process per Lifter, every instruction lifted
 // once (kept by its bytes and offset).
 //
 // An op is (opcode, out, inputs): a varnode is (space, offset, size); a user operation's first input is its name.
@@ -114,7 +114,7 @@ private:
 // Where the lifting program and the specifications are.
 struct PcodeConfig {
     std::filesystem::path exe;            // pcodecheck.exe
-    std::filesystem::path languages;      // the folder of the .sla files (native/decompiler/languages)
+    std::filesystem::path languages;      // the folder of the .sla files (decompile/engine/languages)
 
     // CB_PCODECHECK names the program when it is set, else `decompiler_bin`/pcodecheck.exe.
     static PcodeConfig from_environment(const std::filesystem::path& decompiler_bin,

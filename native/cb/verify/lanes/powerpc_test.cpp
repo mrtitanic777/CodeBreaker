@@ -258,18 +258,14 @@ CB_TEST("verify.lanes.powerpc.the_guided_search_finds_the_input_that_takes_the_o
     CB_CHECK(std::ranges::any_of(found, [](const Vector& v) { return v.args[0] == 5; }));
 });
 
-// The ppc-be-64 lifter of the machine's pcodecheck (CB_PCODECHECK, or the main checkout's build), or none.
+// The ppc-be-64 lifter of the machine's pcodecheck (CB_PCODECHECK, or the one built beside the tests), or none.
 emulate::pcode::Lifter* ppc_lifter_here() {
     static const std::optional<emulate::pcode::PcodeConfig> config = []() -> std::optional<emulate::pcode::PcodeConfig> {
         if (const auto env = fs::get_env("CB_PCODECHECK"); env && !env->empty()) {
-            return emulate::pcode::PcodeConfig{fs::from_text(*env), std::filesystem::path(CB_SOURCE_DIR) / "decompiler" / "languages"};
+            return emulate::pcode::PcodeConfig{fs::from_text(*env), std::filesystem::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages"};
         }
-        try {
-            const std::filesystem::path root = config::Config::load(config::current().main_checkout()).checkout_root();
-            const std::filesystem::path exe = root / "native" / "decompiler" / "build" / "bin" / "pcodecheck.exe";
-            if (std::filesystem::is_regular_file(exe)) return emulate::pcode::PcodeConfig{exe, root / "native" / "decompiler" / "languages"};
-        } catch (const Error&) {   // (no configuration to read: no lifter)
-        }
+        const std::filesystem::path exe = fs::executable_path().parent_path() / "pcodecheck.exe";
+        if (std::filesystem::is_regular_file(exe)) return emulate::pcode::PcodeConfig{exe, std::filesystem::path(CB_SOURCE_DIR) / "cb" / "decompile" / "engine" / "languages"};
         return std::nullopt;
     }();
     static emulate::pcode::LifterSet set(config.value_or(emulate::pcode::PcodeConfig{}));

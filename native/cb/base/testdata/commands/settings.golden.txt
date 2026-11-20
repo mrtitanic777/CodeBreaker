@@ -5,7 +5,7 @@ settings: <ROOT>/settings.json
   !! converted        <ROOT>/Converted
      corpora          win95=corp95, win98=corp98
   !! corpus           <ROOT>/corp95
-  !! decompiler_bin   <ROOT>/native/decompiler/build/bin
+  -- decompiler_bin   (not set)
   -- dosbox_x         (not set)
   !! engine_bin       <ROOT>/native/engine/build/bin
   !! formats_bin      <ROOT>/native/formats/build/bin

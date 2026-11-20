@@ -111,7 +111,7 @@ Record read_record(std::string_view data) {
 Record scan_tree(const stdfs::path& repo, const Record* previous, const std::map<std::string, std::string>& extra) {
     Record out;
     const stdfs::path native = repo / "native";
-    for (const char* dir : {"native/cb", "native/decompiler",
+    for (const char* dir : {"native/cb",
                             "native/formats/core", "data", "tests"})
         walk(repo, repo / dir, true, previous, out, extra);
     walk(repo, native, false, previous, out, extra);   // native/CMakeLists.txt and the *.cmake beside it
@@ -278,8 +278,6 @@ Selection select(const std::vector<std::string>& changed) {
             } else {
                 s.areas.insert(area);
             }
-        } else if (starts(path, "native/decompiler/")) {
-            s.areas.insert("decompile");   // the program the decompile area starts (and the languages its cache keys read)
         } else if (starts(path, "data/")) {
             const std::string rest = path.substr(5);
             const std::size_t slash = rest.find('/');
