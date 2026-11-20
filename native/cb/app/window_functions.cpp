@@ -141,8 +141,10 @@ CompareLayout compute_compare_layout(const Layout& l, const Model&) {
     c.c_pane = {p.x + pw + 12, py, pw, ph};
     for (Rect* pane : {&c.asm_pane, &c.c_pane}) {
         const bool left = pane == &c.asm_pane;
-        (left ? c.asm_head : c.c_head) = {pane->x, pane->y, pane->w, 34};
-        (left ? c.asm_code : c.c_code) = {pane->x + 14, pane->y + 34 + 10, wf_clamp_pos(pane->w - 28), wf_clamp_pos(pane->h - 34 - 18)};
+        Rect& head = left ? c.asm_head : c.c_head;
+        Rect& code = left ? c.asm_code : c.c_code;
+        head = Rect{pane->x, pane->y, pane->w, 34};
+        code = Rect{pane->x + 14, pane->y + 34 + 10, wf_clamp_pos(pane->w - 28), wf_clamp_pos(pane->h - 34 - 18)};
     }
     c.visible_lines = std::max(1, static_cast<int>(c.asm_code.h / kCodeLineHeight));
     return c;

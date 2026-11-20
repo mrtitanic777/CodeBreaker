@@ -28,7 +28,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      - name: The one build (toolsuild_native.cmd)
+      - name: The one build (tools/build_native.cmd)
         shell: cmd
         run: tools\build_native.cmd
       - name: codebreaker.exe and the unit tests
@@ -52,10 +52,12 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+      # (the runner's Visual Studio STL asks for a newer Clang than the clang-cl it ships: STL1000; the STL's own switch
+      # lets the bundled one build, which is the compiler this job proves the code with)
       - name: codebreaker.exe and the unit tests (clang-cl)
         shell: cmd
         run: |
-          cmake -S native -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl || exit /b 1
+          cmake -S native -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl "-DCMAKE_CXX_FLAGS=-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH" || exit /b 1
           cmake --build build-clang --target codebreaker cb_tests -j 4 || exit /b 1
       - name: Unit tests
         shell: cmd
