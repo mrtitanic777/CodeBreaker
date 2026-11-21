@@ -9,7 +9,8 @@ namespace cb::translate::registry {
 void register_c_back_end(Registry& r) {
     r.add(BackEnd{"c",
                   "backends/c_java",
-                  {{"java", "javajudge", "Shapes, Generics, Bank and TextStats run alike as Java and as C11; Streams is refused", {"jdk", "cxx"}, false}}});
+                  {{"java", "translate_file", "builds the C translation, runs it beside the Java program (javac and the JVM), and compares what they print and their exit code",
+                    {"jdk", "cc"}, true}}});
 }
 
 // The C++03 back end writes a Java conversion's bodies; C# reaches it through the Java declaration skeleton (dotnet/cs2cpp).

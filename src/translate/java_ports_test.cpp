@@ -1514,6 +1514,7 @@ void corpus_runs_as_the_jvm(const std::string& name, const std::string& main_cla
 
 CB_TEST("java.corpus.sample_runs_as_the_jvm_in_cpp17_and_c", [] { corpus_runs_as_the_jvm("sample", "sample.FixtureMain"); });
 CB_TEST("java.corpus.t03_runs_as_the_jvm_in_cpp17_and_c", [] { corpus_runs_as_the_jvm("t03", "T03Main", "T03Main"); });
+CB_TEST("java.corpus.streams_runs_as_the_jvm_in_cpp17_and_c", [] { corpus_runs_as_the_jvm("streams", "Streams"); });
 
 // Tally.java converted by the transpiler for C++17 and for C++03: the C++17 text has a
 // range-for, the switch expression as a lambda and `auto*` for a new; neither has a gap; the C++17 text compiles (-fsyntax-only).

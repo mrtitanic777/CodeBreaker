@@ -71,7 +71,7 @@ CB_TEST("translate.registry.the_standard_registry_holds_every_front_end_and_back
 
 CB_TEST("translate.registry.the_published_paths_are_the_table_written_by_hand_before", [] {
     const std::vector<cap::Path>& paths = cap::paths();
-    CB_CHECK_EQ(paths.size(), std::size_t{3});
+    CB_CHECK_EQ(paths.size(), std::size_t{4});
     CB_CHECK(paths[0].from == "csharp" && paths[0].to == "cpp17" && paths[0].judge == "judge-cs-cpp");
     CB_CHECK_EQ(paths[0].proof,
                 "builds the C++17 translation, runs it beside the C# program (csc and the installed .NET), and compares what they print and their exit code");
@@ -79,9 +79,12 @@ CB_TEST("translate.registry.the_published_paths_are_the_table_written_by_hand_be
     CB_CHECK(paths[1].from == "csharp" && paths[1].to == "csharp" && paths[1].judge == "judge-cs-cpp");
     CB_CHECK_EQ(paths[1].proof, "writes the program as C# again, runs both (csc and the installed .NET), and compares what they print and their exit code");
     CB_CHECK((paths[1].needs == std::vector<std::string>{"dotnet"}));
-    CB_CHECK(paths[2].from == "python" && paths[2].to == "cpp17" && paths[2].judge == "judge-py-cpp");
-    CB_CHECK_EQ(paths[2].proof, "builds the C++17 translation, runs it beside the Python module (CPython), and compares the answer of every run_* function");
-    CB_CHECK((paths[2].needs == std::vector<std::string>{"python", "cxx", "l2"}));
+    CB_CHECK(paths[2].from == "java" && paths[2].to == "c" && paths[2].judge == "translate_file");
+    CB_CHECK_EQ(paths[2].proof, "builds the C translation, runs it beside the Java program (javac and the JVM), and compares what they print and their exit code");
+    CB_CHECK((paths[2].needs == std::vector<std::string>{"jdk", "cc"}));
+    CB_CHECK(paths[3].from == "python" && paths[3].to == "cpp17" && paths[3].judge == "judge-py-cpp");
+    CB_CHECK_EQ(paths[3].proof, "builds the C++17 translation, runs it beside the Python module (CPython), and compares the answer of every run_* function");
+    CB_CHECK((paths[3].needs == std::vector<std::string>{"python", "cxx", "l2"}));
 });
 
 CB_TEST("translate.registry.the_published_languages_are_the_table_written_by_hand_before", [] {

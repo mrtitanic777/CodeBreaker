@@ -370,7 +370,7 @@ typedef struct jrt_IntConsumer_vt { jobject_vt base; void (*accept)(jobject*, in
 #define jrt_Comparable_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
 
 /* ---- collections (ArrayList, the immutable List.of, HashMap/LinkedHashMap/TreeMap, HashSet/LinkedHashSet/TreeSet) */
-typedef struct jrt_ArrayList { jobject hdr; int32_t size, cap; jobject** items; bool immutable; } jrt_ArrayList;
+typedef struct jrt_ArrayList { jobject hdr; int32_t size, cap; jobject** items; bool immutable, fixed; } jrt_ArrayList;   /* fixed: Arrays.asList, over its array */
 typedef struct jrt_node { jobject hdr; jobject* key; jobject* value; int32_t hash; struct jrt_node* next; struct jrt_node* after; struct jrt_node* before; } jrt_node;
 typedef struct jrt_HashMap { jobject hdr; jrt_node** table; int32_t cap, count; int kind; jrt_node* head; jrt_node* tail; jobject* cmp; } jrt_HashMap;
 typedef struct jrt_MapSet { jobject hdr; jrt_HashMap* m; int kind; } jrt_MapSet;   /* 0 keys 1 values 2 entries; a HashSet is kind 0 */
@@ -379,6 +379,12 @@ jobject* jrt_ArrayList_new_(void);
 jobject* jrt_ArrayList_new_I(int32_t n);
 jobject* jrt_ArrayList_new_O(jobject* c);
 jobject* jrt_List_of(int n, ...);
+jobject* jrt_Arrays_asList_OA(jarray* a);
+void jrt_Iterable_forEach_O(jobject* c, jobject* f);
+#define jrt_Collection_forEach_O jrt_Iterable_forEach_O
+#define jrt_List_forEach_O jrt_Iterable_forEach_O
+#define jrt_Set_forEach_O jrt_Iterable_forEach_O
+#define jrt_ArrayList_forEach_O jrt_Iterable_forEach_O
 bool jrt_Collection_add_O(jobject* c, jobject* x);
 int32_t jrt_Collection_size_(jobject* c);
 bool jrt_Collection_isEmpty_(jobject* c);
@@ -493,6 +499,48 @@ jobject* jrt_Collectors_counting_(void);
 jobject* jrt_Collectors_summingInt_O(jobject* f);
 jobject* jrt_Collectors_groupingBy_O(jobject* key);
 jobject* jrt_Collectors_groupingBy_OO(jobject* key, jobject* down);
+jobject* jrt_Stream_findFirst_(jobject* s);
+#define jrt_Stream_findAny_ jrt_Stream_findFirst_
+jobject* jrt_Stream_min_O(jobject* s, jobject* c);
+jobject* jrt_Stream_max_O(jobject* s, jobject* c);
+jobject* jrt_Stream_reduce_O(jobject* s, jobject* f);
+jobject* jrt_IntStream_iterate_IO(int32_t seed, jobject* f);
+jobject* jrt_IntStream_findFirst_(jobject* s);
+#define jrt_IntStream_findAny_ jrt_IntStream_findFirst_
+jobject* jrt_IntStream_min_(jobject* s);
+jobject* jrt_IntStream_max_(jobject* s);
+jobject* jrt_IntStream_average_(jobject* s);
+
+/* ---- Optional, OptionalInt, OptionalDouble */
+jobject* jrt_Optional_of_O(jobject* v);
+jobject* jrt_Optional_ofNullable_O(jobject* v);
+jobject* jrt_Optional_empty_(void);
+bool jrt_Optional_isPresent_(jobject* o);
+bool jrt_Optional_isEmpty_(jobject* o);
+jobject* jrt_Optional_get_(jobject* o);
+#define jrt_Optional_orElseThrow_ jrt_Optional_get_
+jobject* jrt_Optional_orElse_O(jobject* o, jobject* other);
+jobject* jrt_Optional_orElseGet_O(jobject* o, jobject* f);
+jobject* jrt_Optional_map_O(jobject* o, jobject* f);
+jobject* jrt_Optional_filter_O(jobject* o, jobject* p);
+void jrt_Optional_ifPresent_O(jobject* o, jobject* f);
+bool jrt_OptionalInt_isPresent_(jobject* o);
+int32_t jrt_OptionalInt_getAsInt_(jobject* o);
+int32_t jrt_OptionalInt_orElse_I(jobject* o, int32_t other);
+bool jrt_OptionalDouble_isPresent_(jobject* o);
+double jrt_OptionalDouble_getAsDouble_(jobject* o);
+double jrt_OptionalDouble_orElse_D(jobject* o, double other);
+
+/* ---- Comparator's factories and combinators */
+jobject* jrt_Comparator_naturalOrder_(void);
+jobject* jrt_Comparator_reverseOrder_(void);
+jobject* jrt_Comparator_comparing_O(jobject* key);
+jobject* jrt_Comparator_comparing_OO(jobject* key, jobject* by);
+jobject* jrt_Comparator_comparingInt_O(jobject* key);
+jobject* jrt_Comparator_reversed_(jobject* c);
+jobject* jrt_Comparator_thenComparing_O(jobject* c, jobject* next);   /* next: a Comparator or a key Function */
+jobject* jrt_Comparator_thenComparing_OO(jobject* c, jobject* key, jobject* by);
+jobject* jrt_Comparator_thenComparingInt_O(jobject* c, jobject* key);
 
 /* ---- enums */
 typedef struct jrt_Enum { jobject hdr; jstring* name; int32_t ordinal; } jrt_Enum;

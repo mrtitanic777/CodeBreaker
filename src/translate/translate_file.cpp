@@ -7,7 +7,11 @@
 #include "core/arena.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "core/process.hpp"
 #include "core/text.hpp"
+#include "decompile/jar.hpp"
+#include "java/frontend.hpp"
+#include "translate/backends/c_java.hpp"
 #include "translate/backends/csharp.hpp"
 #include "translate/dotnet/judge.hpp"
 #include "translate/dotnet/pairs.hpp"
@@ -173,10 +177,149 @@ Result tf_python_cpp17(const stdfs::path& input, const stdfs::path& out, const s
     return result;
 }
 
+// ---- Java -> C ---------------------------------------------------------------------------------------------------------------------------------
+
+// The top-level class of the file whose main runs: the one named for the file, else the only one with a main. Empty when that does not settle it.
+struct JavaMain {
+    std::string simple, binary;   // as the C program's JRT_MAIN names it, and as the JVM does
+    std::size_t found = 0;
+};
+
+JavaMain tf_java_main(std::span<ir::Node* const> units, const std::string& stem) {
+    JavaMain chosen, named;
+    for (ir::Node* node : units) {
+        const auto* unit = ir::get<ir::Unit>(node);
+        if (unit == nullptr) continue;
+        for (ir::Node* type : unit->types) {
+            const auto* cls = ir::get<ir::ClassDecl>(type);
+            if (cls == nullptr || !cls->name) continue;
+            const bool has_main = std::any_of(cls->members.begin(), cls->members.end(), [](ir::Node* member) {
+                const auto* m = ir::get<ir::MethodDecl>(member);
+                return m != nullptr && m->name == "main" && m->sym && m->sym->is_static && m->params.size() == 1;
+            });
+            if (!has_main) continue;
+            ++chosen.found;
+            const std::string binary = unit->package && !unit->package->empty() ? *unit->package + "." + *cls->name : *cls->name;
+            chosen.simple = *cls->name;
+            chosen.binary = binary;
+            if (*cls->name == stem) named = JavaMain{*cls->name, binary, 1};
+        }
+    }
+    if (!named.simple.empty()) return named;
+    if (chosen.found > 1) chosen.simple.clear();
+    return chosen;
+}
+
+// What a program printed, with Windows' line ends as Java's own, and how it ended.
+struct JavaRun {
+    std::string out;
+    std::uint32_t exit_code = 0;
+    bool timed_out = false;
+};
+
+JavaRun tf_java_run(process::ProcessSpec spec) {
+    spec.timeout = std::chrono::seconds(120);
+    const process::ProcessResult ran = process::run(spec);
+    return {text::replace_all(text::sanitize_utf8(as_text(ran.out)), "\r\n", "\n"), ran.exit_code, ran.timed_out};
+}
+
+Result tf_java_c(const stdfs::path& input, const stdfs::path& out, const stdfs::path& work, const judge_cs_cpp::Environment& environment) {
+    const auto java = decompile::jar::find_java({});
+    if (!java) throw Error("translating Java needs a JDK (java and javac): none found");
+    const stdfs::path javac = java->parent_path() / (java->extension() == ".exe" ? "javac.exe" : "javac");
+    if (!stdfs::is_regular_file(javac)) throw Error("translating Java needs a JDK: no javac beside " + fs::to_text(*java));
+    const judge_cs_cpp::Observer& watch = environment.observer;
+    const auto translating = [&watch](std::uint64_t done, std::uint64_t total, std::string_view what) {
+        if (watch.translating) watch.translating(done, total, what);
+    };
+    const auto checking = [&watch](std::uint64_t done, std::uint64_t total, std::string_view what) {
+        if (watch.checking) watch.checking(done, total, what);
+    };
+    const std::string name = fs::to_text(input.stem());
+    const stdfs::path judged = work / "judge";
+    const stdfs::path source = judged / "src" / input.filename();
+    fs::make_dirs(source.parent_path());
+    fs::write_file(source, fs::read_file(input));
+    Result result;
+
+    translating(0, 0, fs::to_text(input.filename()));
+    process::ProcessSpec compile;   // the original first: a program javac refuses has nothing to be compared with
+    compile.argv = {fs::to_text(javac), "-nowarn", "-encoding", "UTF-8", "-d", fs::to_text(judged / "classes"), fs::to_text(source)};
+    compile.err = process::Capture::Merge;
+    compile.timeout = std::chrono::seconds(300);
+    const process::ProcessResult compiled = process::run(compile);
+    if (compiled.exit_code != 0) {
+        result.verdict = Verdict::BadInput;
+        result.detail = "front end: javac: " + text::sanitize_utf8(as_text(compiled.out)).substr(0, 400);
+        return result;
+    }
+    Arena arena;
+    const java::frontend::DumpTools tools{*java, javac, environment.config.checkout_root() / "config" / "translate" / "frontends" / "java" / "TreeDump.java",
+                                          environment.config.state(), {}};
+    std::vector<ir::Node*> units = java::frontend::lower_program(arena, source.parent_path(), tools);
+    const JavaMain main_class = tf_java_main(units, name);
+    if (main_class.simple.empty()) {
+        result.verdict = Verdict::BadInput;
+        result.detail = main_class.found == 0 ? "this file has no main method. CodeBreaker proves a Java translation by running the program and its translation, "
+                                                "and comparing what they print; with no main there is nothing to run"
+                                              : "this file has several classes with a main and none named for the file, so which one to run is not known";
+        return result;
+    }
+    const backends::c_java::Built built = backends::c_java::build(arena, units, judged / "c");
+    if (!built.exe) {
+        result.verdict = built.why.starts_with("Decline:") ? Verdict::Refused : Verdict::CompileFailed;
+        result.detail = built.why;
+        return result;
+    }
+    translating(1, 1, {});
+
+    checking(0, 3, "Running the Java program");
+    process::ProcessSpec jvm;
+    jvm.argv = {fs::to_text(*java), "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-cp", fs::to_text(judged / "classes"), main_class.binary};
+    const JavaRun original = tf_java_run(jvm);
+    if (original.timed_out) {
+        result.verdict = Verdict::BadInput;
+        result.detail = "the Java program did not finish in two minutes";
+        return result;
+    }
+    checking(1, 3, "Running the translation");
+    process::ProcessSpec native;
+    native.argv = {fs::to_text(*built.exe)};
+    native.env["JRT_MAIN"] = main_class.simple;
+    const JavaRun translation = tf_java_run(native);
+    checking(2, 3, "Comparing what both print");
+    if (translation.timed_out || translation.exit_code != original.exit_code || translation.out != original.out) {
+        result.verdict = Verdict::Differs;
+        if (translation.timed_out) {
+            result.detail = "the translation did not finish in two minutes";
+        } else if (translation.exit_code != original.exit_code) {
+            result.detail = std::format("Java exited with {}, the translation with {}", original.exit_code, translation.exit_code);
+        } else {
+            const auto first = std::mismatch(original.out.begin(), original.out.end(), translation.out.begin(), translation.out.end());
+            const auto line = 1 + std::count(original.out.begin(), first.first, '\n');
+            result.detail = std::format("what they print first differs on line {}", line);
+        }
+        return result;
+    }
+    checking(3, 3, {});
+    result.verdict = Verdict::Agrees;
+    tf_copy(judged / "c" / "program.c", out / (name + ".c"), result.files, out);
+    const stdfs::path runtime = backends::c_java::default_runtime_dir();
+    for (const char* file : {"jrt.h", "jrt.c"}) tf_copy(runtime / file, out / "runtime" / file, result.files, out);
+    const stdfs::path note = out / "BUILD.txt";
+    fs::write_text(note, "The C translation of " + name + ".java.\n\nIt builds with a C11 compiler; the runtime it needs is in runtime/.\n\n"
+                         "  gcc -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + " -lm\n"
+                         "  clang -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + "\n");
+    result.files.push_back(stdfs::relative(note, out));
+    result.checked = "The Java program and its C translation printed the same output and exited with the same code.";
+    return result;
+}
+
 }  // namespace
 
 bool can_run(const capability::Path& path) {
-    return (path.from == "csharp" && (path.to == "cpp17" || path.to == "csharp")) || (path.from == "python" && path.to == "cpp17");
+    return (path.from == "csharp" && (path.to == "cpp17" || path.to == "csharp")) || (path.from == "python" && path.to == "cpp17") ||
+           (path.from == "java" && path.to == "c");
 }
 
 Result run(const capability::Path& path, const stdfs::path& input, const stdfs::path& out, const stdfs::path& work, const judge_cs_cpp::Environment& environment) {
@@ -188,6 +331,7 @@ Result run(const capability::Path& path, const stdfs::path& input, const stdfs::
     if (path.from == "csharp" && path.to == "cpp17") result = tf_csharp_cpp17(absolute_input, out, absolute_work, environment);
     else if (path.from == "csharp" && path.to == "csharp") result = tf_csharp_csharp(absolute_input, out, absolute_work, environment);
     else if (path.from == "python" && path.to == "cpp17") result = tf_python_cpp17(absolute_input, out, absolute_work, environment);
+    else if (path.from == "java" && path.to == "c") result = tf_java_c(absolute_input, out, absolute_work, environment);
     else throw Error("no way to translate " + path.from + " to " + path.to + " is wired");
     if (result.verdict != Verdict::Agrees) result.files.clear();
     return result;

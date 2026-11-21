@@ -122,7 +122,6 @@ CB_TEST("translate.c_java.own.names", [] {
 CB_TEST("translate.c_java.declines.feat", [] { check_declined("feat"); });
 CB_TEST("translate.c_java.declines.minecraft", [] { check_declined("minecraft"); });
 CB_TEST("translate.c_java.declines.modernlib", [] { check_declined("modernlib"); });
-CB_TEST("translate.c_java.declines.streams", [] { check_declined("streams"); });
 
 // The main class names the program's entry when the environment names none.
 CB_TEST("translate.c_java.main_class", [] {

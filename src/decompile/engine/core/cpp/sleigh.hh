@@ -175,6 +175,7 @@ public:
   virtual ~Sleigh(void);				///< Destructor
   void reset(LoadImage *ld,ContextDatabase *c_db);	///< Reset the engine for a new program
   void forgetParses(void);	///< Drop every cached instruction parse (CodeBreaker: the bytes behind an address changed)
+  void forgetContextRange(void) { cache->forget(); }	///< CodeBreaker: the context database was cleared, so the range cached from it is stale
   virtual void initialize(DocumentStorage &store);
   virtual void registerContext(const string &name,int4 sbit,int4 ebit);
   virtual void setContextDefault(const string &nm,uintm val);
