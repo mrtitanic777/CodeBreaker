@@ -320,7 +320,9 @@ CB_TEST("app.convert.a_32_bit_dll_is_disassembled_and_decompiled", [] {
     const std::vector<State> expected = {State::Identifying, State::Opening, State::Disassembling, State::Decompiling, State::Writing, State::Done};
     CB_CHECK(done.stages == expected);
     CB_CHECK(f.percent_never_goes_down());
-    CB_CHECK(stdfs::exists(done.output / "lz32.c"));
+    CB_CHECK(stdfs::exists(done.output / "lz32.h"));   // (its source files, and how far each is known: pe_split)
+    CB_CHECK(stdfs::exists(done.output / "lz32_part01.c"));
+    CB_CHECK(stdfs::exists(done.output / "SOURCE_FILES.txt"));
     CB_CHECK(stdfs::exists(done.output / "lz32.dll.asm"));
     bool counted = false;   // real counts from the decompiler: functions of the total
     for (const Progress& p : f.seen) counted = counted || (p.state == State::Decompiling && p.total > 0 && p.done == p.total);
