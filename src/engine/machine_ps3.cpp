@@ -11,6 +11,7 @@
 #include "emulate/powerpc.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/ps3.hpp"
 #include "formats/ps3.hpp"
@@ -112,7 +113,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
     const std::array<std::uint64_t, 5> args = {static_cast<std::uint32_t>(at(state, "r3")), static_cast<std::uint32_t>(at(state, "r4")), static_cast<std::uint32_t>(at(state, "r5")),
                                                static_cast<std::uint32_t>(at(state, "r6")), static_cast<std::uint32_t>(at(state, "r7"))};
     const std::uint32_t address = static_cast<std::uint32_t>(loaded->program.address_of(entry).value_or(entry));
-    const pw::RunResult run = pw::run({}, address, args, options);
+    const pw::RunResult run = pcode_cpu::call({}, address, args, options);
     const pw::Machine& m = *run.machine;
     std::vector<std::string> changed;
     for (const pw::ByteWrite& w : run.writes) {

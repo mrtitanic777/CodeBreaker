@@ -17,19 +17,16 @@
 #include "decompile/engine/pcode_emulator.hh"
 #include "engine/machine_n3ds.hpp"
 #include "engine/pcode_cpu.hpp"
+#include "engine/pcode_cpu_compare.hpp"
 #include "engine/pcode_cpu_internal.hpp"
 #include "formats/nds.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 using namespace cb;
 namespace stdfs = std::filesystem;
+using engine::pcode_compare::compare_homebrew;
 
 namespace {
-
-struct ArmForced {
-    explicit ArmForced(bool on) { engine::pcode_cpu::force(on); }
-    ~ArmForced() { engine::pcode_cpu::force(std::nullopt); }
-};
 
 // Where in the file a function's first bytes are (the ROM of the Game Boy Advance is mapped at $08000000; a DS program lies at its RAM address).
 std::size_t gba_file_offset(const stdfs::path&, std::uint32_t address) { return address & 0x01FFFFFEu; }
@@ -43,111 +40,6 @@ std::size_t nds_file_offset(const stdfs::path& path, std::uint32_t address) {
 
 // (the 3DS lane's function addresses are file offsets)
 std::size_t n3ds_file_offset(const stdfs::path&, std::uint32_t address) { return address; }
-
-// A lane's homebrew run in every state on both cores, and each function judged against edited copies of the program: the effects and the verdicts must agree.
-void compare_homebrew(const char* kind_name, const char* folder, const char* extension, std::size_t (*file_offset)(const stdfs::path&, std::uint32_t)) {
-    fs::ScopedTempDir dir(std::string("cb_pcode_arm_") + kind_name);
-    std::optional<fs::ScopedEnv> scoped;
-    std::unique_ptr<engine::LaneKit> kit;
-    try {
-        const config::Config config = config::Config::load(config::current().main_checkout());
-        scoped.emplace("CB_STATE", fs::to_text(dir.path() / "state"));
-        kit = std::make_unique<engine::LaneKit>(config::Config::load(config.checkout_root()));
-    } catch (const Error&) {
-        return;
-    }
-    const std::shared_ptr<const verify::lanes::Kind> kind = kit->machine_lane(kind_name);
-    const auto* lane = dynamic_cast<const verify::lanes::ImageLane*>(kind.get());
-    if (lane == nullptr) return;
-    const verify::lanes::ImageLaneSpec& spec = lane->spec();
-    const stdfs::path root = testing::beside_checkout("homebrew-samples");
-    const stdfs::path samples = stdfs::exists(root) ? root : testing::beside_checkout("test-inputs/homebrew-samples");
-    unsigned functions = 0, runs = 0, differ = 0, files = 0, judged = 0, disagree = 0;
-    unsigned verdicts[2][2] = {};
-    double seconds[2] = {0, 0};
-    std::map<std::string, unsigned> reasons;
-    std::map<std::string, std::string> reason_example;
-    std::error_code ec;
-    for (const auto& dirent : stdfs::recursive_directory_iterator(samples / folder, ec)) {
-        if (dirent.path().extension() != extension) continue;
-        if (++files > 16) break;
-        const stdfs::path work = dir.path() / std::to_string(files);
-        stdfs::create_directories(work);
-        std::unique_ptr<verify::lanes::Prepared> prepared;
-        try {
-            prepared = lane->prepare(dirent.path(), work / "work");
-        } catch (const Error&) {
-            continue;
-        }
-        const auto& image = static_cast<const verify::lanes::ImageLane::PreparedImage&>(*prepared);
-        const Bytes original_bytes = fs::read_file(dirent.path());
-        unsigned per_file = 0;
-        const std::optional<std::string> only = fs::get_env("CB_PCODE_ONLY");
-        const unsigned per_file_limit = [] {   // (20 a program; CB_PCODE_FUNCTIONS=<n> for a wider sweep)
-            const auto given = fs::get_env("CB_PCODE_FUNCTIONS");
-            return given && !given->empty() ? static_cast<unsigned>(std::strtoul(given->c_str(), nullptr, 10)) : 20u;
-        }();
-        for (const auto& [address, name] : image.written.functions) {
-            if (per_file++ == per_file_limit) break;
-            if (only && *only != std::format("{:x}", address)) continue;   // (CB_PCODE_ONLY=<hex address>: the one function)
-            ++functions;
-            const std::size_t at = file_offset(dirent.path(), address);
-            for (std::size_t k = 0; k < 3 && at + k < original_bytes.size(); ++k) {   // against copies with one of the function's first three bytes turned over
-                Bytes changed = original_bytes;
-                changed[at + k] ^= 0xFF;
-                const stdfs::path edited = work / ("edited" + std::string(extension));
-                fs::write_file(edited, changed);
-                verify::Judgement j[2];
-                for (int core = 0; core < 2; ++core) {
-                    ArmForced forced(core == 1);
-                    j[core] = lane->judge_function(false, dirent.path(), edited, address);
-                    ++verdicts[core][j[core].verdict == verify::Verdict::Equivalent ? 0 : 1];
-                }
-                ++judged;
-                if (j[0].verdict != j[1].verdict && ++disagree <= 4)
-                    std::printf("  %s: function %x byte +%zu: own core %s (%s), emulator %s (%s)\n", dirent.path().filename().string().c_str(), address, k,
-                                std::string(verify::word(j[0].verdict)).c_str(), j[0].reason.c_str(), std::string(verify::word(j[1].verdict)).c_str(), j[1].reason.c_str());
-            }
-            for (const verify::lanes::State& state : spec.states) {
-                verify::lanes::Effects e[2];
-                for (int core = 0; core < 2; ++core) {
-                    ArmForced forced(core == 1);
-                    const auto start = std::chrono::steady_clock::now();
-                    e[core] = spec.effects(dirent.path(), address, state);
-                    seconds[core] += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-                }
-                ++runs;
-                if (e[0] == e[1]) continue;
-                ++differ;
-                std::string what;
-                for (std::size_t i = 0; i < e[0].size() && i < e[1].size(); ++i) {
-                    if (e[0][i] == e[1][i]) continue;
-                    what += std::format(" [{}]", i < spec.what.size() ? spec.what[i] : std::to_string(i));
-                    if (const auto* a = std::get_if<std::string>(&e[0][i]))
-                        if (const auto* b = std::get_if<std::string>(&e[1][i])) what += std::format(" own '{}' emulator '{}'", *a, *b);
-                    if (const auto* la = std::get_if<std::vector<std::string>>(&e[0][i]))
-                        if (const auto* lb = std::get_if<std::vector<std::string>>(&e[1][i]))
-                            if (differ <= 8 || only) {
-                                std::size_t j = 0;
-                                while (j < la->size() && j < lb->size() && (*la)[j] == (*lb)[j]) ++j;
-                                std::printf("  %s %x: [%s] first line %zu own '%s' (%zu) emulator '%s' (%zu)\n", dirent.path().filename().string().c_str(), address, spec.what[i].c_str(), j,
-                                            j < la->size() ? (*la)[j].c_str() : "-", la->size(), j < lb->size() ? (*lb)[j].c_str() : "-", lb->size());
-                            }
-                }
-                ++reasons[what.substr(0, 130)];
-                if (!reason_example.count(what.substr(0, 130))) reason_example[what.substr(0, 130)] = std::format("{} {:x} state {}", dirent.path().filename().string(), address, &state - &spec.states[0]);
-            }
-        }
-    }
-    std::printf("pcode_cpu %s homebrew: %u programs, %u functions, %u runs, effects differing %u; edited programs judged %u: own core equivalent %u divergent %u, emulator equivalent %u "
-                "divergent %u, verdicts disagreeing %u; time own core %.2fs emulator %.2fs\n",
-                kind_name, files, functions, runs, differ, judged, verdicts[0][0], verdicts[0][1], verdicts[1][0], verdicts[1][1], disagree, seconds[0], seconds[1]);
-    unsigned shown = 0;
-    for (const auto& [k, c] : reasons)
-        if (++shown <= 14) std::printf("    %u x%s   e.g. %s\n", c, k.c_str(), reason_example[k].c_str());
-    CB_CHECK_EQ(differ, 0u);
-    CB_CHECK_EQ(disagree, 0u);
-}
 
 }  // namespace
 

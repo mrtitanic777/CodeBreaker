@@ -26,6 +26,7 @@
 #include "emulate/arm.hpp"
 #include "emulate/mips.hpp"
 #include "emulate/r4300.hpp"
+#include "emulate/powerpc.hpp"
 #include "emulate/sh2.hpp"
 #include "emulate/z80.hpp"
 
@@ -83,5 +84,13 @@ emulate::arm::RunResult call(emulate::arm::Bus& bus, std::uint32_t entry, const 
 // cache instructions) runs as the own core runs it.
 emulate::sh2::RunResult run(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
 emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
+
+// The PowerPC lanes' (the GameCube, Wii, Wii U, PlayStation 3) function runs, on ppc_64_isa_altivec_be.sla: the integer, branch and condition-register instructions on the
+// description with the Machine as the memory, the rest (floating point and paired singles, vector, system calls, reservations, special registers) as the interpreter runs
+// it. call() gives a run that wants calls out, a path, a branch log or a shadow (the lane judge's) to the interpreter.
+emulate::powerpc::RunResult run(std::span<const emulate::powerpc::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args = {},
+                                const emulate::powerpc::RunOptions& options = {});
+emulate::powerpc::RunResult call(std::span<const emulate::powerpc::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args = {},
+                                 const emulate::powerpc::RunOptions& options = {});
 
 }  // namespace cb::engine::pcode_cpu
