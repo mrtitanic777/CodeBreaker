@@ -15,6 +15,7 @@
 #include "core/text.hpp"
 #include "decompile/arm.hpp"
 #include "source/isa.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::gba_writer {
@@ -472,9 +473,9 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
     const gba::Header& h = rom.header;
     std::vector<std::string> head = {
         std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("; Game Boy Advance cartridge \"{}\" ({}): entry 0x{:08X}, {} bytes, {} functions", h.title, h.game_code, base, image.size(), functions.size()),
-        "; (ARM syntax as the processor's SLEIGH description writes it: build with `assemble --cpu arm --sleigh`; `.context TMode=1` is Thumb)", ""};
-    translate::l2::Assembly out(head, "sleigh-arm", std::string(file_name));
+        std::format("; Game Boy Advance cartridge \"{}\" ({}): entry 0x{:08X}, {} bytes, {} functions", h.title, h.game_code, base, image.size(), functions.size()), ""};
+    translate::l2::Assembly out(head, "gas", std::string(file_name));
+    out.extend(dialect::find("gas-arm").block("prologue", {{"cpu", "arm7tdmi"}}));
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
     out.part("rom", "cartridge", std::nullopt);
@@ -518,7 +519,7 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
             const int wanted = insn.thumb() ? 1 : 0;
             if (as_data.contains(key)) {
                 // the bits, in pieces small enough to put a label between (an instruction another path of the code overlaps)
-                const std::string comment = "  ; " + instruction_text.at(key);
+                const std::string comment = "  ; " + dialect::find("gas-arm").instruction(instruction_text.at(key));
                 unsigned step = insn.length;
                 for (unsigned k = 1; k < insn.length; ++k)
                     if (labels.contains(addr + k)) step = std::min(step, k % 2 ? 1u : 2u);
@@ -554,9 +555,9 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
         off += item.took;
     }
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("gas-arm").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-arm.json)
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image.size());
-    iw::assembled(r, [&] { return risc_source::assemble("arm", source, folder); }, image, folder / (stem + ".built.gba"), "ROM");
+    iw::assembled(r, [&] { return risc_source::assemble("arm", dialect::find("gas-arm").parse(source), folder); }, image, folder / (stem + ".built.gba"), "ROM");
     return r;
 }
 

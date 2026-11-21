@@ -42,27 +42,27 @@ CB_TEST("source.gba_writer.what_the_code_points_at_is_written_by_name", [] {
     fs::ScopedTempDir dir("cb_gba");
     const image_writer::Written r = write(formats::gba::parse(cartridge()), "demo.gba", dir.path());
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(source.find("        .context TMode=1") != std::string::npos);
-    CB_CHECK(source.find("        .context TMode=0") != std::string::npos);
+    CB_CHECK(source.find("        .thumb") != std::string::npos);
+    CB_CHECK(source.find("        .arm") != std::string::npos);
     CB_CHECK(source.find("thumb_") != std::string::npos);
     CB_CHECK(source.find("arm_") != std::string::npos);
     // the literal pool word: a Thumb function's address, with its state bit
     CB_CHECK(source.find(".word thumb_") != std::string::npos);
     CB_CHECK(source.find(" + 1") != std::string::npos);
     // a PC-relative load names the word it reads
-    CB_CHECK(source.find("ldr r0,[D_") != std::string::npos);
+    CB_CHECK(source.find("ldr r0, D_") != std::string::npos);
     // the hardware register's address a function builds, and the string
-    CB_CHECK(source.find("mov r4,#0x4000000") != std::string::npos);
+    CB_CHECK(source.find("mov r4, #0x4000000") != std::string::npos);
     CB_CHECK(source.find(".asciz \"HELLO, GBA\"") != std::string::npos);
-    CB_CHECK(source.find("push {r4,lr}") != std::string::npos);
+    CB_CHECK(source.find("push {r4, lr}") != std::string::npos);
     CB_CHECK(source.find("bx lr") != std::string::npos);
     // the header's fields
-    CB_CHECK(source.find("; the Nintendo logo") != std::string::npos);
-    CB_CHECK(source.find(".byte 0x96    ; the fixed value") != std::string::npos);
+    CB_CHECK(source.find("@ the Nintendo logo") != std::string::npos);
+    CB_CHECK(source.find(".byte 0x96    @ the fixed value") != std::string::npos);
 });
 
 CB_TEST("source.gba_writer.an_instruction_the_assembler_would_write_differently_stays_as_its_bits", [] {
-    // `adds r0, r0, #3` in Thumb's 3-bit form (0x1CC0): the form the old assembler wrote as the 8-bit one (and so the writer kept the halfword)
+    // `adds r0, r0, #3` in Thumb's 3-bit form (0x1CC0) assembles to the 8-bit form, so the writer keeps the halfword
     fs::ScopedTempDir dir("cb_gba");
     Bytes image = cartridge();
     // the first Thumb instruction of thumb_fn is `push {r4, lr}` at the pointer's target: find the `movs r4, #3` (0x2403) and turn it into 0x1CC0
@@ -78,8 +78,8 @@ CB_TEST("source.gba_writer.an_instruction_the_assembler_would_write_differently_
     const image_writer::Written r = write(formats::gba::parse(image), "odd.gba", dir.path());
     CB_CHECK(r.linked && r.same);
     // (the description's assembler writes the 3-bit form back as it was read, so the instruction is text: nothing needs to stay as its bits)
-    CB_CHECK(fs::read_text(r.source).find("add r0,r0,#0x3") != std::string::npos);
-    CB_CHECK(fs::read_text(r.source).find(".half 0x1CC0") == std::string::npos);
+    CB_CHECK(fs::read_text(r.source).find("add r0, r0, #3") != std::string::npos);
+    CB_CHECK(fs::read_text(r.source).find(".hword 0x1CC0") == std::string::npos);
 });
 
 CB_TEST("source.gba_writer.the_hardware_registers_have_libgba_names", [] {

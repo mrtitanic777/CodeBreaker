@@ -24,6 +24,15 @@ namespace {
 bool is_word(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; }
 bool is_hex(char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; }
 bool is_blank(char c) { return c == ' ' || c == '\t'; }
+
+// Whether `before` ends at a shift by thirty-two (`lsr #`, `asr #`), which the description writes in decimal.
+bool shift_by_32(std::string_view before, std::string_view digits, std::string_view whole) {
+    if (before.size() >= 5 && before.back() == '#' && text::iequals(before.substr(before.size() - 5, 3), "ror") && (text::istarts_with(whole, "uxt") || text::istarts_with(whole, "sxt"))) return true;   // (the rotation of an extend: decimal)
+    if (digits != "32" || before.size() < 5 || before.back() != '#') return false;
+    const std::string_view op = before.substr(before.size() - 5, 3);
+    return text::iequals(op, "lsr") || text::iequals(op, "asr");
+}
+
 std::string_view trim_zeros(std::string_view digits) {
     while (digits.size() > 1 && digits.front() == '0') digits.remove_prefix(1);
     return digits;
@@ -110,7 +119,7 @@ bool match(const Template& t, std::string_view s, Captures& out) {
             }
             skip_blanks();
             if (pos + lit.size() > s.size() || !text::iequals(s.substr(pos, lit.size()), lit)) return false;
-            if (is_word(lit.back()) && pos + lit.size() < s.size() && is_word(s[pos + lit.size()])) return false;
+            if (is_word(lit.back()) && lit.back() != '_' && !lit.ends_with("0x") && pos + lit.size() < s.size() && is_word(s[pos + lit.size()])) return false;   // (a literal ending in _ is a prefix:  then the name)
             pos += lit.size();
             skip_blanks();
             continue;
@@ -162,6 +171,7 @@ struct Rule {
     bool incbin = false;   // the line brings a file in (`.incbin "x.chr"`): its bytes stand in the neutral text
     bool decimal = false;    // an instruction row: its numbers are decimal (`MOVEQ #1,D0`)
     int pad = 0;             // an instruction row: the number {w} is padded to this many hex digits (`($00200000).L`)
+    unsigned long decimal_limit = 0xFFFF;   // an instruction row: only numbers up to this are written in decimal (SuperH: an unsigned immediate over 9 is hex)
     std::string neutral_head;   // the first word of the neutral template (when it starts with a literal), for a quick test
 };
 
@@ -186,15 +196,18 @@ struct Dialect::Impl {
     std::map<std::string, int> forced_opcodes;       // mnemonic (upper case) -> its absolute opcode
     std::string wrap_out(std::string s) const;
     std::string wrap_in(std::string s) const;
-    std::string decimals(std::string_view s) const;
+    std::string decimals(std::string_view s, unsigned long limit = 0xFFFF) const;
     std::string with_registers(std::string_view s) const;
     std::string without_registers(std::string_view s) const;
+    bool decimal_keep_zero = false;  // a zero stays 0x0 (the description writes some fields as plain 0)
+    int mnemonic_pad = 0;           // the mnemonic is padded to this many columns when it has operands (GNU as for SuperH)
     bool mnemonic_upper = false;    // the dialect writes the mnemonic (the first word) in capitals; the description's is lower case
     struct Replace {   // how the dialect spells an operand the description spells otherwise (`( rLY )` as `(rLY)`, `,X` as `,x`)
         std::string from, to;
         bool both = false;   // the parser undoes it (`,x` read as `,X`) and not only the printer does it
     };
     std::vector<Replace> replace;
+    std::vector<std::pair<std::string, std::string>> after_parse;   // applied to an instruction the parser has read back (`,lsl` as `, lsl`)
     std::string list_separator = ",";   // between the items of a list of numbers and strings
     bool label_at_column_zero = false;  // a label is the name alone at the head of a line (DASM)
     Template label = compile("{name}:");
@@ -399,6 +412,7 @@ std::string Dialect::Impl::instruction(std::string_view code) const {
     std::string out(code);
     Captures caps;
     bool rule_decimal = false;
+    unsigned long rule_limit = 0xFFFF;
     for (const Rule& r : insn_rules) {   // an instruction the dialect words otherwise (`jsr x.l` as `JSR (x).L`)
         if (r.print && match(r.neutral, code, caps)) {
             if (r.pad > 0) {   // the number {w} in this many hex digits
@@ -411,34 +425,44 @@ std::string Dialect::Impl::instruction(std::string_view code) const {
                 }
                 out = render(r.dialect, caps, true, {}, false);
                 rule_decimal = r.decimal;
+                rule_limit = r.decimal_limit;
                 break;
             }
             out = render(r.dialect, caps, true, {}, false);
             rule_decimal = r.decimal;
+            rule_limit = r.decimal_limit;
             break;
         }
     }
     const std::size_t word_end = out.find_first_of(" \t");
-    if (rule_decimal || (decimal && !decimal_unless.contains(text::lower(out.substr(0, word_end))))) out = decimals(out);
+    if (rule_decimal || (decimal && !decimal_unless.contains(text::lower(out.substr(0, word_end))))) out = decimals(out, rule_limit);
     else out = numbers_out(out);
     if (!wraps.empty()) out = wrap_out(out);
     for (const Replace& r : replace) out = text::replace_all(out, r.from, r.to);
+    if (!replace.empty()) out = text::replace_all(out, ",  ", ", ");   // (a comma the text already spaced is not spaced twice)
     if (!regs.empty()) out = with_registers(out);
     if (mnemonic_upper) {
         const std::size_t end = out.find_first_of(" \t");
         for (std::size_t i = 0; i < std::min(end, out.size()); ++i) out[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[i])));
     }
+    if (mnemonic_pad > 0) {   // the mnemonic padded to its column
+        const std::size_t blank = out.find_first_of(" 	");
+        if (blank != std::string::npos) {
+            const std::string rest(text::ltrim(std::string_view(out).substr(blank)));
+            out = out.substr(0, blank) + std::string(std::max<std::size_t>(1, static_cast<std::size_t>(mnemonic_pad) > blank ? static_cast<std::size_t>(mnemonic_pad) - blank : 1), ' ') + rest;
+        }
+    }
     return out;
 }
 
 // `text` with each small number (under 0x10000) written in decimal, the larger ones the dialect's way.
-std::string Dialect::Impl::decimals(std::string_view s) const {
+std::string Dialect::Impl::decimals(std::string_view s, unsigned long limit) const {
     std::string out;
     for (std::size_t i = 0; i < s.size();) {
         if (s[i] == '0' && i + 2 < s.size() && s[i + 1] == 'x' && (i == 0 || !is_word(s[i - 1]))) {
             std::size_t e = i + 2;
             while (e < s.size() && is_hex(s[e])) ++e;
-            if (e > i + 2 && e - i - 2 <= 4 && !(e < s.size() && is_word(s[e]))) {
+            if (e > i + 2 && e - i - 2 <= 4 && !(e < s.size() && is_word(s[e])) && (!decimal_keep_zero || std::strtoul(std::string(s.substr(i + 2, e - i - 2)).c_str(), nullptr, 16) != 0) && std::strtoul(std::string(s.substr(i + 2, e - i - 2)).c_str(), nullptr, 16) <= limit) {   // (zero stays 0x0: a field the description writes as plain 0 is another)
                 out += std::to_string(std::strtoul(std::string(s.substr(i + 2, e - i - 2)).c_str(), nullptr, 16));
                 i = e;
                 continue;
@@ -485,29 +509,39 @@ std::string Dialect::Impl::without_registers(std::string_view s) const {
     return out;
 }
 
-std::string Dialect::Impl::instruction_in(std::string_view code) const {
+std::string Dialect::Impl::instruction_in(std::string_view written) const {
+    std::string collapsed;   // (a padded mnemonic: one blank between it and its operands, for the rows below)
+    std::string_view code = written;
+    if (mnemonic_pad > 0) {
+        const std::size_t blank = written.find_first_of(" 	");
+        if (blank != std::string_view::npos) {
+            collapsed = std::string(written.substr(0, blank)) + " " + std::string(text::ltrim(written.substr(blank)));
+            code = collapsed;
+        }
+    }
     std::string out;
     Captures caps;
-    bool matched = false, rule_decimal = false;
+    bool matched = false, rule_decimal = false, rule_literal = false;
     for (const Rule& r : insn_rules) {
         if (r.read && match(r.dialect, code, caps)) {
             out = render(r.neutral, caps, false, {}, false);
             matched = true;
             rule_decimal = r.decimal;
+            rule_literal = r.exact;   // (an instruction row marked exact: its numbers are the description's own spelling)
             break;
         }
     }
     if (!matched) out = std::string(code);
     if (!regs.empty()) out = without_registers(out);
     if (!wraps.empty()) out = wrap_in(out);   // (before the numbers: `(x >> 16)` is read as `%up(x)`)
-    if (decimal || rule_decimal) {   // (the description's assembler reads a number as 0x<hex>)
+    if ((decimal && !rule_literal) || rule_decimal) {   // (the description's assembler reads a number as 0x<hex>)
         std::string hex;
         const std::string_view s = out;
         for (std::size_t i = 0; i < s.size();) {
-            if (std::isdigit(static_cast<unsigned char>(s[i])) != 0 && (i == 0 || !(is_word(s[i - 1]) || s[i - 1] == '$'))) {
+            if (std::isdigit(static_cast<unsigned char>(s[i])) != 0 && (i == 0 || !(is_word(s[i - 1]) || s[i - 1] == '$' || s[i - 1] == '.'))) {
                 std::size_t e = i;
                 while (e < s.size() && std::isdigit(static_cast<unsigned char>(s[e])) != 0) ++e;
-                if (!(e < s.size() && is_word(s[e]))) {
+                if (!(e < s.size() && (is_word(s[e]) || s[e] == '*')) && !shift_by_32(s.substr(0, i), s.substr(i, e - i), s) && !(decimal_keep_zero && e - i == 1 && s[i] == '0')) {
                     hex += std::format("0x{:x}", std::strtoull(std::string(s.substr(i, e - i)).c_str(), nullptr, 10));
                     i = e;
                     continue;
@@ -518,11 +552,16 @@ std::string Dialect::Impl::instruction_in(std::string_view code) const {
         out = std::move(hex);
     }
     out = numbers_in(out);
-    for (const Replace& r : replace)
-        if (r.both) out = text::replace_all(out, r.to, r.from);
+    for (auto it = replace.rbegin(); it != replace.rend(); ++it)   // (undone in the order opposite to the printer's)
+        if (it->both) out = text::replace_all(out, it->to, it->from);
+    for (const auto& [from, to] : after_parse) out = text::replace_all(out, from, to);   // (what the description spells otherwise than the reversal leaves it)
     if (mnemonic_upper) {
         const std::size_t end = out.find_first_of(" \t");
         for (std::size_t i = 0; i < std::min(end, out.size()); ++i) out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
+    }
+    if (mnemonic_pad > 0) {   // (the description reads the mnemonic and its operands with one blank between)
+        const std::size_t blank = out.find_first_of(" 	");
+        if (blank != std::string::npos) out = out.substr(0, blank) + " " + std::string(text::ltrim(std::string_view(out).substr(blank)));
     }
     return out;
 }
@@ -595,6 +634,7 @@ std::string Dialect::line(std::string_view neutral_line, int name_width) const {
     const std::string_view indent = neutral_line.substr(0, indent_end);
     const std::string_view rest = neutral_line.substr(indent_end);
     if (rest.empty()) return std::string(neutral_line);
+    if (!rest.empty() && d.comment.size() == 1 && rest.front() == d.comment[0] && d.comment != ";") return std::string(neutral_line);   // (a comment already written in the dialect's)
     const std::size_t semi = comment_at(rest, ';');
     std::string_view code = semi == std::string_view::npos ? rest : rest.substr(0, semi);
     std::string tail;
@@ -1012,10 +1052,15 @@ std::unique_ptr<Dialect::Impl> read(std::string_view name) {
             r.read = row.value("read", true);
             r.decimal = row.value("decimal", false);
             r.pad = row.value("pad", 0);
+            r.exact = row.value("exact", false);
+            r.decimal_limit = row.value("decimal_limit", 0xFFFFul);
             d->insn_rules.push_back(std::move(r));
         }
     }
     d->mnemonic_upper = str(j, "mnemonic_case") == "upper";
+    d->mnemonic_pad = j.value("mnemonic_pad", 0);
+    if (const auto it = j.find("after_parse"); it != j.end())
+        for (const auto& row : *it) d->after_parse.emplace_back(row.at(0).get<std::string>(), row.at(1).get<std::string>());
     if (const auto it = j.find("forced_absolute"); it != j.end()) {
         d->forced_suffix = str(*it, "suffix");
         d->forced_prefix = str(*it, "prefix");
@@ -1029,6 +1074,7 @@ std::unique_ptr<Dialect::Impl> read(std::string_view name) {
     }
     if (const auto it = j.find("decimal"); it != j.end()) {
         d->decimal = true;
+        d->decimal_keep_zero = it->value("keep_zero", false);
         for (const auto& n : it->at("unless")) d->decimal_unless.insert(n.get<std::string>());
     }
     if (const auto it = j.find("replace"); it != j.end())   // [from, to] or [from, to, true] (the parser undoes it too)
@@ -1053,7 +1099,7 @@ std::unique_ptr<Dialect::Impl> read(std::string_view name) {
         d->segments.memory = compile(str(*it, "memory"));
         d->segments.segment = compile(str(*it, "segment"));
     }
-    d->identity = d->number.prefix == "0x" && d->number.suffix.empty() && !d->number.upper && !d->number.even && d->rules.empty() && d->wraps.empty() && d->insn_rules.empty() && d->regs.empty() && !d->decimal && !d->mnemonic_upper && d->replace.empty() && d->comment == ";" &&
+    d->identity = d->number.prefix == "0x" && d->number.suffix.empty() && !d->number.upper && !d->number.even && d->rules.empty() && d->wraps.empty() && d->insn_rules.empty() && d->regs.empty() && !d->decimal && d->mnemonic_pad == 0 && !d->mnemonic_upper && d->replace.empty() && d->comment == ";" &&
                   !d->layout.present && !d->segments.present && !d->label_at_column_zero && d->list_separator == ",";
     return d;
 }

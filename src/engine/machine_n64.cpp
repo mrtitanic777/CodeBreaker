@@ -9,6 +9,7 @@
 #include "emulate/r4300.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/n64.hpp"
 #include "formats/n64.hpp"
@@ -78,7 +79,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
     options.a = {static_cast<std::uint32_t>(at(state, "a0")), static_cast<std::uint32_t>(at(state, "a1")), static_cast<std::uint32_t>(at(state, "a2")),
                  static_cast<std::uint32_t>(at(state, "a3"))};
     options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
-    const emulate::r4300::RunResult run = emulate::r4300::run(bus, entry, options);
+    const emulate::r4300::RunResult run = cb::engine::pcode_cpu::call(bus, entry, options);
     // what the run changed in RDRAM and SP memory (the program is in RDRAM: its own bytes are not an effect unless the run rewrote them)
     std::vector<std::string> changed;
     for (std::size_t i = 0; i < ram.size() && changed.size() < kShown; ++i)

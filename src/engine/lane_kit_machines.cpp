@@ -247,7 +247,7 @@ lanes::Effects ps1_effects(const stdfs::path& path, std::uint32_t entry, const l
     options.a = {static_cast<std::uint32_t>(at(state, "a0")), static_cast<std::uint32_t>(at(state, "a1")), static_cast<std::uint32_t>(at(state, "a2")),
                  static_cast<std::uint32_t>(at(state, "a3"))};
     options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
-    const emulate::mips::RunResult run = emulate::mips::run(bus, entry, options);
+    const emulate::mips::RunResult run = pcode_cpu::call(bus, entry, options);
     // what the run changed (the program lives in this memory: an edited byte the function does not write is the source's difference, not the function's)
     std::vector<std::string> changed;
     const ByteView after = bus.memory();

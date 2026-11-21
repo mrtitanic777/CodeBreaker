@@ -1,0 +1,8 @@
+{
+  "name": "gas-ppc",
+  "description": "GNU as, PowerPC (-mregnames): the GameCube and Wii as their programs are written. # comments, small numbers decimal (stwu r1,-16(r1), li r3,7), hex for the logical and shifted immediates (lis, ori, andi.).",
+  "comment": "#",
+  "number": {"prefix": "0x", "suffix": "", "case": "upper", "pad": "none"},
+  "label": "{name}:",
+  "decimal": {"keep_zero": true, "unless": ["lis", "ori", "oris", "andi.", "andis.", "xori", "xoris", "addis"]}
+}

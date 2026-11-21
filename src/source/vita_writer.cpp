@@ -16,6 +16,7 @@
 #include "decompile/arm.hpp"
 #include "decompile/arm_ext.hpp"
 #include "source/isa.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::vita_writer {
@@ -277,9 +278,9 @@ iw::Written write(const formats::vita::Program& program, std::string_view file_n
         if (const auto word = literal_address(insn)) name(*word);
         std::string line = risc_source::code("armv7t", insn.bytes(), insn.pc, by_value, operands);
         if (line.starts_with(".byte"))   // (an instruction the description does not write as it assembles: its bits, as halves, with its text)
-            line = insn.length == 2 ? std::format(".half 0x{:04X}  ; {}", insn.word & 0xFFFF, risc_source::read_text("armv7t", insn.bytes(), insn.pc).value_or("?"))
+            line = insn.length == 2 ? std::format(".half 0x{:04X}  ; {}", insn.word & 0xFFFF, dialect::find("gas-arm").instruction(risc_source::read_text("armv7t", insn.bytes(), insn.pc).value_or("?")))
                                     : std::format(".half 0x{:04X}, 0x{:04X}  ; {}", insn.raw[0] | insn.raw[1] << 8, insn.raw[2] | insn.raw[3] << 8,
-                                                  risc_source::read_text("armv7t", insn.bytes(), insn.pc).value_or("?"));
+                                                  dialect::find("gas-arm").instruction(risc_source::read_text("armv7t", insn.bytes(), insn.pc).value_or("?")));
         if (const auto it = flow.it_at(at)) line += std::format("  ; if {}", da::condition_suffix(da::t2::it_condition(static_cast<std::uint8_t>(it->first), static_cast<std::uint8_t>(it->mask), it->index)));
         instruction_text[at] = std::move(line);
     }
@@ -288,21 +289,21 @@ iw::Written write(const formats::vita::Program& program, std::string_view file_n
                                      std::format("; PlayStation Vita {} {}, image {} bytes in {} segments; the processor is the Cortex-A9 (ARMv7-A, Thumb-2, VFP, NEON)",
                                                  program.self ? "SELF" : "ELF", program.module_name, image.size(), program.segments.size()),
                                      "; addresses in this file are image offsets; the segments are laid end to end, each 16-byte aligned",
-                                     "; (ARM syntax as the processor's SLEIGH description writes it: build with `assemble --cpu armv7 --sleigh`; `.context TMode=1` is Thumb)",
                                      "",
-                                     "        .context TMode=1",
+                                     "        .syntax unified",
+                                     "        .thumb",
                                      ""};
-    translate::l2::Assembly out(head, "sleigh-armv7", std::string(file_name));
+    translate::l2::Assembly out(head, "gas", std::string(file_name));
     out.part("image", "segment", std::nullopt, image.size());
 
     VitaListing listing(out, image, code, instruction_text, labels, words);
     iw::emit<da::Insn>(out, 0, static_cast<std::uint32_t>(image.size()), labels, functions, listing);
     out.append("");
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("gas-arm").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-arm.json)
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image.size());
     const Bytes original = program.to_elf(image);
-    iw::assembled(r, [&] { return program.to_elf(risc_source::assemble("armv7", source, folder)); }, original, folder / (stem + ".built.velf"));
+    iw::assembled(r, [&] { return program.to_elf(risc_source::assemble("armv7", dialect::find("gas-arm").parse(source), folder)); }, original, folder / (stem + ".built.velf"));
     return r;
 }
 

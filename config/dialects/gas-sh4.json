@@ -1,0 +1,34 @@
+{
+  "name": "gas-sh4",
+  "description": "GNU as, SuperH (SH-4: the Dreamcast): ! comments, the mnemonic padded to eight columns, #n for an immediate (decimal; an unsigned one over 9 in hex: and #0xF,r0), small displacements decimal, .word for a halfword, .long.",
+  "comment": "!",
+  "number": {"prefix": "0x", "suffix": "", "case": "upper", "pad": "none"},
+  "label": "{name}:",
+  "mnemonic_pad": 8,
+  "replace": [["FPUL", "fpul", true], ["GBR", "gbr", true]],
+  "decimal": {"unless": []},
+  "directives": [
+    {"neutral": ".half {list}", "dialect": ".word {list}", "separator": ", "},
+    {"neutral": ".long {list}", "dialect": ".long {list}", "separator": ", "}
+  ],
+  "instructions": [
+    {"neutral": "and #0x{w},{r}", "dialect": "and #0x{w},{r}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "and #{w},{r}", "dialect": "and #{w},{r}", "decimal": true, "print": false},
+    {"neutral": "or #0x{w},{r}", "dialect": "or #0x{w},{r}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "or #{w},{r}", "dialect": "or #{w},{r}", "decimal": true, "print": false},
+    {"neutral": "xor #0x{w},{r}", "dialect": "xor #0x{w},{r}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "xor #{w},{r}", "dialect": "xor #{w},{r}", "decimal": true, "print": false},
+    {"neutral": "tst #0x{w},{r}", "dialect": "tst #0x{w},{r}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "tst #{w},{r}", "dialect": "tst #{w},{r}", "decimal": true, "print": false},
+    {"neutral": "and.b #0x{w},{r}", "dialect": "and.b #0x{w},{r}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "and.b #{w},{r}", "dialect": "and.b #{w},{r}", "decimal": true, "print": false},
+    {"neutral": "or.b #0x{w},{r}", "dialect": "or.b #0x{w},{r}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "or.b #{w},{r}", "dialect": "or.b #{w},{r}", "decimal": true, "print": false},
+    {"neutral": "xor.b #0x{w},{r}", "dialect": "xor.b #0x{w},{r}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "xor.b #{w},{r}", "dialect": "xor.b #{w},{r}", "decimal": true, "print": false},
+    {"neutral": "tst.b #0x{w},{r}", "dialect": "tst.b #0x{w},{r}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "tst.b #{w},{r}", "dialect": "tst.b #{w},{r}", "decimal": true, "print": false},
+    {"neutral": "trapa #0x{w}", "dialect": "trapa #0x{w}", "decimal": true, "decimal_limit": 9, "read": false},
+    {"neutral": "trapa #{w}", "dialect": "trapa #{w}", "decimal": true, "print": false}
+  ]
+}
