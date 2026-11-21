@@ -379,7 +379,7 @@ void board_rebuild_stacks(Model& m) {
 
 void board_toggle_orphans(Model& m) {
     if (!m.board || !m.board_index) return;
-    if (!m.board_orphans) m.board_orphans = std::make_shared<const board::Orphans>(board::find_orphans(*m.board, *m.board_index, m.board_signals.get()));
+    if (!m.board_orphans) m.board_orphans = std::make_shared<const board::Orphans>(board::find_orphans(*m.board, *m.board_index, m.board_signals.get(), m.board_measured.get()));
     m.board_orphans_only = !m.board_orphans_only;
     m.board_active_deck = -1;
     m.board_scroll = {};
@@ -414,7 +414,7 @@ void board_apply_deck(Model& m, int deck) {
     m.board_deck_names = d.names;
     m.board_query = d.query;
     m.board_orphans_only = d.orphans;
-    if (d.orphans && !m.board_orphans && m.board && m.board_index) m.board_orphans = std::make_shared<const board::Orphans>(board::find_orphans(*m.board, *m.board_index, m.board_signals.get()));
+    if (d.orphans && !m.board_orphans && m.board && m.board_index) m.board_orphans = std::make_shared<const board::Orphans>(board::find_orphans(*m.board, *m.board_index, m.board_signals.get(), m.board_measured.get()));
     if (m.board_signals) {
         for (const board::DeckFilter& f : d.filters)
             for (std::uint32_t id = 0; id < m.board_signals->signals.size(); ++id)

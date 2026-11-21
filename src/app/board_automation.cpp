@@ -91,7 +91,7 @@ std::map<std::uint32_t, std::vector<std::uint32_t>> cards_of(const Graph& graph,
 
 }  // namespace
 
-Orphans find_orphans(const Board& board, const Index& index, const Signals* signals) {
+Orphans find_orphans(const Board& board, const Index& index, const Signals* signals, const Measured* measured) {
     Orphans out;
     const std::size_t n = board.cards.size();
     std::vector<char> reached(n, 0);   // per group
@@ -103,6 +103,21 @@ Orphans find_orphans(const Board& board, const Index& index, const Signals* sign
     if (signals != nullptr)
         for (const NodeSignal& l : signals->links)
             if (signals->signals[l.signal].type == SignalType::Autostart && l.direction == Direction::Registers) reached[index.nodes[l.node].group] = 1;
+    if (measured != nullptr) {
+        std::set<std::string> ran;
+        for (const MeasuredChannel& c : measured->channels) {
+            ran.insert(text::lower(c.from));
+            ran.insert(text::lower(c.to));
+        }
+        std::vector<char> running(n, 0);
+        for (std::uint32_t i = 0; i < n; ++i)
+            if (ran.contains(text::lower(board.cards[i].name))) running[index.nodes[i].group] = 1;
+        for (std::uint32_t i = 0; i < n; ++i) {
+            if (index.nodes[i].group != i || !running[i] || reached[i]) continue;
+            reached[i] = 1;
+            ++out.seen_running;
+        }
+    }
     out.card.assign(n, 0);
     for (std::uint32_t i = 0; i < n; ++i) {
         const std::uint32_t group = index.nodes[i].group;

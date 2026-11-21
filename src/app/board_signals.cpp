@@ -2,19 +2,24 @@
 #include "app/board_signals.hpp"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <chrono>
 #include <exception>
 #include <format>
 #include <map>
 #include <set>
+#include <span>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "core/capstone_api.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "formats/le.hpp"
 #include "formats/pe.hpp"
+#include "platforms/decoder.hpp"
 
 namespace cb::app::board {
 
@@ -22,7 +27,7 @@ namespace stdfs = std::filesystem;
 
 namespace {
 
-constexpr std::string_view kSignalsHeader = "#codebreaker-board-signals 2";
+constexpr std::string_view kSignalsHeader = "#codebreaker-board-signals 3";
 constexpr std::size_t kLongestValue = 200;
 
 bool printable(std::uint8_t c) { return c >= 0x20 && c < 0x7F; }
@@ -164,14 +169,76 @@ struct ObjectApi {
     std::string_view name;
     SignalType type;
     Direction direction;
+    std::size_t name_argument;   // which argument is the object's name, from the first
 };
 constexpr ObjectApi kObjectApis[] = {
-    {"createmutex", SignalType::Mutex, Direction::Writes},          {"openmutex", SignalType::Mutex, Direction::Reads},
-    {"createevent", SignalType::Event, Direction::Writes},          {"openevent", SignalType::Event, Direction::Reads},
-    {"createsemaphore", SignalType::Semaphore, Direction::Writes},  {"opensemaphore", SignalType::Semaphore, Direction::Reads},
-    {"createfilemapping", SignalType::Mapping, Direction::Writes},  {"openfilemapping", SignalType::Mapping, Direction::Reads},
-    {"registerwindowmessage", SignalType::WindowMessage, Direction::Listens},
+    {"createmutex", SignalType::Mutex, Direction::Writes, 2},          {"openmutex", SignalType::Mutex, Direction::Reads, 2},
+    {"createevent", SignalType::Event, Direction::Writes, 3},          {"openevent", SignalType::Event, Direction::Reads, 2},
+    {"createsemaphore", SignalType::Semaphore, Direction::Writes, 3},  {"opensemaphore", SignalType::Semaphore, Direction::Reads, 2},
+    {"createfilemapping", SignalType::Mapping, Direction::Writes, 5},  {"openfilemapping", SignalType::Mapping, Direction::Reads, 2},
+    {"registerwindowmessage", SignalType::WindowMessage, Direction::Listens, 0},
 };
+
+const platforms::Decoder& sig_decoder(unsigned bits = 32) {
+    thread_local platforms::DecoderSet decoders;
+    return decoders.get(platforms::Arch::X86, bits, true);
+}
+
+// A number as the disassembler prints it, the whole of the text.
+std::optional<std::uint32_t> sig_number(std::string_view s) {
+    const bool hex = s.starts_with("0x");
+    if (hex) s.remove_prefix(2);
+    if (s.empty()) return std::nullopt;
+    std::uint64_t v = 0;
+    const auto [end, error] = std::from_chars(s.data(), s.data() + s.size(), v, hex ? 16 : 10);
+    if (error != std::errc{} || end != s.data() + s.size() || v > 0xFFFFFFFFu) return std::nullopt;
+    return static_cast<std::uint32_t>(v);
+}
+
+// The address in "dword ptr [0x401000]".
+std::optional<std::uint32_t> sig_memory(std::string_view s) {
+    constexpr std::string_view kFront = "dword ptr [";
+    if (!s.starts_with(kFront) || !s.ends_with(']')) return std::nullopt;
+    return sig_number(s.substr(kFront.size(), s.size() - kFront.size() - 1));
+}
+
+// Which of the eight general registers a name is part of (eax 0, ecx 1, edx 2, ebx 3, esp 4, ebp 5, esi 6, edi 7), or -1.
+int sig_register(std::string_view s) {
+    static constexpr std::array<std::array<std::string_view, 4>, 8> kNames{{{"eax", "ax", "al", "ah"}, {"ecx", "cx", "cl", "ch"}, {"edx", "dx", "dl", "dh"}, {"ebx", "bx", "bl", "bh"},
+                                                                            {"esp", "sp", "spl", ""},  {"ebp", "bp", "bpl", ""},  {"esi", "si", "sil", ""},  {"edi", "di", "dil", ""}}};
+    if (s.empty()) return -1;
+    for (int r = 0; r < 8; ++r)
+        for (const std::string_view name : kNames[static_cast<std::size_t>(r)])
+            if (name == s) return r;
+    return -1;
+}
+
+// The PC's own devices, the only ports a one-byte `in` or `out` operand has reason to name: interrupt controllers, timer, keyboard, clock, DMA and its pages, port 92h
+// and the coprocessor. Any other value there is far likelier to be data that happened to decode.
+bool sig_board_port(std::uint32_t p) {
+    return p == 0x20 || p == 0x21 || (p >= 0x40 && p <= 0x43) || p == 0x60 || p == 0x61 || p == 0x64 || p == 0x70 || p == 0x71 || (p >= 0x80 && p <= 0x8F) || p == 0x92 || p == 0xA0 || p == 0xA1 ||
+           (p >= 0xC0 && p <= 0xDF) || p == 0xF0 || p == 0xF1;
+}
+
+// Decodes all of `code`, stepping one byte over whatever does not decode (`gap` says so).
+template <class Visit, class Gap>
+void sig_walk(const platforms::Decoder& decoder, ByteView code, std::uint64_t address, Visit&& visit, Gap&& gap) {
+    std::size_t at = 0;
+    while (at < code.size()) {
+        std::size_t next = at;
+        decoder.each(code.subspan(at), address + at, 0, [&](const cs_insn& c) {
+            visit(c);
+            next = static_cast<std::size_t>(c.address - address) + c.size;
+            return true;
+        });
+        if (next == at) {
+            gap();
+            ++at;
+        } else {
+            at = next;
+        }
+    }
+}
 
 std::uint32_t u32_le(ByteView b, std::size_t at) {
     return static_cast<std::uint32_t>(b[at]) | (static_cast<std::uint32_t>(b[at + 1]) << 8) | (static_cast<std::uint32_t>(b[at + 2]) << 16) | (static_cast<std::uint32_t>(b[at + 3]) << 24);
@@ -474,54 +541,203 @@ std::vector<NamedObject> named_objects(ByteView data) {
             if (code[i] == 0xFF && code[i + 1] == 0x25)
                 if (const auto hit = slots.find(u32_le(code, i + 2)); hit != slots.end()) thunks.emplace(section.va + i, hit->second);
     }
+    // Each call is read from the decoded instructions: the name is the API's own argument, from a push of the address or of a register holding it.
     std::set<std::tuple<SignalType, Direction, std::string>> seen;
-    const auto argument = [&](ByteView code, std::size_t call, const Api& api) {
-        for (std::size_t back = 5; back <= 32 && back <= call; ++back) {
-            const std::size_t at = call - back;
-            if (code[at] != 0x68) continue;
-            if (const auto name = string_at(image, base, u32_le(code, at + 1), api.wide)) {
-                if (seen.insert({api.api->type, api.api->direction, *name}).second) out.push_back({api.api->type, api.api->direction, *name});
+    const platforms::Decoder& decoder = sig_decoder();
+    for (const auto& section : sections) {
+        std::vector<std::optional<std::uint32_t>> pushes;
+        std::array<std::optional<std::uint32_t>, 8> value{};
+        std::array<const Api*, 8> holds{};
+        const auto forget = [&](int r) {
+            if (r < 0) return;
+            value[static_cast<std::size_t>(r)].reset();
+            holds[static_cast<std::size_t>(r)] = nullptr;
+        };
+        const auto reset = [&] {
+            pushes.clear();
+            for (int r = 0; r < 8; ++r) forget(r);
+        };
+        const auto api_at = [&](std::string_view operand) -> const Api* {
+            if (const auto v = sig_memory(operand)) {
+                const auto hit = slots.find(*v);
+                return hit == slots.end() ? nullptr : &hit->second;
+            }
+            if (const auto v = sig_number(operand)) {
+                const auto hit = thunks.find(*v);
+                return hit == thunks.end() ? nullptr : &hit->second;
+            }
+            const int r = sig_register(operand);
+            return r >= 0 && operand.size() == 3 ? holds[static_cast<std::size_t>(r)] : nullptr;
+        };
+        sig_walk(decoder, image.section_data(*section.section), section.va, [&](const cs_insn& c) {
+            const std::string_view m = c.mnemonic, s = c.op_str;
+            if (m == "push") {
+                const int r = sig_register(s);
+                pushes.push_back(r >= 0 ? value[static_cast<std::size_t>(r)] : sig_number(s));
                 return;
             }
-        }
-    };
-    for (const auto& section : sections) {
-        const ByteView code = image.section_data(*section.section);
-        for (std::size_t i = 0; i + 5 <= code.size(); ++i) {
-            if (code[i] == 0xE8) {
-                const auto target = static_cast<std::uint64_t>(static_cast<std::int64_t>(section.va + i + 5) + static_cast<std::int32_t>(u32_le(code, i + 1)));
-                if (const auto hit = thunks.find(target); hit != thunks.end()) argument(code, i, hit->second);
-            } else if (i + 6 <= code.size() && code[i] == 0xFF && code[i + 1] == 0x15) {
-                if (const auto hit = slots.find(u32_le(code, i + 2)); hit != slots.end()) argument(code, i, hit->second);
+            if (m == "call") {
+                if (const Api* api = api_at(s); api != nullptr && pushes.size() > api->api->name_argument) {
+                    if (const auto address = pushes[pushes.size() - 1 - api->api->name_argument])
+                        if (const auto name = string_at(image, base, *address, api->wide))
+                            if (seen.insert({api->api->type, api->api->direction, *name}).second) out.push_back({api->api->type, api->api->direction, *name});
+                }
+                pushes.clear();
+                for (const int r : {0, 1, 2}) forget(r);   // (eax, ecx, edx do not survive a call; the others do, which is how `call esi` repeats)
+                return;
             }
-        }
+            if (m.starts_with("ret") || m == "jmp") {
+                reset();
+                return;
+            }
+            if (m == "pop") {
+                if (!pushes.empty()) pushes.pop_back();
+                forget(sig_register(s));
+                return;
+            }
+            const std::size_t comma = s.find(", ");
+            if ((m == "mov" || m == "lea") && comma != std::string_view::npos && comma == 3 && sig_register(s.substr(0, 3)) >= 0) {
+                const int r = sig_register(s.substr(0, 3));
+                const std::string_view from = s.substr(comma + 2);
+                forget(r);
+                if (r == 4) pushes.clear();
+                if (m == "lea") {
+                    if (from.starts_with('[') && from.ends_with(']')) value[static_cast<std::size_t>(r)] = sig_number(from.substr(1, from.size() - 2));
+                } else if (const auto number = sig_number(from)) {
+                    value[static_cast<std::size_t>(r)] = number;
+                } else if (const auto slot = sig_memory(from)) {
+                    if (const auto hit = slots.find(*slot); hit != slots.end()) holds[static_cast<std::size_t>(r)] = &hit->second;
+                } else if (const int other = sig_register(from); other >= 0 && from.size() == 3) {
+                    value[static_cast<std::size_t>(r)] = value[static_cast<std::size_t>(other)];
+                    holds[static_cast<std::size_t>(r)] = holds[static_cast<std::size_t>(other)];
+                }
+                return;
+            }
+            if (const auto access = decoder.register_access(c)) {
+                for (const std::uint16_t w : access->written) {
+                    const char* written = decoder.register_name(w);
+                    if (written == nullptr) continue;
+                    const int r = sig_register(written);
+                    forget(r);
+                    if (r == 4) pushes.clear();
+                }
+            } else {
+                reset();
+            }
+        }, reset);
     }
     return out;
 }
 
-std::vector<PortUse> ports_in_code(ByteView code) {
+std::vector<PortUse> ports_in_code(ByteView code, unsigned bits, std::span<const std::uint32_t> starts) {
     std::set<std::pair<std::uint16_t, bool>> found;
-    const auto look = [&](std::size_t after, std::uint32_t port) {
-        if (port < 0x20 || port > 0xFFFF) return;
-        for (std::size_t i = after; i < after + 6 && i < code.size(); ++i) {
-            const std::uint8_t c = code[i];
-            if (c >= 0xEC && c <= 0xEF) {
-                found.emplace(static_cast<std::uint16_t>(port), c >= 0xEE);
-                return;
-            }
-        }
+    std::vector<std::pair<std::uint16_t, bool>> pending;   // what the run being read would add, kept only if it proves to be code
+    std::vector<std::size_t> targets, trail;
+    const auto use = [&](std::uint32_t port, bool writes) {
+        if (port >= 0x20 && port <= 0xFFFF) pending.emplace_back(static_cast<std::uint16_t>(port), writes);
     };
-    for (std::size_t i = 0; i + 3 < code.size(); ++i) {
-        if (code[i] == 0x66 && code[i + 1] == 0xBA) {
-            look(i + 4, static_cast<std::uint32_t>(code[i + 2]) | (static_cast<std::uint32_t>(code[i + 3]) << 8));
-        } else if (code[i] == 0xBA && i + 5 <= code.size() && (i == 0 || code[i - 1] != 0x66)) {
-            look(i + 5, u32_le(code, i + 1));
+    const platforms::Decoder& decoder = sig_decoder(bits);
+    std::vector<char> visited(code.size(), 0);
+    std::vector<std::size_t> work;
+    for (const std::uint32_t start : starts)
+        if (start < code.size()) work.push_back(start);
+    std::sort(work.begin(), work.end());
+    work.erase(std::unique(work.begin(), work.end()), work.end());
+    while (!work.empty()) {
+        std::size_t at = work.back();
+        work.pop_back();
+        std::optional<std::uint16_t> dx;   // what dx holds here, when the code in front of it says
+        pending.clear();
+        targets.clear();
+        trail.clear();
+        bool clean = false;   // a run is code if it ends as code does: a return, a jump, or into code already read
+        while (true) {
+            if (at >= code.size() || visited[at]) {
+                clean = true;
+                break;
+            }
+            visited[at] = 1;
+            trail.push_back(at);
+            std::size_t next = at;
+            bool ends = false;
+            decoder.each(code.subspan(at, std::min<std::size_t>(16, code.size() - at)), at, 1, [&](const cs_insn& c) {
+                next = at + c.size;
+                const std::string_view m = c.mnemonic, s = c.op_str;
+                const std::size_t comma = s.find(", ");
+                const std::string_view first = s.substr(0, comma), second = comma == std::string_view::npos ? std::string_view{} : s.substr(comma + 2);
+                if (m == "in" || m == "out") {
+                    const std::string_view port = m == "in" ? second : first;
+                    if (port == "dx") {
+                        if (dx) use(*dx, m == "out");
+                    } else if (const auto number = sig_number(port); number && sig_board_port(*number)) {
+                        use(*number, m == "out");
+                    }
+                    return true;
+                }
+                if (m == "call" || m.starts_with('j') || m.starts_with("loop")) {
+                    if (const auto target = sig_number(s); target && *target < code.size()) targets.push_back(*target);
+                    if (m == "call") dx.reset();
+                    ends = m == "jmp";
+                    return true;
+                }
+                if (m == "int") {
+                    if (s == "0x20") next += 4;   // (a VxD service call: its number follows the instruction)
+                    dx.reset();
+                    return true;
+                }
+                if (m == "ljmp" || m == "hlt" || m.starts_with("ret") || m.starts_with("iret")) {
+                    ends = true;
+                    return true;
+                }
+                const bool whole = first == "dx" || first == "edx";
+                if (whole || first == "dl" || first == "dh") {
+                    const auto number = sig_number(second);
+                    if (m == "mov" && number) {
+                        if (whole) dx = *number <= 0xFFFF ? std::optional<std::uint16_t>(static_cast<std::uint16_t>(*number)) : std::nullopt;
+                        else if (dx && first == "dl") dx = static_cast<std::uint16_t>((*dx & 0xFF00) | (*number & 0xFF));
+                        else if (dx) dx = static_cast<std::uint16_t>((*dx & 0x00FF) | ((*number & 0xFF) << 8));
+                        return true;
+                    }
+                    if (dx && first != "dh" && ((m == "add" && number) || (m == "sub" && number) || m == "inc" || m == "dec")) {
+                        const std::uint32_t by = number ? *number : 1;
+                        const bool up = m == "add" || m == "inc";
+                        if (first == "dl") dx = static_cast<std::uint16_t>((*dx & 0xFF00) | ((up ? *dx + by : *dx - by) & 0xFF));
+                        else dx = static_cast<std::uint16_t>(up ? *dx + by : *dx - by);
+                        return true;
+                    }
+                }
+                const auto access = decoder.register_access(c);
+                if (!access) {
+                    dx.reset();
+                    return true;
+                }
+                for (const std::uint16_t w : access->written)
+                    if (const char* name = decoder.register_name(w); name != nullptr && sig_register(name) == 2) dx.reset();
+                return true;
+            });
+            if (next == at) break;   // (bytes that do not decode: this was data)
+            if (ends) {
+                clean = true;
+                break;
+            }
+            at = next;
+        }
+        if (clean) {
+            found.insert(pending.begin(), pending.end());
+            work.insert(work.end(), targets.begin(), targets.end());
+        } else {
+            for (const std::size_t place : trail) visited[place] = 0;
         }
     }
     std::vector<PortUse> out;
     out.reserve(found.size());
     for (const auto& [port, writes] : found) out.push_back({port, writes});
     return out;
+}
+
+std::vector<PortUse> ports_in_code(ByteView code, unsigned bits) {
+    const std::uint32_t start = 0;
+    return ports_in_code(code, bits, std::span<const std::uint32_t>(&start, 1));
 }
 
 std::optional<Signals> build_signals(const Board& board, const Index& index, const SignalReport& report, const std::atomic<bool>& cancel) {
@@ -642,17 +858,41 @@ std::optional<Signals> build_signals(const Board& board, const Index& index, con
         if (card.format == "PE")
             for (const NamedObject& object : named_objects(data)) builder.add(i, object.type, clean(object.name), object.direction, 70);
         if (card.pile == Pile::Drivers) {
-            const auto ports = [&](ByteView code) {
-                for (const PortUse& use : ports_in_code(code)) builder.add(i, SignalType::IoPort, std::format("0x{:03x}", use.port), use.writes ? Direction::Writes : Direction::Reads, 50);
+            const auto ports = [&](ByteView code, unsigned bits, const std::vector<std::uint32_t>& starts) {
+                for (const PortUse& use : ports_in_code(code, bits, starts)) builder.add(i, SignalType::IoPort, std::format("0x{:03x}", use.port), use.writes ? Direction::Writes : Direction::Reads, 80);
             };
             try {
+                // only code something reaches: the entry points and every address the file's own fix-ups name
                 if (card.format == "LE") {
                     const formats::le::Module module = formats::le::Module::from_buffer(data);
-                    for (const formats::le::Object& object : module.objects())
-                        if (object.executable()) ports(module.object_data(object));
+                    const std::vector<formats::le::Reference> references = module.references();
+                    const std::vector<formats::le::EntryPoint> entries = module.entries();
+                    for (const formats::le::Object& object : module.objects()) {
+                        if (!object.executable()) continue;
+                        std::vector<std::uint32_t> starts;
+                        if (module.header().eip_object == object.index) starts.push_back(module.header().eip);
+                        for (const formats::le::EntryPoint& e : entries)
+                            if (e.object == object.index) starts.push_back(e.offset);
+                        for (const formats::le::Reference& r : references)
+                            if (r.target_object == object.index && r.target_offset >= 0 && r.target_offset < object.vsize) starts.push_back(static_cast<std::uint32_t>(r.target_offset));
+                        ports(module.object_data(object), (object.flags & 0x2000) != 0 ? 32 : 16, starts);
+                    }
                 } else if (card.format == "PE") {
                     const formats::pe::Image image = formats::pe::Image::parse(ByteView(data));
-                    for (const auto& section : image.code_sections()) ports(image.section_data(*section.section));
+                    const std::uint64_t image_base = image.optional_header().image_base;
+                    std::vector<std::uint64_t> addresses{image_base + image.optional_header().entry_point};
+                    if (image.directory(0).size != 0)
+                        for (const formats::pe::ExportSymbol& e : image.export_table().symbols)
+                            if (!e.forward && e.rva != 0) addresses.push_back(image_base + e.rva);
+                    for (const std::uint64_t rva : image.base_relocs())
+                        if (const auto bytes = image.read_rva(rva, 4)) addresses.push_back(u32_le(*bytes, 0));
+                    for (const auto& section : image.code_sections()) {
+                        const ByteView code = image.section_data(*section.section);
+                        std::vector<std::uint32_t> starts;
+                        for (const std::uint64_t address : addresses)
+                            if (address >= section.va && address - section.va < code.size()) starts.push_back(static_cast<std::uint32_t>(address - section.va));
+                        ports(code, 32, starts);
+                    }
                 }
             } catch (const std::exception&) {}   // (a driver whose code cannot be laid out shows no ports)
         }

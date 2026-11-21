@@ -100,6 +100,33 @@ CB_TEST("app.board_signals.a_port_needs_an_in_or_out_right_after_it", [] {
     CB_CHECK(!p[1].writes);
 });
 
+CB_TEST("app.board_signals.ports_follow_what_the_decoded_code_does_to_dx", [] {
+    const Bytes code = {0x66, 0xBA, 0x78, 0x03,  0x42,  0xEC,                 // mov dx, 378h; inc edx; in al, dx          -> 379 read
+                        0x66, 0xBA, 0xF8, 0x02,  0x80, 0xC2, 0x05,  0xEE,     // mov dx, 2F8h; add dl, 5; out dx, al       -> 2FD written
+                        0x66, 0xBA, 0x00, 0x05,  0x99,  0xEC,                 // mov dx, 500h; cdq (dx is lost); in al, dx -> nothing
+                        0x90, 0x90, 0x90,  0xE4, 0x60,  0xE6, 0x21};          // in al, 60h; out 21h, al
+    const std::vector<PortUse> p = ports_in_code(code);
+    CB_CHECK_EQ(p.size(), std::size_t{4});
+    CB_CHECK_EQ(int{p[0].port}, 0x21);
+    CB_CHECK(p[0].writes);
+    CB_CHECK_EQ(int{p[1].port}, 0x60);
+    CB_CHECK(!p[1].writes);
+    CB_CHECK_EQ(int{p[2].port}, 0x2FD);
+    CB_CHECK(p[2].writes);
+    CB_CHECK_EQ(int{p[3].port}, 0x379);
+    const Bytes wide = {0xBA, 0x20, 0x02, 0xEC};                              // in 16-bit code: mov dx, 220h; in al, dx
+    CB_CHECK_EQ(ports_in_code(wide, 16).size(), std::size_t{1});
+    CB_CHECK_EQ(int{ports_in_code(wide, 16)[0].port}, 0x220);
+    const Bytes island = {0xEB, 0x02,  0xE4, 0x70,  0xE4, 0x60,  0xC3,  0xE4, 0x71};   // jmp over data; in al, 60h; ret; data
+    const std::vector<PortUse> reached = ports_in_code(island);
+    CB_CHECK_EQ(reached.size(), std::size_t{1});                              // the bytes jumped over and those after the ret are not code
+    CB_CHECK_EQ(int{reached[0].port}, 0x60);
+    const Bytes data = {0xE4, 0x70, 0x0F, 0x04};                              // reads like an in, then stops decoding: it was data
+    CB_CHECK(ports_in_code(data).empty());
+    const std::uint32_t second = 7;
+    CB_CHECK_EQ(int{ports_in_code(island, 32, std::span<const std::uint32_t>(&second, 1))[0].port}, 0x71);   // a real entry point reaches it
+});
+
 Card bs_card(const char* rel, Pile pile) {
     Card c;
     c.rel = rel;

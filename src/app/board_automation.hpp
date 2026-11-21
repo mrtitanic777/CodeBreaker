@@ -24,8 +24,9 @@ namespace cb::app::board {
 struct Orphans {
     std::vector<char> card;            // per card
     std::uint32_t distinct = 0;        // distinct files
+    std::uint32_t seen_running = 0;    // distinct files no link reaches that carry the name of a module a trace saw running: loaded at run time, so not orphans
 };
-Orphans find_orphans(const Board& board, const Index& index, const Signals* signals);
+Orphans find_orphans(const Board& board, const Index& index, const Signals* signals, const Measured* measured = nullptr);
 
 // ---- decks
 

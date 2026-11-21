@@ -91,15 +91,18 @@ struct NamedObject {
     Direction direction = Direction::Writes;
     std::string name;
 };
-// Names passed to CreateMutex, OpenEvent, CreateFileMapping, RegisterWindowMessage and kin in a 32-bit PE image, through a direct call or an import thunk.
+// Names passed to CreateMutex, OpenEvent, CreateFileMapping, RegisterWindowMessage and kin in a 32-bit PE image, read from the decoded call: the API's own name
+// argument, through a direct call, an import thunk, or a register holding the import.
 std::vector<NamedObject> named_objects(ByteView image);
 
 struct PortUse {
     std::uint16_t port = 0;
     bool writes = false;
 };
-// `mov dx, port` (or edx) followed within a few bytes by in or out.
-std::vector<PortUse> ports_in_code(ByteView code);
+// The ports code reaches: decoded from `starts` (offsets into `code`) along its calls and jumps, so data between functions is never read as code. Counts `in` and
+// `out` with a fixed port, or through dx where the instructions before it say what dx holds. The short form starts at the first byte.
+std::vector<PortUse> ports_in_code(ByteView code, unsigned bits, std::span<const std::uint32_t> starts);
+std::vector<PortUse> ports_in_code(ByteView code, unsigned bits = 32);
 
 // ---- the whole board
 

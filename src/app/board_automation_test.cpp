@@ -99,6 +99,21 @@ CB_TEST("app.board_automation.a_batch_takes_unconverted_binaries_most_linked_fir
     CB_CHECK(order == expected);
 });
 
+CB_TEST("app.board_automation.a_file_seen_running_is_no_orphan", [] {
+    const Sample s;
+    const Orphans before = find_orphans(s.board, s.index, &s.signals);
+    std::uint32_t orphan = 0;
+    while (orphan < before.card.size() && !before.card[orphan]) ++orphan;
+    CB_CHECK(orphan < before.card.size());
+    Measured m;
+    m.seconds = 1;
+    m.channels = {{"somewhere.exe", s.board.cards[orphan].name, 3}};
+    const Orphans after = find_orphans(s.board, s.index, &s.signals, &m);
+    CB_CHECK(!after.card[orphan]);
+    CB_CHECK_EQ(after.seen_running, 1u);
+    CB_CHECK_EQ(after.distinct, before.distinct - 1);
+});
+
 CB_TEST("app.board_automation.a_batch_takes_what_really_ran_first", [] {
     const Sample s;
     Projection p;

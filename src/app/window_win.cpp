@@ -3973,8 +3973,8 @@ int ww_board_scan(const stdfs::path& image, const std::string& out_folder) {
                 const board::Graph graph = board::build_graph(*b, *index, board::kLinkImports);
                 std::string path;
                 for (const std::uint32_t m : projection.hot_path) path += (path.empty() ? "" : " > ") + graph.modules[m].name;
-                const board::Orphans orphans = board::find_orphans(*b, *index, kept_signals ? &*kept_signals : nullptr);
-                out("orphans (no link found): {} distinct files\n", orphans.distinct);
+                const board::Orphans orphans = board::find_orphans(*b, *index, kept_signals ? &*kept_signals : nullptr, kept_trace ? &*kept_trace : nullptr);
+                out("orphans (no link found): {} distinct files; {} more had no link but were seen running\n", orphans.distinct, orphans.seen_running);
                 for (const board::Deck& deck : board::builtin_decks()) {
                     const std::vector<char> named = board::cards_named(*b, deck.names);
                     std::set<std::uint32_t> files;
