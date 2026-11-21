@@ -105,7 +105,7 @@ CB_TEST("translate.cpp17.own.zoo", [] {
     if (lib == nullptr) return;
     cb::Arena arena;
     std::vector<ir::Node*> units = own_units(arena, "zoo");
-    check_text(c17::program(*lib, arena, units, std::string("Main")), "cpp17/zoo.golden.cpp");
+    check_text(c17::program(*lib, arena, units, std::string("Zoo")), "cpp17/zoo.golden.cpp");
 });
 CB_TEST("translate.cpp17.own.mix", [] {
     const nl::Library* lib = library();

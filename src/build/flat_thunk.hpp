@@ -115,7 +115,7 @@ std::string_view subtype_name(Subtype s);   // "unknown", "win16-c", "flat-thunk
 struct Classification {
     Format format = Format::Unknown;
     Subtype subtype = Subtype::Unknown;
-    std::optional<std::string> recipe;           // "msc6-dosbox", "thunk-ml-cl-link", "msvc-native"; none for an unknown module (the first is a label the gate's golden pins: Win16 C built on the DOS executive)
+    std::optional<std::string> recipe;           // "msc6", "thunk-ml-cl-link", "msvc-native"; none for an unknown module (the first is a label the gate's golden pins: Win16 C built on the DOS executive)
     std::optional<std::uint64_t> exports;        // a PE's named exports
     std::optional<std::uint64_t> imports;        // a flat-thunk's imported symbols
     std::string why;

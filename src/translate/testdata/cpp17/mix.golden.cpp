@@ -312,8 +312,7 @@ void Mix_Color::clear_() {
 
 void Mix_Color::ctor_(ref<String> name_in, int32_t ordinal_in) {
 	clinit_();
-	jrt::Enum::ctor_(name_in, ordinal_in);
-	this->ctor_(1);
+	this->ctor_(name_in, ordinal_in, 1);
 }
 
 void Mix_Color::ctor_(ref<String> name_in, int32_t ordinal_in, int32_t w) {
@@ -354,7 +353,7 @@ void Mix_Inner::clear_() {
 
 void Mix_Inner::ctor_(int32_t v) {
 	finit_();
-	this->v = v + this->outer_->base;
+	this->v = v + jrt::nn(this->outer_)->base;
 }
 
 int32_t Mix_Inner::get() {

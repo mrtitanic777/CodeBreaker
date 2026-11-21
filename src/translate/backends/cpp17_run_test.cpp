@@ -16,6 +16,7 @@
 #include "core/json.hpp"
 #include "core/process.hpp"
 #include "core/testing.hpp"
+#include "core/text.hpp"
 
 namespace {
 
@@ -131,3 +132,46 @@ CB_TEST("translate.cpp17.the_cycle_collector_frees_rings_and_nothing_in_use", []
     const auto ran = cb::process::run(run);
     CB_CHECK(ran.exit_code == 0);
 });
+
+// Each Java program's translation, built with g++ and run: what it prints is what the JVM printed for the same program (<name>.jvm.txt,
+// recorded from Java 21). A golden alone only says the text is unchanged; these say the text works.
+namespace {
+void prints_what_the_jvm_printed(const std::string& name) {
+    try {
+        cb::process::ProcessSpec probe;
+        probe.argv = {"g++", "--version"};
+        probe.timeout = std::chrono::seconds(30);
+        if (cb::process::run(probe).exit_code != 0) return;
+    } catch (const std::exception&) {
+        return;   // (no g++ here)
+    }
+    const std::filesystem::path data = cb::testing::data_path("translate/testdata/cpp17");
+    cb::fs::ScopedTempDir work("cb_cpp17_jvm");
+    const std::string exe = cb::fs::to_text(work.path() / (name + ".exe"));
+    cb::process::ProcessSpec build;
+    build.argv = {"g++", "-std=c++17", "-fwrapv", "-w", "-O0", "-I" + cb::fs::to_text(cb::testing::data_path("../config/translate/runtime/cpp17")), "-x", "c++", "-o", exe,
+                  cb::fs::to_text(data / (name + ".golden.cpp"))};
+    build.timeout = std::chrono::seconds(300);
+    const auto built = cb::process::run(build);
+    CB_CHECK(built.exit_code == 0);
+    if (built.exit_code != 0) return;
+    cb::process::ProcessSpec run;
+    run.argv = {exe};
+    run.timeout = std::chrono::seconds(60);
+    const auto ran = cb::process::run(run);
+    CB_CHECK(ran.exit_code == 0);
+    const std::string got = cb::text::replace_all(std::string(ran.out.begin(), ran.out.end()), "\r", "");
+    CB_CHECK_EQ(got, cb::text::replace_all(cb::fs::read_text(data / (name + ".jvm.txt")), "\r", ""));
+}
+}  // namespace
+
+CB_TEST("translate.cpp17.runs_as_the_jvm.bank", [] { prints_what_the_jvm_printed("bank"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.calc", [] { prints_what_the_jvm_printed("calc"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.generics", [] { prints_what_the_jvm_printed("generics"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.mix", [] { prints_what_the_jvm_printed("mix"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.names", [] { prints_what_the_jvm_printed("names"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.shapes", [] { prints_what_the_jvm_printed("shapes"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.streams", [] { prints_what_the_jvm_printed("streams"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.t17", [] { prints_what_the_jvm_printed("t17"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.textstats", [] { prints_what_the_jvm_printed("textstats"); });
+CB_TEST("translate.cpp17.runs_as_the_jvm.zoo", [] { prints_what_the_jvm_printed("zoo"); });

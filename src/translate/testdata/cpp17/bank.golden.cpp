@@ -124,7 +124,7 @@ int64_t Bank::simulate(int32_t seed) {
 				}
 			} catch (jrt::JavaThrow& j2x_t1) {
 				if (auto e = jrt::as<Bank_InsufficientFunds>(j2x_t1.t)) {
-					failures += e->shortBy;
+					failures += jrt::nn(e)->shortBy;
 				} else {
 					throw;
 				}
@@ -140,7 +140,7 @@ int64_t Bank::simulate(int32_t seed) {
 			jrt::nn(c)->deposit(amt + 1);
 		}
 	}
-	return c->balance * 31 + s->balance + failures * 7;
+	return jrt::nn(c)->balance * 31 + jrt::nn(s)->balance + failures * 7;
 }
 
 ref<String> Bank::wordFreq(ref<String> text) {
@@ -194,7 +194,7 @@ void Bank::main(ref<Array<ref<String>>> args) {
 			jrt::nn(c)->withdraw((int64_t)(80));
 		} catch (jrt::JavaThrow& j2x_t1) {
 			if (auto e = jrt::as<Bank_InsufficientFunds>(j2x_t1.t)) {
-				jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"failed: "), jrt::nn(e)->getMessage(), jrt::lit(u" by "), e->shortBy));
+				jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"failed: "), jrt::nn(e)->getMessage(), jrt::lit(u" by "), jrt::nn(e)->shortBy));
 			} else {
 				throw;
 			}
@@ -216,7 +216,7 @@ void Bank::main(ref<Array<ref<String>>> args) {
 		}
 	}
 	jrt::nn(s)->accrue();
-	jrt::nn(jrt::System::out_())->println(jrt::concat(s, jrt::lit(u" "), c->log, jrt::lit(u" "), s->log));
+	jrt::nn(jrt::System::out_())->println(jrt::concat(s, jrt::lit(u" "), jrt::nn(c)->log, jrt::lit(u" "), jrt::nn(s)->log));
 	int64_t j2xo3{};
 	int64_t j2xo4{};
 	jrt::nn(jrt::System::out_())->println((j2xo3 = Bank::simulate(42), j2xo4 = Bank::simulate(7), jrt::concat(j2xo3, jrt::lit(u" "), j2xo4)));

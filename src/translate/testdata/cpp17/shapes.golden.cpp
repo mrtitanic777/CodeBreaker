@@ -291,7 +291,7 @@ bool Shapes_Circle::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Shapes_Circle>(o);
-	return jrt::Double_::compare(this->r_, that->r_) == 0;
+	return jrt::Double_::compare(this->r_, jrt::nn(that)->r_) == 0;
 }
 
 void Shapes_Rect::ctor_(int32_t w, int32_t h) {
@@ -335,7 +335,7 @@ bool Shapes_Rect::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Shapes_Rect>(o);
-	return this->w_ == that->w_ && this->h_ == that->h_;
+	return this->w_ == jrt::nn(that)->w_ && this->h_ == jrt::nn(that)->h_;
 }
 
 void Shapes_Rect::finit_() {
@@ -372,7 +372,7 @@ bool Shapes_Square::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Shapes_Square>(o);
-	return this->side_ == that->side_;
+	return this->side_ == jrt::nn(that)->side_;
 }
 
 void Shapes_Size::ctor_(ref<String> name_in, int32_t ordinal_in) {

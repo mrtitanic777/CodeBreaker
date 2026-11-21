@@ -172,6 +172,12 @@ std::string u16(const std::string& v) {
             continue;
         } else {
             char b[16];
+            if (o > 0xFFFF) {   // two UTF-16 units, as Java's String holds it
+                const uint32_t c = o - 0x10000;
+                std::snprintf(b, sizeof b, "\\x%04x", (unsigned)(0xD800 + (c >> 10)));
+                out += b;
+                o = 0xDC00 + (c & 0x3FF);
+            }
             std::snprintf(b, sizeof b, "\\x%04x", (unsigned)o);
             out += b;
             prev_hex = true;
@@ -897,7 +903,7 @@ Strs Method::define(bool two, bool clinit) {
         NodeP first = !ss.empty() && is(ss[0], "CtorCall") ? ss[0] : nullptr;
         if (first) ss.erase(ss.begin());
         bool delegated = first && starts(str(raw(first, "kind")), "this");
-        if (ci->kind == "enum") L.push_back("\tjrt::Enum::ctor_(name_in, ordinal_in);");
+        if (ci->kind == "enum" && !delegated) L.push_back("\tjrt::Enum::ctor_(name_in, ordinal_in);");
         if ((first && !ends(str(raw(first, "kind")), ":implicit")) || delegated) {
             auto c = ctor_call(first, "\t", two);
             L.insert(L.end(), c.begin(), c.end());
@@ -949,7 +955,9 @@ Strs Method::ctor_call(const NodeP& call, const std::string& ind, bool two) {
     if (starts(str(raw(call, "kind")), "this")) {
         Strs ps;
         for (auto& x : s->params) ps.push_back(p.ct(x));
-        return {ind + "this->ctor_(" + args(nodes(call, "args"), ps, s) + ");"};
+        std::string given = args(nodes(call, "args"), ps, s);
+        if (ci->kind == "enum") given = "name_in, ordinal_in" + (given.empty() ? std::string() : ", " + given);   // (an enum constant's name and position go along)
+        return {ind + "this->ctor_(" + given + ");"};
     }
     std::string base = ci->base;
     if (base == OBJECT || base.empty()) return {};
@@ -1659,7 +1667,9 @@ E Method::x_select(const NodeP& e) {
             break;
         }
     std::string declared = f ? p.ct(jm::erase(type(f))) : p.ct(jm::erase(type(e)));
-    std::string code = r.first + "->" + p.field_name(sname(s));
+    // (a field read through a null reference is Java's NullPointerException, which the program may catch)
+    const bool never_null = r.first == "this" || r.first == "self_";
+    std::string code = (never_null ? r.first : "jrt::nn(" + r.first + ")") + "->" + p.field_name(sname(s));
     std::string want = p.ct(type(e));
     if (declared != want && is_ref(want) && !p.is_sub_ct(declared, want))
         return E("jrt::cast<" + cls_of(want) + ">(" + code + ")", want);

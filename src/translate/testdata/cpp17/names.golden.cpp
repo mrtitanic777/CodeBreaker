@@ -33,7 +33,7 @@ void Names::main(ref<Array<ref<String>>> args) {
 	int32_t a_b = 5;
 	ref<Supplier> sr = jrt::fn<Supplier>([=]() -> ref<Object> { return jrt::box(register_ + self + a_b); });
 	ref<IntUnaryOperator> twice = jrt::fn<IntUnaryOperator>([=](int32_t x) -> int32_t { return x + register_; });
-	ref<String> s = jrt::lit(u"\x00e9\x1f600x\t1");
+	ref<String> s = jrt::lit(u"\x00e9\xd83d\xde00x\t1");
 	ref<Integer> j2xo1{};
 	int32_t j2xo2{};
 	int32_t j2xo3{};
