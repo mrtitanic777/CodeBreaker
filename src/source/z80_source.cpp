@@ -59,13 +59,17 @@ std::optional<std::string> z80s_described(const z80::Insn& insn) {
 }  // namespace
 
 std::string code(const z80::Insn& insn, const decompile::AddressLabels& names, const iw::Names& ports) {
+    return code(insn, names, ports, dialect::find("sleigh"));
+}
+
+std::string code(const z80::Insn& insn, const decompile::AddressLabels& names, const iw::Names& ports, const dialect::Dialect& dialect) {
     std::optional<std::string> described = z80s_described(insn);
     if (!described) {
         std::string bytes;
         for (const std::uint8_t b : insn.bytes()) bytes += std::format("{}0x{:02x}", bytes.empty() ? "" : ",", b);
         const std::vector<processors::Line> lines = processors::read_described(z80_cpu(), insn.bytes(), insn.pc, 1);
         const std::string said = !lines.empty() && !lines[0].text.starts_with(".d") ? lines[0].text : z80::plain_text(insn);
-        return ".byte " + bytes + "  ; " + said;
+        return dialect.line(".byte " + bytes) + "  ; " + dialect.instruction(said);
     }
     std::string out = std::move(*described);
     // the address operand (an nn or an e of the pattern) by its name, the port of IN A,(n) and OUT (n),A by its
@@ -89,7 +93,7 @@ std::string code(const z80::Insn& insn, const decompile::AddressLabels& names, c
             if (const auto named = ports.find(v); named != ports.end()) out = z80s_name_number(out, v, named->second, true);
         }
     }
-    return out;
+    return dialect.instruction(out);
 }
 
 std::optional<std::uint32_t> forward_reference(const z80::Insn& insn, const decompile::AddressLabels& names, const std::set<std::uint32_t>& constants) {
@@ -122,8 +126,18 @@ std::vector<std::string> data_lines(ByteView data) {
     return described_source::data_lines(data);
 }
 
+std::vector<std::string> data_lines(ByteView data, const dialect::Dialect& dialect) { return dialect.data_lines(data); }
+
 std::string equ(const std::string& name, std::uint32_t value, unsigned digits) { return described_source::equ(name, value, digits); }
 
+std::string equ(const std::string& name, std::uint32_t value, unsigned digits, const dialect::Dialect& dialect) {
+    return dialect.line(described_source::equ(name, value, digits));
+}
+
 Bytes assemble(std::string_view source, const std::filesystem::path& folder) { return processors::assemble_described(z80_cpu(), source, folder).data; }
+
+Bytes assemble(std::string_view source, const std::filesystem::path& folder, const dialect::Dialect& dialect) {
+    return processors::assemble_described(z80_cpu(), dialect.parse(source), folder).data;
+}
 
 }  // namespace cb::source::z80_source

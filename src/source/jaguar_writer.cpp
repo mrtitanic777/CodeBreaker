@@ -11,6 +11,7 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m68k.hpp"
+#include "source/dialect.hpp"
 #include "source/isa.hpp"
 #include "source/risc_source.hpp"
 
@@ -66,7 +67,7 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return insn.length; }
-    std::string text(const m68k::Insn& insn) const override { return risc_source::m68k_code(insn, names_); }   // (the description's text, the names put in)
+    std::string text(const m68k::Insn& insn) const override { return dialect::find("vasm-m68k").fallback(risc_source::m68k_code(insn, names_)); }   // (the description's text, the names put in)
     std::vector<std::string> data_lines(ByteView data) const override { return risc_source::data_lines(data); }
 
     // A cartridge's boot signature and its header: the flags long and the start address.
@@ -170,8 +171,7 @@ iw::Written write(const jag::Program& program, std::string_view file_name, const
     std::vector<std::string> head = {std::format("; {}.asm -- written by CodeBreaker from {}", stem, base_name),
                                      std::format("; Atari Jaguar {}, {} bytes, start ${:06X}", cartridge ? "cartridge" : "COFF executable", program.file.size(), program.entry),
                                      ""};
-    head.insert(head.end() - 1, "; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)");
-    translate::l2::Assembly out(head, "sleigh-m68k", std::string(file_name));
+    translate::l2::Assembly out(head, "asm68k", std::string(file_name));
     for (const std::uint32_t a : used) out.append(risc_source::equ(hardware().at(a), a, 6));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
@@ -188,10 +188,10 @@ iw::Written write(const jag::Program& program, std::string_view file_name, const
         out.append("");
     }
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("vasm-m68k").print(iw::text(out) + "\n");   // (said in vasm's Motorola syntax, config/dialects/vasm-m68k.json)
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), program.file.size());
     const std::string extension = cartridge ? ".j64" : ".cof";
-    iw::assembled(r, [&] { return rebuilt_file(program, risc_source::assemble("m68k", source, folder)); }, program.file, folder / (stem + ".built" + extension));
+    iw::assembled(r, [&] { return rebuilt_file(program, risc_source::assemble("m68k", dialect::find("vasm-m68k").parse(source), folder)); }, program.file, folder / (stem + ".built" + extension));
     return r;
 }
 

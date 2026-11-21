@@ -1,0 +1,4 @@
+{
+  "name": "sleigh",
+  "description": "The neutral dialect: a processor's SLEIGH description text under the directive layer (.org, .equ, .byte, .space, .ascii, name:, ;). Nothing is converted. A writer not yet moved to its platform's period dialect writes this."
+}

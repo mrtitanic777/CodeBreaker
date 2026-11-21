@@ -11,6 +11,7 @@
 #include "core/fs.hpp"
 #include "decompile/i8048.hpp"
 #include "source/described_source.hpp"
+#include "source/dialect.hpp"
 #include "source/processors.hpp"
 
 namespace cb::source::o2_writer {
@@ -59,7 +60,7 @@ public:
     }
     std::uint32_t size(const di::Insn& insn) const override { return insn.size; }
     std::string text(const di::Insn& insn) const override { return text_.at(insn.at); }
-    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
+    std::vector<std::string> data_lines(ByteView data) const override { return dialect::find("asm8048").data_lines(data); }
 
 private:
     const formats::o2::Rom& rom_;
@@ -97,25 +98,25 @@ iw::Written write(const formats::o2::Rom& rom, std::string_view file_name, const
             if (insn.target && address_labels.contains(*insn.target)) *t = described_source::name_number(*t, *insn.target, address_labels.at(*insn.target), false);
             instruction_text[at] = *t;
         } else {
-            instruction_text[at] = described_source::byte_line(i8048_cpu(), insn.bytes(), at, {}, "");
+            instruction_text[at] = dialect::find("asm8048").fallback(described_source::byte_line(i8048_cpu(), insn.bytes(), at, {}, ""));
         }
     }
 
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                  std::format("; Odyssey 2 cartridge, {} bytes at $0400 (the 8048's program memory)", rom.data.size()), ""},
-                                "sleigh-i8048", std::string(file_name));
+                                "asm8048", std::string(file_name));
     out.part("ROM", "segment", std::nullopt, rom.data.size());
     out.append(std::format("        .org 0x{:04x}", o2::kBase));
     O2Listing listing(rom, code, instruction_text);
     iw::emit<di::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("asm8048").print(iw::text(out) + "\n");   // (said in the 8048 assembler's, config/dialects/asm8048.json)
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
     iw::assembled(
         r,
         [&] {
-            return described_source::assemble(i8048_cpu(), source, folder);
+            return described_source::assemble(i8048_cpu(), dialect::find("asm8048").parse(source), folder);
         },
         rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;

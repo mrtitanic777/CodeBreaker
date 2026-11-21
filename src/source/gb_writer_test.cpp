@@ -62,8 +62,8 @@ CB_TEST("source.gb_writer.the_golden_names_what_the_code_touches", [] {
     // The golden file, read for what it says: the registers the code touches are defined and named in its operands, the header is data with
     // its fields named, a pointer into the program gets a data label, and a write into ROM space is a bank controller register, not a pointer.
     const std::string text = golden("gb.golden.asm");
-    for (const char* line : {".equ rLY, 0xff44", ".equ rLCDC, 0xff40", ".equ rROMB0, 0x2000", "        LDH A,( rLY )", "        LD ( rROMB0 ),A",
-                             "        LD HL,D_0180", "D_0180:", "; bank0 (ROM0 at 0x0000)", "; bank1 (ROMX at 0x4000, bank 1)",
+    for (const char* line : {"DEF rLY      EQU $FF44", "DEF rLCDC    EQU $FF40", "DEF rROMB0   EQU $2000", "        LDH A,(rLY)", "        LD (rROMB0),A",
+                             "        LD HL,D_0180", "D_0180:", "SECTION \"bank0\", ROM0[$0000]", "SECTION \"bank1\", ROMX[$4000], BANK[1]",
                              "  ; Nintendo's logo (the boot ROM checks it)", "  ; header checksum", "vblank:", "entry:", "sub_0170:", "        CALL sub_0170"}) {
         CB_CHECK(text.find(line) != std::string::npos);
     }
@@ -78,7 +78,7 @@ CB_TEST("source.gb_writer.banks_past_the_second_are_data_and_the_head_says_what_
     CB_CHECK(r.built && *r.built == dir.path() / "big.built.gbc");   // the extension is the original's
     const std::string source = fs::read_text(r.source);
     CB_CHECK(source.find("; \"DEMO\", MBC1, 64 KB ROM, Game Boy Color (also)") != std::string::npos);
-    CB_CHECK(source.find("; bank3 (ROMX at 0x4000, bank 3)") != std::string::npos);
+    CB_CHECK(source.find("SECTION \"bank3\", ROMX[$4000], BANK[3]") != std::string::npos);
     CB_CHECK_EQ(r.functions.size(), 3u);
     CB_CHECK_EQ(r.image_bytes, 0x10000u);
 });

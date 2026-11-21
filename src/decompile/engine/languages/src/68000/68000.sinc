@@ -609,8 +609,10 @@ Tyw: regdnw	is rmbit=0 & regdnw		{ export regdnw; }
 Txw: -(reg9an)	is rmbit=1 & reg9an		{ reg9an = reg9an-2; export *:2 reg9an; }
 Txw: reg9dnw	is rmbit=0 & reg9dnw		{ export reg9dnw; }
 Tyb: -(regan)	is rmbit=1 & regan		{ regan = regan-1; export *:1 regan; }
+Tyb: -(regan)	is rmbit=1 & regan & regan=7	{ regan = regan-2; export *:1 regan; }
 Tyb: regdnb	is rmbit=0 & regdnb		{ export regdnb; }
 Txb: -(reg9an)	is rmbit=1 & reg9an		{ reg9an = reg9an-1; export *:1 reg9an; }
+Txb: -(reg9an)	is rmbit=1 & reg9an & reg9an=7	{ reg9an = reg9an-2; export *:1 reg9an; }
 Txb: reg9dnb	is rmbit=0 & reg9dnb		{ export reg9dnb; }
 
 # Bit field parameters
@@ -746,6 +748,12 @@ macro subflags(op1,op2) {
  XF = CF;
 }
 
+# CMP, CMPA, CMPI and CMPM set N Z V C as SUB does and leave X alone
+macro cmpflags(op1,op2) {
+ CF = op1 < op2;
+ VF = sborrow(op1,op2);
+}
+
 macro sub(op1,op2res) {
 	local var1 = op1;
 	local var2 = op2res;
@@ -809,7 +817,15 @@ macro resbitflags(result, bitnum) {
 }
 
 macro packflags(res) {
-  res = zext((TF<<15)|(SVF<<13)|(IPL<<8)|(XF<<4)|(NF<<3)|(ZF<<2)|(VF<<1)|CF);
+  local tf:2 = zext(TF);
+  local svf:2 = zext(SVF);
+  local ipl:2 = zext(IPL);
+  local xf:2 = zext(XF);
+  local nf:2 = zext(NF);
+  local zf:2 = zext(ZF);
+  local vf:2 = zext(VF);
+  local cf:2 = zext(CF);
+  res = (tf << 15) | (svf << 13) | (ipl << 8) | (xf << 4) | (nf << 3) | (zf << 2) | (vf << 1) | cf;
 }
 
 macro unpackflags(in) {
@@ -829,26 +845,26 @@ macro extendedResultFlags(result) {
   ZF = (result == 0) && (ZF == 1);
 }
 
+# The shifts and rotates by a count in a register or a quick count (a count is taken modulo 64). C is the last bit shifted out and X follows it, both left
+# as they were (C cleared for the rotates) for a count of 0; V is cleared by all but ASL, which sets it when the sign changed at any time in the shift.
 macro arithmeticShiftLeft(count, register, width) {
 	local modcount = count & 63;
+	local orig = register;
 	local lbit:1 = ((register >> (width - modcount) & 1) != 0);
-	local msbBefore:4 = zext(register s< 0);
+	local top = orig s>> (width - 1 - modcount);
 	register = register << modcount;
 	resflags(register);
-	local msbAfter:4 = zext(register s< 0);
-	VF = (msbBefore ^ msbAfter) != 0;
+	VF = ((modcount < width) && (top != 0) && ((top + 1) != 0)) || ((modcount >= width) && (orig != 0));
 	CF = (modcount != 0) * lbit;
 	XF = ((modcount == 0) * XF) + ((modcount != 0) * CF);
 }
 
 macro arithmeticShiftRight(count, register, width) {
 	local modcount = count & 63;
-	local lbit:1 = ((register >> (modcount-1) & 1) != 0);
-	local msbBefore:4 = zext(register s< 0);
+	local lbit:1 = (((register s>> (modcount - 1)) & 1) != 0);
 	register = register s>> modcount;
 	resflags(register);
-	local msbAfter:4 = zext(register s< 0);
-	VF = (msbBefore ^ msbAfter) != 0;
+	VF = 0;
 	CF = (modcount != 0) * lbit;
 	XF = ((modcount == 0) * XF) + ((modcount != 0) * CF);
 }
@@ -856,45 +872,46 @@ macro arithmeticShiftRight(count, register, width) {
 macro logicalShiftLeft(count, register, width) {
 	local modcount = count & 63;
 	local lbit:1 = ((register >> (width - modcount) & 1) != 0);
-	local msbBefore:4 = zext(register s< 0);
 	register = register << modcount;
 	resflags(register);
-	local msbAfter:4 = zext(register s< 0);
-	VF = (msbBefore ^ msbAfter) != 0;
+	VF = 0;
 	CF = (modcount != 0) * lbit;
 	XF = ((modcount == 0) * XF) + ((modcount != 0) * CF);
 }
 
 macro logicalShiftRight(count, register, width) {
 	local modcount = count & 63;
-	local lbit:1 = ((register >> (modcount-1) & 1) != 0);
-	local msbBefore:4 = zext(register s< 0);
+	local lbit:1 = ((register >> (modcount - 1) & 1) != 0);
 	register = register >> modcount;
 	resflags(register);
-	local msbAfter:4 = zext(register s< 0);
-	VF = (msbBefore ^ msbAfter) != 0;
+	VF = 0;
 	CF = (modcount != 0) * lbit;
 	XF = ((modcount == 0) * XF) + ((modcount != 0) * CF);
 }
 
 macro rotateLeft(count, register, width) {
 	local modcount = count & 63;
-	register = (register << modcount) | (register >> (width - modcount));
+	local m = modcount % width;
+	register = (register << m) | (register >> (width - m));
 	resflags(register);
-	CF = (register & 1) != 0;
+	local lbit:1 = ((register & 1) != 0);
+	CF = (modcount != 0) * lbit;
 	VF = 0;
 }
 
 macro rotateRight(count, register, width) {
 	local modcount = count & 63;
-	register = (register << (width - modcount)) | (register >> modcount);
+	local m = modcount % width;
+	register = (register << (width - m)) | (register >> m);
 	resflags(register);
-	CF = zext(register s< 0);
+	local lbit:1 = (register s< 0);
+	CF = (modcount != 0) * lbit;
 	VF = 0;
 }
 
+# (rotating through X: width + 1 bits, so the count is taken modulo width + 1)
 macro rotateLeftExtended(count, register, width) {
-	local modcount = count & 63;
+	local modcount = (count & 63) % (width + 1);
 	local xflag = (register & (1 << (width - modcount))) != 0;
 	local result = (register << modcount) | (zext(XF) << (modcount - 1)) | (register >> (width - modcount + 1));
 	register = (zext(modcount != 0) * result) + (zext(modcount == 0) * register);
@@ -905,7 +922,7 @@ macro rotateLeftExtended(count, register, width) {
 }
 
 macro rotateRightExtended(count, register, width) {
-	local modcount = count & 63;
+	local modcount = (count & 63) % (width + 1);
 	local xflag = (register & (1 << (modcount - 1))) != 0;
 	local result = (zext(XF) << (width - modcount)) | (register >> modcount) | (register << (width - modcount + 1));
 	register = (zext(modcount != 0) * result) + (zext(modcount == 0) * register);
@@ -923,10 +940,17 @@ macro rotateRightExtended(count, register, width) {
 with : extGUARD=1 {
 
 :abcd Tyb,Txb			is op=12 & op48=16 & Tyb & Txb {
-	CF = carry(Txb,carry(Tyb,XF));
-	Txb = Txb + Tyb + XF;
-	XF = bcdAdjust(Txb);
-	bcdflags(Txb);
+	local x:2 = zext(Txb);
+	local y:2 = zext(Tyb);
+	local lo:2 = (x & 0xf) + (y & 0xf) + zext(XF);
+	local r:2 = (x & 0xf0) + (y & 0xf0) + lo;
+	r = r + (zext(lo > 9) * 6);
+	local c:1 = r > 0x99;
+	r = r + (zext(c) * 0x60);
+	Txb = r:1;
+	CF = c;
+	XF = c;
+	ZF = (Txb == 0) && (ZF == 1);
 }
 
 :add.b eab,reg9dnb			is (op=13 & reg9dnb & op68=0)... & eab				{ add(eab, reg9dnb); }
@@ -952,11 +976,11 @@ with : extGUARD=1 {
 
 
 :addx.b Tyb,Txb			is op=13 & op8=1 & op67=0 & op45=0 & Tyb & Txb
-					{ addxflags(Tyb,Txb); Txb=Tyb+Txb+zext(XF); extendedResultFlags(Txb); }
+					{ addxflags(Tyb,Txb); Txb=Tyb+Txb+zext(XF); extendedResultFlags(Txb); XF = CF; }
 :addx.w Tyw,Txw			is op=13 & op8=1 & op67=1 & op45=0 & Tyw & Txw
-					{ addxflags(Tyw,Txw); Txw=Tyw+Txw+zext(XF); extendedResultFlags(Txw); }
+					{ addxflags(Tyw,Txw); Txw=Tyw+Txw+zext(XF); extendedResultFlags(Txw); XF = CF; }
 :addx.l Ty,Tx			is op=13 & op8=1 & op67=2 & op45=0 & Ty & Tx
-					{ addxflags(Ty,Tx); Tx=Ty+Tx+zext(XF); extendedResultFlags(Tx); }
+					{ addxflags(Ty,Tx); Tx=Ty+Tx+zext(XF); extendedResultFlags(Tx); XF = CF; }
 
 :and.b eab,reg9dnb		is (op=12 & reg9dnb & op68=0 & $(DAT_ALTER_ADDR_MODES))... & eab	{ and(eab, reg9dnb); }
 :and.w eaw,reg9dnw		is (op=12 & reg9dnw & op68=1 & $(DAT_ALTER_ADDR_MODES))... & eaw	{ and(eaw, reg9dnw); }
@@ -1322,8 +1346,7 @@ define pcodeop callm;
 
 :chk.w eaw,reg9dnw		is (op=4 & reg9dnw & op68=6 & $(DAT_ALTER_ADDR_MODES))... & eaw {
 	build eaw;
-	local address:4 = zext(eaw);
-	local bound:2 = *:2 address;
+	local bound:2 = eaw;
 	local signed_bound:4 = sext(bound);
 	local signed_register:4 = sext(reg9dnw);
 
@@ -1334,8 +1357,7 @@ define pcodeop callm;
 
 :chk.l eal,reg9dn		is (op=4 & reg9dn & op68=4 & $(DAT_ALTER_ADDR_MODES))... & eal {
 	build eal;
-	local address:4 = zext(eal);
-	local bound:4 = *:4 address;
+	local bound:4 = eal;
 	local signed_bound:4 = sext(bound);
 	local signed_register:4 = sext(reg9dn);
 
@@ -1453,24 +1475,31 @@ cachetype: "both"		is op67=3							{ export 3:4; }
 :clr.w eaw			is (opbig=0x42 & op67=1 & $(DAT_ALTER_ADDR_MODES))... & eaw		{ eaw = 0; NF=0; ZF=1; VF=0; CF=0; }
 :clr.l eal			is (opbig=0x42 & op67=2 & $(DAT_ALTER_ADDR_MODES))... & eal		{ eal=0; NF=0; ZF=1; VF=0; CF=0; }
 
-:cmp.b eab,reg9dnb		is (op=11 & reg9dnb & op68=0)... & eab				{ o2:1=eab; subflags(reg9dnb,o2); local tmp =reg9dnb-o2; resflags(tmp); }
-:cmp.w eaw,reg9dnw		is (op=11 & reg9dnw & op68=1)... & eaw				{ o2:2=eaw; subflags(reg9dnw,o2); local tmp =reg9dnw-o2; resflags(tmp); }
-:cmp.l eal,reg9dn		is (op=11 & reg9dn & op68=2)... & eal				{ o2:4=eal; subflags(reg9dn,o2); local tmp =reg9dn-o2; resflags(tmp); }
+:cmp.b eab,reg9dnb		is (op=11 & reg9dnb & op68=0)... & eab				{ o2:1=eab; cmpflags(reg9dnb,o2); local tmp =reg9dnb-o2; resflags(tmp); }
+:cmp.w eaw,reg9dnw		is (op=11 & reg9dnw & op68=1)... & eaw				{ o2:2=eaw; cmpflags(reg9dnw,o2); local tmp =reg9dnw-o2; resflags(tmp); }
+:cmp.l eal,reg9dn		is (op=11 & reg9dn & op68=2)... & eal				{ o2:4=eal; cmpflags(reg9dn,o2); local tmp =reg9dn-o2; resflags(tmp); }
 
-:cmpa.w eaw,reg9an		is (op=11 & reg9an & op68=3)... & eaw				{ tmp1:4 = sext(eaw); subflags(reg9an,tmp1); local tmp =reg9an-tmp1; resflags(tmp); }
-:cmpa.l eal,reg9an		is (op=11 & reg9an & op68=7)... & eal				{ o2:4=eal; subflags(reg9an,o2); local tmp =reg9an-o2; resflags(tmp); }
+:cmpa.w eaw,reg9an		is (op=11 & reg9an & op68=3)... & eaw				{ tmp1:4 = sext(eaw); cmpflags(reg9an,tmp1); local tmp =reg9an-tmp1; resflags(tmp); }
+:cmpa.l eal,reg9an		is (op=11 & reg9an & op68=7)... & eal				{ o2:4=eal; cmpflags(reg9an,o2); local tmp =reg9an-o2; resflags(tmp); }
 
 
-:cmpi.b const8,e2b		is opbig=12 & op67=0 & savmod1 & regtfan & $(DAT_ALTER_ADDR_MODES); const8; e2b		[ savmod2=savmod1; regtsan=regtfan; ]	{ o2:1=e2b; subflags(o2,const8); local tmp =o2-const8; resflags(tmp); }
-:cmpi.w const16,e2w		is opbig=12 & op67=1 & savmod1 & regtfan & $(DAT_ALTER_ADDR_MODES); const16; e2w	[ savmod2=savmod1; regtsan=regtfan; ]	{ o2:2=e2w; subflags(o2,const16); local tmp =o2-const16; resflags(tmp);}
-:cmpi.l const32,e2l		is opbig=12 & op67=2 & savmod1 & regtfan & $(DAT_ALTER_ADDR_MODES); const32; e2l	[ savmod2=savmod1; regtsan=regtfan; ]	{ o2:4=e2l; subflags(o2,const32); local tmp =o2-const32; resflags(tmp);}
+:cmpi.b const8,e2b		is opbig=12 & op67=0 & savmod1 & regtfan & $(DAT_ALTER_ADDR_MODES); const8; e2b		[ savmod2=savmod1; regtsan=regtfan; ]	{ o2:1=e2b; cmpflags(o2,const8); local tmp =o2-const8; resflags(tmp); }
+:cmpi.w const16,e2w		is opbig=12 & op67=1 & savmod1 & regtfan & $(DAT_ALTER_ADDR_MODES); const16; e2w	[ savmod2=savmod1; regtsan=regtfan; ]	{ o2:2=e2w; cmpflags(o2,const16); local tmp =o2-const16; resflags(tmp);}
+:cmpi.l const32,e2l		is opbig=12 & op67=2 & savmod1 & regtfan & $(DAT_ALTER_ADDR_MODES); const32; e2l	[ savmod2=savmod1; regtsan=regtfan; ]	{ o2:4=e2l; cmpflags(o2,const32); local tmp =o2-const32; resflags(tmp);}
 
 :cmpm.b regPlus,reg9Plus	is op=11 & reg9Plus & op8=1 & op67=0 & op5=0 & op34=1 & regPlus	{ local tmp1=*:1 regPlus; regPlus=regPlus+1; local tmp2=*:1 reg9Plus; reg9Plus=reg9Plus+1;
-								subflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
+								cmpflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
+# (a byte through A7 moves it by two)
+:cmpm.b regPlus,reg9Plus	is op=11 & reg9Plus & op8=1 & op67=0 & op5=0 & op34=1 & regPlus & regan=7 & reg9an=7	{ local tmp1=*:1 regPlus; regPlus=regPlus+2; local tmp2=*:1 reg9Plus; reg9Plus=reg9Plus+2;
+								cmpflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
+:cmpm.b regPlus,reg9Plus	is op=11 & reg9Plus & op8=1 & op67=0 & op5=0 & op34=1 & regPlus & regan=7	{ local tmp1=*:1 regPlus; regPlus=regPlus+2; local tmp2=*:1 reg9Plus; reg9Plus=reg9Plus+1;
+								cmpflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
+:cmpm.b regPlus,reg9Plus	is op=11 & reg9Plus & op8=1 & op67=0 & op5=0 & op34=1 & regPlus & reg9an=7	{ local tmp1=*:1 regPlus; regPlus=regPlus+1; local tmp2=*:1 reg9Plus; reg9Plus=reg9Plus+2;
+								cmpflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
 :cmpm.w regPlus,reg9Plus	is op=11 & reg9Plus & op8=1 & op67=1 & op5=0 & op34=1 & regPlus	{ local tmp1=*:2 regPlus; regPlus=regPlus+2; local tmp2=*:2 reg9Plus; reg9Plus=reg9Plus+2;
-								subflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
+								cmpflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
 :cmpm.l regPlus,reg9Plus	is op=11 & reg9Plus & op8=1 & op67=2 & op5=0 & op34=1 & regPlus { local tmp1=*:4 regPlus; regPlus=regPlus+4; local tmp2=*:4 reg9Plus; reg9Plus=reg9Plus+4;
-								 subflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
+								 cmpflags(tmp2,tmp1); local tmp =tmp2-tmp1; resflags(tmp); }
 # cpBcc      # need to know specific copressors  use copcc1
 # cpDBcc     # use copcc2
 # cpGEN
@@ -1485,24 +1514,40 @@ cachetype: "both"		is op67=3							{ export 3:4; }
 }
 
 :divs.w eaw,reg9dn		is (op=8 & reg9dn & op68=7)... & eaw	{
-	local denom = sext(eaw);
-	local divis = reg9dn;
-	local div = divis s/ denom;
-	local rem = divis s% denom;
-	CF=0;
-	resflags(div);
+	local denom:4 = sext(eaw);
+	local divis:4 = reg9dn;
+	local div:4 = divis s/ denom;
+	local rem:4 = divis s% denom;
+	if ((div s< -0x8000) || (div s> 0x7fff)) goto <overflow>;
 	reg9dn = (rem << 16) | (div & 0xffff);
+	local div16:2 = div:2;
+	NF = div16 s< 0;
+	ZF = div16 == 0;
+	VF = 0;
+	CF = 0;
+	goto inst_next;
+	<overflow>
+	VF = 1;
+	CF = 0;
 }
 
 :divu.w eaw,reg9dn		is (op=8 & reg9dn & op68=3)... & eaw
 {
-	local denom = zext(eaw);
-	local divis = reg9dn;
-	local div = divis / denom;
-	local rem = divis % denom;
-	CF=0;
-	resflags(div);
-	reg9dn = (rem << 16) | (div & 0xffff);
+	local denom:4 = zext(eaw);
+	local divis:4 = reg9dn;
+	local div:4 = divis / denom;
+	local rem:4 = divis % denom;
+	if (div > 0xffff) goto <overflow>;
+	reg9dn = (rem << 16) | div;
+	local div16:2 = div:2;
+	NF = div16 s< 0;
+	ZF = div16 == 0;
+	VF = 0;
+	CF = 0;
+	goto inst_next;
+	<overflow>
+	VF = 1;
+	CF = 0;
 	}
 
 #remyes: "s"			is regdq & (regdr=regdq) & divsgn=1				{ }
@@ -2030,11 +2075,16 @@ submul: regdr-regdq		is regdq & divsgn=0 & divsz=1 & regdr	{
 :mul^mulsize e2l,submul		is opbig=0x4c & op67=0 & $(DAT_ALTER_ADDR_MODES); submul & mulsize; e2l [ savmod2=savmod1; regtsan=regtfan; ] { glbdenom=e2l; build submul; }
 
 :nbcd eab	is (opbig=0x48 & op67=0 & $(DAT_ALTER_ADDR_MODES))... & eab {
-	local tmp = eab;
-	CF = (tmp != 0) || (XF == 1);
-	tmp = 0 - tmp - XF;
-	eab = bcdAdjust(tmp);
-	bcdflags(tmp);
+	local y:2 = zext(eab);
+	local lo:2 = 0 - (y & 0xf) - zext(XF);
+	local r:2 = 0 - (y & 0xf0) + lo;
+	r = r - (zext(lo s< 0) * 6);
+	local c:1 = r s< 0;
+	r = r - (zext(c) * 0x60);
+	eab = r:1;
+	CF = c;
+	XF = c;
+	ZF = (eab == 0) && (ZF == 1);
 }
 
 # NB: For the neg insn the CF carry flag is not set like other insns, from the manual:
@@ -2070,11 +2120,11 @@ macro negResFlags(result) {
 # CF - Set if borrow occurs; otherwise.
 
 :negx.b eab		is (opbig=0x40 & op67=0 & $(DAT_ALTER_ADDR_MODES))... & eab
-					{ local tmp = eab + XF; negxsubflags(tmp); tmp = -tmp; eab=tmp; extendedResultFlags(tmp); }
+					{ local d = eab; local tmp = 0 - d - zext(XF); CF = (d != 0) || (XF != 0); VF = ((d & tmp) s< 0); XF = CF; eab = tmp; extendedResultFlags(tmp); }
 :negx.w eaw		is (opbig=0x40 & op67=1 & $(DAT_ALTER_ADDR_MODES))... & eaw
-					{ local tmp = eaw + zext(XF); negxsubflags(tmp); tmp = -tmp; eaw=tmp; extendedResultFlags(tmp); }
+					{ local d = eaw; local tmp = 0 - d - zext(XF); CF = (d != 0) || (XF != 0); VF = ((d & tmp) s< 0); XF = CF; eaw = tmp; extendedResultFlags(tmp); }
 :negx.l eal		is (opbig=0x40 & op67=2 & $(DAT_ALTER_ADDR_MODES))... & eal
-					{ local tmp = eal + zext(XF); negxsubflags(tmp); tmp = -tmp; eal=tmp; extendedResultFlags(tmp); }
+					{ local d = eal; local tmp = 0 - d - zext(XF); CF = (d != 0) || (XF != 0); VF = ((d & tmp) s< 0); XF = CF; eal = tmp; extendedResultFlags(tmp); }
 
 :nop				is opbig=0x4e & op37=14 & op02=1			{ }
 
@@ -2263,7 +2313,7 @@ ptestLevel: "#"^mregn	is mregn  { export *[const]:1 mregn; }
 }
 
 :rtd const16		is opbig=0x4e & op37=14 & op02=4; const16	{ PC = *SP; SP = SP + 4 + zext(const16); return [PC]; }
-:rte				is d16=0x4e73							{ tmp:4 = 0; return [tmp]; }
+:rte				is d16=0x4e73							{ local s:2 = *:2 SP; SP = SP+2; PC = *:4 SP; SP = SP+4; SR = s & 0xa71f; unpackflags(SR); return [PC]; }
 
 @ifndef CPU32
 define pcodeop rtm;
@@ -2271,15 +2321,22 @@ define pcodeop rtm;
 :rtm regan			is opbig=0x06 & op37=25 & regan			{ PC = rtm(regan); return [PC];}
 @endif # CPU32 - no RTM
 
-:rtr				is opbig=0x4e & op37=14 & op02=7		{ SR = *SP; SP = SP+2; PC = *SP; SP = SP+4; unpackflags(SR); return [PC]; }
+:rtr				is opbig=0x4e & op37=14 & op02=7		{ local s:2 = *:2 SP; SP = SP+2; packflags(SR); SR = (SR & 0xff00) | (s & 0x1f); PC = *:4 SP; SP = SP+4; unpackflags(SR); return [PC]; }
 
 :rts				is opbig=0x4e & op37=14 & op02=5		{ PC = *SP; SP = SP+4; return [PC]; }
 
 :sbcd Tyb,Txb		is op=8 & op48=16 & Txb & Tyb {
-	CF = (Txb < Tyb) || ( (XF == 1) && (Txb == Tyb) );
-	Txb = Txb - Tyb - XF;
-	Txb = bcdAdjust(Txb);
-	bcdflags(Txb);
+	local x:2 = zext(Txb);
+	local y:2 = zext(Tyb);
+	local lo:2 = (x & 0xf) - (y & 0xf) - zext(XF);
+	local r:2 = (x & 0xf0) - (y & 0xf0) + lo;
+	r = r - (zext(lo s< 0) * 6);
+	local c:1 = r s< 0;
+	r = r - (zext(c) * 0x60);
+	Txb = r:1;
+	CF = c;
+	XF = c;
+	ZF = (Txb == 0) && (ZF == 1);
 }
 
 :s^cc eab			is (op=5 & cc & op67=3 & $(DAT_ALTER_ADDR_MODES))... & eab				{ eab = -cc; }
@@ -2327,7 +2384,7 @@ define pcodeop stop;
 :swap regdn				is opbig=0x48 & op37=8 & regdn					{ logflags(); regdn = (regdn << 16) | (regdn>>16); resflags(regdn); }
 
 @ifndef COLDFIRE
-:tas eab				is (opbig=0x4a & op67=3 & $(DAT_ALTER_ADDR_MODES))... & eab				{ logflags(); resflags(eab); eab = eab | 0x80; }
+:tas eab				is (opbig=0x4a & op67=3 & $(DAT_ALTER_ADDR_MODES))... & eab				{ local tmp = eab; logflags(); resflags(tmp); eab = tmp | 0x80; }
 @endif # COLDFIRE
 
 :trap "#"^op03			is opbig=0x4e & op67=1 & op45=0 & op03		{ vector:1 = op03; __m68k_trap(vector); }
@@ -2336,12 +2393,12 @@ define pcodeop stop;
 :trap^cc^".l" const32	is op=5 & cc & op37=31 & op02=3; const32	{ if (!cc) goto inst_next; SP = SP - 4; *:4 SP = inst_next; __m68k_trapv(); }
 :trapv					is opbig=0x4e & op37=14 & op02=6			{ if (!VF) goto inst_next; __m68k_trapv(); }
 
-:tst.b eab				is (opbig=0x4a & op67=0)... & eab				{ logflags(); resflags(eab); }
-:tst.w eaw				is (opbig=0x4a & op67=1)... & eaw				{ logflags(); resflags(eaw); }
-:tst.l eal				is (opbig=0x4a & op67=2)... & eal				{ logflags(); resflags(eal); }
+:tst.b eab				is (opbig=0x4a & op67=0)... & eab				{ local tmp = eab; logflags(); resflags(tmp); }
+:tst.w eaw				is (opbig=0x4a & op67=1)... & eaw				{ local tmp = eaw; logflags(); resflags(tmp); }
+:tst.l eal				is (opbig=0x4a & op67=2)... & eal				{ local tmp = eal; logflags(); resflags(tmp); }
 
 @ifdef COLDFIRE
-:tas eab				is (opbig=0x4a & op67=3 & $(MEM_ALTER_ADDR_MODES))... & eab				{ logflags(); resflags(eab); eab = eab | 0x80; }
+:tas eab				is (opbig=0x4a & op67=3 & $(MEM_ALTER_ADDR_MODES))... & eab				{ local tmp = eab; logflags(); resflags(tmp); eab = tmp | 0x80; }
 @endif # COLDFIRE
 
 :unlk regan				is opbig=0x4e & op37=11 & regan					{ SP = regan; regan = *SP; SP = SP+4; }

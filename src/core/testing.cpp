@@ -120,6 +120,8 @@ std::filesystem::path local_input(std::string_view relative) {
 }
 
 std::filesystem::path beside_checkout(std::string_view relative) {
+    // A corpus kept in this checkout's test-inputs comes first (homebrew-samples lives there); otherwise a checkout next to this one.
+    if (std::filesystem::path own = local_input(relative); std::filesystem::exists(own)) return own;
     const std::filesystem::path parent = std::filesystem::path(CB_SOURCE_DIR).parent_path().parent_path();
     return (parent / fs::from_text(relative)).lexically_normal();
 }

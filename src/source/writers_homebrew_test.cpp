@@ -1,5 +1,5 @@
 // The console writers over real programs: open-source homebrew with published source (docs/TESTED_SOFTWARE.md), kept outside the repository
-// in GitHub/homebrew-samples (or where CB_HOMEBREW_SAMPLES says). Each is written as source and built again; the rebuilt cartridge must be
+// in test-inputs/homebrew-samples (or where CB_HOMEBREW_SAMPLES says). Each is written as source and built again; the rebuilt cartridge must be
 // the original, byte for byte. A program that is not on this machine is skipped.
 
 #include "core/fs.hpp"
@@ -51,6 +51,14 @@ void rebuild(std::string_view relative, std::size_t functions_at_least, Writer&&
     CB_CHECK(r.same);
     CB_CHECK(r.functions.size() >= functions_at_least);
 }
+
+// Every proof over these programs skips one that is not here, so a corpus that moved would pass in silence: its absence is a failure, except
+// on CI (which has no copy) or when CB_HOMEBREW_SAMPLES=none says to go without it.
+CB_TEST("source.writers.homebrew.samples_are_here", [] {
+    const auto env = fs::get_env("CB_HOMEBREW_SAMPLES");
+    if (fs::get_env("GITHUB_ACTIONS") || (env && *env == "none")) return;
+    CB_CHECK(sample("sms-peterlemon/HelloWorld.sms").has_value());
+});
 
 CB_TEST("source.writers.homebrew.master_system", [] {
     rebuild("sms-peterlemon/HelloWorld.sms", 3, sms_writer::reconstruct);

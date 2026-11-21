@@ -33,3 +33,30 @@ std::string equ(const std::string& name, std::uint32_t value, unsigned digits) {
 Bytes assemble(Cpu cpu, std::string_view source, const std::filesystem::path& folder) { return described_source::assemble(processor(cpu), source, folder); }
 
 }  // namespace cb::source::m6502_source
+
+namespace cb::source::m6502_source {
+
+std::string in_dialect(const dialect::Dialect& dialect, const decompile::m6502::Insn& insn, const decompile::AddressLabels& names, const std::string& code) {
+    if (code.starts_with(".byte") && insn.mode == decompile::m6502::Mode::Abs && insn.operand && *insn.operand < 0x100) {
+        const auto named = names.find(*insn.operand);
+        const std::string operand = named != names.end() ? named->second : dialect.number(*insn.operand, 2);
+        if (std::string forced = dialect.forced_absolute(insn.mnemonic, operand); !forced.empty()) return forced;
+    }
+    return dialect.fallback(code);
+}
+
+}  // namespace cb::source::m6502_source
+
+namespace cb::source::m6502_source {
+
+std::string in_dialect_absolute(const dialect::Dialect& dialect, std::string_view mnemonic, bool absolute, std::uint32_t operand, const decompile::AddressLabels& names,
+                                const std::string& code) {
+    if (code.starts_with(".byte") && absolute && operand < 0x100) {
+        const auto named = names.find(operand);
+        const std::string text = named != names.end() ? named->second : dialect.number(operand, 2);
+        if (std::string forced = dialect.forced_absolute(mnemonic, text); !forced.empty()) return forced;
+    }
+    return dialect.fallback(code);
+}
+
+}  // namespace cb::source::m6502_source

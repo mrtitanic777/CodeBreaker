@@ -10,6 +10,7 @@
 #include "core/text.hpp"
 #include "decompile/m6502.hpp"
 #include "source/isa.hpp"
+#include "source/dialect.hpp"
 #include "source/m6502_source.hpp"
 
 namespace cb::source::atari7800_writer {
@@ -128,8 +129,8 @@ public:
     }
     std::uint32_t size(const m6502::Insn& insn) const override { return insn.size; }
     std::string text(const m6502::Insn& insn) const override {   // (the description's text, the names put in)
-        return m6502_source::code(m6502_source::Cpu::M6502, ByteView(rom_.data).subspan(at_offset_, insn.size), at_address_,
-                                  writes(insn.mnemonic) ? write_names_ : read_names_);
+        const decompile::AddressLabels& names = writes(insn.mnemonic) ? write_names_ : read_names_;
+        return m6502_source::in_dialect(dialect::find("dasm"), insn, names, m6502_source::code(m6502_source::Cpu::M6502, ByteView(rom_.data).subspan(at_offset_, insn.size), at_address_, names));
     }
     std::vector<std::string> data_lines(ByteView data) const override { return m6502_source::data_lines(data); }
 
@@ -232,15 +233,15 @@ iw::Written write(const formats::atari7800::Rom& rom, std::string_view file_name
 
     std::vector<std::string> head = {std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                      header_note(rom),
-                                     "; (6502 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu 6502 --sleigh`; the file is the header, then each stretch in order)",
-                                     ""};
+                                     };
+    for (const std::string& l : dialect::find("dasm").block("prologue", {{"stem", stem}, {"ext", "a78"}})) head.push_back(l);
     for (const auto& [value, set] : equates) {
         for (const std::string& name : set) head.push_back(m6502_source::equ(name, value, value > 0xFF ? 4 : 2));
     }
     if (!equates.empty()) head.push_back("");
-    translate::l2::Assembly out(head, "sleigh-6502", std::string(file_name));
+    translate::l2::Assembly out(head, "dasm", std::string(file_name));
     out.part("HEADER", "segment", std::nullopt, formats::atari7800::kHeaderSize);
-    out.append("        .org 0x0000");
+    out.extend(dialect::find("dasm").block("bank", {{"offset", "$0000"}, {"window", "$0000"}}));
     out.extend(iw::commented(m6502_source::data_lines(rom.header), "the A78 header"));
     out.append("");
 
@@ -264,17 +265,17 @@ iw::Written write(const formats::atari7800::Rom& rom, std::string_view file_name
             write_names[at & 0xFFFF] = label;
         }
         out.part(banked ? std::format("BANK{}", s.bank) : std::string("ROM"), "segment", std::nullopt, s.size);
-        out.append(std::format("; file offset 0x{:04x}", formats::atari7800::kHeaderSize + s.offset));
-        out.append(std::format("        .org 0x{:04x}", s.base));
+        out.extend(dialect::find("dasm").block("bank", {{"offset", dialect::find("dasm").number(formats::atari7800::kHeaderSize + s.offset, 4)},
+                                                        {"window", dialect::find("dasm").number(s.base, 4)}}));
         A7800Listing listing(out, rom, s, code, labels, read_names, write_names);
         iw::emit<m6502::Insn>(out, s.offset, s.offset + s.size, labels, functions, listing);
         out.append("");
     }
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("dasm").print(iw::text(out) + "\n");   // (said in DASM's, config/dialects/dasm.json)
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
     Bytes original = rom.header;
     original.insert(original.end(), rom.data.begin(), rom.data.end());
-    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, source, folder); }, original, folder / (stem + ".built.a78"));
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, dialect::find("dasm").parse(source), folder); }, original, folder / (stem + ".built.a78"));
     return r;
 }
 

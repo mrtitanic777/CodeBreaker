@@ -84,6 +84,8 @@ public:
     Judgement judge_function(bool same, const std::filesystem::path& original, const std::filesystem::path& rebuilt,
                              std::uint32_t entry) const;
 
+    const ImageLaneSpec& spec() const { return spec_; }
+
 private:
     ImageLaneSpec spec_;
 };

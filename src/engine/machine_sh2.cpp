@@ -11,6 +11,7 @@
 #include "emulate/m68k.hpp"
 #include "emulate/sh2.hpp"
 #include "engine/lane_registry.hpp"
+#include "engine/pcode_cpu.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/read.hpp"
 #include "platforms/sega32x.hpp"
@@ -209,7 +210,7 @@ vl::Effects effects_68k(const formats::sega32x::Rom& rom, std::uint32_t entry, c
     a68[0] = static_cast<std::uint32_t>(at(state, "a0"));
     options.d = d68;
     options.a = a68;
-    const emulate::m68k::RunResult run = emulate::m68k::run(bus, entry, options);
+    const emulate::m68k::RunResult run = cb::engine::pcode_cpu::call(bus, entry, options);
     Bytes results, saved, status;
     put_word(results, run.d[0]);
     put_word(results, run.d[1]);

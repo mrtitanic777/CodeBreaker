@@ -22,12 +22,19 @@
 #include <optional>
 
 #include "emulate/m6502.hpp"
+#include "emulate/m68k.hpp"
 #include "emulate/z80.hpp"
 
 namespace cb::engine::pcode_cpu {
 
-// Whether call() runs on the emulator: force() if set, else not CB_PCODE_EMU=0 ("0", "false", "no").
-bool enabled();
+// The CPU families with an adapter. A family's default (default_on) is the emulator only where its lanes' homebrew is judged with no verdict
+// differing from the own core's and no slower; the others run the own core unless CB_PCODE_EMU=1.
+enum class Core : std::uint8_t { Mos6502, Z80, M68000, Mips, Arm, SuperH, PowerPc };
+bool default_on(Core core);
+
+// Whether call() runs on the emulator: force() if set, else CB_PCODE_EMU ("0", "false", "no": off for every core; "1", "true", "yes": on for every
+// core), else the core's default.
+bool enabled(Core core = Core::Mos6502);
 // Override the environment (tests flip it); std::nullopt goes back to the environment.
 void force(std::optional<bool> on);
 
@@ -46,5 +53,11 @@ emulate::m6502::RunResult call(emulate::m6502::Bus& bus, std::uint16_t entry, co
 // are tracked from the description's user operations (disable/enableMaskableInterrupts, setInterruptMode, getIFF2, halt).
 emulate::z80::RunResult run(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
 emulate::z80::RunResult call(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
+
+// The same for the 68000 lanes (emulate::m68k::Bus), on 68020.sla (a superset of the 68000). Every data access goes through the Bus's read/write (the
+// device ranges and their log are the bus's), the 16 MB of bus memory is what instructions are decoded from, a page at a time current from the last run.
+// The call is made as JSR makes it; TRAP, CHK, TRAPV and STOP end the run with the fault the own core gives.
+emulate::m68k::RunResult run(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
+emulate::m68k::RunResult call(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
 
 }  // namespace cb::engine::pcode_cpu
