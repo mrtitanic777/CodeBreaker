@@ -35,6 +35,10 @@ public:
     // instruction of the description's.
     std::vector<std::vector<std::uint8_t>> assemble(std::string_view line, std::uint64_t address) const;
 
+    // The shortest encoding assemble() would give first (what a caller that takes `.front()` asks for): the same bytes, found without
+    // solving the trees that cannot beat the one found, and without verifying the other encodings of the same length. Empty or one element.
+    std::vector<std::vector<std::uint8_t>> assemble_first(std::string_view line, std::uint64_t address) const;
+
     // What the last assemble() did, for diagnosis: constructor trees the line parsed to, candidates solved, candidates that round-tripped.
     struct Diagnostics {
         std::size_t parses = 0, candidates = 0, verified = 0;
@@ -42,6 +46,7 @@ public:
     Diagnostics last() const;
 
 private:
+    std::vector<std::vector<std::uint8_t>> run(std::string_view line, std::uint64_t address, bool first) const;
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

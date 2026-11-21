@@ -87,23 +87,10 @@ namespace {
 
 constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "migrate-state", "boot-floppy", "judge-c-java", "judge-cs-cpp", "judge-py-cpp", "nasm", "dos-run", "convert", "app", "inspect", "extract", "check", "compare", "corpus", "lookup", "xbox", "disassemble", "assemble", "compile", "link"});   // (counted by the compiler)
 
-// The console's ordinal names ({library: {ordinal: name}}: the knowledge base's xbox360 / ordinal_names), read the first time a name is asked for.
+// The console's ordinal names: the knowledge base's xbox360 ordinals (config/knowledge/xbox360/ordinals.json).
 formats::xex_imports::OrdinalNames console_ordinal_names(const config::Config&) {
-    struct Table {
-        std::once_flag once;
-        knowledge::Rows rows;
-    };
-    auto table = std::make_shared<Table>();
-    return [table](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
-        std::call_once(table->once, [&] { table->rows = knowledge::standard().table("xbox360", "ordinal_names"); });
-        knowledge::record_kind("xbox360", "ordinal_names");
-        const knowledge::Value* lib = table->rows.find(std::string(library));
-        const knowledge::Value::Map* names = lib != nullptr ? lib->map() : nullptr;
-        if (names == nullptr) return std::nullopt;
-        const knowledge::Value* name = names->find(std::to_string(ordinal));
-        const std::string* text = name != nullptr ? name->text() : nullptr;
-        if (text == nullptr) return std::nullopt;
-        return *text;
+    return [](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
+        return knowledge::standard().export_name("xbox360", library, ordinal);
     };
 }
 

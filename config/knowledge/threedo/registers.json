@@ -1,0 +1,28 @@
+{
+ "cbk": 1,
+ "platform": "threedo",
+ "domain": "registers",
+ "about": "3DO: the memory-mapped hardware (Madam, Clio and kin)",
+ "source": {"what": "3DO hardware documents, as source/threedo_writer.cpp held them (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+ {"id": "hardware.MADAM_REVISION", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3300000", "name": "MADAM_REVISION", "width": 4},
+ {"id": "hardware.MADAM_MSYSBITS", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3300004", "name": "MADAM_MSYSBITS", "width": 4},
+ {"id": "hardware.MADAM_MCTL", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3300008", "name": "MADAM_MCTL", "width": 4},
+ {"id": "hardware.MADAM_SLTIME", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x330000C", "name": "MADAM_SLTIME", "width": 4},
+ {"id": "hardware.MADAM_ABORT", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3300010", "name": "MADAM_ABORT", "width": 4},
+ {"id": "hardware.MADAM_PRIV", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3300014", "name": "MADAM_PRIV", "width": 4},
+ {"id": "hardware.MADAM_STATUS", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3300018", "name": "MADAM_STATUS", "width": 4},
+ {"id": "hardware.CLIO_REVISION", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400000", "name": "CLIO_REVISION", "width": 4},
+ {"id": "hardware.CLIO_CSTATBITS", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400004", "name": "CLIO_CSTATBITS", "width": 4},
+ {"id": "hardware.CLIO_WATCHDOG", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400008", "name": "CLIO_WATCHDOG", "width": 4},
+ {"id": "hardware.CLIO_HCOUNT", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400010", "name": "CLIO_HCOUNT", "width": 4},
+ {"id": "hardware.CLIO_VCOUNT", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400014", "name": "CLIO_VCOUNT", "width": 4},
+ {"id": "hardware.CLIO_SEED", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400018", "name": "CLIO_SEED", "width": 4},
+ {"id": "hardware.CLIO_IRQ0", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400040", "name": "CLIO_IRQ0", "width": 4},
+ {"id": "hardware.CLIO_IRQ0_SET", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400044", "name": "CLIO_IRQ0_SET", "width": 4},
+ {"id": "hardware.CLIO_IRQ0_CLEAR", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400048", "name": "CLIO_IRQ0_CLEAR", "width": 4},
+ {"id": "hardware.CLIO_IRQ1", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400060", "name": "CLIO_IRQ1", "width": 4},
+ {"id": "hardware.CLIO_IRQ1_SET", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400064", "name": "CLIO_IRQ1_SET", "width": 4},
+ {"id": "hardware.CLIO_IRQ1_CLEAR", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x3400068", "name": "CLIO_IRQ1_CLEAR", "width": 4}
+ ]
+}

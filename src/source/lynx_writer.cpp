@@ -10,7 +10,7 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m6502.hpp"
-#include "source/isa_65xx.hpp"
+#include "source/isa.hpp"
 #include "source/m6502_source.hpp"
 
 namespace cb::source::lynx_writer {

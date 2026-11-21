@@ -1,5 +1,6 @@
 // cb-unity: alone
 #include "formats/o2.hpp"
+#include "knowledge/package.hpp"
 
 #include <format>
 
@@ -18,7 +19,8 @@ bool size_ok(std::uint64_t size) { return size >= 256 && size <= kMaxSize && siz
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& vdc() {
-    static const std::map<std::uint32_t, std::string> table = {{0xA0, "VDC_CONTROL"}, {0xA1, "VDC_STATUS"}, {0xA2, "VDC_COLLISION"}, {0xA3, "VDC_COLOUR"}};
+    // config/knowledge/o2/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("o2", "vdc");
     return table;
 }
 

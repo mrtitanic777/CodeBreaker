@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cctype>
 #include <format>
+#include <mutex>
+#include <string>
+#include <unordered_set>
 
 #include "core/error.hpp"
 #include "core/text.hpp"
@@ -25,12 +28,30 @@ std::optional<std::string> checked_text(const processors::Processor& cpu, ByteVi
     const std::vector<processors::Line> lines = read(cpu, bytes, pc, context);
     if (lines.empty() || lines[0].bytes.size() != size || lines[0].text.starts_with(".d")) return std::nullopt;
     const std::string& text = lines[0].text;
+    // A text and the bytes it came from that assembled back to exactly those bytes once do so wherever they are met again: the reader gave
+    // the same text for the same bytes at another address, so the text names no address (an address a text names -- a branch's target, a
+    // pc-relative load's -- would read differently from another place), and what the assembler makes of a text with no address in it does not
+    // depend on where it is. Compiled code repeats its instructions (a push of the saved registers, a move of a small number), so most are
+    // checked once. Only a success is kept.
+    static std::mutex lock;
+    static std::unordered_set<std::string> verified;
+    std::string key = std::format("{}|{}|{}|", cpu.name, context.empty() ? "" : context_line(context), text);
+    for (const std::uint8_t b : bytes.subspan(0, std::min<std::size_t>(size, bytes.size()))) key += std::format("{:02x}", b);
+    {
+        std::lock_guard hold(lock);
+        if (verified.contains(key)) return text;
+    }
     try {
         const std::string source = std::format("\t.org 0x{:x}\n{}\t{}\n", pc, context.empty() ? "" : "\t" + context_line(context) + "\n", text);
         const processors::Image again = processors::assemble_described(cpu, source, {});
         if (again.data.size() != size || !std::equal(again.data.begin(), again.data.end(), bytes.begin())) return std::nullopt;
     } catch (const ParseError&) {
         return std::nullopt;
+    }
+    {
+        std::lock_guard hold(lock);
+        if (verified.size() >= 200000) verified.clear();
+        verified.insert(std::move(key));
     }
     return text;
 }

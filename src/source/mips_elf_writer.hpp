@@ -47,7 +47,7 @@ namespace cb::source::mips_elf_writer {
 // What a console says to the writer: its processor, its hardware, and the names its container gives functions.
 struct Machine {
     decompile::mips::Variant variant = decompile::mips::Variant::R5900;
-    const build::Encoder* encoder = nullptr;                                        // the assembler's instruction layer for the variant
+    std::string cpu;                                                                // the processor's SLEIGH description (source/processors): "r5900", "mips"
     std::string description;                                                        // for the source's head ("PlayStation 2 ELF")
     std::function<std::optional<std::string>(std::uint32_t)> hardware;              // the name of the hardware register at an address, if it is one
     std::function<bool(std::uint32_t)> in_ram;                                      // is the address RAM (it is named `var_<address>` unless the program holds it)

@@ -1,4 +1,5 @@
 #include "formats/coleco.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -69,17 +70,8 @@ bool probe(const std::filesystem::path& path) {
 }
 
 const std::map<std::uint32_t, std::string>& bios_names() {
-    static const std::map<std::uint32_t, std::string> kNames = {
-        {0x1F61, "DO_SOUND"},       {0x1F6A, "FLIP_RL"},          {0x1F6D, "FLIP_UD"},         {0x1F70, "ROTATE"},          {0x1F73, "EXPAND"},
-        {0x1F76, "READ_CTL_RAW"},   {0x1F79, "READ_CTL"},         {0x1F7C, "GAME_OPT"},        {0x1F7F, "INIT_FONT"},       {0x1F82, "FILL_VRAM"},
-        {0x1F85, "INIT_VDP"},       {0x1F88, "READ_SPINNER"},     {0x1F8B, "P_BASE_LOAD"},     {0x1F8E, "P_BLK_READ_VRAM"}, {0x1F91, "P_BLK_WRT_VRAM"},
-        {0x1F94, "P_INIT_RAM_SPRT"}, {0x1F97, "P_COPY_RAM_SPRT"}, {0x1F9A, "P_INIT_TIMERS"},   {0x1F9D, "P_STOP_TIMER"},    {0x1FA0, "P_START_TIMER"},
-        {0x1FA3, "P_TEST_TIMER"},   {0x1FA6, "P_WRITE_REG"},      {0x1FA9, "P_WRT_VRAM"},      {0x1FAC, "P_READ_VRAM"},     {0x1FB2, "P_INIT_SOUND"},
-        {0x1FB5, "P_ADD_SOUND"},    {0x1FB8, "BASE_LOAD"},        {0x1FBB, "BLK_READ_VRAM"},   {0x1FBE, "BLK_WRT_VRAM"},    {0x1FC1, "INIT_RAM_SPRT"},
-        {0x1FC4, "COPY_RAM_SPRT"},  {0x1FC7, "INIT_TIMERS"},      {0x1FCA, "STOP_TIMER"},      {0x1FCD, "START_TIMER"},     {0x1FD0, "TEST_TIMER"},
-        {0x1FD3, "RUN_TIMERS"},     {0x1FD6, "NO_SOUND"},         {0x1FD9, "WRITE_REG"},       {0x1FDC, "READ_REG"},        {0x1FDF, "WRT_VRAM"},
-        {0x1FE2, "READ_VRAM"},      {0x1FEB, "READ_CTL_STATE"},   {0x1FEE, "INIT_SOUND"},      {0x1FF1, "ADD_SOUND"},      {0x1FF4, "UPDATE_SOUND"},
-        {0x1FFD, "RANDOM"},         {0x73B9, "STACK"},            {0x73C3, "VDP0_SHAD"},       {0x73C4, "VDP1_SHAD"},       {0x73C8, "RAND_SEED"}};
+    // config/knowledge/coleco/registers.json
+    static const std::map<std::uint32_t, std::string> kNames = knowledge::standard().table_names("coleco", "bios");
     return kNames;
 }
 

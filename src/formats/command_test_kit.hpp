@@ -17,6 +17,7 @@
 #include "core/testing.hpp"
 #include "formats/xex.hpp"
 #include "formats/xex_imports.hpp"
+#include "knowledge/package.hpp"
 
 namespace cb::testing {
 
@@ -52,16 +53,11 @@ inline std::optional<std::filesystem::path> game_file(const char* relative) {
     return path;
 }
 
-// The console ordinals the knowledge base keeps (codebreaker/symbols/console_ordinals.json): {library: {ordinal: name}}, as the function
-// the xex commands' environments take.
+// The console ordinals the knowledge base keeps (config/knowledge/xbox360/ordinals.json), as the function the xex commands' environments
+// take.
 inline formats::xex_imports::OrdinalNames console_ordinal_names() {
-    auto table = std::make_shared<Json>(json::load(data_path("../config/symbols/console_ordinals.json")));
-    return [table](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
-        const auto lib = table->find(std::string(library));
-        if (lib == table->end() || !lib->is_object()) return std::nullopt;
-        const auto name = lib->find(std::to_string(ordinal));
-        if (name == lib->end() || !name->is_string()) return std::nullopt;
-        return name->get<std::string>();
+    return [](std::string_view library, std::uint32_t ordinal) -> std::optional<std::string> {
+        return knowledge::standard().export_name("xbox360", library, ordinal);
     };
 }
 

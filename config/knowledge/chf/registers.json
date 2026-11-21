@@ -1,0 +1,14 @@
+{
+ "cbk": 1,
+ "platform": "chf",
+ "domain": "registers",
+ "about": "Fairchild Channel F: the BIOS routines a cartridge calls (entry points)",
+ "source": {"what": "Channel F BIOS listing, as formats/chf.cpp held them (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+ {"id": "bios.BIOS_DELAY", "kind": "export", "table": "bios", "space": "cpu", "address": "0x8F", "name": "BIOS_DELAY"},
+ {"id": "bios.BIOS_CLEAR_SCREEN", "kind": "export", "table": "bios", "space": "cpu", "address": "0xD0", "name": "BIOS_CLEAR_SCREEN"},
+ {"id": "bios.BIOS_PUSHK", "kind": "export", "table": "bios", "space": "cpu", "address": "0x107", "name": "BIOS_PUSHK"},
+ {"id": "bios.BIOS_POPK", "kind": "export", "table": "bios", "space": "cpu", "address": "0x11E", "name": "BIOS_POPK"},
+ {"id": "bios.BIOS_DRAWCHAR", "kind": "export", "table": "bios", "space": "cpu", "address": "0x679", "name": "BIOS_DRAWCHAR"}
+ ]
+}

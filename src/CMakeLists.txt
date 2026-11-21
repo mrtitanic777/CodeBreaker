@@ -342,7 +342,7 @@ cb_area(emulate)
 target_link_libraries(cb_emulate PUBLIC cb_core cb_decompile cb_formats cb_symbols cb_knowledge)   # (the tracer's module loader reads PE files, prototypes and the win32 model)
 
 cb_area(formats)
-target_link_libraries(cb_formats PUBLIC cb_core cb_xex cb_zlib)
+target_link_libraries(cb_formats PUBLIC cb_core cb_xex cb_zlib cb_knowledge)   # (cb_knowledge: the consoles' register and firmware names are descriptions, config/knowledge/<platform>/registers.json -- static libraries may be cyclic)
 include("${CMAKE_CURRENT_LIST_DIR}/formats/embed_formats.cmake")   # config/formats/*.fmt built into the program (formats/format_builtin)
 target_sources(cb_formats PRIVATE "${CMAKE_BINARY_DIR}/formats_embedded.cpp")
 add_executable(format_check EXCLUDE_FROM_ALL formats/format_check_main.cpp)   # the format engine's tree of a file, diffed against the hand-written reader

@@ -277,6 +277,76 @@ std::map<std::uint32_t, std::string> Knowledge::hardware_names(std::string_view 
     return out;
 }
 
+std::vector<HardwareRegion> Knowledge::hardware_regions(std::string_view platform_name, std::string_view table_name) {
+    const auto text = [](const Value& v, std::string_view key) -> std::string {
+        const Value* field = v.get(key);
+        const std::string* t = field != nullptr ? field->text() : nullptr;
+        return t != nullptr ? *t : std::string();
+    };
+    std::vector<HardwareRegion> out;
+    for (const auto& [id, entry] : entries(platform_name, "registers")) {
+        if (text(entry, "kind") != "region") continue;
+        HardwareRegion r;
+        r.table = text(entry, "table");
+        if (!table_name.empty() && r.table != table_name) continue;
+        const std::optional<std::uint64_t> address = hex_value(text(entry, "address"));
+        const std::optional<std::uint64_t> size = hex_value(text(entry, "size"));
+        if (!address || !size) continue;
+        r.address = static_cast<std::uint32_t>(*address);
+        r.size = static_cast<std::uint32_t>(*size);
+        r.name = text(entry, "name");
+        if (r.name.empty()) r.name = id;
+        r.space = text(entry, "space");
+        if (r.space.empty()) r.space = "cpu";
+        out.push_back(std::move(r));
+    }
+    return out;
+}
+
+std::optional<std::string> Knowledge::export_name(std::string_view platform_name, std::string_view module, std::uint32_t ordinal) {
+    const std::optional<Value> found = entry(platform_name, "ordinals", std::string(module) + "#" + std::to_string(ordinal));
+    if (!found) return std::nullopt;
+    const Value* name = found->get("name");
+    if (name == nullptr || name->text() == nullptr) return std::nullopt;
+    return *name->text();
+}
+
+std::map<std::string, std::string> Knowledge::export_names(std::string_view platform_name, std::string_view module) {
+    std::map<std::string, std::string> out;
+    for (const auto& [id, found] : entries(platform_name, "ordinals")) {
+        const Value* m = found.get("module");
+        const Value* number = found.get("ordinal");
+        const Value* name = found.get("name");
+        if (m == nullptr || m->text() == nullptr || *m->text() != module || number == nullptr || !number->integer() || name == nullptr || name->text() == nullptr) continue;
+        out.emplace(std::to_string(*number->integer()), *name->text());
+    }
+    return out;
+}
+
+std::map<std::uint32_t, std::string> Knowledge::table_names(std::string_view platform_name, std::string_view table_name, std::string_view dialect) {
+    const auto text = [](const Value& v, std::string_view key) -> std::string {
+        const Value* field = v.get(key);
+        const std::string* t = field != nullptr ? field->text() : nullptr;
+        return t != nullptr ? *t : std::string();
+    };
+    std::map<std::uint32_t, std::string> out;
+    for (const auto& [id, entry] : entries(platform_name, "registers")) {
+        if (text(entry, "table") != table_name) continue;
+        std::string place = text(entry, "address");
+        if (place.empty())
+            if (const Value* select = entry.get("select"); select != nullptr && select->map() != nullptr && !select->map()->empty())
+                if (const std::string* first = select->map()->begin()->second.text()) place = *first;
+        const std::optional<std::uint64_t> at = hex_value(place);
+        if (!at) continue;
+        std::string name = text(entry, "name");
+        if (name.empty()) name = id;
+        if (const Value* n = entry.get("names"); n != nullptr && n->map() != nullptr)
+            if (const Value* spelling = n->get(dialect); spelling != nullptr && spelling->text() != nullptr) name = *spelling->text();
+        out.try_emplace(static_cast<std::uint32_t>(*at), std::move(name));
+    }
+    return out;
+}
+
 std::vector<std::string> Knowledge::domains(std::string_view platform_name) {
     const std::string p = platform(platform_name);
     std::vector<std::string> out;

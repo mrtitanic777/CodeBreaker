@@ -61,35 +61,6 @@ Table build() {
     return t;
 }
 
-std::string no_space(std::string_view s) {
-    std::string out;
-    for (const char c : s) {
-        if (c != ' ' && c != '\t') out.push_back(c);
-    }
-    return out;
-}
-
-struct Index {
-    std::vector<std::pair<std::string, unsigned>> exact;
-    std::vector<std::pair<std::string, unsigned>> operand;
-};
-
-const Index& index() {
-    static const Index idx = [] {
-        Index x;
-        for (unsigned op = 0; op < 256; ++op) {
-            const auto& e = opcode_table()[op];
-            if (!e) continue;
-            const std::string key = text::upper(no_space(e->text));
-            if (e->kind == Kind::None) x.exact.emplace_back(key, op);
-            else x.operand.emplace_back(key, op);
-        }
-        std::stable_sort(x.operand.begin(), x.operand.end(), [](const auto& a, const auto& b) { return a.first.size() > b.first.size(); });
-        return x;
-    }();
-    return idx;
-}
-
 }  // namespace
 
 const std::array<std::optional<OpcodeEntry>, 256>& opcode_table() {
@@ -148,66 +119,6 @@ std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc) 
     if (op == 0x1C) i.flow = Flow::Return;
     if (op == 0x0D) i.flow = Flow::Indirect;
     return i;
-}
-
-std::string text(const Insn& i, const AddressLabels& labels, bool label_constant) {
-    const auto address = [&](std::uint32_t a) {
-        const auto it = labels.find(a);
-        return it != labels.end() && !it->second.empty() ? it->second : std::format("${:04X}", a);
-    };
-    const std::string& t = i.entry->text;
-    switch (i.entry->kind) {
-        case Kind::None: return t;
-        case Kind::Imm8:
-        case Kind::Port8: return t + std::format("${:02X}", i.value);
-        case Kind::Low3:
-        case Kind::Low4: return t + number_text(i.value);
-        case Kind::Rel8:
-        case Kind::Addr16: return t + address(*i.target);
-        default: {
-            const auto it = labels.find(i.value);
-            return t + (label_constant && it != labels.end() && !it->second.empty() ? it->second : std::format("${:04X}", i.value));
-        }
-    }
-}
-
-Bytes assemble(std::string_view line_in, std::uint32_t pc, const NameLabels& labels, bool lenient) {
-    const std::string_view line = text::trim(line_in);
-    const std::string raw = no_space(line), key = text::upper(raw);
-    const Index& idx = index();
-    const auto fail = [&](const std::string& why) { throw ParseError("", 0, 0, std::string(line) + " (" + why + ")"); };
-    for (const auto& [name, op] : idx.exact) {
-        if (key == name) return {static_cast<std::uint8_t>(op)};
-    }
-    for (const auto& [prefix, op] : idx.operand) {
-        if (key.size() <= prefix.size() || !key.starts_with(prefix)) continue;
-        const auto& e = *opcode_table()[op];
-        const std::int64_t v = asm_value::eval(std::string_view(raw).substr(prefix.size()), labels, lenient);
-        switch (e.kind) {
-            case Kind::Imm8:
-                if (!lenient && (v < -128 || v > 255)) fail("the immediate is a byte");
-                return {static_cast<std::uint8_t>(op), static_cast<std::uint8_t>(v)};
-            case Kind::Port8:
-                if (!lenient && (v < 0 || v > 255)) fail("a port is 0 to 255");
-                return {static_cast<std::uint8_t>(op), static_cast<std::uint8_t>(v)};
-            case Kind::Low3:
-            case Kind::Low4: {
-                const std::int64_t max = e.kind == Kind::Low3 ? 7 : 15;
-                if (!lenient && (v < 0 || v > max)) fail(std::format("the value is 0 to {}", max));
-                return {static_cast<std::uint8_t>(op + (v & max))};
-            }
-            case Kind::Rel8: {
-                const std::int64_t d = v - (static_cast<std::int64_t>(pc) + 1);
-                if (!lenient && (d < -128 || d > 127)) fail("the branch is out of reach");
-                return {static_cast<std::uint8_t>(op), static_cast<std::uint8_t>(d)};
-            }
-            default:
-                if (!lenient && (v < 0 || v > 0xFFFF)) fail("an address is 16 bits");
-                return {static_cast<std::uint8_t>(op), static_cast<std::uint8_t>(v >> 8), static_cast<std::uint8_t>(v)};
-        }
-    }
-    fail("unknown instruction");
-    return {};
 }
 
 }  // namespace cb::decompile::f8

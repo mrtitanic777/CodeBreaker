@@ -2,6 +2,7 @@
 // source/jaguar_writer.cpp -- an Atari Jaguar program as assembly source that builds back into it (jaguar_writer.hpp).
 
 #include "source/jaguar_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -133,25 +134,8 @@ Bytes rebuilt_file(const jag::Program& program, const Bytes& image) {
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0xF00000, "MEMCON1"}, {0xF00002, "MEMCON2"}, {0xF00004, "HC"},      {0xF00006, "VC"},      {0xF00008, "LPH"},     {0xF0000A, "LPV"},
-        {0xF00010, "OB0"},     {0xF00012, "OB1"},     {0xF00014, "OB2"},    {0xF00016, "OB3"},     {0xF00020, "OLP"},     {0xF00026, "OBF"},
-        {0xF00028, "VMODE"},   {0xF0002A, "BORD1"},   {0xF0002C, "BORD2"},  {0xF0002E, "HP"},      {0xF00030, "HBB"},     {0xF00032, "HBE"},
-        {0xF00034, "HS"},      {0xF00036, "HVS"},     {0xF00038, "HDB1"},   {0xF0003A, "HDB2"},    {0xF0003C, "HDE"},     {0xF0003E, "VP"},
-        {0xF00040, "VBB"},     {0xF00042, "VBE"},     {0xF00044, "VS"},     {0xF00046, "VDB"},     {0xF00048, "VDE"},     {0xF0004A, "VEB"},
-        {0xF0004C, "VEE"},     {0xF0004E, "VI"},      {0xF00050, "PIT0"},   {0xF00052, "PIT1"},    {0xF00054, "HEQ"},     {0xF00058, "BG"},
-        {0xF000E0, "INT1"},    {0xF000E2, "INT2"},    {0xF00400, "CLUT"},   {0xF00800, "LBUFA"},   {0xF01000, "LBUFB"},   {0xF01800, "LBUFC"},
-        {0xF02100, "G_FLAGS"}, {0xF02104, "G_MTXC"},  {0xF02108, "G_MTXA"}, {0xF0210C, "G_END"},   {0xF02110, "G_PC"},    {0xF02114, "G_CTRL"},
-        {0xF02118, "G_HIDATA"}, {0xF0211C, "G_DIVCTRL"}, {0xF02200, "A1_BASE"}, {0xF02204, "A1_FLAGS"}, {0xF02208, "A1_CLIP"}, {0xF0220C, "A1_PIXEL"},
-        {0xF02210, "A1_STEP"}, {0xF02214, "A1_FSTEP"}, {0xF02218, "A1_FPIXEL"}, {0xF0221C, "A1_INC"}, {0xF02220, "A1_FINC"}, {0xF02224, "A2_BASE"},
-        {0xF02228, "A2_FLAGS"}, {0xF0222C, "A2_MASK"}, {0xF02230, "A2_PIXEL"}, {0xF02234, "A2_STEP"}, {0xF02238, "B_CMD"},  {0xF0223C, "B_COUNT"},
-        {0xF02240, "B_SRCD"},  {0xF02248, "B_DSTD"},  {0xF02250, "B_DSTZ"}, {0xF02258, "B_SRCZ1"}, {0xF02260, "B_SRCZ2"}, {0xF02268, "B_PATD"},
-        {0xF02270, "B_IINC"},  {0xF02274, "B_ZINC"},  {0xF02278, "B_STOP"}, {0xF0227C, "B_I3"},    {0xF02280, "B_I2"},    {0xF02284, "B_I1"},
-        {0xF02288, "B_I0"},    {0xF0228C, "B_Z3"},    {0xF02290, "B_Z2"},   {0xF02294, "B_Z1"},    {0xF02298, "B_Z0"},    {0xF03000, "G_RAM"},
-        {0xF10000, "JPIT1"},   {0xF10002, "JPIT2"},   {0xF10004, "JPIT3"}, {0xF10006, "JPIT4"},   {0xF10010, "CLK1"},    {0xF10012, "CLK2"},
-        {0xF10020, "J_INT"},   {0xF14000, "JOYSTICK"}, {0xF14002, "JOYBUTS"}, {0xF1A100, "D_FLAGS"}, {0xF1A104, "D_MTXC"}, {0xF1A108, "D_MTXA"},
-        {0xF1A10C, "D_END"},   {0xF1A110, "D_PC"},    {0xF1A114, "D_CTRL"}, {0xF1A118, "D_MOD"},   {0xF1A11C, "D_DIVCTRL"}, {0xF1A120, "D_MACHI"},
-        {0xF1A148, "L_I2S"},   {0xF1A14C, "R_I2S"},   {0xF1A150, "SCLK"},  {0xF1A154, "SMODE"},   {0xF1B000, "D_RAM"}};
+    // config/knowledge/jaguar/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("jaguar", "hardware");
     return table;
 }
 

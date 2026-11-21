@@ -200,46 +200,4 @@ std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc) 
     return i;
 }
 
-std::string text(const Insn& i, const AddressLabels& labels) {
-    const auto address = [&](std::uint32_t a) {
-        const auto it = labels.find(a);
-        return it != labels.end() && !it->second.empty() ? it->second : std::format("${:03X}", a);
-    };
-    switch (i.entry->kind) {
-        case Kind::None: return i.entry->text;
-        case Kind::Imm: return i.entry->text + std::format("${:02X}", i.operand);
-        case Kind::Djnz: return i.entry->text + address(*i.target);
-        default: return i.entry->text + " " + address(*i.target);
-    }
-}
-
-Bytes assemble(std::string_view line_in, std::uint32_t pc, const NameLabels& labels, bool lenient) {
-    const std::string_view line = text::trim(line_in);
-    const std::string raw = no_space(line), key = upper_of(raw);
-    const Index& idx = index();
-    const auto fail = [&](const std::string& why) { throw ParseError("", 0, 0, std::string(line) + " (" + why + ")"); };
-    for (const auto& [name, op] : idx.exact) {
-        if (key == name) return {static_cast<std::uint8_t>(op)};
-    }
-    for (const auto& [prefix, base] : idx.operand) {
-        if (key.size() <= prefix.size() || !key.starts_with(prefix)) continue;
-        const auto& e = *opcode_table()[base];
-        const std::string_view operand = std::string_view(raw).substr(prefix.size());
-        const std::int64_t v = asm_value::eval(operand, labels, lenient);
-        switch (e.kind) {
-            case Kind::Imm:
-                if (!lenient && (v < -128 || v > 255)) fail("the immediate is a byte");
-                return {static_cast<std::uint8_t>(base), static_cast<std::uint8_t>(v)};
-            case Kind::Addr11:
-                if (!lenient && (v < 0 || v > 0xFFF)) fail("the address is 12 bits");
-                return {static_cast<std::uint8_t>(0x04 + (e.text == "CALL" ? 0x10 : 0) + (((static_cast<unsigned>(v) >> 8) & 7) << 5)), static_cast<std::uint8_t>(v)};
-            default:
-                if (!lenient && (static_cast<std::uint32_t>(v) & 0xF00) != ((pc + 1) & 0xF00)) fail("a conditional jump stays in its page");
-                return {static_cast<std::uint8_t>(base), static_cast<std::uint8_t>(v)};
-        }
-    }
-    fail("unknown instruction");
-    return {};
-}
-
 }  // namespace cb::decompile::i8048

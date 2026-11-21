@@ -16,7 +16,7 @@ What the header adds over the basefile alone:
 
 - **Import libraries.** The image numbers its imports by library (`import0_ord_16`); the header
   says which library each number is. `codebreaker module` names the calls from it
-  (`src/source/module_writer.cpp`, `symbols/console_ordinals.json`) instead of assuming
+  (`src/source/module_writer.cpp`, `knowledge/xbox360/ordinals.json`) instead of assuming
   kernel-then-system-library.
 - **Static libraries.** What the image was built with, with versions (D3D9, LIBCMT, XAPILIB, the
   linker): the SDK and toolchain, for identifying runtime and SDK code.

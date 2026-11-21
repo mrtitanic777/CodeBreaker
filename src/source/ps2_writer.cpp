@@ -20,7 +20,7 @@ bool ee_ram(std::uint32_t a) {
 image_writer::Written write(const formats::ps2::Program& program, std::string_view file_name, const std::filesystem::path& folder) {
     mips_elf_writer::Machine m;
     m.variant = decompile::mips::Variant::R5900;
-    m.encoder = &isa::r5900_encoder();
+    m.cpu = "r5900";
     m.description = program.kind == formats::ps2::Kind::Disc ? "PlayStation 2 disc: the BOOT2 program (Emotion Engine R5900)" : "PlayStation 2 ELF (Emotion Engine R5900)";
     m.hardware = [](std::uint32_t a) { return formats::ps2::hardware_name(a); };
     m.in_ram = ee_ram;

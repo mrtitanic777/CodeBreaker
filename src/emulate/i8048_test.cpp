@@ -1,11 +1,11 @@
 // cb-unity: alone
 // The 8048 interpreter: the accumulator and its flags, the register banks, indirect addressing, loops and calls, the ports and the data space as logged accesses, the stops and the
-// limit. Programs are written in the assembler's own syntax and run from $0400.
+// limit. Programs are written in the assembler's own syntax and run from 0x0400.
 #include "emulate/i8048.hpp"
 
 #include <string>
 
-#include "build/i8048_asm.hpp"
+#include "source/processors.hpp"
 #include "core/testing.hpp"
 
 namespace cb::emulate::i8048 {
@@ -16,7 +16,7 @@ struct Rig {
     RunResult result;
 
     RunResult run(const std::string& program, RunOptions options = {}) {
-        const build::byte_asm::Image image = build::i8048_asm::build("        ORG $0400\n" + program + "\n        RET\n");
+        const source::processors::Image image = source::processors::assemble_described(source::processors::find("i8048"), ".org 0x0400\n" + program + "\n        RET\n", ".");
         bus.load(0x400, image.data);
         bus.set_read([](Place place, std::uint8_t address) -> std::uint8_t { return place == Place::Data ? (address == 0xA1 ? 0 : 0x5A) : 0xFF; });
         result = emulate::i8048::run(bus, 0x400, options);
@@ -30,24 +30,24 @@ struct Rig {
 CB_TEST("emulate.i8048.the_accumulator_and_its_flags", [] {
     Rig m;
     m.run(R"(
-        MOV A,#$F0
-        ADD A,#$20
+        MOV A,#0xf0
+        ADD A,#0x20
         MOV R2,A
         MOV A,PSW
         MOV R3,A
-        MOV A,#$09
-        ADD A,#$01
+        MOV A,#0x9
+        ADD A,#0x1
         DA A
         MOV R4,A
-        MOV A,#$81
+        MOV A,#0x81
         RL A
         MOV R5,A
-        MOV A,#$12
+        MOV A,#0x12
         SWAP A
         MOV R6,A
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
-    CB_CHECK_EQ(m.r(2), 0x10u);                      // $F0 + $20: the carry is set
+    CB_CHECK_EQ(m.r(2), 0x10u);                      // 0xF0 + 0x20: the carry is set
     CB_CHECK_EQ(m.r(3), 0x89u);                      // the PSW: C, bit 3, and the stack pointer (the return address is on the stack)
     CB_CHECK_EQ(m.r(4), 0x10u);                      // 9 + 1 adjusted to BCD
     CB_CHECK_EQ(m.r(5), 0x03u);
@@ -57,39 +57,39 @@ CB_TEST("emulate.i8048.the_accumulator_and_its_flags", [] {
 CB_TEST("emulate.i8048.registers_banks_and_indirect_addressing", [] {
     Rig m;
     m.run(R"(
-        MOV R0,#$20
-        MOV A,#$AB
+        MOV R0,#0x20
+        MOV A,#0xab
         MOV @R0,A
-        MOV R1,#$20
+        MOV R1,#0x20
         MOV A,@R1
         MOV R2,A
         SEL RB1
-        MOV R0,#7
+        MOV R0,#0x7
         SEL RB0
-        MOV R3,#$5C
-        MOV @R1,#$3C
+        MOV R3,#0x5c
+        MOV @R1,#0x3c
         XCHD A,@R1
     )");
     CB_CHECK_EQ(m.r(2), 0xABu);
     CB_CHECK_EQ(m.result.regs.ram[24], 7);           // bank 1's R0
-    CB_CHECK_EQ(m.result.regs.ram[0x20], 0x3B);      // @R1 was $3C, A was $AB: the low nibbles swapped
+    CB_CHECK_EQ(m.result.regs.ram[0x20], 0x3B);      // @R1 was 0x3C, A was 0xAB: the low nibbles swapped
     CB_CHECK_EQ(m.result.regs.a, 0xACu);
 });
 
 CB_TEST("emulate.i8048.loops_calls_and_the_stack", [] {
     Rig m;
     m.run(R"(
-        MOV R1,#5
-        MOV A,#0
+        MOV R1,#0x5
+        MOV A,#0x0
     loop:
-        ADD A,#2
+        ADD A,#0x2
         DJNZ R1,loop
         MOV R4,A
         CALL sub
         MOV R5,A
         JMP end
     sub:
-        MOV A,#$77
+        MOV A,#0x77
         RET
     end:
     )");
@@ -102,14 +102,14 @@ CB_TEST("emulate.i8048.loops_calls_and_the_stack", [] {
 CB_TEST("emulate.i8048.ports_and_the_data_space_are_logged_accesses", [] {
     Rig m;
     m.run(R"(
-        MOV A,#$0F
+        MOV A,#0xf
         OUTL P1,A
-        ORL P1,#$F0
+        ORL P1,#0xf0
         IN A,P2
-        MOV R0,#$A1
+        MOV R0,#0xa1
         MOVX A,@R0
         MOV R3,A
-        MOV A,#$33
+        MOV A,#0x33
         MOVX @R0,A
     )");
     CB_CHECK_EQ(m.result.io.size(), 5u);
@@ -125,7 +125,7 @@ CB_TEST("emulate.i8048.ports_and_the_data_space_are_logged_accesses", [] {
 CB_TEST("emulate.i8048.stops_and_limits", [] {
     {
         Rig m;
-        m.run("        DB $01\n");
+        m.run("        .byte 0x1\n");
         CB_CHECK_EQ(m.result.exit(), "stopped: undefined opcode 01 at 0400");
     }
     {

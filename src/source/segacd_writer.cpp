@@ -1,6 +1,7 @@
 // source/segacd_writer.cpp -- a Sega CD / Mega-CD disc's boot sectors as assembly source that builds back into them (segacd_writer.hpp).
 
 #include "source/segacd_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -155,20 +156,10 @@ std::vector<Reference> references(const m68k::Insn& insn) {
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
+    // the Genesis's registers, and the ones the Mega-CD adds (config/knowledge/segacd/registers.json); the Genesis's name stands where both have one
     static const std::map<std::uint32_t, std::string> table = [] {
         std::map<std::uint32_t, std::string> t = genesis_writer::hardware();
-        const std::map<std::uint32_t, std::string> more = {
-            // the gate array, as the main CPU sees it
-            {0xA12000, "GA_RESET"},      {0xA12002, "GA_MEMMODE"},     {0xA12003, "GA_MEMMODE_LO"},   {0xA12004, "GA_CDCMODE"},
-            {0xA12006, "GA_HINTVEC"},    {0xA12008, "GA_CDCHOST"},     {0xA1200C, "GA_STOPWATCH"},    {0xA1200E, "GA_COMFLAG_MAIN"},
-            {0xA1200F, "GA_COMFLAG_SUB"}, {0xA12010, "GA_COMCMD0"},    {0xA12020, "GA_COMSTAT0"},
-            // ... and as the sub CPU sees it
-            {0xFF8000, "SGA_LED"},       {0xFF8002, "SGA_MEMMODE"},    {0xFF8004, "SGA_CDCMODE"},     {0xFF800E, "SGA_COMFLAGS"},
-            {0xFF800F, "SGA_COMFLAG_SUB"}, {0xFF8010, "SGA_COMCMD0"},  {0xFF8020, "SGA_COMSTAT0"},
-            // the CD BIOS's calls (the sub CPU's jump table)
-            {0x5F0A, "SETJMPTBL"},       {0x5F10, "WAITVSYNC"},        {0x5F16, "ADRERR"},            {0x5F1C, "CODERR"},
-            {0x5F22, "CDBIOS"},          {0x5F28, "USERCALL0"},        {0x5F2E, "USERCALL1"},         {0x5F34, "USERCALL2"},
-            {0x5F3A, "USERCALL3"}};
+        const std::map<std::uint32_t, std::string> more = knowledge::standard().hardware_names("segacd", "hardware");
         t.insert(more.begin(), more.end());
         return t;
     }();

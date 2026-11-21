@@ -1,0 +1,17 @@
+{
+ "cbk": 1,
+ "platform": "n3ds",
+ "domain": "registers",
+ "about": "Nintendo 3DS: the memory-mapped hardware the ARM11 programs touch",
+ "source": {"what": "3dbrew, as source/n3ds_writer.cpp held them (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+ {"id": "hardware.APP_HEAP", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x8000000", "name": "APP_HEAP", "width": 4},
+ {"id": "hardware.LINEAR_HEAP", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x14000000", "name": "LINEAR_HEAP", "width": 4},
+ {"id": "hardware.IO_MEM_ARM11", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x1EC00000", "name": "IO_MEM_ARM11", "width": 4},
+ {"id": "hardware.GPU_REGS", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x1EF00000", "name": "GPU_REGS", "width": 4},
+ {"id": "hardware.VRAM", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x1F000000", "name": "VRAM", "width": 4},
+ {"id": "hardware.KERNEL_CONFIG_MEM", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x1FF80000", "name": "KERNEL_CONFIG_MEM", "width": 4},
+ {"id": "hardware.KERNEL_SHARED_PAGE", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x1FF81000", "name": "KERNEL_SHARED_PAGE", "width": 4},
+ {"id": "hardware.THREAD_LOCAL_STORAGE", "kind": "register", "table": "hardware", "space": "cpu", "address": "0x1FF82000", "name": "THREAD_LOCAL_STORAGE", "width": 4}
+ ]
+}

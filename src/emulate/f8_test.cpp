@@ -1,11 +1,11 @@
 // cb-unity: alone
 // The F8 interpreter: the status flags, the scratchpad and ISAR, the data counter, loops and calls, decimal add, the ports as logged accesses, the stops and the limit. Programs are
-// written in the assembler's own syntax and run from $0800.
+// written in the assembler's own syntax and run from 0x0800.
 #include "emulate/f8.hpp"
 
 #include <string>
 
-#include "build/f8_asm.hpp"
+#include "source/processors.hpp"
 #include "core/testing.hpp"
 
 namespace cb::emulate::f8 {
@@ -16,7 +16,7 @@ struct Rig {
     RunResult result;
 
     RunResult run(const std::string& program, RunOptions options = {}) {
-        const build::byte_asm::Image image = build::f8_asm::build("        ORG $0800\n" + program + "\n        POP\n");
+        const source::processors::Image image = source::processors::assemble_described(source::processors::find("f8"), ".org 0x0800\n" + program + "\n        POP\n", ".");
         bus.load(0x0800, image.data);
         bus.make_writable(0x2800, 0x2FFF);
         bus.set_in([](std::uint8_t) -> std::uint8_t { return 0xFF; });
@@ -31,30 +31,30 @@ struct Rig {
 CB_TEST("emulate.f8.the_status_flags", [] {
     Rig m;
     m.run(R"(
-        LIS 5
-        AI $FB
+        LIS 0x5
+        AI 0xfb
         LR J,W
         LR A,R9
         LR R3,A
-        LI $7F
-        AI $01
+        LI 0x7f
+        AI 0x1
         LR J,W
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.r(3), unsigned(w::S | w::C | w::Z));   // 5 - 5 = 0: positive, carry, zero
-    CB_CHECK_EQ(m.r(9), unsigned(w::O));                 // $7F + 1 = $80: overflow, negative
+    CB_CHECK_EQ(m.r(9), unsigned(w::O));                 // 0x7F + 1 = 0x80: overflow, negative
 });
 
 CB_TEST("emulate.f8.the_scratchpad_through_isar", [] {
     Rig m;
     m.run(R"(
-        LISU 1
-        LISL 0
-        LI $11
+        LISU 0x1
+        LISL 0x0
+        LI 0x11
         LR I,A
-        LI $22
+        LI 0x22
         LR I,A
-        LI $33
+        LI 0x33
         LR D,A
         LR A,S
         LR R4,A
@@ -70,12 +70,12 @@ CB_TEST("emulate.f8.the_scratchpad_through_isar", [] {
 CB_TEST("emulate.f8.the_data_counter_and_memory", [] {
     Rig m;
     m.run(R"(
-        DCI $2800
-        LI $AB
+        DCI 0x2800
+        LI 0xab
         ST
-        LI $CD
+        LI 0xcd
         ST
-        DCI $2800
+        DCI 0x2800
         LM
         LR R2,A
         LM
@@ -92,21 +92,21 @@ CB_TEST("emulate.f8.loops_calls_and_returns", [] {
     Rig m;
     m.run(R"(
         LR K,P
-        LIS 5
+        LIS 0x5
         LR R1,A
-        LIS 0
+        LIS 0x0
         LR R2,A
     loop:
         LR A,R2
         AS R1
         LR R2,A
         DS R1
-        BF 4,loop
+        BF 0x4,loop
         PI sub
         LR R5,A
         BR end
     sub:
-        LIS 7
+        LIS 0x7
         POP
     end:
         LR P,K
@@ -120,15 +120,15 @@ CB_TEST("emulate.f8.loops_calls_and_returns", [] {
 CB_TEST("emulate.f8.decimal_add_and_logic", [] {
     Rig m;
     m.run(R"(
-        LI $19
+        LI 0x19
         LR R1,A
-        LI $28
+        LI 0x28
         ASD R1
         LR R2,A
-        LI $F0
-        NI $3C
+        LI 0xf0
+        NI 0x3c
         LR R3,A
-        XI $FF
+        XI 0xff
         LR R4,A
     )");
     CB_CHECK_EQ(m.r(2), 0x47u);
@@ -139,11 +139,11 @@ CB_TEST("emulate.f8.decimal_add_and_logic", [] {
 CB_TEST("emulate.f8.ports_are_logged_accesses", [] {
     Rig m;
     m.run(R"(
-        LI $0F
-        OUT $01
-        INS 4
+        LI 0xf
+        OUT 0x1
+        INS 0x4
         LR R6,A
-        OUTS 5
+        OUTS 0x5
     )");
     CB_CHECK_EQ(m.result.io.size(), 3u);
     CB_CHECK(m.result.io[0].kind == PortAccess::Kind::Out && m.result.io[0].port == 1 && m.result.io[0].value == 0x0F);
@@ -155,7 +155,7 @@ CB_TEST("emulate.f8.ports_are_logged_accesses", [] {
 CB_TEST("emulate.f8.stops_and_limits", [] {
     {
         Rig m;
-        m.run("        DB $2D\n");
+        m.run("        .byte 0x2d\n");
         CB_CHECK_EQ(m.result.exit(), "stopped: undefined opcode 2D at 0800");
     }
     {

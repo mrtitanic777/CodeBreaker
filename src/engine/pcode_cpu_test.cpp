@@ -9,7 +9,7 @@
 #include <random>
 #include <vector>
 
-#include "build/m6502_asm.hpp"
+#include "source/processors.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -343,8 +343,7 @@ CB_TEST("engine.pcode_cpu.the_lynx_lane_judges_homebrew_the_same_on_both_cores",
 // (no NES homebrew on this machine: the lane kit's demo cartridge, built with CodeBreaker's own assembler)
 CB_TEST("engine.pcode_cpu.the_nes_lane_judges_its_demo_cartridge_the_same_on_both_cores", [] {
     fs::ScopedTempDir dir("cb_pcode_cpu_nes");
-    const build::m6502_asm::Assembler assembler(source::isa::m6502_encoder());
-    const Bytes rom = assembler.build(fs::read_text(testing::data_path("decompile/testdata/m6502_demo.s")), fs::read_text(testing::data_path("engine/testdata/lane_kit/nes_demo.cfg")), dir.path());
+    const Bytes rom = source::processors::assemble_described(source::processors::find("6502"), fs::read_text(testing::data_path("engine/testdata/lane_kit/nes_demo.asm")), dir.path()).data;
     const stdfs::path cartridge = dir.path() / "demo.nes";
     fs::write_file(cartridge, rom);
     const Kit kit;

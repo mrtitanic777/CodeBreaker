@@ -209,7 +209,7 @@ namespace kernel
     {
         ImportRegistrar(const char* name, PPCFunc* func) { RegisterImport(name, func); }
     };
-    // The console's name of export `ordinal` of "xam.xex" or "xboxkrnl.exe" (generated from console_ordinals.json), empty if none.
+    // The console's name of export `ordinal` of "xam.xex" or "xboxkrnl.exe" (generated from config/knowledge/xbox360/ordinals.json), empty if none.
     const char* OrdinalName(const std::string& library, uint16_t ordinal);
 }
 

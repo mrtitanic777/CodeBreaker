@@ -11,6 +11,5 @@
   win32    argument_bytes.header       7279      11.5 KB  authored 7279                config/symbols/win32_arguments.json
   win32    signature                   5233     824.4 KB  authored 5233                config/symbols/runtime_signatures.json
   windows  ordinal_names                  9     234.8 KB  authored 9                   config/symbols/ordinal_names.json
-  xbox360  ordinal_names                  3      67.7 KB  authored 3                   config/symbols/console_ordinals.json
   (bodies) 0 recorded, 0 distinct, 0 in two or more modules
 exit=0

@@ -87,6 +87,15 @@ struct HardwareRegister {
     std::map<std::string, std::string> names;   // spellings by dialect
 };
 
+// A block of a machine's address space, as its `registers` description says (kind region): [address, address + size), named.
+struct HardwareRegion {
+    std::string name;       // the prefix of the registers in it ("CP", "VIF0")
+    std::string table;
+    std::string space;
+    std::uint32_t address = 0;
+    std::uint32_t size = 0;
+};
+
 // The checkout's own knowledge, opened at the first ask (the base the engine's steps read when none is handed to them: the
 // checkout is $CB_CHECKOUT_ROOT, else the one the running program belongs to; the base file is $CB_KNOWLEDGE_DB, else
 // build/knowledge.v2.sqlite).
@@ -128,6 +137,18 @@ public:
     // The same as {address: name}. `dialect` asks for a spelling (the entry's `names`, {"rgbds": "rLCDC"}); the register's own
     // name when it has none for it.
     std::map<std::uint32_t, std::string> hardware_names(std::string_view platform, std::string_view table = {}, std::string_view dialect = {});
+    // The blocks of a platform's address space (its `registers` domain): the entries of kind region, in the file's order (the first that
+    // holds an address names it). `table` as for hardware_registers.
+    std::vector<HardwareRegion> hardware_regions(std::string_view platform, std::string_view table = {});
+    // The name an `ordinals` description (config/knowledge/<platform>/ordinals.json) gives to export `ordinal` of `module` ("xam.xex",
+    // 1 -> "NetDll_WSAStartup"); nullopt when it names none. The module is as the description writes it (lower case).
+    std::optional<std::string> export_name(std::string_view platform, std::string_view module, std::uint32_t ordinal);
+    // The names of every export of `module` by number, as text ({"1": "NetDll_WSAStartup", ...}); a step reading it reads the domain.
+    std::map<std::string, std::string> export_names(std::string_view platform, std::string_view module);
+    // The names a `registers` description gives to places that are not registers: the entries of one `table` of any kind (a BIOS
+    // routine's entry point, an OS call's code), as {address: name}. The place is the entry's `address`, else the first value of its
+    // `select`. `dialect` as for hardware_names.
+    std::map<std::uint32_t, std::string> table_names(std::string_view platform, std::string_view table, std::string_view dialect = {});
     // The domains a platform has description files for, in order of name.
     std::vector<std::string> domains(std::string_view platform);
     // Every description file checked against the schema: header, kinds, ids, shapes.

@@ -1,40 +1,69 @@
-; A small ColecoVision cartridge written by hand for the engine.lane_kit.machines tests (sjasmplus syntax).
-        ORG $8000
-        DEFB $55,$AA
-        DEFW 0,0,0,0,start
-        DEFS 21,0
-nmi:    RETN
-        DEFB 0
-        DEFB "DEMO/TEST/2026"
-start:  LD SP,$7400
-        CALL setup
-        LD HL,text
-        LD DE,$0100
-        LD BC,5
-        CALL $1FDF
-loop:   CALL frame
-        CALL mix
-        JR loop
-setup:  LD A,$C2
-        OUT ($BF),A
-        LD A,$81
-        OUT ($BF),A
-        CALL $1FD6
-        RET
-frame:  IN A,($BF)
-        LD ($7000),A
-        LD HL,($7020)
-        INC HL
-        LD ($7020),HL
-        CALL $1F79
-        RET
-mix:    LD A,B
-        ADD A,C
-        LD ($7030),A
-        LD A,D
-        XOR E
-        OUT ($FF),A
-        LD HL,($7030)
-        ADD HL,DE
-        RET
-text:   DEFB "HELLO"
+; ColecoVision demo
+; (written once in another assembler's syntax; this is the same program in the processor description's syntax, which the one assembler builds)
+	.org 0x8000
+	LD D,L
+	XOR D
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	.byte 0x32
+	ADD A, B
+        .org 0x800c
+        .space 21, 0x0
+	.org 0x8021
+	RETN
+	NOP
+	LD B,H
+	LD B,L
+	LD C,L
+	LD C,A
+	CPL
+	LD D,H
+	LD B,L
+	LD D,E
+	LD D,H
+	CPL
+	LD (0x3230),A
+	LD (HL),0x31
+	NOP
+	LD (HL),H
+	CALL 0x804c
+	LD HL,0x8076
+	LD DE,0x100
+	LD BC,0x5
+	CALL 0x1fdf
+	CALL 0x8058
+	CALL 0x8068
+	JR 0x8044
+	LD A,0xc2
+	OUT (0xbf),A
+	LD A,0x81
+	OUT (0xbf),A
+	CALL 0x1fd6
+	RET
+	IN A,(0xbf)
+	LD (0x7000),A
+	LD HL,(0x7020)
+	INC HL
+	LD (0x7020),HL
+	CALL 0x1f79
+	RET
+	LD A,B
+	ADD A, C
+	LD (0x7030),A
+	LD A,D
+	XOR E
+	OUT (0xff),A
+	LD HL,(0x7030)
+	ADD HL,DE
+	RET
+	LD C,B
+	LD B,L
+	LD C,H
+	LD C,H
+	LD C,A

@@ -119,49 +119,6 @@ CB_TEST("source.isa.the_r3000a_encoder", [] {
     CB_CHECK(!m.value("bar", foo, 0).ok() && build::is_undefined(m.value("bar", foo, 0).error()));
 });
 
-CB_TEST("source.isa.an_encoder_tells_a_name_with_no_value_from_text_that_is_not_an_instruction", [] {
-    const build::Encoder& z = z80_encoder();
-    build::Labels none;
-    const Result<Bytes> unknown = z.assemble("LD A,foo", 0, none);
-    CB_CHECK(!unknown.ok() && build::is_undefined(unknown.error()));
-    const build::Labels foo = {{"foo", 5}};
-    const Result<Bytes> known = z.assemble("LD A,foo", 0, foo);
-    CB_CHECK(known.ok() && known.value() == (Bytes{0x3E, 0x05}));
-    const Result<Bytes> nonsense = z.assemble("FROBNICATE", 0, none);
-    CB_CHECK(!nonsense.ok() && !build::is_undefined(nonsense.error()));
-    CB_CHECK(z.value("1+2", none, 0).ok() && z.value("1+2", none, 0).value() == 3);
-    const Result<std::int64_t> v = z.value("foo+1", none, 0);
-    CB_CHECK(!v.ok() && build::is_undefined(v.error()));
-    CB_CHECK(z.value("foo+1", foo, 0).value() == 6);
-    CB_CHECK(z.value("$+2", none, 0x100).value() == 0x102);   // `$` is where the instruction is
-});
-
-CB_TEST("source.isa.the_68000_encoder", [] {
-    const build::Encoder& m = m68k_encoder();
-    const build::Labels none;
-    const Result<Bytes> unknown = m.assemble("JSR (foo).L", 0, none);
-    CB_CHECK(!unknown.ok() && build::is_undefined(unknown.error()));
-    const build::Labels foo = {{"foo", 0x220}};
-    const Result<Bytes> known = m.assemble("JSR (foo).L", 0x208, foo);
-    CB_CHECK(known.ok() && known.value() == (Bytes{0x4E, 0xB9, 0x00, 0x00, 0x02, 0x20}));
-    CB_CHECK(!m.assemble("NOT AN INSTRUCTION", 0, none).ok());
-    CB_CHECK(m.value("foo", foo, 0).value() == 0x220);
-    CB_CHECK(!m.value("bar", foo, 0).ok() && build::is_undefined(m.value("bar", foo, 0).error()));
-});
-
-CB_TEST("source.isa.the_6502_encoder", [] {
-    const build::m6502_asm::Encoder6502& e = m6502_encoder();
-    const build::Labels none;
-    const Result<Bytes> unknown = e.assemble("JMP foo", 0xC000, none);
-    CB_CHECK(!unknown.ok() && build::is_undefined(unknown.error()));
-    const build::Labels foo = {{"foo", 0xC000}};
-    const Result<Bytes> known = e.assemble("JMP foo", 0xC010, foo);
-    CB_CHECK(known.ok() && known.value() == (Bytes{0x4C, 0x00, 0xC0}));
-    const Result<Bytes> nonsense = e.assemble("XYZ $10", 0, none);
-    CB_CHECK(!nonsense.ok() && !build::is_undefined(nonsense.error()));
-    CB_CHECK(e.is_branch("BNE") && e.is_branch("BPL") && !e.is_branch("JMP") && !e.is_branch("LDA"));
-});
-
 CB_TEST("source.isa.pattern_has", [] {
     CB_CHECK(pattern_has("LD (nn),A", "(nn)"));
     CB_CHECK(!pattern_has("LD A,n", "(nn)"));

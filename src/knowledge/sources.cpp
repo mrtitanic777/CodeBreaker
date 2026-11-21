@@ -91,8 +91,6 @@ const std::vector<AuthoredKind>& AuthoredSources::catalogue() {
                  "what a service does that the emulator's stand-in must do too"),
             kind("dos", "interrupt", S, "dos_interrupts.json", Layout::Whole, "",
                  "DOS and BIOS interrupt functions: names and arguments"),
-            kind("xbox360", "ordinal_names", S, "console_ordinals.json", Layout::Whole, "",
-                 "numbered exports of the console's system libraries"),
             kind("win16", "api_model", M, "win16.json", Layout::Part, "functions",
                  "what the emulator's stand-in for a Windows function returns and removes"),
             kind("win32", "api_model", M, "win32.json", Layout::Part, "functions",

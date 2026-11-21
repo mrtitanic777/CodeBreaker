@@ -99,6 +99,12 @@ void check_entry(const Value& entry, std::string_view file, std::size_t index, s
         if (text_of(entry, "label") == nullptr && text_of(entry, "name") == nullptr)
             issues.push_back({std::string(file), where, "a service has a name or a label"});
     }
+    if (*kind == "region") {
+        for (const char* key : {"address", "size"}) {
+            const std::string* number = text_of(entry, key);
+            if (number == nullptr || !hex_value(*number)) issues.push_back({std::string(file), where + "." + key, "a hex number as text was expected"});
+        }
+    }
     if (*kind == "register") {
         const std::string* address = text_of(entry, "address");
         if (address == nullptr || !hex_value(*address)) issues.push_back({std::string(file), where + ".address", "a hex number as text was expected"});

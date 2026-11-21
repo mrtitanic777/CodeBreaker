@@ -1,43 +1,53 @@
-; A small Game Boy program written by hand for the engine.lane_kit.machines tests (RGBDS syntax).
-SECTION "rst", ROM0[$0040]
-        jp vbl
-SECTION "entry", ROM0[$0100]
-        nop
-        jp main
-        db $CE,$ED,$66,$66,$CC,$0D,$00,$0B,$03,$73,$00,$83,$00,$0C,$00,$0D
-        db $00,$08,$11,$1F,$88,$89,$00,$0E,$DC,$CC,$6E,$E6,$DD,$DD,$D9,$99
-        db $BB,$BB,$67,$63,$6E,$0E,$EC,$CC,$DD,$DC,$99,$9F,$BB,$B9,$33,$3E
-        db "TESTGAME",0,0,0,0,0,0,0
-        db $00,$00,$00,$00,$01,$01,$00,$01,$33,$00,$00,$00,$00
-main:   di
-        ld sp,$FFFE
-        ld a,$91
-        ldh ($FF40),a
-        ld a,2
-        ld ($2000),a
-        ld hl,table
-        ld de,$C000
-        ld b,4
-copy:   ld a,(hl+)
-        ld (de),a
-        inc de
-        dec b
-        jr nz,copy
-        call clear
-        ei
-wait:   halt
-        jr wait
-vbl:    push af
-        ldh a,($FF44)
-        ld ($C010),a
-        pop af
-        reti
-clear:  ld hl,$C100
-        xor a
-        ld c,16
-.l:     ld (hl+),a
-        dec c
-        jr nz,.l
-        swap a
-        ret
-table:  db 9,8,7,6
+; Game Boy demo
+; (written once in another assembler's syntax; this is the same program in the processor description's syntax, which the one assembler builds)
+        .org 0x0
+        .space 64, 0xff
+	.org 0x40
+	JP 0x172
+        .org 0x43
+        .space 189, 0xff
+	.org 0x100
+	NOP
+	JP 0x150
+        .org 0x104
+        .byte 0xce,0xed,0x66,0x66,0xcc,0x0d,0x00,0x0b,0x03,0x73,0x00,0x83,0x00,0x0c,0x00,0x0d
+        .byte 0x00,0x08,0x11,0x1f,0x88,0x89,0x00,0x0e,0xdc,0xcc,0x6e,0xe6,0xdd,0xdd,0xd9,0x99
+        .byte 0xbb,0xbb,0x67,0x63,0x6e,0x0e,0xec,0xcc,0xdd,0xdc,0x99,0x9f,0xbb,0xb9,0x33,0x3e
+        .byte 0x54,0x45,0x53,0x54,0x47,0x41,0x4d,0x45,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+        .byte 0x00,0x00,0x00,0x01,0x01,0x00,0x01,0x33,0x00,0x00,0x00,0x00
+	.org 0x150
+	DI
+	LD SP,0xfffe
+	LD A,0x91
+	LDH ( 0xff40 ),A
+	LD A,0x2
+	LD ( 0x2000 ),A
+	LD HL,0x187
+	LD DE,0xc000
+	LD B,0x4
+	LD A,(HL+)
+	LD (DE),A
+	INC DE
+	DEC B
+	JR NZ,0x165
+	CALL 0x17a
+	EI
+	HALT
+	JR 0x16f
+	PUSH AF
+	LDH A,( 0xff44 )
+	LD ( 0xc010 ),A
+	POP AF
+	RETI
+	LD HL,0xc100
+	XOR A
+	LD C,0x10
+	LD (HL+),A
+	DEC C
+	JR NZ,0x180
+	SWAP A
+	RET
+	ADD HL,BC
+	LD ( 0x607 ),SP
+        .org 0x18b
+        .space 32373, 0xff

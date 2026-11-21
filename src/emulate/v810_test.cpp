@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "build/v810_asm.hpp"
+#include "source/processors.hpp"
 #include "core/testing.hpp"
 
 namespace cb::emulate::v810 {
@@ -13,13 +13,13 @@ namespace {
 
 constexpr std::uint32_t kRom = 0x07000000, kWork = 0x05000000;
 
-// A machine with the program at $07000000, 64 KB of work RAM at $05000000 and a logged device at $02000000.
+// A machine with the program at 0x07000000, 64 KB of work RAM at 0x05000000 and a logged device at 0x02000000.
 struct Rig {
     Bus bus{0x07FFFFFF};
     RunResult result;
 
     RunResult run(const std::string& program, RunOptions options = {}) {
-        const build::v810_asm::Image image = build::v810_asm::build(".org 0x07000000\n" + program + "\n        jmp [lp]\n");
+        const source::processors::Image image = source::processors::assemble_described(source::processors::find("v810"), ".org 0x07000000\n" + program + "\n        jmp [r31]\n", ".");
         bus.memory(kRom, 0x07FFFFFF, image.data, false, false, 0x10000);
         bus.memory(kWork, 0x05FFFFFF, {}, true, false, 0x10000);
         bus.device(0x02000000, 0x02FFFFFF, [](std::uint32_t, unsigned) -> std::uint32_t { return 0xA5; });
@@ -34,18 +34,18 @@ struct Rig {
 CB_TEST("emulate.v810.the_flags_of_the_arithmetic", [] {
     Rig m;
     m.run(R"(
-        movhi 0x7FFF,r0,r6
-        ori 0xFFFF,r6,r6
-        add 1,r6
+        movhi 0x7fff,r0,r6
+        ori 0xffff,r6,r6
+        add 0x1,r6
         stsr psw,r10
-        mov -1,r7
-        add 1,r7
+        mov -0x1,r7
+        add 0x1,r7
         stsr psw,r11
-        mov 1,r8
-        cmp 2,r8
+        mov 0x1,r8
+        cmp 0x2,r8
         stsr psw,r12
-        mov 3,r9
-        shl 31,r9
+        mov 0x3,r9
+        shl 0x1f,r9
         stsr psw,r13
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
@@ -63,19 +63,19 @@ CB_TEST("emulate.v810.the_flags_of_the_arithmetic", [] {
 CB_TEST("emulate.v810.multiply_leaves_the_high_word_in_r30_and_divide_the_remainder", [] {
     Rig m;
     m.run(R"(
-        movhi 1,r0,r6
+        movhi 0x1,r0,r6
         mov r6,r7
         mul r6,r7
         mov r30,r10
         stsr psw,r11
-        mov 7,r8
-        mov 2,r9
+        mov 0x7,r8
+        mov 0x2,r9
         div r9,r8
         movhi 0x8000,r0,r12
-        mov -1,r13
+        mov -0x1,r13
         div r13,r12
-        mov -7,r14
-        mov 2,r15
+        mov -0x7,r14
+        mov 0x2,r15
         divu r15,r14
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
@@ -91,18 +91,18 @@ CB_TEST("emulate.v810.multiply_leaves_the_high_word_in_r30_and_divide_the_remain
 CB_TEST("emulate.v810.loads_and_stores_of_each_size", [] {
     Rig m;
     m.run(R"(
-        movhi 0x0500,r0,r6
-        mov -2,r7
-        st.b r7,0[r6]
-        ld.b 0[r6],r8
-        in.b 0[r6],r9
+        movhi 0x500,r0,r6
+        mov -0x2,r7
+        st.b r7,0x0[r6]
+        ld.b 0x0[r6],r8
+        in.b 0x0[r6],r9
         movhi 0x1234,r0,r10
         ori 0x5678,r10,r10
-        st.w r10,4[r6]
-        ld.h 4[r6],r11
-        ld.h 6[r6],r12
-        ld.w 5[r6],r13
-        movhi 0x0200,r0,r14
+        st.w r10,0x4[r6]
+        ld.h 0x4[r6],r11
+        ld.h 0x6[r6],r12
+        ld.w 0x5[r6],r13
+        movhi 0x200,r0,r14
         st.h r10,0x28[r14]
         in.b 0x28[r14],r15
     )");
@@ -125,23 +125,23 @@ CB_TEST("emulate.v810.loads_and_stores_of_each_size", [] {
 CB_TEST("emulate.v810.branches_calls_and_returns", [] {
     Rig m;
     m.run(R"(
-        mov 5,r6
-        mov 0,r7
+        mov 0x5,r6
+        mov 0x0,r7
     loop:
         add r6,r7
-        add -1,r6
+        add -0x1,r6
         bne loop
-        mov lp,r20
-        jal fn
-        mov r20,lp
+        mov r31,r20
+        .byte 0x00, 0xac, 0x08, 0x00   ; jal fn (the description's assembler does not take the 26-bit displacement of a jal yet)
+        mov r20,r31
         br done
     fn:
-        mov 9,r8
-        jmp [lp]
+        mov 0x9,r8
+        jmp [r31]
     done:
-        setf 2,r9
+        setf 0x2,r9
         cmp r7,r7
-        setf 2,r10
+        setf 0x2,r10
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.r(7), 15u);
@@ -154,15 +154,15 @@ CB_TEST("emulate.v810.branches_calls_and_returns", [] {
 CB_TEST("emulate.v810.single_precision_floating_point", [] {
     Rig m;
     m.run(R"(
-        movhi 0x3FC0,r0,r6
+        movhi 0x3fc0,r0,r6
         movhi 0x4010,r0,r7
         addf.s r6,r7
         cvt.sw r7,r8
         trnc.sw r7,r9
-        mov 3,r10
+        mov 0x3,r10
         cvt.ws r10,r11
-        movhi 0x3F80,r0,r12
-        movhi 0,r0,r13
+        movhi 0x3f80,r0,r12
+        movhi 0x0,r0,r13
         divf.s r13,r12
         stsr psw,r14
         cmpf.s r6,r7
@@ -245,17 +245,17 @@ CB_TEST("emulate.v810.xb_xh_rev_and_the_system_registers", [] {
 CB_TEST("emulate.v810.stops_and_limits", [] {
     {
         Rig m;
-        m.run("        .hword 0x6C00\n");
+        m.run("        .half 0x6c00\n");
         CB_CHECK_EQ(m.result.exit(), "stopped: undefined instruction at 07000000");
     }
     {
         Rig m;
-        m.run("        trap 5\n");
+        m.run("        trap 0x5\n");
         CB_CHECK_EQ(m.result.exit(), "stopped: trap 5 at 07000000");
     }
     {
         Rig m;
-        m.run("        mov 5,r6\n        mov 0,r7\n        div r7,r6\n");
+        m.run("        mov 0x5,r6\n        mov 0x0,r7\n        div r7,r6\n");
         CB_CHECK_EQ(m.result.exit(), "stopped: divide by zero at 07000004");
     }
     {

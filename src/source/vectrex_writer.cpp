@@ -2,14 +2,16 @@
 // source/vectrex_writer.cpp -- a Vectrex cartridge as 6809 source that builds back into it (vectrex_writer.hpp).
 
 #include "source/vectrex_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
 #include <set>
 
-#include "build/m6809_asm.hpp"
 #include "core/fs.hpp"
 #include "decompile/m6809.hpp"
+#include "source/described_source.hpp"
+#include "source/processors.hpp"
 
 namespace cb::source::vectrex_writer {
 
@@ -20,13 +22,16 @@ namespace {
 
 constexpr iw::Spelling kSub{"sub_", 4};
 constexpr iw::Spelling kLocal{"L_", 4};
-const iw::DataSyntax kSyntax{.bytes = "FCB", .fill = "FILL", .fill_separator = ","};
+const processors::Processor& m6809_cpu() {
+    static const processors::Processor& cpu = processors::find("m6809");
+    return cpu;
+}
 
 bool printable(ByteView b) {
     return std::ranges::all_of(b, [](std::uint8_t c) { return c >= 32 && c < 127 && c != '"'; });
 }
 
-std::string hex8(std::uint8_t v) { return std::format("${:02X}", v); }
+std::string hex8(std::uint8_t v) { return std::format("0x{:02x}", v); }
 
 class VectrexFlow final : public iw::CodeModel<dm::Insn> {
 public:
@@ -63,8 +68,7 @@ public:
     }
     std::uint32_t size(const dm::Insn& insn) const override { return insn.size; }
     std::string text(const dm::Insn& insn) const override { return text_.at(insn.at); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
-    std::string label_line(const std::string& name) const override { return name; }
+    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
 
     // The header: copyright text, music pointer, title lines, the closing zero.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
@@ -72,20 +76,20 @@ public:
         flush();
         const ByteView d = rom_.data;
         const std::size_t copyright = rom_.copyright.size();
-        out_.append(printable(d.first(copyright)) ? std::format("        FCC \"{}\"", rom_.copyright) : "        FCB " + hex8(d[0]));
-        if (!printable(d.first(copyright))) out_.extend(iw::data_lines(d.subspan(1, copyright - 1), kSyntax));
-        out_.append("        FCB $80");
-        out_.append(std::format("        FDB ${:04X}  ; music", rom_.music));
+        out_.append(printable(d.first(copyright)) ? std::format("        .ascii \"{}\"", rom_.copyright) : "        .byte " + hex8(d[0]));
+        if (!printable(d.first(copyright))) out_.extend(described_source::data_lines(d.subspan(1, copyright - 1)));
+        out_.append("        .byte 0x80");
+        out_.append(std::format("        .half 0x{:04x}  ; music", rom_.music));
         std::size_t p = copyright + 3;
         for (const formats::vectrex::TitleLine& t : rom_.title) {
-            out_.append(std::format("        FCB {},{},{},{}  ; height, width, y, x", hex8(d[p]), hex8(d[p + 1]), hex8(d[p + 2]), hex8(d[p + 3])));
+            out_.append(std::format("        .byte {},{},{},{}  ; height, width, y, x", hex8(d[p]), hex8(d[p + 1]), hex8(d[p + 2]), hex8(d[p + 3])));
             const ByteView text = d.subspan(p + 4, t.text.size());
-            if (printable(text)) out_.append(std::format("        FCC \"{}\"", t.text));
-            else out_.extend(iw::data_lines(text, kSyntax));
-            out_.append("        FCB $80");
+            if (printable(text)) out_.append(std::format("        .ascii \"{}\"", t.text));
+            else out_.extend(described_source::data_lines(text));
+            out_.append("        .byte 0x80");
             p += 4 + t.text.size() + 1;
         }
-        out_.append("        FCB 0");
+        out_.append("        .byte 0x0");
         return rom_.entry;
     }
 
@@ -106,25 +110,13 @@ const std::string* hardware_name(std::uint32_t address) {
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& bios() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0xF000, "Cold_Start"},   {0xF06C, "Warm_Start"},   {0xF14C, "Init_VIA"},     {0xF164, "Init_OS_RAM"},  {0xF192, "Wait_Recal"},   {0xF1A2, "Set_Refresh"},
-        {0xF1AA, "DP_to_D0"},     {0xF1AF, "DP_to_C8"},     {0xF1B4, "Read_Btns_Mask"}, {0xF1BA, "Read_Btns"},  {0xF1F5, "Joy_Analog"},   {0xF1F8, "Joy_Digital"},
-        {0xF256, "Sound_Byte"},   {0xF272, "Clear_Sound"},  {0xF289, "Do_Sound"},     {0xF29D, "Intensity_1F"}, {0xF2A1, "Intensity_3F"}, {0xF2A5, "Intensity_5F"},
-        {0xF2A9, "Intensity_7F"}, {0xF2AB, "Intensity_a"},  {0xF2BE, "Dot_ix_b"},     {0xF2C3, "Dot_ix"},       {0xF2C5, "Dot_d"},       {0xF2D5, "Dot_here"},
-        {0xF2DE, "Dot_List"},     {0xF2FC, "Dot_List_Reset"}, {0xF312, "Moveto_d"},   {0xF30C, "Moveto_x_7F"},  {0xF34A, "Reset0Int"},   {0xF34F, "Check0Ref"},
-        {0xF354, "Reset0Ref"},    {0xF35B, "Reset_Pen"},    {0xF373, "Print_Str_hwyx"}, {0xF378, "Print_Str_yx"}, {0xF37A, "Print_Str_d"},  {0xF38A, "Print_List"},
-        {0xF38C, "Print_List_hw"}, {0xF3B7, "Mov_Draw_VL"}, {0xF3CE, "Draw_VLc"},     {0xF3D4, "Draw_VL_b"},    {0xF3D6, "Draw_VLcs"},   {0xF3DA, "Draw_VL"},
-        {0xF3DD, "Draw_VL_mode"}, {0xF3DF, "Draw_Line_d"},  {0xF40C, "Draw_Grid_VL"}, {0xF511, "Random_3"},    {0xF517, "Random"},      {0xF53F, "Clear_x_b"},
-        {0xF548, "Clear_C8_RAM"}, {0xF55A, "Clear_x_256"},  {0xF55E, "Dec_6_Counters"}, {0xF563, "Dec_3_Counters"}, {0xF56D, "Dec_Counters"}, {0xF57D, "Delay_3"},
-        {0xF57E, "Delay_2"},      {0xF57F, "Delay_1"},      {0xF579, "Delay_0"},      {0xF593, "Rise_Run_Angle"}, {0xF683, "Move_Mem_a"}, {0xF67F, "Move_Mem_a_1"}};
+    // config/knowledge/vectrex/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().table_names("vectrex", "bios");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& via() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0xD000, "VIA_port_b"},    {0xD001, "VIA_port_a"},   {0xD002, "VIA_DDR_b"},    {0xD003, "VIA_DDR_a"},      {0xD004, "VIA_t1_cnt_lo"}, {0xD005, "VIA_t1_cnt_hi"},
-        {0xD006, "VIA_t1_lch_lo"}, {0xD007, "VIA_t1_lch_hi"}, {0xD008, "VIA_t2_lo"},   {0xD009, "VIA_t2_hi"},      {0xD00A, "VIA_shift_reg"}, {0xD00B, "VIA_aux_cntl"},
-        {0xD00C, "VIA_cntl"},      {0xD00D, "VIA_int_flags"}, {0xD00E, "VIA_int_enable"}, {0xD00F, "VIA_port_a_nohs"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("vectrex", "via");
     return table;
 }
 
@@ -179,40 +171,34 @@ iw::Written write(const formats::vectrex::Rom& rom, std::string_view file_name, 
     for (const std::uint32_t a : used) address_labels[a] = *hardware_name(a);
 
     // each instruction as text, or as bytes when the text would not assemble back to them
-    decompile::NameLabels name_values;
-    for (const auto& [a, n] : address_labels) name_values[n] = a;
     std::map<std::uint32_t, std::string> instruction_text;
     for (const auto& [at, insn] : code) {
-        std::string t = dm::text(insn, address_labels);
-        bool same = false;
-        try {
-            const Bytes built = dm::assemble(t, at, name_values);
-            same = built.size() == insn.size && std::equal(built.begin(), built.end(), insn.raw.begin());
-        } catch (const Error&) {
-        }
-        if (same) {
-            instruction_text[at] = std::move(t);
+        // (the description's text, the label or name of the address an operand or a target is written in its place, kept when it builds back into the bytes)
+        std::optional<std::string> t = described_source::checked_text(m6809_cpu(), insn.bytes(), at, insn.size);
+        if (t) {
+            const bool names_address = insn.mode == dm::Mode::Ext || insn.mode == dm::Mode::Imm16;
+            const std::optional<std::uint32_t> named = names_address ? std::optional<std::uint32_t>(insn.value) : insn.target;
+            if (named && address_labels.contains(*named)) *t = described_source::name_number(*t, *named, address_labels.at(*named), false);
+            instruction_text[at] = *t;
         } else {
-            std::string row = "FCB ";
-            for (std::size_t k = 0; k < insn.size; ++k) row += (k ? "," : "") + hex8(insn.raw[k]);
-            instruction_text[at] = row + "  ; " + t;
+            instruction_text[at] = described_source::byte_line(m6809_cpu(), insn.bytes(), at, {}, "");
         }
     }
 
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                  std::format("; Vectrex cartridge, {} bytes, \"{}\", program at ${:04X}", rom.data.size(), rom.copyright, rom.entry), ""},
-                                "6809", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(std::format("{:<16} EQU ${:04X}", *hardware_name(a), a));
+                                "sleigh-m6809", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(described_source::equ(*hardware_name(a), a, 4));
     if (!used.empty()) out.append("");
     out.part("ROM", "segment", std::nullopt, rom.data.size());
-    out.append("        ORG $0000");
+    out.append("        .org 0x0000");
     VectrexListing listing(out, rom, code, instruction_text);
     iw::emit<dm::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    iw::assembled(r, [&] { return build::m6809_asm::build(source); }, rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
+    iw::assembled(r, [&] { return described_source::assemble(m6809_cpu(), source, folder); }, rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;
 }
 

@@ -8,9 +8,10 @@
 #include <set>
 
 #include "build/asm_text.hpp"
-#include "build/i8048_asm.hpp"
 #include "core/fs.hpp"
 #include "decompile/i8048.hpp"
+#include "source/described_source.hpp"
+#include "source/processors.hpp"
 
 namespace cb::source::o2_writer {
 
@@ -21,7 +22,10 @@ namespace {
 
 constexpr iw::Spelling kSub{"sub_", 4};
 constexpr iw::Spelling kLocal{"L_", 4};
-const iw::DataSyntax kSyntax{.bytes = "DB", .fill = "FILL", .fill_separator = ","};
+const processors::Processor& i8048_cpu() {
+    static const processors::Processor& cpu = processors::find("i8048");
+    return cpu;
+}
 
 class O2Flow final : public iw::CodeModel<di::Insn> {
 public:
@@ -55,7 +59,7 @@ public:
     }
     std::uint32_t size(const di::Insn& insn) const override { return insn.size; }
     std::string text(const di::Insn& insn) const override { return text_.at(insn.at); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
 
 private:
     const formats::o2::Rom& rom_;
@@ -84,32 +88,24 @@ iw::Written write(const formats::o2::Rom& rom, std::string_view file_name, const
     const iw::Names labels = iw::make_labels(walked.targets, names, line_start, kLocal);
     decompile::AddressLabels address_labels;
     for (const auto& [a, n] : labels) address_labels[a] = n;
-    decompile::NameLabels name_values;
-    for (const auto& [a, n] : address_labels) name_values[n] = a;
 
     std::map<std::uint32_t, std::string> instruction_text;
     for (const auto& [at, insn] : code) {
-        std::string t = di::text(insn, address_labels);
-        bool same = false;
-        try {
-            const Bytes built = di::assemble(t, at, name_values);
-            same = built.size() == insn.size && std::equal(built.begin(), built.end(), insn.raw.begin());
-        } catch (const Error&) {
-        }
-        if (same) {
-            instruction_text[at] = std::move(t);
+        // (the description's text, a jump or call target written as its label, kept when it builds back into the instruction's bytes)
+        std::optional<std::string> t = described_source::checked_text(i8048_cpu(), insn.bytes(), at, insn.size);
+        if (t) {
+            if (insn.target && address_labels.contains(*insn.target)) *t = described_source::name_number(*t, *insn.target, address_labels.at(*insn.target), false);
+            instruction_text[at] = *t;
         } else {
-            std::string row = "DB ";
-            for (std::size_t k = 0; k < insn.size; ++k) row += (k ? "," : "") + std::format("${:02X}", insn.raw[k]);
-            instruction_text[at] = row + "  ; " + t;
+            instruction_text[at] = described_source::byte_line(i8048_cpu(), insn.bytes(), at, {}, "");
         }
     }
 
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                  std::format("; Odyssey 2 cartridge, {} bytes at $0400 (the 8048's program memory)", rom.data.size()), ""},
-                                "i8048", std::string(file_name));
+                                "sleigh-i8048", std::string(file_name));
     out.part("ROM", "segment", std::nullopt, rom.data.size());
-    out.append(std::format("        ORG ${:04X}", o2::kBase));
+    out.append(std::format("        .org 0x{:04x}", o2::kBase));
     O2Listing listing(rom, code, instruction_text);
     iw::emit<di::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
@@ -119,9 +115,7 @@ iw::Written write(const formats::o2::Rom& rom, std::string_view file_name, const
     iw::assembled(
         r,
         [&] {
-            build::byte_asm::Image image = build::i8048_asm::build(source);
-            if (image.base != o2::kBase) throw build::AsmError("the image starts at the wrong address");
-            return std::move(image.data);
+            return described_source::assemble(i8048_cpu(), source, folder);
         },
         rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;

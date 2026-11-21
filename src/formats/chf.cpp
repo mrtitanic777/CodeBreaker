@@ -1,5 +1,6 @@
 // cb-unity: alone
 #include "formats/chf.hpp"
+#include "knowledge/package.hpp"
 
 #include <format>
 
@@ -18,7 +19,8 @@ bool size_ok(std::uint64_t size) { return size >= 256 && size <= kMaxSize && siz
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& bios() {
-    static const std::map<std::uint32_t, std::string> table = {{0x008F, "BIOS_DELAY"}, {0x00D0, "BIOS_CLEAR_SCREEN"}, {0x0107, "BIOS_PUSHK"}, {0x011E, "BIOS_POPK"}, {0x0679, "BIOS_DRAWCHAR"}};
+    // config/knowledge/chf/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().table_names("chf", "bios");
     return table;
 }
 

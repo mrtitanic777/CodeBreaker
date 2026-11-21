@@ -13,7 +13,6 @@
 #include "core/text.hpp"
 #include "decompile/w65816.hpp"
 #include "source/described_source.hpp"
-#include "source/isa_65xx.hpp"
 #include "source/m6502_source.hpp"
 
 namespace cb::source::snes_writer {

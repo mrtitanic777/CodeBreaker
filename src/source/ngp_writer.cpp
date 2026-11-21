@@ -10,10 +10,11 @@
 #include <set>
 
 #include "build/asm_text.hpp"
-#include "build/tlcs900_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/tlcs900.hpp"
+#include "source/described_source.hpp"
+#include "source/processors.hpp"
 
 namespace cb::source::ngp_writer {
 
@@ -25,7 +26,10 @@ namespace {
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr iw::Spelling kData{"D_", 6};
-const iw::DataSyntax kSyntax{.bytes = "DB", .fill = "FILL", .fill_separator = ","};
+const processors::Processor& tlcs900_cpu() {
+    static const processors::Processor& cpu = processors::find("tlcs900");
+    return cpu;
+}
 constexpr std::uint32_t kFirstVector = 0x6FB8, kLastVector = 0x6FFF;   // the BIOS's table of interrupt handlers the program fills in
 
 bool printable(ByteView b) {
@@ -66,7 +70,7 @@ public:
     }
     std::uint32_t size(const dt::Insn& insn) const override { return insn.size; }
     std::string text(const dt::Insn& insn) const override { return text_.at(insn.at); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
 
     // The header: licence, start address, catalogue, sub-catalogue, colour, title, reserved bytes.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
@@ -75,17 +79,17 @@ public:
         const ByteView d = ByteView(rom_.data).first(formats::ngp::kHeaderSize);
         const auto field = [&](std::size_t at, std::size_t n, const char* what) {
             const ByteView f = d.subspan(at, n);
-            if (printable(f)) out_.append(std::format("        DB \"{}\"  ; {}", std::string(reinterpret_cast<const char*>(f.data()), f.size()), what));
-            else out_.extend(iw::commented(iw::data_lines(f, kSyntax), what));
+            if (printable(f)) out_.append(std::format("        .ascii \"{}\"  ; {}", std::string(reinterpret_cast<const char*>(f.data()), f.size()), what));
+            else out_.extend(iw::commented(described_source::data_lines(f), what));
         };
         field(0, 28, "licence");
-        if (start_is_labelled_) out_.append(std::format("        DB <start,>start,0x{:02X},0x{:02X}  ; start address", d[0x1E], d[0x1F]));
-        else out_.extend(iw::commented(iw::data_lines(d.subspan(0x1C, 4), kSyntax), "start address"));
-        out_.extend(iw::commented(iw::data_lines(d.subspan(0x20, 2), kSyntax), "catalogue number"));
-        out_.extend(iw::commented(iw::data_lines(d.subspan(0x22, 1), kSyntax), "sub-catalogue"));
-        out_.extend(iw::commented(iw::data_lines(d.subspan(0x23, 1), kSyntax), d[0x23] == 0x10 ? "colour" : "monochrome"));
+        if (start_is_labelled_) out_.append("        .long start  ; start address");
+        else out_.extend(iw::commented(described_source::data_lines(d.subspan(0x1C, 4)), "start address"));
+        out_.extend(iw::commented(described_source::data_lines(d.subspan(0x20, 2)), "catalogue number"));
+        out_.extend(iw::commented(described_source::data_lines(d.subspan(0x22, 1)), "sub-catalogue"));
+        out_.extend(iw::commented(described_source::data_lines(d.subspan(0x23, 1)), d[0x23] == 0x10 ? "colour" : "monochrome"));
         field(0x24, 12, "title");
-        out_.extend(iw::commented(iw::data_lines(d.subspan(0x30, 16), kSyntax), "reserved"));
+        out_.extend(iw::commented(described_source::data_lines(d.subspan(0x30, 16)), "reserved"));
         return static_cast<std::uint32_t>(formats::ngp::kHeaderSize);
     }
 
@@ -175,28 +179,17 @@ iw::Written write(const formats::ngp::Rom& rom, std::string_view file_name, cons
     for (const auto& [a, n] : labels) code_labels[a] = n;
     all_labels = code_labels;
     for (const auto& [a, n] : ngp::hardware()) all_labels.try_emplace(a, n);
-    decompile::NameLabels name_values;
-    for (const auto& [a, n] : all_labels) name_values[n] = a;
 
     // each instruction as text (with the names of hardware registers, else with numbers only, else with no names at all), or as bytes when no text assembles back to them
-    const auto same_bytes = [&](const std::string& t, const dt::Insn& insn) {
-        try {
-            const Bytes built = dt::assemble(t, insn.at, name_values);
-            return built.size() == insn.size && std::equal(built.begin(), built.end(), insn.raw.begin());
-        } catch (const Error&) {
-            return false;
-        }
-    };
     std::map<std::uint32_t, std::string> instruction_text;
     std::set<std::string> used;   // the names the instruction texts use
-    const decompile::AddressLabels none;
     for (const auto& [at, insn] : code) {
-        std::string t = dt::text(insn, all_labels);
-        if (!same_bytes(t, insn)) t = dt::text(insn, code_labels);
-        if (!same_bytes(t, insn)) t = dt::text(insn, none);
-        if (same_bytes(t, insn)) {
+        // (the description's text, kept when it builds back into the instruction's bytes; the program's names where its numbers are)
+        std::optional<std::string> t = described_source::checked_text(tlcs900_cpu(), insn.bytes(), at, insn.size);
+        if (t) *t = described_source::name_numbers(*t, all_labels);
+        if (t) {
             std::string word;
-            for (const char c : t + " ") {
+            for (const char c : *t + " ") {
                 if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
                     word += c;
                 } else {
@@ -204,11 +197,9 @@ iw::Written write(const formats::ngp::Rom& rom, std::string_view file_name, cons
                     word.clear();
                 }
             }
-            instruction_text[at] = std::move(t);
+            instruction_text[at] = std::move(*t);
         } else {
-            std::string row = "DB ";
-            for (std::size_t k = 0; k < insn.size; ++k) row += (k ? "," : "") + std::format("0x{:02X}", insn.raw[k]);
-            instruction_text[at] = row + "  ; " + dt::text(insn, none);
+            instruction_text[at] = described_source::byte_line(tlcs900_cpu(), insn.bytes(), at, {}, "");
         }
     }
     std::set<std::uint32_t> equates;
@@ -221,16 +212,17 @@ iw::Written write(const formats::ngp::Rom& rom, std::string_view file_name, cons
         const std::uint32_t a = rom.address(k);
         if (code.contains(a) || inside_insn.contains(a)) header_is_data = false;
     }
+    // the header's start address is the `start` label when its four bytes are that label's address (written as one .long)
     const bool start_labelled = labels.contains(rom.header.start) && labels.at(rom.header.start) == "start" && rom.data[0x1E] == ((rom.header.start >> 16) & 0xFF) &&
                                 rom.data[0x1F] == ((rom.header.start >> 24) & 0xFF);
 
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                  std::format("; Neo Geo Pocket {} cartridge, {} bytes, \"{}\", start at 0x{:06X}", rom.header.colour ? "Color" : "", rom.data.size(), rom.header.title, rom.header.start), ""},
-                                "tlcs900", std::string(file_name));
-    for (const std::uint32_t a : equates) out.append(std::format("{} EQU 0x{:04X}", ngp::hardware().at(a), a));
+                                "sleigh-tlcs900", std::string(file_name));
+    for (const std::uint32_t a : equates) out.append(described_source::equ(ngp::hardware().at(a), a, 4));
     if (!equates.empty()) out.append("");
     out.part("ROM", "segment", std::nullopt, rom.data.size());
-    out.append(std::format("        ORG 0x{:06X}", ngp::kRomBase));
+    out.append(std::format("        .org 0x{:06x}", ngp::kRomBase));
     NgpListing listing(out, rom, code, instruction_text, header_is_data, start_labelled);
     iw::emit<dt::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
@@ -240,9 +232,7 @@ iw::Written write(const formats::ngp::Rom& rom, std::string_view file_name, cons
     iw::assembled(
         r,
         [&] {
-            build::byte_asm::Image image = build::tlcs900_asm::build(source);
-            if (image.base != ngp::kRomBase) throw build::AsmError("the image starts at the wrong address");
-            return std::move(image.data);
+            return described_source::assemble(tlcs900_cpu(), source, folder);
         },
         rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;

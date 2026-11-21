@@ -1,6 +1,7 @@
 // source/atari7800_writer.cpp -- an Atari 7800 cartridge as assembly source that builds back into it (atari7800_writer.hpp).
 
 #include "source/atari7800_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <format>
 #include <set>
@@ -167,30 +168,23 @@ std::string header_note(const formats::atari7800::Rom& rom) {
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& tia_write() {
-    static const std::map<std::uint32_t, std::string> table = {{0x01, "INPTCTRL"}, {0x15, "AUDC0"}, {0x16, "AUDC1"}, {0x17, "AUDF0"},
-                                                               {0x18, "AUDF1"},    {0x19, "AUDV0"}, {0x1A, "AUDV1"}};
+    // config/knowledge/atari7800/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari7800", "tia_write");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& tia_read() {
-    static const std::map<std::uint32_t, std::string> table = {{0x08, "INPT0"}, {0x09, "INPT1"}, {0x0A, "INPT2"},
-                                                               {0x0B, "INPT3"}, {0x0C, "INPT4"}, {0x0D, "INPT5"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari7800", "tia_read");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& maria() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x20, "BACKGRND"}, {0x21, "P0C1"}, {0x22, "P0C2"}, {0x23, "P0C3"}, {0x24, "WSYNC"}, {0x25, "P1C1"}, {0x26, "P1C2"}, {0x27, "P1C3"},
-        {0x28, "MSTAT"},    {0x29, "P2C1"}, {0x2A, "P2C2"}, {0x2B, "P2C3"}, {0x2C, "DPPH"},  {0x2D, "P3C1"}, {0x2E, "P3C2"}, {0x2F, "P3C3"},
-        {0x30, "DPPL"},     {0x31, "P4C1"}, {0x32, "P4C2"}, {0x33, "P4C3"}, {0x34, "CHBASE"}, {0x35, "P5C1"}, {0x36, "P5C2"}, {0x37, "P5C3"},
-        {0x38, "OFFSET"},   {0x39, "P6C1"}, {0x3A, "P6C2"}, {0x3B, "P6C3"}, {0x3C, "CTRL"},  {0x3D, "P7C1"}, {0x3E, "P7C2"}, {0x3F, "P7C3"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari7800", "maria");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& riot() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x280, "SWCHA"}, {0x281, "SWACNT"}, {0x282, "SWCHB"}, {0x283, "CTLSWB"}, {0x284, "INTIM"},
-        {0x285, "TIMINT"}, {0x294, "TIM1T"}, {0x295, "TIM8T"}, {0x296, "TIM64T"}, {0x297, "T1024T"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari7800", "riot");
     return table;
 }
 

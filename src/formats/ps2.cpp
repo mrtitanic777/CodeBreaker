@@ -1,5 +1,6 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
 #include "formats/ps2.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -31,53 +32,8 @@ bool is_r5900_elf(ByteView head) {
 
 // The registers of the Emotion Engine's units by physical address.
 const std::map<std::uint32_t, std::string>& registers() {
-    static const std::map<std::uint32_t, std::string> table = [] {
-        std::map<std::uint32_t, std::string> t;
-        for (unsigned n = 0; n < 4; ++n) {   // the four timers
-            const std::uint32_t base = 0x10000000 + n * 0x800;
-            t[base] = std::format("T{}_COUNT", n);
-            t[base + 0x10] = std::format("T{}_MODE", n);
-            t[base + 0x20] = std::format("T{}_COMP", n);
-            if (n < 2) t[base + 0x30] = std::format("T{}_HOLD", n);
-        }
-        t[0x10002000] = "IPU_CMD";   t[0x10002010] = "IPU_CTRL";  t[0x10002020] = "IPU_BP";    t[0x10002030] = "IPU_TOP";
-        const char* gif[] = {"GIF_CTRL", "GIF_MODE", "GIF_STAT"};
-        for (unsigned i = 0; i < 3; ++i) t[0x10003000 + i * 0x10] = gif[i];
-        t[0x10003040] = "GIF_TAG0";  t[0x10003050] = "GIF_TAG1";  t[0x10003060] = "GIF_TAG2";  t[0x10003070] = "GIF_TAG3";
-        t[0x10003080] = "GIF_CNT";   t[0x10003090] = "GIF_P3CNT"; t[0x100030A0] = "GIF_P3TAG";
-        const char* vif[] = {"STAT", "FBRST", "ERR", "MARK", "CYCLE", "MODE", "NUM", "MASK", "CODE", "ITOPS"};
-        for (unsigned n = 0; n < 2; ++n) {
-            const std::uint32_t base = 0x10003800 + n * 0x400;
-            for (unsigned i = 0; i < 10; ++i) t[base + 0x00 + i * 0x10] = std::format("VIF{}_{}", n, vif[i]);
-            if (n == 1) {
-                t[base + 0xA0] = "VIF1_BASE"; t[base + 0xB0] = "VIF1_OFST"; t[base + 0xC0] = "VIF1_TOPS"; t[base + 0xD0] = "VIF1_ITOP"; t[base + 0xE0] = "VIF1_TOP";
-            } else {
-                t[base + 0xD0] = "VIF0_ITOP";
-            }
-            for (unsigned i = 0; i < 4; ++i) {
-                t[base + 0x100 + i * 0x10] = std::format("VIF{}_R{}", n, i);
-                t[base + 0x200 + i * 0x10] = std::format("VIF{}_C{}", n, i);
-            }
-        }
-        t[0x10004000] = "VIF0_FIFO"; t[0x10005000] = "VIF1_FIFO"; t[0x10006000] = "GIF_FIFO"; t[0x10007000] = "IPU_OUT_FIFO"; t[0x10007010] = "IPU_IN_FIFO";
-        constexpr std::uint32_t channels[10] = {0x10008000, 0x10009000, 0x1000A000, 0x1000B000, 0x1000B400, 0x1000C000, 0x1000C400, 0x1000C800, 0x1000D000, 0x1000D400};
-        const std::pair<unsigned, const char*> dma_regs[] = {{0x00, "CHCR"}, {0x10, "MADR"}, {0x20, "QWC"}, {0x30, "TADR"}, {0x40, "ASR0"}, {0x50, "ASR1"}, {0x80, "SADR"}};
-        for (unsigned n = 0; n < 10; ++n)
-            for (const auto& [off, name] : dma_regs) t[channels[n] + off] = std::format("D{}_{}", n, name);
-        t[0x1000E000] = "D_CTRL";  t[0x1000E010] = "D_STAT";  t[0x1000E020] = "D_PCR";   t[0x1000E030] = "D_SQWC";
-        t[0x1000E040] = "D_RBSR";  t[0x1000E050] = "D_RBOR";  t[0x1000E060] = "D_STADR"; t[0x1000F520] = "D_ENABLER"; t[0x1000F590] = "D_ENABLEW";
-        t[0x1000F000] = "I_STAT";  t[0x1000F010] = "I_MASK";
-        t[0x1000F100] = "SIO_LCR"; t[0x1000F110] = "SIO_LSR"; t[0x1000F120] = "SIO_IER"; t[0x1000F130] = "SIO_ISR"; t[0x1000F140] = "SIO_FCR";
-        t[0x1000F150] = "SIO_BGR"; t[0x1000F180] = "SIO_TXFIFO"; t[0x1000F1C0] = "SIO_RXFIFO";
-        t[0x1000F200] = "SB_MSCOM"; t[0x1000F210] = "SB_SMCOM"; t[0x1000F220] = "SB_MSFLG"; t[0x1000F230] = "SB_SMFLG"; t[0x1000F240] = "SB_CTRL";
-        t[0x1000F260] = "SB_?";    t[0x1000F430] = "MCH_RICM"; t[0x1000F440] = "MCH_DRD";
-        t.erase(0x1000F260);
-        const char* gs[] = {"GS_PMODE", "GS_SMODE1", "GS_SMODE2", "GS_SRFSH", "GS_SYNCH1", "GS_SYNCH2", "GS_SYNCV", "GS_DISPFB1", "GS_DISPLAY1",
-                            "GS_DISPFB2", "GS_DISPLAY2", "GS_EXTBUF", "GS_EXTDATA", "GS_EXTWRITE", "GS_BGCOLOR"};
-        for (unsigned i = 0; i < 15; ++i) t[0x12000000 + i * 0x10] = gs[i];
-        t[0x12001000] = "GS_CSR"; t[0x12001010] = "GS_IMR"; t[0x12001040] = "GS_BUSDIR"; t[0x12001080] = "GS_SIGLBLID";
-        return t;
-    }();
+    // config/knowledge/ps2/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("ps2", "registers");
     return table;
 }
 
@@ -150,14 +106,9 @@ std::optional<std::string> hardware_name(std::uint32_t address) {
     const auto& table = registers();
     if (const auto it = table.find(*p); it != table.end()) return it->second;
     // a register of an unnamed offset inside a named unit's block: the block and the offset
-    const struct {
-        std::uint32_t lo, hi;
-        const char* block;
-    } blocks[] = {{0x10000000, 0x10001FFF, "TIMERS"}, {0x10002000, 0x10002FFF, "IPU"}, {0x10003000, 0x100037FF, "GIF"}, {0x10003800, 0x10003BFF, "VIF0"},
-                  {0x10003C00, 0x10003FFF, "VIF1"},   {0x10004000, 0x10007FFF, "FIFO"}, {0x10008000, 0x1000EFFF, "DMAC"}, {0x1000F000, 0x1000FFFF, "SYS"},
-                  {0x12000000, 0x12001FFF, "GS"}};
+    static const std::vector<knowledge::HardwareRegion> blocks = knowledge::standard().hardware_regions("ps2", "blocks");   // (config/knowledge/ps2/registers.json)
     for (const auto& b : blocks)
-        if (*p >= b.lo && *p <= b.hi) return std::format("{}_{:04X}", b.block, *p - b.lo);
+        if (*p >= b.address && *p - b.address < b.size) return std::format("{}_{:04X}", b.name, *p - b.address);
     return std::nullopt;
 }
 

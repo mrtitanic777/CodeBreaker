@@ -2,16 +2,16 @@
 // source/cdi_writer.cpp -- the modules of a CD-i disc as 68000 source that builds back into them (cdi_writer.hpp).
 
 #include "source/cdi_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <format>
 #include <set>
 
-#include "build/m68k_asm.hpp"
 #include "core/fs.hpp"
 #include "decompile/m68k.hpp"
-#include "source/isa.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::cdi_writer {
 
@@ -24,7 +24,6 @@ namespace {
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr iw::Spelling kData{"D_", 6};
-const iw::DataSyntax kSyntax{.bytes = "dc.b", .fill = "dcb.b", .fill_separator = ","};
 
 // `TRAP #0`: the call is the word after it.
 bool os9_call(const m68k::Insn& insn) {
@@ -76,15 +75,15 @@ public:
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return os9_call(insn) ? 4 : insn.length; }
     std::string text(const m68k::Insn& insn) const override {
-        std::string line = m68k::text(insn, names_);
+        std::string line = risc_source::m68k_code(insn, names_);
         if (!os9_call(insn)) return line;
         const std::uint32_t code = be16(program_.file, program_.offset(insn.pc).value() + 2);
         const auto named = system_calls().find(code);
-        if (named == system_calls().end()) return line + std::format("\n        dc.w ${:04X}", code);
+        if (named == system_calls().end()) return line + std::format("\n        .half 0x{:04x}", code);
         used_calls_.insert(named->second);
-        return line + "\n        dc.w " + named->second;
+        return line + "\n        .half " + named->second;
     }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::vector<std::string> data_lines(ByteView data) const override { return risc_source::data_lines(data); }
 
     // The module's header, field by field.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
@@ -92,19 +91,19 @@ public:
         flush();
         const ByteView f = program_.file;
         const std::size_t h = offset;
-        out_.append(std::format("        dc.w ${:04X}  ; module sync, {}", be16(f, h), module_.name));
-        out_.append(std::format("        dc.w ${:04X}  ; system revision", be16(f, h + 2)));
-        out_.append(std::format("        dc.l ${:08X}  ; module size", be32(f, h + 4)));
-        out_.append(std::format("        dc.l ${:08X}  ; owner", be32(f, h + 8)));
-        out_.append(std::format("        dc.l ${:08X}  ; name offset", be32(f, h + 12)));
-        out_.append(std::format("        dc.w ${:04X}  ; access", be16(f, h + 16)));
-        out_.append(std::format("        dc.b ${:02X},${:02X}  ; type, language", f[h + 18], f[h + 19]));
-        out_.append(std::format("        dc.b ${:02X},${:02X}  ; attributes, revision", f[h + 20], f[h + 21]));
-        out_.append(std::format("        dc.w ${:04X}  ; edition", be16(f, h + 22)));
-        out_.append(std::format("        dc.l ${:08X}  ; usage", be32(f, h + 24)));
-        out_.append(std::format("        dc.l ${:08X}  ; symbol table", be32(f, h + 28)));
-        out_.extend(iw::commented(iw::data_lines(f.subspan(h + 32, 14), kSyntax), "reserved"));
-        out_.append(std::format("        dc.w ${:04X}  ; header parity", be16(f, h + 46)));
+        out_.append(std::format("        .half 0x{:04x}  ; module sync, {}", be16(f, h), module_.name));
+        out_.append(std::format("        .half 0x{:04x}  ; system revision", be16(f, h + 2)));
+        out_.append(std::format("        .word 0x{:08x}  ; module size", be32(f, h + 4)));
+        out_.append(std::format("        .word 0x{:08x}  ; owner", be32(f, h + 8)));
+        out_.append(std::format("        .word 0x{:08x}  ; name offset", be32(f, h + 12)));
+        out_.append(std::format("        .half 0x{:04x}  ; access", be16(f, h + 16)));
+        out_.append(std::format("        .byte 0x{:02x},0x{:02x}  ; type, language", f[h + 18], f[h + 19]));
+        out_.append(std::format("        .byte 0x{:02x},0x{:02x}  ; attributes, revision", f[h + 20], f[h + 21]));
+        out_.append(std::format("        .half 0x{:04x}  ; edition", be16(f, h + 22)));
+        out_.append(std::format("        .word 0x{:08x}  ; usage", be32(f, h + 24)));
+        out_.append(std::format("        .word 0x{:08x}  ; symbol table", be32(f, h + 28)));
+        out_.extend(iw::commented(risc_source::data_lines(f.subspan(h + 32, 14)), "reserved"));
+        out_.append(std::format("        .half 0x{:04x}  ; header parity", be16(f, h + 46)));
         return static_cast<std::uint32_t>(cd::kHeader);
     }
 
@@ -148,11 +147,16 @@ std::string label_of(const std::string& name, std::size_t index) {
     return "main_" + s;
 }
 
+// The file with its modules' bytes replaced by those the source builds: the modules in the order of their addresses, each `size` bytes (the source's `.org` says
+// the address a module is seen at; it does not move the bytes in the build).
 Bytes rebuilt_file(const cd::Program& program, const Bytes& image) {
     Bytes out = program.file;
-    for (const cd::Module& m : program.modules) {
-        if (!m.runs()) continue;
-        for (std::uint32_t i = 0; i < m.size; ++i) out[m.file_offset + i] = m.address + i < image.size() ? image[m.address + i] : 0;
+    std::vector<cd::Module> order = program.placed();
+    std::sort(order.begin(), order.end(), [](const cd::Module& a, const cd::Module& b) { return a.address < b.address; });
+    std::size_t at = 0;
+    for (const cd::Module& m : order) {
+        for (std::uint32_t i = 0; i < m.size; ++i) out[m.file_offset + i] = at + i < image.size() ? image[at + i] : 0;
+        at += m.size;
     }
     return out;
 }
@@ -160,18 +164,13 @@ Bytes rebuilt_file(const cd::Program& program, const Bytes& image) {
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& system_calls() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x00, "F_Link"},  {0x01, "F_Load"},   {0x02, "F_UnLink"}, {0x03, "F_Fork"},   {0x04, "F_Wait"},   {0x05, "F_Chain"}, {0x06, "F_Exit"},
-        {0x07, "F_Mem"},   {0x08, "F_Send"},   {0x09, "F_Icpt"},   {0x0A, "F_Sleep"},  {0x0C, "F_SPrior"}, {0x0D, "F_ID"},    {0x0E, "F_SSWI"},
-        {0x15, "F_STime"}, {0x80, "I_Attach"}, {0x81, "I_Detach"}, {0x82, "I_Dup"},    {0x83, "I_Create"}, {0x84, "I_Open"},  {0x85, "I_MakDir"},
-        {0x86, "I_ChgDir"}, {0x87, "I_Delete"}, {0x88, "I_Seek"},  {0x89, "I_Read"},   {0x8A, "I_Write"},  {0x8B, "I_ReadLn"}, {0x8C, "I_WritLn"},
-        {0x8D, "I_GetStt"}, {0x8E, "I_SetStt"}, {0x8F, "I_Close"}};
+    // config/knowledge/cdi/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().table_names("cdi", "system_calls");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {{0x200000, "MCD212_CSR1"}, {0x200010, "MCD212_DCR1"}, {0x300000, "SLAVE_BASE"},
-                                                               {0x310000, "SLAVE_CMD"},   {0x320000, "NVRAM"},       {0x340000, "CLOCK"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("cdi", "hardware");
     return table;
 }
 
@@ -215,29 +214,28 @@ iw::Written write(const cd::Program& program, std::string_view file_name, const 
     std::set<std::string> used_calls;
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, base_name),
                                  std::format("; Philips CD-i {}: {} module(s), {} run by the model", program.disc ? "disc" : "module file", program.modules.size(), program.placed().size()), ""},
-                                "asm68k", std::string(file_name));
+                                "sleigh-m68k", std::string(file_name));
     std::vector<cd::Module> order = program.placed();
     std::sort(order.begin(), order.end(), [](const cd::Module& a, const cd::Module& b) { return a.address < b.address; });
     // the segments are written into a second assembly first, so the equates for the calls and chips used can come before them
-    translate::l2::Assembly body({}, "asm68k", std::string(file_name));
+    translate::l2::Assembly body({}, "sleigh-m68k", std::string(file_name));
     for (const cd::Module& m : order) {
         body.part(m.name.empty() ? "module" : m.name, "segment", std::nullopt, m.size);
-        body.append(std::format("        org ${:06X}", m.address));
+        body.append(std::format("        .org 0x{:06x}", m.address));
         CdiListing listing(body, program, m, code, names_for_text, used_calls);
         iw::emit<m68k::Insn>(body, m.file_offset, m.file_offset + m.size, labels, functions, listing);
         body.append("");
     }
-    for (const std::uint32_t a : used) out.append(std::format("{:<16} equ ${:06X}", hardware().at(a), a));
+    for (const std::uint32_t a : used) out.append(risc_source::equ(hardware().at(a), a, 6));
     for (const std::string& name : used_calls) {
         for (const auto& [code_number, n] : system_calls()) {
-            if (n == name) out.append(std::format("{:<16} equ ${:02X}", name, code_number));
+            if (n == name) out.append(risc_source::equ(name, code_number, 2));
         }
     }
     out.append("");
     const std::string source = iw::text(out) + "\n" + iw::text(body) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), program.file.size());
-    const build::m68k_asm::Assembler assembler(isa::m68k_encoder());
-    iw::assembled(r, [&] { return rebuilt_file(program, assembler.build(source)); }, program.file, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
+    iw::assembled(r, [&] { return rebuilt_file(program, risc_source::assemble("m68k", source, folder)); }, program.file, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;
 }
 

@@ -10,12 +10,13 @@
 #include <set>
 #include <unordered_set>
 
-#include "build/arm_asm.hpp"
+
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "decompile/arm.hpp"
 #include "decompile/arm_ext.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::vita_writer {
 
@@ -263,35 +264,35 @@ iw::Written write(const formats::vita::Program& program, std::string_view file_n
         }
     }
 
-    decompile::AddressLabels address_labels;
-    decompile::NameLabels name_values;
-    for (const auto& [a, n] : labels) {
-        address_labels[a] = n;
-        name_values[n] = a;
-    }
+    // the description's text (Thumb-2: the ARMv7 description in Thumb state), a branch by its label and a PC-relative load by the label of the word it reads,
+    // kept only when it assembles back to the instruction's bytes
     std::map<std::uint32_t, std::string> instruction_text;
     for (const auto& [at, insn] : code) {
-        std::string t = da::text(insn, address_labels);
-        bool same = false;
-        try {
-            const Bytes built = da::assemble(t, at | 1, name_values, kArch);
-            same = built.size() == insn.length && std::equal(built.begin(), built.end(), insn.raw.begin());
-        } catch (const Error&) {
-        }
-        std::string line = same ? std::move(t) : insn.length == 2 ? std::format(".short 0x{:04X}  @ {}", insn.word & 0xFFFF, t) : std::format(".word 0x{:08X}  @ {}", insn.word, t);
-        if (const auto it = flow.it_at(at)) line += std::format("  @ if {}", da::condition_suffix(da::t2::it_condition(static_cast<std::uint8_t>(it->first), static_cast<std::uint8_t>(it->mask), it->index)));
+        std::map<std::uint32_t, std::string> by_value;
+        std::vector<std::uint32_t> operands;
+        const auto name = [&](std::uint32_t a) {
+            if (const auto named = labels.find(a); named != labels.end()) by_value[a] = named->second, operands.push_back(a);
+        };
+        if (insn.target) name(*insn.target & ~1u);
+        if (const auto word = literal_address(insn)) name(*word);
+        std::string line = risc_source::code("armv7t", insn.bytes(), insn.pc, by_value, operands);
+        if (line.starts_with(".byte"))   // (an instruction the description does not write as it assembles: its bits, as halves, with its text)
+            line = insn.length == 2 ? std::format(".half 0x{:04X}  ; {}", insn.word & 0xFFFF, risc_source::read_text("armv7t", insn.bytes(), insn.pc).value_or("?"))
+                                    : std::format(".half 0x{:04X}, 0x{:04X}  ; {}", insn.raw[0] | insn.raw[1] << 8, insn.raw[2] | insn.raw[3] << 8,
+                                                  risc_source::read_text("armv7t", insn.bytes(), insn.pc).value_or("?"));
+        if (const auto it = flow.it_at(at)) line += std::format("  ; if {}", da::condition_suffix(da::t2::it_condition(static_cast<std::uint8_t>(it->first), static_cast<std::uint8_t>(it->mask), it->index)));
         instruction_text[at] = std::move(line);
     }
 
-    std::vector<std::string> head = {std::format("@ {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                     std::format("@ PlayStation Vita {} {}, image {} bytes in {} segments; the processor is the Cortex-A9 (ARMv7-A, Thumb-2, VFP, NEON)",
+    std::vector<std::string> head = {std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
+                                     std::format("; PlayStation Vita {} {}, image {} bytes in {} segments; the processor is the Cortex-A9 (ARMv7-A, Thumb-2, VFP, NEON)",
                                                  program.self ? "SELF" : "ELF", program.module_name, image.size(), program.segments.size()),
-                                     "@ addresses in this file are image offsets; the segments are laid end to end, each 16-byte aligned",
+                                     "; addresses in this file are image offsets; the segments are laid end to end, each 16-byte aligned",
+                                     "; (ARM syntax as the processor's SLEIGH description writes it: build with `assemble --cpu armv7 --sleigh`; `.context TMode=1` is Thumb)",
                                      "",
-                                     "        .syntax unified",
-                                     "        .thumb",
+                                     "        .context TMode=1",
                                      ""};
-    translate::l2::Assembly out(head, "gnu-as", std::string(file_name));
+    translate::l2::Assembly out(head, "sleigh-armv7", std::string(file_name));
     out.part("image", "segment", std::nullopt, image.size());
 
     VitaListing listing(out, image, code, instruction_text, labels, words);
@@ -300,9 +301,8 @@ iw::Written write(const formats::vita::Program& program, std::string_view file_n
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image.size());
-    const build::arm_asm::Assembler assembler(isa::armv7_encoder());
     const Bytes original = program.to_elf(image);
-    iw::assembled(r, [&] { return program.to_elf(assembler.build(source)); }, original, folder / (stem + ".built.velf"));
+    iw::assembled(r, [&] { return program.to_elf(risc_source::assemble("armv7", source, folder)); }, original, folder / (stem + ".built.velf"));
     return r;
 }
 

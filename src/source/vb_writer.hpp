@@ -1,7 +1,7 @@
 // source/vb_writer.hpp -- a Virtual Boy cartridge as V810 assembly source that builds back into it.
 //
 //     image_writer::Written r = vb_writer::reconstruct("game.vb", "out");
-//     r.source           game.s (GNU-style V810 syntax; CodeBreaker's own build/v810_asm reads it too)
+//     r.source           game.s (the V810 SLEIGH description's syntax under the one directive layer; the one assembler reads it; a jr or jal, which that assembler does not take yet, is its bytes with the instruction in a comment)
 //     r.same             the source, built, is the cartridge file byte for byte
 //     r.functions        {address: name}   (addresses as the CPU sees them: $07000000 + the file offset)
 //

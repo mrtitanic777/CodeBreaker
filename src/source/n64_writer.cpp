@@ -2,6 +2,7 @@
 // source/n64_writer.cpp -- a Nintendo 64 ROM as assembly source that builds back into it (n64_writer.hpp).
 
 #include "source/n64_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -162,29 +163,8 @@ enum class Kind { None, Text, Hardware, Variable };
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x04000000, "SP_DMEM"},        {0x04001000, "SP_IMEM"},
-        {0x04040000, "SP_MEM_ADDR"},    {0x04040004, "SP_DRAM_ADDR"},   {0x04040008, "SP_RD_LEN"},      {0x0404000C, "SP_WR_LEN"},
-        {0x04040010, "SP_STATUS"},      {0x04040014, "SP_DMA_FULL"},    {0x04040018, "SP_DMA_BUSY"},    {0x0404001C, "SP_SEMAPHORE"},
-        {0x04080000, "SP_PC"},          {0x04080004, "SP_IBIST"},
-        {0x04100000, "DPC_START"},      {0x04100004, "DPC_END"},        {0x04100008, "DPC_CURRENT"},    {0x0410000C, "DPC_STATUS"},
-        {0x04100010, "DPC_CLOCK"},      {0x04100014, "DPC_BUFBUSY"},    {0x04100018, "DPC_PIPEBUSY"},   {0x0410001C, "DPC_TMEM"},
-        {0x04200000, "DPS_TBIST"},      {0x04200004, "DPS_TEST_MODE"},  {0x04200008, "DPS_BUFTEST_ADDR"}, {0x0420000C, "DPS_BUFTEST_DATA"},
-        {0x04300000, "MI_INIT_MODE"},   {0x04300004, "MI_VERSION"},     {0x04300008, "MI_INTR"},        {0x0430000C, "MI_INTR_MASK"},
-        {0x04400000, "VI_STATUS"},      {0x04400004, "VI_ORIGIN"},      {0x04400008, "VI_WIDTH"},       {0x0440000C, "VI_V_INTR"},
-        {0x04400010, "VI_CURRENT"},     {0x04400014, "VI_BURST"},       {0x04400018, "VI_V_SYNC"},      {0x0440001C, "VI_H_SYNC"},
-        {0x04400020, "VI_LEAP"},        {0x04400024, "VI_H_START"},     {0x04400028, "VI_V_START"},     {0x0440002C, "VI_V_BURST"},
-        {0x04400030, "VI_X_SCALE"},     {0x04400034, "VI_Y_SCALE"},
-        {0x04500000, "AI_DRAM_ADDR"},   {0x04500004, "AI_LEN"},         {0x04500008, "AI_CONTROL"},     {0x0450000C, "AI_STATUS"},
-        {0x04500010, "AI_DACRATE"},     {0x04500014, "AI_BITRATE"},
-        {0x04600000, "PI_DRAM_ADDR"},   {0x04600004, "PI_CART_ADDR"},   {0x04600008, "PI_RD_LEN"},      {0x0460000C, "PI_WR_LEN"},
-        {0x04600010, "PI_STATUS"},      {0x04600014, "PI_BSD_DOM1_LAT"}, {0x04600018, "PI_BSD_DOM1_PWD"}, {0x0460001C, "PI_BSD_DOM1_PGS"},
-        {0x04600020, "PI_BSD_DOM1_RLS"}, {0x04600024, "PI_BSD_DOM2_LAT"}, {0x04600028, "PI_BSD_DOM2_PWD"}, {0x0460002C, "PI_BSD_DOM2_PGS"},
-        {0x04600030, "PI_BSD_DOM2_RLS"},
-        {0x04700000, "RI_MODE"},        {0x04700004, "RI_CONFIG"},      {0x04700008, "RI_CURRENT_LOAD"}, {0x0470000C, "RI_SELECT"},
-        {0x04700010, "RI_REFRESH"},     {0x04700014, "RI_LATENCY"},     {0x04700018, "RI_RERROR"},      {0x0470001C, "RI_WERROR"},
-        {0x04800000, "SI_DRAM_ADDR"},   {0x04800004, "SI_PIF_ADDR_RD64B"}, {0x04800010, "SI_PIF_ADDR_WR64B"}, {0x04800018, "SI_STATUS"},
-        {0x1FC007C0, "PIF_RAM"}};
+    // config/knowledge/n64/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("n64", "hardware");
     return table;
 }
 

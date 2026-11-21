@@ -7,7 +7,7 @@
 #include <bit>
 #include <string>
 
-#include "build/a64_asm.hpp"
+#include "source/processors.hpp"
 #include "core/testing.hpp"
 
 namespace cb::emulate::a64 {
@@ -21,7 +21,7 @@ struct Rig {
     std::unique_ptr<Memory> memory;
 
     RunResult run(const std::string& program, RunOptions options = {}, bool add_return = true) {
-        const build::a64_asm::Image image = build::a64_asm::build(".org 0x10000\n" + program + (add_return ? "\n        ret\n" : "\n"));
+        const source::processors::Image image = source::processors::assemble_described(source::processors::find("a64"), ".org 0x10000\n" + program + (add_return ? "\n        ret\n" : "\n"), ".");
         auto regions = std::make_shared<std::vector<Region>>();
         regions->push_back({kCode, image.data, false});
         regions->push_back({kRo, Bytes(0x1000, 0x5A), false});
@@ -41,24 +41,24 @@ struct Rig {
 CB_TEST("emulate.a64.flags_of_the_arithmetic", [] {
     Rig m;
     m.run(R"(
-        movn x1, #0                      // -1
-        adds x2, x1, #1                  // 0, carry out, zero
+        .word 0x92800001   ; movn x1, #0                      ; -1
+        adds x2, x1, #0x1                  ; 0, carry out, zero
         mrs x10, nzcv
-        movz x3, #0x7fff, lsl #48
-        movk x3, #0xffff, lsl #32
-        movk x3, #0xffff, lsl #16
+        .word 0xd2efffe3   ; movz x3, #0x7fff, lsl #48
+        movk x3, #0xffff, LSL #32
+        movk x3, #0xffff, LSL #16
         movk x3, #0xffff
-        adds x4, x3, #1                  // signed overflow
+        adds x4, x3, #0x1                  ; signed overflow
         mrs x11, nzcv
-        mov x5, #1
-        cmp x5, #2                       // 1 - 2: negative, borrow (no carry)
+        .word 0xd2800025   ; mov x5, #1
+        cmp x5, #0x2                       ; 1 - 2: negative, borrow (no carry)
         mrs x12, nzcv
         mov w6, #0x7fffffff
-        add w7, w6, #1
-        cmn w6, #1
+        add w7, w6, #0x1
+        cmn w6, #0x1
         mrs x13, nzcv
-        mov x8, #5
-        subs x9, x8, #5
+        .word 0xd28000a8   ; mov x8, #5
+        subs x9, x8, #0x5
         mrs x14, nzcv
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
@@ -75,32 +75,32 @@ CB_TEST("emulate.a64.flags_of_the_arithmetic", [] {
 CB_TEST("emulate.a64.logic_shifts_and_bitfields", [] {
     Rig m;
     m.run(R"(
-        movz x1, #0x1234
-        movk x1, #0x5678, lsl #16
-        lsl x2, x1, #4
-        lsr x3, x1, #4
-        movz x4, #0xff00
-        mvn x4, x4                       // 0xffff...00ff
-        asr x5, x4, #8
+        .word 0xd2824681   ; movz x1, #0x1234
+        movk x1, #0x5678, LSL #16
+        .word 0xd37cec22   ; lsl x2, x1, #4
+        lsr x3, x1, #0x4
+        .word 0xd29fe004   ; movz x4, #0xff00
+        mvn x4, x4                       ; 0xffff...00ff
+        .word 0x9348fc85   ; asr x5, x4, #8
         and x6, x1, #0xff00
         orr x7, x1, #0xf0000000
         eor x8, x1, x1
-        bic x9, x1, x1, lsl #0
-        ubfx x10, x1, #4, #8             // 0x23
-        sbfx x11, x4, #0, #8             // 0xff sign extended
+        bic x9, x1, x1
+        .word 0xd3442c2a   ; ubfx x10, x1, #4, #8             ; 0x23
+        .word 0x93401c8b   ; sbfx x11, x4, #0, #8             ; 0xff sign extended
         mov x12, xzr
-        bfi x12, x1, #8, #8              // 0x3400
-        ubfiz x13, x1, #4, #4            // (0x4) << 4
-        extr x14, x1, x4, #8
-        ror x15, x1, #4
+        .word 0xb3781c2c   ; bfi x12, x1, #8, #8              ; 0x3400
+        .word 0xd37c0c2d   ; ubfiz x13, x1, #4, #4            ; (0x4) << 4
+        extr x14, x1, x4, #0x8
+        ror x15, x1, #0x4
         rev w16, w1
         rbit w17, w1
         clz x18, x1
         rev16 x19, x1
-        sxtb x20, w4
-        uxth w21, w4
+        .word 0x93401c94   ; sxtb x20, w4
+        .word 0x53003c95   ; uxth w21, w4
         mvn x22, x1
-        tst x1, #1
+        .word 0xf240003f   ; tst x1, #1
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.x(2), 0x56781234ull << 4);
@@ -129,24 +129,24 @@ CB_TEST("emulate.a64.logic_shifts_and_bitfields", [] {
 CB_TEST("emulate.a64.multiplies_divides_and_remainders", [] {
     Rig m;
     m.run(R"(
-        movz x1, #0x1234, lsl #32
-        mov x2, #7
+        .word 0xd2c24681   ; movz x1, #0x1234, lsl #32
+        .word 0xd28000e2   ; mov x2, #7
         mul x3, x1, x2
-        umulh x4, x1, x1
-        movn x5, #0                      // -1
-        smulh x6, x5, x5                 // 0 (the high half of 1)
-        umulh x7, x5, x5                 // 0xfffffffffffffffe
+        .word 0x9bc17c24   ; umulh x4, x1, x1
+        .word 0x92800005   ; movn x5, #0                      ; -1
+        .word 0x9b457ca6   ; smulh x6, x5, x5                 ; 0 (the high half of 1)
+        .word 0x9bc57ca7   ; umulh x7, x5, x5                 ; 0xfffffffffffffffe
         udiv x8, x1, x2
-        msub x9, x8, x2, x1              // the remainder
-        mov x10, #100
-        sdiv x11, x10, x5                // -100
-        sdiv x12, x10, xzr               // by zero: 0
-        smull x13, w5, w5                // 1
-        umull x14, w5, w5                // 0xfffffffe00000001
-        madd x15, x2, x2, x2             // 56
+        msub x9, x8, x2, x1              ; the remainder
+        .word 0xd2800c8a   ; mov x10, #100
+        sdiv x11, x10, x5                ; -100
+        sdiv x12, x10, xzr               ; by zero: 0
+        smull x13, w5, w5                ; 1
+        umull x14, w5, w5                ; 0xfffffffe00000001
+        madd x15, x2, x2, x2             ; 56
         mneg x16, x2, x2
-        mov x17, #0x8000000000000000
-        sdiv x18, x17, x5                // the one overflow: stays
+        .word 0xd2f00011   ; mov x17, #0x8000000000000000
+        sdiv x18, x17, x5                ; the one overflow: stays
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.x(3), 0x1234ull * 7 << 32);
@@ -167,35 +167,35 @@ CB_TEST("emulate.a64.multiplies_divides_and_remainders", [] {
 CB_TEST("emulate.a64.loads_and_stores_in_every_addressing_form", [] {
     Rig m;
     m.run(R"(
-        movz x20, #0x10, lsl #16         // 0x100000: the data
-        movn x1, #0                      // -1
+        .word 0xd2a00214   ; movz x20, #0x10, lsl #16         ; 0x100000: the data
+        .word 0x92800001   ; movn x1, #0                      ; -1
         str x1, [x20]
-        mov x2, #0x80
-        strb w2, [x20, #8]
-        ldrb w3, [x20, #8]
-        ldrsb x4, [x20, #8]              // sign extended
+        .word 0xd2801002   ; mov x2, #0x80
+        strb w2, [x20, #0x8]
+        ldrb w3, [x20, #0x8]
+        ldrsb x4, [x20, #0x8]              ; sign extended
         mov w5, #0x8000
-        strh w5, [x20, #10]
-        ldrsh w6, [x20, #10]
-        ldrh w7, [x20, #10]
-        mov x8, #3
-        str w8, [x20, x8, lsl #2]        // [x20 + 12]
-        ldr w9, [x20, #12]
+        strh w5, [x20, #0xa]
+        ldrsh w6, [x20, #0xa]
+        ldrh w7, [x20, #0xa]
+        .word 0xd2800068   ; mov x8, #3
+        str w8, [x20, x8, lsl #0x2]        ; [x20 + 12]
+        ldr w9, [x20, #0xc]
         add x10, x20, #0x40
-        str x1, [x10, #-8]!              // pre-index
+        str x1, [x10, #-0x8]!              ; pre-index
         mov x11, x10
-        ldr x12, [x10], #16              // post-index
+        ldr x12, [x10], #0x10              ; post-index
         sub x13, x10, x11
         stp x2, x8, [x20, #0x20]
         ldp x14, x15, [x20, #0x20]
-        stp x2, x8, [sp, #-16]!
-        ldp x16, x17, [sp], #16
-        ldur x18, [x20, #1]
+        stp x2, x8, [sp, #-0x10]!
+        ldp x16, x17, [sp], #0x10
+        ldur x18, [x20, #0x1]
         ldrsw x19, [x20]
-        mov w21, #-1
+        mov w21, #0xffffffff
         add x25, x20, #0x100
-        ldr w23, [x20, w8, uxtw #2]
-        ldr x24, [x25, w21, sxtw #3]     // negative index: x25 - 8
+        ldr w23, [x20, w8, uxtw #0x2]
+        ldr x24, [x25, w21, sxtw #0x3]     ; negative index: x25 - 8
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.x(3), 0x80u);
@@ -222,29 +222,29 @@ CB_TEST("emulate.a64.branches_calls_and_loops", [] {
     Rig m;
     m.run(R"(
         mov x28, x30
-        mov x1, #0
-        mov x2, #10
+        .word 0xd2800001   ; mov x1, #0
+        .word 0xd2800142   ; mov x2, #10
 loop:
         add x1, x1, x2
-        subs x2, x2, #1
-        b.ne loop                        // 55
+        subs x2, x2, #0x1
+        b.ne loop                        ; 55
         bl square
         cbz x0, skip
-        mov x4, #1
+        .word 0xd2800024   ; mov x4, #1
 skip:
-        mov x5, #0x20
-        tbz w5, #5, wrong
-        mov x6, #6
+        .word 0xd2800405   ; mov x5, #0x20
+        tbz w5, #0x5, wrong
+        .word 0xd28000c6   ; mov x6, #6
         adr x7, target
         blr x7
         b done
 wrong:
-        mov x6, #99
+        .word 0xd2800c66   ; mov x6, #99
 target:
-        mov x8, #8
+        .word 0xd2800108   ; mov x8, #8
         ret
 done:
-        mov x9, #9
+        .word 0xd2800129   ; mov x9, #9
         b finish
 square:
         mul x0, x1, x1
@@ -264,19 +264,19 @@ finish:
 CB_TEST("emulate.a64.conditional_select_and_compare", [] {
     Rig m;
     m.run(R"(
-        mov x1, #5
-        mov x2, #9
+        .word 0xd28000a1   ; mov x1, #5
+        .word 0xd2800122   ; mov x2, #9
         cmp x1, x2
-        csel x3, x1, x2, lt              // 5
-        csel x4, x1, x2, gt              // 9
-        cset x5, lo
+        csel x3, x1, x2, lt              ; 5
+        csel x4, x1, x2, gt              ; 9
+        cset x5, cc
         csetm x6, hi
-        csinc x7, x1, x2, ge             // 10
-        csneg x8, x1, x2, ge             // -9
-        cinc x9, x1, lt                  // 6
-        ccmp x1, #5, #4, lt              // lt holds: compares 5 with 5 -> Z
+        csinc x7, x1, x2, ge             ; 10
+        csneg x8, x1, x2, ge             ; -9
+        cinc x9, x1, lt                  ; 6
+        ccmp x1, #0x5, #0x4, lt              ; lt holds: compares 5 with 5 -> Z
         cset x10, eq
-        ccmp x1, #5, #0, gt              // gt does not hold: flags 0
+        ccmp x1, #0x5, #0x0, gt              ; gt does not hold: flags 0
         cset x11, eq
         cmn x1, x2
         cset x12, mi
@@ -296,20 +296,20 @@ CB_TEST("emulate.a64.conditional_select_and_compare", [] {
 CB_TEST("emulate.a64.exclusive_access", [] {
     Rig m;
     m.run(R"(
-        movz x20, #0x10, lsl #16
-        mov x1, #5
+        .word 0xd2a00214   ; movz x20, #0x10, lsl #16
+        .word 0xd28000a1   ; mov x1, #5
         str x1, [x20]
-        ldxr x2, [x20]
-        add x2, x2, #1
-        stxr w3, x2, [x20]               // succeeds: 0
+        .word 0xc85f7e82   ; ldxr x2, [x20]
+        add x2, x2, #0x1
+        .word 0xc8037e82   ; stxr w3, x2, [x20]               ; succeeds: 0
         ldr x4, [x20]
-        ldxr x5, [x20]
+        .word 0xc85f7e85   ; ldxr x5, [x20]
         clrex
-        stxr w6, x1, [x20]               // the monitor is gone: 1
+        .word 0xc8067e81   ; stxr w6, x1, [x20]               ; the monitor is gone: 1
         ldr x7, [x20]
-        mov x8, #3
-        stlr x8, [x20]
-        ldar x9, [x20]
+        .word 0xd2800068   ; mov x8, #3
+        .word 0xc89ffe88   ; stlr x8, [x20]
+        .word 0xc8dffe89   ; ldar x9, [x20]
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.x(3), 0u);
@@ -322,30 +322,30 @@ CB_TEST("emulate.a64.exclusive_access", [] {
 CB_TEST("emulate.a64.scalar_floating_point", [] {
     Rig m;
     m.run(R"(
-        fmov d0, #1.5
-        fmov d1, #2.0
-        fadd d2, d0, d1                  // 3.5
-        fmul d3, d0, d1                  // 3
-        fdiv d4, d0, d1                  // 0.75
+        fmov d0, 0x3ff8000000000000
+        fmov d1, 0x4000000000000000
+        fadd d2, d0, d1                  ; 3.5
+        fmul d3, d0, d1                  ; 3
+        fdiv d4, d0, d1                  ; 0.75
         fsub d5, d0, d1
         fsqrt d6, d1
-        fmadd d7, d0, d1, d0             // 1.5 * 2 + 1.5
+        fmadd d7, d0, d1, d0             ; 1.5 * 2 + 1.5
         fneg d8, d0
         fabs d9, d8
-        fcvtzs x1, d2                    // 3
+        fcvtzs x1, d2                    ; 3
         scvtf d10, x1
         fcmp d0, d1
-        mrs x2, nzcv                     // less: N
+        mrs x2, nzcv                     ; less: N
         fcmp d1, d1
-        mrs x3, nzcv                     // equal: ZC
+        mrs x3, nzcv                     ; equal: ZC
         fcvt s11, d4
-        fadd s12, s11, s11               // 1.5
+        fadd s12, s11, s11               ; 1.5
         fcvt d13, s12
-        frintm d14, d5                   // floor(-0.5) = -1
+        frintm d14, d5                   ; floor(-0.5) = -1
         fmov x4, d3
         fmov d15, x4
         fmov w5, s12
-        movi d16, #0
+        movi d16, #0x0
         fcsel d17, d0, d1, lt
         fcvtzu w6, d0
         scvtf s18, w6
@@ -378,23 +378,23 @@ CB_TEST("emulate.a64.scalar_floating_point", [] {
 CB_TEST("emulate.a64.floating_point_conversions_saturate", [] {
     Rig m;
     m.run(R"(
-        fmov d0, #-2.5
-        fcvtzs w1, d0                    // -2
-        fcvtzu w2, d0                    // 0 (negative, unsigned)
-        fcvtms x3, d0                    // -3
-        fcvtps x4, d0                    // -2
-        fcvtas x5, d0                    // -3 (ties away)
-        fcvtns x6, d0                    // -2 (ties even)
-        movz x7, #0x7ff0, lsl #48        // +infinity as a double
+        fmov d0, -0x3ffc000000000000
+        fcvtzs w1, d0                    ; -2
+        fcvtzu w2, d0                    ; 0 (negative, unsigned)
+        fcvtms x3, d0                    ; -3
+        fcvtps x4, d0                    ; -2
+        fcvtas x5, d0                    ; -3 (ties away)
+        fcvtns x6, d0                    ; -2 (ties even)
+        .word 0xd2effe07   ; movz x7, #0x7ff0, lsl #48        ; +infinity as a double
         fmov d1, x7
-        fcvtzs x8, d1                    // saturates
+        fcvtzs x8, d1                    ; saturates
         fcvtzs w9, d1
-        add x10, x7, #1                  // a NaN
+        add x10, x7, #0x1                  ; a NaN
         fmov d2, x10
         fcvtzs x11, d2
-        fmov d3, #4.0
-        fcvtzs w12, d3, #3               // 4.0 * 8 = 32
-        scvtf d4, w12, #4                // 32 / 16 = 2
+        fmov d3, 0x4010000000000000
+        fcvtzs w12, d3, #0x3               ; 4.0 * 8 = 32
+        scvtf d4, w12, #0x4                ; 32 / 16 = 2
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.x(1), 0xFFFFFFFEu);
@@ -418,17 +418,17 @@ CB_TEST("emulate.a64.system_registers", [] {
     m.run(R"(
         mrs x1, tpidr_el0
         mrs x2, tpidrro_el0
-        mov x3, #0xff
+        .word 0xd2801fe3   ; mov x3, #0xff
         msr tpidr_el0, x3
         mrs x4, tpidr_el0
         mrs x5, cntvct_el0
         mrs x6, cntvct_el0
         mrs x7, cntfrq_el0
-        mov x8, #0x40000000
-        lsl x8, x8, #1
+        .word 0xd2a80008   ; mov x8, #0x40000000
+        .word 0xd37ff908   ; lsl x8, x8, #1
         msr nzcv, x8
         mrs x9, nzcv
-        mov x10, #3
+        .word 0xd280006a   ; mov x10, #3
         msr fpcr, x10
         mrs x11, fpcr
     )", o);
@@ -445,16 +445,16 @@ CB_TEST("emulate.a64.system_registers", [] {
 CB_TEST("emulate.a64.kernel_calls_are_logged_and_the_exits_end_the_run", [] {
     Rig m;
     RunResult r = m.run(R"(
-        mov x0, #0x21
-        mov x1, #7
-        svc #0x1E
+        .word 0xd2800420   ; mov x0, #0x21
+        .word 0xd28000e1   ; mov x1, #7
+        svc 0x1e
         mov x9, x0
-        mov x1, #0x1000000
-        svc #1                           // SetHeapSize
+        .word 0xd2a02001   ; mov x1, #0x1000000
+        svc 0x1                           ; SetHeapSize
         mov x10, x1
-        mov x0, #0
-        svc #7                           // ExitProcess
-        mov x11, #1
+        .word 0xd2800000   ; mov x0, #0
+        svc 0x7                           ; ExitProcess
+        .word 0xd280002b   ; mov x11, #1
     )");
     CB_CHECK_EQ(r.exit(), "stopped: svc ExitProcess");
     CB_CHECK_EQ(r.calls.size(), 3u);
@@ -470,9 +470,9 @@ CB_TEST("emulate.a64.kernel_calls_are_logged_and_the_exits_end_the_run", [] {
     // the heap is usable after SetHeapSize
     Rig h;
     h.run(R"(
-        mov x1, #0x200000
-        svc #1
-        mov x2, #77
+        .word 0xd2a00401   ; mov x1, #0x200000
+        svc 0x1
+        .word 0xd28009a2   ; mov x2, #77
         str x2, [x1]
         ldr x3, [x1]
     )");
@@ -484,21 +484,21 @@ CB_TEST("emulate.a64.an_ipc_request_is_decoded", [] {
     RunOptions o;
     o.tpidrro_el0 = kData;
     RunResult r = m.run(R"(
-        movz x20, #0x10, lsl #16
-        movz x1, #4                      // header: type 4 (request), no descriptors
+        .word 0xd2a00214   ; movz x20, #0x10, lsl #16
+        .word 0xd2800081   ; movz x1, #4                      ; header: type 4 (request), no descriptors
         str x1, [x20]
-        movz x1, #6                      // 6 words of raw data
-        str w1, [x20, #4]
-        movz x1, #0x4653
-        movk x1, #0x4943, lsl #16        // 'SFCI'
-        str x1, [x20, #16]
-        mov x1, #1
-        str x1, [x20, #24]               // command 1: GetService
-        movz x1, #0x7366                 // "fs"
-        movk x1, #0x2d70, lsl #16        // "p-"
-        str x1, [x20, #32]
-        mov x0, #0x1234
-        svc #0x21
+        .word 0xd28000c1   ; movz x1, #6                      ; 6 words of raw data
+        str w1, [x20, #0x4]
+        .word 0xd288ca61   ; movz x1, #0x4653
+        movk x1, #0x4943, LSL #16        ; 'SFCI'
+        str x1, [x20, #0x10]
+        .word 0xd2800021   ; mov x1, #1
+        str x1, [x20, #0x18]               ; command 1: GetService
+        .word 0xd28e6cc1   ; movz x1, #0x7366                 ; "fs"
+        movk x1, #0x2d70, LSL #16        ; "p-"
+        str x1, [x20, #0x20]
+        .word 0xd2824680   ; mov x0, #0x1234
+        svc 0x21
     )", o);
     CB_CHECK_EQ(r.exit(), "return");
     CB_CHECK_EQ(r.calls.size(), 1u);
@@ -507,17 +507,17 @@ CB_TEST("emulate.a64.an_ipc_request_is_decoded", [] {
 
 CB_TEST("emulate.a64.what_cannot_run_stops_with_its_reason", [] {
     Rig m;
-    CB_CHECK_EQ(m.run("        movz x20, #0x20, lsl #16\n        ldr x1, [x20]\n        str x1, [x20]").exit().substr(0, 41), "stopped: data abort: write to read-only m");
-    CB_CHECK(m.run("        mov x20, #0x1000\n        ldr x1, [x20]").exit().starts_with("stopped: data abort: read at 0x1000"));
-    CB_CHECK(m.run("        brk #3").exit().starts_with("stopped: brk"));
+    CB_CHECK_EQ(m.run("        .word 0xd2a00414\n        ldr x1, [x20]\n        str x1, [x20]").exit().substr(0, 41), "stopped: data abort: write to read-only m");
+    CB_CHECK(m.run("        .word 0xd2820014\n        ldr x1, [x20]").exit().starts_with("stopped: data abort: read at 0x1000"));
+    CB_CHECK(m.run("        .word 0xd4200060").exit().starts_with("stopped: brk"));
     CB_CHECK(m.run("        .word 0xffffffff").exit().starts_with("stopped: undefined instruction ffffffff"));
     CB_CHECK(m.run("        mrs x0, midr_el1").exit().find("system register not modelled") != std::string::npos);
     CB_CHECK(m.run("        crc32b w0, w1, w2").exit().find("crc32 is not run") != std::string::npos);
     RunOptions few;
     few.max_steps = 50;
     CB_CHECK_EQ(m.run("spin:\n        b spin", few, false).exit(), "limit");
-    CB_CHECK(m.run("        mov x30, #0x4000\n        ret", {}, false).exit().starts_with("stopped: instruction fetch from unmapped address 0x4000"));
-    CB_CHECK(m.run("        mov x1, #1", {}).end == End::Return);
+    CB_CHECK(m.run("        .word 0xd288001e\n        ret", {}, false).exit().starts_with("stopped: instruction fetch from unmapped address 0x4000"));
+    CB_CHECK(m.run("        .word 0xd2800021", {}).end == End::Return);
 });
 
 CB_TEST("emulate.a64.memory_keeps_the_shared_image_unchanged", [] {
@@ -556,39 +556,39 @@ std::uint64_t lane(const V128& v, unsigned bytes, unsigned i) {
 CB_TEST("emulate.a64.vector_instructions", [] {
     Rig m;
     m.run(R"(
-        movz x20, #0x10, lsl #16
+        .word 0xd2a00214   ; movz x20, #0x10, lsl #16
         movi v0.16b, #0x11
         movi v1.16b, #0x22
-        add v2.16b, v0.16b, v1.16b       // 0x33 in every byte
-        st1 {v0.16b, v1.16b}, [x20], #32
-        sub x20, x20, #32
+        add v2.16b, v0.16b, v1.16b       ; 0x33 in every byte
+        st1 {v0.16b, v1.16b}, [x20], #0x20
+        sub x20, x20, #0x20
         ld1 {v4.16b, v5.16b}, [x20]
-        umov x0, v5.d[0]
-        eor v6.16b, v0.16b, v1.16b       // 0x33
-        cnt v7.16b, v6.16b               // 4 bits set in each
-        addv b8, v7.16b                  // 64
-        umov w1, v8.b[0]
+        mov x0, v5.D[0x0]
+        eor v6.16b, v0.16b, v1.16b       ; 0x33
+        cnt v7.16b, v6.16b               ; 4 bits set in each
+        addv b8, v7.16b                  ; 64
+        umov w1, v8.b[0x0]
         dup v9.4s, w1
-        fmov v11.4s, #2.0
-        fmul v12.4s, v11.4s, v11.4s      // 4.0
-        shl v14.4s, v9.4s, #2            // 256
-        ushr v15.4s, v14.4s, #4          // 16
+        fmov v11.4S, #0x40000000
+        fmul v12.4s, v11.4s, v11.4s      ; 4.0
+        shl v14.4S, v9.4S, 0x2            ; 256
+        ushr v15.4s, v14.4s, #0x4          ; 16
         xtn v16.4h, v14.4s
-        ushll v17.4s, v16.4h, #1         // 512
+        ushll v17.4S, v16.4H, 0x1         ; 512
         zip1 v18.4s, v9.4s, v11.4s
-        movi v19.16b, #3
-        tbl v20.16b, {v1.16b}, v19.16b   // byte 3 of v1: 0x22
-        ins v21.s[2], w1
-        mvni v22.4s, #0
+        movi v19.16b, #0x3
+        tbl v20.16b, {v1.16b}, v19.16b   ; byte 3 of v1: 0x22
+        mov v21.S[0x2], w1
+        mvni v22.4s, #0x0
         sub x21, x20, x20
         ld1r {v23.8h}, [x20]
         mov v24.16b, v0.16b
         bsl v24.16b, v1.16b, v6.16b
-        ext v25.16b, v0.16b, v1.16b, #8
+        ext v25.16B, v0.16B, v1.16B, 0x8
         uaddlv h26, v0.16b
-        sshr v27.2d, v22.2d, #60
-        fcvtzs v28.4s, v12.4s            // 4
-        scvtf v29.4s, v28.4s             // 4.0
+        sshr v27.2d, v22.2d, #0x3c
+        fcvtzs v28.4s, v12.4s            ; 4
+        scvtf v29.4s, v28.4s             ; 4.0
         cmeq v30.16b, v0.16b, v0.16b
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
@@ -625,23 +625,23 @@ CB_TEST("emulate.a64.vector_instructions", [] {
 CB_TEST("emulate.a64.a_vector_memcpy_loop", [] {
     Rig m;
     m.run(R"(
-        movz x20, #0x10, lsl #16         // source
-        add x21, x20, #0x1000            // destination
-        mov x2, #0
+        .word 0xd2a00214   ; movz x20, #0x10, lsl #16         ; source
+        add x21, x20, #0x1, LSL #12            ; destination
+        .word 0xd2800002   ; mov x2, #0
 fill:
         strb w2, [x20, x2]
-        add x2, x2, #1
-        cmp x2, #64
+        add x2, x2, #0x1
+        cmp x2, #0x40
         b.ne fill
-        mov x3, #2
+        .word 0xd2800043   ; mov x3, #2
 copy:
-        ld1 {v0.16b, v1.16b}, [x20], #32
-        st1 {v0.16b, v1.16b}, [x21], #32
-        subs x3, x3, #1
+        ld1 {v0.16b, v1.16b}, [x20], #0x20
+        st1 {v0.16b, v1.16b}, [x21], #0x20
+        subs x3, x3, #0x1
         b.ne copy
-        sub x22, x21, #64
-        ldr x4, [x22, #8]
-        ldr x5, [x22, #56]
+        sub x22, x21, #0x40
+        ldr x4, [x22, #0x8]
+        ldr x5, [x22, #0x38]
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.x(4), 0x0F0E0D0C0B0A0908ull);

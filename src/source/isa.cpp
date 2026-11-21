@@ -78,50 +78,6 @@ std::optional<DecodedInsn> decode_arm11(ByteView mem, std::uint32_t pc) { return
 // The failure the directive layer expects of a name that has no value yet.
 Failure unknown(const dz::UnknownLabel& e) { return Failure(build::UndefinedSymbolError(e.name())); }
 
-class Z80Syntax final : public build::Encoder {
-public:
-    Result<std::int64_t> value(std::string_view expr, const build::Labels& labels, std::int64_t pc) const override {
-        try {
-            return dz::value(expr, labels, static_cast<std::uint32_t>(pc));
-        } catch (const dz::UnknownLabel& e) {
-            return unknown(e);
-        } catch (const ParseError& e) {
-            return Failure(e.clone());
-        }
-    }
-    Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
-        try {
-            return dz::assemble(line, static_cast<std::uint32_t>(pc), labels);
-        } catch (const dz::UnknownLabel& e) {
-            return unknown(e);
-        } catch (const ParseError& e) {
-            return Failure(e.clone());
-        }
-    }
-};
-
-class M68kSyntax final : public build::Encoder {
-public:
-    Result<std::int64_t> value(std::string_view expr, const build::Labels& labels, std::int64_t pc) const override {
-        try {
-            return decompile::m68k::value(expr, labels, static_cast<std::uint32_t>(pc));
-        } catch (const dz::UnknownLabel& e) {
-            return unknown(e);
-        } catch (const ParseError& e) {
-            return Failure(e.clone());
-        }
-    }
-    Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
-        try {
-            return decompile::m68k::assemble(line, static_cast<std::uint32_t>(pc), labels);
-        } catch (const dz::UnknownLabel& e) {
-            return unknown(e);
-        } catch (const ParseError& e) {
-            return Failure(e.clone());
-        }
-    }
-};
-
 class MipsSyntax final : public build::Encoder {
 public:
     Result<std::int64_t> value(std::string_view expr, const build::Labels& labels, std::int64_t pc) const override {
@@ -171,30 +127,17 @@ private:
     decompile::arm::Arch arch_;
 };
 
-// The 6502's assembler says an unknown name as a ParseError ("unknown label or number NAME (line)"): the name is read out of it.
-class M6502Syntax final : public build::m6502_asm::Encoder6502 {
-public:
-    Result<Bytes> assemble(std::string_view line, std::uint32_t pc, const build::Labels& labels) const override {
-        constexpr std::string_view kUnknown = "unknown label or number ";
-        try {
-            return decompile::m6502::assemble(line, pc, labels);
-        } catch (const ParseError& e) {
-            const std::string_view said = e.what();
-            const std::size_t at = said.find(kUnknown);
-            if (at == std::string_view::npos) return Failure(e.clone());
-            const std::string_view name = said.substr(at + kUnknown.size());
-            return Failure(build::UndefinedSymbolError(std::string(name.substr(0, name.find(" (")))));
-        }
-    }
-    bool is_branch(std::string_view mnemonic) const override { return decompile::m6502::is_branch(mnemonic); }
-};
-
 }  // namespace
 
 const formats::Decoder& m6502_decoder() {
     static const formats::Decoder decoder = processors::described_decoder(processors::find("6502"));   // (the one decoder: its SLEIGH description)
     return decoder;
 }
+const formats::Decoder& m65sc02_decoder() {
+    static const formats::Decoder decoder = processors::described_decoder(processors::find("65c02"));   // (the one decoder: its SLEIGH description)
+    return decoder;
+}
+
 const formats::Decoder& z80_decoder() {
     static const formats::Decoder decoder = processors::described_decoder(processors::find("z80"));   // (the one decoder: its SLEIGH description)
     return decoder;
@@ -224,10 +167,6 @@ const formats::Decoder& m68k_decoder() {
     return decoder;
 }
 
-const build::Encoder& z80_encoder() {
-    static const Z80Syntax syntax;
-    return syntax;
-}
 const build::Encoder& mips_encoder() {
     static const MipsSyntax syntax;
     return syntax;
@@ -248,13 +187,4 @@ const build::Encoder& armv7_encoder() {
     static const ArmSyntax syntax(decompile::arm::Arch::V7A);
     return syntax;
 }
-const build::Encoder& m68k_encoder() {
-    static const M68kSyntax syntax;
-    return syntax;
-}
-const build::m6502_asm::Encoder6502& m6502_encoder() {
-    static const M6502Syntax syntax;
-    return syntax;
-}
-
 }  // namespace cb::source::isa

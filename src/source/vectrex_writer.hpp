@@ -1,7 +1,7 @@
 // source/vectrex_writer.hpp -- a Vectrex cartridge as 6809 assembly source that builds back into it.
 //
 //     image_writer::Written r = vectrex_writer::reconstruct("game.vec", "out");
-//     r.source           game.asm (6809 syntax: lwasm, as9; CodeBreaker's own build/m6809_asm reads it too)
+//     r.source           game.asm (the 6809 SLEIGH description's syntax under the one directive layer; the one assembler reads it)
 //     r.same             the source, built, is the cartridge file byte for byte
 //     r.functions        {address: name}
 //

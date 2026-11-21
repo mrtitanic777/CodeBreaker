@@ -255,8 +255,8 @@ CB_TEST("source.ps2_writer.the_source_builds_back_into_the_elf", [] {
     CB_CHECK(contains(text, "pcpyld $t2, $t1, $t0"));
     CB_CHECK(contains(text, ".equ GS_CSR, 0x12001000"));   // the register the code builds the address of is named
     CB_CHECK(contains(text, "%lo(GS_CSR)"));
-    CB_CHECK(contains(text, "# section 1 .text"));
-    CB_CHECK(contains(text, "beql $a0, $zero, done") || contains(text, "beql $a0, $zero, L_"));
+    CB_CHECK(contains(text, "; section 1 .text"));
+    CB_CHECK(contains(text, "beql a0, zero, L_"));
 });
 
 CB_TEST("source.psp_writer.the_source_builds_back_into_the_module_and_the_package", [] {
@@ -280,9 +280,9 @@ CB_TEST("source.psp_writer.the_source_builds_back_into_the_module_and_the_packag
         CB_CHECK(r.same);
         const std::string text = fs::read_text(r.source);
         CB_CHECK(contains(text, "sceDisplaySetMode:"));   // the import's stub, named by its NID
-        CB_CHECK(contains(text, "ext $v0, $a0, 4, 8"));
-        CB_CHECK(contains(text, "seb $v1, $v0"));
-        CB_CHECK(contains(text, "vadd.q C000, C010, C020"));
+        CB_CHECK(contains(text, "ext v0, a0, 0x4, 0x8"));
+        CB_CHECK(contains(text, "seb v1, v0"));
+        CB_CHECK(contains(text, ".byte 0x80,0x81,0x02,0x60  ; vadd.q C000, C010, C020"));
         CB_CHECK(contains(text, "jal sceDisplaySetMode"));
     }
     // an encrypted module is recognised and not handled

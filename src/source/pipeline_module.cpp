@@ -142,16 +142,9 @@ std::string globals_note(analyze::Image& image, std::string_view header) {
 // from one, else the kernel and the system library, in the order every image seen has them; the numbers of the console's system libraries are the
 // knowledge base's.
 std::map<std::string, std::string> console_imports(knowledge::Knowledge& kb, const stdfs::path& module) {
-    const knowledge::Rows table = kb.table("xbox360", "ordinal_names");
     const std::vector<std::string> libraries = formats::xex::import_libraries(module).value_or(std::vector<std::string>{"xboxkrnl.exe", "xam.xex"});
     std::vector<std::map<std::string, std::string>> numbers;
-    for (const std::string& library : libraries) {
-        std::map<std::string, std::string> names;
-        if (const knowledge::Value* entry = table.find(text::lower(library)); entry != nullptr && entry->map() != nullptr)
-            for (const auto& [number, name] : *entry->map())
-                if (name.text() != nullptr) names[number] = *name.text();
-        numbers.push_back(std::move(names));
-    }
+    for (const std::string& library : libraries) numbers.push_back(kb.export_names("xbox360", text::lower(library)));
     std::set<std::string> distinct;
     const formats::powerpc_image::Image image = formats::powerpc_image::Image::read(module);
     for (const auto& [address, symbol] : image.imports()) distinct.insert(symbol);

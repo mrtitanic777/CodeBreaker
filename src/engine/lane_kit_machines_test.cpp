@@ -10,11 +10,8 @@
 #include <iostream>
 
 #include "build/arm_asm.hpp"
-#include "build/m6502_asm.hpp"
-#include "build/m68k_asm.hpp"
+#include "source/processors.hpp"
 #include "build/mips_asm.hpp"
-#include "build/sm83_asm.hpp"
-#include "build/z80_asm.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -157,9 +154,7 @@ CB_TEST("engine.lane_kit.machines.gba_edited_program", [] { machine_judges_an_ed
 // edited copy.
 CB_TEST("engine.lane_kit.machines.the_nes_demo_cartridge_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-nes-demo");
-    const build::m6502_asm::Assembler assembler(source::isa::m6502_encoder());
-    const Bytes rom = assembler.build(fs::read_text(testing::data_path("decompile/testdata/m6502_demo.s")),
-                                      fs::read_text(testing::data_path("engine/testdata/lane_kit/nes_demo.cfg")), dir.path());
+    const Bytes rom = source::processors::assemble_described(source::processors::find("6502"), fs::read_text(testing::data_path("engine/testdata/lane_kit/nes_demo.asm")), dir.path()).data;
     CB_CHECK_EQ(rom.size(), 16u + 0x4000u + 0x2000u);
     const stdfs::path cartridge = dir.path() / "demo.nes";
     fs::write_file(cartridge, rom);
@@ -169,8 +164,7 @@ CB_TEST("engine.lane_kit.machines.the_nes_demo_cartridge_is_judged", [] {
 
 CB_TEST("engine.lane_kit.machines.the_genesis_demo_cartridge_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-genesis-demo");
-    const build::m68k_asm::Assembler assembler(source::isa::m68k_encoder());
-    const Bytes rom = assembler.build(fs::read_text(testing::data_path("engine/testdata/lane_kit/genesis_demo.asm")));
+    const Bytes rom = source::processors::assemble_described(source::processors::find("m68k"), fs::read_text(testing::data_path("engine/testdata/lane_kit/genesis_demo.asm")), ".").data;
     const stdfs::path cartridge = dir.path() / "demo.md";
     fs::write_file(cartridge, rom);
     machine_judges_a_program({"genesis", "demo.md", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
@@ -203,13 +197,13 @@ CB_TEST("engine.lane_kit.machines.the_gba_demo_cartridge_is_judged", [] {
 // original, and judges an edited copy. (The snapshot's RAM from $4000 follows its 27-byte header: file offset = address - $3FE5.)
 CB_TEST("engine.lane_kit.machines.the_zx_demo_snapshot_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-zx-demo");
-    const build::z80_asm::Assembler assembler(source::isa::z80_encoder());
-    const auto flat = assembler.build_flat(fs::read_text(testing::data_path("engine/testdata/lane_kit/zx_demo.asm")));
+    const Bytes code = source::processors::assemble_described(source::processors::find("z80"), fs::read_text(testing::data_path("engine/testdata/lane_kit/zx_demo.asm")), ".").data;
+    const std::uint32_t start = 0x8000;   // (the program's own address: zx_demo.asm says `.org 0x8000`)
     Bytes mem(0x10000, 0);
-    std::copy(flat.bytes.begin(), flat.bytes.end(), mem.begin() + flat.start);
+    std::copy(code.begin(), code.end(), mem.begin() + start);
     const std::uint32_t sp = 0xFF00;
-    mem[sp] = static_cast<std::uint8_t>(flat.start);   // the PC, which RETN pops
-    mem[sp + 1] = static_cast<std::uint8_t>(flat.start >> 8);
+    mem[sp] = static_cast<std::uint8_t>(start);   // the PC, which RETN pops
+    mem[sp + 1] = static_cast<std::uint8_t>(start >> 8);
     Bytes snapshot = {0x3F};
     snapshot.resize(23, 0);
     snapshot.push_back(static_cast<std::uint8_t>(sp));
@@ -229,8 +223,7 @@ CB_TEST("engine.lane_kit.machines.the_zx_demo_snapshot_is_judged", [] {
 // the machines are held to a program of the repository's own when the homebrew samples are not on the machine.
 CB_TEST("engine.lane_kit.machines.the_master_system_demo_cartridge_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-sms-demo");
-    const build::z80_asm::Assembler assembler(source::isa::z80_encoder());
-    const Bytes rom = assembler.build(fs::read_text(testing::data_path("engine/testdata/lane_kit/sms_demo.asm")));
+    const Bytes rom = source::processors::assemble_described(source::processors::find("z80"), fs::read_text(testing::data_path("engine/testdata/lane_kit/sms_demo.asm")), ".").data;
     const stdfs::path cartridge = dir.path() / "demo.sms";
     fs::write_file(cartridge, rom);
     machine_judges_a_program({"sms", "demo.sms", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
@@ -238,7 +231,7 @@ CB_TEST("engine.lane_kit.machines.the_master_system_demo_cartridge_is_judged", [
 
 CB_TEST("engine.lane_kit.machines.the_game_boy_demo_cartridge_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-gb-demo");
-    const Bytes rom = build::sm83_asm::build(fs::read_text(testing::data_path("engine/testdata/lane_kit/gb_demo.asm")), 0x10000);
+    const Bytes rom = source::processors::assemble_described(source::processors::find("sm83"), fs::read_text(testing::data_path("engine/testdata/lane_kit/gb_demo.asm")), ".").data;
     const stdfs::path cartridge = dir.path() / "demo.gb";
     fs::write_file(cartridge, rom);
     machine_judges_a_program({"gb", "demo.gb", 0, static_cast<std::uint32_t>(rom.size())}, cartridge);
@@ -246,11 +239,11 @@ CB_TEST("engine.lane_kit.machines.the_game_boy_demo_cartridge_is_judged", [] {
 
 CB_TEST("engine.lane_kit.machines.the_msx_demo_cartridge_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-msx-demo");
-    const build::z80_asm::Assembler assembler(source::isa::z80_encoder());
-    const auto flat = assembler.build_flat(fs::read_text(testing::data_path("engine/testdata/lane_kit/msx_demo.asm")));
+    const Bytes code = source::processors::assemble_described(source::processors::find("z80"), fs::read_text(testing::data_path("engine/testdata/lane_kit/msx_demo.asm")), ".").data;
+    const std::uint32_t start = 0x4000;   // (msx_demo.asm says `.org 0x4000`)
     const stdfs::path cartridge = dir.path() / "demo.rom";
-    fs::write_file(cartridge, flat.bytes);
-    machine_judges_a_program({"msx", "demo.rom", flat.start, static_cast<std::uint32_t>(flat.bytes.size())}, cartridge);
+    fs::write_file(cartridge, code);
+    machine_judges_a_program({"msx", "demo.rom", start, static_cast<std::uint32_t>(code.size())}, cartridge);
 });
 
 // ---- the ColecoVision, the SG-1000 and the Amstrad CPC -------------------------------------------------------------------------------------
@@ -285,22 +278,22 @@ Bytes cpc_block(const Bytes& file) { return formats::cpc::parse(file, ".bin").im
 
 CB_TEST("engine.lane_kit.machines.the_coleco_demo_cartridge_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-coleco-demo");
-    const build::z80_asm::Assembler assembler(source::isa::z80_encoder());
-    const auto flat = assembler.build_flat(fs::read_text(testing::data_path("engine/testdata/lane_kit/coleco_demo.asm")));
+    const Bytes code = source::processors::assemble_described(source::processors::find("z80"), fs::read_text(testing::data_path("engine/testdata/lane_kit/coleco_demo.asm")), ".").data;
+    const std::uint32_t start = 0x8000;   // (coleco_demo.asm says `.org 0x8000`)
     const stdfs::path cartridge = dir.path() / "demo.col";
-    fs::write_file(cartridge, flat.bytes);
-    machine_judges_a_program({"coleco", "demo.col", flat.start, static_cast<std::uint32_t>(flat.bytes.size())}, cartridge);
+    fs::write_file(cartridge, code);
+    machine_judges_a_program({"coleco", "demo.col", start, static_cast<std::uint32_t>(code.size())}, cartridge);
 });
 
 CB_TEST("engine.lane_kit.machines.the_cpc_demo_program_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-cpc-demo");
-    const build::z80_asm::Assembler assembler(source::isa::z80_encoder());
-    const auto flat = assembler.build_flat(fs::read_text(testing::data_path("engine/testdata/lane_kit/cpc_demo.asm")));
-    const Bytes file = amsdos_file(flat.bytes, static_cast<std::uint16_t>(flat.start));
+    const Bytes code = source::processors::assemble_described(source::processors::find("z80"), fs::read_text(testing::data_path("engine/testdata/lane_kit/cpc_demo.asm")), ".").data;
+    const std::uint32_t start = 0x4000;   // (cpc_demo.asm says `.org 0x4000`)
+    const Bytes file = amsdos_file(code, static_cast<std::uint16_t>(start));
     const stdfs::path program = dir.path() / "demo.bin";
     fs::write_file(program, file);
     // (the body follows the 128-byte header: file offset = address - $3F80)
-    machine_judges_a_program({"cpc", "demo.bin", flat.start - 128, static_cast<std::uint32_t>(file.size()), cpc_block}, program);
+    machine_judges_a_program({"cpc", "demo.bin", start - 128, static_cast<std::uint32_t>(file.size()), cpc_block}, program);
 });
 
 CB_TEST("engine.lane_kit.machines.coleco_240p_suite_edited_program", [] { machine_judges_an_edited_program({"coleco", "coleco-240p/suitecv.rom", 0x8000, 0x8000}); });

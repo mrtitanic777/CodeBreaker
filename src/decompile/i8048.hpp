@@ -51,14 +51,4 @@ struct Insn {
 // The instruction at code[offset], which sits at address `pc`; nullopt for an undefined opcode or one cut off by the end of `code`.
 std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc);
 
-using decompile::AddressLabels;
-using decompile::NameLabels;
-
-// The instruction as source; a jump target that has a label is written as the label.
-std::string text(const Insn& insn, const AddressLabels& labels = {});
-
-// The bytes of one instruction line. With `lenient`, a name that is not known counts as 0 and out-of-range values are not refused. Throws ParseError for a line that is not an
-// instruction, an unknown name, a value out of range or a conditional jump to another page.
-Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels = {}, bool lenient = false);
-
 }  // namespace cb::decompile::i8048

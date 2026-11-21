@@ -2,8 +2,7 @@
 // the cartridge, the program run on the 6502 interpreter, the source written back, the SLEIGH 6502 specification against the interpreter,
 // and the native decompiler's C of it.
 //
-// The program is decompile/testdata/m6502_demo.s, hand-written for the lane, built with CodeBreaker's own assembler (engine/testdata/lane_kit/
-// nes_demo.cfg lays it out). The tests that need the native decompiler (decompiler.exe and pcodecheck.exe, built beside the tests)
+// The program is engine/testdata/lane_kit/nes_demo.asm, hand-written for the lane, built with the one assembler (the 6502 description). The tests that need the native decompiler (decompiler.exe and pcodecheck.exe, built beside the tests)
 // print SKIP when it is not built; the lane's judge on this cartridge is
 // engine.lane_kit.machines.the_nes_demo_cartridge_is_judged.
 //
@@ -19,7 +18,7 @@
 #include <vector>
 
 #include "base/cache.hpp"
-#include "build/m6502_asm.hpp"
+#include "source/processors.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/process.hpp"
@@ -47,9 +46,8 @@ namespace {
 // ---- the cartridge -------------------------------------------------------------------------------------------------------------
 
 Bytes nd_cartridge_bytes(const stdfs::path& work) {
-    const cb::build::m6502_asm::Assembler assembler(cb::source::isa::m6502_encoder());
-    return assembler.build(cb::fs::read_text(cb::testing::data_path("decompile/testdata/m6502_demo.s")),
-                           cb::fs::read_text(cb::testing::data_path("engine/testdata/lane_kit/nes_demo.cfg")), work);
+    return cb::source::processors::assemble_described(cb::source::processors::find("6502"),
+                                                      cb::fs::read_text(cb::testing::data_path("engine/testdata/lane_kit/nes_demo.asm")), work).data;
 }
 
 cb::formats::Decoder nd_decoder() {

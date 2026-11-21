@@ -2,6 +2,7 @@
 // source/atari5200_writer.cpp -- an Atari 5200 cartridge as assembly source that builds back into it (atari5200_writer.hpp).
 
 #include "source/atari5200_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <format>
 #include <set>
@@ -128,48 +129,33 @@ bool names_the(const std::map<std::uint32_t, std::string>& table, std::uint32_t 
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& gtia_write() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0xC000, "HPOSP0"}, {0xC001, "HPOSP1"}, {0xC002, "HPOSP2"}, {0xC003, "HPOSP3"}, {0xC004, "HPOSM0"}, {0xC005, "HPOSM1"}, {0xC006, "HPOSM2"},
-        {0xC007, "HPOSM3"}, {0xC008, "SIZEP0"}, {0xC009, "SIZEP1"}, {0xC00A, "SIZEP2"}, {0xC00B, "SIZEP3"}, {0xC00C, "SIZEM"},  {0xC00D, "GRAFP0"},
-        {0xC00E, "GRAFP1"}, {0xC00F, "GRAFP2"}, {0xC010, "GRAFP3"}, {0xC011, "GRAFM"},  {0xC012, "COLPM0"}, {0xC013, "COLPM1"}, {0xC014, "COLPM2"},
-        {0xC015, "COLPM3"}, {0xC016, "COLPF0"}, {0xC017, "COLPF1"}, {0xC018, "COLPF2"}, {0xC019, "COLPF3"}, {0xC01A, "COLBK"},  {0xC01B, "PRIOR"},
-        {0xC01C, "VDELAY"}, {0xC01D, "GRACTL"}, {0xC01E, "HITCLR"}, {0xC01F, "CONSOL"}};
+    // config/knowledge/atari5200/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari5200", "gtia_write");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& gtia_read() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0xC000, "M0PF"}, {0xC001, "M1PF"}, {0xC002, "M2PF"}, {0xC003, "M3PF"}, {0xC004, "P0PF"}, {0xC005, "P1PF"}, {0xC006, "P2PF"}, {0xC007, "P3PF"},
-        {0xC008, "M0PL"}, {0xC009, "M1PL"}, {0xC00A, "M2PL"}, {0xC00B, "M3PL"}, {0xC00C, "P0PL"}, {0xC00D, "P1PL"}, {0xC00E, "P2PL"}, {0xC00F, "P3PL"},
-        {0xC010, "TRIG0"}, {0xC011, "TRIG1"}, {0xC012, "TRIG2"}, {0xC013, "TRIG3"}, {0xC014, "PAL"}, {0xC01F, "CONSOL"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari5200", "gtia_read");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& antic_write() {
-    static const std::map<std::uint32_t, std::string> table = {{0xD400, "DMACTL"}, {0xD401, "CHACTL"}, {0xD402, "DLISTL"}, {0xD403, "DLISTH"},
-                                                               {0xD404, "HSCROL"}, {0xD405, "VSCROL"}, {0xD407, "PMBASE"}, {0xD409, "CHBASE"},
-                                                               {0xD40A, "WSYNC"},  {0xD40E, "NMIEN"},  {0xD40F, "NMIRES"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari5200", "antic_write");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& antic_read() {
-    static const std::map<std::uint32_t, std::string> table = {{0xD40B, "VCOUNT"}, {0xD40C, "PENH"}, {0xD40D, "PENV"}, {0xD40F, "NMIST"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari5200", "antic_read");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& pokey_write() {
-    static const std::map<std::uint32_t, std::string> table = {{0xE800, "AUDF1"},  {0xE801, "AUDC1"}, {0xE802, "AUDF2"},  {0xE803, "AUDC2"},
-                                                               {0xE804, "AUDF3"},  {0xE805, "AUDC3"}, {0xE806, "AUDF4"},  {0xE807, "AUDC4"},
-                                                               {0xE808, "AUDCTL"}, {0xE809, "STIMER"}, {0xE80A, "SKREST"}, {0xE80B, "POTGO"},
-                                                               {0xE80D, "SEROUT"}, {0xE80E, "IRQEN"}, {0xE80F, "SKCTL"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari5200", "pokey_write");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& pokey_read() {
-    static const std::map<std::uint32_t, std::string> table = {{0xE800, "POT0"},   {0xE801, "POT1"},   {0xE802, "POT2"},   {0xE803, "POT3"},
-                                                               {0xE804, "POT4"},   {0xE805, "POT5"},   {0xE806, "POT6"},   {0xE807, "POT7"},
-                                                               {0xE808, "ALLPOT"}, {0xE809, "KBCODE"}, {0xE80A, "RANDOM"}, {0xE80D, "SERIN"},
-                                                               {0xE80E, "IRQST"},  {0xE80F, "SKSTAT"}};
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("atari5200", "pokey_read");
     return table;
 }
 

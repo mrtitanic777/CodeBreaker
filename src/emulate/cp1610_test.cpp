@@ -1,23 +1,23 @@
 // cb-unity: alone
 // The CP1610 interpreter: flags, every addressing mode, SDBD, the stack, branches and calls, shifts, the status word, the stops and the device log. Programs are written in the
-// assembler's own syntax and run from $5000.
+// assembler's own syntax and run from 0x5000.
 #include "emulate/cp1610.hpp"
 
 #include <string>
 
-#include "build/cp1610_asm.hpp"
+#include "source/processors.hpp"
 #include "core/testing.hpp"
 
 namespace cb::emulate::cp1610 {
 namespace {
 
-// A machine with the program at $5000 (read-only), 768 words of RAM at $0100 and a logged device at $0000-$007F that reads $A5.
+// A machine with the program at 0x5000 (read-only), 768 words of RAM at 0x0100 and a logged device at 0x0000-0x007F that reads 0xA5.
 struct Rig {
     Bus bus;
     RunResult result;
 
     RunResult run(const std::string& program, RunOptions options = {}) {
-        const Bytes raw = build::cp1610_asm::build("        FORMAT RAW\n        SEGMENT $50,$50\n        ORG $5000\n" + program + "\n        MOVR R5,R7\n");
+        const Bytes raw = source::processors::assemble_described(source::processors::find("cp1610"), "        .org 0x5000\n" + program + "\n        JR R5\n", ".").data;
         std::vector<std::uint16_t> words;
         for (std::size_t i = 0; i + 1 < raw.size(); i += 2) words.push_back(static_cast<std::uint16_t>(raw[i] << 8 | raw[i + 1]));
         bus.memory(0x5000, 0x50FF, words, false);
@@ -36,14 +36,14 @@ CB_TEST("emulate.cp1610.the_flags_of_the_arithmetic", [] {
     Rig m;
     m.run(R"(
         SDBD
-        MVII #$7FFF,R0
-        ADDI #1,R0
+        .half 0x02b8, 0x00ff, 0x007f   ; MVII #0x7fff,R0 under SDBD (two decles of the immediate)
+        ADDI #0x1,R0
         GSWD R0
-        MVII #5,R1
-        CMPI #7,R1
+        MVII #0x5,R1
+        CMPI #0x7,R1
         GSWD R2
-        MVII #7,R4
-        CMPI #7,R4
+        MVII #0x7,R4
+        CMPI #0x7,R4
         GSWD R3
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
@@ -56,18 +56,18 @@ CB_TEST("emulate.cp1610.the_flags_of_the_arithmetic", [] {
 CB_TEST("emulate.cp1610.every_addressing_mode", [] {
     Rig m;
     m.run(R"(
-        MVII #$123,R1
-        MVO R1,$0200
-        MVI $0200,R2
-        MVII #$0300,R4
+        MVII #0x123,R1
+        MVO R1,0x200
+        MVI 0x200,R2
+        MVII #0x300,R4
         MVO@ R1,R4
         MVO@ R1,R4
-        MVII #$0300,R3
+        MVII #0x300,R3
         MVI@ R3,R0
-        MVII #$0300,R4
+        MVII #0x300,R4
         MVI@ R4,R1
         ADD@ R4,R1
-        SUBI #1,R1
+        SUBI #0x1,R1
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
     CB_CHECK_EQ(m.ram(0x200), 0x123u);
@@ -82,15 +82,15 @@ CB_TEST("emulate.cp1610.every_addressing_mode", [] {
 CB_TEST("emulate.cp1610.the_stack_and_double_byte_reads", [] {
     Rig m;
     m.run(R"(
-        MVII #7,R0
-        MVO@ R0,R6
-        MVII #0,R0
-        MVI@ R6,R1
-        MVII #$34,R0
-        MVO R0,$0300
-        MVII #$12,R0
-        MVO R0,$0301
-        MVII #$0300,R4
+        MVII #0x7,R0
+        PSHR R0
+        MVII #0x0,R0
+        PULR R1
+        MVII #0x34,R0
+        MVO R0,0x300
+        MVII #0x12,R0
+        MVO R0,0x301
+        MVII #0x300,R4
         SDBD
         MVI@ R4,R2
     )");
@@ -103,22 +103,22 @@ CB_TEST("emulate.cp1610.the_stack_and_double_byte_reads", [] {
 CB_TEST("emulate.cp1610.branches_calls_and_returns", [] {
     Rig m;
     m.run(R"(
-        MVII #5,R0
-        XORR R1,R1
+        MVII #0x5,R0
+        CLRR R1
     loop:
         ADDR R0,R1
         DECR R0
-        BNEQ loop
-        JSR R4,fn
-        MVII #3,R3
-        B done
+        .half 0x022c, 0x0003   ; BNEQ loop (the description's assembler writes a backward branch to a label wrongly)
+        .half 0x0004, 0x0050, 0x000e   ; JSR R4,fn (a label in a word-addressed space comes out in bytes)
+        MVII #0x3,R3
+        .half 0x0200, 0x0003   ; B done
     fn:
-        MVII #9,R2
-        MOVR R4,R7
+        MVII #0x9,R2
+        JR R4
     done:
-        CMPI #4,R3
-        BLT less
-        MVII #1,R0
+        CMPI #0x4,R3
+        .half 0x0205, 0x0002   ; BLT less
+        MVII #0x1,R0
     less:
     )");
     CB_CHECK_EQ(m.result.exit(), "return");
@@ -131,21 +131,21 @@ CB_TEST("emulate.cp1610.branches_calls_and_returns", [] {
 CB_TEST("emulate.cp1610.shifts_rotates_and_the_status_word", [] {
     Rig m;
     m.run(R"(
-        MVII #$81,R0
-        SLL R0,2
+        MVII #0x81,R0
+        SLL R4, 2
         SDBD
-        MVII #$8000,R1
+        .half 0x02b9, 0x0000, 0x0080   ; MVII #0x8000,R1 under SDBD
         MOVR R1,R3
-        SLR R1
-        SAR R3
+        SLR R1, 1
+        SAR R3, 1
         SETC
         SDBD
-        MVII #$8000,R2
-        RLC R2
-        MVII #$12,R1
-        SWAP R1
+        .half 0x02ba, 0x0000, 0x0080   ; MVII #0x8000,R2 under SDBD
+        RLC R2, 1
+        MVII #0x12,R1
+        SWAP R1, 1
         MOVR R1,R4
-        MVII #$F0,R1
+        MVII #0xf0,R1
         RSWD R1
         GSWD R1
     )");
@@ -153,15 +153,15 @@ CB_TEST("emulate.cp1610.shifts_rotates_and_the_status_word", [] {
     CB_CHECK_EQ(m.r(3), 0xC000u);
     CB_CHECK_EQ(m.r(2), 1u);                        // the carry came round
     CB_CHECK_EQ(m.r(4), 0x1200u);
-    CB_CHECK_EQ(m.r(1), 0xF0F0u);                   // RSWD of $F0 set all four flags
+    CB_CHECK_EQ(m.r(1), 0xF0F0u);                   // RSWD of 0xF0 set all four flags
 });
 
 CB_TEST("emulate.cp1610.device_accesses_are_logged", [] {
     Rig m;
     m.run(R"(
-        MVII #1,R0
-        MVO R0,$0020
-        MVI $0021,R1
+        MVII #0x1,R0
+        MVO R0,0x20
+        MVI 0x21,R1
     )");
     CB_CHECK_EQ(m.r(1), 0xA5u);
     CB_CHECK_EQ(m.result.io.size(), 2u);
@@ -177,14 +177,14 @@ CB_TEST("emulate.cp1610.stops_and_limits", [] {
     }
     {
         Rig m;
-        m.run("        DECLE $278\n");   // MVO@ R0,R7: not an instruction
+        m.run("        .half 0x278\n");   // MVO@ R0,R7: not an instruction
         CB_CHECK_EQ(m.result.exit(), "stopped: undefined instruction at 5000");
     }
     {
         Rig m;
         RunOptions o;
         o.max_steps = 50;
-        m.run("    spin:\n        B spin\n", o);
+        m.run("    spin:\n        .half 0x0220, 0x0001   ; B spin (a backward branch to a label)\n", o);
         CB_CHECK_EQ(m.result.exit(), "limit");
         CB_CHECK_EQ(m.result.steps, 50u);
     }

@@ -1,0 +1,32 @@
+{
+ "cbk": 1,
+ "platform": "zx",
+ "domain": "registers",
+ "about": "ZX Spectrum: the Z80's I/O ports; the ROM routines and system variables",
+ "source": {"what": "Spectrum ROM disassembly, as source/zx_writer.cpp held them (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+ {"id": "ports.KEMPSTON", "kind": "register", "table": "ports", "space": "io", "address": "0x1F", "name": "KEMPSTON", "width": 1},
+ {"id": "ports.ULA", "kind": "register", "table": "ports", "space": "io", "address": "0xFE", "name": "ULA", "width": 1},
+ {"id": "firmware.PRINT_A", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x10", "name": "PRINT_A"},
+ {"id": "firmware.BEEPER", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x3B5", "name": "BEEPER"},
+ {"id": "firmware.SA_BYTES", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x4C2", "name": "SA_BYTES"},
+ {"id": "firmware.LD_BYTES", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x556", "name": "LD_BYTES"},
+ {"id": "firmware.CLS", "kind": "export", "table": "firmware", "space": "cpu", "address": "0xD6B", "name": "CLS"},
+ {"id": "firmware.CL_ALL", "kind": "export", "table": "firmware", "space": "cpu", "address": "0xDAF", "name": "CL_ALL"},
+ {"id": "firmware.CHAN_OPEN", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x1601", "name": "CHAN_OPEN"},
+ {"id": "firmware.PR_STRING", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x203C", "name": "PR_STRING"},
+ {"id": "firmware.STACK_BC", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x2D2B", "name": "STACK_BC"},
+ {"id": "firmware.PRINT_FP", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x2DE3", "name": "PRINT_FP"},
+ {"id": "firmware.LAST_K", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C08", "name": "LAST_K"},
+ {"id": "firmware.CHARS", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C36", "name": "CHARS"},
+ {"id": "firmware.FLAGS", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C3B", "name": "FLAGS"},
+ {"id": "firmware.BORDCR", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C48", "name": "BORDCR"},
+ {"id": "firmware.VARS", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C4B", "name": "VARS"},
+ {"id": "firmware.CHANS", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C4F", "name": "CHANS"},
+ {"id": "firmware.PROG", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C53", "name": "PROG"},
+ {"id": "firmware.SEED", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C76", "name": "SEED"},
+ {"id": "firmware.FRAMES", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C78", "name": "FRAMES"},
+ {"id": "firmware.ATTR_P", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5C8D", "name": "ATTR_P"},
+ {"id": "firmware.RAMTOP", "kind": "export", "table": "firmware", "space": "cpu", "address": "0x5CB2", "name": "RAMTOP"}
+ ]
+}

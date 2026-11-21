@@ -182,3 +182,102 @@ CB_TEST("knowledge.describe.the_console_registers_moved_here", [] {
     for (const HardwareRegister& r : kb.hardware_registers("sms", "mapper")) CB_CHECK_EQ(r.space, "cpu");
     CB_CHECK(kb.hardware_registers("no-such-machine").empty());
 });
+
+CB_TEST("knowledge.describe.every_other_consoles_tables_moved_here", [] {
+    fs::ScopedTempDir dir{"cb-knowledge-describe"};
+    Store store{dir.path() / "k.sqlite", DataFolders::under(checkout())};
+    Knowledge kb(store);
+    // the counts the writers' and formats' tables had (the Saturn's and the 32X's without the SH-2's, the Sega CD's without the Genesis's)
+    CB_CHECK_EQ(kb.hardware_names("atari5200", "gtia_write").size(), 32u);
+    CB_CHECK_EQ(kb.hardware_names("atari5200", "gtia_read").size(), 22u);
+    CB_CHECK_EQ(kb.hardware_names("atari5200", "antic_write").size(), 11u);
+    CB_CHECK_EQ(kb.hardware_names("atari5200", "antic_read").size(), 4u);
+    CB_CHECK_EQ(kb.hardware_names("atari5200", "pokey_write").size(), 15u);
+    CB_CHECK_EQ(kb.hardware_names("atari5200", "pokey_read").size(), 14u);
+    CB_CHECK_EQ(kb.hardware_names("atari7800", "tia_write").size(), 7u);
+    CB_CHECK_EQ(kb.hardware_names("atari7800", "tia_read").size(), 6u);
+    CB_CHECK_EQ(kb.hardware_names("atari7800", "maria").size(), 32u);
+    CB_CHECK_EQ(kb.hardware_names("atari7800", "riot").size(), 10u);
+    CB_CHECK_EQ(kb.hardware_names("cdi", "hardware").size(), 6u);
+    CB_CHECK_EQ(kb.table_names("cdi", "system_calls").size(), 31u);
+    CB_CHECK_EQ(kb.table_names("chf", "bios").size(), 5u);
+    CB_CHECK_EQ(kb.hardware_names("coleco", "ports").size(), 6u);
+    CB_CHECK_EQ(kb.table_names("coleco", "bios").size(), 50u);
+    CB_CHECK_EQ(kb.table_names("cpc", "firmware").size(), 216u);
+    CB_CHECK_EQ(kb.hardware_names("dreamcast", "hardware").size(), 1593u);
+    CB_CHECK_EQ(kb.hardware_names("gba", "hardware").size(), 97u);
+    CB_CHECK_EQ(kb.hardware_names("intv", "hardware").size(), 58u);
+    CB_CHECK_EQ(kb.hardware_names("jaguar", "hardware").size(), 107u);
+    CB_CHECK_EQ(kb.hardware_names("lynx", "registers").size(), 203u);
+    CB_CHECK_EQ(kb.hardware_names("msx", "ports").size(), 9u);
+    CB_CHECK_EQ(kb.table_names("msx", "firmware").size(), 38u);
+    CB_CHECK_EQ(kb.hardware_names("n3ds", "hardware").size(), 8u);
+    CB_CHECK_EQ(kb.hardware_names("n64", "hardware").size(), 74u);
+    CB_CHECK_EQ(kb.hardware_names("nds", "arm9").size(), 145u);
+    CB_CHECK_EQ(kb.hardware_names("nds", "arm7").size(), 215u);
+    CB_CHECK_EQ(kb.hardware_names("neogeo", "hardware").size(), 56u);
+    CB_CHECK_EQ(kb.hardware_names("neogeo", "sound_ports").size(), 6u);
+    CB_CHECK_EQ(kb.hardware_names("ngp", "hardware").size(), 71u);
+    CB_CHECK_EQ(kb.hardware_names("o2", "vdc").size(), 4u);
+    CB_CHECK_EQ(kb.hardware_names("pce", "read").size(), 12u);
+    CB_CHECK_EQ(kb.hardware_names("pce", "write").size(), 23u);
+    CB_CHECK_EQ(kb.hardware_names("ps1", "hardware").size(), 69u);
+    CB_CHECK_EQ(kb.hardware_names("ps2", "registers").size(), 190u);
+    CB_CHECK_EQ(kb.hardware_names("saturn", "hardware").size(), 180u);
+    CB_CHECK_EQ(kb.hardware_names("sega32x", "hardware").size(), 37u);
+    CB_CHECK_EQ(kb.hardware_names("segacd", "hardware").size(), 27u);
+    CB_CHECK_EQ(kb.hardware_names("sh2", "chip_registers").size(), 52u);
+    CB_CHECK_EQ(kb.hardware_names("snes", "registers").size(), 192u);
+    CB_CHECK_EQ(kb.hardware_names("threedo", "hardware").size(), 19u);
+    CB_CHECK_EQ(kb.hardware_names("vb", "hardware").size(), 87u);
+    CB_CHECK_EQ(kb.table_names("vectrex", "bios").size(), 60u);
+    CB_CHECK_EQ(kb.hardware_names("vectrex", "via").size(), 16u);
+    CB_CHECK_EQ(kb.hardware_names("wonderswan", "ports").size(), 78u);
+    CB_CHECK_EQ(kb.hardware_names("zx", "ports").size(), 2u);
+    CB_CHECK_EQ(kb.table_names("zx", "firmware").size(), 21u);
+    // spellings
+    CB_CHECK_EQ(kb.hardware_names("msx", "ports").at(0x99), "VDP_CTRL");
+    CB_CHECK_EQ(kb.table_names("msx", "firmware").at(0x009F), "CHGET");
+    CB_CHECK_EQ(kb.table_names("cdi", "system_calls").at(0x06), "F_Exit");
+    CB_CHECK_EQ(kb.hardware_names("snes", "registers").at(0x2100), "INIDISP");
+    // the Z80 machines' ports are in its io space, and a firmware entry is not a register
+    for (const HardwareRegister& r : kb.hardware_registers("msx")) CB_CHECK_EQ(r.space, "io");
+    CB_CHECK_EQ(kb.hardware_registers("msx").size(), 9u);
+});
+
+CB_TEST("knowledge.describe.address_blocks_are_regions", [] {
+    fs::ScopedTempDir dir{"cb-knowledge-describe"};
+    Store store{dir.path() / "k.sqlite", DataFolders::under(checkout())};
+    Knowledge kb(store);
+    CB_CHECK_EQ(kb.hardware_regions("gamecube", "blocks").size(), 11u);
+    CB_CHECK_EQ(kb.hardware_regions("wii", "blocks").size(), 8u);
+    CB_CHECK_EQ(kb.hardware_regions("wiiu", "blocks").size(), 1u);
+    CB_CHECK_EQ(kb.hardware_regions("ps2", "blocks").size(), 9u);
+    CB_CHECK_EQ(kb.hardware_regions("psp", "blocks").size(), 7u);
+    CB_CHECK_EQ(kb.hardware_registers("gamecube", "blocks").size(), 123u);
+    CB_CHECK_EQ(kb.hardware_registers("wii", "blocks").size(), 17u);
+    const std::vector<HardwareRegion> cube = kb.hardware_regions("gamecube");
+    CB_CHECK_EQ(cube.front().name, "CP");
+    CB_CHECK_EQ(cube.front().address, 0xCC000000u);
+    CB_CHECK_EQ(cube.front().size, 0x1000u);
+    // a block is not a register
+    for (const HardwareRegister& r : kb.hardware_registers("ps2")) CB_CHECK(r.table != "blocks");
+});
+
+CB_TEST("knowledge.describe.the_xbox_360_ordinals_moved_here", [] {
+    fs::ScopedTempDir dir{"cb-knowledge-describe"};
+    Store store{dir.path() / "k.sqlite", DataFolders::under(checkout())};
+    Knowledge kb(store);
+    CB_CHECK_EQ(kb.export_name("xbox360", "xam.xex", 1).value_or(""), "NetDll_WSAStartup");
+    CB_CHECK_EQ(kb.export_name("xbox360", "xboxkrnl.exe", 3).value_or(""), "DbgPrint");
+    CB_CHECK(!kb.export_name("xbox360", "xam.xex", 4000000).has_value());
+    CB_CHECK(!kb.export_name("xbox360", "no-such.xex", 1).has_value());
+    // the counts the console_ordinals.json they came from had
+    CB_CHECK_EQ(kb.export_names("xbox360", "xam.xex").size(), 1393u);
+    CB_CHECK_EQ(kb.export_names("xbox360", "xboxkrnl.exe").size(), 859u);
+    CB_CHECK_EQ(kb.export_names("xbox360", "xam.xex").at("1"), "NetDll_WSAStartup");
+    Recording rec;
+    (void)kb.export_name("xbox360", "xam.xex", 1);
+    const auto reads = rec.reads()->sorted();
+    CB_CHECK(std::find(reads.begin(), reads.end(), Read{"xbox360", "ordinals", "xam.xex#1"}) != reads.end());
+});

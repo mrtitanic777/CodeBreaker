@@ -2,6 +2,7 @@
 // source/n3ds_writer.cpp -- a Nintendo 3DS program as assembly source that builds back into it (n3ds_writer.hpp).
 
 #include "source/n3ds_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -9,11 +10,11 @@
 #include <set>
 #include <unordered_map>
 
-#include "build/arm_asm.hpp"
 #include "core/fs.hpp"
 #include "core/parallel.hpp"
 #include "decompile/arm.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 #include "verify/stage_timer.hpp"
 
 namespace cb::source::n3ds_writer {
@@ -150,9 +151,8 @@ std::string signed_hex(std::int64_t v) { return v < 0 ? std::format("- 0x{:X}", 
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x1FF80000, "KERNEL_CONFIG_MEM"}, {0x1FF81000, "KERNEL_SHARED_PAGE"}, {0x1FF82000, "THREAD_LOCAL_STORAGE"}, {0x1EC00000, "IO_MEM_ARM11"},
-        {0x1EF00000, "GPU_REGS"},          {0x1F000000, "VRAM"},               {0x14000000, "LINEAR_HEAP"},          {0x08000000, "APP_HEAP"}};
+    // config/knowledge/n3ds/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("n3ds", "hardware");
     return table;
 }
 
@@ -256,13 +256,6 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
     }
 
     stage.emplace("n3ds.text");
-    decompile::AddressLabels address_labels;
-    decompile::NameLabels name_values;
-    for (const auto& [a, n] : labels) {
-        address_labels[a] = n;
-        name_values[n] = a;
-    }
-    for (const auto& [n, v] : equates) name_values[n] = v;
     // (each instruction on its own, from tables nothing changes: the lines are made side by side and filed in address order)
     std::map<std::uint32_t, std::string> instruction_text;
     std::vector<const std::pair<const std::uint32_t, da::Insn>*> to_write;
@@ -272,34 +265,34 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
     parallel::parallel_for(to_write.size(), [&](std::size_t item) {
         const std::uint32_t at = to_write[item]->first;
         const da::Insn& insn = to_write[item]->second;
-        std::string t = da::text(insn, address_labels);
-        bool same = false;
-        try {
-            const Bytes built = da::assemble(t, at, name_values, kArch);
-            same = built.size() == 4 && std::equal(built.begin(), built.end(), insn.raw.begin());
-        } catch (const Error&) {
-        }
-        std::string line = same ? std::move(t) : std::format(".word 0x{:08X}  @ {}", insn.word, t);
+        // the description's text with the labels of a branch and of the word a load reads put in, kept only when it assembles back to the instruction's bytes
+        std::map<std::uint32_t, std::string> by_value;
+        std::vector<std::uint32_t> operands;
+        const auto name = [&](std::uint32_t a) {
+            if (const auto named = labels.find(a); named != labels.end()) by_value[a] = named->second, operands.push_back(a);
+        };
+        if (insn.target) name(*insn.target);
+        if (const auto word = literal_address(insn)) name(*word);
+        std::string line = risc_source::code("arm11", insn.bytes(), at, by_value, operands);
+        if (line.starts_with(".byte")) line = std::format(".word 0x{:08x}  ; {}", insn.word, risc_source::read_text("arm11", insn.bytes(), at).value_or("?"));
         if (insn.op == da::Op::Swi) {
             const std::string_view svc = svc_name(insn.imm);
-            if (!svc.empty()) line += std::format("  @ svc{}", svc);
+            if (!svc.empty()) line += std::format("  ; svc{}", svc);
         }
         written_lines[item] = std::move(line);
     });
     for (std::size_t item = 0; item < to_write.size(); ++item) instruction_text.emplace_hint(instruction_text.end(), to_write[item]->first, std::move(written_lines[item]));
 
-    std::vector<std::string> head = {std::format("@ {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
-                                     std::format("@ Nintendo 3DS {}, {} bytes, entry 0x{:06X}; the processor is the ARM11 (ARMv6K, VFP), loaded at 0x00100000",
+    std::vector<std::string> head = {std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
+                                     std::format("; Nintendo 3DS {}, {} bytes, entry 0x{:06X}; the processor is the ARM11 (ARMv6K, VFP), loaded at 0x00100000",
                                                  program.kind == formats::n3ds::Kind::X3dsx ? "3DSX" : "ELF", file.size(), program.entry),
-                                     "@ addresses in this file are file offsets; a pointer word is its target's label plus the difference the loader's layout makes",
-                                     "",
-                                     "        .syntax unified",
-                                     "        .arm",
+                                     "; addresses in this file are file offsets; a pointer word is its target's label plus the difference the loader's layout makes",
+                                     "; (ARM syntax as the processor's SLEIGH description writes it: build with `assemble --cpu arm11 --sleigh`)",
                                      ""};
     for (const auto& [name, value] : equates) head.push_back(std::format("        .equ {}, 0x{:08X}", name, value));
     if (!equates.empty()) head.push_back("");
     stage.emplace("n3ds.emit");
-    translate::l2::Assembly out(head, "gnu-as", std::string(file_name));
+    translate::l2::Assembly out(head, "sleigh-arm11", std::string(file_name));
     out.part("image", "segment", std::nullopt, file.size());
 
     N3dsListing listing(out, file, code, instruction_text, labels, words);
@@ -310,9 +303,8 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
     const std::string source = iw::text(out) + "\n";
     stage.emplace("n3ds.assemble");
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), file.size());
-    const build::arm_asm::Assembler assembler(isa::arm11_encoder());
     const char* extension = program.kind == formats::n3ds::Kind::X3dsx ? ".built.3dsx" : ".built.elf";
-    iw::assembled(r, [&] { return assembler.build(source); }, program.file, folder / (stem + extension));
+    iw::assembled(r, [&] { return risc_source::assemble("arm11", source, folder); }, program.file, folder / (stem + extension));
     return r;
 }
 

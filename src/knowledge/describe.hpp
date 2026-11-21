@@ -20,6 +20,13 @@
 // emulator's stand-in does). Numbers that are addresses or select values are hex strings. `select` is {register:
 // hex text}; a `constant` has a `set` and a `value`.
 //
+// A machine's `registers` file holds its hardware: `register` entries (a `table` of the machine: "ports", "tia_write"; a `space`: "cpu"
+// or "io"; an `address`; a `width` in bytes), `region` entries (a block of the address space: `address`, `size`, `name`, read as the
+// prefix of the registers in it), and, for what is not a register, entries of kind `export` (a BIOS routine's entry point: `table`,
+// `address`) or `service` (an OS call by code: `table`, `select`). Knowledge::hardware_registers / hardware_names / table_names /
+// hardware_regions read them. An `ordinals` file (xbox360) holds `export` entries `<module>#<number>` with module, ordinal and name
+// (Knowledge::export_name).
+//
 // The folders directly under config/knowledge are platforms, except the two that hold other things (`models`, the
 // emulator stand-ins; `kept`, the knowledge people gave). A file's rows in the base are platform / domain / id, so the
 // loader (sources.hpp) needs no list of them: a new platform is a new folder.

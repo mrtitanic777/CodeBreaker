@@ -1,4 +1,5 @@
 #include "formats/snes.hpp"
+#include "knowledge/package.hpp"
 
 #include <format>
 
@@ -90,43 +91,8 @@ bool probe(const std::filesystem::path& path) {
 }
 
 const std::map<std::uint32_t, std::string>& registers() {
-    static const std::map<std::uint32_t, std::string> table = [] {
-        std::map<std::uint32_t, std::string> t;
-        constexpr std::string_view kPpu[] = {
-            "INIDISP", "OBSEL",   "OAMADDL", "OAMADDH", "OAMDATA", "BGMODE",  "MOSAIC",  "BG1SC",   "BG2SC",   "BG3SC",  "BG4SC",  "BG12NBA", "BG34NBA", "BG1HOFS", "BG1VOFS",
-            "BG2HOFS", "BG2VOFS", "BG3HOFS", "BG3VOFS", "BG4HOFS", "BG4VOFS", "VMAIN",   "VMADDL",  "VMADDH",  "VMDATAL", "VMDATAH", "M7SEL",  "M7A",    "M7B",    "M7C",
-            "M7D",     "M7X",     "M7Y",     "CGADD",   "CGDATA",  "W12SEL",  "W34SEL",  "WOBJSEL", "WH0",     "WH1",    "WH2",    "WH3",     "WBGLOG",  "WOBJLOG", "TM",
-            "TS",      "TMW",     "TSW",     "CGWSEL",  "CGADSUB", "COLDATA", "SETINI",  "MPYL",    "MPYM",    "MPYH",   "SLHV",   "OAMDATAREAD", "VMDATALREAD", "VMDATAHREAD",
-            "CGDATAREAD", "OPHCT", "OPVCT", "STAT77", "STAT78"};
-        for (std::size_t i = 0; i < std::size(kPpu); ++i) t[static_cast<std::uint32_t>(0x2100 + i)] = std::string(kPpu[i]);
-        for (unsigned i = 0; i < 4; ++i) t[0x2140 + i] = std::format("APUIO{}", i);
-        t[0x2180] = "WMDATA";
-        t[0x2181] = "WMADDL";
-        t[0x2182] = "WMADDM";
-        t[0x2183] = "WMADDH";
-        t[0x4016] = "JOYSER0";
-        t[0x4017] = "JOYSER1";
-        constexpr std::string_view kCpu[] = {"NMITIMEN", "WRIO",   "WRMPYA", "WRMPYB", "WRDIVL", "WRDIVH", "WRDIVB", "HTIMEL", "HTIMEH", "VTIMEL", "VTIMEH", "MDMAEN", "HDMAEN", "MEMSEL", "", "",
-                                             "RDNMI",    "TIMEUP", "HVBJOY", "RDIO",   "RDDIVL", "RDDIVH", "RDMPYL", "RDMPYH", "JOY1L",  "JOY1H",  "JOY2L",  "JOY2H",  "JOY3L",  "JOY3H",  "JOY4L", "JOY4H"};
-        for (std::size_t i = 0; i < std::size(kCpu); ++i) {
-            if (!kCpu[i].empty()) t[static_cast<std::uint32_t>(0x4200 + i)] = std::string(kCpu[i]);
-        }
-        for (unsigned ch = 0; ch < 8; ++ch) {
-            const std::uint32_t base = 0x4300 + ch * 0x10;
-            t[base + 0] = std::format("DMAP{}", ch);
-            t[base + 1] = std::format("BBAD{}", ch);
-            t[base + 2] = std::format("A1T{}L", ch);
-            t[base + 3] = std::format("A1T{}H", ch);
-            t[base + 4] = std::format("A1B{}", ch);
-            t[base + 5] = std::format("DAS{}L", ch);
-            t[base + 6] = std::format("DAS{}H", ch);
-            t[base + 7] = std::format("DASB{}", ch);
-            t[base + 8] = std::format("A2A{}L", ch);
-            t[base + 9] = std::format("A2A{}H", ch);
-            t[base + 10] = std::format("NTRL{}", ch);
-        }
-        return t;
-    }();
+    // config/knowledge/snes/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("snes", "registers");
     return table;
 }
 

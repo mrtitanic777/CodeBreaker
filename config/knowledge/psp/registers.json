@@ -1,0 +1,16 @@
+{
+ "cbk": 1,
+ "platform": "psp",
+ "domain": "registers",
+ "about": "PlayStation Portable: the hardware blocks of the register space ($1C000000-$1FFFFFFF); an address in one is named BLOCK_offset",
+ "source": {"what": "pspsdk and the PSP's hardware documents, as formats/psp.cpp held them (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+ {"id": "region.MEMCTL", "kind": "region", "table": "blocks", "space": "cpu", "address": "0x1C000000", "size": "0x100000", "name": "MEMCTL"},
+ {"id": "region.SYSREG", "kind": "region", "table": "blocks", "space": "cpu", "address": "0x1C100000", "size": "0x100000", "name": "SYSREG"},
+ {"id": "region.INTC", "kind": "region", "table": "blocks", "space": "cpu", "address": "0x1C300000", "size": "0x100000", "name": "INTC"},
+ {"id": "region.TIMER", "kind": "region", "table": "blocks", "space": "cpu", "address": "0x1C500000", "size": "0x100000", "name": "TIMER"},
+ {"id": "region.DMAC", "kind": "region", "table": "blocks", "space": "cpu", "address": "0x1C800000", "size": "0x100000", "name": "DMAC"},
+ {"id": "region.GE", "kind": "region", "table": "blocks", "space": "cpu", "address": "0x1D400000", "size": "0x100000", "name": "GE"},
+ {"id": "region.LCDC", "kind": "region", "table": "blocks", "space": "cpu", "address": "0x1E140000", "size": "0x10000", "name": "LCDC"}
+ ]
+}

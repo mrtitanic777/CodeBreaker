@@ -2,6 +2,7 @@
 // source/nds_writer.cpp -- a Nintendo DS cartridge as assembly source that builds back into it (nds_writer.hpp).
 
 #include "source/nds_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <array>
@@ -11,11 +12,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "build/arm_asm.hpp"
+
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/arm.hpp"
 #include "source/isa.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::nds_writer {
 
@@ -285,68 +287,9 @@ struct Program {
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware(Cpu cpu) {
-    static const std::array<std::map<std::uint32_t, std::string>, 2> tables = [] {
-        std::map<std::uint32_t, std::string> both[2];
-        for (std::map<std::uint32_t, std::string>& t : both) {
-            const auto add = [&](std::uint32_t offset, const std::string& name) { t[0x04000000 + offset] = "REG_" + name; };
-            // the two display engines (the ARM9's): the main one at $04000000, the sub engine's the same registers at $04001000
-            const std::pair<std::uint32_t, const char*> engine[] = {
-                {0x000, "DISPCNT"}, {0x004, "DISPSTAT"}, {0x006, "VCOUNT"}, {0x008, "BG0CNT"},  {0x00A, "BG1CNT"},  {0x00C, "BG2CNT"},  {0x00E, "BG3CNT"},
-                {0x010, "BG0HOFS"}, {0x012, "BG0VOFS"},  {0x014, "BG1HOFS"}, {0x016, "BG1VOFS"}, {0x018, "BG2HOFS"}, {0x01A, "BG2VOFS"}, {0x01C, "BG3HOFS"},
-                {0x01E, "BG3VOFS"}, {0x020, "BG2PA"},    {0x022, "BG2PB"},   {0x024, "BG2PC"},   {0x026, "BG2PD"},   {0x028, "BG2X"},    {0x02C, "BG2Y"},
-                {0x030, "BG3PA"},   {0x032, "BG3PB"},    {0x034, "BG3PC"},   {0x036, "BG3PD"},   {0x038, "BG3X"},    {0x03C, "BG3Y"},    {0x040, "WIN0H"},
-                {0x042, "WIN1H"},   {0x044, "WIN0V"},    {0x046, "WIN1V"},   {0x048, "WININ"},   {0x04A, "WINOUT"},  {0x04C, "MOSAIC"},  {0x050, "BLDCNT"},
-                {0x052, "BLDALPHA"}, {0x054, "BLDY"},    {0x06C, "MASTER_BRIGHT"}};
-            for (const auto& [offset, name] : engine) {
-                add(offset, name);
-                add(0x1000 + offset, std::string(name) + "_SUB");
-            }
-            const std::pair<std::uint32_t, const char*> shared[] = {
-                {0x060, "DISP3DCNT"}, {0x064, "DISPCAPCNT"}, {0x068, "DISP_MMEM_FIFO"},
-                {0x0B0, "DMA0SAD"},  {0x0B4, "DMA0DAD"},  {0x0B8, "DMA0CNT"},  {0x0BC, "DMA1SAD"},  {0x0C0, "DMA1DAD"},  {0x0C4, "DMA1CNT"},
-                {0x0C8, "DMA2SAD"},  {0x0CC, "DMA2DAD"},  {0x0D0, "DMA2CNT"},  {0x0D4, "DMA3SAD"},  {0x0D8, "DMA3DAD"},  {0x0DC, "DMA3CNT"},
-                {0x0E0, "DMA0FILL"}, {0x0E4, "DMA1FILL"}, {0x0E8, "DMA2FILL"}, {0x0EC, "DMA3FILL"},
-                {0x100, "TM0CNT_L"}, {0x102, "TM0CNT_H"}, {0x104, "TM1CNT_L"}, {0x106, "TM1CNT_H"}, {0x108, "TM2CNT_L"}, {0x10A, "TM2CNT_H"},
-                {0x10C, "TM3CNT_L"}, {0x10E, "TM3CNT_H"},
-                {0x130, "KEYINPUT"}, {0x132, "KEYCNT"},
-                {0x180, "IPC_SYNC"}, {0x184, "IPC_FIFO_CR"}, {0x188, "IPC_FIFO_TX"},
-                {0x1A0, "AUXSPICNT"}, {0x1A2, "AUXSPIDATA"}, {0x1A4, "ROMCTRL"}, {0x1A8, "CARD_COMMAND"},
-                {0x204, "EXMEMCNT"}, {0x208, "IME"}, {0x210, "IE"}, {0x214, "IF"},
-                {0x300, "POSTFLG"}, {0x304, "POWERCNT"}};
-            for (const auto& [offset, name] : shared) add(offset, name);
-            t[0x04100000] = "REG_IPC_FIFO_RX";
-            t[0x04100010] = "REG_CARD_DATA";
-        }
-        // the ARM9's: video memory banks, the divider and the square root unit, the 3D engine's status
-        std::map<std::uint32_t, std::string>& nine = both[0];
-        const char* banks = "ABCDEFG";
-        for (unsigned k = 0; k < 7; ++k) nine[0x04000240 + k] = std::string("REG_VRAMCNT_") + banks[k];
-        nine[0x04000247] = "REG_WRAMCNT";
-        nine[0x04000248] = "REG_VRAMCNT_H";
-        nine[0x04000249] = "REG_VRAMCNT_I";
-        const std::pair<std::uint32_t, const char*> arm9[] = {
-            {0x280, "DIVCNT"}, {0x290, "DIV_NUMER"}, {0x298, "DIV_DENOM"}, {0x2A0, "DIV_RESULT"}, {0x2A8, "DIVREM_RESULT"}, {0x2B0, "SQRTCNT"},
-            {0x2B4, "SQRT_RESULT"}, {0x2B8, "SQRT_PARAM"}, {0x350, "CLEAR_COLOR"}, {0x354, "CLEAR_DEPTH"}, {0x358, "FOG_COLOR"}, {0x35C, "FOG_OFFSET"},
-            {0x600, "GXSTAT"}, {0x604, "RAM_COUNT"}};
-        for (const auto& [offset, name] : arm9) nine[0x04000000 + offset] = std::string("REG_") + name;
-        nine[0x04000400] = "GXFIFO";
-        // the ARM7's: the serial bus (the touch screen, the clock, the power chip), the sound channels, the halt register
-        std::map<std::uint32_t, std::string>& seven = both[1];
-        const std::pair<std::uint32_t, const char*> arm7[] = {{0x134, "RCNT"},     {0x136, "EXTKEYIN"}, {0x138, "RTC"},      {0x1C0, "SPICNT"},   {0x1C2, "SPIDATA"},
-                                                              {0x204, "EXMEMSTAT"}, {0x301, "HALTCNT"},  {0x308, "BIOSPROT"}, {0x500, "SOUNDCNT"}, {0x504, "SOUNDBIAS"},
-                                                              {0x508, "SNDCAP0CNT"}, {0x509, "SNDCAP1CNT"}, {0x510, "SNDCAP0DAD"}, {0x514, "SNDCAP0LEN"},
-                                                              {0x518, "SNDCAP1DAD"}, {0x51C, "SNDCAP1LEN"}};
-        for (const auto& [offset, name] : arm7) seven[0x04000000 + offset] = std::string("REG_") + name;
-        for (unsigned n = 0; n < 16; ++n) {
-            const std::uint32_t at = 0x04000400 + n * 16;
-            seven[at] = std::format("REG_SCHANNEL{}_CR", n);
-            seven[at + 4] = std::format("REG_SCHANNEL{}_SOURCE", n);
-            seven[at + 8] = std::format("REG_SCHANNEL{}_TIMER", n);
-            seven[at + 10] = std::format("REG_SCHANNEL{}_REPEAT_POINT", n);
-            seven[at + 12] = std::format("REG_SCHANNEL{}_LENGTH", n);
-        }
-        return std::array<std::map<std::uint32_t, std::string>, 2>{std::move(both[0]), std::move(both[1])};
-    }();
+    // config/knowledge/nds/registers.json: the ARM9's and the ARM7's
+    static const std::array<std::map<std::uint32_t, std::string>, 2> tables = {knowledge::standard().hardware_names("nds", "arm9"),
+                                                                                knowledge::standard().hardware_names("nds", "arm7")};
     return tables[cpu == Cpu::Arm9 ? 0 : 1];
 }
 
@@ -492,24 +435,27 @@ Analysis analyse(const Program& p, const nds::Rom& rom) {
     }
 
     // the text of each instruction, kept only when it assembles back to the instruction's bytes
-    decompile::AddressLabels address_labels;
-    decompile::NameLabels name_values;
-    for (const auto& [a, n] : labels) {
-        address_labels[a] = n;
-        name_values[n] = a;
-    }
-    for (const auto& [n, v] : equates) name_values[n] = v;
+    // (both processors are read and built through the ARMv5TE description: the ARM7's ARMv4T instructions are in it, and the text is kept only when it builds back)
     std::set<std::uint32_t> as_data;   // the instructions whose text would not assemble to their bytes
     std::map<std::uint32_t, std::string> instruction_text;
     for (const auto& [key, g] : code) {
-        std::string t = da::text(g.insn, address_labels);
-        bool same = false;
-        try {
-            const Bytes built = da::assemble(t, key, name_values, p.arch);
-            same = built.size() == g.insn.length && std::equal(built.begin(), built.end(), g.insn.raw.begin());
-        } catch (const Error&) {
+        const char* cpu = g.insn.thumb() ? "thumb9" : "arm9";
+        const std::optional<std::string> said = risc_source::described(cpu, g.insn.bytes(), g.insn.pc);
+        std::string t;
+        if (said) {
+            std::map<std::uint32_t, std::string> by_value;
+            std::vector<std::uint32_t> operands;
+            if (g.insn.target) {
+                const std::uint32_t real = *g.insn.target & ~1u;
+                if (const auto named = labels.find(real); named != labels.end()) by_value[real] = named->second, operands.push_back(real);
+            }
+            if (const auto word = literal_address(g.insn))   // (a PC-relative load names the word it reads)
+                if (const auto named = labels.find(*word); named != labels.end()) by_value[*word] = named->second, operands.push_back(*word);
+            t = risc_source::code(cpu, g.insn.bytes(), g.insn.pc, by_value, operands);
+        } else {
+            as_data.insert(key);
+            t = risc_source::read_text(cpu, g.insn.bytes(), g.insn.pc).value_or("?");
         }
-        if (!same) as_data.insert(key);
         instruction_text[key] = std::move(t);
     }
 
@@ -552,7 +498,7 @@ Analysis analyse(const Program& p, const nds::Rom& rom) {
             const int wanted = insn.thumb() ? 1 : 0;
             if (as_data.contains(key)) {
                 // the bits, in pieces small enough to put a label between (an instruction another path of the code overlaps)
-                const std::string comment = "  @ " + instruction_text.at(key);
+                const std::string comment = "  ; " + instruction_text.at(key);
                 unsigned step = insn.length;
                 for (unsigned k = 1; k < insn.length; ++k)
                     if (labels.contains(addr + k)) step = std::min(step, k % 2 ? 1u : 2u);
@@ -562,15 +508,15 @@ Analysis analyse(const Program& p, const nds::Rom& rom) {
                     const auto raw16 = [&](unsigned at) { return static_cast<unsigned>(insn.raw[at] | insn.raw[at + 1] << 8); };
                     std::string line;
                     if (step == 1) line = std::format("        .byte 0x{:02X}", insn.raw[k]);
-                    else if (step == 2) line = std::format("        .hword 0x{:04X}", raw16(k));
-                    else if (insn.length == 2) line = std::format("        .hword 0x{:04X}", raw16(0));
-                    else if (insn.thumb()) line = std::format("        .hword 0x{:04X}, 0x{:04X}", raw16(0), raw16(2));
+                    else if (step == 2) line = std::format("        .half 0x{:04X}", raw16(k));
+                    else if (insn.length == 2) line = std::format("        .half 0x{:04X}", raw16(0));
+                    else if (insn.thumb()) line = std::format("        .half 0x{:04X}, 0x{:04X}", raw16(0), raw16(2));
                     else line = std::format("        .word 0x{:08X}", insn.word);
                     emit(k == 0 ? line + comment : line);
                 }
             } else {
                 if (mode != wanted) {
-                    emit(wanted ? "        .thumb" : "        .arm");
+                    emit(wanted ? "        .context TMode=1" : "        .context TMode=0");
                     mode = wanted;
                 }
                 emit("        " + instruction_text.at(key));
@@ -596,7 +542,7 @@ Analysis analyse(const Program& p, const nds::Rom& rom) {
 
 std::string label_for(std::string_view prefix, std::uint32_t id) { return std::format("{}_{}", prefix, id); }
 
-// UTF-16 text as `.hword` rows with the text in a comment; the zeros after it as `.space`.
+// UTF-16 text as `.half` rows with the text in a comment; the zeros after it as `.space`.
 void utf16_lines(translate::l2::Assembly& out, ByteView bytes) {
     std::size_t halves = bytes.size() / 2;
     while (halves > 0 && bytes[2 * halves - 2] == 0 && bytes[2 * halves - 1] == 0) --halves;
@@ -608,7 +554,7 @@ void utf16_lines(translate::l2::Assembly& out, ByteView bytes) {
             items.push_back(std::format("0x{:04X}", unit));
             shown += (unit >= 32 && unit < 127) ? std::string(1, static_cast<char>(unit)) : unit == 10 ? std::string("\\n") : std::string("?");
         }
-        out.append("        .hword " + text::join(items, ", ") + "   @ " + shown);
+        out.append("        .half " + text::join(items, ", ") + "   ; " + shown);
     }
     if (halves * 2 < bytes.size()) out.append(std::format("        .space {}", bytes.size() - halves * 2));
 }
@@ -733,12 +679,12 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
 
     // the source ----------------------------------------------------------------------------------------------------------------
     std::vector<std::string> head = {
-        std::format("@ {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("@ Nintendo DS cartridge \"{}\" ({}): {} bytes, ARM9 {} functions, ARM7 {} functions", h.title, h.game_code, image.size(),
+        std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
+        std::format("; Nintendo DS cartridge \"{}\" ({}): {} bytes, ARM9 {} functions, ARM7 {} functions", h.title, h.game_code, image.size(),
                     programs.empty() ? 0 : programs[0].analysis.functions.size(), programs.size() > 1 ? programs[1].analysis.functions.size() : 0),
         ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
-    out.append("        .syntax unified");
+    head.insert(head.end() - 1, "; (ARM syntax as the processor's SLEIGH description writes it: build with `assemble --cpu arm9 --sleigh`; `.context TMode=1` is Thumb)");
+    translate::l2::Assembly out(head, "sleigh-arm9", std::string(file_name));
     out.append("");
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
@@ -754,16 +700,16 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
         const ByteView b = image.subspan(0, nds::kHeaderSize);
         std::map<std::size_t, std::pair<std::size_t, std::vector<std::string>>> fields;
         const auto field = [&](std::size_t at, std::size_t length, std::vector<std::string> lines) { fields[at] = {length, std::move(lines)}; };
-        const auto word = [&](std::size_t at, std::string expr, const char* what) { field(at, 4, {std::format("        .word {}   @ {}", expr, what)}); };
+        const auto word = [&](std::size_t at, std::string expr, const char* what) { field(at, 4, {std::format("        .word {}   ; {}", expr, what)}); };
         const auto literal = [&](std::size_t at, const char* what) { word(at, hex8(word_at(b, at)), what); };
         const auto text_lines = [&](std::size_t at, std::size_t length, const char* what) {
             translate::l2::Assembly scratch;
             text_field(scratch, b, at, length);
-            std::vector<std::string> lines = {std::string("        @ ") + what};
+            std::vector<std::string> lines = {std::string("        ; ") + what};
             lines.insert(lines.end(), scratch.lines().begin(), scratch.lines().end());
             field(at, length, std::move(lines));
         };
-        const auto byte_field = [&](std::size_t at, const char* what) { field(at, 1, {std::format("        .byte 0x{:02X}   @ {}", b[at], what)}); };
+        const auto byte_field = [&](std::size_t at, const char* what) { field(at, 1, {std::format("        .byte 0x{:02X}   ; {}", b[at], what)}); };
         text_lines(0x00, 12, "the title");
         text_lines(0x0C, 4, "the game code");
         text_lines(0x10, 2, "the maker code");
@@ -810,20 +756,20 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
         literal(0x64, "card control, KEY1 commands");
         if (const nds::Region* banner = region_of(nds::Region::Kind::Banner); banner && banner->offset == h.banner_offset) word(0x68, "banner", "the icon and title");
         else literal(0x68, "the icon and title");
-        field(0x6C, 2, {std::format("        .hword 0x{:04X}   @ the secure area's CRC-16", b[0x6C] | b[0x6D] << 8)});
-        field(0x6E, 2, {std::format("        .hword 0x{:04X}   @ the secure area delay", b[0x6E] | b[0x6F] << 8)});
+        field(0x6C, 2, {std::format("        .half 0x{:04X}   ; the secure area's CRC-16", b[0x6C] | b[0x6D] << 8)});
+        field(0x6E, 2, {std::format("        .half 0x{:04X}   ; the secure area delay", b[0x6E] | b[0x6F] << 8)});
         literal(0x70, "the ARM9 auto-load hook");
         literal(0x74, "the ARM7 auto-load hook");
-        field(0x78, 8, {byte_row(b.subspan(0x78, 8)) + "   @ secure area disable"});
+        field(0x78, 8, {byte_row(b.subspan(0x78, 8)) + "   ; secure area disable"});
         literal(0x80, "the total used ROM size");
         literal(0x84, "the header size");
         {
-            std::vector<std::string> lines = {"        @ the Nintendo logo"};
+            std::vector<std::string> lines = {"        ; the Nintendo logo"};
             for (std::size_t at = 0xC0; at < 0xC0 + 156; at += 12) lines.push_back(byte_row(b.subspan(at, 12)));
             field(0xC0, 156, std::move(lines));
         }
-        field(0x15C, 2, {std::format("        .hword 0x{:04X}   @ the logo's CRC-16", b[0x15C] | b[0x15D] << 8)});
-        field(0x15E, 2, {std::format("        .hword 0x{:04X}   @ the header's CRC-16", b[0x15E] | b[0x15F] << 8)});
+        field(0x15C, 2, {std::format("        .half 0x{:04X}   ; the logo's CRC-16", b[0x15C] | b[0x15D] << 8)});
+        field(0x15E, 2, {std::format("        .half 0x{:04X}   ; the header's CRC-16", b[0x15E] | b[0x15F] << 8)});
         literal(0x160, "the debug ROM's offset");
         literal(0x164, "the debug ROM's size");
         literal(0x168, "the debug ROM's RAM address");
@@ -852,16 +798,16 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
             const auto f = files.find(id);
             if (f != files.end() && f->second->offset == start && f->second->end() == stop) {
                 const std::string name = file_label(*f->second);
-                out.append(std::format("        .word {}, {}_end   @ file {}{}", name, name, id, f->second->name.empty() ? "" : " " + f->second->name));
+                out.append(std::format("        .word {}, {}_end   ; file {}{}", name, name, id, f->second->name.empty() ? "" : " " + f->second->name));
             } else {
-                out.append(std::format("        .word {}, {}   @ file {}", hex8(start), hex8(stop), id));
+                out.append(std::format("        .word {}, {}   ; file {}", hex8(start), hex8(stop), id));
             }
         }
         if (r.size % 8 != 0) zero_or_bytes(out, image.subspan(r.offset + count * 8, r.size % 8));
     };
 
     const auto overlay_lines = [&](const nds::Region& r) {
-        out.append("        @ one entry of eight words for each overlay: id, RAM address, size, bss size, static initialisers start and end, file id, reserved");
+        out.append("        ; one entry of eight words for each overlay: id, RAM address, size, bss size, static initialisers start and end, file id, reserved");
         std::size_t at = 0;
         for (; at + 32 <= r.size; at += 32) {
             std::vector<std::string> items;
@@ -873,24 +819,24 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
 
     const auto banner_lines = [&](const nds::Region& r) {
         const ByteView b = image.subspan(r.offset, r.size);
-        out.append(std::format("        .hword 0x{:04X}   @ the banner's version", b[0] | b[1] << 8));
-        out.append(std::format("        .hword 0x{:04X}   @ its CRC-16", b[2] | b[3] << 8));
-        out.append("        @ the CRC-16s of the other languages' parts, then reserved bytes");
+        out.append(std::format("        .half 0x{:04X}   ; the banner's version", b[0] | b[1] << 8));
+        out.append(std::format("        .half 0x{:04X}   ; its CRC-16", b[2] | b[3] << 8));
+        out.append("        ; the CRC-16s of the other languages' parts, then reserved bytes");
         zero_or_bytes(out, b.subspan(4, 0x20 - 4));
-        out.append("        @ the icon: 32 x 32 pixels, 4 bits each, in 8 x 8 tiles");
+        out.append("        ; the icon: 32 x 32 pixels, 4 bits each, in 8 x 8 tiles");
         for (std::size_t at = 0x20; at < 0x220; at += 32) {
             std::vector<std::string> items;
             for (std::size_t k = 0; k < 32; k += 4) items.push_back(hex8(word_at(b, at + k)));
             out.append("        .word " + text::join(items, ", "));
         }
-        out.append("        @ the icon's palette: 16 colours, BGR555");
+        out.append("        ; the icon's palette: 16 colours, BGR555");
         std::vector<std::string> palette;
         for (std::size_t k = 0; k < 32; k += 2) palette.push_back(std::format("0x{:04X}", b[0x220 + k] | b[0x221 + k] << 8));
-        out.append("        .hword " + text::join(palette, ", "));
+        out.append("        .half " + text::join(palette, ", "));
         static constexpr const char* languages[] = {"Japanese", "English", "French", "German", "Italian", "Spanish", "Chinese", "Korean"};
         std::size_t at = 0x240;
         for (unsigned k = 0; k < 8 && at + 0x100 <= b.size(); ++k, at += 0x100) {
-            out.append(std::format("        @ the title in {}", languages[k]));
+            out.append(std::format("        ; the title in {}", languages[k]));
             utf16_lines(out, b.subspan(at, 0x100));
         }
         if (at < b.size()) zero_or_bytes(out, b.subspan(at));
@@ -917,7 +863,7 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
                 out.part(tag, "program", std::nullopt);
                 out.append(name + ":");
                 out.append(std::format("        .org {}", hex8(part->program.base)));
-                out.append(r.kind == nds::Region::Kind::Arm9 ? "        .cpu arm946e-s" : "        .cpu arm7tdmi");
+                out.append(r.kind == nds::Region::Kind::Arm9 ? "        ; the ARM946E-S" : "        ; the ARM7TDMI");
                 out.append(tag + ":");
                 for (const Line& line : part->analysis.lines) {
                     if (!line.part.empty()) {
@@ -949,7 +895,7 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
                 banner_lines(r);
                 break;
             case nds::Region::Kind::File:
-                out.append(name + ":" + (r.name.empty() ? "" : "   @ " + r.name));
+                out.append(name + ":" + (r.name.empty() ? "" : "   ; " + r.name));
                 data_lines(out, image, r.offset, r.end(), r.offset);
                 break;
         }
@@ -960,8 +906,7 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, code_bytes, image.size());
-    const build::arm_asm::Assembler assembler(isa::arm_encoder(), &isa::arm9_encoder());
-    iw::assembled(r, [&] { return assembler.build(source); }, image, folder / (stem + ".built.nds"), "ROM");
+    iw::assembled(r, [&] { return risc_source::assemble("arm9", source, folder); }, image, folder / (stem + ".built.nds"), "ROM");
     return r;
 }
 

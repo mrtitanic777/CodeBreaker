@@ -1,0 +1,13 @@
+{
+ "cbk": 1,
+ "platform": "o2",
+ "domain": "registers",
+ "about": "Magnavox Odyssey 2: the VDC's registers",
+ "source": {"what": "Odyssey 2 technical documents, as formats/o2.cpp held them (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+ {"id": "vdc.VDC_CONTROL", "kind": "register", "table": "vdc", "space": "cpu", "address": "0xA0", "name": "VDC_CONTROL", "width": 1},
+ {"id": "vdc.VDC_STATUS", "kind": "register", "table": "vdc", "space": "cpu", "address": "0xA1", "name": "VDC_STATUS", "width": 1},
+ {"id": "vdc.VDC_COLLISION", "kind": "register", "table": "vdc", "space": "cpu", "address": "0xA2", "name": "VDC_COLLISION", "width": 1},
+ {"id": "vdc.VDC_COLOUR", "kind": "register", "table": "vdc", "space": "cpu", "address": "0xA3", "name": "VDC_COLOUR", "width": 1}
+ ]
+}

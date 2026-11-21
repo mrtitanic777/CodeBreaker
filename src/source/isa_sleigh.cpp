@@ -58,8 +58,10 @@ std::string fold_halves(const std::string& text, std::int64_t pc, bool signed_lo
 }
 
 // `0x8000@ha`, `0x8000@h`, `0x8000@l` (a PowerPC address's halves, as `lis` and `addi` carry them) as the numbers they are; `signed_lo` as in fold_halves.
-std::string fold_relocations(const std::string& text, bool signed_lo) {
+// `signed_hi`: the high halves (`@ha`, `@h`) as signed 16-bit numbers too (what `lis` takes).
+std::string fold_relocations(const std::string& text, bool signed_lo, bool signed_hi) {
     std::string out;
+    bool negative_lo = false;
     for (std::size_t k = 0; k < text.size();) {
         if (text[k] == '0' && k + 2 < text.size() && text[k + 1] == 'x' && (k == 0 || !word_char(text[k - 1]))) {
             std::size_t e = k + 2;
@@ -70,9 +72,12 @@ std::string fold_relocations(const std::string& text, bool signed_lo) {
                 const std::optional<std::uint64_t> n = text::parse_int<std::uint64_t>(std::string_view(text).substr(k + 2, e - k - 2), 16);
                 if (n) {
                     const std::int64_t v = static_cast<std::int64_t>(*n);
-                    if (ha) out += std::format("0x{:x}", ((v + 0x8000) >> 16) & 0xFFFF);
-                    else if (hi) out += std::format("0x{:x}", (v >> 16) & 0xFFFF);
-                    else if (signed_lo && (v & 0x8000)) out += std::format("-0x{:x}", 0x10000 - (v & 0xFFFF));
+                    if (ha || hi) {
+                        const std::int64_t half = (ha ? (v + 0x8000) >> 16 : v >> 16) & 0xFFFF;
+                        if (signed_hi && (half & 0x8000)) out += std::format("-0x{:x}", 0x10000 - half);
+                        else out += std::format("0x{:x}", half);
+                    }
+                    else if (signed_lo && (v & 0x8000)) out += std::format("-0x{:x}", 0x10000 - (v & 0xFFFF)), negative_lo = true;
                     else out += std::format("0x{:x}", v & 0xFFFF);
                     k = e + (ha ? 3 : hi ? 2 : 2);
                     continue;
@@ -81,6 +86,15 @@ std::string fold_relocations(const std::string& text, bool signed_lo) {
         }
         out += text[k++];
     }
+    // (the description has no `addi` of a negative number: it writes `subi` of the number's magnitude, so a negative half goes the same way)
+    if (negative_lo)
+        for (const auto& [add, sub] : {std::pair<std::string_view, std::string_view>{"addi ", "subi "}, {"addis ", "subis "}, {"addic ", "subic "}, {"addic. ", "subic. "}})
+            if (out.starts_with(add)) {
+                const std::size_t minus = out.rfind(",-0x");
+                if (minus == std::string::npos) break;
+                out = std::string(sub) + out.substr(add.size(), minus + 1 - add.size()) + out.substr(minus + 2);
+                break;
+            }
     return out;
 }
 
@@ -167,27 +181,39 @@ public:
             }
         }
         std::lock_guard hold(lock_);
-        if (out.find("%lo(") != std::string::npos || out.find("%hi(") != std::string::npos || out.find("%up(") != std::string::npos) {
-            for (const bool signed_lo : {true, false}) {   // (an ori's low half is unsigned, an addiu's signed: the one the instruction takes)
-                const std::vector<std::vector<std::uint8_t>> folded = assembler_.assemble(fold_halves(out, pc, signed_lo), static_cast<std::uint64_t>(pc));
-                if (!folded.empty()) return Bytes(folded.front().begin(), folded.front().end());
-            }
-        }
-        if (out.find('@') != std::string::npos) {
-            for (const bool signed_lo : {true, false}) {
-                const std::vector<std::vector<std::uint8_t>> folded = assembler_.assemble(fold_relocations(out, signed_lo), static_cast<std::uint64_t>(pc));
-                if (!folded.empty()) return Bytes(folded.front().begin(), folded.front().end());
-            }
-        }
         // (a program's lines are assembled again and again: a writer checks each instruction, then the build makes two passes; the engine takes
         // milliseconds for a line, so the lines it has encoded are kept, by address and text)
         const std::string memo_key = std::format("{:x}|{}", static_cast<std::uint64_t>(pc), out);
         if (const auto hit = memo_.find(memo_key); hit != memo_.end()) return hit->second;
-        const std::vector<std::vector<std::uint8_t>> encodings = assembler_.assemble(out, static_cast<std::uint64_t>(pc));
-        if (!encodings.empty()) {
-            if (memo_.size() >= 100000) memo_.clear();
-            return memo_.emplace(memo_key, Bytes(encodings.front().begin(), encodings.front().end())).first->second;
+        // (a line that is no instruction, or names a label not defined yet, fails the same way every time it is asked at an address: a
+        // writer's two passes and its guesses ask again and again, and each failure costs the guessing below)
+        if (const auto bad = failed_.find(memo_key); bad != failed_.end()) {
+            if (bad->second.empty()) return Failure(build::AsmError(0, text, "not an instruction of the processor's description"));
+            return Failure(build::UndefinedSymbolError(bad->second));
         }
+        const auto remember_failure = [&](const std::string& undefined_word) {
+            if (failed_.size() >= 100000) failed_.clear();
+            failed_[memo_key] = undefined_word;
+        };
+        const auto remember = [&](const std::vector<std::uint8_t>& bytes) -> const Bytes& {
+            if (memo_.size() >= 100000) memo_.clear();
+            return memo_.emplace(memo_key, Bytes(bytes.begin(), bytes.end())).first->second;
+        };
+        if (out.find("%lo(") != std::string::npos || out.find("%hi(") != std::string::npos || out.find("%up(") != std::string::npos) {
+            for (const bool signed_lo : {true, false}) {   // (an ori's low half is unsigned, an addiu's signed: the one the instruction takes)
+                const std::vector<std::vector<std::uint8_t>> folded = assembler_.assemble_first(fold_halves(out, pc, signed_lo), static_cast<std::uint64_t>(pc));
+                if (!folded.empty()) return remember(folded.front());
+            }
+        }
+        if (out.find('@') != std::string::npos) {
+            for (const bool signed_lo : {true, false})
+                for (const bool signed_hi : {false, true}) {   // (`lis` takes its half as a signed number: 0x8000 is -0x8000)
+                    const std::vector<std::vector<std::uint8_t>> folded = assembler_.assemble_first(fold_relocations(out, signed_lo, signed_hi), static_cast<std::uint64_t>(pc));
+                    if (!folded.empty()) return remember(folded.front());
+                }
+        }
+        const std::vector<std::vector<std::uint8_t>> encodings = assembler_.assemble_first(out, static_cast<std::uint64_t>(pc));
+        if (!encodings.empty()) return remember(encodings.front());
         // Which unknown word is the label not defined yet? The one that, as a number, makes the line an instruction (in `JR NZ,ahead`
         // NZ is the description's and `ahead` the label): the directive layer then guesses its value and assembles again.
         for (const Unknown& u : unknown) {
@@ -195,13 +221,20 @@ public:
             for (const std::int64_t at : {pc, pc + 4, (pc & ~std::int64_t{3}) + 8}) {
                 std::string guess = out;
                 guess.replace(u.at, u.word.size(), std::format("0x{:x}", static_cast<std::uint64_t>(at)));
-                if (!assembler_.assemble(guess, static_cast<std::uint64_t>(pc)).empty()) return Failure(build::UndefinedSymbolError(u.word));
+                bool found = !assembler_.assemble_first(guess, static_cast<std::uint64_t>(pc)).empty();
                 for (const bool signed_lo : {true, false}) {   // (the label inside a %hi or %lo, or under an @ha, @h, @l)
-                    if (!assembler_.assemble(fold_halves(guess, pc, signed_lo), static_cast<std::uint64_t>(pc)).empty()) return Failure(build::UndefinedSymbolError(u.word));
-                    if (!assembler_.assemble(fold_relocations(guess, signed_lo), static_cast<std::uint64_t>(pc)).empty()) return Failure(build::UndefinedSymbolError(u.word));
+                    if (found) break;
+                    found = !assembler_.assemble_first(fold_halves(guess, pc, signed_lo), static_cast<std::uint64_t>(pc)).empty();
+                    for (const bool signed_hi : {false, true})
+                        if (!found) found = !assembler_.assemble_first(fold_relocations(guess, signed_lo, signed_hi), static_cast<std::uint64_t>(pc)).empty();
+                }
+                if (found) {
+                    remember_failure(u.word);
+                    return Failure(build::UndefinedSymbolError(u.word));
                 }
             }
         }
+        remember_failure({});
         return Failure(build::AsmError(0, text, "not an instruction of the processor's description"));
     }
 
@@ -210,6 +243,7 @@ private:
     std::vector<std::pair<std::string, int>> context_;
     decompile::sleigh::Assembler assembler_;
     mutable std::unordered_map<std::string, Bytes> memo_;
+    mutable std::unordered_map<std::string, std::string> failed_;   // a line that failed: the label it names that is not defined yet, or empty (no instruction)
     mutable std::mutex lock_;
 };
 

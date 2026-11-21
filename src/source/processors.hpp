@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -19,6 +21,7 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "decompile/labels.hpp"
 #include "formats/code_scan.hpp"
 
 namespace cb::source::processors {
@@ -76,6 +79,10 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
 // sleigh_assembler) under the one directive layer (build/mips_asm: labels, .org, data). The instructions are in the description's
 // syntax, as read_described writes them. UsageError for a processor with no description; AsmError for source that does not assemble.
 Image assemble_described(const Processor& processor, std::string_view source, const std::filesystem::path& folder);
+
+// One instruction line, at `pc`, assembled through the description with `symbols` (name -> value) as the labels it may name; nullopt when
+// it does not assemble. (A writer checks the text it puts a name in: the name's value, put in the instruction, is the original's bytes.)
+std::optional<Bytes> assemble_line(const Processor& processor, std::string_view line, std::uint64_t pc, const decompile::NameLabels& symbols);
 
 // Source for `code` that assembles back to exactly `code` through assemble_described: each instruction as read_described writes it,
 // except where its text assembles to other bytes (an encoding the text cannot tell apart: a 68000 immediate's unused byte, an ARM

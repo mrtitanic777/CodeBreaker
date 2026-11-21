@@ -407,7 +407,7 @@ struct Namer::Impl {
             if (s.console_import_names) {
                 for (const auto& [symbol, name] : s.console_import_names(module)) {
                     // `import<library>_ord_<number>`: the library and the ordinal the console's system libraries number it by
-                    ImportName item{"?", std::nullopt, name, "the console's system libraries (symbols/console_ordinals.json)"};
+                    ImportName item{"?", std::nullopt, name, "the console's system libraries (config/knowledge/xbox360/ordinals.json)"};
                     if (symbol.starts_with("import")) {
                         const std::size_t middle = symbol.find("_ord_");
                         const std::string_view number_of_library = middle == std::string::npos ? std::string_view() : std::string_view(symbol).substr(6, middle - 6);

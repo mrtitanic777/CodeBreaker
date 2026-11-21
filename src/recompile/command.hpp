@@ -12,7 +12,7 @@
 // made from the configuration: images read through cb::formats (an .xex through its basefile, written by the xex engine), the Xenon
 // vector decoder, the Converted folder of the project (setting converted), the title finder over the Xbox containers, XenonRecomp's tool chain
 // (settings visual_studio, ppc_binutils; built on demand), the rexglue kernel core under src/recompile/rexglue, the console's ordinal names
-// (codebreaker/symbols/console_ordinals.json), and g++ (setting gpp, else PATH) for `--check`.
+// (config/knowledge/xbox360/ordinals.json), and g++ (setting gpp, else PATH) for `--check`.
 #pragma once
 
 #include <filesystem>

@@ -1,4 +1,5 @@
 #include "formats/pce.hpp"
+#include "knowledge/package.hpp"
 
 #include <bit>
 #include <format>
@@ -72,22 +73,13 @@ bool probe(const std::filesystem::path& path) {
 }
 
 const std::map<std::uint32_t, std::string>& registers_read() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x0000, "VDC_STATUS"}, {0x0002, "VDC_DATA_L"}, {0x0003, "VDC_DATA_H"},
-        {0x0402, "VCE_CTA_L"},  {0x0403, "VCE_CTA_H"},  {0x0404, "VCE_CTD_L"},  {0x0405, "VCE_CTD_H"},
-        {0x0C00, "TIMER_COUNTER"}, {0x0C01, "TIMER_CTRL"}, {0x1000, "IO_PORT"}, {0x1402, "IRQ_DISABLE"}, {0x1403, "IRQ_STATUS"},
-    };
+    // config/knowledge/pce/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("pce", "read");
     return table;
 }
 
 const std::map<std::uint32_t, std::string>& registers_write() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x0000, "VDC_SELECT"}, {0x0002, "VDC_DATA_L"}, {0x0003, "VDC_DATA_H"},
-        {0x0400, "VCE_CR"},     {0x0402, "VCE_CTA_L"},  {0x0403, "VCE_CTA_H"},  {0x0404, "VCE_CTD_L"},  {0x0405, "VCE_CTD_H"},
-        {0x0800, "PSG_CH_SEL"}, {0x0801, "PSG_MAIN_VOL"}, {0x0802, "PSG_FREQ_L"}, {0x0803, "PSG_FREQ_H"}, {0x0804, "PSG_CH_CTRL"},
-        {0x0805, "PSG_CH_PAN"}, {0x0806, "PSG_WAVE"},   {0x0807, "PSG_NOISE"},  {0x0808, "PSG_LFO_FREQ"}, {0x0809, "PSG_LFO_CTRL"},
-        {0x0C00, "TIMER_RELOAD"}, {0x0C01, "TIMER_CTRL"}, {0x1000, "IO_PORT"}, {0x1402, "IRQ_DISABLE"}, {0x1403, "IRQ_ACK"},
-    };
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("pce", "write");
     return table;
 }
 

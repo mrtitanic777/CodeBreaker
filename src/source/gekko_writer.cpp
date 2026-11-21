@@ -8,16 +8,17 @@
 #include <functional>
 #include <cctype>
 #include <set>
+#include <utility>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 
-#include "build/mips_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/ppc.hpp"
 #include "formats/gekko_map.hpp"
 #include "source/isa_ppc.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::gekko_writer {
 
@@ -26,6 +27,16 @@ namespace pp = formats::ppc_program;
 namespace iw = image_writer;
 
 namespace {
+
+// Two spellings of one instruction (the description's and the decoder's)?
+bool same_instruction(const std::string& said, const std::string& decoded) {
+    static const std::set<std::pair<std::string, std::string>> same = {
+        {"mfspr", "mfctr"}, {"mfspr", "mflr"}, {"mfspr", "mfxer"}, {"mtspr", "mtctr"}, {"mtspr", "mtlr"}, {"mtspr", "mtxer"}, {"nor", "not"},
+        {"nor.", "not."},   {"or", "mr"},      {"or.", "mr."},     {"ori", "nop"},     {"subi", "addi"},   {"subic", "addic"},  {"subic.", "addic."},
+        {"subis", "addis"}, {"trap", "tw"}};
+    if (said.starts_with("tw") && (decoded == "tw" || decoded == "twi")) return true;   // (`twlt`, `tweqi`: the trap's condition in its name)
+    return same.contains({said, decoded});
+}
 
 constexpr iw::Spelling kSub{"sub_", 8};
 constexpr iw::Spelling kLocal{"L_", 8};
@@ -427,39 +438,49 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
     decompile::AddressLabels names_for_text;
     for (const auto& [a, label] : labels) names_for_text[a] = label;
     const auto instruction_text = [&](const dp::Insn& insn) -> std::string {
-        const auto expected = [&](const std::string& line) {
-            try {
-                const Bytes b = dp::assemble(line, insn.pc, symbols);
-                return be32(b, 0) == insn.word;
-            } catch (const Error&) {
-                return false;
-            }
-        };
+        // the description's text: a branch by its label, an address half by its expression; the bytes and the text in a comment when it is not an instruction
+        // that assembles back to itself
+        const std::array<std::uint8_t, 4> bytes = {static_cast<std::uint8_t>(insn.word >> 24), static_cast<std::uint8_t>(insn.word >> 16),
+                                                   static_cast<std::uint8_t>(insn.word >> 8), static_cast<std::uint8_t>(insn.word)};
+        std::map<std::uint32_t, std::string> by_value;
+        std::vector<std::uint32_t> operands;
+        if (insn.target)
+            if (const auto named = names_for_text.find(*insn.target); named != names_for_text.end()) by_value[*insn.target] = named->second, operands.push_back(*insn.target);
         const auto it = immediate.find(insn.pc);
-        if (it != immediate.end() && dp::has_immediate(insn)) {
-            const std::string line = dp::text(insn, names_for_text, it->second);
-            if (expected(line)) return line;
+        const std::string expression = it != immediate.end() && dp::has_immediate(insn) ? it->second : std::string();
+        std::string line = risc_source::code("ppc", bytes, insn.pc, by_value, operands, expression, {}, &symbols);
+        // (the PowerPC description does not know the Gekko's paired singles: it may read their bits as another instruction that assembles back to them. The
+        // decoder knows them: a text whose mnemonic is not the decoder's stays as its bits, with the decoder's text.)
+        if (!line.starts_with(".byte")) {
+            const std::string said = text::lower(line.substr(0, line.find_first_of(" \t")));
+            if (said != text::lower(insn.mnemonic) && !same_instruction(said, text::lower(insn.mnemonic))) {
+                std::string raw;
+                for (const std::uint8_t b : bytes) raw += std::format("{}0x{:02x}", raw.empty() ? "" : ",", b);
+                line = ".byte " + raw;
+            }
         }
-        const std::string plain = dp::text(insn, names_for_text);
-        if (expected(plain)) return plain;
-        return std::format(".long {}    # not written as an instruction: {}", hex8(insn.word), plain);
+        if (line.starts_with(".byte")) {
+            line.resize(std::min(line.find("  ; "), line.size()));
+            line += "  ; " + dp::text(insn, names_for_text);
+        }
+        return line;
     };
 
     // the source ----------------------------------------------------------------------------------------------------------------
     const std::string kind = std::string(pp::kind_text(program.kind));
     std::vector<std::string> head = {
-        std::format("# {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("# {} {}{}: {} ({}), entry 0x{:08X}, {} bytes, {} functions", pp::console_text(console), kind,
+        std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
+        std::format("; {} {}{}: {} ({}), entry 0x{:08X}, {} bytes, {} functions", pp::console_text(console), kind,
                     program.kind == pp::Kind::Rpx && program.elf && program.elf->inflated_sections != 0 ? " (decompressed)" : "", pp::cpu_text(console), "PowerPC 750 family", program.entry,
                     file.size(), functions.size()),
-        "# assemble with powerpc-eabi-as -mregnames, or with CodeBreaker's own assembler",
-        std::format("# loaded: {}", [&] {
+        std::format("; loaded: {}", [&] {
             std::vector<std::string> parts;
             for (const formats::ppc_segment::Segment& s : program.segments) parts.push_back(std::format("{} at 0x{:08X} ({} bytes)", s.name, s.address, s.size));
             return text::join(parts, ", ");
         }()),
         ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
+    head.insert(head.end() - 1, "; (PowerPC syntax as the processor's SLEIGH description writes it: build with `assemble --cpu ppc --sleigh`)");
+    translate::l2::Assembly out(head, "sleigh-ppc", std::string(file_name));
 
     std::map<const pp::Region*, std::string> region_labels;   // for a DOL: the labels its header's addresses and sizes are written with
     for (const pp::Region& r : program.regions) {
@@ -492,13 +513,13 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
         if (r.role == pp::Role::Header) {
             out.part(r.name, "header", std::nullopt, r.size);
             out.append("");
-            out.append(std::format("        .org {}    # {} (file offset)", hex8(static_cast<std::uint32_t>(r.offset)), r.name));
+            out.append(std::format("        .org {}    ; {} (file offset)", hex8(static_cast<std::uint32_t>(r.offset)), r.name));
             if (program.dol && r.name == "dol header") {
                 const formats::dol::Dol& d = *program.dol;
                 const auto row = [&](std::string_view what, std::size_t from, std::size_t count, const std::function<std::string(std::size_t)>& item) {
                     std::vector<std::string> items;
                     for (std::size_t i = from; i < from + count; ++i) items.push_back(item(i));
-                    out.append(std::format("        .long {}    # {}", text::join(items, ", "), what));
+                    out.append(std::format("        .long {}    ; {}", text::join(items, ", "), what));
                 };
                 const auto slot_label = [&](std::size_t i) -> std::string {
                     const std::string name = i < formats::dol::kTextSections ? std::format("text{}", i) : std::format("data{}", i - formats::dol::kTextSections);
@@ -510,24 +531,24 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
                 row("load addresses of data0-10", 7, 11, [&](std::size_t i) { return d.sizes[i] ? slot_label(i) : std::string("0"); });
                 row("sizes of text0-6", 0, 7, [&](std::size_t i) { return d.sizes[i] ? std::format("{0}_end - {0}", slot_label(i)) : std::string("0"); });
                 row("sizes of data0-10", 7, 11, [&](std::size_t i) { return d.sizes[i] ? std::format("{0}_end - {0}", slot_label(i)) : std::string("0"); });
-                out.append(std::format("        .long {}, {}    # bss address and size", hex8(d.bss_address), hex8(d.bss_size)));
-                out.append(std::format("        .long {}    # entry point", entry_text(d.entry)));
-                out.append(byte_row(bytes.subspan(0xE4, 28)) + "    # padding");
+                out.append(std::format("        .long {}, {}    ; bss address and size", hex8(d.bss_address), hex8(d.bss_size)));
+                out.append(std::format("        .long {}    ; entry point", entry_text(d.entry)));
+                out.append(byte_row(bytes.subspan(0xE4, 28)) + "    ; padding");
             } else if (program.elf && r.name == "elf header") {
                 const formats::ppc_elf::Elf& e = *program.elf;
-                out.append(byte_row(bytes.first(16)) + "    # e_ident: ELF, 32-bit, big-endian, version, OS/ABI, ABI version");
-                out.append(std::format("        .short 0x{:04X}, 0x{:04X}    # type, machine", e.type, e.machine));
-                out.append(std::format("        .long 0x{:08X}    # version", e.version));
-                out.append(std::format("        .long {}    # entry point", entry_text(e.entry)));
-                out.append(std::format("        .long {}, {}    # program header table offset, section header table offset", hex8(e.phoff), hex8(e.shoff)));
-                out.append(std::format("        .long 0x{:08X}    # flags", e.flags));
-                out.append(std::format("        .short {}, {}, {}, {}, {}, {}    # header size, program header size and count, section header size and count, section name table", e.ehsize,
+                out.append(byte_row(bytes.first(16)) + "    ; e_ident: ELF, 32-bit, big-endian, version, OS/ABI, ABI version");
+                out.append(std::format("        .short 0x{:04X}, 0x{:04X}    ; type, machine", e.type, e.machine));
+                out.append(std::format("        .long 0x{:08X}    ; version", e.version));
+                out.append(std::format("        .long {}    ; entry point", entry_text(e.entry)));
+                out.append(std::format("        .long {}, {}    ; program header table offset, section header table offset", hex8(e.phoff), hex8(e.shoff)));
+                out.append(std::format("        .long 0x{:08X}    ; flags", e.flags));
+                out.append(std::format("        .short {}, {}, {}, {}, {}, {}    ; header size, program header size and count, section header size and count, section name table", e.ehsize,
                                        e.phentsize, e.phnum, e.shentsize, e.shnum, e.shstrndx));
             } else if (program.elf && r.name == "program headers") {
                 for (std::size_t at = 0; at + formats::ppc_elf::kProgramHeaderSize <= bytes.size(); at += formats::ppc_elf::kProgramHeaderSize) {
                     std::vector<std::string> items;
                     for (std::size_t k = 0; k < 8; ++k) items.push_back(hex8(be32(bytes, at + 4 * k)));
-                    out.append(std::format("        .long {}    # program header {}: type, offset, vaddr, paddr, file size, memory size, flags, alignment", text::join(items, ", "),
+                    out.append(std::format("        .long {}    ; program header {}: type, offset, vaddr, paddr, file size, memory size, flags, alignment", text::join(items, ", "),
                                            at / formats::ppc_elf::kProgramHeaderSize));
                 }
             } else if (program.elf && r.name == "section headers") {
@@ -535,7 +556,7 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
                     std::vector<std::string> items;
                     for (std::size_t k = 0; k < 10; ++k) items.push_back(hex8(be32(bytes, at + 4 * k)));
                     const std::string what = n < program.elf->sections.size() ? program.elf->sections[n].name : std::string();
-                    out.append(std::format("        .long {}    # section {} {}: name, type, flags, address, offset, size, link, info, alignment, entry size", text::join(items, ", "), n, what));
+                    out.append(std::format("        .long {}    ; section {} {}: name, type, flags, address, offset, size, link, info, alignment, entry size", text::join(items, ", "), n, what));
                 }
             } else {
                 data_lines_of(r, 0, r.size);
@@ -545,7 +566,7 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
         if (r.role == pp::Role::Other) {
             out.part(r.name, "data", std::nullopt, r.size);
             out.append("");
-            out.append(std::format("        .org {}    # {} (file offset)", hex8(static_cast<std::uint32_t>(r.offset)), r.name));
+            out.append(std::format("        .org {}    ; {} (file offset)", hex8(static_cast<std::uint32_t>(r.offset)), r.name));
             data_lines_of(r, 0, r.size);
             continue;
         }
@@ -553,7 +574,7 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
         // loaded code or data, at its address
         out.part(r.name, r.role == pp::Role::Code ? "code" : "data", std::nullopt, r.size);
         out.append("");
-        out.append(std::format("        .org {}    # {}", hex8(r.address), r.name));
+        out.append(std::format("        .org {}    ; {}", hex8(r.address), r.name));
         if (region_labels.contains(&r)) out.append(r.name + ":");
         std::size_t at = 0;
         while (at < r.size) {
@@ -593,9 +614,8 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
     std::size_t code_total = 0;
     code_total = code.size() * 4;
     iw::Written w = iw::finish(folder, stem + ".s", source, functions, code_total, file.size());
-    const build::mips_asm::Assembler assembler(isa::ppc_encoder(), build::mips_asm::ByteOrder::Big);
     const std::string extension = program.kind == pp::Kind::Dol ? ".dol" : program.kind == pp::Kind::Rpx ? ".rpx" : ".elf";
-    iw::assembled(w, [&] { return assembler.build(source); }, file, folder / (stem + ".built" + extension), "program");
+    iw::assembled(w, [&] { return risc_source::assemble("ppc", source, folder); }, file, folder / (stem + ".built" + extension), "program");
     return w;
 }
 

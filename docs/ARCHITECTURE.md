@@ -742,8 +742,9 @@ module, with the name the module gives it) and `body_name` (a name given to a bo
 **What moved onto it.** Kept as the authored inputs, now read through it: ordinal_names.json
 (windows ordinal_names), win32_arguments.json (win32 argument_bytes.header),
 runtime_signatures.json (win32/win16 signature), driver_services.json (vxd device,
-service_table, driver, message), dos_interrupts.json (dos interrupt), console_ordinals.json
-(xbox360 ordinal_names: formats/xex_imports, module_writer, recompile/project). New authored
+service_table, driver, message), dos_interrupts.json (dos interrupt). The Xbox 360 ordinal names
+are a description file now, knowledge/xbox360/ordinals.json (Knowledge::export_name: formats/xex_imports,
+module_writer, recompile/project). New authored
 files, out of code: knowledge/models/win16.json (the 16-bit stand-ins of emulate/windows16.py
 -- what each returns and removes, as data -- and KERNEL's numbers for them), models/win32.json
 (emulate/emulator.py's documented argument counts), models/vxd.json (emulate/driver.py's

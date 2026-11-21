@@ -6,12 +6,13 @@
 #include <format>
 #include <set>
 
-#include "build/sm83_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/sm83.hpp"
 #include "knowledge/package.hpp"
+#include "source/described_source.hpp"
 #include "source/isa.hpp"
+#include "source/processors.hpp"
 
 namespace cb::source::gb_writer {
 
@@ -26,7 +27,18 @@ constexpr std::uint32_t kPowerOnEnd = 0x8000;    // the two banks mapped at powe
 constexpr iw::Spelling kSub{"sub_", 4};
 constexpr iw::Spelling kLocal{"L_", 4};
 constexpr iw::Spelling kData{"D_", 4};
-const iw::DataSyntax kSyntax{.bytes = "db", .fill = "ds", .fill_separator = ", "};
+
+const processors::Processor& sm83_cpu() {
+    static const processors::Processor& cpu = processors::find("sm83");
+    return cpu;
+}
+
+// Whether an instruction's operand is an address the program names (a register, a label): a pointer loaded into HL, DE or SP, an (nn) or LDH operand, a jump or call.
+bool names_its_operand(const sm83::Insn& insn) {
+    if (!insn.value || *insn.value < 0) return false;
+    const bool pointer = insn.pattern == "LD HL,nn" || insn.pattern == "LD DE,nn" || insn.pattern == "LD SP,nn";
+    return pointer || insn.pattern.starts_with("LDH") || isa::pattern_has(insn.pattern, "(nn)");
+}
 
 struct HeaderField {
     std::uint32_t at;
@@ -91,17 +103,27 @@ public:
     const sm83::Insn* code_at(std::uint32_t offset, std::uint32_t address) const override {   // (flow was followed in the mapped banks only)
         if (!mapped_) return nullptr;
         const auto it = code_.find(address);
-        return it != code_.end() && offset + it->second.size <= end_ ? &it->second : nullptr;
+        if (it == code_.end() || offset + it->second.size > end_) return nullptr;
+        at_offset_ = offset, at_address_ = address;   // (text() of this instruction follows)
+        return &it->second;
     }
     std::uint32_t size(const sm83::Insn& insn) const override { return insn.size; }
-    std::string text(const sm83::Insn& insn) const override { return sm83::text(insn, names_); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::string text(const sm83::Insn& insn) const override {   // (the description's text, the program's names where its addresses are)
+        const ByteView bytes = ByteView(rom_.data).subspan(at_offset_, insn.size);
+        std::optional<std::string> t = described_source::checked_text(sm83_cpu(), bytes, at_address_, insn.size);
+        if (!t) return described_source::byte_line(sm83_cpu(), bytes, at_address_, {}, "");
+        const std::optional<std::uint32_t> named = insn.target ? std::optional<std::uint32_t>(*insn.target)
+                                                     : names_its_operand(insn) ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(*insn.value)) : std::nullopt;
+        if (named && names_.contains(*named)) *t = described_source::name_number(*t, *named, names_.at(*named), false);
+        return *t;
+    }
+    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
     // The cartridge header, each field with its name.
     std::uint32_t special(std::uint32_t, std::uint32_t address, const iw::Flush& flush) override {
         const HeaderField* field = bank_ == 0 ? header_field(address) : nullptr;
         if (!field) return 0;
         flush();
-        out_.extend(iw::commented(iw::data_lines(ByteView(rom_.data).subspan(address, field->size), kSyntax), field->what));
+        out_.extend(iw::commented(described_source::data_lines(ByteView(rom_.data).subspan(address, field->size)), field->what));
         return field->size;
     }
 
@@ -112,6 +134,7 @@ private:
     std::uint32_t first_;
     std::uint32_t end_;
     bool mapped_;
+    mutable std::uint32_t at_offset_ = 0, at_address_ = 0;   // (the file offset of the instruction code_at() last gave, and its address)
     const std::map<std::uint32_t, sm83::Insn>& code_;
     const decompile::AddressLabels& names_;
 };
@@ -179,8 +202,8 @@ iw::Written write(const formats::gb::Rom& rom, std::string_view file_name, const
                                                                   : std::format(", Game Boy Color ({})", rom.color == formats::gb::ColorSupport::Also ? "also" : "only"),
                      rom.sgb ? ", Super Game Boy" : ""),
          ""},
-        "rgbds", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(std::format("DEF {:<8} EQU ${:04X}", known.at(a), a));
+        "sleigh-sm83", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(described_source::equ(known.at(a), a, 4));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -192,14 +215,15 @@ iw::Written write(const formats::gb::Rom& rom, std::string_view file_name, const
         const std::uint32_t end = first + static_cast<std::uint32_t>(rom.bank(bank).size());
         const bool mapped = bank <= 1;   // (the banks seen at power-on: where flow was followed)
         out.part(std::format("bank{}", bank), "bank", std::nullopt, rom.bank(bank).size());
-        out.append(std::format("SECTION \"bank{}\", {}", bank, bank == 0 ? std::string("ROM0[$0000]") : std::format("ROMX[$4000], BANK[{}]", bank)));
+        out.append(std::format("; bank{} ({})", bank, bank == 0 ? std::string("ROM0 at 0x0000") : std::format("ROMX at 0x4000, bank {}", bank)));
+        out.append(std::format("        .org 0x{:04x}", bank == 0 ? 0u : 0x4000u));
         GbListing listing(out, rom, bank, first, end, mapped, code, names_for_text);
         iw::emit<sm83::Insn>(out, first, end, mapped ? labels : no_labels, functions, listing);
         out.append("");
     }
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    iw::assembled(r, [&] { return build::sm83_asm::build(source, rom.data.size(), folder); }, rom.data, folder / (stem + ".built" + file.extension().string()));
+    iw::assembled(r, [&] { return described_source::assemble(sm83_cpu(), source, folder); }, rom.data, folder / (stem + ".built" + file.extension().string()));
     return r;
 }
 

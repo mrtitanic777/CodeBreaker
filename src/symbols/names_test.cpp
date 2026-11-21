@@ -633,7 +633,7 @@ CB_TEST("symbols.names.a_console_images_imports_are_named_by_the_hook", [] {
     CB_CHECK(got.imports[1].ordinal == std::optional<std::uint32_t>(17));
     CB_CHECK_EQ(got.imports[2].module, "?");   // a symbol that is not of that form has no library
     CB_CHECK(!got.imports[2].ordinal.has_value());
-    CB_CHECK_EQ(got.imports[2].source, "the console's system libraries (symbols/console_ordinals.json)");
+    CB_CHECK_EQ(got.imports[2].source, "the console's system libraries (config/knowledge/xbox360/ordinals.json)");
 });
 
 // ---- the body store --------------------------------------------------------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 #include "formats/lynx.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <array>
@@ -233,48 +234,8 @@ bool probe(const std::filesystem::path& path) {
 }
 
 const std::map<std::uint32_t, std::string>& registers() {
-    static const std::map<std::uint32_t, std::string> table = [] {
-        std::map<std::uint32_t, std::string> t;
-        // Suzy: the sprite engine's registers (low and high byte of each 16-bit one) ...
-        const char* const sprite[] = {"TMPADR",  "TILTACUM", "HOFF",    "VOFF",    "VIDBAS",  "COLLBAS", "VIDADR",  "COLLADR", "SCBNEXT",  "SPRDLINE", "HPOSSTRT", "VPOSSTRT",
-                                      "SPRHSIZ", "SPRVSIZ",  "STRETCH", "TILT",    "SPRDOFF", "SPRVPOS", "COLLOFF", "VSIZACUM", "HSIZOFF", "VSIZOFF", "SCBADR",   "PROCADR"};
-        for (std::uint32_t i = 0; i < std::size(sprite); ++i) {
-            t[0xFC00 + 2 * i] = std::string(sprite[i]) + "L";
-            t[0xFC01 + 2 * i] = std::string(sprite[i]) + "H";
-        }
-        // ... the math unit's ...
-        t[0xFC52] = "MATHD"; t[0xFC53] = "MATHC"; t[0xFC54] = "MATHB"; t[0xFC55] = "MATHA"; t[0xFC56] = "MATHP"; t[0xFC57] = "MATHN";
-        t[0xFC60] = "MATHH"; t[0xFC61] = "MATHG"; t[0xFC62] = "MATHF"; t[0xFC63] = "MATHE";
-        t[0xFC6C] = "MATHM"; t[0xFC6D] = "MATHL"; t[0xFC6E] = "MATHK"; t[0xFC6F] = "MATHJ";
-        // ... the control registers, the joystick and the cartridge.
-        t[0xFC80] = "SPRCTL0"; t[0xFC81] = "SPRCTL1"; t[0xFC82] = "SPRCOLL"; t[0xFC83] = "SPRINIT";
-        t[0xFC88] = "SUZYHREV"; t[0xFC89] = "SUZYSREV"; t[0xFC90] = "SUZYBUSEN"; t[0xFC91] = "SPRGO"; t[0xFC92] = "SPRSYS";
-        t[0xFCB0] = "JOYSTICK"; t[0xFCB1] = "SWITCHES"; t[0xFCB2] = "RCART0"; t[0xFCB3] = "RCART1";
-        t[0xFCC0] = "LEDS"; t[0xFCC2] = "PPORTSTAT"; t[0xFCC3] = "PPORTDATA"; t[0xFCC4] = "HOWIE";
-        // Mikey: eight timers of four registers, four audio channels of eight ...
-        for (std::uint32_t n = 0; n < 8; ++n) {
-            t[0xFD00 + 4 * n] = std::format("TIM{}BKUP", n);
-            t[0xFD01 + 4 * n] = std::format("TIM{}CTLA", n);
-            t[0xFD02 + 4 * n] = std::format("TIM{}CNT", n);
-            t[0xFD03 + 4 * n] = std::format("TIM{}CTLB", n);
-        }
-        const char* const audio[] = {"VOL", "SHFTFB", "OUTVAL", "L8SHFT", "TBACK", "CTL", "COUNT", "MISC"};
-        for (std::uint32_t c = 0; c < 4; ++c) {
-            for (std::uint32_t r = 0; r < std::size(audio); ++r) t[0xFD20 + 8 * c + r] = std::format("AUD{}{}", c, audio[r]);
-        }
-        // ... the attenuation, panning and stereo registers, interrupts, system control, the UART, the display and the palette.
-        t[0xFD40] = "ATTEN_A"; t[0xFD41] = "ATTEN_B"; t[0xFD42] = "ATTEN_C"; t[0xFD43] = "ATTEN_D"; t[0xFD44] = "MPAN"; t[0xFD50] = "MSTEREO";
-        t[0xFD80] = "INTRST"; t[0xFD81] = "INTSET"; t[0xFD84] = "MAGRDY0"; t[0xFD85] = "MAGRDY1"; t[0xFD86] = "AUDIN"; t[0xFD87] = "SYSCTL1";
-        t[0xFD88] = "MIKEYHREV"; t[0xFD89] = "MIKEYSREV"; t[0xFD8A] = "IODIR"; t[0xFD8B] = "IODAT"; t[0xFD8C] = "SERCTL"; t[0xFD8D] = "SERDAT";
-        t[0xFD90] = "SDONEACK"; t[0xFD91] = "CPUSLEEP"; t[0xFD92] = "DISPCTL"; t[0xFD93] = "PBKUP"; t[0xFD94] = "DISPADRL"; t[0xFD95] = "DISPADRH";
-        t[0xFD9C] = "MTEST0"; t[0xFD9D] = "MTEST1"; t[0xFD9E] = "MTEST2";
-        for (std::uint32_t i = 0; i < 16; ++i) {
-            t[0xFDA0 + i] = std::format("GREEN{:X}", i);
-            t[0xFDB0 + i] = std::format("BLUERED{:X}", i);
-        }
-        t[0xFFF9] = "MAPCTL";
-        return t;
-    }();
+    // config/knowledge/lynx/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("lynx", "registers");
     return table;
 }
 

@@ -1,6 +1,7 @@
 // source/neogeo_writer.cpp -- a Neo Geo P-ROM as assembly source that builds back into it (neogeo_writer.hpp).
 
 #include "source/neogeo_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -134,30 +135,8 @@ std::vector<Reference> references(const m68k::Insn& insn) {
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {
-        // the program's windows
-        {0x2FFFF0, "BANKSEL"},
-        // controllers, DIP switches, the system ports
-        {0x300000, "REG_P1CNT"},      {0x300001, "REG_DIPSW_WATCHDOG"}, {0x300081, "REG_SYSTYPE"},   {0x320000, "REG_SOUND"},
-        {0x320001, "REG_STATUS_A"},   {0x340000, "REG_P2CNT"},          {0x380000, "REG_STATUS_B"},   {0x380001, "REG_POUTPUT"},
-        {0x380011, "REG_CRDBANK"},    {0x380021, "REG_SLOT"},           {0x380031, "REG_LEDLATCHES"}, {0x380041, "REG_LEDDATA"},
-        {0x380051, "REG_RTCCTRL"},    {0x380061, "REG_RESETCC1"},       {0x380063, "REG_RESETCL1"},   {0x380065, "REG_RESETCC2"},
-        {0x380067, "REG_RESETCL2"},
-        // the system latches (a write to the address sets the switch)
-        {0x3A0001, "REG_NOSHADOW"},   {0x3A0011, "REG_SHADOW"},         {0x3A0003, "REG_SWPBIOS"},    {0x3A0013, "REG_SWPROM"},
-        {0x3A000B, "REG_BRDFIX"},     {0x3A001B, "REG_CRTFIX"},         {0x3A000D, "REG_SRAMLOCK"},   {0x3A001D, "REG_SRAMUNLOCK"},
-        {0x3A000F, "REG_PALBANK1"},   {0x3A001F, "REG_PALBANK0"},
-        // the LSPC (video)
-        {0x3C0000, "REG_VRAMADDR"},   {0x3C0002, "REG_VRAMRW"},        {0x3C0004, "REG_VRAMMOD"},     {0x3C0006, "REG_LSPCMODE"},
-        {0x3C0008, "REG_TIMERHIGH"},  {0x3C000A, "REG_TIMERLOW"},      {0x3C000C, "REG_IRQACK"},      {0x3C000E, "REG_TIMERSTOP"},
-        // the BIOS's calls
-        {0xC00438, "SYSTEM_INT1"},    {0xC0043E, "SYSTEM_INT2"},        {0xC00444, "SYSTEM_RETURN"},   {0xC0044A, "SYSTEM_IO"},
-        {0xC00450, "CREDIT_CHECK"},   {0xC00456, "CREDIT_DOWN"},        {0xC0045C, "READ_CALENDAR"},   {0xC00462, "SETUP_CALENDAR"},
-        {0xC00468, "CARD"},           {0xC0046E, "CARD_ERROR"},         {0xC00474, "HOW_TO_PLAY"},     {0xC0047A, "CHECKSUM"},
-        {0xC004C2, "FIX_CLEAR"},      {0xC004C8, "LSP_1ST"},            {0xC004CE, "MESS_OUT"},
-        // the BIOS's variables in work RAM
-        {0x10FD80, "BIOS_SYSTEM_MODE"}, {0x10FD82, "BIOS_MVS_FLAG"},    {0x10FD83, "BIOS_COUNTRY_CODE"}, {0x10FDAE, "BIOS_USER_REQUEST"},
-        {0x10FDAF, "BIOS_USER_MODE"}};
+    // config/knowledge/neogeo/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("neogeo", "hardware");
     return table;
 }
 
@@ -267,9 +246,7 @@ iw::Written write(const formats::neogeo::Rom& rom, std::string_view file_name, c
 iw::Written write_sound(ByteView sound, std::string_view file_name, const std::filesystem::path& folder) {
     constexpr std::size_t kFixed = 0x8000;   // the Z80's fixed window; the rest of an M-ROM is banked into $8000-$FFFF
     const std::string stem = std::filesystem::path(file_name).stem().string() + ".m1";
-    static const z80_writer::Machine machine{
-        .ports = {{0x00, "SOUND_COMMAND"}, {0x04, "YM2610_ADDR_A"}, {0x05, "YM2610_DATA_A"}, {0x06, "YM2610_ADDR_B"}, {0x07, "YM2610_DATA_B"}, {0x0C, "SOUND_REPLY"}},
-        .names = {}};
+    static const z80_writer::Machine machine{.ports = knowledge::standard().hardware_names("neogeo", "sound_ports"), .names = {}};   // (config/knowledge/neogeo/registers.json)
     z80_writer::Block block{.image = sound.first(std::min(sound.size(), kFixed)), .origin = 0, .entries = {{0x0000, "reset"}, {0x0038, "irq"}, {0x0066, "nmi"}}, .header = {}};
     block.header.push_back(std::format("Neo Geo sound program (Z80) from {}: {} bytes{}", std::filesystem::path(file_name).filename().string(), sound.size(),
                                        sound.size() > kFixed ? "; the first 32 KB, the rest is banked data" : ""));

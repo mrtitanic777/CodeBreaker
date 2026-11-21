@@ -1,4 +1,5 @@
 #include "source/zx_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <format>
 
@@ -6,11 +7,8 @@ namespace cb::source::zx_writer {
 
 const z80_writer::Machine& machine() {
     static const z80_writer::Machine kSpectrum{
-        .ports = {{0xFE, "ULA"}, {0x1F, "KEMPSTON"}},
-        .names = {{0x0010, "PRINT_A"}, {0x03B5, "BEEPER"},    {0x04C2, "SA_BYTES"},  {0x0556, "LD_BYTES"}, {0x0D6B, "CLS"},    {0x0DAF, "CL_ALL"},
-                  {0x1601, "CHAN_OPEN"}, {0x203C, "PR_STRING"}, {0x2D2B, "STACK_BC"}, {0x2DE3, "PRINT_FP"}, {0x5C08, "LAST_K"}, {0x5C36, "CHARS"},
-                  {0x5C3B, "FLAGS"},   {0x5C48, "BORDCR"},    {0x5C4B, "VARS"},      {0x5C4F, "CHANS"},    {0x5C53, "PROG"},   {0x5C76, "SEED"},
-                  {0x5C78, "FRAMES"},  {0x5C8D, "ATTR_P"},    {0x5CB2, "RAMTOP"}}};
+        .ports = knowledge::standard().hardware_names("zx", "ports"),   // (config/knowledge/zx/registers.json)
+        .names = knowledge::standard().table_names("zx", "firmware")};
     return kSpectrum;
 }
 

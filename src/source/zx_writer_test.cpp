@@ -1,14 +1,13 @@
 // Tests of source/zx_writer on the Spectrum demo program (hand-written, kept in
-// engine/testdata/lane_kit/zx_demo.asm): built with CodeBreaker's own flat Z80 assembler into a tape (a BASIC loader that calls USR 32768,
+// engine/testdata/lane_kit/zx_demo.asm): built with the one assembler (the Z80 SLEIGH description) into a tape (a BASIC loader that calls USR 32768,
 // then the code block) and into a 48K snapshot stopped at its start; the program comes back as source that builds the same bytes, and the
 // source names the Spectrum's ULA port, ROM routines and system variables.
 #include "source/zx_writer.hpp"
 
-#include "build/z80_asm.hpp"
+#include "source/processors.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "formats/zx.hpp"
-#include "source/isa.hpp"
 
 namespace cb::source::zx_writer {
 namespace {
@@ -39,9 +38,14 @@ Bytes tap_header(std::uint8_t type, std::string name, std::uint32_t length, std:
     return out;
 }
 
-build::z80_asm::Assembler::Flat demo() {
-    const build::z80_asm::Assembler assembler(isa::z80_encoder());
-    return assembler.build_flat(fs::read_text(testing::data_path("engine/testdata/lane_kit/zx_demo.asm")));
+struct Flat {
+    std::uint32_t start = 0;
+    Bytes bytes;
+};
+
+// The program and the address it is written for (zx_demo.asm says `.org 0x8000`).
+Flat demo() {
+    return {0x8000, processors::assemble_described(processors::find("z80"), fs::read_text(testing::data_path("engine/testdata/lane_kit/zx_demo.asm")), ".").data};
 }
 
 // 10 RANDOMIZE USR 32768, then the code block

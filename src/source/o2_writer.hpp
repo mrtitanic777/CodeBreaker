@@ -1,7 +1,7 @@
 // source/o2_writer.hpp -- an Odyssey 2 cartridge as 8048 assembly source that builds back into it.
 //
 //     image_writer::Written r = o2_writer::reconstruct("game.o2", "out");
-//     r.source           game.asm (`ORG $0400`, DB, FILL, labels, 8048 mnemonics; CodeBreaker's own build/i8048_asm reads it)
+//     r.source           game.asm (the 8048 SLEIGH description's syntax under the one directive layer: `.org 0x0400`, `.byte`, `.space`, labels; the one assembler reads it)
 //     r.same             the source, built, is the cartridge file byte for byte
 //     r.functions        {address: name}
 //

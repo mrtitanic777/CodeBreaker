@@ -80,17 +80,4 @@ struct Insn {
 // The instruction at code[offset], which sits at address `pc`; nullopt for an undefined opcode or one cut off by the end of `code`.
 std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc);
 
-using decompile::AddressLabels;
-using decompile::NameLabels;
-
-// The instruction as source; an address that has a label is written as the label (branch targets, extended and direct addresses, 16-bit immediates).
-std::string text(const Insn& insn, const AddressLabels& labels = {});
-
-// The bytes of one instruction line. Labels are resolved from `labels`; with `lenient`, a name that is not there counts as 0 (the first pass of an assembler needs only
-// the size). Throws ParseError for a line that is not an instruction, an unknown name or a branch out of reach.
-Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels = {}, bool lenient = false);
-
-// A numeric expression as the assembler reads it: `$hex`, `0xhex`, `%binary`, decimal, labels, `*` (here), `+` and `-`, `<` / `>` for the low and high byte.
-std::int64_t value(std::string_view expr, const NameLabels& labels, std::uint32_t pc = 0, bool lenient = false);
-
 }  // namespace cb::decompile::m6809

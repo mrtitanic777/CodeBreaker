@@ -1,7 +1,7 @@
 // source/chf_writer.hpp -- a Channel F cartridge as F8 assembly source that builds back into it.
 //
 //     image_writer::Written r = chf_writer::reconstruct("game.chf", "out");
-//     r.source           game.asm (`ORG $0800`, DB, DW (big-endian), FILL, labels, F8 mnemonics; CodeBreaker's own build/f8_asm reads it)
+//     r.source           game.asm (the F8 SLEIGH description's syntax under the one directive layer: `.org 0x0800`, `.byte`, `.space`, `.equ`, labels; the one assembler reads it)
 //     r.same             the source, built, is the cartridge file byte for byte
 //     r.functions        {address: name}
 //

@@ -1,6 +1,7 @@
 // source/ps1_writer.cpp -- a PlayStation program as assembly source that builds back into it (ps1_writer.hpp).
 
 #include "source/ps1_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -157,23 +158,8 @@ enum class Kind { None, Text, Hardware, Variable };
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x1F801000, "EXP1_BASE"},  {0x1F801004, "EXP2_BASE"}, {0x1F801008, "EXP1_DELAY"}, {0x1F80100C, "EXP3_DELAY"}, {0x1F801010, "BIOS_DELAY"},
-        {0x1F801014, "SPU_DELAY"},  {0x1F801018, "CDROM_DELAY"}, {0x1F80101C, "EXP2_DELAY"}, {0x1F801020, "COM_DELAY"}, {0x1F801060, "RAM_SIZE"},
-        {0x1F801040, "JOY_DATA"},   {0x1F801044, "JOY_STAT"},  {0x1F801048, "JOY_MODE"},   {0x1F80104A, "JOY_CTRL"},   {0x1F80104E, "JOY_BAUD"},
-        {0x1F801050, "SIO_DATA"},   {0x1F801054, "SIO_STAT"},  {0x1F801058, "SIO_MODE"},   {0x1F80105A, "SIO_CTRL"},   {0x1F80105E, "SIO_BAUD"},
-        {0x1F801070, "I_STAT"},     {0x1F801074, "I_MASK"},
-        {0x1F801080, "DMA0_MADR"},  {0x1F801084, "DMA0_BCR"},  {0x1F801088, "DMA0_CHCR"},  {0x1F801090, "DMA1_MADR"},  {0x1F801094, "DMA1_BCR"},
-        {0x1F801098, "DMA1_CHCR"},  {0x1F8010A0, "DMA2_MADR"}, {0x1F8010A4, "DMA2_BCR"},   {0x1F8010A8, "DMA2_CHCR"},  {0x1F8010B0, "DMA3_MADR"},
-        {0x1F8010B4, "DMA3_BCR"},   {0x1F8010B8, "DMA3_CHCR"}, {0x1F8010C0, "DMA4_MADR"},  {0x1F8010C4, "DMA4_BCR"},   {0x1F8010C8, "DMA4_CHCR"},
-        {0x1F8010D0, "DMA5_MADR"},  {0x1F8010D4, "DMA5_BCR"},  {0x1F8010D8, "DMA5_CHCR"},  {0x1F8010E0, "DMA6_MADR"},  {0x1F8010E4, "DMA6_BCR"},
-        {0x1F8010E8, "DMA6_CHCR"},  {0x1F8010F0, "DMA_DPCR"},  {0x1F8010F4, "DMA_DICR"},
-        {0x1F801100, "T0_COUNT"},   {0x1F801104, "T0_MODE"},   {0x1F801108, "T0_TARGET"},  {0x1F801110, "T1_COUNT"},   {0x1F801114, "T1_MODE"},
-        {0x1F801118, "T1_TARGET"},  {0x1F801120, "T2_COUNT"},  {0x1F801124, "T2_MODE"},    {0x1F801128, "T2_TARGET"},
-        {0x1F801800, "CD_INDEX"},   {0x1F801801, "CD_REG1"},   {0x1F801802, "CD_REG2"},    {0x1F801803, "CD_REG3"},
-        {0x1F801810, "GPU_GP0"},    {0x1F801814, "GPU_GP1"},   {0x1F801820, "MDEC_DATA"},  {0x1F801824, "MDEC_CTRL"},
-        {0x1F801D80, "SPU_MAIN_VOL_L"}, {0x1F801D82, "SPU_MAIN_VOL_R"}, {0x1F801DA6, "SPU_ADDR"}, {0x1F801DA8, "SPU_DATA"}, {0x1F801DAA, "SPU_CTRL"},
-        {0x1F801DAE, "SPU_STAT"},   {0xFFFE0130, "CACHE_CTRL"}};
+    // config/knowledge/ps1/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("ps1", "hardware");
     return table;
 }
 

@@ -1,5 +1,6 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
 #include "formats/psp.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -217,13 +218,9 @@ std::optional<std::uint32_t> register_address(std::uint32_t address) {
 std::optional<std::string> hardware_name(std::uint32_t address) {
     const std::optional<std::uint32_t> p = register_address(address);
     if (!p) return std::nullopt;
-    const struct {
-        std::uint32_t lo, hi;
-        const char* block;
-    } blocks[] = {{0x1C000000, 0x1C0FFFFF, "MEMCTL"}, {0x1C100000, 0x1C1FFFFF, "SYSREG"}, {0x1C300000, 0x1C3FFFFF, "INTC"}, {0x1C500000, 0x1C5FFFFF, "TIMER"},
-                  {0x1C800000, 0x1C8FFFFF, "DMAC"},   {0x1D400000, 0x1D4FFFFF, "GE"},     {0x1E140000, 0x1E14FFFF, "LCDC"}};
+    static const std::vector<knowledge::HardwareRegion> blocks = knowledge::standard().hardware_regions("psp", "blocks");   // (config/knowledge/psp/registers.json)
     for (const auto& b : blocks)
-        if (*p >= b.lo && *p <= b.hi) return std::format("{}_{:04X}", b.block, *p - b.lo);
+        if (*p >= b.address && *p - b.address < b.size) return std::format("{}_{:04X}", b.name, *p - b.address);
     return std::format("IO_{:08X}", *p);
 }
 

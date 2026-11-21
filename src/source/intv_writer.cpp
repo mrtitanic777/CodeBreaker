@@ -2,6 +2,7 @@
 // source/intv_writer.cpp -- an Intellivision cartridge as CP1610 source that builds back into it (intv_writer.hpp).
 
 #include "source/intv_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -59,26 +60,8 @@ std::string word_text(std::uint16_t v) { return std::format("${:04X}", v); }
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = [] {
-        std::map<std::uint32_t, std::string> t;
-        for (unsigned n = 0; n < 8; ++n) {
-            t[n] = std::format("STIC_MOB{}_X", n);
-            t[8 + n] = std::format("STIC_MOB{}_Y", n);
-            t[0x10 + n] = std::format("STIC_MOB{}_A", n);
-            t[0x18 + n] = std::format("STIC_MOB{}_COLLISION", n);
-        }
-        t[0x20] = "STIC_DISPLAY_ENABLE";
-        t[0x21] = "STIC_COLOR_STACK_MODE";
-        for (unsigned n = 0; n < 4; ++n) t[0x28 + n] = std::format("STIC_COLOR_STACK_{}", n);
-        t[0x2C] = "STIC_BORDER_COLOR";
-        t[0x30] = "STIC_HORIZONTAL_DELAY";
-        t[0x31] = "STIC_VERTICAL_DELAY";
-        t[0x32] = "STIC_BORDER_EXTENSION";
-        const char* psg[] = {"PSG_A_PERIOD_LO", "PSG_B_PERIOD_LO", "PSG_C_PERIOD_LO", "PSG_ENVELOPE_PERIOD_LO", "PSG_A_PERIOD_HI", "PSG_B_PERIOD_HI", "PSG_C_PERIOD_HI",
-                             "PSG_ENVELOPE_PERIOD_HI", "PSG_ENVELOPE_TYPE", "PSG_NOISE_PERIOD", "PSG_MIXER", "PSG_A_VOLUME", "PSG_B_VOLUME", "PSG_C_VOLUME", "PSG_IO_PORT_0", "PSG_IO_PORT_1"};
-        for (unsigned n = 0; n < 16; ++n) t[0x1F0 + n] = psg[n];
-        return t;
-    }();
+    // config/knowledge/intv/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("intv", "hardware");
     return table;
 }
 

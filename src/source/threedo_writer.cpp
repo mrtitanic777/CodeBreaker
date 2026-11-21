@@ -2,6 +2,7 @@
 // source/threedo_writer.cpp -- a 3DO program as assembly source that builds back into it (threedo_writer.hpp).
 
 #include "source/threedo_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -138,12 +139,8 @@ Bytes rebuilt_file(const formats::threedo::Program& program, const Bytes& built)
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& hardware() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x03300000, "MADAM_REVISION"}, {0x03300004, "MADAM_MSYSBITS"}, {0x03300008, "MADAM_MCTL"},     {0x0330000C, "MADAM_SLTIME"},
-        {0x03300010, "MADAM_ABORT"},    {0x03300014, "MADAM_PRIV"},     {0x03300018, "MADAM_STATUS"},   {0x03400000, "CLIO_REVISION"},
-        {0x03400004, "CLIO_CSTATBITS"}, {0x03400008, "CLIO_WATCHDOG"},  {0x03400010, "CLIO_HCOUNT"},    {0x03400014, "CLIO_VCOUNT"},
-        {0x03400018, "CLIO_SEED"},      {0x03400040, "CLIO_IRQ0"},      {0x03400044, "CLIO_IRQ0_SET"},  {0x03400048, "CLIO_IRQ0_CLEAR"},
-        {0x03400060, "CLIO_IRQ1"},      {0x03400064, "CLIO_IRQ1_SET"},  {0x03400068, "CLIO_IRQ1_CLEAR"}};
+    // config/knowledge/threedo/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("threedo", "hardware");
     return table;
 }
 

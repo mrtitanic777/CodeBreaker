@@ -32,16 +32,19 @@ namespace cb::source::risc_source {
 
 // The text the description reads `bytes` (one instruction, at `pc`) as, when it assembles back to the same bytes; nullopt when it does not (or
 // the bytes are no instruction).
-std::optional<std::string> described(std::string_view cpu, ByteView bytes, std::uint64_t pc);
+// `following`: the bytes after the instruction, for a processor whose branch reads its delay slot's instruction with it (SuperH).
+std::optional<std::string> described(std::string_view cpu, ByteView bytes, std::uint64_t pc, ByteView following = {});
 
 // The text the description reads `bytes` (one instruction) as, whether or not it assembles back to the same bytes; nullopt for bytes that are no instruction.
 std::optional<std::string> read_text(std::string_view cpu, ByteView bytes, std::uint64_t pc);
 
 // One instruction as a line of source (without its indent): the description's text with every number literal whose value is one of `operands`
 // and has a name in `names` written as its name; `immediate` (when not empty) written in place of the last number literal (a MIPS address half:
-// `%hi(name)`); or `.byte` of its bytes with the text in a comment.
+// `%hi(name)`); or `.byte` of its bytes with the text in a comment. `symbols` (the program's labels and equates, name -> value): the line with
+// the names put in is kept only when it assembles to the instruction's own bytes, else the line with fewer names, else the description's plain text.
 std::string code(std::string_view cpu, ByteView bytes, std::uint64_t pc, const std::map<std::uint32_t, std::string>& names, std::span<const std::uint32_t> operands,
-                 const std::string& immediate = {});
+                 const std::string& immediate = {}, ByteView following = {},
+                 const decompile::NameLabels* symbols = nullptr);
 
 // A 68000 instruction: `code` with the names of the addresses its operands and its target name (absolute and PC-relative operands, long immediates,
 // branch targets).

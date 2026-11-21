@@ -1,4 +1,5 @@
 #include "source/coleco_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <format>
 
@@ -6,7 +7,7 @@ namespace cb::source::coleco_writer {
 
 const z80_writer::Machine& machine() {
     static const z80_writer::Machine kColeco{
-        .ports = {{0x80, "KEYPAD_SELECT"}, {0xC0, "JOYSTICK_SELECT"}, {0xBE, "VDP_DATA"}, {0xBF, "VDP_CTRL"}, {0xFC, "JOY1"}, {0xFF, "PSG_JOY2"}},
+        .ports = knowledge::standard().hardware_names("coleco", "ports"),   // (config/knowledge/coleco/registers.json)
         .names = formats::coleco::bios_names()};
     return kColeco;
 }

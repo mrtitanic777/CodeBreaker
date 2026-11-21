@@ -31,7 +31,7 @@ std::string clean(std::string_view s) {
 image_writer::Written write(const formats::psp::Program& program, std::string_view file_name, const std::filesystem::path& folder) {
     mips_elf_writer::Machine m;
     m.variant = decompile::mips::Variant::Allegrex;
-    m.encoder = &isa::allegrex_encoder();
+    m.cpu = "mips";   // (the MIPS32 description: the VFPU's instructions stay as their bits)
     m.description = std::string("PSP ") + (program.kind == formats::psp::Kind::Pbp ? "EBOOT.PBP" : program.prx() ? "module (PRX)" : "executable (ELF)") + " (Allegrex)";
     if (!program.title.empty()) m.description += ": " + program.title;
     m.hardware = [](std::uint32_t a) { return formats::psp::hardware_name(a); };

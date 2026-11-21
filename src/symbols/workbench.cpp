@@ -108,17 +108,10 @@ names::PowerPcNames wb_powerpc_names(const std::filesystem::path& module) {
 // {import symbol: name} for a PowerPC image's imports: the libraries it imports from are in the .xex header when the image came from one,
 // else the kernel and the system library, in the order every image seen has them; the numbers of the console's system libraries are the base's.
 std::map<std::string, std::string> wb_console_import_names(knowledge::Knowledge& kb, const std::filesystem::path& module) {
-    const knowledge::Rows table = kb.table("xbox360", "ordinal_names");
     const std::vector<std::string> libraries =
         formats::xex::import_libraries(module).value_or(std::vector<std::string>{"xboxkrnl.exe", "xam.xex"});
     std::vector<std::map<std::string, std::string>> numbers;
-    for (const std::string& library : libraries) {
-        std::map<std::string, std::string> names;
-        if (const knowledge::Value* entry = table.find(text::lower(library)); entry != nullptr && entry->map() != nullptr)
-            for (const auto& [number, name] : *entry->map())
-                if (name.text() != nullptr) names[number] = *name.text();
-        numbers.push_back(std::move(names));
-    }
+    for (const std::string& library : libraries) numbers.push_back(kb.export_names("xbox360", text::lower(library)));
     std::set<std::string> distinct;
     const ppc::Image image = ppc::Image::read(module);   // (named: its imports are walked below)
     for (const auto& [address, symbol] : image.imports()) distinct.insert(symbol);

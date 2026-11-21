@@ -2,6 +2,7 @@
 // source/wonderswan_writer.cpp -- a WonderSwan cartridge as NASM source that builds back into it (wonderswan_writer.hpp).
 
 #include "source/wonderswan_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -253,20 +254,8 @@ private:
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& ports() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0x00, "DISPLAY_CTRL"}, {0x01, "BACK_COLOR"},   {0x02, "LINE_CURRENT"}, {0x03, "LINE_COMPARE"}, {0x04, "SPR_BASE"},     {0x05, "SPR_FIRST"},
-        {0x06, "SPR_COUNT"},    {0x07, "MAP_BASE"},     {0x08, "SCR2_WIN_X0"},  {0x09, "SCR2_WIN_Y0"},  {0x0A, "SCR2_WIN_X1"},  {0x0B, "SCR2_WIN_Y1"},
-        {0x0C, "SPR_WIN_X0"},   {0x0D, "SPR_WIN_Y0"},   {0x0E, "SPR_WIN_X1"},   {0x0F, "SPR_WIN_Y1"},   {0x10, "SCR1_X"},       {0x11, "SCR1_Y"},
-        {0x12, "SCR2_X"},       {0x13, "SCR2_Y"},       {0x14, "LCD_CTRL"},     {0x15, "LCD_ICON"},     {0x16, "LCD_VTOTAL"},   {0x17, "LCD_VSYNC"},
-        {0x1C, "PALMONO_POOL0"}, {0x1D, "PALMONO_POOL1"}, {0x1E, "PALMONO_POOL2"}, {0x1F, "PALMONO_POOL3"}, {0x40, "DMA_SOURCE"}, {0x44, "DMA_DEST"},
-        {0x46, "DMA_LENGTH"},   {0x48, "DMA_CTRL"},     {0x4A, "SDMA_SOURCE"},  {0x4E, "SDMA_LENGTH"},  {0x52, "SDMA_CTRL"},    {0x60, "SYSTEM_CTRL2"},
-        {0x62, "SYSTEM_CTRL3"}, {0x80, "SND_CH1_PITCH"}, {0x82, "SND_CH2_PITCH"}, {0x84, "SND_CH3_PITCH"}, {0x86, "SND_CH4_PITCH"}, {0x88, "SND_CH1_VOL"},
-        {0x89, "SND_CH2_VOL"},  {0x8A, "SND_CH3_VOL"},  {0x8B, "SND_CH4_VOL"},  {0x8C, "SND_SWEEP"},    {0x8D, "SND_SWEEP_TIME"}, {0x8E, "SND_NOISE"},
-        {0x8F, "SND_WAVE_BASE"}, {0x90, "SND_CTRL"},    {0x91, "SND_OUTPUT"},   {0x92, "SND_RANDOM"},   {0x94, "SND_VOL_CH2"},  {0xA0, "HW_FLAGS"},
-        {0xA2, "TIMER_CTRL"},   {0xA4, "HTIMER_FREQ"},  {0xA6, "VTIMER_FREQ"},  {0xA8, "HTIMER_COUNT"}, {0xAA, "VTIMER_COUNT"}, {0xB0, "INT_BASE"},
-        {0xB1, "SER_DATA"},     {0xB2, "INT_ENABLE"},   {0xB3, "SER_STATUS"},   {0xB4, "INT_STATUS"},    {0xB5, "KEY_SCAN"},     {0xB6, "INT_ACK"},
-        {0xBA, "IEEP_DATA"},    {0xBC, "IEEP_CMD"},     {0xBE, "IEEP_CTRL"},    {0xC0, "BANK_ROM_LINEAR"}, {0xC1, "BANK_SRAM"},  {0xC2, "BANK_ROM0"},
-        {0xC3, "BANK_ROM1"},    {0xC4, "EEP_DATA"},     {0xC6, "EEP_CMD"},      {0xC8, "EEP_CTRL"},     {0xCA, "RTC_CTRL"},     {0xCB, "RTC_DATA"}};
+    // config/knowledge/wonderswan/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("wonderswan", "ports");
     return table;
 }
 

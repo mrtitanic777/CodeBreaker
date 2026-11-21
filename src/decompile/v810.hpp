@@ -93,18 +93,4 @@ struct Insn {
 // The instruction at code[offset], which sits at address `pc`; nullopt for an undefined pattern or one cut off by the end of `code`.
 std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc);
 
-using decompile::AddressLabels;
-using decompile::NameLabels;
-
-// The instruction as source; a branch target that has a label is written as the label. `immediate`, when not empty, is written for the instruction's immediate or
-// displacement (the writer's `hi(label)` / `lo(label)`).
-std::string text(const Insn& insn, const AddressLabels& labels = {}, std::string_view immediate = {});
-
-// The bytes of one instruction line. Labels are resolved from `labels`; with `lenient`, a name that is not there counts as 0 and out-of-range values are not refused (the first
-// pass of an assembler needs only the size). Throws ParseError for a line that is not an instruction, an unknown name or a value out of range.
-Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels = {}, bool lenient = false);
-
-// A numeric expression as the assembler reads it: decimal, 0xhex, labels, `hi(x)`, `lo(x)`, `+` and `-`.
-std::int64_t value(std::string_view expr, const NameLabels& labels, bool lenient = false);
-
 }  // namespace cb::decompile::v810

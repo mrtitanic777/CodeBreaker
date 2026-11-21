@@ -8,9 +8,10 @@
 #include <set>
 
 #include "build/asm_text.hpp"
-#include "build/f8_asm.hpp"
 #include "core/fs.hpp"
 #include "decompile/f8.hpp"
+#include "source/described_source.hpp"
+#include "source/processors.hpp"
 
 namespace cb::source::chf_writer {
 
@@ -22,7 +23,10 @@ namespace {
 constexpr iw::Spelling kSub{"sub_", 4};
 constexpr iw::Spelling kLocal{"L_", 4};
 constexpr iw::Spelling kData{"D_", 4};
-const iw::DataSyntax kSyntax{.bytes = "DB", .fill = "FILL", .fill_separator = ","};
+const processors::Processor& f8_cpu() {
+    static const processors::Processor& cpu = processors::find("f8");
+    return cpu;
+}
 
 class ChfFlow final : public iw::CodeModel<df::Insn> {
 public:
@@ -56,7 +60,7 @@ public:
     }
     std::uint32_t size(const df::Insn& insn) const override { return insn.size; }
     std::string text(const df::Insn& insn) const override { return text_.at(insn.at); }
-    std::vector<std::string> data_lines(ByteView data) const override { return iw::data_lines(data, kSyntax); }
+    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
 
 private:
     const formats::chf::Rom& rom_;
@@ -93,34 +97,27 @@ iw::Written write(const formats::chf::Rom& rom, std::string_view file_name, cons
     decompile::AddressLabels address_labels;
     for (const auto& [a, n] : labels) address_labels[a] = n;
     for (const std::uint32_t a : used) address_labels[a] = chf::bios().at(a);
-    decompile::NameLabels name_values;
-    for (const auto& [a, n] : address_labels) name_values[n] = a;
 
     std::map<std::uint32_t, std::string> instruction_text;
     for (const auto& [at, insn] : code) {
-        std::string t = df::text(insn, address_labels, insn.op == 0x2A);
-        bool same = false;
-        try {
-            const Bytes built = df::assemble(t, at, name_values);
-            same = built.size() == insn.size && std::equal(built.begin(), built.end(), insn.raw.begin());
-        } catch (const Error&) {
-        }
-        if (same) {
-            instruction_text[at] = std::move(t);
+        // (the description's text, a branch target or a DCI's constant written as its label, kept when it builds back into the instruction's bytes)
+        std::optional<std::string> t = described_source::checked_text(f8_cpu(), insn.bytes(), at, insn.size);
+        if (t) {
+            const std::optional<std::uint32_t> named = insn.target ? insn.target : insn.op == 0x2A ? std::optional<std::uint32_t>(insn.value) : std::nullopt;
+            if (named && address_labels.contains(*named)) *t = described_source::name_number(*t, *named, address_labels.at(*named), false);
+            instruction_text[at] = *t;
         } else {
-            std::string row = "DB ";
-            for (std::size_t k = 0; k < insn.size; ++k) row += (k ? "," : "") + std::format("${:02X}", insn.raw[k]);
-            instruction_text[at] = row + "  ; " + df::text(insn, address_labels);
+            instruction_text[at] = described_source::byte_line(f8_cpu(), insn.bytes(), at, {}, "");
         }
     }
 
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                  std::format("; Channel F cartridge, {} bytes at $0800 (the F8's memory)", rom.data.size()), ""},
-                                "f8", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(std::format("{:<20} EQU ${:04X}", chf::bios().at(a), a));
+                                "sleigh-f8", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(described_source::equ(chf::bios().at(a), a, 4));
     if (!used.empty()) out.append("");
     out.part("ROM", "segment", std::nullopt, rom.data.size());
-    out.append(std::format("        ORG ${:04X}", chf::kBase));
+    out.append(std::format("        .org 0x{:04x}", chf::kBase));
     ChfListing listing(rom, code, instruction_text);
     iw::emit<df::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
@@ -130,9 +127,7 @@ iw::Written write(const formats::chf::Rom& rom, std::string_view file_name, cons
     iw::assembled(
         r,
         [&] {
-            build::byte_asm::Image image = build::f8_asm::build(source);
-            if (image.base != chf::kBase) throw build::AsmError("the image starts at the wrong address");
-            return std::move(image.data);
+            return described_source::assemble(f8_cpu(), source, folder);
         },
         rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;

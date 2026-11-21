@@ -1,6 +1,7 @@
 // source/sega32x_writer.cpp -- a Sega 32X cartridge as source that builds back into it (sega32x_writer.hpp).
 
 #include "source/sega32x_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -17,17 +18,9 @@ namespace iw = image_writer;
 namespace f32 = formats::sega32x;
 
 const std::map<std::uint32_t, std::string>& hardware() {
+    // the 32X's own registers (config/knowledge/sega32x/registers.json) and the SH-2's (sh2/registers.json), which name an address both do
     static const std::map<std::uint32_t, std::string> table = [] {
-        std::map<std::uint32_t, std::string> t = {
-            {0x4000, "MARS_SYS_INTMASK"},  {0x4002, "MARS_SYS_STANDBY"},  {0x4004, "MARS_SYS_HCOUNT"},     {0x4006, "MARS_SYS_DREQCTL"},
-            {0x4008, "MARS_SYS_DREQSRC_H"}, {0x400A, "MARS_SYS_DREQSRC_L"}, {0x400C, "MARS_SYS_DREQDST_H"}, {0x400E, "MARS_SYS_DREQDST_L"},
-            {0x4010, "MARS_SYS_DREQLEN"},  {0x4012, "MARS_SYS_FIFO"},     {0x4014, "MARS_SYS_VRESCLR"},     {0x4016, "MARS_SYS_VINTCLR"},
-            {0x4018, "MARS_SYS_HINTCLR"},  {0x401A, "MARS_SYS_CMDINTCLR"}, {0x401C, "MARS_SYS_PWMINTCLR"},
-            {0x4030, "MARS_PWM_CTL"},      {0x4032, "MARS_PWM_CYCLE"},    {0x4034, "MARS_PWM_LCH"},         {0x4036, "MARS_PWM_RCH"},
-            {0x4038, "MARS_PWM_MONO"},     {0x4100, "MARS_VDP_BITMAPMD"}, {0x4102, "MARS_VDP_SHIFT"},       {0x4104, "MARS_VDP_FILLEN"},
-            {0x4106, "MARS_VDP_FILADR"},   {0x4108, "MARS_VDP_FILDAT"},   {0x410A, "MARS_VDP_FBCTL"},
-            {0x04000000, "MARS_FRAMEBUFFER"}, {0x04020000, "MARS_OVERWRITE_IMAGE"}, {0x4200, "MARS_PALETTE"}};
-        for (unsigned i = 0; i < 8; ++i) t[0x4020 + 2 * i] = std::format("MARS_SYS_COMM{}", i);
+        std::map<std::uint32_t, std::string> t = knowledge::standard().hardware_names("sega32x", "hardware");
         for (const auto& [a, n] : sh2_writer::chip_registers()) t[a] = n;
         return t;
     }();
@@ -71,10 +64,10 @@ iw::Written write(const f32::Rom& rom, std::string_view file_name, const std::fi
             return (a >= f32::kSdram && a < f32::kSdram + f32::kSdramSize && a >= program_end) || (a >= f32::kFrameBuffer && a < f32::kFrameBuffer + f32::kFrameBufferSize);
         };
         image.module = std::string(file_name);
-        image.head = {std::format("! {}.sh2.s -- the SH-2 program of {}, written by CodeBreaker", stem, base_name),
-                      std::format("! \"{}\": {} bytes from ROM offset 0x{:X}, copied to SDRAM at 0x{:08X}; master starts at 0x{:08X}, slave at 0x{:08X}",
+        image.head = {std::format("; {}.sh2.s -- the SH-2 program of {}, written by CodeBreaker", stem, base_name),
+                      std::format("; \"{}\": {} bytes from ROM offset 0x{:X}, copied to SDRAM at 0x{:08X}; master starts at 0x{:08X}, slave at 0x{:08X}",
                                   rom.header.module_name, program.size(), rom.header.sh2_offset, f32::kSdram, rom.header.master_start, rom.header.slave_start),
-                      std::format("! the 68000 side is {}.asm", stem)};
+                      std::format("; the 68000 side is {}.asm", stem)};
         iw::Written sh = sh2_writer::write(image, stem + ".sh2", folder, stem + ".sh2.built.bin");
         r.source = sh.source;
         for (const auto& [a, n] : sh.functions) r.functions[a] = n;

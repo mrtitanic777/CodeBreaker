@@ -17,8 +17,11 @@ bool rs_is_hex(char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 
 bool rs_is_word(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; }
 
 // The text of one instruction as the description reads it, or nullopt for bytes that are no instruction.
-std::optional<std::string> rs_read(const processors::Processor& cpu, ByteView bytes, std::uint64_t pc) {
-    const std::vector<processors::Line> lines = processors::read_described(cpu, bytes, pc, 1);
+// `following` is what comes after the instruction (a delay slot's instruction is read with its branch).
+std::optional<std::string> rs_read(const processors::Processor& cpu, ByteView bytes, std::uint64_t pc, ByteView following = {}) {
+    Bytes joined(bytes.begin(), bytes.end());
+    joined.insert(joined.end(), following.begin(), following.end());
+    const std::vector<processors::Line> lines = processors::read_described(cpu, joined, pc, 1);
     if (lines.empty() || lines[0].bytes.size() != bytes.size() || lines[0].text.starts_with(".d")) return std::nullopt;
     return lines[0].text;
 }
@@ -51,9 +54,9 @@ std::string rs_replace_literals(const std::string& text, Pick&& pick) {
 
 }  // namespace
 
-std::optional<std::string> described(std::string_view cpu_name, ByteView bytes, std::uint64_t pc) {
+std::optional<std::string> described(std::string_view cpu_name, ByteView bytes, std::uint64_t pc, ByteView following) {
     const processors::Processor& cpu = processors::find(cpu_name);
-    const std::optional<std::string> text = rs_read(cpu, bytes, pc);
+    const std::optional<std::string> text = rs_read(cpu, bytes, pc, following);
     if (!text) return std::nullopt;
     try {
         const processors::Image again = processors::assemble_described(cpu, std::format("\t.org 0x{:x}\n\t{}\n", pc, *text), {});
@@ -67,39 +70,59 @@ std::optional<std::string> described(std::string_view cpu_name, ByteView bytes, 
 std::optional<std::string> read_text(std::string_view cpu_name, ByteView bytes, std::uint64_t pc) { return rs_read(processors::find(cpu_name), bytes, pc); }
 
 std::string code(std::string_view cpu_name, ByteView bytes, std::uint64_t pc, const std::map<std::uint32_t, std::string>& names, std::span<const std::uint32_t> operands,
-                 const std::string& immediate) {
-    std::optional<std::string> text = described(cpu_name, bytes, pc);
+                 const std::string& immediate, ByteView following, const decompile::NameLabels* symbols) {
+    std::optional<std::string> text = described(cpu_name, bytes, pc, following);
     if (!text) {
         std::string raw;
         for (const std::uint8_t b : bytes) raw += std::format("{}0x{:02x}", raw.empty() ? "" : ",", b);
-        const std::optional<std::string> said = rs_read(processors::find(cpu_name), bytes, pc);
+        const std::optional<std::string> said = rs_read(processors::find(cpu_name), bytes, pc, following);
         return ".byte " + raw + (said ? "  ; " + *said : std::string());
     }
-    std::string out = std::move(*text);
-    if (!immediate.empty()) {   // the last number literal, with its sign
+    const std::string plain = std::move(*text);
+    const auto with_names = [&] {
+        return rs_replace_literals(plain, [&](std::uint64_t n, const std::string&) -> std::optional<std::string> {
+            if (n > 0xFFFFFFFFull) return std::nullopt;
+            const std::uint32_t v = static_cast<std::uint32_t>(n);
+            if (std::find(operands.begin(), operands.end(), v) == operands.end()) return std::nullopt;
+            const auto named = names.find(v);
+            if (named == names.end()) return std::nullopt;
+            return named->second;
+        });
+    };
+    const auto with_immediate = [&]() -> std::optional<std::string> {   // the last number literal, with its sign
         std::size_t last = std::string::npos, last_end = 0;
-        for (std::size_t i = 0; i + 2 < out.size(); ++i) {
-            if (out[i] != '0' || out[i + 1] != 'x' || (i > 0 && rs_is_word(out[i - 1]))) continue;
+        for (std::size_t i = 0; i + 2 < plain.size(); ++i) {
+            if (plain[i] != '0' || plain[i + 1] != 'x' || (i > 0 && rs_is_word(plain[i - 1]))) continue;
             std::size_t e = i + 2;
-            while (e < out.size() && rs_is_hex(out[e])) ++e;
-            if (e == i + 2 || (e < out.size() && rs_is_word(out[e]))) continue;
+            while (e < plain.size() && rs_is_hex(plain[e])) ++e;
+            if (e == i + 2 || (e < plain.size() && rs_is_word(plain[e]))) continue;
             last = i, last_end = e;
             i = e - 1;
         }
-        if (last != std::string::npos) {
-            const std::size_t from = last > 0 && out[last - 1] == '-' ? last - 1 : last;
-            return out.substr(0, from) + immediate + out.substr(last_end);
+        if (last == std::string::npos) return std::nullopt;
+        const std::size_t from = last > 0 && plain[last - 1] == '-' ? last - 1 : last;
+        std::string line = plain.substr(0, from) + immediate + plain.substr(last_end);
+        // (PowerPC: the description writes an add of a negative number as `subi` of its magnitude; an address half is the add's operand, not its negation)
+        if (cpu_name == "ppc")
+            for (const std::string_view pseudo : {"subi ", "subis "})
+                if (line.starts_with(pseudo)) line = std::string("add") + line.substr(3);
+        return line;
+    };
+    // (with the program's symbols to check against: the line is kept only when the names' values, put in the instruction, are its bytes)
+    const auto holds = [&](const std::string& line) {
+        if (!symbols) return true;
+        const std::optional<Bytes> built = processors::assemble_line(processors::find(cpu_name), line, pc, *symbols);
+        return built && built->size() == bytes.size() && std::equal(built->begin(), built->end(), bytes.begin());
+    };
+    if (!immediate.empty()) {
+        if (const std::optional<std::string> line = with_immediate()) {
+            if (holds(*line)) return *line;
+        } else {
+            return plain;
         }
-        return out;
     }
-    return rs_replace_literals(out, [&](std::uint64_t n, const std::string&) -> std::optional<std::string> {
-        if (n > 0xFFFFFFFFull) return std::nullopt;
-        const std::uint32_t v = static_cast<std::uint32_t>(n);
-        if (std::find(operands.begin(), operands.end(), v) == operands.end()) return std::nullopt;
-        const auto named = names.find(v);
-        if (named == names.end()) return std::nullopt;
-        return named->second;
-    });
+    std::string named = with_names();
+    return named != plain && holds(named) ? named : plain;
 }
 
 std::string m68k_code(const decompile::m68k::Insn& insn, const decompile::AddressLabels& labels) {

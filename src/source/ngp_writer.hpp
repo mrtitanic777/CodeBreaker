@@ -1,7 +1,7 @@
 // source/ngp_writer.hpp -- a Neo Geo Pocket cartridge as TLCS-900/H assembly source that builds back into it.
 //
 //     image_writer::Written r = ngp_writer::reconstruct("game.ngp", "out");
-//     r.source           game.asm (CodeBreaker's own build/tlcs900_asm reads it: ORG, DB, FILL, EQU, labels and the instruction text of decompile/tlcs900)
+//     r.source           game.asm (the TLCS-900/H SLEIGH description's syntax under the one directive layer: `.org`, `.byte`, `.ascii`, `.space`, `.equ`, labels; the one assembler reads it)
 //     r.same             the source, built, is the cartridge file byte for byte
 //     r.functions        {address: name}   (addresses as the CPU sees them: $200000 + the file offset)
 //

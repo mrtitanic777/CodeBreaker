@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <typeinfo>
+#include <unordered_map>
 
 #include "decompile/engine/core/cpp/loadimage.hh"
 #include "decompile/engine/core/cpp/sleigh.hh"
@@ -23,7 +24,7 @@ namespace {
 
 using namespace ghidra;
 
-constexpr int kMaxInst = 16;          // bytes of an instruction (the translator's own limit)
+constexpr int kMaxInst = 16;         // bytes of an instruction (the translator's own limit)
 constexpr int kMaxCtx = 64;           // bytes of context
 constexpr std::size_t kMaxAlts = 32;  // alternative solutions of one operand
 constexpr std::size_t kMaxParses = 3000;
@@ -259,6 +260,95 @@ struct Assembler::Impl {
     mutable Diagnostics diag;
     mutable std::map<const SubtableSymbol*, std::vector<std::vector<PatAlt>>> patterns;   // per subtable: per constructor id
 
+    // ---- what parsing a constructor's print pieces needs, made once per description: each literal piece squashed, each operand piece's
+    // index, the operands the print shows; and the squashed names of each name table and register list
+    struct CtorInfo {
+        std::vector<std::string> lit;   // a literal piece, squashed (empty for an operand piece)
+        std::vector<int> op;            // an operand piece's operand index; -1 for a literal one
+        std::vector<bool> printed;      // per operand: the print shows it
+    };
+    mutable std::unordered_map<const Constructor*, CtorInfo> infos;
+    struct NameList {
+        std::vector<std::string> nm;   // squashed
+        std::vector<char> ok;          // a name a table has (not its blank "\t" entries, not a missing register)
+    };
+    mutable std::unordered_map<const void*, NameList> squashedNames;
+    mutable std::unordered_map<const void*, std::string> squashedName;
+
+    const NameList& namesOf(const SleighSymbol* t) const {
+        auto it = squashedNames.find(t);
+        if (it != squashedNames.end()) return it->second;
+        NameList l;
+        for (const std::string& n : static_cast<const NameSymbol*>(t)->getNameTable()) {
+            l.ok.push_back(n != "\t");
+            l.nm.push_back(n == "\t" ? std::string() : squash(n));
+        }
+        return squashedNames.emplace(t, std::move(l)).first->second;
+    }
+    template <class Table>
+    const NameList& registersOf(const SleighSymbol* t, const Table& vt) const {
+        auto it = squashedNames.find(t);
+        if (it != squashedNames.end()) return it->second;
+        NameList l;
+        for (const auto* v : vt) {
+            l.ok.push_back(v != nullptr);
+            l.nm.push_back(v == nullptr ? std::string() : squash(v->getName()));
+        }
+        return squashedNames.emplace(t, std::move(l)).first->second;
+    }
+    const std::string& nameOf(const SleighSymbol* t) const {
+        auto it = squashedName.find(t);
+        if (it != squashedName.end()) return it->second;
+        return squashedName.emplace(t, squash(t->getName())).first->second;
+    }
+
+    const CtorInfo& infoOf(const Constructor* ct) const {
+        auto it = infos.find(ct);
+        if (it != infos.end()) return it->second;
+        CtorInfo ci;
+        ci.printed.assign(static_cast<std::size_t>(ct->getNumOperands()), false);
+        for (int i = 0; i < ct->getNumPrintPieces(); ++i) {
+            const std::string& pc = ct->getPrintPiece(i);
+            if (!pc.empty() && pc[0] == '\n') {
+                const std::size_t idx = pc.size() > 1 ? static_cast<std::size_t>(pc[1] - 'A') : ~std::size_t{0};
+                ci.op.push_back(idx < ci.printed.size() ? static_cast<int>(idx) : -2);   // (-2: an operand the constructor does not have)
+                ci.lit.emplace_back();
+                if (idx < ci.printed.size()) ci.printed[idx] = true;
+            } else {
+                ci.op.push_back(-1);
+                ci.lit.push_back(squash(pc));
+            }
+        }
+        return infos.emplace(ct, std::move(ci)).first->second;
+    }
+
+    // The constructors of a subtable that can start with a given character (index 256: the end of the text), in the table's order: those
+    // whose print starts with a word that begins with it, and those that start with anything else (an operand, no text). Made per
+    // character when first asked.
+    struct StartIndex {
+        std::vector<std::vector<std::uint32_t>> by;   // [257]
+        std::vector<char> made;
+    };
+    mutable std::unordered_map<const SubtableSymbol*, StartIndex> starts;
+
+    const std::vector<std::uint32_t>& startingWith(const SubtableSymbol* st, int c) const {
+        StartIndex& ix = starts[st];
+        if (ix.by.empty()) {
+            ix.by.resize(257);
+            ix.made.assign(257, 0);
+        }
+        if (ix.made[static_cast<std::size_t>(c)] == 0) {
+            std::vector<std::uint32_t>& list = ix.by[static_cast<std::size_t>(c)];
+            for (int i = 0; i < st->getNumConstructors(); ++i) {
+                const CtorInfo& ci = infoOf(st->getConstructor(static_cast<std::uint32_t>(i)));
+                const bool word = !ci.op.empty() && ci.op[0] == -1 && !ci.lit[0].empty();
+                if (!word || (c < 256 && static_cast<unsigned char>(ci.lit[0][0]) == c)) list.push_back(static_cast<std::uint32_t>(i));
+            }
+            ix.made[static_cast<std::size_t>(c)] = 1;
+        }
+        return ix.by[static_cast<std::size_t>(c)];
+    }
+
     // ---- the patterns of a constructor
     const std::vector<PatAlt>& altsOf(const Constructor* ct) const {
         const SubtableSymbol* st = ct->getParent();
@@ -294,52 +384,98 @@ struct Assembler::Impl {
     }
 
     // ---- evaluating a pattern expression over the bits known so far
+    // What kind of expression a node is, found once (the type tests of a dynamic_cast chain cost more than the arithmetic they lead to).
+    enum class Kind : std::uint8_t { Leaf, Constant, Start, End, Next2, Operand, Plus, Sub, Mult, LeftShift, RightShift, And, Or, Xor, Div, OtherBinary, Minus, Not, OtherUnary, Other };
+    struct Node {
+        Kind kind = Kind::Other;
+        LeafInfo li;
+        intb constant = 0;
+        int index = 0;                                // an operand's
+        const PatternExpression *left = nullptr, *right = nullptr;   // a binary's (right: null for a unary)
+    };
+    mutable std::unordered_map<const PatternExpression*, Node> nodes;
+
+    const Node& nodeOf(const PatternExpression* e) const {
+        auto it = nodes.find(e);
+        if (it != nodes.end()) return it->second;
+        Node nd;
+        if (leafInfo(e, nd.li)) nd.kind = Kind::Leaf;
+        else if (const auto* c = dynamic_cast<const ConstantValue*>(e)) nd.kind = Kind::Constant, nd.constant = c->getConstant();
+        else if (dynamic_cast<const StartInstructionValue*>(e) != nullptr) nd.kind = Kind::Start;
+        else if (dynamic_cast<const EndInstructionValue*>(e) != nullptr) nd.kind = Kind::End;
+        else if (dynamic_cast<const Next2InstructionValue*>(e) != nullptr) nd.kind = Kind::Next2;
+        else if (const auto* ovl = dynamic_cast<const OperandValue*>(e)) nd.kind = Kind::Operand, nd.index = ovl->getIndex();
+        else if (const auto* b = dynamic_cast<const BinaryExpression*>(e)) {
+            nd.left = b->getLeft(), nd.right = b->getRight();
+            nd.kind = dynamic_cast<const PlusExpression*>(e)         ? Kind::Plus
+                      : dynamic_cast<const SubExpression*>(e)        ? Kind::Sub
+                      : dynamic_cast<const MultExpression*>(e)       ? Kind::Mult
+                      : dynamic_cast<const LeftShiftExpression*>(e)  ? Kind::LeftShift
+                      : dynamic_cast<const RightShiftExpression*>(e) ? Kind::RightShift
+                      : dynamic_cast<const AndExpression*>(e)        ? Kind::And
+                      : dynamic_cast<const OrExpression*>(e)         ? Kind::Or
+                      : dynamic_cast<const XorExpression*>(e)        ? Kind::Xor
+                      : dynamic_cast<const DivExpression*>(e)        ? Kind::Div
+                                                                     : Kind::OtherBinary;
+        } else if (const auto* u = dynamic_cast<const UnaryExpression*>(e)) {
+            nd.left = u->getUnary();
+            nd.kind = dynamic_cast<const MinusExpression*>(e) ? Kind::Minus : dynamic_cast<const NotExpression*>(e) ? Kind::Not : Kind::OtherUnary;
+        }
+        return nodes.emplace(e, nd).first->second;
+    }
+
     std::optional<intb> eval(const PatternExpression* e, const Inst& n, int curOff, const Env& env, const State& st, const Overrides* ov,
                              int depth = 0) const {
         if (depth > 40) return std::nullopt;
-        LeafInfo li;
-        if (leafInfo(e, li)) {
-            const int abs = li.ctx() ? 0 : curOff;
+        const Node& nd = nodeOf(e);
+        switch (nd.kind) {
+        case Kind::Leaf: {
+            const int abs = nd.li.ctx() ? 0 : curOff;
             if (ov != nullptr) {
                 auto it = ov->find({e, abs});
                 if (it != ov->end()) return it->second;
             }
-            return readLeaf(st, li, abs);
+            return readLeaf(st, nd.li, abs);
         }
-        if (const auto* c = dynamic_cast<const ConstantValue*>(e)) return c->getConstant();
-        if (dynamic_cast<const StartInstructionValue*>(e) != nullptr) return env.startVal;
-        if (dynamic_cast<const EndInstructionValue*>(e) != nullptr) return env.nextVal;
-        if (dynamic_cast<const Next2InstructionValue*>(e) != nullptr) return std::nullopt;
-        if (const auto* ovl = dynamic_cast<const OperandValue*>(e)) {
-            const int idx = ovl->getIndex();
+        case Kind::Constant: return nd.constant;
+        case Kind::Start: return env.startVal;
+        case Kind::End: return env.nextVal;
+        case Kind::Next2: return std::nullopt;
+        case Kind::Operand: {
+            const int idx = nd.index;
             if (idx < 0 || idx >= n.ct->getNumOperands()) return std::nullopt;
             const PatternExpression* pe = operandExpr(n, idx);
             if (pe == nullptr) return nullptr == n.ct->getOperand(idx)->getDefiningSymbol() ? std::optional<intb>(std::nullopt) : std::optional<intb>(0);
             return eval(pe, n, n.opOff[static_cast<std::size_t>(idx)], env, st, ov, depth + 1);
         }
-        if (const auto* b = dynamic_cast<const BinaryExpression*>(e)) {
-            const auto l = eval(b->getLeft(), n, curOff, env, st, ov, depth + 1);
+        case Kind::Plus: case Kind::Sub: case Kind::Mult: case Kind::LeftShift: case Kind::RightShift: case Kind::And: case Kind::Or: case Kind::Xor:
+        case Kind::Div: case Kind::OtherBinary: {
+            const auto l = eval(nd.left, n, curOff, env, st, ov, depth + 1);
             if (!l) return std::nullopt;
-            const auto r = eval(b->getRight(), n, curOff, env, st, ov, depth + 1);
+            const auto r = eval(nd.right, n, curOff, env, st, ov, depth + 1);
             if (!r) return std::nullopt;
             const auto ul = static_cast<std::uint64_t>(*l), ur = static_cast<std::uint64_t>(*r);
-            if (dynamic_cast<const PlusExpression*>(e)) return static_cast<intb>(ul + ur);
-            if (dynamic_cast<const SubExpression*>(e)) return static_cast<intb>(ul - ur);
-            if (dynamic_cast<const MultExpression*>(e)) return static_cast<intb>(ul * ur);
-            if (dynamic_cast<const LeftShiftExpression*>(e)) return (*r < 0 || *r >= 64) ? std::nullopt : std::optional<intb>(static_cast<intb>(ul << *r));
-            if (dynamic_cast<const RightShiftExpression*>(e)) return (*r < 0 || *r >= 64) ? std::nullopt : std::optional<intb>(*l >> *r);
-            if (dynamic_cast<const AndExpression*>(e)) return static_cast<intb>(ul & ur);
-            if (dynamic_cast<const OrExpression*>(e)) return static_cast<intb>(ul | ur);
-            if (dynamic_cast<const XorExpression*>(e)) return static_cast<intb>(ul ^ ur);
-            if (dynamic_cast<const DivExpression*>(e)) return *r == 0 ? std::nullopt : std::optional<intb>(*l / *r);
+            switch (nd.kind) {
+            case Kind::Plus: return static_cast<intb>(ul + ur);
+            case Kind::Sub: return static_cast<intb>(ul - ur);
+            case Kind::Mult: return static_cast<intb>(ul * ur);
+            case Kind::LeftShift: return (*r < 0 || *r >= 64) ? std::nullopt : std::optional<intb>(static_cast<intb>(ul << *r));
+            case Kind::RightShift: return (*r < 0 || *r >= 64) ? std::nullopt : std::optional<intb>(*l >> *r);
+            case Kind::And: return static_cast<intb>(ul & ur);
+            case Kind::Or: return static_cast<intb>(ul | ur);
+            case Kind::Xor: return static_cast<intb>(ul ^ ur);
+            case Kind::Div: return *r == 0 ? std::nullopt : std::optional<intb>(*l / *r);
+            default: return std::nullopt;
+            }
+        }
+        case Kind::Minus: case Kind::Not: case Kind::OtherUnary: {
+            const auto v = eval(nd.left, n, curOff, env, st, ov, depth + 1);
+            if (!v) return std::nullopt;
+            if (nd.kind == Kind::Minus) return static_cast<intb>(0 - static_cast<std::uint64_t>(*v));
+            if (nd.kind == Kind::Not) return ~*v;
             return std::nullopt;
         }
-        if (const auto* u = dynamic_cast<const UnaryExpression*>(e)) {
-            const auto v = eval(u->getUnary(), n, curOff, env, st, ov, depth + 1);
-            if (!v) return std::nullopt;
-            if (dynamic_cast<const MinusExpression*>(e)) return static_cast<intb>(0 - static_cast<std::uint64_t>(*v));
-            if (dynamic_cast<const NotExpression*>(e)) return ~*v;
-            return std::nullopt;
+        case Kind::Other: break;
         }
         return std::nullopt;
     }
@@ -366,8 +502,9 @@ struct Assembler::Impl {
     void freeLeaves(const PatternExpression* e, const Inst& n, int curOff, const Env& env, const State& st, std::vector<Free>& out,
                     int depth = 0) const {
         if (depth > 40) return;
-        LeafInfo li;
-        if (leafInfo(e, li)) {
+        const Node& nd = nodeOf(e);
+        if (nd.kind == Kind::Leaf) {
+            const LeafInfo& li = nd.li;
             const int abs = li.ctx() ? 0 : curOff;
             if (readLeaf(st, li, abs)) return;
             for (const Free& f : out)
@@ -375,17 +512,17 @@ struct Assembler::Impl {
             out.push_back({li, e, abs});
             return;
         }
-        if (const auto* ovl = dynamic_cast<const OperandValue*>(e)) {
-            const int idx = ovl->getIndex();
+        if (nd.kind == Kind::Operand) {
+            const int idx = nd.index;
             if (idx < 0 || idx >= n.ct->getNumOperands()) return;
             if (const PatternExpression* pe = operandExpr(n, idx)) freeLeaves(pe, n, n.opOff[static_cast<std::size_t>(idx)], env, st, out, depth + 1);
             return;
         }
-        if (const auto* b = dynamic_cast<const BinaryExpression*>(e)) {
-            freeLeaves(b->getLeft(), n, curOff, env, st, out, depth + 1);
-            freeLeaves(b->getRight(), n, curOff, env, st, out, depth + 1);
-        } else if (const auto* u = dynamic_cast<const UnaryExpression*>(e)) {
-            freeLeaves(u->getUnary(), n, curOff, env, st, out, depth + 1);
+        if (nd.right != nullptr) {   // (a binary)
+            freeLeaves(nd.left, n, curOff, env, st, out, depth + 1);
+            freeLeaves(nd.right, n, curOff, env, st, out, depth + 1);
+        } else if (nd.left != nullptr) {   // (a unary)
+            freeLeaves(nd.left, n, curOff, env, st, out, depth + 1);
         }
     }
 
@@ -393,21 +530,20 @@ struct Assembler::Impl {
     std::uint64_t maskOf(const PatternExpression* e, const Inst& n, int curOff, const Env& env, const State& st, int depth = 0) const {
         if (depth > 30) return ~std::uint64_t{0};
         if (const auto k = eval(e, n, curOff, env, st, nullptr)) return static_cast<std::uint64_t>(*k);
-        LeafInfo li;
-        if (leafInfo(e, li)) return li.sign || li.width >= 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << li.width) - 1;
-        if (const auto* ovl = dynamic_cast<const OperandValue*>(e)) {
-            const int idx = ovl->getIndex();
+        const Node& nd = nodeOf(e);
+        if (nd.kind == Kind::Leaf) return nd.li.sign || nd.li.width >= 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << nd.li.width) - 1;
+        if (nd.kind == Kind::Operand) {
+            const int idx = nd.index;
             if (idx < 0 || idx >= n.ct->getNumOperands()) return ~std::uint64_t{0};
             const PatternExpression* pe = operandExpr(n, idx);
             return pe == nullptr ? ~std::uint64_t{0} : maskOf(pe, n, n.opOff[static_cast<std::size_t>(idx)], env, st, depth + 1);
         }
-        if (const auto* b = dynamic_cast<const BinaryExpression*>(e)) {
-            const auto r = eval(b->getRight(), n, curOff, env, st, nullptr);
-            if (dynamic_cast<const LeftShiftExpression*>(e) && r && *r >= 0 && *r < 64) return maskOf(b->getLeft(), n, curOff, env, st, depth + 1) << *r;
-            if (dynamic_cast<const RightShiftExpression*>(e) && r && *r >= 0 && *r < 64) return maskOf(b->getLeft(), n, curOff, env, st, depth + 1) >> *r;
-            if (dynamic_cast<const AndExpression*>(e) && r) return maskOf(b->getLeft(), n, curOff, env, st, depth + 1) & static_cast<std::uint64_t>(*r);
-            if (dynamic_cast<const OrExpression*>(e) || dynamic_cast<const PlusExpression*>(e))
-                return maskOf(b->getLeft(), n, curOff, env, st, depth + 1) | maskOf(b->getRight(), n, curOff, env, st, depth + 1);
+        if (nd.right != nullptr) {   // (a binary)
+            const auto r = eval(nd.right, n, curOff, env, st, nullptr);
+            if (nd.kind == Kind::LeftShift && r && *r >= 0 && *r < 64) return maskOf(nd.left, n, curOff, env, st, depth + 1) << *r;
+            if (nd.kind == Kind::RightShift && r && *r >= 0 && *r < 64) return maskOf(nd.left, n, curOff, env, st, depth + 1) >> *r;
+            if (nd.kind == Kind::And && r) return maskOf(nd.left, n, curOff, env, st, depth + 1) & static_cast<std::uint64_t>(*r);
+            if (nd.kind == Kind::Or || nd.kind == Kind::Plus) return maskOf(nd.left, n, curOff, env, st, depth + 1) | maskOf(nd.right, n, curOff, env, st, depth + 1);
         }
         return ~std::uint64_t{0};
     }
@@ -423,6 +559,46 @@ struct Assembler::Impl {
             }
     }
 
+    // The field values that make `e & m` equal `r`, where m is a low mask (2^k - 1; a wrap such as `(next + rel) & 0xFFFF`), solved
+    // without enumerating: a sum or difference with a known side moves it across, a field gives every value of its range with those low
+    // bits. False: the expression is of a shape this does not solve (the caller enumerates).
+    bool solveLow(const PatternExpression* e, std::uint64_t r, std::uint64_t m, const Inst& n, int curOff, const Env& env, const State& st,
+                  std::vector<Alt>& out, int depth) const {
+        if (depth > 30 || m == 0 || m > 0xFFFFFFFFull || ((m + 1) & m) != 0) return false;
+        r &= m;
+        if (const auto k = eval(e, n, curOff, env, st, nullptr)) {
+            if (((static_cast<std::uint64_t>(*k) ^ r) & m) == 0) out.push_back({});
+            return true;
+        }
+        const Node& nd = nodeOf(e);
+        if (nd.kind == Kind::Leaf) {
+            const LeafInfo& li = nd.li;
+            const int w = li.width;
+            if (w <= 0 || w >= 63) return false;
+            const intb lo = li.sign ? -(intb{1} << (w - 1)) : 0, hi = li.sign ? (intb{1} << (w - 1)) - 1 : (intb{1} << w) - 1;
+            const std::uint64_t wmask = (std::uint64_t{1} << w) - 1;
+            intb v = lo + static_cast<intb>((r - static_cast<std::uint64_t>(lo)) & m);
+            for (; v <= hi && out.size() < kMaxAlts; v += static_cast<intb>(m + 1))
+                out.push_back({LeafSet{li, li.ctx() ? 0 : curOff, static_cast<std::uint64_t>(v) & wmask}});
+            return true;
+        }
+        if (nd.kind == Kind::Operand) {
+            const int idx = nd.index;
+            if (idx < 0 || idx >= n.ct->getNumOperands()) return true;
+            const PatternExpression* pe = operandExpr(n, idx);
+            return pe == nullptr ? true : solveLow(pe, r, m, n, n.opOff[static_cast<std::size_t>(idx)], env, st, out, depth + 1);
+        }
+        if (nd.kind == Kind::Minus) return solveLow(nd.left, 0 - r, m, n, curOff, env, st, out, depth + 1);
+        if (nd.kind == Kind::Plus || nd.kind == Kind::Sub) {
+            const bool plus = nd.kind == Kind::Plus;
+            const auto kl = eval(nd.left, n, curOff, env, st, nullptr), kr = eval(nd.right, n, curOff, env, st, nullptr);
+            if (kr && !kl) return solveLow(nd.left, plus ? r - static_cast<std::uint64_t>(*kr) : r + static_cast<std::uint64_t>(*kr), m, n, curOff, env, st, out, depth + 1);
+            if (kl && !kr)
+                return solveLow(nd.right, plus ? r - static_cast<std::uint64_t>(*kl) : static_cast<std::uint64_t>(*kl) - r, m, n, curOff, env, st, out, depth + 1);
+        }
+        return false;
+    }
+
     void solve(const PatternExpression* e, intb t, const Inst& n, int curOff, const Env& env, const State& st, std::vector<Alt>& out,
                int depth = 0) const {
         if (depth > 30 || out.size() >= kMaxAlts) return;
@@ -430,8 +606,9 @@ struct Assembler::Impl {
             if (*k == t) out.push_back({});
             return;
         }
-        LeafInfo li;
-        if (leafInfo(e, li)) {
+        const Node& nd = nodeOf(e);
+        if (nd.kind == Kind::Leaf) {
+            const LeafInfo& li = nd.li;
             const int w = li.width;
             if (w <= 0) return;
             if (w < 63) {
@@ -444,29 +621,29 @@ struct Assembler::Impl {
             out.push_back({LeafSet{li, li.ctx() ? 0 : curOff, static_cast<std::uint64_t>(t) & m}});
             return;
         }
-        if (const auto* ovl = dynamic_cast<const OperandValue*>(e)) {
-            const int idx = ovl->getIndex();
+        if (nd.kind == Kind::Operand) {
+            const int idx = nd.index;
             if (idx < 0 || idx >= n.ct->getNumOperands()) return;
             if (const PatternExpression* pe = operandExpr(n, idx)) solve(pe, t, n, n.opOff[static_cast<std::size_t>(idx)], env, st, out, depth + 1);
             return;
         }
-        if (const auto* u = dynamic_cast<const UnaryExpression*>(e)) {
-            if (dynamic_cast<const MinusExpression*>(e)) solve(u->getUnary(), static_cast<intb>(0 - static_cast<std::uint64_t>(t)), n, curOff, env, st, out, depth + 1);
-            else if (dynamic_cast<const NotExpression*>(e)) solve(u->getUnary(), ~t, n, curOff, env, st, out, depth + 1);
+        if (nd.kind == Kind::Minus || nd.kind == Kind::Not || nd.kind == Kind::OtherUnary) {
+            if (nd.kind == Kind::Minus) solve(nd.left, static_cast<intb>(0 - static_cast<std::uint64_t>(t)), n, curOff, env, st, out, depth + 1);
+            else if (nd.kind == Kind::Not) solve(nd.left, ~t, n, curOff, env, st, out, depth + 1);
             return;
         }
-        if (const auto* b = dynamic_cast<const BinaryExpression*>(e)) {
-            const PatternExpression *l = b->getLeft(), *r = b->getRight();
+        if (nd.right != nullptr) {   // (a binary)
+            const PatternExpression *l = nd.left, *r = nd.right;
             const auto kl = eval(l, n, curOff, env, st, nullptr), kr = eval(r, n, curOff, env, st, nullptr);
             const auto ut = static_cast<std::uint64_t>(t);
             auto rec = [&](const PatternExpression* x, intb v) { solve(x, v, n, curOff, env, st, out, depth + 1); };
-            if (dynamic_cast<const PlusExpression*>(e)) {
+            if (nd.kind == Kind::Plus) {
                 if (kr) return rec(l, static_cast<intb>(ut - static_cast<std::uint64_t>(*kr)));
                 if (kl) return rec(r, static_cast<intb>(ut - static_cast<std::uint64_t>(*kl)));
-            } else if (dynamic_cast<const SubExpression*>(e)) {
+            } else if (nd.kind == Kind::Sub) {
                 if (kr) return rec(l, static_cast<intb>(ut + static_cast<std::uint64_t>(*kr)));
                 if (kl) return rec(r, static_cast<intb>(static_cast<std::uint64_t>(*kl) - ut));
-            } else if (dynamic_cast<const MultExpression*>(e)) {
+            } else if (nd.kind == Kind::Mult) {
                 const PatternExpression* x = kr ? l : (kl ? r : nullptr);
                 const auto k = kr ? kr : kl;
                 if (x != nullptr) {
@@ -474,22 +651,24 @@ struct Assembler::Impl {
                     if (t % *k != 0) return;
                     return rec(x, t / *k);
                 }
-            } else if (dynamic_cast<const LeftShiftExpression*>(e)) {
+            } else if (nd.kind == Kind::LeftShift) {
                 if (kr && *kr >= 0 && *kr < 64) {
                     if ((ut & ((std::uint64_t{1} << *kr) - 1)) != 0) return;
                     return rec(l, t >> *kr);
                 }
-            } else if (dynamic_cast<const RightShiftExpression*>(e)) {
+            } else if (nd.kind == Kind::RightShift) {
                 if (kr && *kr >= 0 && *kr < 62) return rec(l, static_cast<intb>(ut << *kr));
-            } else if (dynamic_cast<const AndExpression*>(e)) {
+            } else if (nd.kind == Kind::And) {
                 if (kr) {
                     if ((ut & ~static_cast<std::uint64_t>(*kr)) != 0) return;
                     if ((maskOf(l, n, curOff, env, st) & ~static_cast<std::uint64_t>(*kr)) == 0) return rec(l, t);   // (else the and cuts bits off: enumerate)
+                    if (solveLow(l, ut, static_cast<std::uint64_t>(*kr), n, curOff, env, st, out, depth + 1)) return;
                 } else if (kl) {
                     if ((ut & ~static_cast<std::uint64_t>(*kl)) != 0) return;
                     if ((maskOf(r, n, curOff, env, st) & ~static_cast<std::uint64_t>(*kl)) == 0) return rec(r, t);
+                    if (solveLow(r, ut, static_cast<std::uint64_t>(*kl), n, curOff, env, st, out, depth + 1)) return;
                 }
-            } else if (dynamic_cast<const OrExpression*>(e)) {
+            } else if (nd.kind == Kind::Or) {
                 if (kr) {
                     if ((ut & static_cast<std::uint64_t>(*kr)) != static_cast<std::uint64_t>(*kr)) return;
                     return rec(l, static_cast<intb>(ut & ~static_cast<std::uint64_t>(*kr)));
@@ -498,14 +677,14 @@ struct Assembler::Impl {
                     if ((ut & static_cast<std::uint64_t>(*kl)) != static_cast<std::uint64_t>(*kl)) return;
                     return rec(r, static_cast<intb>(ut & ~static_cast<std::uint64_t>(*kl)));
                 }
-            } else if (dynamic_cast<const XorExpression*>(e)) {
+            } else if (nd.kind == Kind::Xor) {
                 if (kr) return rec(l, static_cast<intb>(ut ^ static_cast<std::uint64_t>(*kr)));
                 if (kl) return rec(r, static_cast<intb>(ut ^ static_cast<std::uint64_t>(*kl)));
-            } else if (dynamic_cast<const DivExpression*>(e)) {
+            } else if (nd.kind == Kind::Div) {
                 if (kr && *kr != 0) return rec(l, t * *kr);
             }
             // both sides have free fields: disjoint bits of a sum or an or ...
-            if (dynamic_cast<const PlusExpression*>(e) || dynamic_cast<const OrExpression*>(e)) {
+            if (nd.kind == Kind::Plus || nd.kind == Kind::Or) {
                 const std::uint64_t ma = maskOf(l, n, curOff, env, st), mb = maskOf(r, n, curOff, env, st);
                 if ((ma & mb) == 0) {
                     std::vector<Alt> ax, bx;
@@ -524,18 +703,26 @@ struct Assembler::Impl {
         for (const Free& f : fr) bits += f.li.width;
         if (tracing()) std::fprintf(stderr, "enumerate %s: %zu free leaves, %d bits, target %lld\n", typeid(*e).name(), fr.size(), bits, static_cast<long long>(t));
         if (fr.empty() || bits > 16) return;
+        // (one table of overrides, its entries set again for each value: a value costs an evaluation, no allocation)
+        Overrides ov;
+        std::vector<intb*> slot;
+        for (const Free& f : fr) slot.push_back(&(ov[{f.e, f.abs}] = 0));
         for (std::uint32_t v = 0; v < (1u << bits) && out.size() < kMaxAlts; ++v) {
-            Overrides ov;
-            Alt alt;
             int at = 0;
-            for (const Free& f : fr) {
-                const std::uint64_t raw = (v >> at) & ((std::uint64_t{1} << f.li.width) - 1);
+            for (std::size_t k = 0; k < fr.size(); ++k) {
+                const Free& f = fr[k];
+                *slot[k] = signExtend((v >> at) & ((std::uint64_t{1} << f.li.width) - 1), f.li.width, f.li.sign);
                 at += f.li.width;
-                ov[{f.e, f.abs}] = signExtend(raw, f.li.width, f.li.sign);
-                alt.push_back(LeafSet{f.li, f.abs, raw});
             }
             const auto got = eval(e, n, curOff, env, st, &ov);
-            if (got && *got == t) out.push_back(std::move(alt));
+            if (!got || *got != t) continue;
+            Alt alt;
+            at = 0;
+            for (const Free& f : fr) {
+                alt.push_back(LeafSet{f.li, f.abs, (v >> at) & ((std::uint64_t{1} << f.li.width) - 1)});
+                at += f.li.width;
+            }
+            out.push_back(std::move(alt));
         }
     }
 
@@ -583,7 +770,11 @@ struct Assembler::Impl {
             ++active[key];
             const std::size_t cutsBefore = cuts;
             std::vector<Parsed> out;
-            for (int i = 0; i < st->getNumConstructors() && out.size() < kMaxParses; ++i) ctor(st->getConstructor(static_cast<std::uint32_t>(i)), pos, out);
+            // (only the constructors that can start with the text's next character, in the table's own order)
+            for (const std::uint32_t i : impl.startingWith(st, pos < text.size() ? static_cast<unsigned char>(text[pos]) : 256)) {
+                if (out.size() >= kMaxParses) break;
+                ctor(st->getConstructor(i), pos, out);
+            }
             --active[key];
             if (cuts != cutsBefore) {   // (a recursion was cut inside: the answer may be short, so it is not kept)
                 static thread_local std::vector<Parsed> scratch;
@@ -594,29 +785,27 @@ struct Assembler::Impl {
         }
 
         void ctor(const Constructor* ct, std::size_t pos, std::vector<Parsed>& out) {
-            std::vector<Slot> slots(static_cast<std::size_t>(ct->getNumOperands()));
-            std::vector<bool> printed(slots.size(), false);
-            for (int i = 0; i < ct->getNumPrintPieces(); ++i) {
-                const std::string& pc = ct->getPrintPiece(i);
-                if (!pc.empty() && pc[0] == '\n' && pc.size() > 1) {
-                    const std::size_t idx = static_cast<std::size_t>(pc[1] - 'A');
-                    if (idx < printed.size()) printed[idx] = true;
-                }
+            const CtorInfo& ci = impl.infoOf(ct);
+            if (!ci.op.empty() && ci.op[0] == -1) {   // (a constructor that starts with a word: the text has to start with it)
+                const std::string& lit = ci.lit[0];
+                if (pos + lit.size() > text.size() || text.compare(pos, lit.size(), lit) != 0) return;
             }
-            walk(ct, 0, pos, slots, printed, out);
+            std::vector<Slot> slots(static_cast<std::size_t>(ct->getNumOperands()));
+            walk(ct, ci, 0, pos, slots, ci.printed, out);
         }
 
-        void walk(const Constructor* ct, int piece, std::size_t pos, std::vector<Slot>& slots, const std::vector<bool>& printed, std::vector<Parsed>& out) {
+        void walk(const Constructor* ct, const CtorInfo& ci, int piece, std::size_t pos, std::vector<Slot>& slots, const std::vector<bool>& printed,
+                  std::vector<Parsed>& out) {
             if (out.size() >= kMaxParses) return;
             if (piece == ct->getNumPrintPieces()) return silent(ct, 0, pos, slots, printed, out);
-            const std::string& pc = ct->getPrintPiece(piece);
-            if (pc.empty() || pc[0] != '\n') {
-                const std::string lit = squash(pc);
-                if (text.compare(pos, lit.size(), lit) != 0 || pos + lit.size() > text.size()) return;
-                return walk(ct, piece + 1, pos + lit.size(), slots, printed, out);
+            const int opIndex = ci.op[static_cast<std::size_t>(piece)];
+            if (opIndex == -1) {
+                const std::string& lit = ci.lit[static_cast<std::size_t>(piece)];
+                if (pos + lit.size() > text.size() || text.compare(pos, lit.size(), lit) != 0) return;
+                return walk(ct, ci, piece + 1, pos + lit.size(), slots, printed, out);
             }
-            const std::size_t idx = static_cast<std::size_t>(pc[1] - 'A');
-            if (idx >= slots.size()) return;
+            if (opIndex < 0) return;
+            const std::size_t idx = static_cast<std::size_t>(opIndex);
             const OperandSymbol* sym = ct->getOperand(static_cast<int>(idx));
             const TripleSymbol* t = sym->getDefiningSymbol();
             auto next = [&](std::size_t np, intb value) {
@@ -624,21 +813,26 @@ struct Assembler::Impl {
                 slots[idx].sub.reset();
                 slots[idx].value = value;
                 slots[idx].shown = true;
-                walk(ct, piece + 1, np, slots, printed, out);
+                walk(ct, ci, piece + 1, np, slots, printed, out);
                 slots[idx] = keep;
             };
             if (t == nullptr) {
-                if (sym->getDefiningExpression() == nullptr) return walk(ct, piece + 1, pos, slots, printed, out);
+                if (sym->getDefiningExpression() == nullptr) return walk(ct, ci, piece + 1, pos, slots, printed, out);
                 for (const auto& [np, v] : numbers(pos)) next(np, v);
                 return;
             }
             switch (t->getType()) {
             case SleighSymbol::subtable_symbol: {
-                const std::vector<Parsed> subs = table(static_cast<const SubtableSymbol*>(t), pos);
+                const SubtableSymbol* sub = static_cast<const SubtableSymbol*>(t);
+                const std::vector<Parsed>& got = table(sub, pos);
+                const auto kept = memo.find(std::make_pair(sub, pos));
+                std::vector<Parsed> own;   // (a table whose recursion was cut is not kept: the answer is copied out of the scratch before the next table overwrites it)
+                if (kept == memo.end() || &kept->second != &got) own = got;
+                const std::vector<Parsed>& subs = kept != memo.end() && &kept->second == &got ? got : own;
                 for (const Parsed& s : subs) {
                     const Slot keep = slots[idx];
                     slots[idx].sub = s.node;
-                    walk(ct, piece + 1, s.end, slots, printed, out);
+                    walk(ct, ci, piece + 1, s.end, slots, printed, out);
                     slots[idx] = keep;
                 }
                 return;
@@ -655,25 +849,26 @@ struct Assembler::Impl {
                 return;
             }
             case SleighSymbol::name_symbol: {
-                const auto& nt = static_cast<const NameSymbol*>(t)->getNameTable();
-                for (std::size_t k = 0; k < nt.size(); ++k) {
-                    if (nt[k] == "\t") continue;
-                    const std::string nm = squash(nt[k]);
-                    if (pos + nm.size() <= text.size() && text.compare(pos, nm.size(), nm) == 0) next(pos + nm.size(), static_cast<intb>(k));
+                const NameList& names = impl.namesOf(t);
+                for (std::size_t k = 0; k < names.nm.size(); ++k) {
+                    const std::string& nm = names.nm[k];
+                    if (!names.ok[k] || pos + nm.size() > text.size() || text.compare(pos, nm.size(), nm) != 0) continue;
+                    next(pos + nm.size(), static_cast<intb>(k));
                 }
                 return;
             }
             case SleighSymbol::varnodelist_symbol: {
                 const auto& vt = static_cast<const VarnodeListSymbol*>(t)->getVarnodeTable();
-                for (std::size_t k = 0; k < vt.size(); ++k) {
-                    if (vt[k] == nullptr) continue;
-                    const std::string nm = squash(vt[k]->getName());
-                    if (pos + nm.size() <= text.size() && text.compare(pos, nm.size(), nm) == 0) next(pos + nm.size(), static_cast<intb>(k));
+                const NameList& names = impl.registersOf(t, vt);
+                for (std::size_t k = 0; k < names.nm.size(); ++k) {
+                    const std::string& nm = names.nm[k];
+                    if (!names.ok[k] || pos + nm.size() > text.size() || text.compare(pos, nm.size(), nm) != 0) continue;
+                    next(pos + nm.size(), static_cast<intb>(k));
                 }
                 return;
             }
             case SleighSymbol::varnode_symbol: {
-                const std::string nm = squash(t->getName());
+                const std::string& nm = impl.nameOf(t);
                 if (pos + nm.size() <= text.size() && text.compare(pos, nm.size(), nm) == 0) next(pos + nm.size(), 0);
                 return;
             }
@@ -807,6 +1002,22 @@ struct Assembler::Impl {
         }
     }
 
+    // Whether applyPattern would succeed, without the copy of the state it changes (most alternatives of a pattern do not fit the bits placed so far).
+    static bool fits(const State& st, const Inst& n, const PatAlt& a) {
+        for (std::size_t i = 0; i < a.im.size(); ++i) {
+            if (a.im[i] == 0) continue;
+            const int b = n.offset + static_cast<int>(i);
+            if (b >= kMaxInst) return false;
+            if (((st.ival[b] ^ a.iv[i]) & st.imask[b] & a.im[i]) != 0) return false;
+        }
+        for (std::size_t i = 0; i < a.cm.size(); ++i) {
+            if (a.cm[i] == 0) continue;
+            if (static_cast<int>(i) >= kMaxCtx) return false;
+            if (((st.cval[i] ^ a.cv[i]) & st.cmask[i] & a.cm[i]) != 0) return false;
+        }
+        return true;
+    }
+
     bool applyPattern(State& st, const Inst& n, const PatAlt& a, std::uint8_t* newly) const {
         for (std::size_t i = 0; i < a.im.size(); ++i) {
             const int b = n.offset + static_cast<int>(i);
@@ -923,6 +1134,7 @@ struct Assembler::Impl {
         switch (t.kind) {
         case Task::Pattern:
             for (const PatAlt& a : altsOf(n.ct)) {
+                if (!tracing() && !fits(st, n, a)) continue;
                 State s = st;
                 std::uint8_t newly[kMaxCtx] = {};
                 const bool applied = applyPattern(s, n, a, newly);
@@ -930,10 +1142,14 @@ struct Assembler::Impl {
                     for (std::size_t i = 0; i < a.cm.size(); ++i) std::fprintf(stderr, "   ctx byte %zu: mask %02x value %02x\n", i, a.cm[i], a.cv[i]);
                 if (tracing())
                     std::fprintf(stderr, "pattern line %d off %d applied=%d links=%d\n", n.ct->getLineno(), n.offset, applied ? 1 : 0, s.nlinks);
-                if (applied) resolveLinks(run, ti + 1, s, newly, 0);
+                if (applied) {
+                    if (s.nlinks == 0) place(run, ti + 1, s);
+                    else resolveLinks(run, ti + 1, s, newly, 0);
+                }
             }
             return;
         case Task::Context: {
+            if (n.ct->getNumContextChanges() == 0) return place(run, ti + 1, st);   // (nothing to apply: no copy of the state)
             State s = st;
             applyContext(s, n, run.env);
             return place(run, ti + 1, s);
@@ -970,6 +1186,10 @@ struct Assembler::Impl {
                         break;
                     }
                 if (!ok) continue;
+                if (s.nlinks == 0) {   // (no context change waits on a field: nothing to resolve)
+                    place(run, ti + 1, s);
+                    continue;
+                }
                 std::uint8_t newly[kMaxCtx];
                 for (int i = 0; i < kMaxCtx; ++i) newly[i] = static_cast<std::uint8_t>(s.cmask[i] & ~st.cmask[i]);
                 resolveLinks(run, ti + 1, s, newly, 0);
@@ -1017,7 +1237,11 @@ Assembler::~Assembler() = default;
 
 Assembler::Diagnostics Assembler::last() const { return impl_->diag; }
 
-std::vector<std::vector<std::uint8_t>> Assembler::assemble(std::string_view line, std::uint64_t address) const {
+std::vector<std::vector<std::uint8_t>> Assembler::assemble(std::string_view line, std::uint64_t address) const { return run(line, address, false); }
+
+std::vector<std::vector<std::uint8_t>> Assembler::assemble_first(std::string_view line, std::uint64_t address) const { return run(line, address, true); }
+
+std::vector<std::vector<std::uint8_t>> Assembler::run(std::string_view line, std::uint64_t address, bool first) const {
     Impl& I = *impl_;
     std::lock_guard hold(I.lock);
     I.diag = {};
@@ -1056,6 +1280,8 @@ std::vector<std::vector<std::uint8_t>> Assembler::assemble(std::string_view line
     for (const Parsed& r : roots) {
         std::unique_ptr<Inst> inst = Impl::build(r.node.get(), 0);
         if (!inst || inst->length <= 0 || inst->length > kMaxInst) continue;
+        // (a caller that takes only the first of the shortest: a tree no shorter than what is found cannot change it)
+        if (first && !results.empty() && static_cast<std::size_t>(inst->length) >= results.front().size()) continue;
         Env env;
         env.startVal = static_cast<intb>(AddrSpace::byteToAddress(address, static_cast<uint4>(ws)));
         env.nextVal = static_cast<intb>(AddrSpace::byteToAddress(I.space->wrapOffset(address + static_cast<std::uint64_t>(inst->length)), static_cast<uint4>(ws)));
@@ -1069,6 +1295,10 @@ std::vector<std::vector<std::uint8_t>> Assembler::assemble(std::string_view line
             ++I.diag.candidates;
             if (I.roundTrips(bytes, address, spaced(line))) {
                 ++I.diag.verified;
+                if (first) {
+                    results.assign(1, bytes);   // (this tree is shorter than any found before it: the others of its own length come later)
+                    break;
+                }
                 results.push_back(bytes);
             }
         }

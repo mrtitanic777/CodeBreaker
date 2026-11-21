@@ -12,6 +12,7 @@
 #include "formats/saturn.hpp"
 #include "source/saturn_writer.hpp"
 #include "source/sega32x_writer.hpp"
+#include "source/risc_source.hpp"
 #include "source/sh2_test_programs.hpp"
 
 namespace cb::source {
@@ -38,7 +39,7 @@ CB_TEST("source.sh2_writer.a_program_comes_back_identical_and_readable", [] {
     image.entries = {0x06000040};
     image.names[0x06000040] = "entry";
     image.hardware = &hardware;
-    image.head = {"! test"};
+    image.head = {"; test"};
     const image_writer::Written r = sh2_writer::write(image, "demo", dir.path(), "demo.built.bin");
     keep(r, "demo");
     CB_CHECK(r.linked);
@@ -53,20 +54,20 @@ CB_TEST("source.sh2_writer.a_program_comes_back_identical_and_readable", [] {
     CB_CHECK(has(source, "        .long entry, 0x0603FFFC, entry, 0x0603FFFC"));      // the vectors, the handlers by name
     CB_CHECK(has(source, "        .space 48"));
     CB_CHECK(has(source, "entry:"));
-    CB_CHECK(has(source, "        mov.l   r14,@-r15"));
-    CB_CHECK(has(source, "        bf      L_"));                                       // a jump target is a label
-    CB_CHECK(has(source, "        bsr     sub_"));
-    CB_CHECK(has(source, "        jsr     @r0"));
+    CB_CHECK(has(source, "        mov.l r14,@-r15"));
+    CB_CHECK(has(source, "        bf L_"));                                       // a jump target is a label
+    CB_CHECK(has(source, "        bsr sub_"));
+    CB_CHECK(has(source, "        jsr @r0"));
     CB_CHECK(has(source, "        .equ COMM0, 0x20004020"));                           // a register of the machine is a name
     CB_CHECK(has(source, "        .long COMM0"));
-    CB_CHECK(has(source, "        mov.l   K_0600"));                                   // a constant is a label ...
+    CB_CHECK(has(source, "        mov.l @(K_0600"));                                   // a constant is a label ...
     CB_CHECK(has(source, "        .long sub_"));                                       // ... and a pointer to a function is its name
     CB_CHECK(has(source, "        .long 0x0000000A"));                                // a number is a number
-    CB_CHECK(has(source, "        mov.w   K_0600"));
-    CB_CHECK(has(source, "        .word 0x00FF"));
+    CB_CHECK(has(source, "        mov.w @(K_0600"));
+    CB_CHECK(has(source, "        .half 0x00FF"));
     CB_CHECK(has(source, "        .asciz \"hello, 32x\""));
     CB_CHECK(has(source, "        .long entry, sub_"));                                // the table of the three functions
-    CB_CHECK(has(source, "! 3 functions,"));
+    CB_CHECK(has(source, "; 3 functions,"));
 });
 
 CB_TEST("source.sh2_writer.data_is_data_and_the_rebuild_is_still_the_image", [] {
@@ -100,7 +101,7 @@ CB_TEST("source.sh2_writer.parts_at_their_own_addresses", [] {
     const std::uint32_t middle = static_cast<std::uint32_t>(a.size());
     image.special = [middle](std::uint32_t off, std::vector<std::string>& lines) -> std::uint32_t {
         if (off != middle) return 0;
-        lines.push_back("        .long 0x11223344    ! a field");
+        lines.push_back("        .long 0x11223344    ; a field");
         return 4;
     };
     const image_writer::Written r = sh2_writer::write(image, "parts", dir.path(), "parts.built.bin");
@@ -111,7 +112,7 @@ CB_TEST("source.sh2_writer.parts_at_their_own_addresses", [] {
     CB_CHECK(has(source, "        .org 0x06002000"));
     CB_CHECK(has(source, "        .org 0x06003000"));
     CB_CHECK(has(source, "        .org 0x06004000"));
-    CB_CHECK(has(source, "        .long 0x11223344    ! a field"));
+    CB_CHECK(has(source, "        .long 0x11223344    ; a field"));
 });
 
 CB_TEST("source.sega32x_writer.a_cartridge_comes_back_as_two_sources", [] {
@@ -136,10 +137,10 @@ CB_TEST("source.sega32x_writer.a_cartridge_comes_back_as_two_sources", [] {
     CB_CHECK(has(source, "\"TESTROM32X\""));
     // an edit to the SH-2 source changes the cartridge the sources build
     std::string edited = source;
-    const std::size_t at = edited.find("        add     #3,r0");
+    const std::size_t at = edited.find("        add 0x3,r0");
     CB_CHECK(at != std::string::npos);
-    edited.replace(at, std::string("        add     #3,r0").size(), "        add     #4,r0");
-    const Bytes rebuilt = build::sh_asm::Assembler(isa::sh2_encoder()).build(edited);
+    edited.replace(at, std::string("        add 0x3,r0").size(), "        add 0x4,r0");
+    const Bytes rebuilt = risc_source::assemble("sh2", edited, {});
     CB_CHECK(rebuilt.size() == t::assemble(t::kSdramProgram).size());
     CB_CHECK(rebuilt != t::assemble(t::kSdramProgram));
 });
@@ -171,14 +172,14 @@ CB_TEST("source.saturn_writer.a_disc_comes_back_as_one_source", [] {
     CB_CHECK_EQ(r.functions.at(0x06004000), "first_read");
     CB_CHECK_EQ(r.functions.at(0x06002E80), "ip_init");
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(has(source, "        .ascii \"SEGA SEGASATURN \"    ! hardware ID"));
-    CB_CHECK(has(source, "! game title"));
-    CB_CHECK(has(source, "        .long 0x00001000    ! IP size"));
-    CB_CHECK(has(source, "        .long 0x06004000    ! first program: load address"));
+    CB_CHECK(has(source, "        .ascii \"SEGA SEGASATURN \"    ; hardware ID"));
+    CB_CHECK(has(source, "; game title"));
+    CB_CHECK(has(source, "        .long 0x00001000    ; IP size"));
+    CB_CHECK(has(source, "        .long 0x06004000    ; first program: load address"));
     CB_CHECK(has(source, "        .org 0x06002000"));
     CB_CHECK(has(source, "        .org 0x06004000"));
     CB_CHECK(has(source, "ip_area_jp:"));
-    CB_CHECK(has(source, "        bra     ip_init"));
+    CB_CHECK(has(source, "        bra ip_init"));
     CB_CHECK(has(source, "        .equ VDP2_TVSTAT, 0x25F80004"));
     CB_CHECK(has(source, "        .equ SCU_IST, 0x25FE00A4"));
     CB_CHECK(has(source, "        .equ var_06080000, 0x06080000"));

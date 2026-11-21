@@ -1,0 +1,10 @@
+{
+ "cbk": 1,
+ "platform": "wiiu",
+ "domain": "registers",
+ "about": "Wii U: the Latte window the system libraries map, named by its offset",
+ "source": {"what": "as formats/gekko_map.cpp held it (moved here 2026-11-20)", "license": "facts", "checked": "2026-11-20"},
+ "entries": [
+ {"id": "region.LATTE", "kind": "region", "table": "blocks", "space": "cpu", "address": "0xD000000", "size": "0x1000000", "name": "LATTE"}
+ ]
+}

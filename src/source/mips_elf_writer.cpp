@@ -4,6 +4,7 @@
 #include "source/mips_elf_writer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <format>
 #include <set>
@@ -12,9 +13,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "build/mips_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
+#include "source/risc_source.hpp"
 #include "verify/stage_timer.hpp"
 
 namespace cb::source::mips_elf_writer {
@@ -172,6 +173,15 @@ private:
     dm::Variant variant_;
     std::vector<const Piece*> pieces_;
 };
+
+// Two spellings of one instruction (the description's and the decoder's)?
+bool agreed_alias(const std::string& said, const std::string& decoded) {
+    static const std::set<std::pair<std::string, std::string>> same = {{"b", "beq"},       {"bal", "bgezal"},    {"c.ole.s", "c.le.s"}, {"c.olt.s", "c.lt.s"},
+                                                                       {"li", "addiu"},   {"li", "ori"},        {"move", "or"},        {"move", "addu"},
+                                                                       {"nop", "sll"},    {"negu", "subu"},     {"not", "nor"},        {"beqz", "beq"},
+                                                                       {"bnez", "bne"}};
+    return same.contains({said, decoded});
+}
 
 bool ends_flow(const dm::Insn& i) { return i.delay_slot && (i.flow == dm::Flow::Jump || i.flow == dm::Flow::Return || i.flow == dm::Flow::Indirect); }
 
@@ -505,42 +515,46 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         }
     }
 
-    // each instruction's text, kept only if it assembles back to its word
+    // each instruction's text: the description's, a branch by its label and an address half by its expression, kept only when it assembles back to the
+    // word; else the word's bits with the instruction in a comment
     stage.emplace("mips.symbols");
-    build::Labels symbols;
+    decompile::NameLabels symbols;
     for (const auto& [a, n] : labels) symbols[n] = a;
     for (const auto& [n, a] : equates) symbols[n] = a;
     decompile::AddressLabels names_for_text;
     for (const auto& [a, label] : labels) names_for_text[a] = label;
     const auto instruction_text = [&](const dm::Insn& insn) -> std::string {
-        const auto expected = [&](const std::string& line) {
-            try {
-                const Bytes b = dm::assemble(line, insn.pc, symbols, variant);
-                return b.size() == 4 && le32(b, 0) == insn.word;
-            } catch (const Error&) {
-                return false;
-            }
-        };
+        const std::array<std::uint8_t, 4> bytes = {static_cast<std::uint8_t>(insn.word), static_cast<std::uint8_t>(insn.word >> 8),
+                                                   static_cast<std::uint8_t>(insn.word >> 16), static_cast<std::uint8_t>(insn.word >> 24)};
+        std::map<std::uint32_t, std::string> by_value;
+        std::vector<std::uint32_t> operands;
+        if (insn.target)
+            if (const auto named = names_for_text.find(*insn.target); named != names_for_text.end()) by_value[*insn.target] = named->second, operands.push_back(*insn.target);
         const auto it = immediate.find(insn.pc);
-        if (it != immediate.end() && (insn.form == dm::Form::RtRsImm || insn.form == dm::Form::RtImm || insn.form == dm::Form::RtMem)) {
-            const std::string line = dm::text(insn, names_for_text, it->second);
-            if (expected(line)) return line;
+        const std::string expression = it != immediate.end() && (insn.form == dm::Form::RtRsImm || insn.form == dm::Form::RtImm || insn.form == dm::Form::RtMem) ? it->second : std::string();
+        std::string line = risc_source::code(machine.cpu, bytes, insn.pc, by_value, operands, expression, {}, &symbols);
+        // (the MIPS description does not know the R5900's multimedia instructions or the Allegrex's VFPU: it may read their bits as another instruction that
+        // assembles back to them. The decoder knows them: a text whose mnemonic is not the decoder's stays as its bits.)
+        const auto mnemonic_of = [](std::string_view text) { return text::lower(std::string(text.substr(0, text.find_first_of(" \t")))); };
+        if (!line.starts_with(".byte") && mnemonic_of(line) != text::lower(insn.mnemonic) && !agreed_alias(mnemonic_of(line), text::lower(insn.mnemonic))) {
+            std::string raw;
+            for (const std::uint8_t b : bytes) raw += std::format("{}0x{:02x}", raw.empty() ? "" : ",", b);
+            line = ".byte " + raw;
         }
-        const std::string plain = dm::text(insn, names_for_text);
-        if (expected(plain)) return plain;
-        return std::format(".word {}    # not written as an instruction: {}", hex8(insn.word), plain);
+        if (line.starts_with(".byte")) {   // (an instruction the description lacks reads as another or none: the comment is the decoder's text, which knows the R5900 and the Allegrex)
+            line.resize(std::min(line.find("  ; "), line.size()));
+            line += "  ; " + dm::text(insn, names_for_text);
+        }
+        return line;
     };
 
     // the source ----------------------------------------------------------------------------------------------------------------
     std::vector<std::string> head = {
-        std::format("# {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("# {}: entry 0x{:08X}, {} bytes, {} functions", machine.description, elf.entry, file.size(), functions.size()),
-        "# assemble with mips-as (GNU as, .set noreorder), or with CodeBreaker's own assembler",
+        std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
+        std::format("; {}: entry 0x{:08X}, {} bytes, {} functions", machine.description, elf.entry, file.size(), functions.size()),
+        "; (MIPS syntax as the processor's SLEIGH description writes it: build with `assemble --cpu " + machine.cpu + " --sleigh`)",
         ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
-    out.append("        .set noreorder");
-    out.append("        .set noat");
-    out.append("");
+    translate::l2::Assembly out(head, "sleigh-" + machine.cpu, std::string(file_name));
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
 
@@ -571,15 +585,15 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         if (p.role == Role::Header) {
             out.part("elf header", "header", std::nullopt, p.size);
             out.append("");
-            out.append(std::format("        .org {}    # file offset", hex8(static_cast<std::uint32_t>(p.offset))));
+            out.append(std::format("        .org {}    ; file offset", hex8(static_cast<std::uint32_t>(p.offset))));
             if (p.size == me::kHeaderSize) {
-                out.append(byte_row(bytes.first(16)) + "    # e_ident: ELF, 32-bit, little-endian, version, OS/ABI");
-                out.append(std::format("        .half 0x{:04X}, {}    # type, machine", elf.type, elf.machine));
-                out.append(std::format("        .word 0x{:08X}    # version", elf.version));
-                out.append(std::format("        .word {}    # entry point", entry_text(elf.entry)));
-                out.append(std::format("        .word {}, {}    # program header table offset, section header table offset", hex8(elf.phoff), hex8(elf.shoff)));
-                out.append(std::format("        .word 0x{:08X}    # flags", elf.flags));
-                out.append(std::format("        .half {}, {}, {}, {}, {}, {}    # header size, program header size and count, section header size and count, section name table",
+                out.append(byte_row(bytes.first(16)) + "    ; e_ident: ELF, 32-bit, little-endian, version, OS/ABI");
+                out.append(std::format("        .half 0x{:04X}, {}    ; type, machine", elf.type, elf.machine));
+                out.append(std::format("        .word 0x{:08X}    ; version", elf.version));
+                out.append(std::format("        .word {}    ; entry point", entry_text(elf.entry)));
+                out.append(std::format("        .word {}, {}    ; program header table offset, section header table offset", hex8(elf.phoff), hex8(elf.shoff)));
+                out.append(std::format("        .word 0x{:08X}    ; flags", elf.flags));
+                out.append(std::format("        .half {}, {}, {}, {}, {}, {}    ; header size, program header size and count, section header size and count, section name table",
                                        elf.ehsize, elf.phentsize, elf.phnum, elf.shentsize, elf.shnum, elf.shstrndx));
             } else {
                 data_lines_of(p, 0, p.size);
@@ -589,11 +603,11 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         if (p.role == Role::ProgramHeaders) {
             out.part("program headers", "header", std::nullopt, p.size);
             out.append("");
-            out.append(std::format("        .org {}    # file offset", hex8(static_cast<std::uint32_t>(p.offset))));
+            out.append(std::format("        .org {}    ; file offset", hex8(static_cast<std::uint32_t>(p.offset))));
             for (std::size_t at = 0; at + me::kProgramHeaderSize <= bytes.size(); at += me::kProgramHeaderSize) {
                 std::vector<std::string> items;
                 for (std::size_t k = 0; k < 8; ++k) items.push_back(hex8(le32(bytes, at + 4 * k)));
-                out.append(std::format("        .word {}    # program header {}: type, offset, vaddr, paddr, file size, memory size, flags, alignment", text::join(items, ", "), at / me::kProgramHeaderSize));
+                out.append(std::format("        .word {}    ; program header {}: type, offset, vaddr, paddr, file size, memory size, flags, alignment", text::join(items, ", "), at / me::kProgramHeaderSize));
             }
             if (bytes.size() % me::kProgramHeaderSize != 0) out.append(byte_row(bytes.subspan(bytes.size() - bytes.size() % me::kProgramHeaderSize)));
             continue;
@@ -601,12 +615,12 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         if (p.role == Role::SectionHeaders) {
             out.part("section headers", "header", std::nullopt, p.size);
             out.append("");
-            out.append(std::format("        .org {}    # file offset", hex8(static_cast<std::uint32_t>(p.offset))));
+            out.append(std::format("        .org {}    ; file offset", hex8(static_cast<std::uint32_t>(p.offset))));
             for (std::size_t at = 0, n = 0; at + me::kSectionHeaderSize <= bytes.size(); at += me::kSectionHeaderSize, ++n) {
                 std::vector<std::string> items;
                 for (std::size_t k = 0; k < 10; ++k) items.push_back(hex8(le32(bytes, at + 4 * k)));
                 const std::string what = n < elf.sections.size() ? elf.sections[n].name : std::string();
-                out.append(std::format("        .word {}    # section {} {}: name, type, flags, address, offset, size, link, info, alignment, entry size", text::join(items, ", "), n, what));
+                out.append(std::format("        .word {}    ; section {} {}: name, type, flags, address, offset, size, link, info, alignment, entry size", text::join(items, ", "), n, what));
             }
             if (bytes.size() % me::kSectionHeaderSize != 0) out.append(byte_row(bytes.subspan(bytes.size() - bytes.size() % me::kSectionHeaderSize)));
             continue;
@@ -614,14 +628,14 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
         if (p.role == Role::Other) {
             out.part(p.name, "data", std::nullopt, p.size);
             out.append("");
-            out.append(std::format("        .org {}    # {} (file offset)", hex8(static_cast<std::uint32_t>(p.offset)), p.name));
+            out.append(std::format("        .org {}    ; {} (file offset)", hex8(static_cast<std::uint32_t>(p.offset)), p.name));
             data_lines_of(p, 0, p.size);
             continue;
         }
         // loaded code or data, at its address
         out.part(p.name, p.role == Role::Code ? "code" : "data", std::nullopt, p.size);
         out.append("");
-        out.append(std::format("        .org {}    # {}", hex8(p.address), p.name));
+        out.append(std::format("        .org {}    ; {}", hex8(p.address), p.name));
         std::size_t at = 0;
         while (at < p.size) {
             const std::uint32_t addr = p.address + static_cast<std::uint32_t>(at);
@@ -655,8 +669,7 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
     const std::string source = iw::text(out) + "\n";
     stage.emplace("mips.assemble");
     iw::Written w =iw::finish(folder, stem + ".s", source, functions, code.size() * 4, file.size());
-    const build::mips_asm::Assembler assembler(*machine.encoder);
-    iw::assembled(w, [&] { return assembler.build(source); }, file, folder / (stem + ".built" + machine.extension), "program");
+    iw::assembled(w, [&] { return risc_source::assemble(machine.cpu, source, folder); }, file, folder / (stem + ".built" + machine.extension), "program");
     return w;
 }
 

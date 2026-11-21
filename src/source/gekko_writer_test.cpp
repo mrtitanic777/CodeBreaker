@@ -4,11 +4,10 @@
 // field, functions found by calls, by their prologue and through a table, hardware registers by name, addresses built with @ha / @l.
 #include "source/gekko_writer.hpp"
 
-#include "build/mips_asm.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "source/gekko_test_images.hpp"
-#include "source/isa_ppc.hpp"
+#include "source/risc_source.hpp"
 
 namespace gw = cb::source::gekko_writer;
 namespace gt = cb::source::gekko_test;
@@ -48,16 +47,16 @@ CB_TEST("source.gekko_writer.the_source_says_what_the_dol_holds", [] {
     cb::fs::ScopedTempDir dir("cb_gekko_writer");
     const string text = source_of(write_to(dir, "game.dol", gt::dol()));
     // the header, a line to each table: offsets in the file, addresses as the labels of the sections, sizes as the difference of two labels
-    CB_CHECK(contains(text, ".org 0x00000000    # dol header (file offset)"));
-    CB_CHECK(contains(text, "# file offsets of text0-6"));
-    CB_CHECK(contains(text, "text0, 0, 0, 0, 0, 0, 0    # load addresses of text0-6"));
-    CB_CHECK(contains(text, "text0_end - text0, 0, 0, 0, 0, 0, 0    # sizes of text0-6"));
-    CB_CHECK(contains(text, "data0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0    # load addresses of data0-10"));
-    CB_CHECK(contains(text, ".long 0x80005000, 0x00000200    # bss address and size"));
-    CB_CHECK(contains(text, ".long entry    # entry point"));
+    CB_CHECK(contains(text, ".org 0x00000000    ; dol header (file offset)"));
+    CB_CHECK(contains(text, "; file offsets of text0-6"));
+    CB_CHECK(contains(text, "text0, 0, 0, 0, 0, 0, 0    ; load addresses of text0-6"));
+    CB_CHECK(contains(text, "text0_end - text0, 0, 0, 0, 0, 0, 0    ; sizes of text0-6"));
+    CB_CHECK(contains(text, "data0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0    ; load addresses of data0-10"));
+    CB_CHECK(contains(text, ".long 0x80005000, 0x00000200    ; bss address and size"));
+    CB_CHECK(contains(text, ".long entry    ; entry point"));
     // the sections at their addresses
-    CB_CHECK(contains(text, ".org 0x80003100    # text0"));
-    CB_CHECK(contains(text, ".org 0x80004000    # data0"));
+    CB_CHECK(contains(text, ".org 0x80003100    ; text0"));
+    CB_CHECK(contains(text, ".org 0x80004000    ; data0"));
     CB_CHECK(contains(text, "text0:"));
     CB_CHECK(contains(text, "text0_end:"));
     // the code: functions are labels, an address the code builds is a name with @ha and @l, a call and a branch name their targets
@@ -66,7 +65,7 @@ CB_TEST("source.gekko_writer.the_source_says_what_the_dol_holds", [] {
     CB_CHECK(contains(text, "addi r3,r3,D_80004000@l"));
     CB_CHECK(contains(text, "bl sub_80003150"));
     CB_CHECK(contains(text, "bne entry"));
-    CB_CHECK(contains(text, "stwu r1,-16(r1)"));
+    CB_CHECK(contains(text, "stwu r1,-0x10(r1)"));
     CB_CHECK(contains(text, "sub_80003150:"));
     CB_CHECK(contains(text, "sub_80003190:"));
     // the hardware register is named, and the .equ defines it
@@ -87,13 +86,13 @@ CB_TEST("source.gekko_writer.an_elf_builds_back_into_itself", [] {
     CB_CHECK(cb::fs::read_file(*r.built) == gt::elf());
     CB_CHECK_EQ(r.functions.size(), std::size_t{3});
     const string text = cb::fs::read_text(r.source);
-    CB_CHECK(contains(text, "# e_ident: ELF, 32-bit, big-endian, version, OS/ABI, ABI version"));
-    CB_CHECK(contains(text, ".short 0x0002, 0x0014    # type, machine"));
-    CB_CHECK(contains(text, ".long entry    # entry point"));
-    CB_CHECK(contains(text, "# program header 0: type, offset, vaddr, paddr, file size, memory size, flags, alignment"));
-    CB_CHECK(contains(text, "# section 1 .text: name, type, flags"));
-    CB_CHECK(contains(text, ".org 0x80003100    # .text"));
-    CB_CHECK(contains(text, ".org 0x80004000    # .data"));
+    CB_CHECK(contains(text, "; e_ident: ELF, 32-bit, big-endian, version, OS/ABI, ABI version"));
+    CB_CHECK(contains(text, ".short 0x0002, 0x0014    ; type, machine"));
+    CB_CHECK(contains(text, ".long entry    ; entry point"));
+    CB_CHECK(contains(text, "; program header 0: type, offset, vaddr, paddr, file size, memory size, flags, alignment"));
+    CB_CHECK(contains(text, "; section 1 .text: name, type, flags"));
+    CB_CHECK(contains(text, ".org 0x80003100    ; .text"));
+    CB_CHECK(contains(text, ".org 0x80004000    ; .data"));
     CB_CHECK(contains(text, "bl sub_80003150"));
 });
 
@@ -110,7 +109,7 @@ CB_TEST("source.gekko_writer.an_rpx_is_written_decompressed", [] {
     const string text = cb::fs::read_text(r.source);
     CB_CHECK(contains(text, "Wii U RPX (decompressed)"));
     CB_CHECK(contains(text, "bl sub_80003150"));
-    CB_CHECK(contains(text, ".short 0xFE01, 0x0014    # type, machine"));
+    CB_CHECK(contains(text, ".short 0xFE01, 0x0014    ; type, machine"));
 });
 
 CB_TEST("source.gekko_writer.refuses_what_is_not_a_program", [] {
@@ -124,11 +123,11 @@ CB_TEST("source.gekko_writer.the_source_can_be_edited_and_built", [] {
     cb::fs::ScopedTempDir dir("cb_gekko_writer");
     const cb::source::image_writer::Written r = write_to(dir, "game.dol", gt::dol());
     string text = source_of(r);
-    const std::size_t at = text.find("li r3,7");
+    const std::size_t at = text.find("li r3,0x7");
     CB_CHECK(at != string::npos);
-    text.replace(at, 7, "li r3,8");
-    const cb::build::mips_asm::Assembler assembler(cb::source::isa::ppc_encoder(), cb::build::mips_asm::ByteOrder::Big);
-    const cb::Bytes edited = assembler.build(text);
+    text.replace(at, 9, "li r3,0x8");
+    
+    const cb::Bytes edited = cb::source::risc_source::assemble("ppc", text, {});
     const cb::Bytes original = gt::dol();
     CB_CHECK_EQ(edited.size(), original.size());
     std::vector<std::size_t> differing;

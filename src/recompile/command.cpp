@@ -46,22 +46,10 @@ xenon::Config xenon_config(const cb::config::Config& config) {
     return c;
 }
 
-// The console's ordinal names ({library: {ordinal: name}}: the knowledge base's xbox360 / ordinal_names), read the first time a name is asked for.
+// The console's ordinal names: the knowledge base's xbox360 ordinals (config/knowledge/xbox360/ordinals.json).
 project::ImportNames ordinal_names(const cb::config::Config&) {
-    struct Table {
-        std::once_flag once;
-        knowledge::Rows rows;
-    };
-    auto table = std::make_shared<Table>();
-    return [table](std::string_view library, std::uint32_t ordinal) -> std::string {
-        std::call_once(table->once, [&] { table->rows = knowledge::standard().table("xbox360", "ordinal_names"); });
-        knowledge::record_kind("xbox360", "ordinal_names");
-        const knowledge::Value* lib = table->rows.find(std::string(library));
-        const knowledge::Value::Map* names = lib != nullptr ? lib->map() : nullptr;
-        if (names == nullptr) return {};
-        const knowledge::Value* name = names->find(std::to_string(ordinal));
-        const std::string* text = name != nullptr ? name->text() : nullptr;
-        return text != nullptr ? *text : std::string();
+    return [](std::string_view library, std::uint32_t ordinal) -> std::string {
+        return knowledge::standard().export_name("xbox360", library, ordinal).value_or(std::string());
     };
 }
 

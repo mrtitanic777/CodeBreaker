@@ -1,6 +1,7 @@
 // source/sh2_writer.cpp -- SH-2 programs as assembly source that builds back into them (sh2_writer.hpp).
 
 #include "source/sh2_writer.hpp"
+#include "knowledge/package.hpp"
 
 #include <algorithm>
 #include <format>
@@ -9,11 +10,11 @@
 #include <set>
 #include <unordered_map>
 
-#include "build/sh_asm.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/sh2.hpp"
 #include "source/isa_sh2.hpp"
+#include "source/risc_source.hpp"
 
 namespace cb::source::sh2_writer {
 
@@ -215,7 +216,7 @@ DataItem data_item(ByteView buf, std::size_t off, std::size_t limit, std::uint32
             items.push_back(std::format("0x{:04X}", half_at(buf, at, little)));
             took += 2;
         }
-        return {"        .word " + text::join(items, ", "), took};
+        return {"        .half " + text::join(items, ", "), took};
     }
     const std::size_t room = addr % 2 != 0 ? 1 : limit - off;
     const std::size_t count = std::min<std::size_t>({room, limit - off, 16});
@@ -225,18 +226,8 @@ DataItem data_item(ByteView buf, std::size_t off, std::size_t limit, std::uint32
 }  // namespace
 
 const std::map<std::uint32_t, std::string>& chip_registers() {
-    static const std::map<std::uint32_t, std::string> table = {
-        {0xFFFFFE00, "SCI_SMR"},   {0xFFFFFE01, "SCI_BRR"},   {0xFFFFFE02, "SCI_SCR"},   {0xFFFFFE03, "SCI_TDR"},   {0xFFFFFE04, "SCI_SSR"},
-        {0xFFFFFE05, "SCI_RDR"},   {0xFFFFFE10, "FRT_TIER"},  {0xFFFFFE11, "FRT_FTCSR"}, {0xFFFFFE12, "FRT_FRC"},   {0xFFFFFE14, "FRT_OCRA"},
-        {0xFFFFFE16, "FRT_TCR"},   {0xFFFFFE17, "FRT_TOCR"},  {0xFFFFFE18, "FRT_ICR"},   {0xFFFFFE60, "INTC_IPRB"}, {0xFFFFFE62, "INTC_VCRA"},
-        {0xFFFFFE64, "INTC_VCRB"}, {0xFFFFFE66, "INTC_VCRC"}, {0xFFFFFE68, "INTC_VCRD"}, {0xFFFFFE71, "DMAC_DRCR0"}, {0xFFFFFE72, "DMAC_DRCR1"},
-        {0xFFFFFE80, "WDT_WTCSR"}, {0xFFFFFE81, "WDT_WTCNT"}, {0xFFFFFE83, "WDT_RSTCSR"}, {0xFFFFFE91, "SBYCR"},      {0xFFFFFE92, "CCR"},
-        {0xFFFFFEE0, "INTC_ICR"},  {0xFFFFFEE2, "INTC_IPRA"}, {0xFFFFFEE4, "INTC_VCRWDT"},
-        {0xFFFFFF00, "DVSR"},      {0xFFFFFF04, "DVDNT"},     {0xFFFFFF08, "DVCR"},      {0xFFFFFF0C, "VCRDIV"},    {0xFFFFFF10, "DVDNTH"},
-        {0xFFFFFF14, "DVDNTL"},    {0xFFFFFF80, "DMAC_SAR0"}, {0xFFFFFF84, "DMAC_DAR0"}, {0xFFFFFF88, "DMAC_TCR0"}, {0xFFFFFF8C, "DMAC_CHCR0"},
-        {0xFFFFFF90, "DMAC_SAR1"}, {0xFFFFFF94, "DMAC_DAR1"}, {0xFFFFFF98, "DMAC_TCR1"}, {0xFFFFFF9C, "DMAC_CHCR1"}, {0xFFFFFFA0, "DMAC_VCRDMA0"},
-        {0xFFFFFFA8, "DMAC_VCRDMA1"}, {0xFFFFFFB0, "DMAC_DMAOR"}, {0xFFFFFFE0, "BSC_BCR1"}, {0xFFFFFFE4, "BSC_BCR2"}, {0xFFFFFFE8, "BSC_WCR"},
-        {0xFFFFFFEC, "BSC_MCR"},   {0xFFFFFFF0, "BSC_RTCSR"}, {0xFFFFFFF4, "BSC_RTCNT"}, {0xFFFFFFF8, "BSC_RTCOR"}};
+    // config/knowledge/sh2/registers.json
+    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("sh2", "chip_registers");
     return table;
 }
 
@@ -246,6 +237,7 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
     const Layout layout(image);
     const ShFlow flow(layout);
     const bool little = image.sh4;
+    const char* const cpu_name = image.sh4 ? "sh4" : "sh2";
     const std::uint32_t chip_base = image.sh4 ? 0xE0000000u : 0xFFFFFE00u;   // addresses from here are the chip's registers, not a view of memory
     const std::uint32_t uncached_view = image.sh4 ? 0xA0000000u : 0x20000000u;
     const auto physical = [sh4 = image.sh4](std::uint32_t a) { return physical_of(a, sh4); };
@@ -367,7 +359,7 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
             const std::optional<std::string> n = name_of(v);
             slot_lines[at] = "        .long " + (n ? *n : hex8(v));
         } else {
-            slot_lines[at] = std::format("        .word 0x{:04X}", layout.half(at));
+            slot_lines[at] = std::format("        .half 0x{:04X}", layout.half(at));
         }
     }
 
@@ -387,9 +379,10 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
 
     // the source ----------------------------------------------------------------------------------------------------------------
     std::vector<std::string> head = image.head;
-    head.push_back(std::format("! {} functions, {} of {} bytes reached as code", functions.size(), iw::code_bytes(code, flow), image_size));
+    head.push_back(std::format("; {} functions, {} of {} bytes reached as code", functions.size(), iw::code_bytes(code, flow), image_size));
+    head.push_back(std::string("; (SuperH syntax as the processor's SLEIGH description writes it: build with `assemble --cpu ") + cpu_name + " --sleigh`)");
     head.push_back("");
-    translate::l2::Assembly out(head, "gas", image.module);
+    translate::l2::Assembly out(head, std::string("sleigh-") + cpu_name, image.module);
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
 
@@ -410,7 +403,7 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
     for (const Part& part : image.parts) {
         out.part(part.name, part.code ? "code" : "data", std::nullopt, part.length);
         if (part.mapped) out.append(std::format("        .org {}", hex8(part.base)));
-        else out.append("! (not loaded: no address names these bytes)");
+        else out.append("; (not loaded: no address names these bytes)");
         std::uint32_t off = part.offset;
         const std::uint32_t end = part.offset + part.length;
         while (off < end) {
@@ -430,7 +423,19 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
                 out.append(label->second + ":");
             }
             if (const auto it = code.find(addr); it != code.end()) {
-                out.append("        " + dm::text(it->second.insn, labels_for_text));
+                {   // the description's text, with the labels of a branch and of the constant a PC-relative load reads put in
+                    const dm::Insn& insn = it->second.insn;
+                    std::map<std::uint32_t, std::string> by_value;
+                    std::vector<std::uint32_t> operands;
+                    const auto name = [&](std::uint32_t a) {
+                        if (const auto named = labels.find(a); named != labels.end()) by_value[a] = named->second, operands.push_back(a);
+                    };
+                    if (insn.target) name(*insn.target);
+                    if (insn.literal) name(*insn.literal);
+                    const std::size_t at = layout.offset_of(addr);
+                    const ByteView following = layout.bytes().subspan(std::min(at + 2, layout.bytes().size()), std::min<std::size_t>(2, layout.bytes().size() - std::min(at + 2, layout.bytes().size())));
+                    out.append("        " + risc_source::code(cpu_name, layout.bytes().subspan(at, 2), addr, by_value, operands, {}, following));
+                }
                 off += 2;
                 continue;
             }
@@ -456,8 +461,7 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image_size);
-    const build::sh_asm::Assembler assembler(image.sh4 ? isa::sh4_encoder() : isa::sh2_encoder(), image.sh4);
-    iw::assembled(r, [&] { return assembler.build(source); }, image.bytes, folder / std::string(built_name), "image");
+    iw::assembled(r, [&] { return risc_source::assemble(cpu_name, source, folder); }, image.bytes, folder / std::string(built_name), "image");
     return r;
 }
 
