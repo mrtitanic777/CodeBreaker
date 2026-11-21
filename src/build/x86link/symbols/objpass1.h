@@ -73,11 +73,11 @@ extern void             DefineSymbol(Link& link,  symbol *, segnode *, offset, u
 extern void             AllocCommunal(Link& link,  symbol *, offset );
 extern symbol           *MakeCommunalSym(Link& link,  symbol *, offset, bool, byte bits );
 extern void             SetComdatSym(Link& link,  symbol *, segdata * );
-extern void             StoreInfoData( comdat_info *info );
+extern void             StoreInfoData(Link& link,  comdat_info *info );
 extern void             InfoCDatAltDef(Link& link,  comdat_info * );
 extern void             DefineLazyExtdef(Link& link,  symbol *, symbol *, bool );
 extern void             DefineVFTableRecord(Link& link,  symbol *, symbol *, bool, vflistrtns * );
-extern void             DefineVFReference( void *, symbol *, bool );
+extern void             DefineVFReference(Link& link,  void *, symbol *, bool );
 extern void             DefineReference(Link& link,  symbol * );
 extern void             CheckComdatSym(Link& link,  symbol *, sym_info );
 extern void             DefineComdat(Link& link,  segdata *, symbol *, offset, sym_info, unsigned_8 * );

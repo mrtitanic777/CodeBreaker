@@ -1,8 +1,9 @@
-// Tests of the Atari 7800 writer over a small program of its own, written out byte by byte: the source it writes, built again by the 6502's SLEIGH
-// description, is the cartridge file it came from (the header included).
+// Tests of the Atari 7800 writer over a small program of its own, written out byte by byte: the source it writes, built again by CodeBreaker's dasm-syntax
+// assembler, is the cartridge file it came from (the header included).
 
 #include "source/atari7800_writer.hpp"
 
+#include "source/dialect.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
@@ -48,10 +49,9 @@ CB_TEST("source.atari7800_writer.the_program_comes_back_as_source_that_builds_th
     CB_CHECK_EQ(r.code_bytes, 12u + 8u + 1u);
     CB_CHECK(r.source == dir.path() / "demo.asm");
     const std::string s = fs::read_text(r.source);
-    // (STA $0024 with the absolute encoding, which the description's text cannot say: `STA 0x24` is the zero-page one, so it stays as its bytes)
-    for (const char* want : {".equ CTRL, 0x3c", ".equ MSTAT, 0x28", ".equ WSYNC, 0x24", "        .org 0x0000", "; file offset 0x0080\n        .org 0xc000",
-                             "        STA CTRL", "        JSR sub_C020", "        LDA MSTAT", "        BPL sub_C020", "        .byte 0x8d,0x24,0x00  ; STA 0x24",
-                             "        JMP L_C006", "        .half nmi,reset,nmi", "reset:\n", "nmi:\n"}) {
+    for (const char* want : {"        processor 6502", "CTRL       = $3C", "MSTAT      = $28", "WSYNC      = $24", "        ORG $0000", "        ORG $0080",
+                             "        RORG $C000", "        STA CTRL", "        JSR sub_C020", "        LDA MSTAT", "        BPL sub_C020", "        STA.w WSYNC",
+                             "        JMP L_C006", "        .word nmi, reset, nmi", "reset\n", "nmi\n"}) {
         CB_CHECK(s.find(want) != std::string::npos);
     }
 });
@@ -60,10 +60,10 @@ CB_TEST("source.atari7800_writer.an_edited_source_builds_a_different_file", [] {
     fs::ScopedTempDir dir("cb_a7800_edit");
     const image_writer::Written r = write(formats::atari7800::parse(program()), "demo.a78", dir.path());
     std::string s = fs::read_text(r.source);
-    const std::size_t at = s.find("LDA #0x40");
+    const std::size_t at = s.find("LDA #$40");
     CB_CHECK(at != std::string::npos);
-    s.replace(at, 9, "LDA #0x41");
-    const Bytes edited = m6502_source::assemble(m6502_source::Cpu::M6502, s, dir.path());
+    s.replace(at, 8, "LDA #$41");
+    const Bytes edited = m6502_source::assemble(m6502_source::Cpu::M6502, dialect::find("dasm").parse(s), dir.path());
     Bytes expected = program();
     expected[128 + 3] = 0x41;
     CB_CHECK(edited == expected);
@@ -76,9 +76,9 @@ CB_TEST("source.atari7800_writer.a_supergame_board_writes_each_bank_and_does_not
     CB_CHECK_EQ(r.image_bytes, 0x20000u);
     CB_CHECK_EQ(r.functions.at(0x7C000), "reset");   // in the fixed bank (7)
     const std::string s = fs::read_text(r.source);
-    CB_CHECK(s.find("        .org 0x8000") != std::string::npos);
-    CB_CHECK(s.find("        .org 0xc000") != std::string::npos);
-    CB_CHECK(s.find("; file offset 0x0080\n") != std::string::npos);
+    CB_CHECK(s.find("        RORG $8000") != std::string::npos);
+    CB_CHECK(s.find("        RORG $C000") != std::string::npos);
+    CB_CHECK(s.find("        ORG $0080") != std::string::npos);
 });
 
 }  // namespace

@@ -1,7 +1,7 @@
 // build/x86link/directives/qnx.cpp -- QNX (`format qnx [flat]`, its options and `segment` directive): a port of wlink's
 // cmdqnx.c.
 #include "build/x86link/directives/common.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/directives/formats.hpp"
 #include "exeqnx.h"
 #include "build/x86link/formats/qnx.h"
@@ -45,7 +45,7 @@ bool ProcPrivilege(Link& link) {
         return false;
     Number ret = number16(value);
     if (ret != Number::ok || value > 3) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "PRIVILEGE");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "PRIVILEGE");
     } else {
         link.FmtData.u.qnx.priv_level = value;
     }
@@ -105,7 +105,7 @@ bool getSegFlags(Link& link) {
     if (!reader().get(Sep::none, Want::include_dot)) {
         return false;
     }
-    seg_flags_struct* seg_flags = (seg_flags_struct*)(MemAllocSafe(sizeof(seg_flags_struct)));
+    seg_flags_struct* seg_flags = (seg_flags_struct*)(MemAllocSafe(link, sizeof(seg_flags_struct)));
     seg_flags->specified = SEG_NONE;
     seg_flags->flags = SEG_NONE;
     std::string_view text = reader().text();
@@ -139,7 +139,7 @@ bool ProcQNXHeapSize(Link& link) {
         return false;
     Number ret = number(value);
     if (ret != Number::ok || value == 0) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "HEAPSIZE");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "HEAPSIZE");
     } else {
         link.FmtData.u.qnx.heapsize = value;
     }

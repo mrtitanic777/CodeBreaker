@@ -33,7 +33,7 @@
 
 
 extern void     CVInit( void );
-extern void     CVInitModule( mod_entry * );
+extern void     CVInitModule(Link& link,  mod_entry * );
 extern void     CVP1ModuleScanned( void );
 extern void     CVP1ModuleFinished( Link& link, mod_entry * );
 extern void     CVAddModule(Link& link,  mod_entry *, section * );

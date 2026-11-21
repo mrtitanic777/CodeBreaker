@@ -61,3 +61,22 @@ std::string equ(const std::string& name, std::uint32_t value, unsigned digits);
 Bytes assemble(Cpu cpu, std::string_view source, const std::filesystem::path& folder);
 
 }  // namespace cb::source::m6502_source
+
+#include "decompile/m6502.hpp"
+#include "source/dialect.hpp"
+
+namespace cb::source::m6502_source {
+
+// `code` (what `code()` made for `insn`) with an instruction the description's text cannot say back -- the absolute form of a zero-page address -- said as the
+// dialect has it (DASM's `STA.w WSYNC`), when the dialect has such a form; a fallback line otherwise gets its comment said in the dialect.
+std::string in_dialect(const dialect::Dialect& dialect, const decompile::m6502::Insn& insn, const decompile::AddressLabels& names, const std::string& code);
+
+}  // namespace cb::source::m6502_source
+
+namespace cb::source::m6502_source {
+
+// The same for an instruction of any 6502-family decoder: whether it is an absolute-mode one, its mnemonic and operand.
+std::string in_dialect_absolute(const dialect::Dialect& dialect, std::string_view mnemonic, bool absolute, std::uint32_t operand, const decompile::AddressLabels& names,
+                                const std::string& code);
+
+}  // namespace cb::source::m6502_source

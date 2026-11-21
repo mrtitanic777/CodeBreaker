@@ -36,10 +36,10 @@
 #include "wresrtns.h"
 
 
-WResDir WResInitDir( void )
+WResDir WResInitDir(Link& link)
 /*************************/
 {
-    auto dir = static_cast<WResDir>( WRESALLOC( sizeof( WResDirHead ) ) );
+    auto dir = static_cast<WResDir>( WRESALLOC(link,  sizeof( WResDirHead ) ) );
 
     if( dir == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );

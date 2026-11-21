@@ -114,7 +114,7 @@ void Zoo::main(ref<Array<ref<String>>> args) {
 	int32_t j2xo2{};
 	ref<Zoo_Pair> j2xo3{};
 	int32_t j2xo4{};
-	jrt::nn(jrt::System::out_())->println((j2xo1 = Zoo_Base::made, j2xo2 = (jrt::cast<Zoo_Dog>(jrt::cast<Zoo_Animal>(jrt::nn(zoo)->get(0))))->barks, j2xo3 = std::make_shared<Zoo_Pair>(jrt::lit(u"x"), 2), j2xo4 = Zoo::sumTo(4), jrt::concat(j2xo1, jrt::lit(u" "), j2xo2, jrt::lit(u" "), j2xo3, jrt::lit(u" "), j2xo4)));
+	jrt::nn(jrt::System::out_())->println((j2xo1 = Zoo_Base::made, j2xo2 = jrt::nn((jrt::cast<Zoo_Dog>(jrt::cast<Zoo_Animal>(jrt::nn(zoo)->get(0)))))->barks, j2xo3 = std::make_shared<Zoo_Pair>(jrt::lit(u"x"), 2), j2xo4 = Zoo::sumTo(4), jrt::concat(j2xo1, jrt::lit(u" "), j2xo2, jrt::lit(u" "), j2xo3, jrt::lit(u" "), j2xo4)));
 	try {
 		try {
 			Zoo::pick(-2);
@@ -226,7 +226,7 @@ bool Zoo_Pair::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Zoo_Pair>(o);
-	return jrt::Objects::equals(this->a_, that->a_) && this->b_ == that->b_;
+	return jrt::Objects::equals(this->a_, jrt::nn(that)->a_) && this->b_ == jrt::nn(that)->b_;
 }
 
 void Zoo_Empty::ctor_(ref<String> m) {
@@ -241,5 +241,5 @@ void Zoo_Empty::finit_() {
 int main(int argc, char** argv) {
 	const char* which = std::getenv("JRT_MAIN");
 	if (which && std::strcmp(which, "Zoo") == 0) return jrt::run_main(&Zoo::main, argc, argv);
-	return jrt::run_main(&Main::main, argc, argv);
+	return jrt::run_main(&Zoo::main, argc, argv);
 }

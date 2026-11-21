@@ -75,7 +75,7 @@ extern void             GenPEToc( void );
 extern void             ChkPEData(Link& link);
 extern unsigned long    GetPEHeaderSize(Link& link);
 extern void             ResetLoadPE(Link& link);
-extern void             AddPEImportLocalSym( symbol *, symbol * );
+extern void             AddPEImportLocalSym(Link& link,  symbol *, symbol * );
 extern bool             ImportPELocalSym(Link& link,  symbol * );
 extern void             FreePELocalImports( void );
 

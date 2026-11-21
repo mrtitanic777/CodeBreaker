@@ -23,6 +23,9 @@ namespace pce = formats::pce;
 
 namespace {
 
+// The PC Engine's source is ca65's, with .res fills and string rows (config/dialects/ca65-res.json).
+const dialect::Dialect& ca65() { static const dialect::Dialect& d = dialect::find("ca65-res"); return d; }
+
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr std::uint8_t kUnknown = 0xFF;                      // an MPR nobody has set (the hardware page's number too: both are "not ROM")
@@ -207,7 +210,7 @@ struct Naming {
     const PceFlow& flow;
     const iw::Names& labels;                     // by flow address
     const decompile::AddressLabels& zero_page;   // by byte
-    std::map<std::uint32_t, std::string>* equates = nullptr;   // the hardware names used (collected when set)
+    std::set<std::pair<std::uint32_t, std::string>>* equates = nullptr;   // the hardware names used (collected when set; a register read and written has a name each)
 };
 
 // The names of the numbers an instruction has: its labels, the hardware registers and the zero-page bytes it names.
@@ -225,7 +228,7 @@ decompile::AddressLabels insn_names(const Naming& n, const Insn& insn) {
         const auto& table = written ? pce::registers_write() : pce::registers_read();
         if (const auto it = table.find(value); it != table.end()) {
             names[value] = it->second;
-            if (n.equates) (*n.equates)[value] = it->second;
+            if (n.equates) n.equates->insert({value, it->second});
         }
     };
     for (const auto& [value, written] : address_operands(i)) name(value, written);
@@ -263,9 +266,11 @@ public:
     std::string text(const Insn& insn) const override {
         if (const auto it = described_.find(at_offset_); it != described_.end()) return insn_text(naming_, insn, it->second);
         // (a text the description cannot say back: the bytes, with the description's reading in a comment)
-        return m6502_source::code(m6502_source::Cpu::Huc6280, ByteView(rom_.data).subspan(at_offset_, insn.i.size), base_ + at_offset_ % pce::kBankSize, {});
+        const decompile::AddressLabels names = insn_names(naming_, insn);
+        return m6502_source::in_dialect_absolute(ca65(), insn.i.mnemonic, insn.i.mode == hu::Mode::Abs, insn.i.operand[0], names,
+                                                 m6502_source::code(m6502_source::Cpu::Huc6280, ByteView(rom_.data).subspan(at_offset_, insn.i.size), base_ + at_offset_ % pce::kBankSize, names));
     }
-    std::vector<std::string> data_lines(ByteView data) const override { return m6502_source::data_lines(data); }
+    std::vector<std::string> data_lines(ByteView data) const override { return ca65().data_lines(data); }
 
     // The ten vector bytes: IRQ2 (and BRK), IRQ1, TIMER, NMI, RESET.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
@@ -292,6 +297,19 @@ private:
     const Naming& naming_;
     translate::l2::Assembly& out_;
 };
+
+
+// The ld65 configuration: where each segment of the source loads (config/dialects/ca65-res.json reads it back).
+std::string link_config(const pce::Rom& rom, const PceFlow& flow) {
+    std::vector<std::string> cfg = {"MEMORY {"};
+    if (!rom.header.empty()) cfg.push_back(std::format("    HEADER: start = $0000, size = ${:04X}, fill = yes, file = %O;", pce::kHeaderSize));
+    for (std::size_t b = 0; b < rom.bank_count(); ++b) cfg.push_back(std::format("    BANK{}: start = ${:04X}, size = ${:04X}, fill = yes, file = %O;", b, flow.base_or_default(b), pce::kBankSize));
+    cfg.insert(cfg.end(), {"}", "SEGMENTS {"});
+    if (!rom.header.empty()) cfg.push_back("    HEADER: load = HEADER, type = ro;");
+    for (std::size_t b = 0; b < rom.bank_count(); ++b) cfg.push_back(std::format("    BANK{}: load = BANK{}, type = ro;", b, b));
+    cfg.push_back("}");
+    return text::join(cfg, "\n") + "\n";
+}
 
 }  // namespace
 
@@ -355,7 +373,7 @@ iw::Written write(const pce::Rom& rom, std::string_view file_name, const std::fi
     }
 
     // the text of each instruction; one that does not assemble back into its bytes is data
-    std::map<std::uint32_t, std::string> hardware;
+    std::set<std::pair<std::uint32_t, std::string>> hardware;
     Naming naming{flow, labels, zero_page, &hardware};
     for (const auto& entry : code) (void)insn_names(naming, entry.second);   // (collects the hardware names used)
     naming.equates = nullptr;
@@ -364,6 +382,11 @@ iw::Written write(const pce::Rom& rom, std::string_view file_name, const std::fi
         const std::uint32_t bank = offset / pce::kBankSize;
         const std::uint32_t logical = flow.base_or_default(bank) + offset % pce::kBankSize;
         if (const auto text = m6502_source::described(m6502_source::Cpu::Huc6280, ByteView(rom.data).subspan(offset, insn.i.size), logical)) described[offset] = *text;
+        else if (const std::string forced = insn.i.mode == hu::Mode::Abs && insn.i.operand[0] < 0x100
+                                                ? ca65().forced_absolute(insn.i.mnemonic, std::format("0x{:x}", insn.i.operand[0]))
+                                                : std::string();
+                 !forced.empty())
+            described[offset] = forced;   // (the absolute form of a zero-page address: `STA a:x` in ca65's, which the description's text cannot say)
         else demoted.insert(offset);
     }
     std::size_t code_total = 0;
@@ -373,34 +396,37 @@ iw::Written write(const pce::Rom& rom, std::string_view file_name, const std::fi
 
     std::vector<std::string> head = {std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                      std::format("; PC Engine / TurboGrafx-16 HuCard: {} banks of 8 KB{}", rom.bank_count(), rom.header.empty() ? "" : ", with a 512-byte copier header"),
-                                     "; each BANKn is one 8 KB bank, written at the address the code that maps it expects (the file is the banks in order)",
-                                     "; (HuC6280 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu huc6280 --sleigh`)", ""};
-    for (const auto& [value, label] : hardware) head.push_back(m6502_source::equ(label, value, 4));
+                                     "; each BANKn segment is one 8 KB bank, linked at the address the code that maps it expects",
+                                     "", "        .setcpu \"HuC6280\"", ""};
+    for (const auto& [value, label] : hardware) head.push_back(ca65().line(m6502_source::equ(label, value, 4), 14));
     if (!hardware.empty()) head.push_back("");
-    for (const auto& [byte, label] : zero_page) head.push_back(m6502_source::equ(label, byte, 2));
+    for (const auto& [byte, label] : zero_page) head.push_back(ca65().line(m6502_source::equ(label, byte, 2), 14));
     if (!zero_page.empty()) head.push_back("");
-    translate::l2::Assembly out(head, "sleigh-huc6280", std::string(file_name));
+    translate::l2::Assembly out(head, "ca65", std::string(file_name));
 
     if (!rom.header.empty()) {
         out.part("HEADER", "segment", std::nullopt, pce::kHeaderSize);
-        out.append("; HEADER");
-        out.extend(iw::commented(m6502_source::data_lines(rom.header), "the copier header"));
+        out.extend(ca65().block("segment", {{"name", "HEADER"}}));
+        out.extend(iw::commented(ca65().data_lines(rom.header), "the copier header"));
         out.append("");
     }
     for (std::size_t b = 0; b < rom.bank_count(); ++b) {
         out.part(std::format("BANK{}", b), "segment", std::nullopt, pce::kBankSize);
-        out.append(std::format("; BANK{}", b));
-        out.append(std::format("        .org 0x{:04x}", flow.base_or_default(b)));
+        out.extend(ca65().block("segment", {{"name", std::format("BANK{}", b)}}));
         PceListing listing(rom, b, flow.base_or_default(b), code, demoted, described, naming, out);
         iw::emit<Insn>(out, static_cast<std::uint32_t>(b * pce::kBankSize), static_cast<std::uint32_t>((b + 1) * pce::kBankSize), labels, functions, listing);
         out.append("");
     }
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = ca65().print(iw::text(out) + "\n");   // (said in ca65's)
 
+    const std::string config = link_config(rom, flow);
+    const std::filesystem::path config_path = folder / (stem + ".cfg");
+    fs::write_file(config_path, as_bytes(config));
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, code_total, rom.data.size());
+    r.config = config_path;
     Bytes original = rom.header;
     original.insert(original.end(), rom.data.begin(), rom.data.end());
-    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::Huc6280, source, folder); }, original, folder / (stem + ".built.pce"));
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::Huc6280, ca65().parse(source, {config, folder}), folder); }, original, folder / (stem + ".built.pce"));
     return r;
 }
 

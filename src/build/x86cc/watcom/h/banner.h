@@ -125,7 +125,7 @@
 #elif _BLDVER == 1310
     #define BAN_VER_STR "2.1" _BETA_
 #else
-    #error **** Specified Banner version not supported ****
+    #error **** Specified Banner version not_ supported ****
     #define BAN_VER_STR "12.0" _BETA_
 #endif
 

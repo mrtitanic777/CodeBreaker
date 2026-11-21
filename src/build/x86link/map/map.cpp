@@ -43,7 +43,7 @@
 #include <string_view>
 #include <vector>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
 #include "build/x86link/objects/objnode.h"
@@ -149,7 +149,7 @@ static void WriteMap(Link& link,  const char *buffer, size_t len )
 {
     if( len > 0 ) {
         if( fwrite( buffer, len, 1, link.MapFile ) == 0 ) {
-            LnkMsg( ERR+MSG_IO_PROBLEM, "12", link.MapFName, strerror( errno ) );
+            LnkMsg(link,  ERR+MSG_IO_PROBLEM, "12", link.MapFName, strerror( errno ) );
         }
     }
 }
@@ -559,7 +559,7 @@ static void WriteMapSegment(Link& link,  void *_seg )
 /****************************************
  * NYI: completely broken for absolute segments
  */
-{
+{
     segdata         *seg = static_cast<segdata *>( _seg );
     char            star;
     char            bang;
@@ -590,7 +590,7 @@ static void WriteMapSegment(Link& link,  void *_seg )
 
 static void WriteMapModuleSegments(Link& link,  mod_entry *mod )
 /**************************************************/
-{
+{
     if( (mod->flags_mod & MOD_NEED_PASS_2) && mod->segs != nullptr ) {
         WriteMapColPrintf(link,  0, "%s", mod->name.u.ptr );
         if( strlen( mod->name.u.ptr ) > 15 )
@@ -900,7 +900,7 @@ static void WriteMapLines(Link& link)
 
 static bool CheckSymRecList(Link& link,  void *_info, void *sym )
 /***************************************************/
-{
+{
     symrecinfo *info = static_cast<symrecinfo *>( _info );
 
     return( ( sym == info->sym ) && ( link.CurrMod == info->mod ) );
@@ -912,7 +912,7 @@ static void AddSymRecList(Link& link,  symbol *sym, symrecinfo **head )
     symrecinfo      *info;
 
     if( RingLookup( *head, bind_link( link, CheckSymRecList ), sym ) == nullptr ) {
-        info = static_cast<symrecinfo *>( MemAllocSafe( sizeof( symrecinfo ) ) );
+        info = static_cast<symrecinfo *>( MemAllocSafe(link,  sizeof( symrecinfo ) ) );
         info->next = nullptr;
         info->sym = sym;
         info->mod = link.CurrMod;
@@ -930,12 +930,12 @@ void RecordUndefinedSym(Link& link,  symbol *sym )
 
 static void PrintUndefinedSym(Link& link,  void *_info )
 /******************************************/
-{
+{
     symrecinfo  *info = static_cast<symrecinfo *>( _info );
     mod_entry   *mod;
 
     mod = info->mod;
-    LnkMsg( YELL+MSG_UNDEF_SYM, "12S", mod->u1.source->infile->name, mod->name, info->sym );
+    LnkMsg(link,  YELL+MSG_UNDEF_SYM, "12S", mod->u1.source->infile->name, mod->name, info->sym );
     if( link.MapFile != nullptr ) {
         WriteMapColPrintf(link,  0, "%S", info->sym );
         WriteMapColPrintf(link,  32, "%s(%s)", mod->u1.source->infile->name, mod->name );
@@ -967,12 +967,12 @@ void WriteMapTracedSymRecord(Link& link,  symbol *sym )
     }
 }
 
-static void WriteMapTracedSym( void *_info )
+static void WriteMapTracedSym(Link& link,  void *_info )
 /******************************************/
 {
     symrecinfo  *info = static_cast<symrecinfo *>( _info );
 
-    WriteMapLnkMsg( MSG_MOD_TRACE, "Ss", info->sym, info->mod->name );
+    WriteMapLnkMsg( link, MSG_MOD_TRACE, "Ss", info->sym, info->mod->name );
 }
 
 void WriteMapTracedSyms(Link& link)
@@ -982,7 +982,7 @@ void WriteMapTracedSyms(Link& link)
 
     if( st.SymTraceList != nullptr ) {
         WriteMapBox(link,  MSG_MAP_BOX_TRACE_SYM );
-        RingWalk( st.SymTraceList, WriteMapTracedSym );
+        RingWalk( st.SymTraceList, bind_link( link, WriteMapTracedSym ) );
         WriteMapNL(link);
     }
 }
@@ -1108,7 +1108,7 @@ void MapInit(Link& link)
         link.MapFile = fopen( link.MapFName, "wt" );
         if( link.MapFile == nullptr ) {
             link.MapFlags = static_cast<mapflag>( 0 );
-            LnkMsg( FTL+MSG_CANT_OPEN, "12", link.MapFName, strerror( errno ) );
+            LnkMsg(link,  FTL+MSG_CANT_OPEN, "12", link.MapFName, strerror( errno ) );
             return;
         }
         setvbuf( link.MapFile, nullptr, _IOFBF, MAP_BUFFER_SIZE );
@@ -1132,7 +1132,7 @@ void MapInit(Link& link)
         dat.push_back( '/' );
         PutDec( dat, localt->tm_mday );
 
-        WriteMapLnkMsg( MSG_CREATED_ON, "12", dat.c_str(), tim.c_str() );
+        WriteMapLnkMsg( link, MSG_CREATED_ON, "12", dat.c_str(), tim.c_str() );
     }
 }
 
@@ -1178,7 +1178,7 @@ void MapFini(Link& link)
         link.MapFlags = static_cast<mapflag>( 0 );
 
         if( fclose( link.MapFile ) ) {
-            LnkMsg( ERR+MSG_IO_PROBLEM, "12", link.MapFName, strerror( errno ) );
+            LnkMsg(link,  ERR+MSG_IO_PROBLEM, "12", link.MapFName, strerror( errno ) );
         }
         link.MapFile = nullptr;
 
@@ -1258,7 +1258,7 @@ void WriteMapPubEnd(Link& link)
             }
         }
         if( !ok ) {
-            LnkMsg( WRN+MSG_CANT_SORT_SYMBOLS, nullptr );
+            LnkMsg(link,  WRN+MSG_CANT_SORT_SYMBOLS, nullptr );
         } else {
             WriteMapSymArray(link,  symarray.data(), st.NumMapSyms );
         }
@@ -1272,7 +1272,7 @@ void WriteMapPubSortStart(Link& link,  pubdefinfo *info )
     if( (link.MapFlags & MAP_SORT)
       && (link.MapFlags & MAP_GLOBAL) == 0
       && ( link.CurrMod->publist != nullptr ) ) {
-        info->symarray = static_cast<symbol **>( MemAllocSafe( Ring2Count( link.CurrMod->publist ) * sizeof( symbol * ) ) );
+        info->symarray = static_cast<symbol **>( MemAllocSafe(link,  Ring2Count( link.CurrMod->publist ) * sizeof( symbol * ) ) );
     }
 }
 

@@ -329,7 +329,7 @@ Process      start(const ProcessSpec&);                // streaming: read(), wri
   (the standing safety rule); the Job Object is how children-of-children are cleaned up without it.
 - `cmd /c`, `mklink` and batch files are called as `cmd` with an argv; shell strings are never built with `+`.
   Quoting follows the Windows argv rules in one function (`cb::quote_arg`).
-- `cb::Process` replaces `py::subprocess`, `os.system`, `subprocess.Popen` and the DOSBox/OpenWatcom wrappers'
+- `cb::Process` replaces `py::subprocess`, `os.system`, `subprocess.Popen` and the OpenWatcom wrappers'
   private variants (`build/driver.cpp::_run`, `flat_thunk.cpp`, `msc6.cpp`).
 
 ### 3.11 Threads, state, worker processes

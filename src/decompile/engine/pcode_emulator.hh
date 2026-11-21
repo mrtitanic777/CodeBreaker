@@ -54,6 +54,7 @@ public:
     // ---- memory (space: the default code space, "ram", unless named). Raw: hooks are not called.
     void load(std::uint64_t addr, const std::uint8_t* data, std::size_t size, std::string_view space = {});
     void write(std::uint64_t addr, const std::uint8_t* data, std::size_t size, std::string_view space = {});
+    void clearMemory(std::string_view space = {});   // every page of the space forgotten (it reads zeros again); decoded instructions dropped
     void read(std::uint64_t addr, std::uint8_t* data, std::size_t size, std::string_view space = {}) const;
     std::uint64_t readValue(std::uint64_t addr, unsigned size, std::string_view space = {}) const;   // in the processor's byte order
     void writeValue(std::uint64_t addr, unsigned size, std::uint64_t value, std::string_view space = {});

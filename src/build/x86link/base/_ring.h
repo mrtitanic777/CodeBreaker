@@ -33,10 +33,12 @@
 // PROTOTYPES:
 
 void *RINGHNAME(Alloc) (        // ALLOCATE AND APPEND NEW ELEMENT
+    Link& link,                 // - the link
     void *hdr,                  // - addr( ring header )
     size_t size )               // - size of entry to be allocated
 ;
 void* RINGHNAME(CarveAlloc) (   // CARVER ALLOC AND APPEND AN ENTRY
+    Link& link,                 // - the link
     carve_t carver,             // - carving control
     void *hdr )                 // - addr( ring header )
 ;

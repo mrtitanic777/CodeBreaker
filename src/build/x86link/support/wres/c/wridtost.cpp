@@ -61,13 +61,13 @@ char *u32tostr( char *buf, uint_32 num )
 
 /* the name or the decimal number of an ID as an allocated string */
 template <typename Id>
-char *idToStr( const Id *id, size_t maxdigits )
+char *idToStr(Link& link,  const Id *id, size_t maxdigits )
 {
     char    *str;
 
     if( id->IsName ) {
         /* alloc space for the string and a \0 char at the end */
-        str = static_cast<char *>( WRESALLOC( id->ID.Name.NumChars + 1 ) );
+        str = static_cast<char *>( WRESALLOC(link,  id->ID.Name.NumChars + 1 ) );
         if( str == nullptr ) {
             WRES_ERROR( WRS_MALLOC_FAILED );
         } else {
@@ -76,7 +76,7 @@ char *idToStr( const Id *id, size_t maxdigits )
             str[id->ID.Name.NumChars] = '\0';
         }
     } else {
-        str = static_cast<char *>( WRESALLOC( maxdigits + 1 ) );
+        str = static_cast<char *>( WRESALLOC(link,  maxdigits + 1 ) );
         if( str == nullptr ) {
             WRES_ERROR( WRS_MALLOC_FAILED );
         } else {
@@ -88,18 +88,18 @@ char *idToStr( const Id *id, size_t maxdigits )
 
 } // namespace
 
-char *WResIDToStr( const WResID *id )
+char *WResIDToStr( Link& link, const WResID *id )
 /************************************
  * return the value in an ID if it is a string, NULL otherwise
  */
 {
-    return( idToStr( id, UINT16_MAXDIGITS ) );
+    return( idToStr( link, id, UINT16_MAXDIGITS ) );
 }
 
-char *WResHelpIDToStr( const WResHelpID *help_id )
+char *WResHelpIDToStr( Link& link, const WResHelpID *help_id )
 /*************************************************
  * return the value in a Help ID if it is a string, NULL otherwise
  */
 {
-    return( idToStr( help_id, UINT32_MAXDIGITS ) );
+    return( idToStr( link, help_id, UINT32_MAXDIGITS ) );
 }

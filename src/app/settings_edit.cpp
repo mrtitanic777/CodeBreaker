@@ -29,7 +29,6 @@ constexpr StWords kStWords[] = {
     {"msvc152", "Visual C++ 1.52", "The period compiler for 16-bit Windows 95 code."},
     {"xenix_c", "Xenix C compiler", "A period compiler used to check old code."},
     {"period_compiler", "Period compiler", "Where the period compilers are kept."},
-    {"dosbox_x", "DOSBox-X", "Runs the DOS tools of the period compilers."},
     {"host_cxx", "C++ compiler", "The compiler that builds translated C++ here."},
     {"msbuild", "MSBuild", "Builds Visual Studio projects."},
     {"visual_studio", "Visual Studio folder", "Where Visual Studio is installed."},

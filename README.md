@@ -251,7 +251,7 @@ tables it reads, with no tests. Unzip it, add its `bin` folder to `PATH`, and ru
 **Requirements:** Windows 10 or 11 (x64), CMake and Ninja, Git, and a C++20 compiler. CodeBreaker builds with
 MSVC (Visual Studio 2022 or 2026), Clang (`clang-cl`) and GCC (MinGW-w64), and CI builds it with all three on every
 push; the build scripts use MSVC (the assembler, x86asm, is part of the program). The Java lane needs JDK 21. The individual
-lanes use their own tools (OpenWatcom, DOSBox-X, the period compilers, an Xbox 360 SDK); `codebreaker
+lanes use their own tools (OpenWatcom, the period compilers, which run on the built-in DOS executive, an Xbox 360 SDK); `codebreaker
 settings` lists every one and whether it was found.
 
 ```bash

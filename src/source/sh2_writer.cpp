@@ -14,6 +14,7 @@
 #include "core/text.hpp"
 #include "decompile/sh2.hpp"
 #include "source/isa_sh2.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::sh2_writer {
@@ -238,6 +239,7 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
     const ShFlow flow(layout);
     const bool little = image.sh4;
     const char* const cpu_name = image.sh4 ? "sh4" : "sh2";
+    const dialect::Dialect& sh_dialect = dialect::find(image.sh4 ? "gas-sh4" : "gas-sh");   // (config/dialects/gas-sh.json for the SH-2, gas-sh4.json for the SH-4)
     const std::uint32_t chip_base = image.sh4 ? 0xE0000000u : 0xFFFFFE00u;   // addresses from here are the chip's registers, not a view of memory
     const std::uint32_t uncached_view = image.sh4 ? 0xA0000000u : 0x20000000u;
     const auto physical = [sh4 = image.sh4](std::uint32_t a) { return physical_of(a, sh4); };
@@ -380,9 +382,8 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
     // the source ----------------------------------------------------------------------------------------------------------------
     std::vector<std::string> head = image.head;
     head.push_back(std::format("; {} functions, {} of {} bytes reached as code", functions.size(), iw::code_bytes(code, flow), image_size));
-    head.push_back(std::string("; (SuperH syntax as the processor's SLEIGH description writes it: build with `assemble --cpu ") + cpu_name + " --sleigh`)");
     head.push_back("");
-    translate::l2::Assembly out(head, std::string("sleigh-") + cpu_name, image.module);
+    translate::l2::Assembly out(head, "gas", image.module);
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
 
@@ -434,7 +435,7 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
                     if (insn.literal) name(*insn.literal);
                     const std::size_t at = layout.offset_of(addr);
                     const ByteView following = layout.bytes().subspan(std::min(at + 2, layout.bytes().size()), std::min<std::size_t>(2, layout.bytes().size() - std::min(at + 2, layout.bytes().size())));
-                    out.append("        " + risc_source::code(cpu_name, layout.bytes().subspan(at, 2), addr, by_value, operands, {}, following));
+                    out.append("        " + sh_dialect.fallback(risc_source::code(cpu_name, layout.bytes().subspan(at, 2), addr, by_value, operands, {}, following)));
                 }
                 off += 2;
                 continue;
@@ -459,9 +460,9 @@ iw::Written write(const Image& image, std::string_view stem_in, const std::files
         }
     }
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = sh_dialect.print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-sh.json)
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image_size);
-    iw::assembled(r, [&] { return risc_source::assemble(cpu_name, source, folder); }, image.bytes, folder / std::string(built_name), "image");
+    iw::assembled(r, [&] { return risc_source::assemble(cpu_name, sh_dialect.parse(source), folder); }, image.bytes, folder / std::string(built_name), "image");
     return r;
 }
 

@@ -11,6 +11,7 @@
 #include "core/text.hpp"
 #include "decompile/m6502.hpp"
 #include "source/isa.hpp"
+#include "source/dialect.hpp"
 #include "source/m6502_source.hpp"
 
 namespace cb::source::atari5200_writer {
@@ -94,8 +95,8 @@ public:
     }
     std::uint32_t size(const m6502::Insn& insn) const override { return insn.size; }
     std::string text(const m6502::Insn& insn) const override {   // (the description's text, the names put in)
-        return m6502_source::code(m6502_source::Cpu::M6502, ByteView(rom_.data).subspan(at_offset_, insn.size), at_address_,
-                                  writes(insn.mnemonic) ? write_names_ : read_names_);
+        const decompile::AddressLabels& names = writes(insn.mnemonic) ? write_names_ : read_names_;
+        return m6502_source::in_dialect(dialect::find("dasm"), insn, names, m6502_source::code(m6502_source::Cpu::M6502, ByteView(rom_.data).subspan(at_offset_, insn.size), at_address_, names));
     }
     std::vector<std::string> data_lines(ByteView data) const override { return m6502_source::data_lines(data); }
 
@@ -103,7 +104,7 @@ public:
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
         if (offset != rom_.data.size() - kTail) return 0;
         flush();
-        out_.append(std::format("        .byte 0x{:02x},0x{:02x}", rom_.flag_a, rom_.flag_b));
+        out_.append(std::format("        .byte ${:02X}, ${:02X}", rom_.flag_a, rom_.flag_b));   // (in DASM's spelling already)
         const auto named = labels_.find(rom_.start);
         out_.append("        .half " + (named != labels_.end() ? named->second : std::format("0x{:04x}", rom_.start)));
         return kTail;
@@ -189,8 +190,8 @@ iw::Written write(const formats::atari5200::Rom& rom, std::string_view file_name
 
     std::vector<std::string> head = {std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                      std::format("; cartridge: {} bytes at ${:04X}, flags ${:02X} ${:02X}, start ${:04X}", rom.data.size(), rom.base, rom.flag_a, rom.flag_b, rom.start),
-                                     "; (6502 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu 6502 --sleigh`)",
-                                     ""};
+                                     };
+    for (const std::string& l : dialect::find("dasm").block("prologue", {{"stem", stem}, {"ext", "a52"}})) head.push_back(l);
     decompile::AddressLabels read_names, write_names;
     for (const auto& [value, set] : equates) {
         for (const std::string& name : set) {
@@ -204,16 +205,16 @@ iw::Written write(const formats::atari5200::Rom& rom, std::string_view file_name
         read_names[at] = label;
         write_names[at] = label;
     }
-    translate::l2::Assembly out(head, "sleigh-6502", std::string(file_name));
+    translate::l2::Assembly out(head, "dasm", std::string(file_name));
     out.part("ROM", "segment", std::nullopt, rom.data.size());
     out.append(std::format("        .org 0x{:04x}", rom.base));
     A5200Listing listing(out, rom, code, labels, read_names, write_names);
     iw::emit<m6502::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("dasm").print(iw::text(out) + "\n");   // (said in DASM's, config/dialects/dasm.json)
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, source, folder); }, rom.data, folder / (stem + ".built.a52"));
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, dialect::find("dasm").parse(source), folder); }, rom.data, folder / (stem + ".built.a52"));
     return r;
 }
 

@@ -37,18 +37,18 @@
 #include "read.h"
 
 
-bool ResReadPadDWord( FILE *fp )
+bool ResReadPadDWord(Link& link,  FILE *fp )
 /******************************/
 /* advances in the file to the next DWORD boundry */
 {
-    const long currpos = WRESTELL( fp );
+    const long currpos = WRESTELL(link,  fp );
 
     if( currpos == -1L )
         return( WRES_ERROR( WRS_TELL_FAILED ) );
 
     const long padding = RES_PADDING_DWORD( currpos );
 
-    if( WRESSEEK( fp, padding, SEEK_CUR ) )
+    if( WRESSEEK(link,  fp, padding, SEEK_CUR ) )
         return( WRES_ERROR( WRS_SEEK_FAILED ) );
     return( false );
 }

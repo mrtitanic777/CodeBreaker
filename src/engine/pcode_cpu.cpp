@@ -1,5 +1,7 @@
 #include "engine/pcode_cpu.hpp"
 
+#include "engine/pcode_cpu_internal.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <cstring>
@@ -29,6 +31,11 @@ std::filesystem::path languages() {
     return config::current().checkout_root() / "src" / "decompile" / "engine" / "languages";
 }
 
+constexpr std::pair<const char*, std::uint8_t> kFlags[] = {{"N", m::status::N}, {"V", m::status::V}, {"B", m::status::B}, {"D", m::status::D},
+                                                           {"I", m::status::I}, {"Z", m::status::Z}, {"C", m::status::C}};
+
+}  // namespace
+
 // One emulator per thread and variant: reading the description is the costly part of a run, the state is all set again each time.
 sl::Emulator& emulator_named(const char* description) {
     thread_local std::map<std::string, std::unique_ptr<sl::Emulator>> cache;
@@ -37,19 +44,20 @@ sl::Emulator& emulator_named(const char* description) {
     return *slot;
 }
 
-sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65c02.sla" : "6502.sla"); }
-
 bool is_ram(std::string_view space) { return space.size() == 3 && (space[0] | 32) == 'r' && (space[1] | 32) == 'a' && (space[2] | 32) == 'm'; }
 
-constexpr std::pair<const char*, std::uint8_t> kFlags[] = {{"N", m::status::N}, {"V", m::status::V}, {"B", m::status::B}, {"D", m::status::D},
-                                                           {"I", m::status::I}, {"Z", m::status::Z}, {"C", m::status::C}};
-
+namespace {
+sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65c02.sla" : "6502.sla"); }
 }  // namespace
 
-bool enabled() {
+bool default_on(Core core) { return core == Core::Mos6502 || core == Core::Z80; }   // the lanes proven with no verdict differing
+
+bool enabled(Core core) {
     if (const int f = g_force.load(); f >= 0) return f == 1;
     const std::optional<std::string> env = cb::fs::get_env("CB_PCODE_EMU");
-    return !env || !(*env == "0" || *env == "false" || *env == "no");   // the emulator unless CB_PCODE_EMU=0
+    if (env && (*env == "0" || *env == "false" || *env == "no")) return false;
+    if (env && (*env == "1" || *env == "true" || *env == "yes")) return true;   // CB_PCODE_EMU=1: every core the emulator can run, the defaults aside
+    return default_on(core);
 }
 
 void force(std::optional<bool> on) { g_force = on ? (*on ? 1 : 0) : -1; }
@@ -336,6 +344,6 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
     return out;
 }
 
-z::RunResult call(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : z::run(bus, entry, options); }
+z::RunResult call(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) { return enabled(Core::Z80) ? pcode_cpu::run(bus, entry, options) : z::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

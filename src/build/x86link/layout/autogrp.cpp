@@ -32,7 +32,7 @@
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/ring.h"
 #include "pcobj.h"
 #include "build/x86link/link/specials.h"
@@ -223,7 +223,7 @@ static void PackSegs(Link& link,  seg_leader *seg, unsigned num_segs )
 
 static void AutoGroupSect(Link& link,  section *sect )
 /****************************************/
-{
+{
     seg_leader      *seg;
     seg_leader      *packstart;
     offset          size;
@@ -293,12 +293,12 @@ group_entry *AllocGroup(Link& link,  const char *name, group_entry **grp_list )
     group_entry *group;
     symbol      *sym;
 
-    group = static_cast<group_entry *>( CarveAlloc( link.CarveGroup ) );
+    group = static_cast<group_entry *>( CarveAlloc(link,  link.CarveGroup ) );
     group->leaders = nullptr;
-    sym = static_cast<symbol *>( _PermAlloc( sizeof( *sym ) ) ); // second class slave citizen
+    sym = static_cast<symbol *>( PermAlloc( link, sizeof( *sym ) ) ); // second class slave citizen
     BasicInitSym( sym );
     sym->namelen_cmp = strlen( name );
-    sym->name.u.ptr = AddBufferStringTable( &link.PermStrings, name, sym->namelen_cmp + 1 );
+    sym->name.u.ptr = AddBufferStringTable(link,  &link.PermStrings, name, sym->namelen_cmp + 1 );
     SET_SYM_TYPE( sym, SYM_GROUP );
     sym->info |= SYM_STATIC;
     group->next = nullptr;
@@ -316,7 +316,7 @@ group_entry *AllocGroup(Link& link,  const char *name, group_entry **grp_list )
 static void SortGroup(Link& link,  seg_leader *seg )
 /**************************************/
 // Go through the classes & segments, and rebuild the group list in sorted form
-{
+{
     if( seg->group == nullptr )
         return;
     if( seg->info & SEGINF_ABSOLUTE )
@@ -381,7 +381,7 @@ static void FindSplitGroups(Link& link)
     if( link.FmtData.type & MK_OVERLAYS ) {
         for( group = link.Groups; group != nullptr; group = group->next ) {
             if( Ring2Lookup( group->leaders, CheckGroupSplit, group->section ) ) {
-                LnkMsg( ERR+MSG_OVL_GROUP_SPLIT, "s", group->sym->name );
+                LnkMsg(link,  ERR+MSG_OVL_GROUP_SPLIT, "s", group->sym->name );
             }
         }
     }
@@ -414,7 +414,7 @@ void AutoGroup(Link& link)
     FindSplitGroups(link);
 #endif
     if( link.NumGroups == 0 ) {
-        LnkMsg( FTL+MSG_NO_CODE_OR_DATA, nullptr );
+        LnkMsg(link,  FTL+MSG_NO_CODE_OR_DATA, nullptr );
     }
     NumberNonAutos(link);
 }

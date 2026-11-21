@@ -33,7 +33,7 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void             InitORLObj( void );
+extern void             InitORLObj( Link& link );
 extern void             FiniORLObj( void );
 extern orl_file_format  FileTypeORL( Link& link, const file_list *, unsigned long );
 extern void             ORLSkipObj( Link& link, const file_list *, unsigned long * );

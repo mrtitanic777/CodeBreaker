@@ -42,12 +42,12 @@ typedef struct {
 
 typedef void    write_strtable_fn( void *, const char *, size_t );
 
-extern void     InitStringTable( stringtable *, bool );
-extern char     *AddBufferStringTable( stringtable *, const void *, size_t );
-extern char     *AddSymbolStringTable( stringtable *, const char *, size_t );
-extern char     *AddStringStringTable( stringtable *, const char * );
-extern size_t   AddStringStringTableOffs( stringtable *, const char * );
-extern void     AddCharStringTable( stringtable *, char );
+extern void     InitStringTable(Link& link,  stringtable *, bool );
+extern char     *AddBufferStringTable(Link& link,  stringtable *, const void *, size_t );
+extern char     *AddSymbolStringTable(Link& link,  stringtable *, const char *, size_t );
+extern char     *AddStringStringTable(Link& link,  stringtable *, const char * );
+extern size_t   AddStringStringTableOffs(Link& link,  stringtable *, const char * );
+extern void     AddCharStringTable(Link& link,  stringtable *, char );
 extern void     ZeroStringTable( stringtable *, size_t );
 extern void     WriteStringTable( stringtable *, FunctionRef<write_strtable_fn>, void * );
 extern void     FiniStringTable( stringtable * );

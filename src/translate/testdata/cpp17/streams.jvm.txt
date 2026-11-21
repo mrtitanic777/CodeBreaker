@@ -1,0 +1,10 @@
+385 6 [0,1,2,3,4]
+[Ada, Alan, Barbara, Grace]
+Linus:21 Ada:36 Barbara:36 Alan:41 Grace:85 
+2 true 4
+Grace
+total age 219 avg 43.8
+THE-QUICK-BROWN-FOX
+2187 74 14
+28 true true
+5;3;8;1;9;2;

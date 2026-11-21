@@ -123,7 +123,7 @@ typedef enum tok_class {
 } tok_class;
 
 typedef struct asm_tok {
-    tok_class           class;
+    tok_class           class_;
     char                *string_ptr;
     union {
         long            value;

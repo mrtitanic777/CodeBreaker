@@ -206,7 +206,7 @@ lanes::Effects genesis_effects(const stdfs::path& path, std::uint32_t entry, con
     for (std::size_t i = 0; i < 7; ++i) a[i] = static_cast<std::uint32_t>(at(state, ("a" + std::to_string(i)).c_str()));
     options.d = d;
     options.a = a;
-    const emulate::m68k::RunResult run = emulate::m68k::run(bus, entry, options);
+    const emulate::m68k::RunResult run = pcode_cpu::call(bus, entry, options);
     Bytes dregs, aregs;
     const auto put = [](Bytes& out, std::uint32_t v) {
         for (int shift = 24; shift >= 0; shift -= 8) out.push_back(static_cast<std::uint8_t>(v >> shift));
@@ -247,7 +247,7 @@ lanes::Effects ps1_effects(const stdfs::path& path, std::uint32_t entry, const l
     options.a = {static_cast<std::uint32_t>(at(state, "a0")), static_cast<std::uint32_t>(at(state, "a1")), static_cast<std::uint32_t>(at(state, "a2")),
                  static_cast<std::uint32_t>(at(state, "a3"))};
     options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
-    const emulate::mips::RunResult run = emulate::mips::run(bus, entry, options);
+    const emulate::mips::RunResult run = pcode_cpu::call(bus, entry, options);
     // what the run changed (the program lives in this memory: an edited byte the function does not write is the source's difference, not the function's)
     std::vector<std::string> changed;
     const ByteView after = bus.memory();

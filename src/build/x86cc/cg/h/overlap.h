@@ -30,5 +30,5 @@
 ****************************************************************************/
 
 
-extern  bool    Overlaps( name *result, name *op );
-extern  bool    CondOverlaps( name *result, name *ccop );
+extern  bool_    Overlaps( name *result, name *op );
+extern  bool_    CondOverlaps( name *result, name *ccop );

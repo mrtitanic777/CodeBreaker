@@ -34,7 +34,7 @@
 #include <cstring>
 #include <string>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/objects/objstrip.h"
 #include "build/x86link/link/run_state.hpp"
 
@@ -64,7 +64,7 @@ StripState& state()
 
 /* some handy routines for dealing with edges. */
 
-edgelist *AllocEdge()
+edgelist *AllocEdge(Link& link)
 {
     StripState &st = state();
     edgelist *edge;
@@ -73,7 +73,7 @@ edgelist *AllocEdge()
         edge = st.FreedEdges;
         st.FreedEdges = edge->next;
     } else {
-        edge = static_cast<edgelist *>( Pass1Alloc( sizeof( edgelist ) ) );
+        edge = static_cast<edgelist *>( Pass1Alloc(link,  sizeof( edgelist ) ) );
     }
     std::memset( edge, 0, sizeof( *edge ) );
     return edge;
@@ -169,7 +169,7 @@ void DataRef(Link& link,  symbol * sym )
     sym->info |= SYM_1_DCE_REF;
 }
 
-void AddEdge( segdata * seg, symbol * sym )
+void AddEdge(Link& link,  segdata * seg, symbol * sym )
 /************************************************/
 /* reference from a segment to a symbol */
 {
@@ -183,7 +183,7 @@ void AddEdge( segdata * seg, symbol * sym )
               || !seg->iscode ) {
                 RefSeg( sym->p.seg );
             } else if( !sym->p.seg->isrefd ) {
-                edge = AllocEdge();
+                edge = AllocEdge(link);
                 edge->u.seg = sym->p.seg;
                 edge->issym = false;
                 edge->next = static_cast<edgelist *>( seg->a.refs );
@@ -196,7 +196,7 @@ void AddEdge( segdata * seg, symbol * sym )
             sym->info |= SYM_1_DCE_REF;
             PruneNonSymEdges( sym );
         } else {
-            edge = AllocEdge();
+            edge = AllocEdge(link);
             edge->u.seg = seg;
             edge->next = static_cast<edgelist *>( sym->p.edges );
             edge->issym = false;
@@ -206,16 +206,16 @@ void AddEdge( segdata * seg, symbol * sym )
     }
 }
 
-void AddSymEdge( symbol * srcsym, symbol * targsym )
+void AddSymEdge(Link& link,  symbol * srcsym, symbol * targsym )
 /*********************************************************/
 /* make a reference from one symbol to another */
 {
     edgelist *  edge;
 
     if( srcsym->info & SYM_DEFINED ) {
-        AddEdge( srcsym->p.seg, targsym );
+        AddEdge(link,  srcsym->p.seg, targsym );
     } else {
-        edge = AllocEdge();
+        edge = AllocEdge(link);
         edge->u.sym = targsym;
         edge->issym = true;
         edge->next = static_cast<edgelist *>( srcsym->p.edges );
@@ -223,7 +223,7 @@ void AddSymEdge( symbol * srcsym, symbol * targsym )
     }
 }
 
-void AddSymSegEdge( symbol *srcsym, segdata *targsdata )
+void AddSymSegEdge(Link& link,  symbol *srcsym, segdata *targsdata )
 /******************************************************/
 /* make a reference from symbol to segment */
 {
@@ -233,7 +233,7 @@ void AddSymSegEdge( symbol *srcsym, segdata *targsdata )
         RefSeg( targsdata );
         return;
     }
-    edge = AllocEdge();
+    edge = AllocEdge(link);
     edge->u.seg = targsdata;
     edge->issym = false;
     if( srcsym->info & SYM_DEFINED ) {
@@ -245,7 +245,7 @@ void AddSymSegEdge( symbol *srcsym, segdata *targsdata )
     }
 }
 
-void DefStripSym( symbol * sym, segdata * seg )
+void DefStripSym(Link& link,  symbol * sym, segdata * seg )
 /****************************************************/
 /* Handle the effects of this symbol on the function call graph */
 /* remember - the symbol contains a list of references to it's defining segment
@@ -263,7 +263,7 @@ void DefStripSym( symbol * sym, segdata * seg )
         next = list->next;
         if( list->issym ) {
             DbgAssert(!list->reverse_dir); // for now this cannot happen
-            AddEdge( seg, list->u.sym );
+            AddEdge(link,  seg, list->u.sym );
             FreeEdge( list );
         } else {
             segdata *src, *trg;

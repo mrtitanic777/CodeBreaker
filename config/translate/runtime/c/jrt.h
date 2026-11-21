@@ -7,9 +7,8 @@
  *     same order, then its own; an interface method is found through the class's interface tables (itabs);
  *   - instanceof and checked casts walk the class chain and the interface tables;
  *   - a Java exception is a longjmp to the innermost handler (jrt_try), carrying the Throwable;
- *   - memory: objects are allocated and never freed while the program runs (released at exit). That is
- *     the C runtime's stand-in for Java's collector: right for programs that end, and the place a collector
- *     (Boehm) or reference counting would go for long-running ones;
+ *   - memory: the runtime's own mark-and-sweep collector (jrt.c): a program that allocates little never
+ *     runs it, and one that runs long gets back what it no longer reaches;
  *   - strings are UTF-16, as Java's are; text is written out as UTF-8.
  */
 #ifndef JRT_H
@@ -422,6 +421,7 @@ jobject* jrt_TreeSet_new_(void);
 #define jrt_HashSet_add_O jrt_Collection_add_O
 #define jrt_ArrayList_size_ jrt_Collection_size_
 #define jrt_List_size_ jrt_Collection_size_
+#define jrt_List_clear_ jrt_Collection_clear_
 #define jrt_Set_size_ jrt_Collection_size_
 #define jrt_ArrayList_isEmpty_ jrt_Collection_isEmpty_
 #define jrt_List_isEmpty_ jrt_Collection_isEmpty_
@@ -447,6 +447,7 @@ jstring* jrt_Enum_toString(jobject* o);
 #define jrt_Enum_name_(o) (((jrt_Enum*)jrt_nn(o))->name)
 #define jrt_Enum_ordinal_(o) (((jrt_Enum*)jrt_nn(o))->ordinal)
 
+size_t jrt_gc_collect(void);   /* a collection now; the bytes still in use */
 int jrt_run_main(void (*m)(jarray*), int argc, char** argv);
 
 #endif

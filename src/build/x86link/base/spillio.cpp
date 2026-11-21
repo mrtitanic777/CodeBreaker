@@ -57,71 +57,71 @@ SpillState &spill_state()
     return cb_wlink::RunState::part<SpillState>();
 }
 
-void tmp_IOerror( const char *str )
+void tmp_IOerror(Link& link,  const char *str )
 {
     if( str == nullptr )
         str = strerror( errno );
-    LnkMsg( ERR+MSG_IO_PROBLEM, "12", "Spill temporary file", str );
+    LnkMsg(link,  ERR+MSG_IO_PROBLEM, "12", "Spill temporary file", str );
 }
 
-int tmp_seek( SpillState &st, long offset )
+int tmp_seek(Link& link,  SpillState &st, long offset )
 {
     int     rc;
 
     rc = fseek( st.fp, offset, SEEK_SET );
     if( rc ) {
-        tmp_IOerror( nullptr );
+        tmp_IOerror(link,  nullptr );
     }
     return( rc );
 }
 
-size_t tmp_read( SpillState &st, void *buffer, size_t len )
+size_t tmp_read(Link& link,  SpillState &st, void *buffer, size_t len )
 {
     size_t  rc;
 
     if( len == 0 )
         return( 0 );
 
-    CheckBreak();
+    CheckBreak(link);
     rc = fread( buffer, 1, len, st.fp );
     if( rc != len ) {
         if( ferror( st.fp ) ) {
-            tmp_IOerror( nullptr );
+            tmp_IOerror(link,  nullptr );
         }
     }
     return( rc );
 }
 
-size_t tmp_write( SpillState &st, const void *buffer, size_t len )
+size_t tmp_write(Link& link,  SpillState &st, const void *buffer, size_t len )
 {
     size_t  rc;
 
     if( len == 0 )
         return( 0 );
-    CheckBreak();
+    CheckBreak(link);
     rc = fwrite( buffer, 1, len, st.fp );
     if( rc != len ) {
         if( ferror( st.fp ) ) {
-            tmp_IOerror( nullptr );
+            tmp_IOerror(link,  nullptr );
         } else {
             std::array<char, RESOURCE_MAX_SIZE> rc_buff;
 
             Msg_Get( MSG_IOERRLIST_7, rc_buff.data() );
-            tmp_IOerror( rc_buff.data() );
+            tmp_IOerror(link,  rc_buff.data() );
         }
     }
     return( rc );
 }
 
-void tmp_write_nulls( SpillState &st, size_t len )
+void tmp_write_nulls(Link& link,  SpillState &st, size_t len )
 {
     static constexpr std::array<unsigned, 16> NullArray{};
 
     for( ; len > sizeof( NullArray ); len -= sizeof( NullArray ) ) {
-        tmp_write( st, NullArray.data(), sizeof( NullArray ) );
+        tmp_write(link,  st, NullArray.data(), sizeof( NullArray ) );
     }
     if( len > 0 ) {
-        tmp_write( st, NullArray.data(), len );
+        tmp_write(link,  st, NullArray.data(), len );
     }
 }
 
@@ -137,7 +137,7 @@ void InitSpillFile( void )
     SetBreak();
 }
 
-virt_mem_size SpillAlloc( virt_mem_size amt )
+virt_mem_size SpillAlloc(Link& link,  virt_mem_size amt )
 /*******************************************/
 {
     SpillState              &st = spill_state();
@@ -146,9 +146,9 @@ virt_mem_size SpillAlloc( virt_mem_size amt )
     if( st.fp == nullptr ) {
         st.fp = tmpfile();
         if( st.fp == nullptr ) {
-            LnkMsg( FTL+MSG_CANT_OPEN_SPILL, nullptr );
+            LnkMsg(link,  FTL+MSG_CANT_OPEN_SPILL, nullptr );
         }
-        LnkMsg( INF+MSG_USING_SPILL, nullptr );
+        LnkMsg(link,  INF+MSG_USING_SPILL, nullptr );
     }
     /* round up storage start to a disk sector boundry -- assumed power of 2 */
     st.filesize = __ROUND_UP_SIZE_SECTOR( st.filesize );
@@ -157,31 +157,31 @@ virt_mem_size SpillAlloc( virt_mem_size amt )
     return( stg );
 }
 
-void SpillNull( virt_mem_size base, size_t off, size_t size )
+void SpillNull(Link& link,  virt_mem_size base, size_t off, size_t size )
 /***********************************************************/
 {
     SpillState &st = spill_state();
 
-    tmp_seek( st, base + static_cast<unsigned long>( off ) - 1 );
-    tmp_write_nulls( st, size );
+    tmp_seek(link,  st, base + static_cast<unsigned long>( off ) - 1 );
+    tmp_write_nulls(link,  st, size );
 }
 
-void SpillWrite( virt_mem_size base, size_t off, const void *mem, size_t size )
+void SpillWrite(Link& link,  virt_mem_size base, size_t off, const void *mem, size_t size )
 /*****************************************************************************/
 {
     SpillState &st = spill_state();
 
-    tmp_seek( st, base + static_cast<unsigned long>( off ) - 1 );
-    tmp_write( st, mem, size );
+    tmp_seek(link,  st, base + static_cast<unsigned long>( off ) - 1 );
+    tmp_write(link,  st, mem, size );
 }
 
-void SpillRead( virt_mem_size base, size_t off, void *mem, size_t size )
+void SpillRead(Link& link,  virt_mem_size base, size_t off, void *mem, size_t size )
 /**********************************************************************/
 {
     SpillState &st = spill_state();
 
-    tmp_seek( st, base + static_cast<unsigned long>( off ) - 1 );
-    tmp_read( st, mem, size );
+    tmp_seek(link,  st, base + static_cast<unsigned long>( off ) - 1 );
+    tmp_read(link,  st, mem, size );
 }
 
 void CloseSpillFile( void )

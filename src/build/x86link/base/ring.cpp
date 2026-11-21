@@ -341,10 +341,11 @@ unsigned RINGNAME(Count) (      // COUNT ELEMENTS IN A RING
 }
 
 void *RINGNAME(Alloc) (         // ALLOCATE AND APPEND NEW ELEMENT
+    Link& link,                 // - the link
     void *hdr,                  // - addr( ring header )
     size_t size )               // - size of entry to be allocated
 {
-    void *new_element = MemAllocSafe( size );   // - allocated element
+    void *new_element = MemAllocSafe(link,  size );   // - allocated element
 
     RINGNAME(Append)( hdr, new_element );
     return( new_element );
@@ -382,10 +383,11 @@ void RINGNAME(Free) (           // FREE ALL ELEMENTS IN A RING
 
 
 void* RINGNAME(CarveAlloc) (    // CARVER ALLOC AND APPEND AN ENTRY
+    Link& link,                 // - the link
     carve_t carver,             // - carving control
     void *hdr )                 // - addr( ring header )
 {
-    void *elt = CarveAlloc( carver );
+    void *elt = CarveAlloc(link,  carver );
 
     RINGNAME(Append)( hdr, elt );
     return( elt );

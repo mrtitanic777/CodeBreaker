@@ -1,6 +1,6 @@
-// The `build16` command: the LZEXPAND reconstruction (tests/fixtures/lzexpand) built in DOSBox-X is the
-// golden (build/testdata/build16): the command writes the same file, with and without the original's DOS stub in front. Skipped when the
-// period tools are not set up (a machine without DOSBox-X, MS C 6 and VC++ 1.52).
+// The `build16` command: the LZEXPAND reconstruction (tests/fixtures/lzexpand) built on the DOS executive is the
+// golden (build/testdata/build16): the command writes the same file, with and without the original's
+// DOS stub in front. Skipped when the period tools are not set up (a machine without MS C 6 and VC++ 1.52).
 
 #include <iostream>
 
@@ -32,7 +32,7 @@ P16Setup p16_setup() {
         if (s.fixture.empty() && exists(root / "tests" / "fixtures" / "lzexpand")) s.fixture = root / "tests" / "fixtures" / "lzexpand";
     }
     if (const auto boot = s.config.path("win95_boot"); boot && exists(*boot / "mini" / "original" / "LZEXPAND.DLL")) s.original = *boot / "mini" / "original" / "LZEXPAND.DLL";
-    s.ready = exists(tools.dosbox_x) && exists(tools.msc6) && exists(tools.msvc152) && tools.win31_kit && !s.fixture.empty() && !s.original.empty();
+    s.ready = exists(tools.msc6) && exists(tools.msvc152) && tools.win31_kit && !s.fixture.empty() && !s.original.empty();
     if (!s.ready) std::cerr << "build16: the period tools or the fixture are not here; skipped\n";
     return s;
 }

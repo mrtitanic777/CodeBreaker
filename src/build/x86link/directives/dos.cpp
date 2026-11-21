@@ -2,7 +2,7 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "build/x86link/directives/cmdline.h"
@@ -26,7 +26,7 @@ byte& ovl_level() { return state().ovl_level; }   // (wlink's file-static OvlLev
 void SetOvlClasses(Link& link) {
     // make sure the overlay loader is always "overlayed".
     if (link.OvlClasses != nullptr) {
-        auto* ovlmgr = static_cast<list_of_names*>(_PermAlloc(sizeof(list_of_names) + OVL_MGR_CL_LEN));
+        auto* ovlmgr = static_cast<list_of_names*>(PermAlloc( link, sizeof(list_of_names) + OVL_MGR_CL_LEN));
         std::memcpy(ovlmgr->name, OvlMgrClass, OVL_MGR_CL_LEN + 1);
         ovlmgr->next = link.OvlClasses;
         link.OvlClasses = ovlmgr;
@@ -35,12 +35,12 @@ void SetOvlClasses(Link& link) {
 
 section* OvlNewSection(Link& link) {
     link.OvlSectNum++;
-    return NewSection();
+    return NewSection(link);
 }
 
 void NewArea(Link& link, section* sect) {
     // allocate a new area including this section
-    auto* area = static_cast<areasect*>(_PermAlloc(sizeof(areasect)));
+    auto* area = static_cast<areasect*>(PermAlloc( link, sizeof(areasect)));
     area->next = nullptr;
     area->sections = sect;
     sect->parent = link.CurrSect;
@@ -118,7 +118,7 @@ constexpr Entry MainOptions[] = {
 
 bool AddClass(Link& link) {
     const std::string_view text = reader().text();
-    auto* ovlclass = static_cast<list_of_names*>(_PermAlloc(sizeof(list_of_names) + text.size()));
+    auto* ovlclass = static_cast<list_of_names*>(PermAlloc( link, sizeof(list_of_names) + text.size()));
     std::memcpy(ovlclass->name, text.data(), text.size());
     ovlclass->name[text.size()] = '\0';
     ovlclass->next = link.OvlClasses;
@@ -135,7 +135,7 @@ bool ProcInto(Link& link) {
         link.CurrSect->outfile = NewOutFile(link, FileName(link, text.data(), text.size(), E_OVL, false));
         return true;
     }
-    LnkMsg(WRN + LOC + LINE + MSG_DIRECTIVE_ERR, "s", "into");
+    LnkMsg(link, WRN + LOC + LINE + MSG_DIRECTIVE_ERR, "s", "into");
     return false;
 }
 
@@ -146,7 +146,7 @@ constexpr Entry SectOptions[] = {
 bool ProcSection(Link& link) {
     // process SECTION command
     if (ovl_level() == 0) {
-        LnkMsg(WRN + LOC + LINE + MSG_NO_SECTION_IN_ROOT, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_NO_SECTION_IN_ROOT, nullptr);
     } else {
         MakeNewSection(link);
         process_one(link, SectOptions, Sep::none);   // check for INTO
@@ -159,7 +159,7 @@ bool ProcSection(Link& link) {
 
 bool ProcAutoSection(Link& link) {
     if (ovl_level() == 0) {
-        LnkMsg(WRN + LOC + LINE + MSG_NO_SECTION_IN_ROOT, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_NO_SECTION_IN_ROOT, nullptr);
     } else {
         MakeNewSection(link);
         process_one(link, SectOptions, Sep::none);   // check for INTO
@@ -199,14 +199,14 @@ bool AddNoVector(Link& link) {
 
 bool AddVector(Link& link) {
     const std::string_view text = reader().text();
-    OvlVectorize(SymOp(link, ST_CREATE_REFERENCE, text.data(), text.size()));
+    OvlVectorize(link, SymOp(link, ST_CREATE_REFERENCE, text.data(), text.size()));
     return true;
 }
 
 bool AddForceVector(Link& link) {
     const std::string_view text = reader().text();
     symbol* sym = SymOp(link, ST_CREATE_REFERENCE, text.data(), text.size());
-    OvlVectorize(sym);
+    OvlVectorize(link, sym);
     sym->u.d.ovlstate |= OVL_ALWAYS;
     return true;
 }
@@ -239,11 +239,11 @@ overlay_ref GetOvlRef(Link& link) {
 void CmdOvlFini(Link& link) {
     if (ovl_level() != 0) {
         Ignite(link);
-        LnkMsg(FTL + LOC + LINE + MSG_EXPECTING_END, nullptr);
+        LnkMsg(link, FTL + LOC + LINE + MSG_EXPECTING_END, nullptr);
     }
     if (link.FmtData.u.dos.dynamic && ((link.Root->areas == nullptr) || (link.Root->areas->next != nullptr))) {
         Ignite(link);
-        LnkMsg(FTL + LOC + LINE + MSG_INCORRECT_NUM_AREAS, nullptr);
+        LnkMsg(link, FTL + LOC + LINE + MSG_INCORRECT_NUM_AREAS, nullptr);
     }
     SetOvlClasses(link);
     MakeNonArea(link);

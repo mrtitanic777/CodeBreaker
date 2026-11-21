@@ -32,6 +32,12 @@ bool skipped_folder(const std::string& name, const std::string& rel) {
     return name == ".git" || name == "state" || name == ".gradle" || name == "__pycache__" || name == "node_modules";
 }
 
+// What the program and its tools write under config/ on this machine (git-ignored): the window's settings, its list of
+// recent files, the shader checker's build output. Using the program changes them; no test depends on them.
+bool machine_local(const std::string& rel) {
+    return rel == "config/app.json" || rel == "config/app.recent.json" || starts(rel, "config/xna/shadercheck/obj/");
+}
+
 void walk(const stdfs::path& repo, const stdfs::path& root, bool recurse, const Record* previous, Record& out,
           const std::map<std::string, std::string>& extra) {
     std::error_code ec;
@@ -40,6 +46,7 @@ void walk(const stdfs::path& repo, const stdfs::path& root, bool recurse, const 
         std::error_code e;
         const std::string rel = slashes(fs::to_text(stdfs::relative(file, repo, e)));
         if (rel == "tests/exe_gate/cases.txt") return;   // its lines are the entries "case:NAME"
+        if (machine_local(rel)) return;
         FileStamp st;
         st.size = static_cast<std::uint64_t>(stdfs::file_size(file, e));
         st.mtime = fs::last_write_time(file, e).time_since_epoch().count();

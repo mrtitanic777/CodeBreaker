@@ -41,7 +41,7 @@ typedef struct edge_stack {
 
 extern edge_stack   *EdgeStackInit( void );
 extern void         EdgeStackFini( edge_stack * );
-extern bool         EdgeStackEmpty( edge_stack * );
+extern bool_         EdgeStackEmpty( edge_stack * );
 extern void         EdgeStackPush( edge_stack *, block_edge * );
 extern block_edge   *EdgeStackPop( edge_stack * );
 extern void         PointEdge( block_edge *edge, block *new_dest );

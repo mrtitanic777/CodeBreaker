@@ -1,0 +1,17 @@
+fill(0)=12 label=calc:0A guarded=8 cleanup=-2 search=0 count=1
+  mix=0 wrap=0.0 sums=5 tabled=-1 made=5 build=29
+fill(1)=-16 label=calc:1B guarded=-7 cleanup=116 search=11 count=-1
+  mix=11 wrap=0.33333334 sums=9 tabled=21 made=7 build=37
+fill(-1)=40 label=none guarded=7 cleanup=10 search=0 count=-1
+  mix=12 wrap=-1.3333334 sums=1 tabled=-23 made=3 build=21
+fill(7)=2 label=calc:7H guarded=-7 cleanup=195 search=0 count=-1
+  mix=112 wrap=4.333333 sums=33 tabled=162 made=19 build=85
+fill(13)=2 label=calc:13F guarded=-7 cleanup=615 search=0 count=-1
+  mix=253 wrap=4.8333335 sums=57 tabled=520 made=31 build=133
+fill(100)=2 label=calc:100E guarded=-7 cleanup=3303 search=22 count=1
+  mix=487 wrap=34.833332 sums=405 tabled=3304 made=205 build=829
+fill(-2147483648)=12 label=none guarded=-2147483640 cleanup=3292 search=0 count=2
+  mix=400 wrap=-7.158279E8 sums=5 tabled=3293 made=5 build=29
+fill(2147483647)=40 label=calc:2147483647H guarded=-7 cleanup=3287 search=0 count=-1
+  mix=400 wrap=7.158279E8 sums=1 tabled=3254 made=3 build=21
+total=3254 name=calc

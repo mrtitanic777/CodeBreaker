@@ -37,7 +37,7 @@
 #include <cctype>
 #include <string_view>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/directives/state.hpp"   /* CodeBreaker: where the directives being read are */
 #include "build/x86link/base/fileio.h"
 #include "build/x86link/driver/ideentry.h"
@@ -454,9 +454,9 @@ static void MessageFini(Link& link,  unsigned num, char *buff, size_t len )
     if( num & OUT_TERM ) {
         if( (link.LinkFlags & LF_QUIET_FLAG) == 0 ) {
             WLPrtBanner(link);
-            WriteStdOutInfo( buff, num, sym_name );
+            WriteStdOutInfo(link,  buff, num, sym_name );
         } else if( class_ != (INF & CLASS_MSK) ) {
-            WriteStdOutInfo( buff, num, sym_name );
+            WriteStdOutInfo(link,  buff, num, sym_name );
         }
     }
     if( num & OUT_MAP ) {
@@ -473,7 +473,7 @@ static void MessageFini(Link& link,  unsigned num, char *buff, size_t len )
         if( link.LinkFlags & LF_MAX_ERRORS_FLAG ) {
             link.MaxErrors--;
             if( link.MaxErrors == 0 ) {
-                LnkMsg( FTL+MSG_TOO_MANY_ERRORS, nullptr );
+                LnkMsg(link,  FTL+MSG_TOO_MANY_ERRORS, nullptr );
             }
         }
     }
@@ -509,7 +509,7 @@ static void FileOrder( char *rc_buff, int which_file )
     }
 }
 
-void LnkMsg(
+void LnkMsg(Link& link, 
     unsigned    num,    // A message number + control flags
     const char  *types, // Conversion qualifiers
     ... )               // Arguments to interpolate into message
@@ -520,7 +520,6 @@ void LnkMsg(
  * types is either NULL or the order of interpolated arguments.
  */
 {
-    Link& link = wlink();
     va_list                             args;
     int                                 which_file = 0;
     size_t                              len;
@@ -591,10 +590,9 @@ static void HandleRcMsg(Link& link,  unsigned num, va_list args )
     MessageFini(link,  num, buff.data(), len );
 }
 
-void RcWarning( unsigned num, ... )
+void RcWarning(Link& link,  unsigned num, ... )
 /****************************************/
 {
-    Link& link = wlink();
     va_list args;
 
     va_start( args, num );
@@ -602,10 +600,9 @@ void RcWarning( unsigned num, ... )
     va_end( args );
 }
 
-void RcError( unsigned num, ... )
+void RcError(Link& link,  unsigned num, ... )
 /**************************************/
 {
-    Link& link = wlink();
     va_list args;
 
     va_start( args, num );
@@ -613,41 +610,41 @@ void RcError( unsigned num, ... )
     va_end( args );
 }
 
-bool RcIOError( RcStatus ret, const char *srcname, const char *dstname, int err )
+bool RcIOError(Link& link,  RcStatus ret, const char *srcname, const char *dstname, int err )
 {
     switch( ret ) {
     case RS_OK:
     case RS_PARAM_ERROR:
         return( false );
     case RS_OPEN_ERROR:
-        RcError( ERR_CANT_OPEN_FILE, srcname, strerror( err ) );
+        RcError(link,  ERR_CANT_OPEN_FILE, srcname, strerror( err ) );
         break;
     case RS_BAD_FILE_FMT:
-        RcError( ERR_NOT_VALID_EXE, srcname );
+        RcError(link,  ERR_NOT_VALID_EXE, srcname );
         break;
     case RS_READ_ERROR:
-        RcError( ERR_READING_FILE, srcname, strerror( err ) );
+        RcError(link,  ERR_READING_FILE, srcname, strerror( err ) );
         break;
     case RS_READ_ERROR_EXE:
-        RcError( ERR_READING_EXE, srcname, strerror( err ) );
+        RcError(link,  ERR_READING_EXE, srcname, strerror( err ) );
         break;
     case RS_READ_ERROR_TMP:
-        RcError( ERR_READING_TMP, srcname, strerror( err ) );
+        RcError(link,  ERR_READING_TMP, srcname, strerror( err ) );
         break;
     case RS_READ_INCMPLT:
-        RcError( ERR_UNEXPECTED_EOF, srcname );
+        RcError(link,  ERR_UNEXPECTED_EOF, srcname );
         break;
     case RS_WRITE_ERROR:
-        RcError( ERR_WRITTING_FILE, dstname, strerror( err ) );
+        RcError(link,  ERR_WRITTING_FILE, dstname, strerror( err ) );
         break;
     case RS_WRITE_ERROR_RES:
-        RcError( ERR_WRITTING_RES, dstname, strerror( err ) );
+        RcError(link,  ERR_WRITTING_RES, dstname, strerror( err ) );
         break;
     case RS_WRITE_ERROR_TMP:
-        RcError( ERR_WRITTING_TMP, dstname, strerror( err ) );
+        RcError(link,  ERR_WRITTING_TMP, dstname, strerror( err ) );
         break;
     default:
-        RcError( ERR_INTERNAL, INTERR_UNKNOWN_RCSTATUS );
+        RcError(link,  ERR_INTERNAL, INTERR_UNKNOWN_RCSTATUS );
         break;
     }
     return( true );
@@ -662,7 +659,7 @@ void WLPrtBanner(Link& link)
     if( !link.BannerPrinted ) {
         link.BannerPrinted = true;
         for( int id : { PRODUCT, COPYRIGHT, COPYRIGHT2, TRADEMARK, TRADEMARK2 } ) {
-            WriteStdOutInfo( MsgStrings[id], BANNER, nullptr );
+            WriteStdOutInfo(link,  MsgStrings[id], BANNER, nullptr );
         }
     }
 }

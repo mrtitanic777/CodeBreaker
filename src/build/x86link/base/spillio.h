@@ -42,8 +42,8 @@ typedef struct spilladdr {
 } spilladdr;
 
 extern void             InitSpillFile( void );
-extern virt_mem_size    SpillAlloc( virt_mem_size );
-extern void             SpillNull( virt_mem_size, size_t, size_t );
-extern void             SpillWrite( virt_mem_size, size_t, const void *, size_t );
-extern void             SpillRead( virt_mem_size, size_t, void *, size_t );
+extern virt_mem_size    SpillAlloc(Link& link,  virt_mem_size );
+extern void             SpillNull(Link& link,  virt_mem_size, size_t, size_t );
+extern void             SpillWrite(Link& link,  virt_mem_size, size_t, const void *, size_t );
+extern void             SpillRead(Link& link,  virt_mem_size, size_t, void *, size_t );
 extern void             CloseSpillFile( void );

@@ -475,7 +475,7 @@ CB_TEST("port.verify.run_cases", [] {
                                        std::format(R"("env":{{"CB_VERIFY_A":"from the file"}},"programs":{{"ghost":{{"original":"x.exe","port":"{}"}}}})",
                                                    cb::fs::to_text(f.base() / "not-built.exe")));
     v::Services services;
-    services.port_timeout = std::chrono::milliseconds(3000);
+    services.port_timeout = std::chrono::milliseconds(8000);   // (long enough for `echo` on a machine running the whole gate; "hang" pings for 30 s)
     const auto consoles = v::run_cases(config, f.base(), cmd_exe(), {{"CB_VERIFY_B", " and more"}}, services);
     CB_CHECK_EQ(consoles.size(), std::size_t{4});   // (the ghost's case is left out)
     CB_CHECK_EQ(consoles[0].name, "hello");

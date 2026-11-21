@@ -90,4 +90,4 @@
     {"java", "java <tool> ...", "the Java transpiler: a Java program as C++03 (convert, decompile, worklist, ...; `java --help` lists them)"},
     {"score16", "score16 [options]", "the 16-bit gate's scoreboard: each 16-bit module's C beside its own assembly"},
     {"exact", "exact <module> ...", "exact recovery: a module's functions rebuilt to the original's bytes"},
-    {"dos-run", "dos-run [--dir D] [--save S] [--trace-calls] [--out F] <program> [args...]", "run a DOS program on CodeBreaker's own DOS executive (no DOSBox-X): what it printed and wrote"},
+    {"dos-run", "dos-run [--dir D] [--save S] [--trace-calls] [--out F] <program> [args...]", "run a DOS program on CodeBreaker's own DOS executive: what it printed and wrote"},

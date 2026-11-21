@@ -39,9 +39,9 @@ constexpr std::array kDefaults{
 
 // The settings whose value is a path (relative ones are taken against the checkout): the path keys, plus
 // "reference" (a relative one is taken against the checkout, not the working folder).
-constexpr std::array<std::string_view, 33> kPathSettings{
+constexpr std::array<std::string_view, 32> kPathSettings{
     "corpus",        "openwatcom",   "build_cache",  "decompiler_bin", "tracer_bin",
-    "state",         "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x",        "msc6",
+    "state",         "powerpc_tools", "powerpc_lib", "period_compiler", "msc6",
     "xenix_c",       "masm",         "msvc152",        "java",
     "xbox360_sdk",   "host_cxx",     "msbuild",      "java_overlays",  "java_libs",        "visual_studio",
     "ppc_binutils",  "converted",    "xbox360_keys", "xbox360_crypto_bin", "ilspycmd",     "xna_overlays",

@@ -2,10 +2,9 @@
 // the interface the assemblers and compilers take (build/native_dos), and the DosRunner every DOS toolchain is given.
 //
 //     const NativeDosExecutive dos(config);
-//     std::unique_ptr<build::DosRunner> runner = dos_runner(config, dos);   // the executive; DOSBox-X only as a fallback
+//     std::unique_ptr<build::DosRunner> runner = dos_runner(config, dos);
 //
-// The runner is build::NativeDosRunner on this executive, falling back to DOSBox-X (when settings.json names one) for a run
-// the executive cannot complete. CB_NATIVE_DOS=0 (or off) gives DOSBox-X alone, as before.
+// The runner is build::NativeDosRunner on this executive: a run the executive cannot complete has `ok` false and says why.
 #pragma once
 
 #include <filesystem>
@@ -34,8 +33,7 @@ private:
     mutable std::mutex one_at_a_time_;   // (the executive runs one program at a time: a compile batch's threads take turns)
 };
 
-// The DosRunner for the DOS toolchains: the executive, with DOSBox-X as its fallback (or DOSBox-X alone: CB_NATIVE_DOS=0).
-// `dos` must outlive the runner.
+// The DosRunner for the DOS toolchains: the executive. `dos` must outlive the runner.
 std::unique_ptr<build::DosRunner> dos_runner(const config::Config& config, const build::native_dos::DosExecutive& dos);
 
 }  // namespace cb::exact::emu

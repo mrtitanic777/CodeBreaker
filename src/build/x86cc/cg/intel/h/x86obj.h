@@ -33,12 +33,12 @@
 #include "fppatch.h"
 
 
-extern bool         UseImportForm( fe_attr attr );
-extern bool         AskSegIsPrivate( segment_id segid );
-extern bool         AskSegIsROM( segment_id segid );
+extern bool_         UseImportForm( fe_attr attr );
+extern bool_         AskSegIsPrivate( segment_id segid );
+extern bool_         AskSegIsROM( segment_id segid );
 extern segment_id   AskCode16Seg( void );
-extern void         OutSelect( bool starts );
-extern void         SetUpObj( bool is_data );
+extern void         OutSelect( bool_ starts );
+extern void         SetUpObj( bool_ is_data );
 extern void         OutDLLExport( uint words, cg_sym_handle sym );
 extern void         OutFPPatch( fp_patches i );
 extern void         OutPatch( label_handle lbl, patch_attr attr );
@@ -47,19 +47,19 @@ extern void         OutDataByte( byte value );
 extern void         OutDataShort( uint_16 value );
 extern void         OutDataLong( uint_32 value );
 extern void         OutAbsPatch( abs_patch *patch, patch_attr attr );
-extern void         OutReloc( segment_id segid, fix_class class, bool rel );
-extern void         OutSpecialCommon( import_handle imphdl, fix_class class, bool rel );
-extern void         OutImport( cg_sym_handle sym, fix_class class, bool rel );
-extern void         OutRTImportRel( rt_class rtindex, fix_class class, bool rel );
-extern void         OutRTImport( rt_class rtindex, fix_class class );
-extern void         OutBckExport( const char *name, bool is_export );
-extern void         OutBckImport( const char *name, back_handle bck, fix_class class );
+extern void         OutReloc( segment_id segid, fix_class class_, bool_ rel );
+extern void         OutSpecialCommon( import_handle imphdl, fix_class class_, bool_ rel );
+extern void         OutImport( cg_sym_handle sym, fix_class class_, bool_ rel );
+extern void         OutRTImportRel( rt_class rtindex, fix_class class_, bool_ rel );
+extern void         OutRTImport( rt_class rtindex, fix_class class_ );
+extern void         OutBckExport( const char *name, bool_ is_export );
+extern void         OutBckImport( const char *name, back_handle bck, fix_class class_ );
 extern unsigned     SavePendingLine( unsigned new_line );
 extern void         OutDBytes( unsigned len, const byte *src );
 extern void         OutIBytes( byte pat, offset len );
 extern void         TellObjVirtFuncRef( void *cookie );
-extern bool         AskNameIsCode( pointer hdl, cg_class class );
+extern bool_         AskNameIsCode( pointer hdl, cg_class class_ );
 extern segment_id   DbgSegDef( const char *seg_name, const char *seg_class, int seg_modifier );
 
-extern bool         UseRepForm( unsigned size );
+extern bool_         UseRepForm( unsigned size );
 extern void         TellObjNewLabel( cg_sym_handle lbl );

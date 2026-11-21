@@ -37,7 +37,7 @@
     #include <malloc.h>     /* necessary for _heapshrink() */
 #endif
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/fileio.h"
 #include "idedll.h"
 #include "idedrv.h"
@@ -112,23 +112,23 @@ int ExecDLLPgm( const char *pname, const char *cmdline )
 
 /* routines which are called by the linker core */
 
-void WriteStdOut( const char *str )
+void WriteStdOut(Link& link,  const char *str )
 /*********************************/
 {
     IdeState    &st = ide();
 
-    CheckBreak();
+    CheckBreak(link);
     if( st.cbs != nullptr ) {
         st.cbs->PrintWithCRLF( st.hdl, str );
     }
 }
 
-void WriteStdOutWithNL( const char *str )
+void WriteStdOutWithNL(Link& link,  const char *str )
 /***************************************/
 {
     IdeState    &st = ide();
 
-    CheckBreak();
+    CheckBreak(link);
     if( st.cbs != nullptr ) {
         st.cbs->PrintMessage( st.hdl, str );
     }
@@ -144,14 +144,14 @@ void WriteStdOutNL( void )
     }
 }
 
-void WriteStdOutInfo( const char *str, unsigned level, const char *symbol )
+void WriteStdOutInfo(Link& link,  const char *str, unsigned level, const char *symbol )
 /*************************************************************************/
 {
     IDEMsgInfo  info;
     unsigned    msgclass;
     IdeState    &st = ide();
 
-    CheckBreak();
+    CheckBreak(link);
     if( st.cbs != nullptr ) {
         IdeMsgInit( &info, SeverityMap[(level & CLASS_MSK) >> NUM_SHIFT], str );
         msgclass = level & CLASS_MSK;

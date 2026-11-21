@@ -33,7 +33,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/ring.h"
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
@@ -123,7 +123,7 @@ void BinOutput(Link& link)
             if( size ) {
                 diff = ( link.FmtData.base + group->addr.off + group->linear - link.FmtData.output_offset ) - PosLoad(link);
                 if( diff < 0 ) {
-                    LnkMsg( ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &(group->addr));
+                    LnkMsg(link,  ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &(group->addr));
                 } else if( diff > 0 ) {
                     PadLoad(link,  static_cast<size_t>( diff ) );
                 }
@@ -239,7 +239,7 @@ static void WriteHexLine(Link& link)
 
 static bool WriteHexData(Link& link,  void *_sdata, void *_offs )
 /***************************************************/
-{
+{
     HexState         &hs = hexState();
     segdata          *sdata = static_cast<segdata *>( _sdata );
     hex_offset       offs = *static_cast<hex_offset *>( _offs ) + sdata->a.delta;
@@ -256,7 +256,7 @@ static bool WriteHexData(Link& link,  void *_sdata, void *_offs )
 
                 addr.off = offs;
                 addr.seg = 0;
-                LnkMsg( ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &addr );
+                LnkMsg(link,  ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &addr );
             }
             if( hs.buf_offset > 0 ) {          // If partial record in buffer, flush
                 WriteHexLine(link);
@@ -283,7 +283,7 @@ static bool WriteHexData(Link& link,  void *_sdata, void *_offs )
 
 static bool DoHexLeader(Link& link,  void *_seg, void *_grp_offs )
 /***************************************************/
-{
+{
     seg_leader      *seg = static_cast<seg_leader *>( _seg );
 
     if( EMIT_CLASS( seg->class_ )
@@ -296,7 +296,7 @@ static bool DoHexLeader(Link& link,  void *_seg, void *_grp_offs )
 
 static bool DoHexDupLeader(Link& link,  void *seg, void *_grp_offs )
 /******************************************************/
-{
+{
     hex_offset offs = *static_cast<hex_offset *>( _grp_offs ) + SEG_GROUP_DELTA( static_cast<seg_leader *>( seg ) );
 
     RingLookup( static_cast<seg_leader *>( seg )->pieces, bind_link( link, WriteHexData ), &offs );
@@ -326,7 +326,7 @@ typedef struct {
 
 static bool WriteHexCopyGroups(Link& link,  void *_seg, void *_info )
 /*******************************************************/
-{
+{
     // This is called by the outer level iteration looking for classes
     //  that have more than one group in them
     seg_leader *seg = static_cast<seg_leader *>( _seg );
@@ -500,7 +500,7 @@ void FiniRawLoadFile(Link& link)
             } else {
                 diff = file_loc - PosLoad(link);
                 if( diff < 0 ) {
-                    LnkMsg( ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &(group->addr));
+                    LnkMsg(link,  ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &(group->addr));
                 } else if( diff > 0 ) {
                     PadLoad(link,  static_cast<size_t>( diff ) );
                 }

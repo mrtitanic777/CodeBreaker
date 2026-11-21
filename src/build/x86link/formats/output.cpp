@@ -40,7 +40,7 @@
     #include <process.h>
 #endif
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/ring.h"
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
@@ -141,13 +141,13 @@ static f_handle openTempFile(Link& link,  char **fname )
     tlen = 0;
     for( ;; ) {
         if( tlen >= 26 ) {
-            LnkMsg( FTL+MSG_TMP_ALREADY_EXISTS, nullptr );
+            LnkMsg(link,  FTL+MSG_TMP_ALREADY_EXISTS, nullptr );
         }
         (*fname)[last] += 1;            // change temp file extension
         fhdl = TempFileOpen(link,  *fname );
         if( fhdl == NIL_FHANDLE )
             break;
-        QClose( fhdl, *fname );
+        QClose(link,  fhdl, *fname );
         ++tlen;
     }
     return( QOpenRW(link,  *fname ) );
@@ -175,7 +175,7 @@ static void SetupImpLib(Link& link)
             ImpLib.temp = ( ImpLib.handle != NIL_FHANDLE );
         }
         if( ImpLib.handle != NIL_FHANDLE ) {
-            ImpLib.buffer = static_cast<char *>( MemAllocSafe( IMPLIB_BUFSIZE ) );
+            ImpLib.buffer = static_cast<char *>( MemAllocSafe(link,  IMPLIB_BUFSIZE ) );
             /*
              * for NE format (16-bit OS/2 and Windows 3.x)
              * - get base file name only
@@ -199,7 +199,7 @@ static void SetupImpLib(Link& link)
                 namelen = strlen( fname );
             }
             ImpLib.module_name_len = namelen;
-            ImpLib.module_name = static_cast<char *>( MemAllocSafe( namelen ) );
+            ImpLib.module_name = static_cast<char *>( MemAllocSafe(link,  namelen ) );
             if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_WIN_VXD) ) {
                 /*
                  * upper-case module name
@@ -237,7 +237,7 @@ static void DoCVPack(Link& link)
         retval = static_cast<int>( spawnlp( P_WAIT, CVPACK_EXE, CVPACK_EXE, "/nologo",
                           name, nullptr ) );
         if( retval == -1 ) {
-            PrintIOError( ERR+MSG_CANT_EXECUTE, "12", CVPACK_EXE );
+            PrintIOError(link,  ERR+MSG_CANT_EXECUTE, "12", CVPACK_EXE );
         }
     }
 #endif
@@ -260,7 +260,7 @@ static void CloseOutFiles(Link& link)
 
     for( fnode = link.OutFiles; fnode != nullptr; fnode = fnode->next ) {
         if( fnode->handle != NIL_FHANDLE ) {
-            CloseBuffFile( fnode );
+            CloseBuffFile(link,  fnode );
         }
     }
 }
@@ -271,7 +271,7 @@ void ResetLoadFile(Link& link)
     ClearStartAddr(link);
 }
 
-void CleanLoadFile( void )
+void CleanLoadFile(Link& link)
 /************************/
 /* CodeBreaker: the import library's temporary file goes whatever became of the link. wlink left it when the link had an
  * error or stopped (BuildImpLib is not reached, or returns first): in one process, after 26 such links every name
@@ -281,23 +281,23 @@ void CleanLoadFile( void )
 
     if( ImpLib.temp ) {
         if( ImpLib.handle != NIL_FHANDLE ) {
-            QClose( ImpLib.handle, ImpLib.fname );
+            QClose(link,  ImpLib.handle, ImpLib.fname );
             ImpLib.handle = NIL_FHANDLE;
         }
-        QDelete( ImpLib.fname );
+        QDelete(link,  ImpLib.fname );
         MemFree( ImpLib.fname );
         ImpLib.fname = nullptr;
         ImpLib.temp = false;
     }
 }
 
-void InitLoadFile( void )
+void InitLoadFile(Link& link)
 /************************
  * open the file, and write out header info
  */
 {
     DEBUG(( DBG_OLD, "InitLoadFile()" ));
-    LnkMsg( INF+MSG_CREATE_EXE, "f" );
+    LnkMsg(link,  INF+MSG_CREATE_EXE, "f" );
 }
 
 static void finiLoad(Link& link)
@@ -457,7 +457,7 @@ void GetStkAddr(Link& link)
             } else {
 #endif
                 if( (link.FmtData.type & (MK_COM | MK_PE | MK_QNX | MK_ELF | MK_RDOS)) == 0 ) {
-                    LnkMsg( WRN+MSG_STACK_NOT_FOUND, nullptr );
+                    LnkMsg(link,  WRN+MSG_STACK_NOT_FOUND, nullptr );
                     link.StackAddr.seg = 0;
                     link.StackAddr.off = 0;
                 }
@@ -532,7 +532,7 @@ static void CheckBSSInStart(Link& link,  symbol *sym, const char *name )
         chk = static_cast<symbol *>( Ring2Lookup( link.StartInfo.mod->publist, CompSymPtr, sym ) );
     }
     if( chk == nullptr ) {
-        LnkMsg( ERR+MSG_RESERVED_SYM_DEFINED, "s", name );
+        LnkMsg(link,  ERR+MSG_RESERVED_SYM_DEFINED, "s", name );
     }
 }
 
@@ -615,7 +615,7 @@ void SetStkSize(Link& link)
     } else {
         if( link.LinkFlags & LF_STK_SIZE_FLAG ) {
             if( link.StackSize < 0x200 ) {
-                LnkMsg( WRN+MSG_STACK_SMALL, "d", 0x200 );
+                LnkMsg(link,  WRN+MSG_STACK_SMALL, "d", 0x200 );
             }
 #ifdef _OS2
         } else {
@@ -658,10 +658,10 @@ void SetStartSym(Link& link,  const char *name )
             namelen = strlen( name );
             if( namelen != strlen( link.StartInfo.targ.sym->name.u.ptr )
               || (*CmpNRtn)( link.StartInfo.targ.sym->name.u.ptr, name, namelen ) != 0 ) {
-                LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS_BY, "12", link.StartInfo.targ.sym->name.u.ptr, name );
+                LnkMsg(link,  MILD_ERR+LOC+MSG_MULT_START_ADDRS_BY, "12", link.StartInfo.targ.sym->name.u.ptr, name );
             }
         } else {
-            LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", link.StartInfo.mod->u1.source->infile->name, link.StartInfo.mod->name );
+            LnkMsg(link,  MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", link.StartInfo.mod->u1.source->infile->name, link.StartInfo.mod->name );
         }
     } else {
         link.StartInfo.targ.sym = RefISymbol(link,  name );
@@ -697,7 +697,7 @@ void GetStartAddr(Link& link)
             } else {
                 link.StartInfo.addr = link.Groups->addr;
             }
-            LnkMsg( WRN+MSG_NO_START_ADDR, "a", &link.StartInfo.addr );
+            LnkMsg(link,  WRN+MSG_NO_START_ADDR, "a", &link.StartInfo.addr );
         }
         break;
     case START_IS_SDATA:
@@ -763,7 +763,7 @@ offset CalcSplitSize(Link& link)
 
 bool CompareDosSegments(Link& link,  addr_type *left, addr_type *right )
 /**********************************************************/
-{
+{
     return( LESS_THAN_ADDR( *left, *right ) );
 }
 
@@ -893,7 +893,7 @@ unsigned_32 AppendToLoadFile(Link& link,  const char *name )
     if( name != nullptr ) {
         handle = QOpenR(link,  name );
         wrote = CopyToLoad(link,  handle, name );
-        QClose( handle, name );
+        QClose(link,  handle, name );
     }
     return( wrote );
 }
@@ -956,17 +956,17 @@ static void ExecWlib(Link& link)
     retval = static_cast<int>( spawnlp( P_WAIT, WLIB_EXE, WLIB_EXE, "-c", "-b", "-n", "-q", "-pa",
                   wlibMachineOption(link), link.FmtData.implibname, atfname.c_str(), nullptr ) );
     if( retval == -1 ) {
-        PrintIOError( ERR+MSG_CANT_EXECUTE, "12", WLIB_EXE );
+        PrintIOError(link,  ERR+MSG_CANT_EXECUTE, "12", WLIB_EXE );
     }
 #endif
 }
 
-static void FlushImpBuffer( void )
+static void FlushImpBuffer(Link& link)
 /********************************/
 {
     implibinfo  &ImpLib = loadFileState().implib;
 
-    QWrite( ImpLib.handle, ImpLib.buffer, ImpLib.bufsize, ImpLib.fname );
+    QWrite(link,  ImpLib.handle, ImpLib.buffer, ImpLib.bufsize, ImpLib.fname );
 }
 
 void BuildImpLib(Link& link)
@@ -979,15 +979,15 @@ void BuildImpLib(Link& link)
     if( link.FmtData.make_implib ) {
         if( ImpLib.handle != NIL_FHANDLE ) {
             if( ImpLib.bufsize > 0 ) {
-                FlushImpBuffer();
+                FlushImpBuffer(link);
             }
-            QClose( ImpLib.handle, ImpLib.fname );
+            QClose(link,  ImpLib.handle, ImpLib.fname );
             ImpLib.handle = NIL_FHANDLE;
             if( !link.FmtData.make_impfile ) {
                 if( ImpLib.didone ) {
                     ExecWlib(link);
                 }
-                QDelete( ImpLib.fname );
+                QDelete(link,  ImpLib.fname );
                 ImpLib.temp = false;
             }
             MemFree( ImpLib.buffer );
@@ -999,7 +999,7 @@ void BuildImpLib(Link& link)
     }
 }
 
-static void BufImpWrite( const char *buffer, size_t len )
+static void BufImpWrite(Link& link,  const char *buffer, size_t len )
 /*******************************************************/
 {
     implibinfo  &ImpLib = loadFileState().implib;
@@ -1009,7 +1009,7 @@ static void BufImpWrite( const char *buffer, size_t len )
         diff = ImpLib.bufsize + len - IMPLIB_BUFSIZE;
         memcpy( ImpLib.buffer + ImpLib.bufsize , buffer, IMPLIB_BUFSIZE - ImpLib.bufsize );
         ImpLib.bufsize = IMPLIB_BUFSIZE;
-        FlushImpBuffer();
+        FlushImpBuffer(link);
         ImpLib.bufsize = diff;
         if( diff > 0 ) {
             memcpy( ImpLib.buffer, buffer + len - diff, diff );
@@ -1047,7 +1047,7 @@ void AddImpLibEntry(Link& link,  const char *intname, const char *extname, ordin
         buff += '\r';
 #endif
         buff += '\n';
-        BufImpWrite( buff.data(), buff.size() );
+        BufImpWrite(link,  buff.data(), buff.size() );
     }
 }
 
@@ -1055,7 +1055,7 @@ void WriteLoad3(Link& link,  void *dummy, const char *buff, size_t size )
 /************************************************************
  * write a buffer out to the load file (useful as a callback)
  */
-{
+{
     /* unused parameters */ (void)dummy;
 
     WriteLoad(link,  buff, size );
@@ -1068,11 +1068,11 @@ unsigned_32 CopyToLoad(Link& link,  f_handle handle, const char *name )
     unsigned_32     wrote;
 
     wrote = 0;
-    amt_read = QRead( handle, link.TokBuff, link.TokSize, name );
+    amt_read = QRead(link,  handle, link.TokBuff, link.TokSize, name );
     while( amt_read != 0 && amt_read != IOERROR ) {
         WriteLoad(link,  link.TokBuff, amt_read );
         wrote += amt_read;
-        amt_read = QRead( handle, link.TokBuff, link.TokSize, name );
+        amt_read = QRead(link,  handle, link.TokBuff, link.TokSize, name );
     }
     return( wrote );
 }
@@ -1105,7 +1105,7 @@ unsigned long OffsetAlign(Link& link,  unsigned long off, unsigned long align )
 
 static bool WriteSegData(Link& link,  void *_sdata, void *_info )
 /***************************************************/
-{
+{
     segdata         *sdata = static_cast<segdata *>( _sdata );
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
     unsigned long   newpos;
@@ -1141,7 +1141,7 @@ static void DoWriteLeader(Link& link,  seg_leader *seg, grpwriteinfo *info )
 
 void WriteLeaderLoad(Link& link,  void *seg )
 /*******************************/
-{
+{
     grpwriteinfo    info;
 
     info.seg_start = PosLoad(link);
@@ -1150,7 +1150,7 @@ void WriteLeaderLoad(Link& link,  void *seg )
 
 static bool DoGroupLeader(Link& link,  void *_seg, void *_info )
 /**************************************************/
-{
+{
     seg_leader      *seg = static_cast<seg_leader *>( _seg );
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
@@ -1168,7 +1168,7 @@ static bool DoDupGroupLeader(Link& link,  void *seg, void *_info )
  * Substitute groups generally are sourced from NO_EMIT classes,
  * As copies, they need to be output, so ignore their MOEMIT flag here
  */
-{
+{
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
     info->seg_start = info->grp_start + SEG_GROUP_DELTA( static_cast<seg_leader *>( seg ) );
@@ -1181,7 +1181,7 @@ static bool WriteCopyGroups(Link& link,  void *_seg, void *_info )
  * This is called by the outer level iteration looking for classes
  * that have more than one group in them
  */
-{
+{
     seg_leader      *seg = static_cast<seg_leader *>( _seg );
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
@@ -1225,7 +1225,7 @@ void FreeOutFiles(Link& link)
     CloseOutFiles(link);
     for( fnode = link.OutFiles; fnode != nullptr; fnode = link.OutFiles ) {
         if( link.LinkState & LS_LINK_ERROR ) {
-            QDelete( fnode->fname );
+            QDelete(link,  fnode->fname );
         }
         MemFree( fnode->fname );
         link.OutFiles = fnode->next;
@@ -1235,7 +1235,7 @@ void FreeOutFiles(Link& link)
 
 static void *SetToFillChar(Link& link,  void *dest, const void *data, size_t size )
 /*********************************************************************/
-{
+{
     memset( dest, link.FmtData.FillChar, size );
     return( const_cast<void *>( data ) );
 }
@@ -1248,7 +1248,7 @@ static void *CopyData( void *dest, const void *data, size_t size )
 
 #define BUFF_BLOCK_SIZE _16K
 
-static void WriteBuffer( const char *data, size_t len, outfilelist *outfile, FunctionRef<writebuffer_fn> rtn )
+static void WriteBuffer(Link& link,  const char *data, size_t len, outfilelist *outfile, FunctionRef<writebuffer_fn> rtn )
 /************************************************************************************************/
 {
     size_t   modpos;
@@ -1259,7 +1259,7 @@ static void WriteBuffer( const char *data, size_t len, outfilelist *outfile, Fun
     while( modpos + len >= BUFF_BLOCK_SIZE ) {
         adjust = BUFF_BLOCK_SIZE - modpos;
         rtn( outfile->buffer + modpos, data, adjust );
-        QWrite( outfile->handle, outfile->buffer, BUFF_BLOCK_SIZE, outfile->fname );
+        QWrite(link,  outfile->handle, outfile->buffer, BUFF_BLOCK_SIZE, outfile->fname );
         if( data != nullptr )
             data += adjust;
         len -= adjust;
@@ -1270,7 +1270,7 @@ static void WriteBuffer( const char *data, size_t len, outfilelist *outfile, Fun
     }
 }
 
-static void SeekBuffer( unsigned long len, outfilelist *outfile, FunctionRef<writebuffer_fn> rtn )
+static void SeekBuffer(Link& link,  unsigned long len, outfilelist *outfile, FunctionRef<writebuffer_fn> rtn )
 /************************************************************************************/
 {
     size_t   modpos;
@@ -1281,7 +1281,7 @@ static void SeekBuffer( unsigned long len, outfilelist *outfile, FunctionRef<wri
     while( modpos + len >= BUFF_BLOCK_SIZE ) {
         adjust = BUFF_BLOCK_SIZE - modpos;
         rtn( outfile->buffer + modpos, nullptr, adjust );
-        QWrite( outfile->handle, outfile->buffer, BUFF_BLOCK_SIZE, outfile->fname );
+        QWrite(link,  outfile->handle, outfile->buffer, BUFF_BLOCK_SIZE, outfile->fname );
         len -= adjust;
         modpos = 0;
     }
@@ -1297,9 +1297,9 @@ void PadBuffFile(Link& link,  outfilelist *outfile, size_t size )
     if( size == 0 )
         return;
     if( outfile->buffer != nullptr ) {
-        WriteBuffer( nullptr, size, outfile, bind_link( link, SetToFillChar ) );
+        WriteBuffer(link,  nullptr, size, outfile, bind_link( link, SetToFillChar ) );
     } else {
-        WriteNulls( outfile->handle, size, outfile->fname );
+        WriteNulls(link,  outfile->handle, size, outfile->fname );
     }
 }
 
@@ -1320,9 +1320,9 @@ void WriteLoad(Link& link,  const void *buff, size_t size )
 
     outfile = link.CurrSect->outfile;
     if( outfile->buffer != nullptr ) {
-        WriteBuffer( static_cast<const char *>( buff ), size, outfile, CopyData );
+        WriteBuffer(link,  static_cast<const char *>( buff ), size, outfile, CopyData );
     } else {
-        QWrite( outfile->handle, buff, size, outfile->fname );
+        QWrite(link,  outfile->handle, buff, size, outfile->fname );
     }
 }
 
@@ -1363,14 +1363,14 @@ size_t WriteLoadU8Name(Link& link,  const char *data, size_t len, bool ucase )
     return( len + 1 );
 }
 
-static void FlushBuffFile( outfilelist *outfile )
+static void FlushBuffFile(Link& link,  outfilelist *outfile )
 /***********************************************/
 {
     size_t  modpos;
 
     modpos = outfile->bufpos % BUFF_BLOCK_SIZE;
     if( modpos != 0 ) {
-        QWrite( outfile->handle, outfile->buffer, modpos, outfile->fname );
+        QWrite(link,  outfile->handle, outfile->buffer, modpos, outfile->fname );
     }
     MemFree( outfile->buffer );
     outfile->buffer = nullptr;
@@ -1384,12 +1384,12 @@ void SeekLoad(Link& link,  unsigned long offset )
     outfile = link.CurrSect->outfile;
     if( outfile->buffer != nullptr
       && ( outfile->origin + offset ) < outfile->bufpos ) {
-        FlushBuffFile( outfile );
+        FlushBuffFile(link,  outfile );
     }
     if( outfile->buffer == nullptr ) {
-        QSeek( outfile->handle, outfile->origin + offset, outfile->fname );
+        QSeek(link,  outfile->handle, outfile->origin + offset, outfile->fname );
     } else {
-        SeekBuffer( outfile->origin + offset - outfile->bufpos, outfile, bind_link( link, SetToFillChar ) );
+        SeekBuffer(link,  outfile->origin + offset - outfile->bufpos, outfile, bind_link( link, SetToFillChar ) );
     }
 }
 
@@ -1401,10 +1401,10 @@ void SeekEndLoad(Link& link,  unsigned long offset )
     outfile = link.CurrSect->outfile;
     if( outfile->buffer != nullptr
       && offset > 0 ) {
-        FlushBuffFile( outfile );
+        FlushBuffFile(link,  outfile );
     }
     if( outfile->buffer == nullptr ) {
-        QLSeek( outfile->handle, offset, LSEEK_END, outfile->fname );
+        QLSeek(link,  outfile->handle, offset, LSEEK_END, outfile->fname );
     }
 }
 
@@ -1414,7 +1414,7 @@ unsigned long PosLoad(Link& link)
     if( link.CurrSect->outfile->buffer != nullptr ) {
         return( link.CurrSect->outfile->bufpos - link.CurrSect->outfile->origin );
     } else {
-        return( QPos( link.CurrSect->outfile->handle ) - link.CurrSect->outfile->origin );
+        return( QPos(link,  link.CurrSect->outfile->handle ) - link.CurrSect->outfile->origin );
     }
 }
 
@@ -1446,17 +1446,17 @@ void OpenBuffFile(Link& link,  outfilelist *outfile )
         outfile->handle = QOpenRW(link,  outfile->fname );
     }
     if( outfile->handle == NIL_FHANDLE ) {
-        PrintIOError( FTL+MSG_CANT_OPEN_NO_REASON, "s", outfile->fname );
+        PrintIOError(link,  FTL+MSG_CANT_OPEN_NO_REASON, "s", outfile->fname );
     }
-    outfile->buffer = static_cast<char *>( MemAllocSafe( BUFF_BLOCK_SIZE ) );
+    outfile->buffer = static_cast<char *>( MemAllocSafe(link,  BUFF_BLOCK_SIZE ) );
 }
 
-void CloseBuffFile( outfilelist *outfile )
+void CloseBuffFile(Link& link,  outfilelist *outfile )
 /****************************************/
 {
     if( outfile->buffer != nullptr ) {
-        FlushBuffFile( outfile );
+        FlushBuffFile(link,  outfile );
     }
-    QClose( outfile->handle, outfile->fname );
+    QClose(link,  outfile->handle, outfile->fname );
     outfile->handle = NIL_FHANDLE;
 }

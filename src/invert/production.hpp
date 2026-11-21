@@ -7,7 +7,7 @@
 // What is bound, and to what (a hook whose tool is not set up on this machine stays empty, and the tool that wants it says so):
 //
 //     retail           the corpus's copy of a module by name
-//     compile_msc6     Microsoft C 6.0a (build/msc6: CL.EXE of settings.json `msc6` in DOSBox-X `dosbox_x`), one text, or many in one session
+//     compile_msc6     Microsoft C 6.0a (build/msc6: CL.EXE of settings.json `msc6` on the DOS executive), one text, or many in one session
 //     compile_msvc152  Microsoft C/C++ 8 of Visual C++ 1.52c (build/msc6, `msvc152`), which runs on Windows itself where its short paths exist
 //     compile_mc203    Microsoft C 2.03 (exact/toolchain's profile "msc203", kit `kits.msc203`) on the DOS executive, in this process
 //     compile_msvc2    the 32-bit compiler of 1994 (CL.EXE in settings.json `period_compiler`), one function at a time

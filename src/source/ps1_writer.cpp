@@ -14,6 +14,7 @@
 #include "core/text.hpp"
 #include "decompile/mips.hpp"
 #include "source/isa.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::ps1_writer {
@@ -368,8 +369,8 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
     std::vector<std::string> head = {
         std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
         std::format("; PlayStation executable: entry 0x{:08X}, program at 0x{:08X} ({} bytes), {} functions", h.pc0, base, text.size(), functions.size()),
-        "; (MIPS syntax as the processor's SLEIGH description writes it: build with `assemble --cpu mips --sleigh`)", ""};
-    translate::l2::Assembly out(head, "sleigh-mips", std::string(file_name));
+        ""};
+    translate::l2::Assembly out(head, "gas", std::string(file_name));
     out.append("        .set noreorder");
     out.append("        .set noat");
     out.append("");
@@ -425,7 +426,7 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
         std::vector<std::uint32_t> operands;
         if (p.insn.target)
             if (const auto named = names_for_text.find(*p.insn.target); named != names_for_text.end()) by_value[*p.insn.target] = named->second, operands.push_back(*p.insn.target);
-        return risc_source::code("mips", text.subspan(p.insn.pc - base, 4), p.insn.pc, by_value, operands, it == immediate.end() ? std::string() : it->second);
+        return dialect::find("gas-mips").fallback(risc_source::code("mips", text.subspan(p.insn.pc - base, 4), p.insn.pc, by_value, operands, it == immediate.end() ? std::string() : it->second));
     };
     std::size_t off = 0;
     while (off < text.size()) {
@@ -451,9 +452,10 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
         off += item.took;
     }
 
-    const std::string source = iw::text(out) + "\n";
+    std::string source;   // (every line said in GNU as's: `$sp`, decimal offsets, `#` comments)
+    for (const std::string& l : out.lines()) source += dialect::find("gas-mips").line(l) + "\n";
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), exe.data.size());
-    iw::assembled(r, [&] { return risc_source::assemble("mips", source, folder); }, exe.data, folder / (stem + ".built.exe"), "executable");
+    iw::assembled(r, [&] { return risc_source::assemble("mips", dialect::find("gas-mips").parse(source), folder); }, exe.data, folder / (stem + ".built.exe"), "executable");
     return r;
 }
 

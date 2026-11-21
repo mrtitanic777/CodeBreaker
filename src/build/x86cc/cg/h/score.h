@@ -83,7 +83,7 @@ typedef struct score_info {
     } symbol;
     int                     reg_index;  /*  indexed names only */
     scale_typ               scale;      /*  indexed names only */
-    score_name_class_def    class;
+    score_name_class_def    class_;
 } score_info;
 
 
@@ -111,35 +111,35 @@ extern  score_info          *ScZero;
 extern  pointer             *ScListFrl;
 
 // scblock.c
-extern bool    DoScore( block *blk );
+extern bool_    DoScore( block *blk );
 extern byte    HasZero( score_hdl scoreboard, name *n );
 extern void    FreeJunk( block *blk );
 
 // scinfo.c
-extern bool    ScoreLookup( score_hdl scoreitem, score_info *info );
-extern bool    ScoreEqual( score_hdl scoreboard, int index, score_info *info );
+extern bool_    ScoreLookup( score_hdl scoreitem, score_info *info );
+extern bool_    ScoreEqual( score_hdl scoreboard, int index, score_info *info );
 extern void    ScoreAssign( score_hdl scoreboard, int index, score_info *info );
 extern void    ScoreInfo( score_info *info, name *op );
-extern bool    ScoreLAInfo( score_info *info, name *op );
+extern bool_    ScoreLAInfo( score_info *info, name *op );
 extern void    ScoreKillInfo( score_hdl scoreboard, name *op, score_info *info, hw_reg_set except );
 
 // scins.c
-extern bool    ChangeIns( instruction *ins, name *to, name **op, change_type flags );
-extern bool    FindRegOpnd( score_hdl scoreboard, instruction *ins );
+extern bool_    ChangeIns( instruction *ins, name *to, name **op, change_type flags );
+extern bool_    FindRegOpnd( score_hdl scoreboard, instruction *ins );
 extern void    ScoreMakeEqual( score_hdl scoreboard, name *op1, name *op2 );
-extern bool    ScoreMove( score_hdl scoreboard, instruction *ins );
-extern bool    ScoreLA( score_hdl scoreboard, instruction *ins );
+extern bool_    ScoreMove( score_hdl scoreboard, instruction *ins );
+extern bool_    ScoreLA( score_hdl scoreboard, instruction *ins );
 extern void    ScZeroCheck( score_hdl scoreboard, instruction *ins );
 extern const opcode_entry   *ResetGenEntry( instruction *ins );
 
 // scregs.c
 extern void    RegInsert( score_hdl scoreboard, int dst_idx, int src_idx );
-extern bool    RegsEqual( score_hdl scoreboard, int i1, int i2 );
+extern bool_    RegsEqual( score_hdl scoreboard, int i1, int i2 );
 extern void    RegKill( score_hdl scoreboard, hw_reg_set regs );
 extern void    RegAdd( score_hdl scoreboard, int dst_idx, int src_idx );
 
 // scthrash.c
-extern bool    RegThrash( block *blk );
+extern bool_    RegThrash( block *blk );
 
 // scutil.c
 extern pointer ScAlloc( size_t size );
@@ -149,18 +149,18 @@ extern void    ScoreClear( score_hdl scoreboard );
 extern void    FreeScListEntry( score_list *list );
 extern void    ScoreFreeList( score_hdl scoreitem );
 extern void    FreeScoreBoard( score_hdl scoreboard );
-extern void    MemChanged( score_hdl scoreboard, bool statics_too );
-extern bool    ScoreFrlFree( void );
+extern void    MemChanged( score_hdl scoreboard, bool_ statics_too );
+extern bool_    ScoreFrlFree( void );
 extern score_list      *NewScListEntry( void );
 
 // sczero.c
-extern bool    ScoreZero( score_hdl scoreboard, instruction **pins );
+extern bool_    ScoreZero( score_hdl scoreboard, instruction **pins );
 
 // cpu-specific
 extern void    ScInitRegs( score_hdl scoreboard );
 extern void    ScoreSegments( score_hdl scoreboard );
-extern bool    ScConvert( instruction *ins );
-extern bool    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 );
+extern bool_    ScConvert( instruction *ins );
+extern bool_    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 );
 extern void    AddRegs( void );
-extern bool    ScRealRegister( name *reg );
-extern bool    CanReplace( instruction *ins );
+extern bool_    ScRealRegister( name *reg );
+extern bool_    CanReplace( instruction *ins );

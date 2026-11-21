@@ -27,13 +27,16 @@
 #include "core/bytes.hpp"
 #include "decompile/labels.hpp"
 #include "decompile/z80.hpp"
+#include "source/dialect.hpp"
 #include "source/image_writer.hpp"
 
 namespace cb::source::z80_source {
 
 // One instruction as a line of source (without its indent): the description's text with `names` (labels and fixed addresses) put where the
 // instruction's address operand is and `ports` where its port is, or `.byte` of its bytes with the text in a comment.
+// The text is written in `dialect` (source/dialect: WLA-DX for a Master System, ...); the neutral dialect leaves the description's own.
 std::string code(const decompile::z80::Insn& insn, const decompile::AddressLabels& names, const image_writer::Names& ports);
+std::string code(const decompile::z80::Insn& insn, const decompile::AddressLabels& names, const image_writer::Names& ports, const dialect::Dialect& dialect);
 
 // The address of a label this instruction names that the assembler's first pass meets before the label's line, behind a register or a condition
 // (`LD HL,D_8020`, `JR NZ,L_0090`): it reads the register as the unknown name and finds no instruction. Such a label is defined once ahead of the
@@ -42,11 +45,14 @@ std::optional<std::uint32_t> forward_reference(const decompile::z80::Insn& insn,
 
 // Bytes as lines: `.byte` rows of 16, `.ascii` for a run of four or more printable characters, `.space n, v` for a run of 16 or more of one value.
 std::vector<std::string> data_lines(ByteView data);
+std::vector<std::string> data_lines(ByteView data, const dialect::Dialect& dialect);   // (in the dialect's directives)
 
 // `.equ name, value` for a name defined as a number, the names lined up.
 std::string equ(const std::string& name, std::uint32_t value, unsigned digits);
+std::string equ(const std::string& name, std::uint32_t value, unsigned digits, const dialect::Dialect& dialect);
 
 // The image `source` builds to, through the Z80's description. AsmError (a ParseError) for source that does not assemble.
 Bytes assemble(std::string_view source, const std::filesystem::path& folder);
+Bytes assemble(std::string_view source, const std::filesystem::path& folder, const dialect::Dialect& dialect);   // (source in the dialect: parsed first)
 
 }  // namespace cb::source::z80_source

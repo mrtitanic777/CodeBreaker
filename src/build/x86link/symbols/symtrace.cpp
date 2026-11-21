@@ -32,7 +32,7 @@
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/symbols/library.h"
 #include "build/x86link/layout/overlays.h"
 #include "build/x86link/symbols/symtrace.h"
@@ -91,7 +91,7 @@ static void CheckFileTrace( section *sect, void *_info )
     }
 }
 
-void AddTraceListMod( char *fname, char *membname )
+void AddTraceListMod(Link& link,  char *fname, char *membname )
 /*************************************************/
 {
     trace_info      *info;
@@ -100,7 +100,7 @@ void AddTraceListMod( char *fname, char *membname )
      * it uses membname until tracing is finished
      * then CleanTraces free it
      */
-    info = static_cast<trace_info *>(MemAllocSafe( sizeof( trace_info ) ));
+    info = static_cast<trace_info *>(MemAllocSafe(link,  sizeof( trace_info ) ));
     info->u.name = fname;
     info->membname = membname;
     info->found = false;        // used for matching libraries
@@ -124,7 +124,7 @@ void CheckTraces(Link& link)
         if( info->membname == nullptr ) {
             ParmWalkAllSects(link,  CheckFileTrace, info );
             if( !info->found ) {
-                LnkMsg( WRN+MSG_TRACE_OBJ_NOT_FOUND, "s", info->u.name );
+                LnkMsg(link,  WRN+MSG_TRACE_OBJ_NOT_FOUND, "s", info->u.name );
                 MemFree( info->u.name );
             }
             MemFree( info );
@@ -182,12 +182,12 @@ bool FindLibTrace( mod_entry *mod )
     return( false );
 }
 
-void AddTraceListSym( char *symname )
+void AddTraceListSym(Link& link,  char *symname )
 /***********************************/
 {
     sym_trace_info  *info;
 
-    info = static_cast<sym_trace_info *>(MemAllocSafe( sizeof( sym_trace_info ) ));
+    info = static_cast<sym_trace_info *>(MemAllocSafe(link,  sizeof( sym_trace_info ) ));
     info->name = symname;
     info->next = st().TraceListSym;
     st().TraceListSym = info;
@@ -212,20 +212,20 @@ bool FindSymTrace( const char *symname )
     return( false );
 }
 
-void PrintBadTraces( void )
+void PrintBadTraces(Link& link)
 /*************************/
 {
     sym_trace_info  *sym_info;
     trace_info      *info;
 
     for( sym_info = st().TraceListSym; sym_info != nullptr; sym_info = sym_info->next ) {
-        LnkMsg( WRN+MSG_TRACE_SYM_NOT_FOUND, "s", sym_info->name );
+        LnkMsg(link,  WRN+MSG_TRACE_SYM_NOT_FOUND, "s", sym_info->name );
     }
     for( info = st().TraceList; info != nullptr; info = info->next ) {
         if( info->found ) {
-            LnkMsg( WRN+MSG_TRACE_LIB_NOT_FOUND, "12", info->u.file->infile->name.u.ptr, info->membname );
+            LnkMsg(link,  WRN+MSG_TRACE_LIB_NOT_FOUND, "12", info->u.file->infile->name.u.ptr, info->membname );
         } else {
-            LnkMsg( WRN+MSG_TRACE_LIB_NOT_FOUND, "12", info->u.name, info->membname );
+            LnkMsg(link,  WRN+MSG_TRACE_LIB_NOT_FOUND, "12", info->u.name, info->membname );
         }
     }
     CleanTraces();

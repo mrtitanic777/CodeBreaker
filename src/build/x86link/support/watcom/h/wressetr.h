@@ -49,12 +49,12 @@ typedef struct WResRoutines {                                       /* defaults 
     FILE            *(*cli_open)(const char *, wres_open_mode);     /* fopen */
     bool            (*cli_close)(FILE *);                           /* fclose */
     size_t          (*cli_read)(FILE *, void *, size_t);            /* fread */
-    size_t          (*cli_write)(FILE *, const void *, size_t);     /* fwrite */
-    bool            (*cli_seek)(FILE *, long, int );                /* fseek */
-    long            (*cli_tell)(FILE *);                            /* ftell */
+    size_t          (*cli_write)(Link&, FILE *, const void *, size_t); /* fwrite */
+    bool            (*cli_seek)(Link&, FILE *, long, int );         /* fseek */
+    long            (*cli_tell)(Link&, FILE *);                     /* ftell */
     bool            (*cli_ioerr)(FILE *,size_t);                    /* ioerr */
     /* memory routines */
-    void            *(*cli_alloc)(size_t);                          /* malloc */
+    void            *(*cli_alloc)(Link&, size_t);                   /* malloc */
     void            (*cli_free)(void *);                            /* free */
 } WResRoutines;
 

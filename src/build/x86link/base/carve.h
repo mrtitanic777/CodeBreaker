@@ -60,14 +60,14 @@ typedef unsigned_32     carve_index;
 
 typedef struct cv_t     *carve_t;
 
-extern carve_t  CarveCreate( unsigned elm_size, unsigned how_many );
-extern void     CarveRestart( carve_t carver, unsigned );
+extern carve_t  CarveCreate(Link& link,  unsigned elm_size, unsigned how_many );
+extern void     CarveRestart(Link& link,  carve_t carver, unsigned );
 extern void     CarvePurge( carve_t carver );
 extern void     CarveVerifyAllGone( carve_t carver, const char * );
 extern void     CarveDestroy( carve_t carver );
 
-extern void     *CarveAlloc( carve_t carver );
-extern void     *CarveZeroAlloc( carve_t carver );
+extern void     *CarveAlloc(Link& link,  carve_t carver );
+extern void     *CarveZeroAlloc(Link& link,  carve_t carver );
 extern void     CarveFree( carve_t carver, void *elm );
 
 extern void     *CarveGetIndex( carve_t, void * );

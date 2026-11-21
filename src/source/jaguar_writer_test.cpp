@@ -8,6 +8,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "source/isa.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::jaguar_writer {
@@ -69,7 +70,7 @@ CB_TEST("source.jaguar_writer.a_cartridge_comes_back_as_source_that_builds_the_s
     CB_CHECK((r.functions == image_writer::Functions{{0x802000, "start"}, {0x802020, "sub_802020"}}));
     CB_CHECK_EQ(r.image_bytes, 0x4000u);
     const std::string s = fs::read_text(r.source);
-    for (const char* want : {"BG", "VC", ".equ BG, 0xf00058", ".org 0x800000", ".long start", "jsr sub_802020.l"}) {
+    for (const char* want : {"BG", "VC", "equ $F00058", "org $800000", "dc.l start", "JSR (sub_802020).L"}) {
         CB_CHECK(s.find(want) != std::string::npos);
     }
 });
@@ -79,17 +80,17 @@ CB_TEST("source.jaguar_writer.a_coff_comes_back_as_source_that_builds_the_same_s
     const image_writer::Written r = write(formats::jaguar::parse(coff()), "demo.cof", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK((r.functions == image_writer::Functions{{0x4000, "start"}, {0x4020, "sub_004020"}}));
-    CB_CHECK(fs::read_text(r.source).find(".org 0x004000") != std::string::npos);
+    CB_CHECK(fs::read_text(r.source).find("org $004000") != std::string::npos);
 });
 
 CB_TEST("source.jaguar_writer.an_edited_source_builds_a_different_file", [] {
     fs::ScopedTempDir dir("cb_jag_edit");
     const image_writer::Written r = write(formats::jaguar::parse(coff()), "demo.cof", dir.path());
     std::string s = fs::read_text(r.source);
-    const std::size_t at = s.find("#0x1234");
+    const std::size_t at = s.find("#$1234");
     CB_CHECK(at != std::string::npos);
-    s.replace(at, 7, "#0x1235");
-    const Bytes image = risc_source::assemble("m68k", s, dir.path());
+    s.replace(at, 6, "#$1235");
+    const Bytes image = risc_source::assemble("m68k", dialect::find("vasm-m68k").parse(s), dir.path());
     CB_CHECK_EQ(image[3], 0x35);   // (the image holds the sections' bytes one after another: the first section's fourth byte)
 });
 

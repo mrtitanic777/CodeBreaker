@@ -32,7 +32,7 @@
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include <exedos.h>
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
@@ -96,7 +96,7 @@ static void WriteDOSSectRelocs(Link& link,  section *sect, bool repos )
 
 static void AssignFileLocs(Link& link,  section *sect )
 /*****************************************/
-{
+{
     if( link.FmtData.u.dos.pad_sections ) {
         sect->outfile->file_loc = __ROUND_UP_SIZE_SECTOR( sect->outfile->file_loc );
     }
@@ -185,7 +185,7 @@ struct COMLeader {
 
 static bool WriteSegData(Link& link,  void *_sdata, void *_leader )
 /*****************************************************/
-{
+{
     segdata         *sdata = static_cast<segdata *>( _sdata );
     COMLeader       *leader = static_cast<COMLeader *>( _leader );
     soffset         &COMAmountWritten = leader->written;
@@ -215,7 +215,7 @@ static bool WriteSegData(Link& link,  void *_sdata, void *_leader )
 
 static bool DoCOMGroup(Link& link,  void *_seg, void *_write )
 /************************************************/
-{
+{
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
     COMWrite    *write = static_cast<COMWrite *>( _write );
     COMLeader   leader = { write->chop + SEG_GROUP_DELTA( seg ), write->written };
@@ -268,12 +268,12 @@ static void WriteCOMFile(Link& link)
     soffset             chop;
 
     if( link.StartInfo.addr.seg != 0 ) {
-        LnkMsg( ERR+MSG_INV_COM_START_ADDR, nullptr );
+        LnkMsg(link,  ERR+MSG_INV_COM_START_ADDR, nullptr );
         return;
     }
     if( ( link.StackAddr.seg != 0 )
       || ( link.StackAddr.off != 0 ) ) {
-        LnkMsg( WRN+MSG_STACK_SEG_IGNORED, nullptr );
+        LnkMsg(link,  WRN+MSG_STACK_SEG_IGNORED, nullptr );
     }
     OrderGroups(link,  bind_link( link, CompareDosSegments ) );
     link.CurrSect = link.Root;        // needed for WriteInfo.
@@ -295,7 +295,7 @@ static void WriteCOMFile(Link& link)
         }
     }
     if( fnode->file_loc > (_64K - 0x200) ) {
-        LnkMsg( ERR+MSG_COM_TOO_LARGE, nullptr );
+        LnkMsg(link,  ERR+MSG_COM_TOO_LARGE, nullptr );
     }
     DBIWrite(link);
 }

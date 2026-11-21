@@ -44,10 +44,10 @@ extern void     AddLnameData( dir_node_handle data );
 extern void     AddAliasData( char *data );
 extern void     AddLinnumData( line_num_info *data );
 
-extern bool     GetLnameData( obj_rec_handle );
-extern char     *GetAliasData( bool );
-extern bool     GetPublicData( void );
-extern int      GetLinnumData( int limit, linnum_data **ldata, bool *need32 );
+extern bool_     GetLnameData( obj_rec_handle );
+extern char     *GetAliasData( bool_ );
+extern bool_     GetPublicData( void );
+extern int      GetLinnumData( int limit, linnum_data **ldata, bool_ *need32 );
 
 extern void     FreeAllQueues( void );
 

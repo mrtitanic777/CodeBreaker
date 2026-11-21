@@ -1,6 +1,6 @@
 // exact/emu/dpmi.hpp -- a DPMI host for the real-mode DOS executive, so the period tools that enter 32-bit
 // protected mode through a DPMI host (the Win95 DDK's Phar Lap TNT ML.EXE; a DOS-extended Microsoft C pass) run on
-// CodeBreaker's own Unicorn CPU instead of DOSBox-X.
+// CodeBreaker's own Unicorn CPU.
 //
 // The executive builds a Host over its engine and hands it the interrupts a DPMI client makes (INT 2Fh AX=1687h, INT
 // 31h, and the mode switch). Everything runs in the one UC_MODE_16 engine the executive already uses: Unicorn honours
@@ -27,12 +27,11 @@
 //                        version (PICs at 08h/70h); 0500-0503 extended memory above 1 MB; 0600-0604 and 0702/0703
 //                        paging (no paging here: accepted); 0800/0801 physical mapping (identity); 0900-0902 the
 //                        virtual interrupt state; 0A00/0401 unsupported (carry set); 0E00/0E01 the 80x87. A service
-//                        not implemented is an EmulationError, so the executive's run fails and the caller can fall
-//                        back to DOSBox.
+//                        not implemented is an EmulationError, so the executive's run fails with it.
 //
 // The Win95 DDK's Phar Lap TNT ML.EXE runs to completion on this host (DOSXNT.EXE: a 32-bit DPMI client that
 // relocates itself above 1 MB, raw-switches to real mode for each DOS call and hooks INT 21h in protected mode for its
-// 32-bit application) with objects byte-identical to DOSBox-X's.
+// 32-bit application) with the objects the DDK's own toolchain makes.
 //
 // Unicorn facts the host depends on: a CS (or EIP) write inside an interrupt hook takes effect at once in protected
 // mode too (a full descriptor load, D bit and all), so protected-mode transfers are done that way; but emu_start takes

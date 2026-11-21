@@ -159,7 +159,7 @@ CB_TEST("build.flat_thunk.classify", [] {
     c = ft::classify(formats_data("lzexpand.dll"));
     CB_CHECK(c.format == ft::Format::Ne);
     CB_CHECK(c.subtype == ft::Subtype::Win16C);
-    CB_CHECK_EQ(c.recipe.value_or("?"), "msc6-dosbox");
+    CB_CHECK_EQ(c.recipe.value_or("?"), "msc6");
     CB_CHECK_EQ(c.why, "16-bit NE; 12 segments");
     CB_CHECK(!c.exports.has_value());
 

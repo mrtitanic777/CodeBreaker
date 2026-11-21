@@ -61,7 +61,7 @@ enum {
     INTERR_MEM_REALLOC_FAILED
 };
 
-extern void RcWarning( unsigned errornum, ... );
-extern void RcError( unsigned int ,... );
+extern void RcWarning(Link& link,  unsigned errornum, ... );
+extern void RcError(Link& link,  unsigned int ,... );
 NO_RETURN( extern void RcFatalError( unsigned int errornum, ... ) );
-extern bool RcIOError( RcStatus ret, const char *srcname, const char *dstname, int err );
+extern bool RcIOError(Link& link,  RcStatus ret, const char *srcname, const char *dstname, int err );

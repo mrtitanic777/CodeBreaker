@@ -288,6 +288,28 @@ CB_TEST("build.functions.an_object_kept_from_another_folder_is_rewritten_for_thi
                 2 * (static_cast<std::ptrdiff_t>(native_text(now).size()) - static_cast<std::ptrdiff_t>(native_text(was).size())));
 });
 
+// One folder name in 256 gives a record whose real checksum is zero, which must not be taken for "this record has no checksum".
+CB_TEST("build.functions.a_checksum_of_zero_is_still_a_checksum", [] {
+    CB_WINDOWS_ONLY("it rewrites the DOS-form paths inside an OMF object");
+    Kit k;
+    const stdfs::path was = k.work("the_old_folder"), now = k.work("now");
+    fs::write_text(now / "m.h", "header");
+    Bytes kept;
+    bool found = false;
+    for (int n = 1; n <= 60 && !found; ++n) {
+        for (char c = 'a'; c <= 'z' && !found; ++c) {
+            kept = make_object(was, std::string(static_cast<std::size_t>(n), 'f') + c);
+            found = kept[2 + (kept[1] | (kept[2] << 8))] == 0;   // (the first record's check byte)
+        }
+    }
+    CB_CHECK(found);
+    if (!found) return;
+    const auto here = omf_here(kept, now);
+    CB_CHECK(here.has_value());
+    if (!here) return;
+    CB_CHECK(parse_object(*here).checksums_ok);
+});
+
 CB_TEST("build.functions.an_object_that_cannot_be_rewritten_is_not_guessed_at", [] {
     CB_WINDOWS_ONLY("it rewrites the DOS-form paths inside an OMF object");
     Kit k;

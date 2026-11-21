@@ -185,7 +185,7 @@ typedef struct  string_literal {
 typedef struct array_info {
     target_size         dimension;
     int                 refno;
-    bool                unspecified_dim;    // or flexible array member?
+    bool_                unspecified_dim;    // or flexible array member?
 } array_info;
 
 typedef enum BASED_KIND {
@@ -275,7 +275,7 @@ typedef struct parm_list {
 
 typedef struct textsegment {        /* used for #pragma alloc_text(seg,func1,func2,...) */
     struct textsegment *next;       /* also used by pre-compiled header */
-    size_t             class;
+    size_t             class_;
     segment_id         segid;
     int                index;
     char               segname[1];
@@ -294,8 +294,8 @@ typedef struct fname_list {
     time_t              mtime;      /* from stat.st_mtime */
     unsigned            index;
     unsigned            index_db;
-    bool                rwflag;
-    bool                once;
+    bool_                rwflag;
+    bool_                once;
     char                *fullpath;
     char                name[1];
 } fname_list, *FNAMEPTR;
@@ -310,7 +310,7 @@ typedef struct rdir_list {
 typedef struct ialias_list {
     struct ialias_list  *next;      /* also used by pre-compiled header */
     char                *real_name; /* also used by pre-compiled header */
-    bool                is_lib;
+    bool_                is_lib;
     char                alias_name[1];
 } ialias_list, *IALIASPTR;
 
@@ -477,7 +477,7 @@ typedef struct {
     type_modifiers      mod;        // const, vol flags
     type_modifiers      decl_mod;   // declspec call info
     declspec_class      decl;       // dllimport...
-    bool                naked;      // declspec naked
+    bool_                naked;      // declspec naked
 } decl_info;
 
 typedef enum {

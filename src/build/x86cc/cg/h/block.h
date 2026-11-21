@@ -33,10 +33,10 @@
 
 #include "dominati.h"
 
-#define _IsBlkAttr( b, a )      ( ((b)->class & (a)) != 0 )
-#define _MarkBlkAttrClr( b, a ) ( (b)->class &= ~(a) )
-#define _MarkBlkAttrSet( b, a ) ( (b)->class |=  (a) )
-#define _SetBlkAttr( b, a )     ( (b)->class  =  (a) )
+#define _IsBlkAttr( b, a )      ( ((b)->class_ & (a)) != 0 )
+#define _MarkBlkAttrClr( b, a ) ( (b)->class_ &= ~(a) )
+#define _MarkBlkAttrSet( b, a ) ( (b)->class_ |=  (a) )
+#define _SetBlkAttr( b, a )     ( (b)->class_  =  (a) )
 
 #define _IsBlkVisited( b )      _IsBlkAttr( b, BLK_BLOCK_VISITED )
 #define _MarkBlkUnVisited( b )  _MarkBlkAttrClr( b, BLK_BLOCK_VISITED )
@@ -166,7 +166,7 @@ typedef struct block {
     block_id                gen_blk_id;
     block_num               inputs;         /* number of input edges */
     block_num               targets;        /* number of target blocks */
-    block_class             class;
+    block_class             class_;
     int_32                  iterations;
     uint_32                 unroll_count;
     struct block_edge       edge[1];

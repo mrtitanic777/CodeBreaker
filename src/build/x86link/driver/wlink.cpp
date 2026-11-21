@@ -38,7 +38,7 @@
     #include <malloc.h>
 #endif
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/link/run_state.hpp"
 #include "build/x86link/base/fileio.h"
 #include "build/x86link/symbols/objpass2.h"
@@ -222,7 +222,7 @@ static void DoDefaultSystem(Link& link)
         }
         if( (link.LinkState & LS_FMT_DECIDED) == 0 ) {
             if( link.LinkState & LS_FMT_SPECIFIED ) {
-                LnkMsg( FTL+MSG_AMBIG_FORMAT, nullptr );
+                LnkMsg(link,  FTL+MSG_AMBIG_FORMAT, nullptr );
             }
             if( link.LinkState & LS_FMT_SEEN_64BIT ) {
                 ExecSystem(link,  "64bit" );
@@ -285,7 +285,7 @@ static void ResetSubSystems(Link& link)
     ResetLoadFile(link);
     ResetAddr(link);
     ResetToc(link);
-    link.Root = NewSection();
+    link.Root = NewSection(link);
 }
 
 Link& InitSubSystems( void )
@@ -301,8 +301,8 @@ Link& InitSubSystems( void )
     InitNodes(link);
     InitTokBuff(link);
     InitSpillFile();
-    InitSym();
-    InitORLObj();
+    InitSym(link);
+    InitORLObj(link);
     InitCmdFile( link );
     return( link );
 }
@@ -318,7 +318,7 @@ static void CleanSubSystems(Link& link)
     CleanTraces();
     FreePaths(link);
     FreeLocalImports();
-    CleanLoadFile();
+    CleanLoadFile(link);
     CleanLinkStruct(link);
     FreeFormatStuff(link);
     FreeObjInfo(link);
@@ -409,7 +409,7 @@ static void DoLink(Link& link,  const char *cmdline )
     }
 #endif
     CheckErr(link);
-    InitLoadFile();
+    InitLoadFile(link);
     ObjPass2(link);
     CheckErr(link);
     FiniLoadFile(link);

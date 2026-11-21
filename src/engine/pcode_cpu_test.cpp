@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <format>
 #include <map>
 #include <random>
@@ -360,18 +361,43 @@ CB_TEST("engine.pcode_cpu.the_master_system_and_sg1000_lanes_judge_homebrew_the_
 });
 // One instruction of the Z80 at a time, from random registers and memory, on each core; what differs is listed by opcode. (F bits 3 and 5 are not in the description, R
 // is not kept, and the repeating block instructions go on for many steps: those are left out.)
+// The default run is systematic: every opcode of every page (plain, CB, ED, DD, FD, DD CB, FD CB: 1,792 instructions) from kStates register/flag states (the
+// flags all clear, all set, and random ones; accumulators at their edge values), each with fresh random operand bytes and memory. CB_PCODE_EXHAUSTIVE=<n> instead
+// runs n (default 120000) random instructions, as the test did before.
 CB_TEST("engine.pcode_cpu.z80_instructions_one_by_one_match_the_own_core", [] {
     std::mt19937 rng(20261120);
     std::map<std::string, unsigned> by_opcode, tried;
     std::string first_report;
     std::map<std::string, unsigned> missing;
     unsigned different = 0, runs = 0, lacking = 0;
-    for (int n = 0; n < 120000; ++n) {
-        Bytes image(0x10000);
-        for (auto& b : image) b = static_cast<std::uint8_t>(rng());
+    constexpr unsigned kStates = 6;
+    unsigned random_runs = 0;
+    if (const auto given = fs::get_env("CB_PCODE_EXHAUSTIVE"); given && !given->empty()) random_runs = *given == "1" ? 120000u : static_cast<unsigned>(std::strtoul(given->c_str(), nullptr, 10));
+    const unsigned total = random_runs != 0 ? random_runs : 7u * 256u * kStates;
+    Bytes base(0x10000);
+    for (auto& b : base) b = static_cast<std::uint8_t>(rng());
+    for (unsigned n = 0; n < total; ++n) {
+        Bytes image = base;
         std::uint8_t code[4];
         for (auto& b : code) b = static_cast<std::uint8_t>(rng());
-        if (rng() % 3 == 0) code[0] = "\xCB\xDD\xED\xFD"[rng() % 4];
+        unsigned state = 0;
+        if (random_runs != 0) {
+            for (auto& b : image) b = static_cast<std::uint8_t>(rng());
+            if (rng() % 3 == 0) code[0] = "\xCB\xDD\xED\xFD"[rng() % 4];
+        } else {
+            const unsigned page = n / (256 * kStates), op = (n / kStates) % 256;
+            state = n % kStates;
+            for (unsigned i = 0; i < 64; ++i) image[0x9000 + rng() % 0x1000] = static_cast<std::uint8_t>(rng());   // (some fresh memory around the stack and the pointers)
+            switch (page) {
+                case 0: code[0] = static_cast<std::uint8_t>(op); break;
+                case 1: code[0] = 0xCB; code[1] = static_cast<std::uint8_t>(op); break;
+                case 2: code[0] = 0xED; code[1] = static_cast<std::uint8_t>(op); break;
+                case 3: code[0] = 0xDD; code[1] = static_cast<std::uint8_t>(op); break;
+                case 4: code[0] = 0xFD; code[1] = static_cast<std::uint8_t>(op); break;
+                case 5: code[0] = 0xDD; code[1] = 0xCB; code[3] = static_cast<std::uint8_t>(op); break;
+                default: code[0] = 0xFD; code[1] = 0xCB; code[3] = static_cast<std::uint8_t>(op); break;
+            }
+        }
         if (code[0] == 0xED && (code[1] & 0xF4) == 0xB0 && (code[1] & 3) != 0xFF && code[1] >= 0xB0) continue;   // LDIR CPIR INIR OTIR LDDR ...
         std::copy(code, code + 4, image.begin() + 0x8000);
         const auto rd = [&] { return static_cast<std::uint8_t>(rng()); };
@@ -379,6 +405,12 @@ CB_TEST("engine.pcode_cpu.z80_instructions_one_by_one_match_the_own_core", [] {
         options.max_steps = 1;
         options.sp = static_cast<std::uint16_t>(0x9000 + (rng() & 0xFFF));
         options.regs = {rd(), rd(), rd(), rd(), rd(), rd(), rd(), rd(), static_cast<std::uint16_t>(rng()), static_cast<std::uint16_t>(rng())};
+        if (random_runs == 0) {   // the state: flags (all clear, all set, the carry alone, random) and the accumulator (0, 0xFF, 0x80, 0x7F, random)
+            static constexpr std::uint8_t kFlagsOf[4] = {0x00, 0xFF, 0x01, 0xD7};   // (states 4 and 5 keep their random flags)
+            static constexpr std::uint8_t kAccOf[kStates] = {0x00, 0xFF, 0x80, 0x7F, 0x01, 0xFE};
+            if (state < 4) options.regs.f = kFlagsOf[state];
+            options.regs.a = kAccOf[state];
+        }
         const auto go = [&](bool pcode, Bytes& memory) {
             emulate::z80::Bus bus(ByteView(memory), [](std::uint16_t port) -> std::uint8_t { return static_cast<std::uint8_t>(port * 5 + 1); });
             const emulate::z80::RunResult r = pcode ? engine::pcode_cpu::run(bus, 0x8000, options) : emulate::z80::run(bus, 0x8000, options);

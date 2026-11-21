@@ -34,7 +34,7 @@
 
 
 extern bool     CacheOpen(Link& link,  const file_list * );
-extern void     CacheClose( const file_list *, unsigned );
+extern void     CacheClose(Link& link,  const file_list *, unsigned );
 extern void     *CachePermRead(Link& link,  const file_list *, unsigned long, size_t );
 extern void     *CacheRead(Link& link,  const file_list *, unsigned long, size_t );
 extern bool     CacheIsEnd( const file_list *, unsigned long );

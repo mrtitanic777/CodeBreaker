@@ -34,11 +34,11 @@
 #include "util.h"
 
 
-WResID *WResIDFromNameOrOrdinal( ResNameOrOrdinal *name )
+WResID *WResIDFromNameOrOrdinal(Link& link,  ResNameOrOrdinal *name )
 /*******************************************************/
 {
     if( name->ord.fFlag == 0xff ) {
-        return( WResIDFromNum( name->ord.wOrdinalID ) );
+        return( WResIDFromNum(link,  name->ord.wOrdinalID ) );
     }
-    return( WResIDFromStr( name->name ) );
+    return( WResIDFromStr(link,  name->name ) );
 }

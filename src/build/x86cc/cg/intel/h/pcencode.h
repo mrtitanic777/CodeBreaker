@@ -127,11 +127,11 @@ extern void     Format(oc_class);
 
 #define INSSIZE         128
 
-typedef struct template {
+typedef struct template_ {
         oc_header       hdr;
         byte            data[INSSIZE];
-} template;
+} template_;
 
 extern  byte            Inst[INSSIZE];  /* template for instructions */
 extern  byte            ILen;           /* length of object instruction */
-extern  template        Temp;           /* template for oc_entries*/
+extern  template_        Temp;           /* template for oc_entries*/

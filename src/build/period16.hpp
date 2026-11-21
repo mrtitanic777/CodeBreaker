@@ -7,7 +7,7 @@
 //
 // The 16-bit modules of Windows 95 were compiled with Microsoft C 6.0a and linked with the Windows SDK's LINK 5.60
 // against the Windows 3.1 DLL runtime. Microsoft C 6 here compiles but has no linker or libraries, so the build
-// uses both kits, in DOSBox-X:
+// uses both kits, on the DOS executive:
 //
 //     each module   Microsoft C 6.0a   cl /c /AM /G2 /Gsw /Ox            (the code)
 //     the DLL       Visual C++ 1.52c   link @<folder's .lnk> ; rc          (the NE file, its runtime)
@@ -42,9 +42,8 @@
 
 namespace cb::build::period16 {
 
-// Where the tools are (settings.json: dosbox_x, msc6, msvc152) and the Windows 3.1 DLL kit.
+// Where the tools are (settings.json: msc6, msvc152) and the Windows 3.1 DLL kit.
 struct Tools {
-    std::filesystem::path dosbox_x;
     std::filesystem::path msc6;      // Microsoft C 6.0a: the compiler
     std::filesystem::path msvc152;   // Visual C++ 1.52c: LINK, RC, LIB, WINSTUB.EXE
     // The Windows 3.1 DLL kit: MDLLCEW.LIB, LIBW.LIB, LIBENTRY.OBJ (see find_kit).
@@ -94,14 +93,14 @@ Comparison compare(ByteView built, ByteView original);
 Bytes normalize(ByteView built, ByteView donor);
 
 struct Environment {
-    config::Config config;                   // dosbox_x, msc6, msvc152 and the checkout (the Windows 3.1 DLL kit is in it)
+    config::Config config;                   // msc6, msvc152 and the checkout (the Windows 3.1 DLL kit is in it)
     std::shared_ptr<base::Corpus> corpus;    // the retail binaries and the DDK; the configuration's own when null
 };
 
 // The tools settings.json names, the kit in the checkout (or the main checkout of a worktree), and the DDK's LIB folder.
 Tools tools_from(const config::Config& config, const base::Corpus& corpus);
 
-// `build16 FOLDER [--original MODULE] [--work DIR] [--stub DONOR]`: the DLL built in DOSBox-X from the folder's sources
+// `build16 FOLDER [--original MODULE] [--work DIR] [--stub DONOR]`: the DLL built on the DOS executive from the folder's sources
 // (exit 1 when none was made), the donor's DOS stub put in front of it, the segments compared with the original's.
 cli::Command command(const Environment& environment);
 

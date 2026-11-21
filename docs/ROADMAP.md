@@ -72,7 +72,7 @@ tests, the same results. About 87 source files call the Windows API directly tod
 3. The engines (L2, formats, DOS, XEX, decompiler) and the third-party libraries (Unicorn, Capstone, Z3)
    built as Linux shared libraries; `tools/` gets shell equivalents of the build and gate scripts.
 4. CI builds and tests on Ubuntu; the gate's command cases run on Linux where their tools exist there.
-5. The lanes that drive Windows-only tools (period compilers under DOSBox-X, QEMU for the Windows 95 boot) work on
+5. The lanes that drive Windows-only tools (the period compilers on the built-in DOS executive, QEMU for the Windows 95 boot) work on
    Linux with those tools' Linux builds.
 
 ## 9. Every console

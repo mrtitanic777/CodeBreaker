@@ -14,6 +14,7 @@
 #include "core/parallel.hpp"
 #include "decompile/arm.hpp"
 #include "source/isa.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 #include "verify/stage_timer.hpp"
 
@@ -274,7 +275,7 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
         if (insn.target) name(*insn.target);
         if (const auto word = literal_address(insn)) name(*word);
         std::string line = risc_source::code("arm11", insn.bytes(), at, by_value, operands);
-        if (line.starts_with(".byte")) line = std::format(".word 0x{:08x}  ; {}", insn.word, risc_source::read_text("arm11", insn.bytes(), at).value_or("?"));
+        if (line.starts_with(".byte")) line = std::format(".word 0x{:08x}  ; {}", insn.word, dialect::find("gas-arm").instruction(risc_source::read_text("arm11", insn.bytes(), at).value_or("?")));
         if (insn.op == da::Op::Swi) {
             const std::string_view svc = svc_name(insn.imm);
             if (!svc.empty()) line += std::format("  ; svc{}", svc);
@@ -287,12 +288,14 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
                                      std::format("; Nintendo 3DS {}, {} bytes, entry 0x{:06X}; the processor is the ARM11 (ARMv6K, VFP), loaded at 0x00100000",
                                                  program.kind == formats::n3ds::Kind::X3dsx ? "3DSX" : "ELF", file.size(), program.entry),
                                      "; addresses in this file are file offsets; a pointer word is its target's label plus the difference the loader's layout makes",
-                                     "; (ARM syntax as the processor's SLEIGH description writes it: build with `assemble --cpu arm11 --sleigh`)",
+                                     "",
+                                     "        .syntax unified",
+                                     "        .arm",
                                      ""};
     for (const auto& [name, value] : equates) head.push_back(std::format("        .equ {}, 0x{:08X}", name, value));
     if (!equates.empty()) head.push_back("");
     stage.emplace("n3ds.emit");
-    translate::l2::Assembly out(head, "sleigh-arm11", std::string(file_name));
+    translate::l2::Assembly out(head, "gas", std::string(file_name));
     out.part("image", "segment", std::nullopt, file.size());
 
     N3dsListing listing(out, file, code, instruction_text, labels, words);
@@ -300,11 +303,11 @@ iw::Written write(const formats::n3ds::Program& program, std::string_view file_n
     out.append("");
 
     stage.emplace("n3ds.join");
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("gas-arm").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-arm.json)
     stage.emplace("n3ds.assemble");
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), file.size());
     const char* extension = program.kind == formats::n3ds::Kind::X3dsx ? ".built.3dsx" : ".built.elf";
-    iw::assembled(r, [&] { return risc_source::assemble("arm11", source, folder); }, program.file, folder / (stem + extension));
+    iw::assembled(r, [&] { return risc_source::assemble("arm11", dialect::find("gas-arm").parse(source), folder); }, program.file, folder / (stem + extension));
     return r;
 }
 

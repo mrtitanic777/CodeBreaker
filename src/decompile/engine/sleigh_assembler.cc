@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <typeinfo>
 #include <unordered_map>
+#include <vector>
 
 #include "decompile/engine/core/cpp/loadimage.hh"
 #include "decompile/engine/core/cpp/sleigh.hh"
@@ -703,11 +704,37 @@ struct Assembler::Impl {
         for (const Free& f : fr) bits += f.li.width;
         if (tracing()) std::fprintf(stderr, "enumerate %s: %zu free leaves, %d bits, target %lld\n", typeid(*e).name(), fr.size(), bits, static_cast<long long>(t));
         if (fr.empty() || bits > 16) return;
+        // (what the enumeration finds depends on the expression, the target, the constructor the operand references resolve in, where each
+        // leaf is, which leaves are already fixed and to what, and the address when the expression reads it: all of that is the key, so a
+        // target solved once for such a state is not enumerated again. The same immediates come back line after line.)
+        std::string key;
+        const bool memo = !tracing();
+        if (memo) {
+            key.reserve(96);
+            appendRaw(key, e);
+            appendRaw(key, n.ct);
+            appendRaw(key, t);
+            appendRaw(key, curOff);
+            bool usesEnv = false;
+            signature(e, n, curOff, st, key, usesEnv, 0);
+            if (usesEnv) {
+                appendRaw(key, env.startVal);
+                appendRaw(key, env.nextVal);
+            }
+            if (const auto hit = enumMemo.find(key); hit != enumMemo.end()) {
+                for (const Alt& alt : hit->second) {
+                    if (out.size() >= kMaxAlts) break;
+                    out.push_back(alt);
+                }
+                return;
+            }
+        }
         // (one table of overrides, its entries set again for each value: a value costs an evaluation, no allocation)
+        std::vector<Alt> found;
         Overrides ov;
         std::vector<intb*> slot;
         for (const Free& f : fr) slot.push_back(&(ov[{f.e, f.abs}] = 0));
-        for (std::uint32_t v = 0; v < (1u << bits) && out.size() < kMaxAlts; ++v) {
+        for (std::uint32_t v = 0; v < (1u << bits) && found.size() < kMaxAlts; ++v) {
             int at = 0;
             for (std::size_t k = 0; k < fr.size(); ++k) {
                 const Free& f = fr[k];
@@ -722,7 +749,53 @@ struct Assembler::Impl {
                 alt.push_back(LeafSet{f.li, f.abs, (v >> at) & ((std::uint64_t{1} << f.li.width) - 1)});
                 at += f.li.width;
             }
-            out.push_back(std::move(alt));
+            found.push_back(std::move(alt));
+        }
+        for (const Alt& alt : found) {
+            if (out.size() >= kMaxAlts) break;
+            out.push_back(alt);
+        }
+        if (memo) {
+            if (enumMemo.size() >= 200000) enumMemo.clear();
+            enumMemo.emplace(std::move(key), std::move(found));
+        }
+    }
+
+    // The answers of the enumeration in solve, by what they depend on (see there).
+    mutable std::unordered_map<std::string, std::vector<Alt>> enumMemo;
+
+    template <class T>
+    static void appendRaw(std::string& key, const T& v) {
+        key.append(reinterpret_cast<const char*>(&v), sizeof v);
+    }
+
+    // What the evaluation of `e` reads from the state, in the order freeLeaves meets it: each leaf's place and its value when fixed.
+    void signature(const PatternExpression* e, const Inst& n, int curOff, const State& st, std::string& key, bool& usesEnv, int depth) const {
+        if (depth > 40) return;
+        const Node& nd = nodeOf(e);
+        if (nd.kind == Kind::Leaf) {
+            const int abs = nd.li.ctx() ? 0 : curOff;
+            appendRaw(key, abs);
+            const auto known = readLeaf(st, nd.li, abs);
+            key.push_back(known ? 1 : 0);
+            if (known) appendRaw(key, *known);
+            return;
+        }
+        if (nd.kind == Kind::Start || nd.kind == Kind::End || nd.kind == Kind::Next2) {
+            usesEnv = true;
+            return;
+        }
+        if (nd.kind == Kind::Operand) {
+            const int idx = nd.index;
+            if (idx < 0 || idx >= n.ct->getNumOperands()) return;
+            if (const PatternExpression* pe = operandExpr(n, idx)) signature(pe, n, n.opOff[static_cast<std::size_t>(idx)], st, key, usesEnv, depth + 1);
+            return;
+        }
+        if (nd.right != nullptr) {
+            signature(nd.left, n, curOff, st, key, usesEnv, depth + 1);
+            signature(nd.right, n, curOff, st, key, usesEnv, depth + 1);
+        } else if (nd.left != nullptr) {
+            signature(nd.left, n, curOff, st, key, usesEnv, depth + 1);
         }
     }
 
@@ -759,9 +832,14 @@ struct Assembler::Impl {
             return out;
         }
 
-        const std::vector<Parsed>& table(const SubtableSymbol* st, std::size_t pos) {
+        // `top`: the whole line's parse from its first character, by the constructors of the root table whose own pattern can stand in the
+        // context the line starts in. (Placing a tree begins with its root constructor's pattern against that context; one with no
+        // alternative that fits has no encoding whatever its operands are, so its operands are not parsed. A root constructor that is
+        // met again as an operand at the same position is parsed as any other: this answer is not kept.)
+        const std::vector<Parsed>& table(const SubtableSymbol* st, std::size_t pos, const State* top = nullptr) {
             const auto key = std::make_pair(st, pos);
-            if (auto it = memo.find(key); it != memo.end()) return it->second;
+            if (top == nullptr)
+                if (auto it = memo.find(key); it != memo.end()) return it->second;
             static const std::vector<Parsed> none;
             if (active[key] >= 2) {
                 ++cuts;
@@ -773,10 +851,11 @@ struct Assembler::Impl {
             // (only the constructors that can start with the text's next character, in the table's own order)
             for (const std::uint32_t i : impl.startingWith(st, pos < text.size() ? static_cast<unsigned char>(text[pos]) : 256)) {
                 if (out.size() >= kMaxParses) break;
+                if (top != nullptr && !impl.startFits(st->getConstructor(i), *top)) continue;
                 ctor(st->getConstructor(i), pos, out);
             }
             --active[key];
-            if (cuts != cutsBefore) {   // (a recursion was cut inside: the answer may be short, so it is not kept)
+            if (cuts != cutsBefore || top != nullptr) {   // (a recursion was cut inside: the answer may be short, so it is not kept)
                 static thread_local std::vector<Parsed> scratch;
                 scratch = std::move(out);
                 return scratch;
@@ -1000,6 +1079,15 @@ struct Assembler::Impl {
             if (n->sub[static_cast<std::size_t>(i)]) flatten(n->sub[static_cast<std::size_t>(i)].get(), out);
             else out.push_back({Task::Value, n, i});
         }
+    }
+
+    // Whether any pattern alternative of a constructor placed first (at the instruction's first byte) fits the state the line starts in.
+    bool startFits(const Constructor* ct, const State& st) const {
+        Inst first;
+        first.offset = 0;
+        for (const PatAlt& a : altsOf(ct))
+            if (fits(st, first, a)) return true;
+        return false;
     }
 
     // Whether applyPattern would succeed, without the copy of the state it changes (most alternatives of a pattern do not fit the bits placed so far).
@@ -1249,15 +1337,6 @@ std::vector<std::vector<std::uint8_t>> Assembler::run(std::string_view line, std
     std::vector<std::vector<std::uint8_t>> results;
     if (want.empty()) return results;
 
-    Impl::Parser parser{I, want, {}, {}, 0};
-    std::vector<Parsed> roots;
-    {
-        const std::vector<Parsed>& all = parser.table(I.trans->getRoot(), 0);
-        for (const Parsed& p : all)
-            if (p.end == want.size()) roots.push_back(p);
-    }
-    I.diag.parses = roots.size();
-
     State start;
     {
         // Every line is assembled in the context the assembler began with. Disassembling a candidate to verify it (roundTrips) commits what an
@@ -1275,6 +1354,15 @@ std::vector<std::vector<std::uint8_t>> Assembler::run(std::string_view line, std
             start.cmask[i] = 0xFF;
         }
     }
+    Impl::Parser parser{I, want, {}, {}, 0};
+    std::vector<Parsed> roots;
+    {
+        const std::vector<Parsed>& all = parser.table(I.trans->getRoot(), 0, &start);
+        for (const Parsed& p : all)
+            if (p.end == want.size()) roots.push_back(p);
+    }
+    I.diag.parses = roots.size();
+
     const int ws = static_cast<int>(I.space->getWordSize());
     std::set<std::vector<std::uint8_t>> tried;
     for (const Parsed& r : roots) {

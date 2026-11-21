@@ -1,0 +1,19 @@
+{
+  "name": "rgbds",
+  "description": "RGBDS (rgbasm): the Game Boy as its homebrew is written. DEF name EQU, SECTION \"bank0\", ROM0[$0000] / ROMX[$4000], BANK[n], db and ds, (rLY) with no space inside the parentheses.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "replace": [["( ", "("], [" )", ")"]],
+  "directives": [
+    {"neutral": ".org {v}", "dialect": "SECTION {s}, ROM0[{v}]", "print": false},
+    {"neutral": ".org {v}", "dialect": "SECTION {s}, ROMX[{v}], BANK[{b}]", "print": false},
+    {"neutral": ".equ {name}, {v}", "dialect": "DEF {name:<8} EQU {v}"},
+    {"neutral": ".byte {list}", "dialect": "db {list}", "bytes": true},
+    {"neutral": ".space {n}, {v}", "dialect": "ds {n}, {v}"}
+  ],
+  "blocks": {
+    "rom0": ["SECTION \"bank{bank}\", ROM0[$0000]"],
+    "romx": ["SECTION \"bank{bank}\", ROMX[$4000], BANK[{bank}]"]
+  }
+}

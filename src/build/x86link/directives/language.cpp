@@ -39,7 +39,7 @@ bool process(Link& link, Table table, Sep required, bool or_fail, bool subset) {
         if (subset && !any(e.flags & Flag::subset)) continue;
         if (!keyword_matches(e.keyword, word)) continue;
         if (!HintFormat(link, e.formats)) {
-            LnkMsg(WRN + LOC + LINE + MSG_FORMAT_BAD_OPTION, "s", e.keyword.data());
+            LnkMsg(link, WRN + LOC + LINE + MSG_FORMAT_BAD_OPTION, "s", e.keyword.data());
             return true;
         }
         const bool ret = e.handler(link);
@@ -47,7 +47,7 @@ bool process(Link& link, Table table, Sep required, bool or_fail, bool subset) {
         return ret;
     }
     if (or_fail) {
-        Syntax();
+        Syntax(link);
         return true;
     }
     r.push_back();   // (the next table may have it)
@@ -153,7 +153,7 @@ bool process_list(Link& link, Handler handler, Want want, const Source* reset_po
             if (!wildcard(link, handler, want)) return false;
             if (fence()) break;
             if (!r.get(Sep::none, want, reset_point, &reset)) {
-                LnkMsg(ERR + LOC + LINE + MSG_BAD_CURLY_LIST, nullptr);
+                LnkMsg(link, ERR + LOC + LINE + MSG_BAD_CURLY_LIST, nullptr);
                 break;
             }
         }
@@ -197,12 +197,12 @@ bool get_number(std::uint32_t& value) {
     return true;
 }
 
-VersionPart get_version(Version& v, VersionPart wanted, bool novell_revision) {
+VersionPart get_version(Link& link, Version& v, VersionPart wanted, bool novell_revision) {
     Reader& r = reader();
     VersionPart got = VersionPart::none;
     if (!r.get(Sep::equals)) return got;
     if (wanted == VersionPart::none) return got;
-    auto bad = [&] { LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", v.what); };
+    auto bad = [&] { LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", v.what); };
     std::uint32_t value = 0;
     if (number(value) != Number::ok) {
         bad();

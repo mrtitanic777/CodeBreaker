@@ -45,5 +45,5 @@ extern cost_val         ScanCost( sel_handle s_node );
 extern tbl_control      *MakeScanTab( sel_handle s_node, cg_type value_type, cg_type real_type );
 extern tbl_control      *MakeJmpTab( sel_handle s_node );
 extern name             *SelIdx( tbl_control *, an );
-extern const type_def   *SelNodeType( an, bool );
+extern const type_def   *SelNodeType( an, bool_ );
 extern void             MkSelOp( name *idx, type_class_def type_class );

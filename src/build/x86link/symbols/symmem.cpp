@@ -34,7 +34,7 @@
 #include <cstdlib>
 #include <climits>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/base/strtab.h"
 #include "build/x86link/base/carve.h"
@@ -139,7 +139,7 @@ bool PermShrink( void )
     return( ret );
 }
 
-static void GetNewBlock( block_data *block_set, size_t size )
+static void GetNewBlock(Link& link,  block_data *block_set, size_t size )
 /***********************************************************/
 {
     size_t              try_;
@@ -150,13 +150,13 @@ static void GetNewBlock( block_data *block_set, size_t size )
     if( try_ < size )
         try_ = size;
     for( ;; ) {
-        block = static_cast<sym_block *>( MemAlloc( SymBlockSize( try_ ) ) );
+        block = static_cast<sym_block *>( MemAlloc(link,  SymBlockSize( try_ ) ) );
         if( block != nullptr )
             break;
         try_ /= 2;
         if( try_ < size
           || try_ < SYM_BLOCK_MIN ) {
-            LnkMsg( FTL + MSG_NO_DYN_MEM, nullptr );
+            LnkMsg(link,  FTL + MSG_NO_DYN_MEM, nullptr );
         }
     }
     block->size = try_;
@@ -165,7 +165,7 @@ static void GetNewBlock( block_data *block_set, size_t size )
     block_set->currbrk = 0;
 }
 
-static void *AllocBlock( size_t size, block_data *block_set )
+static void *AllocBlock(Link& link,  size_t size, block_data *block_set )
 /***********************************************************/
 {
     void            *ptr;
@@ -174,26 +174,26 @@ static void *AllocBlock( size_t size, block_data *block_set )
     size = __ROUND_UP_SIZE( size, ALLOC_ALIGN );
     newbrk = block_set->currbrk + size;
     if( block_set->list == nullptr ) {
-        GetNewBlock( block_set, size );
+        GetNewBlock(link,  block_set, size );
     } else if( newbrk > block_set->list->size ) {
-        GetNewBlock( block_set, size );
+        GetNewBlock(link,  block_set, size );
     }
     ptr = SymBlockData( block_set->list, block_set->currbrk );
     block_set->currbrk += size;
     return( ptr );
 }
 
-void *Pass1Alloc( size_t size )
+void *Pass1Alloc(Link& link,  size_t size )
 /*****************************/
 {
-    return( AllocBlock( size, &st().pass1 ) );
+    return( AllocBlock(link,  size, &st().pass1 ) );
 }
 
-void *PermAlloc( size_t size )
+void *PermAlloc(Link& link,  size_t size )
 /****************************/
 /* allocate a thunk of permanently allocated memory */
 {
-    return( AllocBlock( size, &st().perm ) );
+    return( AllocBlock(link,  size, &st().perm ) );
 }
 
 void BasicInitSym( symbol *sym )
@@ -217,7 +217,7 @@ symbol * AddSym(Link& link)
 {
     symbol              *sym;
 
-    sym = static_cast<symbol *>( CarveAlloc( link.CarveSymbol ) );
+    sym = static_cast<symbol *>( CarveAlloc(link,  link.CarveSymbol ) );
     BasicInitSym( sym );
     if( link.LastSym != nullptr )
         link.LastSym->next = sym;

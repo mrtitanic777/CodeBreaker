@@ -161,7 +161,7 @@ Classification classify(const stdfs::path& file) {
     const std::optional<Binary> binary = load(file);
     if (!binary) return {Format::Unknown, Subtype::Unknown, std::nullopt, std::nullopt, std::nullopt, "not MZ/PE/NE"};
     if (const NeModule* ne = std::get_if<NeModule>(&*binary)) {
-        return {Format::Ne, Subtype::Win16C, "msc6-dosbox", std::nullopt, std::nullopt,
+        return {Format::Ne, Subtype::Win16C, "msc6", std::nullopt, std::nullopt,
                 std::format("16-bit NE; {} segments", ne->segment_count())};
     }
     // a PE: flat-thunk veneer, or 32-bit C logic

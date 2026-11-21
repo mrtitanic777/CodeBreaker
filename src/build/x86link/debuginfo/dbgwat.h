@@ -31,7 +31,7 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void     ODBIInit( section * );
+extern void     ODBIInit(Link& link,  section * );
 extern void     ODBIInitModule(Link& link,  mod_entry * );
 extern void     ODBIP1Source(Link& link,  byte, byte, const char *, size_t );
 extern void     ODBIP1ModuleScanned(Link& link);

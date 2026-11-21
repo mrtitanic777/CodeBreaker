@@ -67,10 +67,10 @@ AxisAlignedBB::AxisAlignedBB(double var1, double var3, double var5, double var7,
 }
 
 bool AxisAlignedBB::intersectsWith(ref<AxisAlignedBB> var1) {
-	if (var1->maxX <= this->minX || var1->minX >= this->maxX) {
+	if (jrt::nn(var1)->maxX <= this->minX || jrt::nn(var1)->minX >= this->maxX) {
 		return false;
 	}
-	return var1->maxY > this->minY && var1->minY < this->maxY;
+	return jrt::nn(var1)->maxY > this->minY && jrt::nn(var1)->minY < this->maxY;
 }
 
 MathHelper::MathHelper() {
@@ -111,9 +111,9 @@ void FixtureMain::main(ref<Array<ref<String>>> args) {
 	auto a = std::make_shared<Vec3D>(1.0, 2.0, 3.0);
 	auto b = std::make_shared<Vec3D>(4.5, -2.0, 0.25);
 	ref<Vec3D> d = jrt::nn(a)->subtract(b);
-	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"subtract "), d->xCoord, jrt::lit(u" "), d->yCoord, jrt::lit(u" "), d->zCoord));
+	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"subtract "), jrt::nn(d)->xCoord, jrt::lit(u" "), jrt::nn(d)->yCoord, jrt::lit(u" "), jrt::nn(d)->zCoord));
 	ref<Vec3D> m = jrt::nn(a)->getIntermediateWithXValue(b, 2.0);
-	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"intermediate "), ((m == nullptr ? jrt::lit(u"null") : jrt::concat(m->xCoord, jrt::lit(u","), m->yCoord, jrt::lit(u","), m->zCoord)))));
+	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"intermediate "), ((m == nullptr ? jrt::lit(u"null") : jrt::concat(jrt::nn(m)->xCoord, jrt::lit(u","), jrt::nn(m)->yCoord, jrt::lit(u","), jrt::nn(m)->zCoord)))));
 	ref<Vec3D> n = jrt::nn(a)->getIntermediateWithXValue(std::make_shared<Vec3D>(1.0000001, 0.0, 0.0), 2.0);
 	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"near "), ((n == nullptr ? jrt::lit(u"null") : jrt::lit(u"made")))));
 	auto box = std::make_shared<AxisAlignedBB>((double)(0), (double)(0), (double)(0), (double)(1), (double)(1), (double)(1));
@@ -132,11 +132,11 @@ Vec3D::Vec3D(double var1, double var3, double var5) {
 }
 
 ref<Vec3D> Vec3D::subtract(ref<Vec3D> var1) {
-	return std::make_shared<Vec3D>(var1->xCoord - this->xCoord, var1->yCoord - this->yCoord, var1->zCoord - this->zCoord);
+	return std::make_shared<Vec3D>(jrt::nn(var1)->xCoord - this->xCoord, jrt::nn(var1)->yCoord - this->yCoord, jrt::nn(var1)->zCoord - this->zCoord);
 }
 
 ref<Vec3D> Vec3D::getIntermediateWithXValue(ref<Vec3D> var1, double var2) {
-	double var4 = var1->xCoord - this->xCoord;
+	double var4 = jrt::nn(var1)->xCoord - this->xCoord;
 	if (var4 * var4 < 1.0e-07) {
 		return nullptr;
 	}

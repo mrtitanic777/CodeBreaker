@@ -38,7 +38,7 @@
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/base/objcache.h"
 #include "build/x86link/layout/distrib.h"
@@ -61,7 +61,7 @@ static bool SearchAndProcLibFile(Link& link,  file_list *file, const char *name 
         return( false );
     lp = SearchLib(link,  file, name );
     if( lp == nullptr ) {
-        CacheClose( file, 1 );
+        CacheClose(link,  file, 1 );
         return( false );
     }
     file->flags_file |= STAT_LIB_USED;
@@ -70,7 +70,7 @@ static bool SearchAndProcLibFile(Link& link,  file_list *file, const char *name 
         if( file->flags_file & STAT_LIB_FIXED ) {
             lp->flags_mod |= MOD_FIXED;
         }
-        DistribAddMod( lp, file->ovlref );
+        DistribAddMod(link,  lp, file->ovlref );
     } else {
 #endif
         for( prev = &link.LibModules; *prev != nullptr; prev = &(*prev)->u.next ) /*  find end of list */
@@ -81,7 +81,7 @@ static bool SearchAndProcLibFile(Link& link,  file_list *file, const char *name 
 #endif
     link.CurrMod = lp;
     ObjPass1(link);
-    CacheClose( file, 1 );
+    CacheClose(link,  file, 1 );
 #ifdef _EXE
     if( (link.FmtData.type & MK_OVERLAYS) && link.FmtData.u.dos.distribute ) {
         DistribFinishMod(link,  lp );

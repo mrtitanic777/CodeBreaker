@@ -25,11 +25,10 @@ bool is_plain_switch_text(std::string_view s) {
 }  // namespace
 
 Compiled compile_c(const DosRunner& runner, const Tools& tools, std::string_view source, std::string_view flags,
-                   std::string_view stem_in, std::chrono::seconds timeout) {
+                   std::string_view stem_in) {
     if (!is_dos_stem(stem_in)) throw UsageError(std::format("'{}' is not a DOS file stem (1-8 letters, digits, underscores)", stem_in));
     if (!is_plain_switch_text(flags)) throw UsageError(std::format("compiler flags '{}' hold a character DOS reads as a command", flags));
     std::error_code ec;
-    if (!std::filesystem::exists(tools.dosbox_x, ec)) throw NotFoundError(tools.dosbox_x, 2, "dosbox-x not found");
     const std::filesystem::path cl = tools.msvc_root / "BIN" / "CL.EXE";
     if (!std::filesystem::exists(cl, ec)) throw NotFoundError(cl, 2, "MSVC 1.52c CL.EXE not found");
 
@@ -40,17 +39,13 @@ Compiled compile_c(const DosRunner& runner, const Tools& tools, std::string_view
     spec.commands = {std::format("CL {} /Fc{}.COD /Fo{}.OBJ {}.C > {}.LOG 2>&1", flags, stem, stem, stem, stem)};
     spec.artifacts = {stem + ".OBJ", stem + ".COD", stem + ".LOG"};
     spec.files[stem + ".C"] = std::string(source);
-    spec.timeout = timeout;
-    spec.cpu.insert_or_assign("cputype", "386");
-    spec.cpu.insert_or_assign("core", "normal");
-    spec.cpu.insert_or_assign("cycles", "max");
-    spec.dos.insert_or_assign("ver", "6.22");
     spec.variables.insert_or_assign("PATH", "C:\\BIN");
     spec.variables.insert_or_assign("INCLUDE", "C:\\INCLUDE");
     spec.variables.insert_or_assign("LIB", "C:\\LIB");
     spec.variables.insert_or_assign("TMP", "D:\\");
 
     const DosRunResult ran = runner.run(spec);
+    if (!ran.why.empty()) throw ToolError("dos", 0, "", "the DOS executive could not complete the compile: " + ran.why);
     Compiled out;
     out.work = ran.work;
     if (const auto it = ran.made.find(stem + ".OBJ"); it != ran.made.end()) out.obj = it->second;

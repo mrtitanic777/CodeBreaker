@@ -1,0 +1,14 @@
+{
+  "name": "asmf8",
+  "description": "An F8 assembler: the Fairchild Channel F as its programs are written. ORG $0800, name EQU $value lined up to 20, DB rows, FILL n,v, $ hex in pairs of digits, decimal counts and numbers in branches (BT 4,label), hex immediates (LI $05).",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "decimal": {"unless": ["li", "ai", "ni", "oi", "xi", "ci"]},
+  "directives": [
+    {"neutral": ".org {v}", "dialect": "ORG {v}"},
+    {"neutral": ".equ {name}, {v}", "dialect": "{name:<20} EQU {v}"},
+    {"neutral": ".byte {list}", "dialect": "DB {list}", "bytes": true},
+    {"neutral": ".space {n}, {v}", "dialect": "FILL {n},{v}"}
+  ]
+}

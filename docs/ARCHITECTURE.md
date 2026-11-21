@@ -1212,6 +1212,6 @@ The Python writer goes at the next milestone.
   (src/translate/l2, cbl2.dll then; "Built: the L2 core and the C back end in C++"), the Python writer deleted
   at the same milestone.
 - SQLite, not a server database: one file per binary is easy to delete, copy and inspect.
-- Open: how a fact made by a period compiler (DOSBox-X) is keyed (the kit's files' hashes); how the
+- Open: how a fact made by a period compiler (run on the DOS executive) is keyed (the kit's files' hashes); how the
   service and other sessions share a machine (the load setting). (Decided: verdicts from before the
   database are carried over, marked carried -- "Built: every lane on the engine" above.)

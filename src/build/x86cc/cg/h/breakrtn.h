@@ -30,8 +30,8 @@
 ****************************************************************************/
 
 
-extern bool     CreateBreak( void );
+extern bool_     CreateBreak( void );
 extern void     RemoveBreak( void );
 extern void     FixBreak( void );
 extern block    *TailBlocks( void );
-extern bool     BreakExists( void );
+extern bool_     BreakExists( void );

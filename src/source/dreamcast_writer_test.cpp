@@ -48,9 +48,9 @@ CB_TEST("source.dreamcast_writer.a_disc_comes_back_identical_and_readable", [] {
     const std::string source = cb::fs::read_text(r.source);
     CB_CHECK(has(source, "        .org 0x0C008000"));
     CB_CHECK(has(source, "        .org 0x0C010000"));
-    CB_CHECK(has(source, "        .ascii \"SEGA SEGAKATANA \"    ; hardware ID"));   // the header, field by field
-    CB_CHECK(has(source, "; maker ID"));
-    CB_CHECK(has(source, "; boot file"));
+    CB_CHECK(has(source, "        .ascii \"SEGA SEGAKATANA \"    ! hardware ID"));   // the header, field by field
+    CB_CHECK(has(source, "! maker ID"));
+    CB_CHECK(has(source, "! boot file"));
     CB_CHECK(has(source, "        .ascii \"1ST_READ.BIN    \""));
     CB_CHECK(has(source, "ip_bootstrap:"));
     CB_CHECK(has(source, "        .long first_read + 0xA0000000"));                 // IP.BIN's pointer to the program, uncached
@@ -58,12 +58,12 @@ CB_TEST("source.dreamcast_writer.a_disc_comes_back_identical_and_readable", [] {
     CB_CHECK(has(source, "        .long PVR_SPG_STATUS"));
     CB_CHECK(has(source, "        .equ var_8C800000, 0x8C800000"));                 // a variable in RAM
     CB_CHECK(has(source, "        .equ var_8C0000B0, 0x8C0000B0"));                 // (the BIOS's system-call vector)
-    CB_CHECK(has(source, "        fldi1 fr0"));                                   // the FPU's instructions are decoded
-    CB_CHECK(has(source, "        fadd fr1,fr0"));
-    CB_CHECK(has(source, "        fmov.s fr0,@r4"));
-    CB_CHECK(has(source, "        ftrc fr0,FPUL"));
-    CB_CHECK(has(source, "        sts FPUL,r0"));
-    CB_CHECK(has(source, "        mov.l K_"));
+    CB_CHECK(has(source, "        fldi1   fr0"));                                   // the FPU's instructions are decoded
+    CB_CHECK(has(source, "        fadd    fr1,fr0"));
+    CB_CHECK(has(source, "        fmov.s  fr0,@r4"));
+    CB_CHECK(has(source, "        ftrc    fr0,fpul"));
+    CB_CHECK(has(source, "        sts     fpul,r0"));
+    CB_CHECK(has(source, "        mov.l   K_"));
     CB_CHECK(has(source, "        .asciz \"DREAMCAST\""));
     CB_CHECK(has(source, "        .long 0x12345678"));                              // data is little-endian: the longword reads as written
 });

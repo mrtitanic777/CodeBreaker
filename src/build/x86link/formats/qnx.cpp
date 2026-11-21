@@ -34,7 +34,7 @@
 #include <span>
 #include <vector>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/ring.h"
 #include "exeqnx.h"
 #include "build/x86link/formats/qnx.h"
@@ -368,21 +368,21 @@ static void WriteQNXResource(Link& link)
         if( link.FmtData.res_name_only ) {
             file = QObjOpen( link, link.FmtData.resource );
             if( file == NIL_FHANDLE ) {
-                PrintIOError( WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.resource );
+                PrintIOError(link,  WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.resource );
                 return;
             }
             len = QFileSize( file );
             if( len + sizeof( lmf_resource ) > QNX_MAX_REC_SIZE ) {
-                LnkMsg( WRN+MSG_RESOURCE_TOO_BIG, "s", link.FmtData.resource );
+                LnkMsg(link,  WRN+MSG_RESOURCE_TOO_BIG, "s", link.FmtData.resource );
                 return;
             }
             std::vector<char> buf( len );
             rec.data_nbytes = len + sizeof( lmf_resource );
             WriteLoad(link,  &rec, sizeof( lmf_record ) );
             WriteLoad(link,  &resource, sizeof( lmf_resource ) );
-            QRead( file, buf.data(), len, link.FmtData.resource );
+            QRead(link,  file, buf.data(), len, link.FmtData.resource );
             WriteLoad(link,  buf.data(), len );
-            QClose( file, link.FmtData.resource );
+            QClose(link,  file, link.FmtData.resource );
         } else {
             len = std::strlen( link.FmtData.resource );
             link.FmtData.resource[len] = '\n';
@@ -407,7 +407,7 @@ void FiniQNXLoadFile(Link& link)
     link.CurrSect = link.Root;
     if( link.FmtData.type & MK_QNX_FLAT ) {
         if( link.FmtData.base < link.StackSize ) {
-            LnkMsg( WRN+MSG_QNX_BASE_LT_STACK, nullptr );
+            LnkMsg(link,  WRN+MSG_QNX_BASE_LT_STACK, nullptr );
         }
     }
     nbytes = link.NumGroups * sizeof( unsigned_32 );

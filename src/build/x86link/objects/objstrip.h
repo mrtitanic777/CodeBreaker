@@ -34,10 +34,10 @@
 
 extern void     RefSeg( segdata * );
 extern void     DataRef(Link& link,  symbol * );
-extern void     AddEdge( segdata *, symbol * );
-extern void     AddSymEdge( symbol *, symbol * );
-extern void     AddSymSegEdge( symbol *srcsym, segdata *tarsgdata );
-extern void     DefStripSym( symbol *, segdata * );
+extern void     AddEdge(Link& link,  segdata *, symbol * );
+extern void     AddSymEdge(Link& link,  symbol *, symbol * );
+extern void     AddSymSegEdge(Link& link,  symbol *srcsym, segdata *tarsgdata );
+extern void     DefStripSym(Link& link,  symbol *, segdata * );
 extern void     DefStripImpSym( symbol * sym );
 extern void     CleanStripInfo( symbol * );
 extern void     RefGroupSegs( group_entry * );

@@ -4,6 +4,7 @@
 #include "source/processors.hpp"
 
 #include <algorithm>
+#include <condition_variable>
 #include <format>
 #include <map>
 #include <memory>
@@ -18,6 +19,7 @@
 #include "base/config.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "core/parallel.hpp"
 #include "core/text.hpp"
 #include "decompile/engine/sleigh_reader.hh"
 #include "platforms/decoder.hpp"
@@ -191,24 +193,74 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
 std::vector<Line> read_described(const Processor& processor, ByteView code, std::uint64_t base, std::size_t count,
                                  const std::vector<std::pair<std::string_view, int>>& over) {
     if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
-    // one reader per description, kept (reading a description costs more than any listing)
-    static std::mutex lock;
-    static std::map<std::string, std::unique_ptr<decompile::sleigh::Reader>> readers;
+    // readers per description, kept (reading a description costs more than any listing). A reader holds the translator's state between
+    // instructions, so it reads for one caller at a time: each thread that reads at once has one of its own (made when first needed, up to the
+    // worker count), and a writer's threads list side by side.
+    struct Pool {
+        std::mutex lock;
+        std::condition_variable wake;
+        std::vector<std::unique_ptr<decompile::sleigh::Reader>> all;
+        std::vector<decompile::sleigh::Reader*> free;
+        std::size_t made = 0;
+    };
+    static std::mutex pools_lock;
+    static std::map<std::string, std::unique_ptr<Pool>> pools;
+    Pool* pool = nullptr;
+    {
+        std::lock_guard hold(pools_lock);
+        std::unique_ptr<Pool>& p = pools[std::string(processor.name)];
+        if (!p) p = std::make_unique<Pool>();
+        pool = p.get();
+    }
+    const std::size_t limit = static_cast<std::size_t>(std::max(1, parallel::workers()));
     decompile::sleigh::Reader* reader = nullptr;
     {
-        std::lock_guard hold(lock);
-        std::unique_ptr<decompile::sleigh::Reader>& r = readers[std::string(processor.name)];
-        if (!r) {
-            std::vector<std::pair<std::string, int>> context;
-            for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
-            try {
-                r = std::make_unique<decompile::sleigh::Reader>(languages() / processor.sla, context);
-            } catch (const std::runtime_error& e) {
-                throw NotFoundError(languages() / processor.sla, 0, e.what());
+        std::unique_lock hold(pool->lock);
+        for (;;) {
+            if (!pool->free.empty()) {
+                reader = pool->free.back();
+                pool->free.pop_back();
+                break;
             }
+            if (pool->made < limit) {
+                ++pool->made;
+                hold.unlock();
+                std::unique_ptr<decompile::sleigh::Reader> fresh;
+                try {
+                    std::vector<std::pair<std::string, int>> context;
+                    for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
+                    std::lock_guard one(isa::loading_lock());
+                    fresh = std::make_unique<decompile::sleigh::Reader>(languages() / processor.sla, context);
+                } catch (const std::runtime_error& e) {
+                    std::lock_guard again(pool->lock);
+                    --pool->made;
+                    pool->wake.notify_one();
+                    throw NotFoundError(languages() / processor.sla, 0, e.what());
+                } catch (...) {
+                    std::lock_guard again(pool->lock);
+                    --pool->made;
+                    pool->wake.notify_one();
+                    throw;
+                }
+                hold.lock();
+                pool->all.push_back(std::move(fresh));
+                reader = pool->all.back().get();
+                break;
+            }
+            pool->wake.wait(hold);
         }
-        reader = r.get();
     }
+    struct Return {   // (the reader goes back to the pool however this function ends)
+        Pool& pool;
+        decompile::sleigh::Reader* reader;
+        ~Return() {
+            {
+                std::lock_guard hold(pool.lock);
+                pool.free.push_back(reader);
+            }
+            pool.wake.notify_one();
+        }
+    } give_back{*pool, reader};
     std::vector<Line> out;
     const std::size_t unit = processor.name == "cp1610" ? 2 : 1;   // (a word-addressed processor: addresses count words)
     // the context set over the bytes read: the processor's own, then the caller's (what a read before left there, such as the state an ARM `blx` switches to

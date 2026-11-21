@@ -120,7 +120,7 @@ typedef enum {
 
 typedef struct name_def {
     union name              *next_name;
-    name_class_def          class;
+    name_class_def          class_;
     type_class_def          type_class;
     type_length             size;
 } name_def;
@@ -215,5 +215,5 @@ typedef union name {
 #define _FrontEndTmp( op )  ( ((op)->t.temp_flags & CONST_TEMP) == 0 && \
                                 (op)->v.symbol != NULL )
 
-#define _ConstTemp( op )    ( ( (op)->n.class == N_TEMP ) && \
+#define _ConstTemp( op )    ( ( (op)->n.class_ == N_TEMP ) && \
                                 ( (op)->t.temp_flags & CONST_TEMP ) )

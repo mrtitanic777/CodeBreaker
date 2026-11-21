@@ -6,7 +6,6 @@ settings: <ROOT>/settings.json
   !! corpus           <ROOT>/corp95
   -- decompiler_bin   (not set)
   -- design           (not set)
-  -- dosbox_x         (not set)
   -- host_cxx         (not set)
   -- ilspycmd         (not set)
   -- java             (not set)

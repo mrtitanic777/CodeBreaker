@@ -206,7 +206,7 @@ std::string hex_text(ByteView b) {
 // The text through the compiler. Nothing when it is not set up (said, and the tool goes without); an empty answer when it refuses the text.
 std::optional<std::optional<Bytes>> through_msc6(const Environment& environment, std::string_view text, std::string_view flags) {
     if (!environment.compile_msc6) {
-        err("Microsoft C 6 is not set up (settings.json: dosbox_x, msc6): the text was not put to the compiler\n");
+        err("Microsoft C 6 is not set up (settings.json: msc6): the text was not put to the compiler\n");
         return std::nullopt;
     }
     std::optional<Bytes> built = environment.compile_msc6(text, flags);

@@ -425,7 +425,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
 
     // exact <PROJECT> <stage> ...: the exact-match stages (toolchains, library, carve, names, ledger, draft, ...)
     table.set("exact", exact::command::runner(exact::command::Environment{config}));
-    table.set(exact::emu::dos_run::command());   // (CodeBreaker's own DOS executive: the seed of the DOSBox-X replacement)
+    table.set(exact::emu::dos_run::command());   // (CodeBreaker's own DOS executive)
 
     // analyze <module> ...: the analyses of a module and the facts they file
     {   // observe's runs go out to worker processes when this program hosts them
@@ -501,7 +501,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     table.set(formats::fonts::command(formats::fonts::Environment{
         [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); }}));
 
-    // build16: a Win16 module built with the period toolchain (Microsoft C 6 under DOSBox-X), compared with the original
+    // build16: a Win16 module built with the period toolchain (Microsoft C 6 on the DOS executive), compared with the original
     table.set(build::period16::command(build::period16::Environment{config, corpus}));
 
     // names, knowledge, coverage, progress, facts, origin, driver-services, migrate-state: over the state folder (state_commands.hpp)

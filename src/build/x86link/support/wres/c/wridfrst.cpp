@@ -37,7 +37,7 @@
 #include "wresrtns.h"
 
 
-WResID *WResIDFromStr( const char *str )
+WResID *WResIDFromStr(Link& link,  const char *str )
 /***************************************
  * allocate an ID and fill it in
  */
@@ -52,7 +52,7 @@ WResID *WResIDFromStr( const char *str )
     }
 #endif
     /* allocate the new ID */
-    auto *id = static_cast<WResID *>( AllocWResIDName( offsetof( WResID, ID.Name ), len ) );
+    auto *id = static_cast<WResID *>( AllocWResIDName(link,  offsetof( WResID, ID.Name ), len ) );
 
     if( id == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );

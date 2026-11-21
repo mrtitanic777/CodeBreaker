@@ -32,7 +32,7 @@
 
 /*     enum_ext          enum_int           dmp_sym  dmp_mac dmp_op npar attr */
 /*  Start of Code Generator Operators ... */
-PICK(  O_NOP,              OP_NOP,               ,        STR2,  "nop  ", 0,  0                     )
+PICK(  O_NOP,              OP_NOP,               ,        STR2,  "nop  ", 0,  static_cast<const opcode_attr>(0)                     )
 
 /*  Binary Ops  -- call CGBinary() */
 
@@ -75,7 +75,7 @@ PICK(  O_TANH,             OP_TANH,              ,        STR2,  "tanh ", 1,  MO
 
 PICK(  O_PTR_TO_NATIVE,    OP_PTR_TO_NATIVE,     ,        STR2,  "flatp", 1,  MOVEABLE | SWAPABLE  )   /* oh! ouch! the 386 really hurts my head! */
 PICK(  O_PTR_TO_FOREIGN,   OP_PTR_TO_FOREIGN,    ,        STR2,  "segp ", 1,  MOVEABLE | SWAPABLE  )
-PICK(  O_PARENTHESIS,      OP_SLACK_19,          ,        STR2,  "OOPS!", 0,  0                     )   /* optimization control - NOP for now */
+PICK(  O_PARENTHESIS,      OP_SLACK_19,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )   /* optimization control - NOP for now */
 
 PICK(  O_CONVERT,          OP_CONVERT,           "<c=",   STR1,  "cnv  ", 1,  MOVEABLE | SWAPABLE  )
 PICK(  O_INTERNAL_05,      OP_LA,                ,        STR2,  "lea  ", 1,  MOVEABLE | SWAPABLE  )
@@ -88,8 +88,8 @@ PICK(  O_GETS,             OP_MOV,               ,        STR2,  "mov  ", 1,  MO
 PICK(  O_INTERNAL_07,      OP_CALL_INDIRECT,     ,        STR2,  "calli", 3,  SIDE_EFFECT          )
 PICK(  O_INTERNAL_08,      OP_PUSH,              ,        STR2,  "push ", 1,  SWAPABLE             )
 PICK(  O_INTERNAL_09,      OP_POP,               ,        STR2,  "pop  ", 0,  SWAPABLE             )
-PICK(  O_INTERNAL_10,      OP_PARM_DEF,          ,        STR2,  "parm ", 0,  0                     )   /* CGAddParm() */
-PICK(  O_INTERNAL_11,      OP_SELECT,            ,        STR2,  "sel  ", 1,  0                     )   /* generalized jump */
+PICK(  O_INTERNAL_10,      OP_PARM_DEF,          ,        STR2,  "parm ", 0,  static_cast<const opcode_attr>(0)                     )   /* CGAddParm() */
+PICK(  O_INTERNAL_11,      OP_SELECT,            ,        STR2,  "sel  ", 1,  static_cast<const opcode_attr>(0)                     )   /* generalized jump */
 
 /*  Comparison operators -- call CGCompare() */
 
@@ -112,36 +112,36 @@ PICK(  O_INTERNAL_17,      OP_SET_GREATER,       ,        STR2,  "set> ", 2,  SI
 PICK(  O_INTERNAL_18,      OP_SET_LESS_EQUAL,    ,        STR2,  "set<=", 2,  SIDE_EFFECT          )
 PICK(  O_INTERNAL_19,      OP_SET_LESS,          ,        STR2,  "set< ", 2,  SIDE_EFFECT          )
 PICK(  O_INTERNAL_20,      OP_SET_GREATER_EQUAL, ,        STR2,  "set>=", 2,  SIDE_EFFECT          )
-PICK(  O_INTERNAL_21,      OP_DEBUG_INFO,        ,        STR2,  "dinfo", 0,  0                     )
-PICK(  O_INTERNAL_22,      OP_CHEAP_NOP,         ,        STR2,  "cnop ", 0,  0                     )
-PICK(  O_INTERNAL_23,      OP_LOAD_UNALIGNED,    ,        STR2,  "ldq_u", 1,  0                     )
-PICK(  O_INTERNAL_24,      OP_STORE_UNALIGNED,   ,        STR2,  "stq_u", 1,  0                     )
-PICK(  O_INTERNAL_25,      OP_EXTRACT_LOW,       ,        STR2,  "extl ", 2,  0                     )
-PICK(  O_INTERNAL_26,      OP_EXTRACT_HIGH,      ,        STR2,  "exth ", 2,  0                     )
-PICK(  O_INTERNAL_27,      OP_INSERT_LOW,        ,        STR2,  "insl ", 2,  0                     )
-PICK(  O_INTERNAL_28,      OP_INSERT_HIGH,       ,        STR2,  "insh ", 2,  0                     )
-PICK(  O_INTERNAL_29,      OP_MASK_LOW,          ,        STR2,  "mskl ", 2,  0                     )
-PICK(  O_INTERNAL_30,      OP_MASK_HIGH,         ,        STR2,  "mskh ", 2,  0                     )
-PICK(  O_INTERNAL_31,      OP_ZAP,               ,        STR2,  "zap  ", 2,  0                     )
-PICK(  O_INTERNAL_32,      OP_ZAP_NOT,           ,        STR2,  "zap! ", 2,  0                     )
-PICK(  O_STACK_ALLOC,      OP_STACK_ALLOC,       ,        STR2,  "alloc", 0,  0                     )
-PICK(  O_VA_START,         OP_VA_START,          ,        STR2,  "vastr", 1,  0                     )
+PICK(  O_INTERNAL_21,      OP_DEBUG_INFO,        ,        STR2,  "dinfo", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_22,      OP_CHEAP_NOP,         ,        STR2,  "cnop ", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_23,      OP_LOAD_UNALIGNED,    ,        STR2,  "ldq_u", 1,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_24,      OP_STORE_UNALIGNED,   ,        STR2,  "stq_u", 1,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_25,      OP_EXTRACT_LOW,       ,        STR2,  "extl ", 2,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_26,      OP_EXTRACT_HIGH,      ,        STR2,  "exth ", 2,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_27,      OP_INSERT_LOW,        ,        STR2,  "insl ", 2,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_28,      OP_INSERT_HIGH,       ,        STR2,  "insh ", 2,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_29,      OP_MASK_LOW,          ,        STR2,  "mskl ", 2,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_30,      OP_MASK_HIGH,         ,        STR2,  "mskh ", 2,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_31,      OP_ZAP,               ,        STR2,  "zap  ", 2,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_INTERNAL_32,      OP_ZAP_NOT,           ,        STR2,  "zap! ", 2,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_STACK_ALLOC,      OP_STACK_ALLOC,       ,        STR2,  "alloc", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_VA_START,         OP_VA_START,          ,        STR2,  "vastr", 1,  static_cast<const opcode_attr>(0)                     )
 
 /*  Slack */
 
-PICK(  O_SLACK_31,         OP_SLACK_31,          ,        STR2,  "OOPS!", 0,  0                     )
-PICK(  O_SLACK_32,         OP_SLACK_32,          ,        STR2,  "OOPS!", 0,  0                     )
-PICK(  O_SLACK_33,         OP_SLACK_33,          ,        STR2,  "OOPS!", 0,  0                     )
-PICK(  O_SLACK_34,         OP_SLACK_34,          ,        STR2,  "OOPS!", 0,  0                     )
-PICK(  O_SLACK_35,         OP_SLACK_35,          ,        STR2,  "OOPS!", 0,  0                     )
-PICK(  O_SLACK_36,         OP_SLACK_36,          ,        STR2,  "OOPS!", 0,  0                     )
-PICK(  O_SLACK_37,         OP_SLACK_37,          ,        STR2,  "OOPS!", 0,  0                     )
-PICK(  O_SLACK_38,         OP_SLACK_38,          ,        STR2,  "OOPS!", 0,  0                     )
-PICK(  O_SLACK_39,         OP_SLACK_39,          ,        STR2,  "OOPS!", 0,  0                     )
+PICK(  O_SLACK_31,         OP_SLACK_31,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_SLACK_32,         OP_SLACK_32,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_SLACK_33,         OP_SLACK_33,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_SLACK_34,         OP_SLACK_34,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_SLACK_35,         OP_SLACK_35,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_SLACK_36,         OP_SLACK_36,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_SLACK_37,         OP_SLACK_37,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_SLACK_38,         OP_SLACK_38,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
+PICK(  O_SLACK_39,         OP_SLACK_39,          ,        STR2,  "OOPS!", 0,  static_cast<const opcode_attr>(0)                     )
 
 /*  Internal */
 
-PICK(  O_INTERNAL_33,      OP_BLOCK,             ,        STR2,  "BLOCK", 0,  0                     )
+PICK(  O_INTERNAL_33,      OP_BLOCK,             ,        STR2,  "BLOCK", 0,  static_cast<const opcode_attr>(0)                     )
 
 /*  End of Internal Code Generator operators (opcode_defs) */
 

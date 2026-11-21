@@ -230,7 +230,7 @@ bool Modern_Point::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Modern_Point>(o);
-	return this->x_ == that->x_ && this->y_ == that->y_;
+	return this->x_ == jrt::nn(that)->x_ && this->y_ == jrt::nn(that)->y_;
 }
 
 Modern_Sq::Modern_Sq(int32_t side) {
@@ -256,7 +256,7 @@ bool Modern_Sq::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Modern_Sq>(o);
-	return this->side_ == that->side_;
+	return this->side_ == jrt::nn(that)->side_;
 }
 
 Modern_Circ::Modern_Circ(int32_t r) {
@@ -282,7 +282,7 @@ bool Modern_Circ::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Modern_Circ>(o);
-	return this->r_ == that->r_;
+	return this->r_ == jrt::nn(that)->r_;
 }
 
 void Modern_Color::ctor_(ref<String> name_in, int32_t ordinal_in) {

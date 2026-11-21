@@ -5,12 +5,10 @@
 // one this program runs from) -- the real compilers -- and prints what it said and how long it took, for timing.
 #include "invert/production.hpp"
 
-#include "build/dos_tools.hpp"
-#include "build/msc6.hpp"
-
 #include <chrono>
 #include <iostream>
 
+#include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
@@ -123,8 +121,9 @@ CB_TEST("invert.production.real", [] {
     std::cout << "exit " << code << ", " << std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() << " s\n";
 });
 
-// Microsoft C 6.0a on the DOS executive gives the bytes the emulator's gives (skipped where the compiler, the emulator or the executive is not set up).
-CB_TEST("invert.production.msc6_on_the_executive_gives_the_emulators_bytes", [] {
+// Microsoft C 6.0a on the DOS executive gives the code DOSBox-X gave for the same texts (its length and SHA-1 were recorded from DOSBox-X on
+// 2026-11-21, when the executive was proven against it; skipped where the compiler or the executive is not set up).
+CB_TEST("invert.production.msc6_on_the_executive_gives_the_recorded_bytes", [] {
     const std::optional<std::string> root = fs::get_env("CB_INVERT_CHECKOUT");
     if (!root || root->empty()) return;
     const config::Config config = config::Config::load(fs::from_text(*root));
@@ -136,26 +135,33 @@ CB_TEST("invert.production.msc6_on_the_executive_gives_the_emulators_bytes", [] 
         "void far pascal h(char far *p) { while (*p) *p++ = 0; }\n",
         "int far pascal broken(int a) { return a +; }\n",   // the compiler refuses it
     };
-    for (const std::string_view flags : {"/AM /G2 /Gsw /Ox", "/AM /G2 /Gsw"}) {
-        const std::vector<std::optional<Bytes>> native = e.compile_msc6_many(texts, flags);
+    struct Recorded {
+        std::size_t size;
+        const char* sha1;
+    };
+    const struct {
+        std::string_view flags;
+        Recorded code[3];
+    } recorded[] = {
+        {"/AM /G2 /Gsw /Ox",
+         {{30, "c1d5a6a7ba5cc05fe212aad270e15889ed407840"},
+          {42, "6d08ddece25ed3aff0877a05eb4265b0ca3b3734"},
+          {46, "ed3ecbbabe80ee28142b80bfcc94b304d1abfd1b"}}},
+        {"/AM /G2 /Gsw",
+         {{26, "71c0a34a66d7f3d5bd9017db811386ffddf00b76"},
+          {38, "52940528997470bbbf08b47de76dfa85eb5b5c2a"},
+          {38, "d8e585f050e2d803f1495cdfdf230758dc644995"}}},
+    };
+    for (const auto& set : recorded) {
+        const std::vector<std::optional<Bytes>> native = e.compile_msc6_many(texts, set.flags);
         CB_CHECK_EQ(native.size(), texts.size());
-        CB_CHECK(native[0].has_value() && native[1].has_value() && native[2].has_value());
+        if (native.size() != texts.size()) continue;
         CB_CHECK(!native[3].has_value());
-        // the emulator's answer for the same texts
-        cb::build::msc6::Tools tools;
-        tools.dosbox_x = config.path("dosbox_x").value_or("");
-        tools.msc6 = config.path("msc6").value_or("");
-        if (!cb::build::msc6::available(tools)) continue;
-        const cb::build::dos_tools::DosboxRunner runner{cb::build::dos_tools::Emulator::from_config(config)};
-        std::vector<cb::build::msc6::Source> sources;
-        for (const std::string& t : texts) sources.push_back({t, std::nullopt});
-        const fs::ScopedTempDir work;
-        cb::build::msc6::CompileOptions options;
-        options.work = work.path();
-        const auto emulated = cb::build::msc6::compile_many({tools, runner, nullptr}, sources, "", flags, options);
-        for (std::size_t i = 0; i < texts.size(); ++i) {
-            CB_CHECK_EQ(native[i].has_value(), emulated[i].has_value());
-            if (native[i] && emulated[i]) CB_CHECK(*native[i] == emulated[i]->code);
+        for (std::size_t i = 0; i < 3; ++i) {
+            CB_CHECK(native[i].has_value());
+            if (!native[i]) continue;
+            CB_CHECK_EQ(native[i]->size(), set.code[i].size);
+            CB_CHECK_EQ(crypto::to_hex(crypto::sha1(*native[i])), std::string(set.code[i].sha1));
         }
     }
 });

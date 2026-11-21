@@ -1,0 +1,23 @@
+{
+  "name": "dasm",
+  "description": "DASM (6502): the Atari 2600 as its homebrew is written. processor 6502, name = $value, labels at the head of the line with no colon, ORG for the file offset and RORG for the address the 6507 sees it at, .byte and ds.b, .word with a comma and a space.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}",
+  "label_at_column_zero": true,
+  "forced_absolute": {"suffix": ".w", "opcodes": {"ADC": 109, "AND": 45, "ASL": 14, "BIT": 44, "CMP": 205, "CPX": 236, "CPY": 204, "DEC": 206, "EOR": 77, "INC": 238, "JMP": 76, "JSR": 32, "LDA": 173, "LDX": 174, "LDY": 172, "LSR": 78, "ORA": 13, "ROL": 46, "ROR": 110, "SBC": 237, "STA": 141, "STX": 142, "STY": 140}},
+  "data": {"row": 16, "run": 16, "string_min": 4},
+  "directives": [
+    {"neutral": ".equ {name}, {v}", "dialect": "{name:<10} = {v}"},
+    {"neutral": ".byte {list}", "dialect": ".byte {list}", "bytes": true},
+    {"neutral": ".half {list}", "dialect": ".word {list}", "separator": ", "},
+    {"neutral": ".space {n}, {v}", "dialect": "ds.b {n},{v}"},
+    {"neutral": ".org {v}", "dialect": "ORG {v}"},
+    {"neutral": ".org {v}", "dialect": "RORG {v}", "print": false},
+    {"neutral": "", "dialect": "processor {s}", "print": false}
+  ],
+  "blocks": {
+    "prologue": ["; assemble with dasm:  dasm {stem}.asm -f3 -o{stem}.{ext}", "", "        processor 6502", ""],
+    "bank": ["        ORG {offset}", "        RORG {window}"]
+  }
+}

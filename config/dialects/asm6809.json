@@ -1,0 +1,15 @@
+{
+  "name": "asm6809",
+  "description": "A 6809 assembler (Motorola syntax): the Vectrex as its programs are written. ORG $0000, name EQU $value lined up to 16, FCB / FDB / FCC, FILL n,v, $ hex in pairs of digits.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "directives": [
+    {"neutral": ".org {v}", "dialect": "ORG {v}"},
+    {"neutral": ".equ {name}, {v}", "dialect": "{name:<16} EQU {v}"},
+    {"neutral": ".byte {list}", "dialect": "FCB {list}", "bytes": true},
+    {"neutral": ".half {list}", "dialect": "FDB {list}"},
+    {"neutral": ".ascii {s}", "dialect": "FCC {s}"},
+    {"neutral": ".space {n}, {v}", "dialect": "FILL {n},{v}"}
+  ]
+}

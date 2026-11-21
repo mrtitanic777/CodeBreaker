@@ -50,21 +50,21 @@ typedef enum WResResType {
 
 extern WResResInfo          *WResReadResRecord( FILE *fp );
 extern WResTypeInfo         *WResReadTypeRecord( FILE *fp );
-extern WResID               *WResReadWResID( FILE *fp );
-extern void                 *ResReadWResID( FILE *fp, unsigned offs, uint_16 ver );
-extern bool                 WResReadHeader( WResHeader *header, FILE *fp );
+extern WResID               *WResReadWResID(Link& link,  FILE *fp );
+extern void                 *ResReadWResID(Link& link,  FILE *fp, unsigned offs, uint_16 ver );
+extern bool                 WResReadHeader(Link& link,  WResHeader *header, FILE *fp );
 extern bool                 WResReadExtHeader( WResExtHeader *extheader, FILE *fp );
 extern WResResType          WResReadResType( FILE *fp );
-extern ResNameOrOrdinal     *ResReadNameOrOrdinal( FILE *fp );
-extern ResNameOrOrdinal     *ResRead32NameOrOrdinal( FILE *fp );
-extern char                 *ResReadString( FILE *fp, size_t *strlen );
-extern char                 *ResRead32String( FILE *fp, size_t *strlen );
+extern ResNameOrOrdinal     *ResReadNameOrOrdinal(Link& link,  FILE *fp );
+extern ResNameOrOrdinal     *ResRead32NameOrOrdinal(Link& link,  FILE *fp );
+extern char                 *ResReadString(Link& link,  FILE *fp, size_t *strlen );
+extern char                 *ResRead32String(Link& link,  FILE *fp, size_t *strlen );
 extern uint_32              ResReadUint32( bool *error, FILE *fp );
 extern uint_16              ResReadUint16( bool *error, FILE *fp );
 extern uint_8               ResReadUint8( bool *error, FILE *fp );
 extern long                 ResTell( FILE *fp );
 extern bool                 ResSeek( FILE *fp, long offset, int origin );
-extern bool                 ResReadPadDWord( FILE *fp );
-extern MResResourceHeader   *MResReadResourceHeader( FILE *fp, bool iswin32 );
+extern bool                 ResReadPadDWord(Link& link,  FILE *fp );
+extern MResResourceHeader   *MResReadResourceHeader(Link& link,  FILE *fp, bool iswin32 );
 
 #endif

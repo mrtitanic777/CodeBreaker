@@ -2,6 +2,160 @@
 #include "jrt.h"
 #include <stdarg.h>
 
+/* ---------------------------------------------------------------------------------------- the collector
+ * Mark and sweep, and it never moves anything. Every block this file allocates has a header and is listed. A collection starts when
+ * what was allocated since the last one passes the limit (32 MB, or what was live then, whichever is more), so a short program
+ * never has one. The roots are the registers, the stack and the program's writable static data; a word that points into a block keeps
+ * it (interior pointers too), and a kept block's words are read the same way, except text, which holds no pointers. Reading
+ * conservatively can only keep something too long, never free what is in use. Where the static data cannot be found (not Windows or
+ * Linux), nothing is collected: the program runs as it would with no collector. JRT_GC_STRESS=N collects every N allocations.
+ */
+typedef struct gc_block { size_t size; uint32_t atomic, marked; } gc_block;   /* 16 bytes: what follows is aligned for anything */
+enum { GC_MIN_LIMIT = 32 * 1024 * 1024 };
+static gc_block** gc_all;
+static size_t gc_count, gc_cap, gc_since, gc_live, gc_limit = GC_MIN_LIMIT;
+static gc_block** gc_marks;
+static size_t gc_mark_count, gc_mark_cap;
+static const char* gc_stack_base;
+static int gc_busy;
+static long gc_stress = -1, gc_until;
+
+static void gc_oom(void) { fprintf(stderr, "out of memory\n"); exit(3); }
+
+#if defined(__GNUC__) || defined(__clang__)
+#define GC_READS_ANYTHING __attribute__((no_sanitize("address"))) __attribute__((noinline))
+#else
+#define GC_READS_ANYTHING
+#endif
+
+static gc_block* gc_find(uintptr_t p) {
+	size_t lo = 0, hi = gc_count;
+	while (lo < hi) {
+		size_t mid = lo + (hi - lo) / 2;
+		if ((uintptr_t)gc_all[mid] <= p) lo = mid + 1; else hi = mid;
+	}
+	if (lo == 0) return 0;
+	gc_block* b = gc_all[lo - 1];
+	const uintptr_t start = (uintptr_t)(b + 1);
+	return p >= start && p <= start + b->size ? b : 0;   /* (one past the end counts: a loop's end pointer) */
+}
+
+static void gc_keep(uintptr_t word) {
+	gc_block* b = gc_find(word);
+	if (!b || b->marked) return;
+	b->marked = 1;
+	if (b->atomic) return;
+	if (gc_mark_count == gc_mark_cap) {
+		gc_mark_cap = gc_mark_cap ? gc_mark_cap * 2 : 1024;
+		gc_marks = (gc_block**)realloc(gc_marks, gc_mark_cap * sizeof(gc_block*));
+		if (!gc_marks) gc_oom();
+	}
+	gc_marks[gc_mark_count++] = b;
+}
+
+GC_READS_ANYTHING static void gc_scan(const char* low, const char* high) {
+	const size_t w = sizeof(uintptr_t);
+	low += (w - (uintptr_t)low % w) % w;
+	for (; low + w <= high; low += w) gc_keep(*(const volatile uintptr_t*)low);
+}
+
+#if defined(_WIN32)
+extern char __ImageBase;
+static int gc_scan_static(void) {   /* the writable sections of this program's image */
+	const unsigned char* image = (const unsigned char*)&__ImageBase;
+	const uint32_t pe = *(const uint32_t*)(image + 0x3C);
+	const unsigned sections = *(const uint16_t*)(image + pe + 6), optional = *(const uint16_t*)(image + pe + 20);
+	const unsigned char* s = image + pe + 24 + optional;
+	for (unsigned i = 0; i < sections; ++i, s += 40) {
+		if (!(*(const uint32_t*)(s + 36) & 0x80000000u)) continue;
+		const char* at = (const char*)image + *(const uint32_t*)(s + 12);
+		gc_scan(at, at + *(const uint32_t*)(s + 8));
+	}
+	return 1;
+}
+static int gc_can_collect(void) { return 1; }
+#elif defined(__linux__)
+extern char __data_start[], _end[];
+static int gc_scan_static(void) { gc_scan(__data_start, _end); return 1; }
+static int gc_can_collect(void) { return 1; }
+#else
+static int gc_scan_static(void) { return 0; }
+static int gc_can_collect(void) { return 0; }
+#endif
+
+static int gc_order(const void* a, const void* b) {
+	const uintptr_t x = (uintptr_t)*(gc_block* const*)a, y = (uintptr_t)*(gc_block* const*)b;
+	return x < y ? -1 : x > y;
+}
+
+GC_READS_ANYTHING static void gc_collect(void) {
+	if (gc_busy || !gc_stack_base || !gc_can_collect()) return;
+	gc_busy = 1;
+	qsort(gc_all, gc_count, sizeof(gc_block*), gc_order);
+	jmp_buf registers;
+#if defined(__GNUC__) || defined(__clang__)
+	__builtin_unwind_init();
+#endif
+	(void)setjmp(registers);
+	gc_scan((const char*)&registers, gc_stack_base);
+	gc_scan_static();
+	while (gc_mark_count) {
+		gc_block* b = gc_marks[--gc_mark_count];
+		gc_scan((const char*)(b + 1), (const char*)(b + 1) + b->size);
+	}
+	size_t kept = 0;
+	gc_live = 0;
+	for (size_t i = 0; i < gc_count; ++i) {
+		gc_block* b = gc_all[i];
+		if (b->marked) { b->marked = 0; gc_live += b->size; gc_all[kept++] = b; }
+		else free(b);
+	}
+	gc_count = kept;
+	gc_since = 0;
+	gc_limit = gc_live > GC_MIN_LIMIT ? gc_live : GC_MIN_LIMIT;
+	gc_busy = 0;
+}
+
+static void* gc_alloc(size_t size, int atomic, int zero) {
+	if (gc_stress < 0) {
+		const char* s = getenv("JRT_GC_STRESS");
+		gc_stress = s ? atol(s) : 0;
+		gc_until = gc_stress;
+	}
+	if (gc_since >= gc_limit || (gc_stress > 0 && --gc_until <= 0)) { gc_until = gc_stress; gc_collect(); }
+	gc_block* b = (gc_block*)(zero ? calloc(1, sizeof(gc_block) + size) : malloc(sizeof(gc_block) + size));
+	if (!b) gc_oom();
+	b->size = size;
+	b->atomic = (uint32_t)atomic;
+	b->marked = 0;
+	if (gc_count == gc_cap) {
+		gc_cap = gc_cap ? gc_cap * 2 : 1024;
+		gc_all = (gc_block**)realloc(gc_all, gc_cap * sizeof(gc_block*));
+		if (!gc_all) gc_oom();
+	}
+	/* (kept in order of address only during a collection: gc_find is not used between them) */
+	gc_all[gc_count++] = b;
+	gc_since += size;
+	return b + 1;
+}
+
+static void* gc_grow(void* old, size_t size, int atomic) {
+	if (!old) return gc_alloc(size, atomic, 0);
+	const gc_block* from = (const gc_block*)old - 1;
+	void* to = gc_alloc(size, from->atomic, 0);    /* (`old` is on the caller's stack or in a live object: it survives this) */
+	from = (const gc_block*)old - 1;
+	memcpy(to, old, from->size < size ? from->size : size);
+	return to;                                     /* (the old block goes at the next collection) */
+}
+
+size_t jrt_gc_collect(void) { gc_collect(); return gc_live; }
+
+/* everything below allocates through the collector */
+#define malloc(n) gc_alloc((n), 0, 0)
+#define calloc(n, m) gc_alloc((size_t)(n) * (size_t)(m), 0, 1)
+#define realloc(p, n) gc_grow((p), (n), 0)
+#define free(p) ((void)(p))
+
 /* ------------------------------------------------------------------------------------------- objects */
 jrt_try* jrt_top = 0;
 
@@ -138,7 +292,7 @@ const jclass jrt_String_class = {"java.lang.String", &jrt_Object_class, sizeof(j
 jstring* jrt_str(const char16_t* s, int32_t n) {
 	jstring* r = (jstring*)jrt_alloc(&jrt_String_class);
 	r->len = n;
-	r->s = (char16_t*)calloc((size_t)n + 1, sizeof(char16_t));
+	r->s = (char16_t*)gc_alloc(((size_t)n + 1) * sizeof(char16_t), 1, 1);
 	if (s) memcpy(r->s, s, (size_t)n * sizeof(char16_t));
 	return r;
 }
@@ -684,7 +838,7 @@ static void sb_grow(jrt_StringBuilder* b, int32_t extra) {
 	if (b->len + extra <= b->cap) return;
 	int32_t c = b->cap ? b->cap * 2 : 16;
 	while (c < b->len + extra) c *= 2;
-	b->s = (char16_t*)realloc(b->s, (size_t)c * 2);
+	b->s = (char16_t*)gc_grow(b->s, (size_t)c * 2, 1);
 	b->cap = c;
 }
 jrt_StringBuilder* jrt_StringBuilder_append_Str(jrt_StringBuilder* b, jstring* s) {
@@ -1103,6 +1257,8 @@ static const jobject_vt enum_vt = {jrt_Enum_toString, jrt_Object_equals, jrt_Obj
 const jclass jrt_Enum_class = {"java.lang.Enum", &jrt_Object_class, sizeof(jrt_Enum), &enum_vt, 0, 0, 0};
 
 int jrt_run_main(void (*m)(jarray*), int argc, char** argv) {
+	volatile char stack_top = 0;
+	gc_stack_base = (const char*)&stack_top + 1;
 	jarray* args = jrt_new_array(sizeof(jobject*), argc > 1 ? argc - 1 : 0);
 	for (int i = 1; i < argc; ++i) ((jobject**)args->data)[i - 1] = (jobject*)str8(argv[i]);
 	m(args);

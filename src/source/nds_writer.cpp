@@ -17,6 +17,7 @@
 #include "core/text.hpp"
 #include "decompile/arm.hpp"
 #include "source/isa.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::nds_writer {
@@ -498,7 +499,7 @@ Analysis analyse(const Program& p, const nds::Rom& rom) {
             const int wanted = insn.thumb() ? 1 : 0;
             if (as_data.contains(key)) {
                 // the bits, in pieces small enough to put a label between (an instruction another path of the code overlaps)
-                const std::string comment = "  ; " + instruction_text.at(key);
+                const std::string comment = "  ; " + dialect::find("gas-arm").instruction(instruction_text.at(key));
                 unsigned step = insn.length;
                 for (unsigned k = 1; k < insn.length; ++k)
                     if (labels.contains(addr + k)) step = std::min(step, k % 2 ? 1u : 2u);
@@ -683,8 +684,8 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
         std::format("; Nintendo DS cartridge \"{}\" ({}): {} bytes, ARM9 {} functions, ARM7 {} functions", h.title, h.game_code, image.size(),
                     programs.empty() ? 0 : programs[0].analysis.functions.size(), programs.size() > 1 ? programs[1].analysis.functions.size() : 0),
         ""};
-    head.insert(head.end() - 1, "; (ARM syntax as the processor's SLEIGH description writes it: build with `assemble --cpu arm9 --sleigh`; `.context TMode=1` is Thumb)");
-    translate::l2::Assembly out(head, "sleigh-arm9", std::string(file_name));
+    translate::l2::Assembly out(head, "gas", std::string(file_name));
+    out.append("        .syntax unified");
     out.append("");
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
@@ -863,7 +864,7 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
                 out.part(tag, "program", std::nullopt);
                 out.append(name + ":");
                 out.append(std::format("        .org {}", hex8(part->program.base)));
-                out.append(r.kind == nds::Region::Kind::Arm9 ? "        ; the ARM946E-S" : "        ; the ARM7TDMI");
+                out.append(r.kind == nds::Region::Kind::Arm9 ? "        .cpu arm946e-s" : "        .cpu arm7tdmi");
                 out.append(tag + ":");
                 for (const Line& line : part->analysis.lines) {
                     if (!line.part.empty()) {
@@ -904,9 +905,9 @@ iw::Written write(const nds::Rom& rom, std::string_view file_name, const std::fi
     }
     gap_to(static_cast<std::uint32_t>(image.size()));
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("gas-arm").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-arm.json)
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, code_bytes, image.size());
-    iw::assembled(r, [&] { return risc_source::assemble("arm9", source, folder); }, image, folder / (stem + ".built.nds"), "ROM");
+    iw::assembled(r, [&] { return risc_source::assemble("arm9", dialect::find("gas-arm").parse(source), folder); }, image, folder / (stem + ".built.nds"), "ROM");
     return r;
 }
 

@@ -1,0 +1,5 @@
+45 Pair[first=seven, second=7]7 12 pear
+cba cb false
+caught: empty stack
+2155287 #4 't5' 141004
+4 3

@@ -34,5 +34,5 @@
 extern  void    DoBigBckPtr( back_handle bck, offset off );
 extern  void    DoBigLblPtr( cg_sym_handle sym );
 extern  void    BackImpPtr( const char *nm, back_handle bck, offset plus );
-extern  void    OutLblPatch( label_handle lbl, fix_class class, offset plus );
+extern  void    OutLblPatch( label_handle lbl, fix_class class_, offset plus );
 extern  name    *GenConstData( const void *buffer, type_class_def type_class );

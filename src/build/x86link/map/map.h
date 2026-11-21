@@ -33,7 +33,7 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-#define WriteMapLnkMsg(m,...)   LnkMsg( MAP + m, __VA_ARGS__ )
+#define WriteMapLnkMsg(link,m,...)   LnkMsg( link, MAP + m, __VA_ARGS__ )
 
 extern void     ResetWriteMapIO(Link& link);
 extern void     MapInit(Link& link);

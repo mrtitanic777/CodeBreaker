@@ -96,7 +96,7 @@ CB_TEST("source.zx_writer.a_tape_comes_back_as_source_that_builds_the_same_bytes
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     const std::string text = fs::read_text(r.source);
-    for (const char* line : {"CALL CHAN_OPEN", "OUT (ULA),A", "LD HL,FRAMES", "RST 0x10"}) CB_CHECK(has(text, line));
+    for (const char* line : {"CALL CHAN_OPEN", "OUT (ULA),A", "LD HL,FRAMES", "RST $10"}) CB_CHECK(has(text, line));
 });
 
 CB_TEST("source.zx_writer.a_snapshot_stopped_at_the_start_is_the_same_program", [] {
