@@ -1021,9 +1021,9 @@ MovMUReg2: MovMUReg2_15 is MovMUReg2_15 {
     
     old_q = $(Q_FLAG);
     $(Q_FLAG) = (0x80000000 & rn_08_11) != 0;
-    tmp2 = rm_04_07;
     rn_08_11 = rn_08_11 << 1;
     rn_08_11 = rn_08_11 | zext($(T_FLAG));
+    tmp2 = rm_04_07;   # (read after the shift: with the same register on both sides the divisor is the shifted dividend, as in the manual's code)
     old_q_eq_m = old_q == $(M_FLAG);
     m_eq_q = $(M_FLAG) == $(Q_FLAG);
     
@@ -1428,9 +1428,9 @@ MovMUReg2: MovMUReg2_15 is MovMUReg2_15 {
 
 :tst.b  imm_00_07,@(r0,gbr)  is r0 & gbr & opcode_08_15=0b11001100 & imm_00_07  
 {
-    local temp = *:1 (gbr + r0);
-    temp = temp & (imm_00_07 & 0x000000FF);
-    
+    local temp:1 = *:1 (gbr + r0);
+    temp = temp & imm_00_07:1;
+
     $(T_FLAG) = (temp == 0);
 }
 
@@ -1446,9 +1446,9 @@ MovMUReg2: MovMUReg2_15 is MovMUReg2_15 {
 
 :xor.b  imm_00_07,@(r0,gbr)  is r0 & gbr & opcode_08_15=0b11001110 & imm_00_07  
 {
-    local temp = *:1 (gbr + r0);
-    temp = temp & (imm_00_07 & 0x000000FF);
-    
+    local temp:1 = *:1 (gbr + r0);
+    temp = temp ^ imm_00_07:1;
+
     *:1 (gbr + r0) = temp;
 }
 
@@ -1636,9 +1636,9 @@ MovMUReg2: MovMUReg2_15 is MovMUReg2_15 {
 {
     local _pr:4 = inst_start + 4;
 
+    pr = _pr;   # (set before the delay slot runs: a slot that loads PR has the last word)
     delayslot(1);
 
-    pr = _pr;
     call target00_11;
 }
 
@@ -1648,9 +1648,9 @@ MovMUReg2: MovMUReg2_15 is MovMUReg2_15 {
     local _pr = inst_start + 4;
     local dest = rm_08_11 + inst_start + 4;
 
+    pr = _pr;
     delayslot(1);
 
-    pr = _pr;
     call [dest];
 }
 @endif
@@ -1668,9 +1668,9 @@ MovMUReg2: MovMUReg2_15 is MovMUReg2_15 {
     local _pr:4 = inst_start + 4;
     local _pc:4 = rm_08_11;
 
+    pr = _pr;
     delayslot(1);
 
-    pr = _pr;
     pc = _pc;
     call [_pc];
 }
