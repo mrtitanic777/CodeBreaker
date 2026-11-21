@@ -168,7 +168,7 @@
   #else
     #define _mkgmtime   timegm
   #endif
- #elif defined( _MSC_VER )
+ #elif defined( _WIN32 )
     #define S_ISDIR(x) (((x)&_S_IFMT)==_S_IFDIR)
     #define S_ISREG(x) (((x)&_S_IFMT)==_S_IFREG)
     #define S_ISCHR(x) (((x)&_S_IFMT)==_S_IFCHR)
@@ -208,7 +208,7 @@
 
  #if defined( __UNIX__ )
 
- #elif defined( _MSC_VER )
+ #elif defined( _WIN32 )
 
     typedef struct find_t {
         char            reserved[21];       /* reserved for use by DOS    */
@@ -231,12 +231,14 @@
     } dirent;
     typedef struct dirent   DIR;
 
-  #ifdef _WIN64
+  #ifdef _MSC_VER   // (MinGW's headers have ssize_t and mode_t)
+   #ifdef _WIN64
     typedef __int64 ssize_t;
-  #else
+   #else
     typedef long    ssize_t;
-  #endif
+   #endif
     typedef int     mode_t;
+  #endif
 
  #endif
 
@@ -250,7 +252,7 @@
     extern int      spawnlp( int mode, const char *path, const char *cmd, ... );
     extern int      spawnvp( int mode, const char *cmd, const char * const *args );
 
- #elif defined( _MSC_VER )
+ #elif defined( _WIN32 )
 
     extern int      setenv( const char *name, const char *newvalue, int overwrite );
     extern int      unsetenv( const char *name );

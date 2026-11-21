@@ -59,6 +59,13 @@ foreach(t decompiler pcodecheck sleigh)
     target_compile_options(${t} PRIVATE ${CB_FLAGS_QUIET})
   endif()
 endforeach()
+if(MINGW)
+  # decompiler.cc replaces the global operator new/delete (the memory governor: each block carries a size header). MinGW's
+  # libstdc++ is a DLL by default, whose own operator new serves what the library allocates (std::getline growing a string)
+  # while the program's operator delete frees it with the header removed: a corrupted heap. The static library takes the
+  # program's operators in its place.
+  target_link_options(decompiler PRIVATE -static-libstdc++ -static-libgcc)
+endif()
 target_link_libraries(sleigh PRIVATE cb_decompiler)
 # The assembler's round-trip metric on real code (not a test of the suite): sleigh_asmcheck <file.sla> <binary> <offset> <base> <count> [ctx=val ...]
 add_executable(sleigh_asmcheck EXCLUDE_FROM_ALL "${DECOMPILER_DIR}/sleigh_asmcheck.cc")

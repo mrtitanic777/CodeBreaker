@@ -136,8 +136,8 @@ bool ProcSingle(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
         LnkMsg(link, WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
-    link.FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
-    link.FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( SINGLE_AUTO_DATA ) );
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags & ( ~MULTIPLE_AUTO_DATA ) );
     return true;
 }
 
@@ -145,8 +145,8 @@ bool ProcMultiple(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
         LnkMsg(link, WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
-    link.FmtData.u.os2fam.flags &= ~SINGLE_AUTO_DATA;
-    link.FmtData.u.os2fam.flags |= MULTIPLE_AUTO_DATA;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags & ( ~SINGLE_AUTO_DATA ) );
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( MULTIPLE_AUTO_DATA ) );
     return true;
 }
 
@@ -154,7 +154,7 @@ bool ProcNone(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
         LnkMsg(link, WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
-    link.FmtData.u.os2fam.flags &= ~(SINGLE_AUTO_DATA | MULTIPLE_AUTO_DATA);
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags & ( ~(SINGLE_AUTO_DATA | MULTIPLE_AUTO_DATA) ) );
     return true;
 }
 
@@ -178,18 +178,18 @@ bool ProcModName(Link& link) {
 }
 
 bool ProcNewFiles(Link& link) {
-    link.FmtData.u.os2fam.flags |= LONG_FILENAMES;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( LONG_FILENAMES ) );
     return true;
 }
 
 bool ProcProtMode(Link& link) {
-    link.FmtData.u.os2fam.flags |= PROTMODE_ONLY;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( PROTMODE_ONLY ) );
     return true;
 }
 
 // CodeBreaker: the header says no application type (as KERNEL's does)
 bool ProcNoAppType(Link& link) {
-    link.FmtData.u.os2fam.flags |= NO_APP_TYPE;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( NO_APP_TYPE ) );
     return true;
 }
 
@@ -489,7 +489,7 @@ bool ProcIopl(Link& link) {
         LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     SET_SEG_PMODE_DPL(link.FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_2);
-    link.FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
+    link.FmtData.u.os2fam.seg_flags->specified = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->specified | ( SEG_IOPL_SPECD ) );
     return true;
 }
 
@@ -498,7 +498,7 @@ bool ProcNoIopl(Link& link) {
         LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     SET_SEG_PMODE_DPL(link.FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_3);
-    link.FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
+    link.FmtData.u.os2fam.seg_flags->specified = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->specified | ( SEG_IOPL_SPECD ) );
     return true;
 }
 
@@ -543,7 +543,7 @@ bool ProcReadOnly(Link& link) {
         LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
-    link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
+    link.FmtData.u.os2fam.seg_flags->specified = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->specified | ( SEG_READ_SPECD ) );
     return true;
 }
 
@@ -552,7 +552,7 @@ bool ProcReadWrite(Link& link) {
         LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
-    link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
+    link.FmtData.u.os2fam.seg_flags->specified = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->specified | ( SEG_READ_SPECD ) );
     return true;
 }
 
@@ -603,12 +603,12 @@ bool ProcNonDiscardable(Link& link) {
 }
 
 bool ProcInvalid(Link& link) {
-    link.FmtData.u.os2fam.seg_flags->flags |= SEG_INVALID;
+    link.FmtData.u.os2fam.seg_flags->flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->flags | ( SEG_INVALID ) );
     return true;
 }
 
 bool ProcContiguous(Link& link) {
-    link.FmtData.u.os2fam.seg_flags->flags |= SEG_CONTIGUOUS;
+    link.FmtData.u.os2fam.seg_flags->flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->flags | ( SEG_CONTIGUOUS ) );
     return true;
 }
 
@@ -620,8 +620,8 @@ bool ProcPermanent(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
         LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    link.FmtData.u.os2fam.seg_flags->flags |= SEG_RESIDENT;
-    link.FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
+    link.FmtData.u.os2fam.seg_flags->flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->flags | ( SEG_RESIDENT ) );
+    link.FmtData.u.os2fam.seg_flags->specified = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->specified | ( SEG_RESIDENT ) );
     return true;
 }
 
@@ -629,8 +629,8 @@ bool ProcNonPermanent(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
         LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_RESIDENT;
-    link.FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
+    link.FmtData.u.os2fam.seg_flags->flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->flags & ( ~SEG_RESIDENT ) );
+    link.FmtData.u.os2fam.seg_flags->specified = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->specified | ( SEG_RESIDENT ) );
     return true;
 }
 
@@ -638,8 +638,8 @@ bool ProcPageable(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
         LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_NOPAGE;
-    link.FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
+    link.FmtData.u.os2fam.seg_flags->flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->flags & ( ~SEG_NOPAGE ) );
+    link.FmtData.u.os2fam.seg_flags->specified = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->specified | ( SEG_NOPAGE ) );
     return true;
 }
 
@@ -647,8 +647,8 @@ bool ProcNonPageable(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
         LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    link.FmtData.u.os2fam.seg_flags->flags |= SEG_NOPAGE;
-    link.FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
+    link.FmtData.u.os2fam.seg_flags->flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->flags | ( SEG_NOPAGE ) );
+    link.FmtData.u.os2fam.seg_flags->specified = static_cast<seg_flags_type>( link.FmtData.u.os2fam.seg_flags->specified | ( SEG_NOPAGE ) );
     return true;
 }
 
@@ -809,32 +809,32 @@ constexpr Entry RunOptions[] = {
 // ---- "Format" directive
 
 bool ProcInitGlobal(Link& link) {
-    link.FmtData.u.os2fam.flags &= ~INIT_INSTANCE_FLAG;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags & ( ~INIT_INSTANCE_FLAG ) );
     return true;
 }
 
 bool ProcInitInstance(Link& link) {
-    link.FmtData.u.os2fam.flags |= INIT_INSTANCE_FLAG;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( INIT_INSTANCE_FLAG ) );
     return true;
 }
 
 bool ProcInitThread(Link& link) {
-    link.FmtData.u.os2fam.flags |= INIT_THREAD_FLAG;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( INIT_THREAD_FLAG ) );
     return true;
 }
 
 bool ProcTermGlobal(Link& link) {
-    link.FmtData.u.os2fam.flags &= ~TERM_INSTANCE_FLAG;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags & ( ~TERM_INSTANCE_FLAG ) );
     return true;
 }
 
 bool ProcTermInstance(Link& link) {
-    link.FmtData.u.os2fam.flags |= TERM_INSTANCE_FLAG;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( TERM_INSTANCE_FLAG ) );
     return true;
 }
 
 bool ProcTermThread(Link& link) {
-    link.FmtData.u.os2fam.flags |= TERM_THREAD_FLAG;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( TERM_THREAD_FLAG ) );
     return true;
 }
 
@@ -854,14 +854,14 @@ bool ProcOS2DLL(Link& link) {
     link.FmtData.def_ext = E_DLL;
     link.FmtData.dll = true;
     if (link.FmtData.type & MK_WIN_NE) {
-        link.FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
-        link.FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
+        link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags & ( ~MULTIPLE_AUTO_DATA ) );
+        link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( SINGLE_AUTO_DATA ) );
         link.FmtData.def_seg_flags |= SEG_PURE | SEG_MOVABLE;
     }
     if (process_one(link, Init_Keywords, Sep::none)) {
         if (!process_one(link, Term_Keywords, Sep::none)) {
             if (link.FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG) {
-                link.FmtData.u.os2fam.flags |= TERM_INSTANCE_FLAG;
+                link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( TERM_INSTANCE_FLAG ) );
             }
         }
     }
@@ -895,12 +895,12 @@ bool ProcPE(Link& link) {
 }
 
 bool ProcDynamicDriver(Link& link) {
-    link.FmtData.u.os2fam.flags |= VIRT_DEVICE;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( VIRT_DEVICE ) );
     return true;
 }
 
 bool ProcStaticDriver(Link& link) {
-    link.FmtData.u.os2fam.flags |= PHYS_DEVICE;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( PHYS_DEVICE ) );
     return true;
 }
 
@@ -916,41 +916,41 @@ bool ProcVXD(Link& link) {
 }
 
 bool ProcMemory(Link& link) {
-    link.FmtData.u.os2fam.flags |= CLEAN_MEMORY;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( CLEAN_MEMORY ) );
     return true;
 }
 
 bool ProcFont(Link& link) {
-    link.FmtData.u.os2fam.flags |= PROPORTIONAL_FONT;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( PROPORTIONAL_FONT ) );
     return true;
 }
 
 bool ProcPM(Link& link) {
-    link.FmtData.u.os2fam.flags |= PM_APPLICATION;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( PM_APPLICATION ) );
     return true;
 }
 
 bool ProcPMCompatible(Link& link) {
-    link.FmtData.u.os2fam.flags |= PM_COMPATIBLE;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( PM_COMPATIBLE ) );
     return true;
 }
 
 bool ProcPMFullscreen(Link& link) {
-    link.FmtData.u.os2fam.flags |= PM_NOT_COMPATIBLE;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( PM_NOT_COMPATIBLE ) );
     return true;
 }
 
 bool ProcPhysDevice(Link& link) {
     link.FmtData.def_ext = E_DLL;
     link.FmtData.dll = true;
-    link.FmtData.u.os2fam.flags |= PHYS_DEVICE;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( PHYS_DEVICE ) );
     return true;
 }
 
 bool ProcVirtDevice(Link& link) {
     link.FmtData.def_ext = E_DLL;
     link.FmtData.dll = true;
-    link.FmtData.u.os2fam.flags |= VIRT_DEVICE;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( VIRT_DEVICE ) );
     return true;
 }
 
@@ -1075,8 +1075,8 @@ bool ProcOS2Format(Link& link) {
     if (link.FmtData.type & MK_OS2_NE) {     // if no 32-bit thing specd
         HintFormat(link, MK_OS2_NE);          // make sure 16-bit is what we get
         if (link.FmtData.dll) {
-            link.FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
-            link.FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
+            link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags & ( ~MULTIPLE_AUTO_DATA ) );
+            link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( SINGLE_AUTO_DATA ) );
         }
     }
     return true;

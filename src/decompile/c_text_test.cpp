@@ -13,6 +13,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <nlohmann/json.hpp>
 
 #include "core/fs.hpp"
@@ -88,6 +89,7 @@ public:
     std::map<string, std::uint32_t> argument_sizes;
     dsc::PowerPcFacts ppc;
     std::map<string, ct::ModuleFacts> seen;   // what each function was written with
+    std::mutex seen_mutex;
     std::map<string, string> headings;
     std::map<string, ct::NamesUsed> names16;
     bool all_far = true;
@@ -98,6 +100,7 @@ public:
                                     ct::ModuleFacts* module) override {
         notes.from_l2 = true;
         const string name = cb::translate::l2::to_json(*notes.l2).value("name", "");
+        const std::lock_guard<std::mutex> lock(seen_mutex);   // (the module's functions are written in parallel)
         seen[name] = *module;
         if (module->path == ct::ModuleFacts::Path::Win16) {
             ct::Heading h;

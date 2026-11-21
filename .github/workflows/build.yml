@@ -61,7 +61,7 @@ jobs:
           cmake --build build-clang --target codebreaker cb_tests -j 4 || exit /b 1
       - name: Unit tests
         shell: cmd
-        run: build-clang\bin\cb_tests.exe
+        run: build-clang\cb_tests.exe
 
   gcc:
     runs-on: windows-latest
@@ -85,4 +85,4 @@ jobs:
           cmake -S src -B build-gcc -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build-gcc --target codebreaker cb_tests -j 4
       - name: Unit tests
-        run: ./build-gcc/bin/cb_tests.exe
+        run: ./build-gcc/cb_tests.exe

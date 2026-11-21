@@ -459,7 +459,7 @@ void ProcComdat(Link& link)
                 RingAppend( &sdata->u.leader->pieces, sdata );
                 Ring2Append( &link.CurrMod->segs, sdata );
             }
-            sym->info |= (attr & CDAT_SELECT_MASK) << CDAT_SELECT_SHIFT;
+            sym->info = static_cast<sym_info>( sym->info | ( (attr & CDAT_SELECT_MASK) << CDAT_SELECT_SHIFT ) );
             SetComdatSym(link,  sym, sdata );
             info->flags &= ~SYM_DEAD;
         }

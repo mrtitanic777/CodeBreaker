@@ -566,7 +566,8 @@ bool build(const std::string& line, int bits, Insn& ins, std::string& why, bool 
                 Operand first = b.operand(part.substr(0, colon), n, true);
                 first.type |= opf::COLON;
                 b.ins.oprs[static_cast<std::size_t>(n++)] = first;
-                b.ins.oprs[static_cast<std::size_t>(n++)] = b.operand(part.substr(colon + 1), n, true);
+                const Operand second = b.operand(part.substr(colon + 1), n, true);   // (read n before the line below moves it)
+                b.ins.oprs[static_cast<std::size_t>(n++)] = second;
                 continue;
             }
             if (n >= MAX_OPERANDS) { why = "too many operands"; return false; }
