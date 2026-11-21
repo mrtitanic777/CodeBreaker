@@ -15,6 +15,7 @@
 #include "decompile/c_text_dos.hpp"
 #include "decompile/decompiler.hpp"
 #include "decompile/decompiler_internal.hpp"
+#include "decompile/pe_split.hpp"
 #include "decompile/m6502.hpp"
 #include "formats/detect.hpp"
 #include "formats/dos.hpp"
@@ -590,6 +591,7 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
     std::size_t library = 0;
     bool dos = false;   // a real-mode program: its C made compilable as a whole (c_text_dos)
     c_text_dos::Layout dos_layout;   // and its source files, where it names them
+    OrderedMap<std::uint64_t, std::string> pe_places;   // a 32-bit x86 module: each function's address (pe_split)
     const std::string stem = text::lower(fs::to_text(module.filename()));
     std::optional<formats::detect::Lane> kind;
     const bool nes = formats::nes::probe(module);
@@ -610,6 +612,7 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         order = made.order();
         header = made.header();
         total = made.by_va().size();
+        pe_places = made.by_va();
     } else if (kind == Lane::Pe) {   // PowerPC: as the decompiler gives it
         const std::uint16_t machine = formats::pe::Image::open(module).header().machine;
         const std::vector<Va> starts =
@@ -693,6 +696,20 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         c_text_dos::Result r = c_text_dos::compilable(text, c_text::header16(), dos_layout);
         text = std::move(r.text);
         files = std::move(r.files);
+    } else if (!pe_places.empty()) {   // a 32-bit program as its source files, where every function has its place
+        std::vector<std::tuple<pe_split::Va, std::string, std::string>> named;
+        for (const auto& [va, name] : pe_places)
+            if (const std::string* body = texts.find(name); body != nullptr) named.emplace_back(static_cast<pe_split::Va>(va), name, *body);
+        const auto written = static_cast<std::size_t>(std::count_if(order.begin(), order.end(), [&](const std::string& n) { return texts.find(n) != nullptr; }));
+        if (named.size() == written) {
+            const formats::pe_functions::PeCarve carve = formats::pe_functions::PeCarve::open(module);
+            const std::vector<pe_split::Function> functions = pe_split::functions_of(carve, named);
+            const std::string base = stem.substr(0, stem.rfind('.'));
+            std::set<pe_split::Va> runtime;
+            for (const Va va : context_.environment->runtime_functions(module)) runtime.insert(static_cast<pe_split::Va>(va));
+            const pe_split::Split split = pe_split::plan(functions, pe_split::codeview_modules(carve.image()), runtime, base);
+            files = pe_split::source_files(base, "/* " + fs::to_text(module.filename()) + " -- decompiled by CodeBreaker; not built, not judged. */\n\n" + header + "\n", split, functions);
+        }
     }
     return {std::move(text), std::move(files), order.size(), total, library};
 }

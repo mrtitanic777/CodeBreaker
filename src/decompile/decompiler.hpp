@@ -143,6 +143,8 @@ public:
     }
     // The names a person (or an assistant, accepted) gave a program's functions: {linear address: name}. A real-mode program's
     // functions are named so where nothing else names them (its library's names come first). None by default.
+    // The functions of a 32-bit module that signatures say are the compiler's library.
+    virtual std::set<Va> runtime_functions(const std::filesystem::path&) { return {}; }
     virtual std::map<Va, std::string> program_names(const std::filesystem::path& module) {
         (void)module;
         return {};
@@ -238,7 +240,7 @@ struct DosProgramC {
 // An executable as the text of one .c file: the functions decompiled, and the functions found.
 struct AsC {
     std::string text;
-    std::vector<std::pair<std::string, std::string>> files;   // a DOS program as its source files (c_text_dos::Result::files)
+    std::vector<std::pair<std::string, std::string>> files;   // a program as its source files (c_text_dos, pe_split)
     std::size_t decompiled = 0;
     std::size_t found = 0;
     std::size_t library = 0;   // of `found`: identified as the compiler's library and left out of the text

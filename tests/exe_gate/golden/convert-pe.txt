@@ -8,11 +8,19 @@ exit: 0
  46%  Decompiling
  91%  Decompiling: 39 of 39 functions
  91%  Writing the source
- 95%  Writing the source: lz32.c
- 99%  Writing the source: lz32.dll.asm
+ 92%  Writing the source: SOURCE_FILES.txt
+ 94%  Writing the source: lz32.dll.asm
+ 95%  Writing the source: lz32.h
+ 97%  Writing the source: lz32_part01.c
+ 98%  Writing the source: lz32_part02.c
+ 99%  Writing the source: lz32_runtime.c
 100%  Done
-2 files written to <work>/out/lz32
+6 files written to <work>/out/lz32
 --- files
-lz32/lz32.c 18451 3028be1f2548453e5e981d89e3108a4fddea89934b4965978f04e3178528b57b
+lz32/SOURCE_FILES.txt 463 c038a87aeddf9dc47a8408ae8f00a55cab852c1ad1a8c8b5c22a2d64aa2c4fbe
 lz32/lz32.dll.asm 41544 6b75d74744c33212775e120e85c0c37f3b3d62922578af5c575471e09ca84fa8
+lz32/lz32.h 11367 1cbffbf732f3e6bfd8694907e8809bc9b1781c00d036143b0f85e4bfe5bc2058
+lz32/lz32_part01.c 596 9e0c720934d7ef0ebcdd0dc2641f6b001e0694b48ec913a53d34c0c5f91c260d
+lz32/lz32_part02.c 3280 a6c8866769c9e4ab12c97a93baed0d4a1cd82fcd74d20cecd67a819e773dd78e
+lz32/lz32_runtime.c 3591 487fa96a3613b4dddefc7ed9dcb3afc842205474ecc2d85e6881168dc3f80f61
 --- stderr (not compared)
