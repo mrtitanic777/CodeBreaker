@@ -30,6 +30,7 @@ struct UcLib {
     decltype(&uc_reg_write) reg_write = nullptr;
     decltype(&uc_mem_read) mem_read = nullptr;
     decltype(&uc_mem_write) mem_write = nullptr;
+    decltype(&uc_ctl) ctl = nullptr;
     decltype(&uc_mem_map) mem_map = nullptr;
     decltype(&uc_mem_map_ptr) mem_map_ptr = nullptr;
     decltype(&uc_emu_start) emu_start = nullptr;

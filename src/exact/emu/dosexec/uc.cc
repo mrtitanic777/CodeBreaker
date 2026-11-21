@@ -27,6 +27,7 @@ bool load_unicorn(const wchar_t *dll, char *err, size_t errlen) {
     return get(u, "uc_open", UC.open, err, errlen) && get(u, "uc_close", UC.close, err, errlen) &&
            get(u, "uc_reg_read", UC.reg_read, err, errlen) && get(u, "uc_reg_write", UC.reg_write, err, errlen) &&
            get(u, "uc_mem_read", UC.mem_read, err, errlen) && get(u, "uc_mem_write", UC.mem_write, err, errlen) &&
+           get(u, "uc_ctl", UC.ctl, err, errlen) &&
            get(u, "uc_mem_map", UC.mem_map, err, errlen) && get(u, "uc_mem_map_ptr", UC.mem_map_ptr, err, errlen) &&
            get(u, "uc_emu_start", UC.emu_start, err, errlen) && get(u, "uc_emu_stop", UC.emu_stop, err, errlen) &&
            get(u, "uc_hook_add", UC.hook_add, err, errlen) && get(u, "uc_strerror", UC.strerror, err, errlen);

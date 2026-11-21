@@ -561,7 +561,10 @@ void Run::int21() {
         } else if (it != files.end() && it->second.f) {
             data = it->second.f->read(int64_t(cx));
         }
-        wr(lin(ds, dx), data);
+        const uint64_t into = lin(ds, dx);
+        wr(into, data);
+        // What a read brings in may be code (an overlay over the one that ran there): the translation of the old code must go.
+        if (!data.empty()) UC.ctl(uc, UC_CTL_WRITE(UC_CTL_TB_REMOVE_CACHE, 2), into, into + data.size());
         carry(false, data.size());
         return;
     }
