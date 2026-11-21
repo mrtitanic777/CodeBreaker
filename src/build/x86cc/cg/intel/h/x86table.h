@@ -32,5 +32,5 @@
 
 
 extern const opcode_entry   *GetMoveNoCCEntry( void );
-extern bool                 IsString( const opcode_entry *e );
+extern bool_                 IsString( const opcode_entry *e );
 extern const opcode_entry   *GetString( void );

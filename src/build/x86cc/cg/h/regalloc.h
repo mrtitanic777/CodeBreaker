@@ -31,9 +31,9 @@
 
 extern void             NullConflicts( var_usage off );
 extern bool_maybe       CheckIndecies( instruction *ins, hw_reg_set reg, hw_reg_set except, name *op );
-extern bool             AssignARegister( conflict_node *conf, hw_reg_set reg );
+extern bool_             AssignARegister( conflict_node *conf, hw_reg_set reg );
 extern conflict_node    *InMemory( conflict_node *conf );
-extern conflict_node    *GiveRegister( conflict_node *conf, bool needs_one );
+extern conflict_node    *GiveRegister( conflict_node *conf, bool_ needs_one );
 extern void             ReConstFold( void );
-extern bool             RegAlloc( bool keep_on_truckin );
-extern bool             IsUncacheableMemory( name *opnd );
+extern bool_             RegAlloc( bool_ keep_on_truckin );
+extern bool_             IsUncacheableMemory( name *opnd );

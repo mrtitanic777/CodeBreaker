@@ -73,8 +73,8 @@ typedef enum {
 #define SET_PROC( r, v, m ) \
     { \
         proc_revision   new_rev; \
-        new_rev = (v); \
-        (r) &= ~(m); \
+        new_rev = static_cast<proc_revision>(v); \
+        (r) &= static_cast<proc_revision>(~(m)); \
         (r) |= new_rev; \
     }
 #define SET_CPU( r, v ) SET_PROC( r, v, CPU_MASK );

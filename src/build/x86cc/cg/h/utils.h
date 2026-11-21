@@ -52,7 +52,7 @@ extern void *Fill( void _CGESPTR *dst, size_t len, int byte );
     __parm __routine    [_CGESREG __edi] [__ecx] [__al] \
     __value             [__edi]
 
-extern bool     Equal( const void *s1, const void _CGESPTR *s2, size_t len );
+extern bool_     Equal( const void *s1, const void _CGESPTR *s2, size_t len );
 #pragma aux Equal = \
         "xor    eax,eax" \
         "repe cmpsb" \

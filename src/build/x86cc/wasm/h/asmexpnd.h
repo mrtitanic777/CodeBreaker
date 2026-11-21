@@ -33,16 +33,16 @@
 
 #if defined( _STANDALONE_ )
 
-extern bool ExpandAllConsts( token_buffer *tokbuf, token_idx start_pos, bool early_only );
-extern bool ExpandProcString( token_buffer *tokbuf, token_idx index, bool *expanded );
-extern bool ExpandSymbol( token_buffer *tokbuf, token_idx i, bool early_only, bool *expanded );
-extern bool DefineConstant( token_buffer *tokbuf, token_idx i, bool redefine, bool expand_early );
-extern bool StoreConstant( const char *name, const char *value, bool redefine );
-extern bool StoreConstantNumber( const char *name, long value, bool redefine );
+extern bool_ ExpandAllConsts( token_buffer *tokbuf, token_idx start_pos, bool_ early_only );
+extern bool_ ExpandProcString( token_buffer *tokbuf, token_idx index, bool_ *expanded );
+extern bool_ ExpandSymbol( token_buffer *tokbuf, token_idx i, bool_ early_only, bool_ *expanded );
+extern bool_ DefineConstant( token_buffer *tokbuf, token_idx i, bool_ redefine, bool_ expand_early );
+extern bool_ StoreConstant( const char *name, const char *value, bool_ redefine );
+extern bool_ StoreConstantNumber( const char *name, long value, bool_ redefine );
 extern void MakeConstantUnderscored( const char * );
 
-extern bool ExpandTheConstant( token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg );
+extern bool_ ExpandTheConstant( token_buffer *tokbuf, token_idx start_pos, bool_ early_only, bool_ flag_msg );
 
 #endif
 
-extern bool ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg );
+extern bool_ ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool_ early_only, bool_ flag_msg );

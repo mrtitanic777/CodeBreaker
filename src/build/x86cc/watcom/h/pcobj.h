@@ -250,7 +250,7 @@ typedef struct omf_name {
 
 typedef struct omf_coment {
     uint_8      type;
-    uint_8      class;
+    uint_8      class_;
 } omf_coment;
 
 /*

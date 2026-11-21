@@ -32,10 +32,10 @@
 #ifndef _ASMSTRUC_H_INCLUDED
 #define _ASMSTRUC_H_INCLUDED
 
-extern bool             StructDef( token_buffer *tokbuf, token_idx );
+extern bool_             StructDef( token_buffer *tokbuf, token_idx );
 extern int              AddFieldToStruct( asm_sym_handle sym, token_buffer *tokbuf, token_idx );
 extern int              GetStructSize( asm_sym_handle sym );
-extern bool             InitializeStructure( asm_sym_handle sym1, asm_sym_handle sym2, token_buffer *tokbuf, token_idx );
+extern bool_             InitializeStructure( asm_sym_handle sym1, asm_sym_handle sym2, token_buffer *tokbuf, token_idx );
 extern asm_sym_handle   FindStructureMember( asm_sym_handle symbol , const char *name );
 
 #endif

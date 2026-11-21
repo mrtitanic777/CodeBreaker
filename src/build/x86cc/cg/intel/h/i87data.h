@@ -35,5 +35,5 @@
 
 extern name            *FPStatWord;
 extern name            *Parm8087[MAX_8087_REG + 1];
-extern bool            Used87;
+extern bool_            Used87;
 extern int             Max87Stk;

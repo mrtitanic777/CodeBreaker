@@ -102,7 +102,7 @@ typedef struct case_entry {
     struct case_entry   *next_case;
     unsigned_64         value;
     LABEL_INDEX         label;
-    bool                gen_label;
+    bool_                gen_label;
 } CASEDEFN, *CASEPTR;
 
 typedef struct  switch_entry {
@@ -133,6 +133,11 @@ typedef short           tryindex_t;
 
 struct expr_node;
 
+struct func_info {              // OPR_FUNCEND, OPR_RETURN
+    SYM_HANDLE      sym_handle; // OPR_FUNCTION
+    func_flags      flags;
+};
+
 typedef struct  opnode {
     opr_code            opr;            // see opr_code above
     op_flags            flags;
@@ -159,10 +164,7 @@ typedef struct  opnode {
         void            *label_list;    // OPR_AND_AND, OPR_OR_OR
         SWITCHPTR       switch_info;    // OPR_SWITCH
         CASEPTR         case_info;      // OPR_CASE
-        struct func_info {              // OPR_FUNCEND, OPR_RETURN
-            SYM_HANDLE      sym_handle; // OPR_FUNCTION
-            func_flags      flags;
-        } func;
+        struct func_info func;
         struct { /* try_info */
             union {
                 SYM_HANDLE      try_sym_handle; // OPR_EXCEPT, OPR_FINALLY
@@ -185,8 +187,8 @@ typedef struct expr_node {
         TREEPTR         thread;         // used during pass 2 full codegen
     } u;
     OPNODE              op;
-    bool                visit;
-    bool                checked;            // opnd values have been checked
+    bool_                visit;
+    bool_                checked;            // opnd values have been checked
 } EXPRNODE;
 
 typedef struct  sym_list_heads {

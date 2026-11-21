@@ -44,6 +44,6 @@ extern  void            ReserveStack( call_state *state, instruction *prev, type
 extern  void            ParmIns( pn parm, call_state *state );
 extern  void            BGZapBase( name *base, const type_def *tipe );
 extern  void            BGReturn( an retval, const type_def *tipe );
-extern  bool            AssgnParms( cn call, bool aux_inline );
+extern  bool_            AssgnParms( cn call, bool_ aux_inline );
 extern  hw_reg_set      CallZap( call_state *state );
 extern  void            UpdateReturn( call_state *, const type_def *, type_class_def, aux_handle );

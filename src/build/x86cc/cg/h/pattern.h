@@ -123,7 +123,7 @@ typedef enum {
 
 #define _None() NONE
 
-#define _OE(t,v,r,g,f) { t, v, g, r, f }
+#define _OE(t,v,r,g,f) { static_cast<operand_types>( t ), v, g, r, f }
 
 typedef struct opcode_entry {
         operand_types           op_type;

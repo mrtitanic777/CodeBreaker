@@ -32,7 +32,7 @@
 extern  ins_entry       *FirstIns;
 extern  ins_entry       *LastIns;
 extern  ins_entry       *PendingDeletes;
-extern  bool            InsDelete;
+extern  bool_            InsDelete;
 extern  uint            QCount;
 extern  label_handle    Handles;
 extern  ins_entry       *RetList;

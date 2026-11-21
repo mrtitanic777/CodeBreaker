@@ -31,7 +31,7 @@
 
 
 extern void         CnvOpToInt( instruction *, opcnt );
-extern bool         IndexOverlaps( instruction *ins, opcnt i );
+extern bool_         IndexOverlaps( instruction *ins, opcnt i );
 extern name         *OpAdjusted( name *, int, type_class_def );
 extern name         *IntEquivalent( name * );
 extern name         *Int64Equivalent( name * );

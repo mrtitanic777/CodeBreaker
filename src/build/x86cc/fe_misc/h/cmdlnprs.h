@@ -46,55 +46,55 @@ void OPT_CLEAN_NUMBER           // CLEAN UP NUMBERS
 void OPT_CLEAN_STRING           // CLEAN UP STRINGS
     ( OPT_STRING **h )          // - list
 ;
-bool OPT_END( void )            // DETECT END OF CHAIN
+bool_ OPT_END( void )            // DETECT END OF CHAIN
 ;
-bool OPT_GET_ID                 // PARSE: ID
+bool_ OPT_GET_ID                 // PARSE: ID
     ( OPT_STRING **p )          // - target
 ;
-bool OPT_GET_ID_OPT             // PARSE: OPTIONAL ID
+bool_ OPT_GET_ID_OPT             // PARSE: OPTIONAL ID
     ( OPT_STRING **p )          // - target
 ;
 int OPT_GET_LOWER               // GET CHAR IN LOWERCASE
     ( void )
 ;
-bool OPT_GET_NUMBER             // PARSE: #
+bool_ OPT_GET_NUMBER             // PARSE: #
     ( unsigned *p )             // - target
 ;
-bool OPT_GET_NUMBER_DEFAULT(    // PARSE: OPTIONAL # WITH A DEFAULT VALUE
+bool_ OPT_GET_NUMBER_DEFAULT(    // PARSE: OPTIONAL # WITH A DEFAULT VALUE
     unsigned *p,                // - target
     unsigned default_value )    // - default value
 ;
-bool OPT_GET_NUMBER_MULTIPLE    // PARSE: OPTION #
+bool_ OPT_GET_NUMBER_MULTIPLE    // PARSE: OPTION #
     ( OPT_NUMBER **h )          // - target
 ;
-bool OPT_GET_PATH               // PARSE: PATH
+bool_ OPT_GET_PATH               // PARSE: PATH
     ( OPT_STRING **p )          // - target
 ;
-bool OPT_GET_PATH_OPT           // PARSE: OPTIONAL PATH
+bool_ OPT_GET_PATH_OPT           // PARSE: OPTIONAL PATH
     ( OPT_STRING **p )          // - target
 ;
-bool OPT_GET_FILE               // PARSE: FILE
+bool_ OPT_GET_FILE               // PARSE: FILE
     ( OPT_STRING **p )          // - target
 ;
-bool OPT_GET_FILE_OPT           // PARSE: OPTIONAL FILE
+bool_ OPT_GET_FILE_OPT           // PARSE: OPTIONAL FILE
     ( OPT_STRING **p )          // - target
 ;
-bool OPT_GET_CHAR               // PARSE: CHAR
+bool_ OPT_GET_CHAR               // PARSE: CHAR
     ( int *c )                  // - target
 ;
-bool OPT_GET_CHAR_OPT           // PARSE: OPTIONAL CHAR
+bool_ OPT_GET_CHAR_OPT           // PARSE: OPTIONAL CHAR
     ( int *c )                  // - target
 ;
-bool OPT_GET_OPTION             // PARSE: OPTION TEXT
+bool_ OPT_GET_OPTION             // PARSE: OPTION TEXT
     ( OPT_STRING **p )          // - target
 ;
-bool OPT_RECOG                  // RECOGNIZE CHAR
+bool_ OPT_RECOG                  // RECOGNIZE CHAR
     ( int c )                   // - to be recog'ed
 ;
-bool OPT_RERECOG                // RE-RECOGNIZE LAST CHAR
+bool_ OPT_RERECOG                // RE-RECOGNIZE LAST CHAR
     ( int c )                   // - to be recog'ed
 ;
-bool OPT_RECOG_LOWER            // RECOGNIZE LOWERCASE CHAR
+bool_ OPT_RECOG_LOWER            // RECOGNIZE LOWERCASE CHAR
     ( int c )                   // - to be recog'ed
 ;
 void OPT_UNGET                  // UNGET A CHARACTER

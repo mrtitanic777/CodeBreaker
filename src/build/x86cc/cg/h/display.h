@@ -35,7 +35,7 @@
 extern name             *MakeDisplay( name *op, level_depth level );
 extern void             BigGoto( level_depth level );
 extern void             BigLabel( void );
-extern bool             AskIsFrameIndex( name *op );
+extern bool_             AskIsFrameIndex( name *op );
 extern abspatch_handle  *NextFramePatch( void );
 extern void             PatchBigLabels( offset lc );
 extern an               PassProcParm( an rtn );

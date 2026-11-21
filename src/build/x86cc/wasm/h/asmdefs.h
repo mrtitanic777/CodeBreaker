@@ -107,12 +107,12 @@ extern asm_code         *Code;
 extern asm_sym_handle   Frame;
 extern char             Parse_Pass;     // phase of parsing
 extern operand_idx      Opnd_Count;
-extern bool             Modend;         // end of module is reached
-extern bool             Use32;          // if 32-bit code is use
+extern bool_             Modend;         // end of module is reached
+extern bool_             Use32;          // if 32-bit code is use
 
 extern void             AsmByte( unsigned char );
 extern void             SetFinalToken( token_buffer *tokbuf, token_idx i );
-extern bool             AsmScan( token_buffer *tokbuf, const char * );
+extern bool_             AsmScan( token_buffer *tokbuf, const char * );
 extern void             RadixSet( unsigned );
 
 #if defined( _STANDALONE_ )

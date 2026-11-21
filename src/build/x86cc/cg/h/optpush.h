@@ -33,5 +33,5 @@
 
 extern void    RetAftrCall( ins_entry *ret_instr );
 extern void    JmpToRet( ins_entry *instr, ins_entry *ret );
-extern bool    RetAftrLbl( ins_entry *ret );
+extern bool_    RetAftrLbl( ins_entry *ret );
 extern void    MultiLineNums( ins_entry *ins );

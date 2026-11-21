@@ -43,22 +43,22 @@ extern "C" {
 
 // PROTOTYPES
 
-bool CmdRecogLowerChar(         // RECOGNIZE A LOWER CASE CHARACTER
+bool_ CmdRecogLowerChar(         // RECOGNIZE A LOWER CASE CHARACTER
     int recog )                 // - character to be recognized
 ;
-bool CmdRecogChar(              // RECOGNIZE A CHARACTER
+bool_ CmdRecogChar(              // RECOGNIZE A CHARACTER
     int recog )                 // - character to be recognized
 ;
-bool CmdReRecogChar(            // RE-RECOGNIZE LAST CHARACTER
+bool_ CmdReRecogChar(            // RE-RECOGNIZE LAST CHARACTER
     int recog )                 // - character to be recognized
 ;
 size_t CmdScanNumber(           // SCAN A NUMBER
     unsigned *pvalue )          // - addr( return value )
 ;
-bool CmdRecogEquals(            // RECOGNIZE AN '=' or synonym
+bool_ CmdRecogEquals(            // RECOGNIZE AN '=' or synonym
     void )
 ;
-bool CmdPathDelim(              // SKIP EQUALCHAR # or ' ' IN COMMAND LINE
+bool_ CmdPathDelim(              // SKIP EQUALCHAR # or ' ' IN COMMAND LINE
     void )
 ;
 char const *CmdScanAddr(        // RETURN COMMAND-LINE SCAN ADDRESS
@@ -72,7 +72,7 @@ size_t CmdScanQuotedString(     // SCAN A QUOTED STRING
 ;
 size_t CmdScanFilename(         // SCAN A FILE NAME
     char const **option,        // - addr( option pointer )
-    bool *quoted )              // - addr( quoted )
+    bool_ *quoted )              // - addr( quoted )
 ;
 size_t CmdScanId(               // SCAN AN IDENTIFIER
     char const **option )       // - addr( option pointer )
@@ -88,12 +88,12 @@ int CmdPeekChar(                // PEEK AT NEXT CHARACTER, IN LOWER CASE
 ;
 size_t CmdScanOption(           // SCAN AN OPTION
     char const **option,        // - addr( option pointer )
-    bool *quoted )              // - addr( quoted )
+    bool_ *quoted )              // - addr( quoted )
 ;
-bool CmdScanBufferEnd(          // TEST IF END OF BUFFER
+bool_ CmdScanBufferEnd(          // TEST IF END OF BUFFER
     void )
 ;
-bool CmdScanSwEnd(              // TEST IF END OF SWITCH
+bool_ CmdScanSwEnd(              // TEST IF END OF SWITCH
     void )
 ;
 void CmdScanSwitchBackup(       // BACK UP SCANNER TO START OF SWITCH
@@ -108,7 +108,7 @@ char const *CmdScanUngetChar(   // UNGET THE LAST CMD SCAN CHARACTER
 void CmdScanSkipWhiteSpace(     // SKIP OVER WHITE SPACES
     void )
 ;
-bool CmdScanSwitchChar(         // TEST IF SWITCH CHAR
+bool_ CmdScanSwitchChar(         // TEST IF SWITCH CHAR
     int )
 ;
 

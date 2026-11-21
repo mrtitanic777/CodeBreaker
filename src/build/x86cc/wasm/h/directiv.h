@@ -188,7 +188,7 @@ typedef struct label_list {
     asm_sym_handle      sym;            // structure definition or local label symbol
     int                 size;           // size of parameter
     int                 factor;         // for local var only
-    bool                is_register;    // for arguments only
+    bool_                is_register;    // for arguments only
     union {
         boolbit         is_vararg   :1; // if it is a vararg
         token_idx       count;          // number of element in this label
@@ -214,14 +214,14 @@ typedef struct {
     memtype             mem_type;       // distance of procedure: near or far
     boolbit             is_vararg   :1; // if it has a vararg
     boolbit             pe_type     :1; // prolog/epilog code type 0:8086/186 1:286 and above
-    boolbit             export      :1; // EXPORT procedure
+    boolbit             export_      :1; // EXPORT procedure
 } proc_info;
 
 typedef struct parm_list {
     struct parm_list    *next;
     char                *label;         // name of parameter
     char                *replace;       // string that replaces the label
-    bool                required;       // is parm required ( T/F )
+    bool_                required;       // is parm required ( T/F )
     char                *def;           // is there a default parm?
     char                delim;          // opening '\''/'"' delimiter of a single quoted string arg, 0 otherwise
 } parm_list;
@@ -262,7 +262,7 @@ typedef struct {
     }                   labels;     // list of local labels
     asmlines            lines;      // the guts of the macro - LL of strings
     const FNAME         *srcfile;
-    bool                hidden;     // if true don't print error messages
+    bool_                hidden;     // if true don't print error messages
 } macro_info;
 
 typedef struct {
@@ -344,14 +344,14 @@ typedef struct {
     mod_type            model;          // memory model;
 #if defined( _STANDALONE_ )
     lang_type           langtype;       // language;
-    bool                model_cmdline;
-    bool                def_use32;      // default segment size 32-bit
-    bool                def_use32_init; // default segment size from cmdline
+    bool_                model_cmdline;
+    bool_                def_use32;      // default segment size 32-bit
+    bool_                def_use32_init; // default segment size from cmdline
     asm_cpu             cpu_init;
 #endif
     os_type             ostype;         // operating system;
-    bool                use32;          // If 32-bit segment is used
-    bool                mseg;           // mixed segments (16/32-bit)
+    bool_                use32;          // If 32-bit segment is used
+    bool_                mseg;           // mixed segments (16/32-bit)
     asm_sym_handle      flat_grp;       // FLAT group symbol
     const FNAME         *srcfile;
 } module_info;                          // Information about the module
@@ -381,52 +381,52 @@ extern uint_32          GetCurrAddr( void );    // Get offset from current segme
 extern dir_node_handle  GetCurrSeg( void );
 /* Get current segment; NULL means none */
 
-extern bool             ExtDef( token_buffer *tokbuf, token_idx, bool );    // define an global or external symbol
-extern bool             CommDef( token_buffer *tokbuf, token_idx );         // define an communal symbol
-extern bool             PubDef( token_buffer *tokbuf, token_idx );          // define a public symbol
-extern bool             GrpDef( token_buffer *tokbuf, token_idx );          // define a group
-extern bool             SegDef( token_buffer *tokbuf, token_idx );          // open or close a segment
-extern bool             SetCurrSeg( token_buffer *tokbuf, token_idx );      // open or close a segment in
+extern bool_             ExtDef( token_buffer *tokbuf, token_idx, bool_ );    // define an global or external symbol
+extern bool_             CommDef( token_buffer *tokbuf, token_idx );         // define an communal symbol
+extern bool_             PubDef( token_buffer *tokbuf, token_idx );          // define a public symbol
+extern bool_             GrpDef( token_buffer *tokbuf, token_idx );          // define a group
+extern bool_             SegDef( token_buffer *tokbuf, token_idx );          // open or close a segment
+extern bool_             SetCurrSeg( token_buffer *tokbuf, token_idx );      // open or close a segment in
                                                 // the second pass
-extern bool             ProcDef( token_buffer *tokbuf, token_idx, bool );   // define a procedure
-extern bool             ProcEnd( token_buffer *tokbuf, token_idx );         // end a procedure
-extern bool             LocalDef( token_buffer *tokbuf, token_idx );        // define local variables to procedure
-extern bool             ArgDef( token_buffer *tokbuf, token_idx );          // define arguments in procedure
-extern bool             UsesDef( token_buffer *tokbuf, token_idx );         // define used registers in procedure
-extern bool             EnumDef( token_buffer *tokbuf, token_idx );         // handles enumerated values
-extern bool             Ret( token_buffer *tokbuf, token_idx, bool );       // emit return statement from procedure
-extern bool             WritePrologue( const char * ); // emit prologue statement after the
+extern bool_             ProcDef( token_buffer *tokbuf, token_idx, bool_ );   // define a procedure
+extern bool_             ProcEnd( token_buffer *tokbuf, token_idx );         // end a procedure
+extern bool_             LocalDef( token_buffer *tokbuf, token_idx );        // define local variables to procedure
+extern bool_             ArgDef( token_buffer *tokbuf, token_idx );          // define arguments in procedure
+extern bool_             UsesDef( token_buffer *tokbuf, token_idx );         // define used registers in procedure
+extern bool_             EnumDef( token_buffer *tokbuf, token_idx );         // handles enumerated values
+extern bool_             Ret( token_buffer *tokbuf, token_idx, bool_ );       // emit return statement from procedure
+extern bool_             WritePrologue( const char * ); // emit prologue statement after the
                                                 // declaration of a procedure
-extern bool             GetQueueMacroHidden( void );
-extern bool             MacroDef( token_buffer *tokbuf, token_idx, bool );  // define a macro
-extern bool             MacroEnd( bool );       // end a macro
-extern bool             Startup( token_buffer *tokbuf, token_idx );         // handle .startup & .exit
-extern bool             SimSeg( token_buffer *tokbuf, token_idx );          // handle simplified segment
-extern bool             Include( token_buffer *tokbuf, token_idx );         // handle an INCLUDE statement
-extern bool             IncludeLib( token_buffer *tokbuf, token_idx );      // handle an INCLUDELIB statement
-extern bool             Model( token_buffer *tokbuf, token_idx );           // handle .MODEL statement
+extern bool_             GetQueueMacroHidden( void );
+extern bool_             MacroDef( token_buffer *tokbuf, token_idx, bool_ );  // define a macro
+extern bool_             MacroEnd( bool_ );       // end a macro
+extern bool_             Startup( token_buffer *tokbuf, token_idx );         // handle .startup & .exit
+extern bool_             SimSeg( token_buffer *tokbuf, token_idx );          // handle simplified segment
+extern bool_             Include( token_buffer *tokbuf, token_idx );         // handle an INCLUDE statement
+extern bool_             IncludeLib( token_buffer *tokbuf, token_idx );      // handle an INCLUDELIB statement
+extern bool_             Model( token_buffer *tokbuf, token_idx );           // handle .MODEL statement
 
-extern bool             CheckForLang( token_buffer *tokbuf, token_idx, lang_type *langtype );
+extern bool_             CheckForLang( token_buffer *tokbuf, token_idx, lang_type *langtype );
 
 /* Init/fini the information about the module, which are contained in ModuleInfo */
 extern void             ModuleInit( void );
 extern void             ModuleFini( void );
 
-extern bool             ModuleEnd( token_buffer *tokbuf );                  // handle END statement
+extern bool_             ModuleEnd( token_buffer *tokbuf );                  // handle END statement
 
-extern bool             Locals( token_buffer *tokbuf, token_idx );          // handle [NO]LOCALS statement
+extern bool_             Locals( token_buffer *tokbuf, token_idx );          // handle [NO]LOCALS statement
 
-extern bool             Radix( token_buffer *tokbuf, token_idx );
+extern bool_             Radix( token_buffer *tokbuf, token_idx );
 
-extern bool             ChangeCurrentLocation( bool relative, int_32 value, bool select_data );
-extern bool             OrgDirective( token_buffer *tokbuf, token_idx i );
-extern bool             AlignDirective( asm_token directive, token_buffer *tokbuf, token_idx i );
-extern bool             ForDirective( token_buffer *tokbuf, token_idx, irp_type );
+extern bool_             ChangeCurrentLocation( bool_ relative, int_32 value, bool_ select_data );
+extern bool_             OrgDirective( token_buffer *tokbuf, token_idx i );
+extern bool_             AlignDirective( asm_token directive, token_buffer *tokbuf, token_idx i );
+extern bool_             ForDirective( token_buffer *tokbuf, token_idx, irp_type );
 
 extern void             DefFlatGroup( void );
-extern bool             SymIs32( asm_sym_handle sym );
+extern bool_             SymIs32( asm_sym_handle sym );
 
-extern bool             directive( token_buffer *tokbuf, token_idx, asm_token );
+extern bool_             directive( token_buffer *tokbuf, token_idx, asm_token );
 
 extern void             ProcStackInit( void );
 extern void             ProcStackFini( void );
@@ -441,7 +441,7 @@ extern uint_32          GetCurrSegStart(void);
 extern asm_sym_handle   GetGrp( asm_sym_handle sym );
 
 extern void             AssumeInit( void );     // init all assumed-register table
-extern bool             SetAssume( token_buffer *tokbuf, token_idx );       // Assume a register
+extern bool_             SetAssume( token_buffer *tokbuf, token_idx );       // Assume a register
 
 extern assume_reg       GetAssume( asm_sym_handle sym, assume_reg );
 /* Return the assumed register of the symbol, and determine the frame and
@@ -450,21 +450,21 @@ extern assume_reg       GetAssume( asm_sym_handle sym, assume_reg );
 extern assume_reg       GetPrefixAssume( asm_sym_handle sym, assume_reg );
 /* Determine the frame and frame_datum of a symbol with a register prefix */
 
-extern bool             FixOverride( token_buffer *tokbuf, token_idx );
+extern bool_             FixOverride( token_buffer *tokbuf, token_idx );
 /* Get the correct frame and frame_datum for a label when there is a segment
    or group override. */
 
 extern void             GetSymInfo( asm_sym_handle sym );
 /* Store location information about a symbol */
-extern bool             NameDirective( token_buffer *tokbuf, token_idx );
+extern bool_             NameDirective( token_buffer *tokbuf, token_idx );
 
-extern bool             Comment( int, token_buffer *tokbuf, token_idx, const char * ); /* handle COMMENT directives */
+extern bool_             Comment( int, token_buffer *tokbuf, token_idx, const char * ); /* handle COMMENT directives */
 
-extern bool             AddAlias( token_buffer *tokbuf, token_idx );
+extern bool_             AddAlias( token_buffer *tokbuf, token_idx );
 extern void             push( void *stack, void *elt );
 extern void             *pop( void *stack );
 extern uint_32          GetCurrSegAlign( void );
-extern bool             SetUse32Def( bool );
+extern bool_             SetUse32Def( bool_ );
 
 #if defined( DEBUG_OUT )
 extern void             heap( char *func ); // for debugging only
@@ -476,12 +476,12 @@ extern void             heap( char *func ); // for debugging only
 
 extern dir_node_handle  CurrProc;      // current procedure
 extern unsigned long    LineNumber;
-extern bool             PhaseError;
-extern bool             write_to_file;
+extern bool_             PhaseError;
+extern bool_             write_to_file;
 
 extern void             FlushCurrSeg( void );
 extern const FNAME      *AddFlist( char const *filename );
-extern void             OutSelect( bool );
+extern void             OutSelect( bool_ );
 extern void             WriteObjModule( void );
 extern const char       *GetModuleName( void );
 extern void             ConvertModuleName( char *module_name );

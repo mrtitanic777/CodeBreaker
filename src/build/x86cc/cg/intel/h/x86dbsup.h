@@ -39,7 +39,7 @@ extern  void    BuffByte( byte b );
 extern  void    BuffWord( uint w );
 extern  void    BuffDWord( uint_32 w );
 extern  void    BuffOffset( offset w );
-extern  void    BuffValue( uint_32 val, uint class );
+extern  void    BuffValue( uint_32 val, uint class_ );
 extern  void    BuffRelocatable( pointer ptr, fixup_kind type, offset off );
 extern  void    BuffBack( pointer back, int off );
 extern  void    BuffAddr( pointer sym );

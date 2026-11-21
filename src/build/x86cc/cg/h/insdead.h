@@ -29,8 +29,8 @@
 ****************************************************************************/
 
 
-extern bool     VolatileIns(instruction *ins);
-extern bool     SideEffect(instruction* ins);
-extern bool     InsDead( void );
-extern bool     RegInsDead( void );
-extern bool     LoopInsDead( void );
+extern bool_     VolatileIns(instruction *ins);
+extern bool_     SideEffect(instruction* ins);
+extern bool_     InsDead( void );
+extern bool_     RegInsDead( void );
+extern bool_     LoopInsDead( void );

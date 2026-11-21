@@ -74,14 +74,14 @@ typedef struct address_name {
     an_formats              format;
     struct address_name     *link;
     const struct type_def   *tipe;
-    addr_class              class;
+    addr_class              class_;
     addr_flags              flags;
     union {
         struct {
             name            *base;
             type_length     alignment;
             name            *name;
-            name            *index;
+            union name      *index;
             type_length     offset;
         } n;
         struct {

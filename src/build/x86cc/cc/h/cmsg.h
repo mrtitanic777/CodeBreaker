@@ -43,6 +43,6 @@ typedef struct {
     unsigned    line;
     unsigned    column;
     char const  *fname;
-    cmsg_class  class;
+    cmsg_class  class_;
     char        msgtxt[MAX_MSG_LEN];    //actual message text
 } cmsg_info;

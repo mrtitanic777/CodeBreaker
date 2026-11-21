@@ -43,9 +43,9 @@ extern void     __GetNTCreateAttr( unsigned dos_attrib, LPDWORD desired_access, 
 extern void     __GetNTAccessAttr( unsigned rwmode, LPDWORD desired_access, LPDWORD nt_attrib );
 extern void     __GetNTShareAttr( unsigned share, LPDWORD share_mode );
 
-extern bool     __NTFindNextFileWithAttrA( HANDLE h, unsigned nt_attribs, LPWIN32_FIND_DATAA ffd );
+extern bool_     __NTFindNextFileWithAttrA( HANDLE h, unsigned nt_attribs, LPWIN32_FIND_DATAA ffd );
 #ifdef __WATCOMC__
-extern bool     __NTFindNextFileWithAttrW( HANDLE h, unsigned nt_attribs, LPWIN32_FIND_DATAW ffd );
+extern bool_     __NTFindNextFileWithAttrW( HANDLE h, unsigned nt_attribs, LPWIN32_FIND_DATAW ffd );
 #endif
 
 #ifdef __WIDECHAR__

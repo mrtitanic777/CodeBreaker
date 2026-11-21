@@ -59,7 +59,7 @@ typedef union {
 
 typedef struct coment_info {
     uint_8  attr;           /* attribute field from coment record       */
-    uint_8  class;          /* class field from coment record           */
+    uint_8  class_;          /* class field from coment record           */
 } coment_info;
 /*
     A COMENT record is created by filling in the above fields, and attaching
