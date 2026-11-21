@@ -160,11 +160,26 @@ std::uint8_t* Bus::place(std::uint32_t a, std::size_t& room) {
     }
 }
 
+bool Bus::copy_block(std::uint32_t address, std::uint8_t* out, std::size_t size) {
+    if (!paged()) return false;
+    for (const Range& range : ranges_)
+        if (address <= range.hi && address + size - 1 >= range.lo) return false;
+    if (!mapped(address) || !mapped(address + static_cast<std::uint32_t>(size) - 1)) return false;
+    paged_.read_block(address, out, size);
+    return true;
+}
+
 const std::uint8_t* Bus::plain_block(std::uint32_t address, std::size_t size) {
-    if (system_ != System::Gba || big_endian_) return nullptr;
+    if (big_endian_ || paged()) return nullptr;
     for (const Range& range : ranges_)
         if (address <= range.hi && address + size - 1 >= range.lo) return nullptr;
     const std::uint32_t region = address >> 24;
+    if (system_ != System::Gba) {   // the DS: its memories (not the registers, whose reads are logged)
+        if (region == 0x04) return nullptr;
+        std::size_t room = 0;
+        const std::uint8_t* from = place(address, room);
+        return from && size <= room ? from : nullptr;
+    }
     if (region >= 0x08 && region <= 0x0D) {
         const std::size_t offset = address & 0x1FFFFFF;
         return offset + size <= rom_.size() ? rom_.data() + offset : nullptr;
@@ -760,8 +775,68 @@ std::optional<Fault> Cpu::execute_ext(const da::Insn& i, std::uint32_t at) {
             r[rn16] = static_cast<std::uint32_t>(total);
             return std::nullopt;
         }
-        default: return execute_vfp(i, at);
+        case ex::Sem::Sel: {   // each byte from Rn where its GE flag is set, from Rm where not
+            std::uint32_t v = 0;
+            for (unsigned k = 0; k < 4; ++k) v |= ((cpsr >> (16 + k) & 1 ? r[rn16] : r[rm0]) & (0xFFu << (8 * k)));
+            r[rd12] = v;
+            return std::nullopt;
+        }
+        default:
+            if (const std::optional<Fault> fault = execute_parallel(i, rd12, rn16, rm0)) return execute_vfp(i, at);
+            return std::nullopt;
     }
+}
+
+// The parallel add and subtract of ARMv6 (SADD16, UQSUB8, SHASX ...): the two halfwords or four bytes of Rn and Rm taken apart, added or subtracted, and put together.
+// The plain signed and unsigned forms set the GE flags (CPSR bits 19:16) from each lane; the saturating (Q, UQ) and halving (SH, UH) forms do not. A fault: the row is
+// not one of them.
+std::optional<Fault> Cpu::execute_parallel(const da::Insn& i, unsigned rd, unsigned rn, unsigned rm) {
+    namespace ex = da::ext;
+    std::string_view name = ex::mnemonic(i.ext);
+    enum class Kind { Plain, Saturate, Halve };
+    bool is_signed = false;
+    Kind kind = Kind::Plain;
+    const auto take = [&](std::string_view prefix, bool signed_form, Kind form) {
+        if (!name.starts_with(prefix)) return false;
+        is_signed = signed_form;
+        kind = form;
+        name.remove_prefix(prefix.size());
+        return true;
+    };
+    if (!(take("sh", true, Kind::Halve) || take("uh", false, Kind::Halve) || take("uq", false, Kind::Saturate) || take("s", true, Kind::Plain) ||
+          take("q", true, Kind::Saturate) || take("u", false, Kind::Plain)))
+        return Fault{Fault::Kind::NotRun, 0, 0, {}, 0};
+    const bool bytes = name == "add8" || name == "sub8";
+    const bool halves = name == "add16" || name == "sub16" || name == "asx" || name == "sax";
+    if (!bytes && !halves) return Fault{Fault::Kind::NotRun, 0, 0, {}, 0};
+    const unsigned width = bytes ? 8 : 16, lanes = bytes ? 4 : 2;
+    std::uint32_t result = 0, ge = 0;
+    for (unsigned lane = 0; lane < lanes; ++lane) {
+        // the lane of Rn, and the lane of Rm it meets (exchanged for ASX and SAX), and whether this lane adds
+        const unsigned from_m = (name == "asx" || name == "sax") ? lanes - 1 - lane : lane;
+        const bool add = name == "add16" || name == "add8" || (name == "asx" && lane == 1) || (name == "sax" && lane == 0);
+        const std::uint32_t mask = (1u << width) - 1;
+        const std::uint32_t a_raw = r[rn] >> (width * lane) & mask, b_raw = r[rm] >> (width * from_m) & mask;
+        const auto widen = [&](std::uint32_t v) -> std::int64_t {
+            return is_signed && (v >> (width - 1) & 1) ? static_cast<std::int64_t>(v) - (std::int64_t{1} << width) : static_cast<std::int64_t>(v);
+        };
+        std::int64_t value = add ? widen(a_raw) + widen(b_raw) : widen(a_raw) - widen(b_raw);
+        if (kind == Kind::Plain) {
+            const bool flag = is_signed ? value >= 0 : (add ? value >= (std::int64_t{1} << width) : value >= 0);
+            for (unsigned k = 0; k < width / 8; ++k)
+                if (flag) ge |= 1u << (lane * (width / 8) + k);
+        } else if (kind == Kind::Saturate) {
+            const std::int64_t high = is_signed ? (std::int64_t{1} << (width - 1)) - 1 : (std::int64_t{1} << width) - 1;
+            const std::int64_t low = is_signed ? -(std::int64_t{1} << (width - 1)) : 0;
+            value = value > high ? high : value < low ? low : value;
+        } else {
+            value >>= 1;   // (arithmetic for the signed form)
+        }
+        result |= (static_cast<std::uint32_t>(value) & mask) << (width * lane);
+    }
+    if (kind == Kind::Plain) cpsr = (cpsr & ~0x000F0000u) | ge << 16;
+    r[rd] = result;
+    return std::nullopt;
 }
 
 // The VFP rows that move data and do the single- and double-precision arithmetic on the host floats (rounding mode and exception flags are not modelled).
@@ -786,6 +861,9 @@ std::optional<Fault> Cpu::execute_vfp(const da::Insn& i, std::uint32_t at) {
     const std::string_view base_name = name.substr(0, name.find('.'));
     const auto word_address = [&](std::uint32_t reg) { return reg == 15 ? (r[15] + (i.thumb() ? 4u : 8u)) & ~3u : r[reg]; };
     const auto bad = [&](std::uint32_t address) { return !bus_->mapped(address); };
+    const bool transfer = base_name == "vldr" || base_name == "vstr" || base_name == "vpush" || base_name == "vpop" || base_name == "vldmia" || base_name == "vstmia" ||
+                          base_name == "vldmdb" || base_name == "vstmdb";
+    if (transfer && dbl && (w >> 22 & 1) && bus_->arch() < da::Arch::V7A) return Fault{Fault::Kind::NoInstruction, at, 0, {}, 0};   // (VFPv2 has d0-d15: d16-d31 are no register)
     if (base_name == "vldr" || base_name == "vstr") {
         const std::uint32_t offset = (w & 0xFF) * 4;
         const std::uint32_t address = ((w >> 23) & 1) ? word_address(rn) + offset : word_address(rn) - offset;
@@ -857,16 +935,26 @@ std::optional<Fault> Cpu::execute_vfp(const da::Insn& i, std::uint32_t at) {
     }
     if (base_name == "vadd" || base_name == "vsub" || base_name == "vmul" || base_name == "vdiv" || base_name == "vnmul" || base_name == "vmla" || base_name == "vmls" ||
         base_name == "vnmla" || base_name == "vnmls") {
+        // (a NaN operand gives that NaN, quiet, the first operand's before the second's: written out, not left to the order the compiler picks)
+        const auto first_nan = [](auto x, auto y, auto result) {
+            using F = decltype(x);
+            using Bits = std::conditional_t<sizeof(F) == 8, std::uint64_t, std::uint32_t>;
+            constexpr Bits quiet = Bits{1} << (sizeof(F) == 8 ? 51 : 22);
+            if (x != x) return std::bit_cast<F>(static_cast<Bits>(std::bit_cast<Bits>(x) | quiet));
+            if (y != y) return std::bit_cast<F>(static_cast<Bits>(std::bit_cast<Bits>(y) | quiet));
+            return result;
+        };
         const auto apply = [&](auto a, auto b, auto d) {
-            if (base_name == "vadd") return a + b;
-            if (base_name == "vsub") return a - b;
-            if (base_name == "vmul") return a * b;
-            if (base_name == "vdiv") return a / b;
-            if (base_name == "vnmul") return -(a * b);
-            if (base_name == "vmla") return d + a * b;
-            if (base_name == "vmls") return d - a * b;
-            if (base_name == "vnmla") return -d - a * b;
-            return -d + a * b;
+            if (base_name == "vadd") return first_nan(a, b, a + b);
+            if (base_name == "vsub") return first_nan(a, b, a - b);
+            if (base_name == "vmul") return first_nan(a, b, a * b);
+            if (base_name == "vdiv") return first_nan(a, b, a / b);
+            const auto product = first_nan(a, b, a * b);
+            if (base_name == "vnmul") return -product;
+            if (base_name == "vmla") return first_nan(d, product, d + product);
+            if (base_name == "vmls") return first_nan(d, product, d - product);
+            if (base_name == "vnmla") return first_nan(-d, product, -d - product);
+            return first_nan(-d, product, -d + product);
         };
         if (dbl) set_d(d_dest, apply(get_d(d_n), get_d(d_m), get_d(d_dest)));
         else set_f(d_dest, apply(get_f(d_n), get_f(d_m), get_f(d_dest)));

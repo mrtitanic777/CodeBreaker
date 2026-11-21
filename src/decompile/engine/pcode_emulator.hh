@@ -111,6 +111,10 @@ public:
     std::size_t length(std::uint64_t pc) const;       // its bytes (0: not an instruction)
     // Change a context variable (ARM's "TMode" ...) for instructions decoded from now on.
     void setContext(const std::string& name, int value);
+    // Whether the context a decoded instruction sets for other addresses (SLEIGH's globalset: ARM's Thumb state at a BLX's target, the "mov lr,pc" before a call) is kept
+    // for the decodes that follow (the default, as a disassembler wants it) or dropped after each one (an emulator that runs the state itself: a run must not be
+    // decoded under what another run's flow left).
+    void keepAddressContext(bool keep);
     // Drop decoded instructions (writes to a page code was decoded from do this by themselves).
     void flushDecoded();
 

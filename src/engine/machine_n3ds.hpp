@@ -12,11 +12,19 @@
 // and the kernel calls.
 #pragma once
 
+#include <filesystem>
+
+#include "emulate/arm.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 namespace cb::engine {
 
 verify::lanes::ImageLaneSpec n3ds_lane_spec();
+
+// The lane's machine for a program and a state: the bus with the program loaded, the hardware windows and the work memory seeded, and the run's options (the
+// registers of the state, the stack, the kernel calls that end it) and the address the function is at. Used by the lane's comparison and by the tools that trace one.
+void n3ds_prepare(const std::filesystem::path& path, std::uint32_t entry, const verify::lanes::State& state, emulate::arm::Bus& bus, emulate::arm::RunOptions& options,
+                  std::uint32_t& address);
 
 // Add "n3ds" to the machine lane table. Safe to call twice.
 void register_n3ds_lane();

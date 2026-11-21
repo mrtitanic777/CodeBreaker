@@ -37,6 +37,8 @@ public:
     // `size` (1, 2, 4 or 8) bytes at `address`, little-endian.
     std::uint64_t read(std::uint32_t address, unsigned size) const;
     void write(std::uint32_t address, unsigned size, std::uint64_t value);
+    // `size` bytes from `address` (a page of code at a time, not a word).
+    void read_block(std::uint32_t address, std::uint8_t* out, std::size_t size) const;
 
     // Does a loaded region or a written page cover this address?
     bool covers(std::uint32_t address) const;

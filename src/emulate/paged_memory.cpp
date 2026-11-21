@@ -42,6 +42,17 @@ std::uint64_t Memory::read(std::uint32_t address, unsigned size) const {
     return v;
 }
 
+void Memory::read_block(std::uint32_t address, std::uint8_t* out, std::size_t size) const {
+    if (regions_ && address % kPageSize + size <= kPageSize && !pages_.contains(address / kPageSize)) {   // (inside one page nothing wrote to: a loaded region's bytes)
+        for (const Region& r : *regions_)
+            if (address >= r.address && address - r.address + size <= r.bytes.size()) {
+                std::copy_n(r.bytes.begin() + (address - r.address), size, out);
+                return;
+            }
+    }
+    for (std::size_t i = 0; i < size; ++i) out[i] = byte(address + static_cast<std::uint32_t>(i));
+}
+
 void Memory::write(std::uint32_t address, unsigned size, std::uint64_t value) {
     for (unsigned i = 0; i < size; ++i) put(address + i, static_cast<std::uint8_t>(value >> (8 * i)));
 }

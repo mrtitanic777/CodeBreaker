@@ -9,7 +9,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
+#include <type_traits>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -26,6 +28,15 @@ namespace {
 using ghidra::AddrSpace;
 using ghidra::OpCode;
 using ghidra::VarnodeData;
+
+// The bits of a value as another type (this file builds as C++17: no std::bit_cast).
+template <class To, class From>
+To bits_as(const From& from) {
+    static_assert(sizeof(To) == sizeof(From));
+    To to;
+    std::memcpy(&to, &from, sizeof to);
+    return to;
+}
 
 constexpr std::uint64_t kPageBits = 12;
 constexpr std::uint64_t kPageSize = std::uint64_t{1} << kPageBits;
@@ -141,8 +152,14 @@ struct Emulator::Impl {
     const VarnodeData* pcReg = nullptr;
     VarnodeData pcRegData{};
 
-    std::unordered_map<std::uint64_t, Decoded> cache;
-    bool dirty = false;                 // a write hit decoded code: flush before the next step
+    // The decoded instructions, by the context they were decoded under (ARM's Thumb state), then by address: a change of context (a BX) picks another set rather
+    // than throwing them away.
+    std::unordered_map<std::uint64_t, std::unordered_map<std::uint64_t, Decoded>> caches;
+    std::unordered_map<std::uint64_t, Decoded>* cache = &caches[0];
+    std::uint64_t contextTag = 0;
+    std::map<std::string, int> contextSet;   // the variables setContext changed, and to what
+    bool addressContextKept = true;     // the context a decoded instruction sets for other addresses (SLEIGH's globalset) stays; false: dropped after each decode
+    bool dirty = false;                // a write hit decoded code: flush before the next step
     std::uint64_t pcValue = 0;
     std::uint64_t stepCount = 0;
     std::set<std::uint64_t> stops;
@@ -276,26 +293,34 @@ struct Emulator::Impl {
 
     // ---- decoding
     void flush() {
-        cache.clear();
+        caches.clear();
+        cache = &caches[contextTag];
         trans->forgetParses();
         for (SpaceMem& m : mem)
             for (auto& [k, p] : m.pages) p->code = false;
         dirty = false;
     }
+    // The translator's context cache points into the entries cleared here, so it is told to read them again.
+    void dropAddressContext() {
+        context.clearChangePoints();
+        trans->forgetContextRange();
+    }
     const Decoded* decode(std::uint64_t pc) {
         if (dirty) flush();
-        auto it = cache.find(pc);
-        if (it != cache.end()) return &it->second;
+        auto it = cache->find(pc);
+        if (it != cache->end()) return &it->second;
         Decoded d;
         try {
             Collect collect(d);
             d.length = static_cast<std::size_t>(trans->oneInstruction(collect, ghidra::Address(mem[static_cast<std::size_t>(codeIndex)].space, pc)));
         } catch (const ghidra::LowlevelError&) {
+            if (!addressContextKept) dropAddressContext();
             return nullptr;
         }
+        if (!addressContextKept) dropAddressContext();
         if (d.length == 0) return nullptr;
-        if (cache.size() > (1u << 20)) cache.clear();
-        return &cache.emplace(pc, std::move(d)).first->second;
+        if (cache->size() > (1u << 20)) cache->clear();
+        return &cache->emplace(pc, std::move(d)).first->second;
     }
 
     // ---- one user operation
@@ -369,6 +394,56 @@ struct Emulator::Impl {
                     case ghidra::CPUI_CALLOTHER:
                         callOther(d, op);
                         break;
+                    case ghidra::CPUI_FLOAT_FLOAT2FLOAT:
+                        if (out && out->size == 4 && v[0].size == 8) {   // (the host's own conversion: a NaN keeps its payload)
+                            put(*out, bits_as<std::uint32_t>(static_cast<float>(bits_as<double>(static_cast<std::uint64_t>(get(v[0]))))));
+                            break;
+                        }
+                        if (out && out->size == 8 && v[0].size == 4) {
+                            put(*out, bits_as<std::uint64_t>(static_cast<double>(bits_as<float>(static_cast<std::uint32_t>(get(v[0]))))));
+                            break;
+                        }
+                        {
+                            const ghidra::OpBehavior* b = static_cast<std::size_t>(op.opc) < behave.size() ? behave[static_cast<std::size_t>(op.opc)] : nullptr;
+                            if (!b || b->isSpecial() || !out) throw ghidra::LowlevelError(std::string("p-code operation without a behaviour: ") + ghidra::get_opname(op.opc));
+                            put(*out, b->evaluateUnary(static_cast<ghidra::int4>(out->size), static_cast<ghidra::int4>(v[0].size), get(v[0])));
+                        }
+                        break;
+                    case ghidra::CPUI_FLOAT_ADD: case ghidra::CPUI_FLOAT_SUB: case ghidra::CPUI_FLOAT_MULT: case ghidra::CPUI_FLOAT_DIV:
+                    case ghidra::CPUI_FLOAT_NEG: case ghidra::CPUI_FLOAT_ABS: case ghidra::CPUI_FLOAT_SQRT: {
+                        // single and double precision on the host's own arithmetic, bit for bit: the description's float model turns every NaN into the default one, a
+                        // processor keeps the quiet form of the operand's
+                        const bool unary = op.opc == ghidra::CPUI_FLOAT_NEG || op.opc == ghidra::CPUI_FLOAT_ABS || op.opc == ghidra::CPUI_FLOAT_SQRT;
+                        const auto compute = [&](auto a, auto c) {
+                            switch (op.opc) {
+                                case ghidra::CPUI_FLOAT_ADD: return a + c;
+                                case ghidra::CPUI_FLOAT_SUB: return a - c;
+                                case ghidra::CPUI_FLOAT_MULT: return a * c;
+                                case ghidra::CPUI_FLOAT_DIV: return a / c;
+                                case ghidra::CPUI_FLOAT_NEG: return -a;
+                                case ghidra::CPUI_FLOAT_ABS: {
+                                    using Bits = std::conditional_t<sizeof(a) == 8, std::uint64_t, std::uint32_t>;
+                                    return bits_as<decltype(a)>(static_cast<Bits>(bits_as<Bits>(a) & ~(Bits{1} << (8 * sizeof(a) - 1))));
+                                }
+                                default: return static_cast<decltype(a)>(std::sqrt(a));
+                            }
+                        };
+                        if (out && (out->size == 4 || out->size == 8) && v[0].size == out->size) {
+                            if (out->size == 8) {
+                                const double a = bits_as<double>(static_cast<std::uint64_t>(get(v[0]))), c = unary ? 0.0 : bits_as<double>(static_cast<std::uint64_t>(get(v[1])));
+                                put(*out, bits_as<std::uint64_t>(compute(a, c)));
+                            } else {
+                                const float a = bits_as<float>(static_cast<std::uint32_t>(get(v[0]))), c = unary ? 0.0f : bits_as<float>(static_cast<std::uint32_t>(get(v[1])));
+                                put(*out, bits_as<std::uint32_t>(compute(a, c)));
+                            }
+                            break;
+                        }
+                        const ghidra::OpBehavior* b = static_cast<std::size_t>(op.opc) < behave.size() ? behave[static_cast<std::size_t>(op.opc)] : nullptr;
+                        if (!b || b->isSpecial() || !out) throw ghidra::LowlevelError(std::string("p-code operation without a behaviour: ") + ghidra::get_opname(op.opc));
+                        if (b->isUnary()) put(*out, b->evaluateUnary(static_cast<ghidra::int4>(out->size), static_cast<ghidra::int4>(v[0].size), get(v[0])));
+                        else put(*out, b->evaluateBinary(static_cast<ghidra::int4>(out->size), static_cast<ghidra::int4>(v[0].size), get(v[0]), get(v[1])));
+                        break;
+                    }
                     default: {
                         const ghidra::OpBehavior* b = static_cast<std::size_t>(op.opc) < behave.size() ? behave[static_cast<std::size_t>(op.opc)] : nullptr;
                         if (!b || b->isSpecial() || !out) throw ghidra::LowlevelError(std::string("p-code operation without a behaviour: ") + ghidra::get_opname(op.opc));
@@ -625,7 +700,23 @@ std::size_t Emulator::length(std::uint64_t pc) const {
 }
 
 void Emulator::setContext(const std::string& name, int value) {
-    impl_->trans->setContextDefault(name, static_cast<ghidra::uintm>(value));
+    Impl& o = *impl_;
+    o.trans->setContextDefault(name, static_cast<ghidra::uintm>(value));
+    o.trans->forgetParses();
+    // the tag of the contexts decoding now runs under: the variables set so far and their values
+    o.contextSet[name] = value;
+    std::uint64_t tag = 1469598103934665603ull;
+    for (const auto& [variable, set_to] : o.contextSet) {
+        for (const char ch : variable) tag = (tag ^ static_cast<unsigned char>(ch)) * 1099511628211ull;
+        tag = (tag ^ static_cast<std::uint32_t>(set_to)) * 1099511628211ull;
+    }
+    o.contextTag = tag;
+    o.cache = &o.caches[tag];
+}
+
+void Emulator::keepAddressContext(bool keep) {
+    impl_->addressContextKept = keep;
+    if (!keep) impl_->dropAddressContext();
     impl_->flush();
 }
 
