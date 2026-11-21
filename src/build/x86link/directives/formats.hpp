@@ -11,8 +11,8 @@
 namespace cb::x86link::directives {
 
 #ifdef _EXE   // DOS (dos.cpp)
-void SetDosFmt();
-void FreeDosFmt();
+void SetDosFmt(Link& link);
+void FreeDosFmt(Link& link);
 overlay_ref GetOvlRef(Link& link);
 void CmdOvlFini(Link& link);
 void MakeNewSection(Link& link);
@@ -27,8 +27,8 @@ bool ProcDosFormat(Link& link);
 #endif
 
 #ifdef _OS2   // OS/2, Windows, Windows NT, VxD (os2.cpp)
-void SetOS2Fmt();
-void FreeOS2Fmt();
+void SetOS2Fmt(Link& link);
+void FreeOS2Fmt(Link& link);
 bool ProcOS2Options(Link& link);
 bool ProcOS2Runtime(Link& link);
 bool ProcCommit(Link& link);
@@ -45,8 +45,8 @@ bool ProcWindowsFormat(Link& link);
 #endif
 
 #ifdef _NOVELL   // Netware (novell.cpp)
-void SetNovFmt();
-void FreeNovFmt();
+void SetNovFmt(Link& link);
+void FreeNovFmt(Link& link);
 void CmdNovFini();
 bool ProcNovOptions(Link& link);
 bool ProcNovDBI(Link& link);
@@ -58,16 +58,16 @@ bool ProcNovFormat(Link& link);
 #endif
 
 #ifdef _PHARLAP   // Phar Lap (phar.cpp)
-void SetPharFmt();
-void FreePharFmt();
+void SetPharFmt(Link& link);
+void FreePharFmt(Link& link);
 bool ProcPharOptions(Link& link);
 bool ProcPharRuntime(Link& link);
 bool ProcPharFormat(Link& link);
 #endif
 
 #ifdef _DOS16M   // DOS/16M (dos16m.cpp)
-void SetD16MFmt();
-void FreeD16MFmt();
+void SetD16MFmt(Link& link);
+void FreeD16MFmt(Link& link);
 void CmdD16MFini(Link& link);
 bool Proc16MOptions(Link& link);
 bool Proc16MNoRelocs(Link& link);
@@ -78,8 +78,8 @@ bool Proc16MFormat(Link& link);
 #endif
 
 #ifdef _QNX   // QNX (qnx.cpp)
-void SetQNXFmt();
-void FreeQNXFmt();
+void SetQNXFmt(Link& link);
+void FreeQNXFmt(Link& link);
 void CmdQNXFini(Link& link);
 bool ProcQNXOptions(Link& link);
 bool ProcQNXNoRelocs(Link& link);
@@ -89,8 +89,8 @@ bool ProcQNXFormat(Link& link);
 #endif
 
 #ifdef _ELF   // ELF (elf.cpp)
-void SetELFFmt();
-void FreeELFFmt();
+void SetELFFmt(Link& link);
+void FreeELFFmt(Link& link);
 bool ProcELFOptions(Link& link);
 bool ProcELFRuntime(Link& link);
 bool ProcELFImport(Link& link);
@@ -102,8 +102,8 @@ bool ProcELFFormat(Link& link);
 #endif
 
 #ifdef _RDOS   // RDOS (rdos.cpp)
-void SetRdosFmt();
-void FreeRdosFmt();
+void SetRdosFmt(Link& link);
+void FreeRdosFmt(Link& link);
 bool ProcRdosOptions(Link& link);
 bool ProcRdosFormat(Link& link);
 #endif

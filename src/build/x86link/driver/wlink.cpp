@@ -421,10 +421,9 @@ static void DoLink(Link& link,  const char *cmdline )
     ignore_signal();
 }
 
-static void LinkMeBaby( void )
+static void LinkMeBaby(Link& link)
 /****************************/
-{
-    Link& link = wlink();
+{
     ResetSubSystems(link);
     DoLink(link,  state().arg_save );
 }
@@ -434,7 +433,7 @@ void LinkMainLine(Link& link,  const char *cmds )
 {
     for( ;; ) {
         state().arg_save = cmds;         // bogus way to pass args to spawn
-        Spawn( &LinkMeBaby );
+        Spawn( bind_link( link, LinkMeBaby ) );
         CleanSubSystems(link);
         cmds = GetNextLink();
         if( cmds == nullptr ) {

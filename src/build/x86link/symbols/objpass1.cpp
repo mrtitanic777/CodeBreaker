@@ -452,10 +452,9 @@ void AllocateSegment(Link& link,  segnode *snode, const char *clname )
     snode->info = snode->entry->u.leader->info;
 }
 
-unsigned long IncPass1( void )
+unsigned long IncPass1(Link& link)
 /****************************/
 {
-    Link& link = wlink();
     segdata         *seglist;
     segdata         *seg;
     symbol          *publist;
@@ -1102,10 +1101,10 @@ static symbol **GetVFList(Link& link,  symbol *defsym, symbol *mainsym, bool gen
     unsigned    count;
 
     liststart = nullptr;
-    bufstart = rtns->getstart();
+    bufstart = rtns->getstart( link );
     count = 2;          // 1 for the default extdef, and 1 for nullptr.
-    while( !rtns->isend() ) {
-        name = rtns->getname();
+    while( !rtns->isend( link ) ) {
+        name = rtns->getname( link );
         condsym = FindISymbol(link,  name );
         if( condsym == nullptr ) {
             condsym = MakeWeakExtdef(link,  name, defsym );
@@ -1127,9 +1126,9 @@ static symbol **GetVFList(Link& link,  symbol *defsym, symbol *mainsym, bool gen
         liststart = symlist;
         *symlist = defsym;
         symlist++;
-        rtns->setstart( bufstart );
-        while( !rtns->isend() ) {
-            name = rtns->getname();
+        rtns->setstart( link, bufstart );
+        while( !rtns->isend( link ) ) {
+            name = rtns->getname( link );
             *symlist = FindISymbol(link,  name );
             symlist++;
         }

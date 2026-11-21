@@ -34,8 +34,8 @@
 
 #ifdef _ELF
 
-extern void     SetELFFmt( void );
-extern void     FreeELFFmt( void );
+extern void     SetELFFmt(Link& link);
+extern void     FreeELFFmt(Link& link);
 extern void     SetELFImportSymbol( symbol * );
 
 extern bool     ProcELFOptions( void );

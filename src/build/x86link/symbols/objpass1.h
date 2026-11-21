@@ -34,10 +34,10 @@
 
 
 typedef struct {
-    void    *(*getstart)( void );
-    void    (*setstart)( void * );
-    bool    (*isend)( void );
-    char    *(*getname)( void );
+    void    *(*getstart)( Link& link );
+    void    (*setstart)( Link& link, void * );
+    bool    (*isend)( Link& link );
+    char    *(*getname)( Link& link );
 } vflistrtns;
 
 typedef struct cdat_piece {
@@ -56,7 +56,7 @@ typedef struct cdat_info {
 } comdat_info;
 
 extern void             P1Start( void );
-extern unsigned long    IncPass1( void );
+extern unsigned long    IncPass1(Link& link);
 extern void             DoIncGroupDefs(Link& link);
 extern void             Set64BitMode(Link& link);
 extern void             Set32BitMode(Link& link);

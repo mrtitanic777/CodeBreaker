@@ -156,8 +156,7 @@ constexpr Entry ELFFormats[] = {
 
 }  // namespace
 
-void SetELFFmt() {
-    Link& link = wlink();
+void SetELFFmt(Link& link) {
     link.FmtData.def_ext = E_ELF;
     link.FmtData.u.elf.exp.export_ = nullptr;
     link.FmtData.u.elf.exp.module = nullptr;
@@ -166,7 +165,7 @@ void SetELFFmt() {
     link.FmtData.u.elf.abiversion = 0;
 }
 
-void FreeELFFmt() {
+void FreeELFFmt(Link& link) {
     // (the export and module lists are permanent memory now)
 }
 

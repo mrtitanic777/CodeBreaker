@@ -1176,13 +1176,12 @@ static bool DoDupGroupLeader(Link& link,  void *seg, void *_info )
     return( false );
 }
 
-static bool WriteCopyGroups( void *_seg, void *_info )
+static bool WriteCopyGroups(Link& link,  void *_seg, void *_info )
 /*****************************************************
  * This is called by the outer level iteration looking for classes
  * that have more than one group in them
  */
-{
-    Link& link = wlink();
+{
     seg_leader      *seg = static_cast<seg_leader *>( _seg );
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
@@ -1210,7 +1209,7 @@ offset  WriteGroupLoad(Link& link,  group_entry *group, bool repos )
     if( class_->flags & CLASS_COPY ) {
         info.copy = true;
         info.last_group = nullptr; // so it will use the first group
-        RingLookup( class_->DupClass->segs->group->leaders, WriteCopyGroups, &info );
+        RingLookup( class_->DupClass->segs->group->leaders, bind_link( link, WriteCopyGroups ), &info );
     } else {
         info.copy = false;
         Ring2Lookup( group->leaders, bind_link( link, DoGroupLeader ), &info );

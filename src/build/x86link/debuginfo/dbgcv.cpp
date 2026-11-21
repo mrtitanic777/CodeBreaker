@@ -250,11 +250,10 @@ static void CVAddLines(Link& link,  lineinfo *info )
     link.CurrMod->u3.cv->numlines += DBICalcLineQty( info );
 }
 
-void CVP1ModuleFinished( mod_entry *obj )
+void CVP1ModuleFinished( Link& link, mod_entry *obj )
 /***************************************/
 // calculate size of the sstModule
 {
-    Link& link = wlink();
     CvState     &st = state();
     size_t      namelen;
     unsigned_32 temp;
@@ -592,10 +591,9 @@ static void CVAddAddrAdd( segdata *sdata, offset delta, offset size, void *cooki
     }
 }
 
-void CVAddAddrInfo( seg_leader *seg )
+void CVAddAddrInfo( Link& link, seg_leader *seg )
 /***********************************/
 {
-    Link& link = wlink();
     if( seg->info & SEGINF_CODE ) {
         DBIAddrInfoScan(link,  seg, CVAddAddrInit, CVAddAddrAdd, nullptr );
     }
@@ -670,10 +668,9 @@ static void DefLocal(Link& link,  void *_sdata )
     }
 }
 
-static bool DefLeader( void *_leader, void *group )
+static bool DefLeader(Link& link,  void *_leader, void *group )
 /*************************************************/
-{
-    Link& link = wlink();
+{
     seg_leader *leader = static_cast<seg_leader *>( _leader );
 
     leader->group = static_cast<group_entry *>( group );
@@ -723,7 +720,7 @@ void CVAddrStart(Link& link)
     dir.flags = 0;
     DumpInfo( CvSect::moddir, &dir, sizeof( cv_subsection_directory ) );
     for( group = link.DBIGroups; group != nullptr; group = group->next ) {
-        RingLookup( group->g.class_->segs, DefLeader, group );
+        RingLookup( group->g.class_->segs, bind_link( link, DefLeader ), group );
         group->g.class_ = nullptr;
     }
 }

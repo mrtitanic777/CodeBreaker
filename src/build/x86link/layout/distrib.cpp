@@ -226,12 +226,11 @@ static void KillUnrefedSyms(Link& link,  void *_sym )
     }
 }
 
-static void DefineOvlSegments( mod_entry *mod )
+static void DefineOvlSegments(Link& link,  mod_entry *mod )
 /**********************************************
  * figure out which of the segments are live
  */
-{
-    Link& link = wlink();
+{
     Ring2Walk( mod->segs, bind_link( link, MarkDead ) );
     Ring2Walk( mod->publist, bind_link( link, KillUnrefedSyms ) );
 }
@@ -254,7 +253,7 @@ void DistribSetSegments(Link& link)
         d.ArcList = nullptr;
     }
     if( link.LinkFlags & LF_STRIP_CODE ) {
-        WalkMods(link,  DefineOvlSegments );
+        WalkMods(link,  bind_link( link, DefineOvlSegments ) );
     }
 #if 0           // NYI: distributing libraries completely broken.
     unsigned        index;

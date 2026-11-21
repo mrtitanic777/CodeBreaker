@@ -35,8 +35,8 @@
 
 #ifdef _NOVELL
 
-extern void     SetNovFmt( void );
-extern void     FreeNovFmt( void );
+extern void     SetNovFmt(Link& link);
+extern void     FreeNovFmt(Link& link);
 extern void     CmdNovFini( void );
 extern void     SetNovImportSymbol(Link& link,  symbol * );
 

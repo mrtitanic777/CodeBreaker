@@ -199,7 +199,7 @@ void ReleaseNamelist( void *node, void * )
     MemFree( *static_cast<void **>( node ) );
 }
 
-void IterateNodeArray( char *narray, void (*fn)(void *, void *),
+void IterateNodeArray( char *narray, FunctionRef<void(void *, void *)> fn,
                        unsigned elsize, int limit, void *cookie )
 {
     int index;
@@ -212,7 +212,7 @@ void IterateNodeArray( char *narray, void (*fn)(void *, void *),
 
 }
 
-void IterateNodelist( nodearray_handle list, void (*fn)(void *, void *),
+void IterateNodelist( nodearray_handle list, FunctionRef<void(void *, void *)> fn,
                              void *cookie )
 /***********************************************************************/
 {
@@ -238,9 +238,8 @@ void ReleaseNames(Link& link)
 
 namespace {
 
-void CollapseLazy( void *node, void * )
-{
-    Link& link = wlink();
+void CollapseLazy(Link& link,  void *node, void * )
+{
     extnode     *curr;
 
     curr = static_cast<extnode *>( node );
@@ -259,7 +258,7 @@ void CollapseLazy( void *node, void * )
 void CollapseLazyExtdefs(Link& link)
 /*************************************/
 {
-    IterateNodelist( link.ExtNodes, CollapseLazy, nullptr );
+    IterateNodelist( link.ExtNodes, bind_link( link, CollapseLazy ), nullptr );
 }
 
 namespace {
@@ -336,10 +335,9 @@ list_of_names *MakeListName( char *name, size_t len )
     return new_;
 }
 
-unsigned long BadObjFormat( void )
+unsigned long BadObjFormat(Link& link)
 /***************************************/
 {
-    Link& link = wlink();
     LnkMsg( FTL+MSG_BAD_OBJECT, "s", link.CurrMod->u1.source->infile->name );
     return 0;
 }

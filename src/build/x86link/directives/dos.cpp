@@ -224,12 +224,11 @@ constexpr Entry DosFormats[] = {
 
 }  // namespace
 
-void SetDosFmt() {
-    Link& link = wlink();
+void SetDosFmt(Link& link) {
     link.FmtData.def_ext = E_LOAD;
 }
 
-void FreeDosFmt() {
+void FreeDosFmt(Link& link) {
 }
 
 overlay_ref GetOvlRef(Link& link) {

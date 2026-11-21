@@ -53,7 +53,7 @@ extern void             SectWalkClass(Link& link,  section *sect, FunctionRef<cl
 extern void             WalkMods(Link& link,  FunctionRef<mods_walk_fn> rtn );
 extern void             AppendList( void **list, void *item );
 extern void             FreeList( void * );
-extern int              Spawn( void (*)( void ) );
+extern int              Spawn( FunctionRef<void( void )> );
 extern void             Suicide( void );
 extern f_handle         FindPath(Link& link,  const char *, char *fullname );
 extern obj_name_list    *AddNameTable(Link& link,  const char *, size_t, bool, obj_name_list ** );

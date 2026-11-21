@@ -419,11 +419,9 @@ constexpr Entry NovFormats[] = {
 
 }  // namespace
 
-void SetNovFmt() {
-    Link& link = wlink(); link.FmtData.def_ext = E_NLM; }
+void SetNovFmt(Link& link) { link.FmtData.def_ext = E_NLM; }
 
-void FreeNovFmt() {
-    Link& link = wlink();
+void FreeNovFmt(Link& link) {
     MemFree(link.FmtData.description);
     MemFree(link.FmtData.u.nov.screenname);
     MemFree(link.FmtData.u.nov.checkfn);

@@ -324,10 +324,9 @@ typedef struct {
     group_entry     *last_group;  // used only for copy classes
 } grpwriteinfo;
 
-static bool WriteHexCopyGroups( void *_seg, void *_info )
+static bool WriteHexCopyGroups(Link& link,  void *_seg, void *_info )
 /*******************************************************/
-{
-    Link& link = wlink();
+{
     // This is called by the outer level iteration looking for classes
     //  that have more than one group in them
     seg_leader *seg = static_cast<seg_leader *>( _seg );
@@ -419,7 +418,7 @@ void HexOutput(Link& link)
                     &group->addr, sect->ovlref, info.offs, finfo->fname ));
 #endif
                 info.last_group = nullptr;
-                RingLookup( class_->DupClass->segs->group->leaders, WriteHexCopyGroups, &info);
+                RingLookup( class_->DupClass->segs->group->leaders, bind_link( link, WriteHexCopyGroups ), &info);
             } else {
                 if( group->size != 0 ) {
                     sect = group->section;
@@ -459,7 +458,7 @@ static unsigned long WriteGroupLoadHex(Link& link,  group_entry *group )
     // If group is a copy group, substitute source group(s) here
     if( class_->flags & CLASS_COPY ) {
         info.last_group = nullptr; // so it will use the first group
-        RingLookup( class_->DupClass->segs->group->leaders, WriteHexCopyGroups, &info );
+        RingLookup( class_->DupClass->segs->group->leaders, bind_link( link, WriteHexCopyGroups ), &info );
     } else {
         Ring2Lookup( group->leaders, bind_link( link, DoHexLeader ), &info.offs );
     }

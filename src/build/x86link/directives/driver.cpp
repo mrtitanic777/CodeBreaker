@@ -35,8 +35,8 @@ constexpr const char* init_file_env = "WLINK_LNK";
 struct PossibleFormat {
     exe_format bits;
     const char* lib_var_name;
-    void (*set)();
-    void (*free)();
+    void (*set)(Link& link);
+    void (*free)(Link& link);
 };
 
 constexpr PossibleFormat possible_formats[] = {
@@ -131,8 +131,7 @@ void help(Link& link) {
     if (rest.empty() || rest[0] == '?' || rest[0] == '\0' || !DoHelp(link)) DisplayOptions(link);
 }
 
-void parse_command() {
-    Link& link = wlink();
+void parse_command(Link& link) {
     Reader& r = reader();
     while (!r.get(Sep::end, Want::include_dot)) {
         if (!DoParseDirectiveSuicide(link)) Syntax();
@@ -140,9 +139,9 @@ void parse_command() {
     }
 }
 
-void init_format(Link& link, FunctionRef<void()> set) {
+void init_format(Link& link, void (*set)(Link& link)) {
     if (link.LinkState & LS_FMT_INITIALIZED) return;
-    if (set != nullptr) set();
+    if (set != nullptr) set(link);
     link.LinkState |= LS_FMT_INITIALIZED;
 }
 
@@ -210,9 +209,9 @@ char* GetNextLink() {
     return cmd;
 }
 
-int DoBuffCmdParse(const char* cmd) {
+int DoBuffCmdParse(Link& link, const char* cmd) {
     dx::reader().push({}, cmd != nullptr ? cmd : "", dx::SourceKind::command_line);
-    return Spawn(dx::parse_command);
+    return Spawn(bind_link( link, dx::parse_command ));
 }
 
 void FreePaths(Link& link) {
@@ -249,11 +248,11 @@ void DoCmdFile(Link& link, const char* fname) {
         file = FindPath(link, namelnk, nullptr);
     }
     if (file != NIL_FHANDLE) r.push_file(file, namelnk);
-    if (Spawn(dx::parse_command)) {
+    if (Spawn(bind_link( link, dx::parse_command ))) {
         dx::Ignite(link);
         Suicide();
     }
-    GetExtraCommands();
+    GetExtraCommands(link);
     if ((link.LinkState & LS_FMT_DECIDED) == 0) {   // the formats this host decides on by itself
 #if defined(__QNX__)
         HintFormat(MK_OS2 | MK_QNX);
@@ -385,7 +384,7 @@ void DecideFormat(Link& link) {
 
 void FreeFormatStuff(Link& link) {
     if ((link.LinkState & LS_FMT_DECIDED) == 0) return;
-    if (const dx::PossibleFormat* f = dx::decided_format(link); f != nullptr && f->free != nullptr) f->free();
+    if (const dx::PossibleFormat* f = dx::decided_format(link); f != nullptr && f->free != nullptr) f->free(link);
 }
 
 void AddCommentLib(Link& link, const char* comment, size_t len, lib_priority priority) {

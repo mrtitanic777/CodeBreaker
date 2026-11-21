@@ -34,14 +34,14 @@
 extern void     HllInit( void );
 extern void     HllInitModule( mod_entry * );
 extern void     HllP1ModuleScanned( void );
-extern void     HllP1ModuleFinished( mod_entry * );
+extern void     HllP1ModuleFinished( Link& link, mod_entry * );
 extern void     HllAddModule(Link& link,  mod_entry *, section * );
 extern void     HllGenModule( void );
 extern void     HllAddLocal( seg_leader *, offset );
 extern void     HllAddGlobal(Link& link,  symbol * );
 extern void     HllGenGlobal(Link& link,  symbol *, section * );
 extern void     HllGenLines( lineinfo * );
-extern void     HllAddAddrInfo( seg_leader * );
+extern void     HllAddAddrInfo( Link& link, seg_leader * );
 extern void     HllGenAddrInfo(Link& link,  seg_leader * );
 extern void     HllAddrStart(Link& link);
 extern void     HllDefClass(Link& link,  class_entry *, unsigned_32 );

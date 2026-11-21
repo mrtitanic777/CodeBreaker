@@ -221,10 +221,9 @@ static void PackSegs(Link& link,  seg_leader *seg, unsigned num_segs )
     }
 }
 
-static void AutoGroupSect( section *sect )
+static void AutoGroupSect(Link& link,  section *sect )
 /****************************************/
-{
-    Link& link = wlink();
+{
     seg_leader      *seg;
     seg_leader      *packstart;
     offset          size;
@@ -409,7 +408,7 @@ static void NumberNonAutos(Link& link)
 void AutoGroup(Link& link)
 /********************/
 {
-    WalkAllSects(link,  &AutoGroupSect );
+    WalkAllSects(link,  bind_link( link, AutoGroupSect ) );
     SortGroupList(link);
 #ifdef _EXE
     FindSplitGroups(link);

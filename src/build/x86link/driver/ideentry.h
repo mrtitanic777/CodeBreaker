@@ -37,5 +37,5 @@ extern void     WriteStdOutWithNL( const char * );
 extern void     WriteStdOutNL( void );
 extern void     WriteStdOutInfo( const char *, unsigned, const char * );
 extern char     *GetEnvString( const char * );
-extern void     GetExtraCommands( void );
+extern void     GetExtraCommands(Link& link);
 extern int      ExecDLLPgm( const char *, const char * );

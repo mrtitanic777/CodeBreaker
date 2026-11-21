@@ -50,4 +50,4 @@ extern void             BurnSystemList( void );
 extern void             AddLibPaths(Link& link,  const char *, size_t, bool );
 extern void             AddLibPathsToEnd(Link& link,  const char * );
 extern void             AddLibPathsToEndList(Link& link,  const char *list );
-extern int              DoBuffCmdParse( const char *cmd );
+extern int              DoBuffCmdParse(Link& link,  const char *cmd );

@@ -223,8 +223,7 @@ constexpr Entry TransTypes[] = {
 
 }  // namespace
 
-void SetD16MFmt() {
-    Link& link = wlink();
+void SetD16MFmt(Link& link) {
     link.LinkState &= ~LS_MAKE_RELOCS;   // assume none being produced.
     link.FmtData.def_ext = E_PROTECT;
     link.FmtData.u.d16m.options = 0;
@@ -239,8 +238,7 @@ void SetD16MFmt() {
     link.FmtData.u.d16m.stub = nullptr;
 }
 
-void FreeD16MFmt() {
-    Link& link = wlink();
+void FreeD16MFmt(Link& link) {
     MemFree(link.FmtData.u.d16m.exp_name);
     MemFree(link.FmtData.u.d16m.stub);
 }

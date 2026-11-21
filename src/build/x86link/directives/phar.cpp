@@ -9,8 +9,7 @@
 
 namespace cb::x86link::directives {
 
-void SetPharFmt() {
-    Link& link = wlink();
+void SetPharFmt(Link& link) {
     link.LinkState &= ~LS_MAKE_RELOCS;   // do not generate relocations.
     link.FmtData.def_ext = E_PROTECT;
     link.FmtData.u.phar.mindata = 0;
@@ -30,8 +29,7 @@ void SetPharFmt() {
     ChkBase(link, _4K);
 }
 
-void FreePharFmt() {
-    Link& link = wlink();
+void FreePharFmt(Link& link) {
     MemFree(link.FmtData.u.phar.breaksym);
     MemFree(link.FmtData.u.phar.stub);
 }

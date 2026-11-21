@@ -103,7 +103,7 @@ typedef struct {
     stringtable strtab;
     size_t      currpos;
     f_handle    incfhdl;
-    void        (*prepfn)( void *, void * );
+    void        (*prepfn)( Link& link, void *, void * );
 } perm_write_info;
 
 /* data and functions used for permanent data structure storage */

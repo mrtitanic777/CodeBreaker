@@ -232,10 +232,9 @@ bool DBINoReloc( seg_leader *seg )
     return( IS_DBG_INFO( seg ) );
 }
 
-static void AddNovGlobals( mod_entry *mod )
+static void AddNovGlobals(Link& link,  mod_entry *mod )
 /*****************************************/
-{
-    Link& link = wlink();
+{
 #ifdef _NOVELL
     Ring2Walk( mod->publist, bind_link( link, NovDBIAddGlobal ) );
 #else
@@ -246,11 +245,11 @@ static void AddNovGlobals( mod_entry *mod )
 void DBIPreAddrCalc(Link& link)
 /*************************/
 {
-    void (*modptr)( mod_entry * );
-    void (*segptr)( seg_leader * );
+    void (*modptr)( Link& link, mod_entry * );
+    void (*segptr)( Link& link, seg_leader * );
 
     if( link.LinkFlags & LF_NOVELL_DBI_FLAG ) {
-        WalkMods(link,  AddNovGlobals );
+        WalkMods(link,  bind_link( link, AddNovGlobals ) );
     }
     if( (link.LinkFlags & LF_ANY_DBI_FLAG) == 0 )
         return;
@@ -267,8 +266,8 @@ void DBIPreAddrCalc(Link& link)
         modptr = CVP1ModuleFinished;
         segptr = CVAddAddrInfo;
     }
-    WalkMods(link,  modptr );
-    WalkLeaders(link,  segptr );
+    WalkMods( link, bind_link( link, modptr ) );
+    WalkLeaders( link, bind_link( link, segptr ) );
     if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
         WalkMods(link,  bind_link( link, DwarfStoreAddrInfo ) );
     }

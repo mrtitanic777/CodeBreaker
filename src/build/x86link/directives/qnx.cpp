@@ -11,8 +11,7 @@
 
 namespace cb::x86link::directives {
 
-void SetQNXFmt() {
-    Link& link = wlink();
+void SetQNXFmt(Link& link) {
     link.FmtData.def_ext = E_QNX;
     link.FmtData.u.qnx.flags = 0;
     link.FmtData.u.qnx.priv_level = 0;
@@ -23,8 +22,7 @@ void SetQNXFmt() {
     ChkBase(link, _4K);
 }
 
-void FreeQNXFmt() {
-    Link& link = wlink(); FreeSegFlags(link.FmtData.u.qnx.seg_flags); }
+void FreeQNXFmt(Link& link) { FreeSegFlags(link.FmtData.u.qnx.seg_flags); }
 
 void CmdQNXFini(Link& link) {
     if (!link.FmtData.u.qnx.gen_linear_relocs && !link.FmtData.u.qnx.gen_seg_relocs) {

@@ -198,12 +198,11 @@ void HllP1ModuleScanned( void )
     DEBUG(( DBG_HLL, "HllP1ModuleScanned:" ));
 }
 
-void HllP1ModuleFinished( mod_entry *obj )
+void HllP1ModuleFinished( Link& link, mod_entry *obj )
 /*****************************************
  * calculate size of the sstModule
  */
 {
-    Link& link = wlink();
     HllState    &st = state();
     byte        namelen;
 
@@ -400,11 +399,10 @@ static void hllAddAddrAdd( segdata *sdata, offset delta, offset size,
     sdata->o.mod->u3.hll->numsegs++;
 }
 
-void HllAddAddrInfo( seg_leader *seg )
+void HllAddAddrInfo( Link& link, seg_leader *seg )
 /************************************/
 // We take this opportunity to count seginfo structures.
 {
-    Link& link = wlink();
     if( (seg->info & SEGINF_CODE) == 0 )
         return;
     DEBUG(( DBG_HLL, "HllAddAddrInfo: seg=%p %s", seg, seg->segname ));
@@ -506,10 +504,9 @@ static void hllDefSegData(Link& link,  void *_sdata )
     }
 }
 
-static bool hllDefLeader( void *_leader, void *group )
+static bool hllDefLeader(Link& link,  void *_leader, void *group )
 /****************************************************/
-{
-    Link& link = wlink();
+{
     seg_leader *leader = static_cast<seg_leader *>( _leader );
     DEBUG((DBG_HLL, "hllDefLeader: leader=%p %s", leader, leader->segname ));
 
@@ -568,7 +565,7 @@ void HllAddrStart(Link& link)
 
     /* Walk the debug info groups and dump the data in those segments. */
     for( group = link.DBIGroups; group != nullptr; group = group->next ) {
-        RingLookup( group->g.class_->segs, hllDefLeader, group );
+        RingLookup( group->g.class_->segs, bind_link( link, hllDefLeader ), group );
         group->g.class_ = nullptr;
     }
 }

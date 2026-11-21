@@ -162,10 +162,9 @@ char *GetOMFName(Link& link,  const file_list *file, unsigned long *loc )
     return( MemToStringSafe(link,  name + 1, len ) );
 }
 
-void OMFSkipObj( const file_list *file, unsigned long *loc )
+void OMFSkipObj( Link& link, const file_list *file, unsigned long *loc )
 /**********************************************************/
 {
-    Link& link = wlink();
     *loc = ProcObj(link,  file, *loc, nullptr );
 }
 
@@ -573,31 +572,27 @@ static void DoLazyExtdef(Link& link,  bool isweak )
     }
 }
 
-static void *GetVFListStart( void )
+static void *GetVFListStart(Link& link)
 /*********************************/
 {
-    Link& link = wlink();
     return( link.ObjBuff );
 }
 
-static void SetVFListStart( void *start )
+static void SetVFListStart( Link& link, void *start )
 /***************************************/
 {
-    Link& link = wlink();
     link.ObjBuff = static_cast<byte *>( start );
 }
 
-static bool EndOfVFList( void )
+static bool EndOfVFList(Link& link)
 /*****************************/
 {
-    Link& link = wlink();
     return( link.ObjBuff >= link.EOObjRec );
 }
 
-static char *GetVFListName( void )
+static char *GetVFListName(Link& link)
 /*********************************/
 {
-    Link& link = wlink();
     list_of_names       *lname;
 
     lname = FindName(link,  GetIdx(link) );
@@ -1104,12 +1099,11 @@ static void Comment(Link& link)
     }
 }
 
-static void Pass1Cmd( byte cmd )
+static void Pass1Cmd(Link& link,  byte cmd )
 /*******************************
  * Process an object record for pass 1
  */
 {
-    Link& link = wlink();
     bool isstatic;
 
     isstatic = false;
@@ -1255,12 +1249,11 @@ static void Pass1Cmd( byte cmd )
     }
 }
 
-unsigned long OMFPass1( void )
+unsigned long OMFPass1(Link& link)
 /*****************************
  * do pass 1 for OMF object files
  */
 {
-    Link& link = wlink();
     unsigned long retval;
 
     PermStartMod( link.CurrMod );
@@ -1270,7 +1263,7 @@ unsigned long OMFPass1( void )
         link.LinkState |= LS_HAVE_X86_CODE;
     }
     link.CurrMod->omfdbg = OMF_DBG_CODEVIEW; /* Assume MS style LINNUM records */
-    retval = ProcObj(link,  link.CurrMod->u1.source, link.CurrMod->location, &Pass1Cmd );
+    retval = ProcObj(link,  link.CurrMod->u1.source, link.CurrMod->location, bind_link( link, Pass1Cmd ) );
     IterateNodelist( link.SegNodes, CheckUninit, nullptr );
     ResolveComdats(link);
     return( retval );

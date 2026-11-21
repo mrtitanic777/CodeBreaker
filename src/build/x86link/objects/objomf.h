@@ -36,10 +36,10 @@
 extern list_of_names    *FindName(Link& link,  unsigned_16 );
 extern unsigned_16      GetIdx(Link& link);
 extern void             SkipIdx(Link& link);
-extern unsigned long    OMFPass1( void );
+extern unsigned long    OMFPass1(Link& link);
 extern bool             IsOMF(Link& link,  const file_list *, unsigned long );
 extern char             *GetOMFName(Link& link,  const file_list *, unsigned long * );
-extern void             OMFSkipObj( const file_list *, unsigned long * );
+extern void             OMFSkipObj( Link& link, const file_list *, unsigned long * );
 extern void             ResetObjOMF(Link& link);
 
 extern const byte             OMFAlignTab[];

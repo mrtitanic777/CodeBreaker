@@ -37,14 +37,14 @@
 extern void     DwarfInit( void );
 extern void     DwarfInitModule( mod_entry * );
 extern void     DwarfP1ModuleScanned( void );
-extern void     DwarfP1ModuleFinished( mod_entry * );
+extern void     DwarfP1ModuleFinished( Link& link, mod_entry * );
 extern void     DwarfAddModule(Link& link,  mod_entry *, section * );
 extern void     DwarfGenModule(Link& link);
 extern void     DwarfDefClass(Link& link,  class_entry *, unsigned_32 );
 extern void     DwarfAddGlobal(Link& link,  symbol * );
 extern void     DwarfGenGlobal(Link& link,  symbol *, section * );
 extern void     DwarfGenLines(Link& link,  lineinfo * );
-extern void     DwarfAddAddrInfo( seg_leader * );
+extern void     DwarfAddAddrInfo( Link& link, seg_leader * );
 extern void     DwarfStoreAddrInfo(Link& link,  mod_entry * );
 extern void     DwarfGenAddrInfo(Link& link,  seg_leader * );
 extern void     DwarfAddrSectStart(Link& link,  section * );

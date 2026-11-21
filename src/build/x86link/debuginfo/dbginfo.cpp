@@ -305,10 +305,9 @@ static void ODBIAddLines(Link& link,  lineinfo *info )
     DoAddLocal( &dinfo->linelinks, linesize );
 }
 
-void ODBIP1ModuleFinished( mod_entry *obj )
+void ODBIP1ModuleFinished( Link& link, mod_entry *obj )
 /*****************************************/
 {
-    Link& link = wlink();
     debug_info          *dinfo;
 
     dinfo = dbgInfo( link.CurrSect );
@@ -741,10 +740,9 @@ static void ODBIAddAddrAdd( segdata *sdata, offset delta, offset size,
     sdata->u.leader->num++;
 }
 
-void ODBIAddAddrInfo( seg_leader *seg )
+void ODBIAddAddrInfo( Link& link, seg_leader *seg )
 /*************************************/
 {
-    Link& link = wlink();
     debug_info *dptr;
 
     if( link.CurrSect == link.NonSect ) {

@@ -36,6 +36,6 @@
 extern void             InitORLObj( void );
 extern void             FiniORLObj( void );
 extern orl_file_format  FileTypeORL( const file_list *, unsigned long );
-extern void             ORLSkipObj( const file_list *, unsigned long * );
-extern unsigned long    ORLPass1( void );
+extern void             ORLSkipObj( Link& link, const file_list *, unsigned long * );
+extern unsigned long    ORLPass1(Link& link);
 extern void             ORLPass2( void );

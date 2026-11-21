@@ -8,8 +8,7 @@
 namespace cb::x86link::directives {
 
 // set up the structures needed to be able to process something in RDOS mode.
-void SetRdosFmt() {
-    Link& link = wlink();
+void SetRdosFmt(Link& link) {
     if (link.LinkState & LS_FMT_INITIALIZED)
         return;
     link.LinkState |= LS_FMT_INITIALIZED;
@@ -21,7 +20,7 @@ void SetRdosFmt() {
     link.FmtData.u.rdos.mboot = 0;
 }
 
-void FreeRdosFmt() {}
+void FreeRdosFmt(Link& link) {}
 
 namespace {
 

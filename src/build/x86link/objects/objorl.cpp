@@ -216,13 +216,12 @@ void FiniFile( orl_file_handle filehdl, const file_list *file )
 
 }
 
-void ORLSkipObj( const file_list *file, unsigned long *loc )
+void ORLSkipObj( Link& link, const file_list *file, unsigned long *loc )
 /***********************************************************
  * skip the object file.
  * NYI: add an entry point in ORL for a more efficient way of doing this.
  */
 {
-    Link& link = wlink();
     orl_file_handle     filehdl;
 
     ORLFileSeek( file, *loc, SEEK_SET );
@@ -351,9 +350,8 @@ orl_return Unsupported( orl_sec_handle )
     return ORL_OKAY;
 }
 
-void AllocSeg( void *_snode, void * )
-{
-    Link& link = wlink();
+void AllocSeg(Link& link,  void *_snode, void * )
+{
     segnode             *snode = static_cast<segnode *>( _snode );
     segdata             *sdata;
     const char          *clname;
@@ -954,12 +952,11 @@ orl_return ProcP1Specific( orl_sec_handle hdl )
 
 }
 
-unsigned long ORLPass1( void )
+unsigned long ORLPass1(Link& link)
 /*****************************
  * do pass 1 for an object file handled by ORL.
  */
 {
-    Link& link = wlink();
     orl_file_handle     filehdl;
 
     link.LinkState |= LS_DOSSEG_FLAG;
@@ -981,7 +978,7 @@ unsigned long ORLPass1( void )
         }
         link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
         ORLFileScan( filehdl, nullptr, ProcSegments );
-        IterateNodelist( link.SegNodes, AllocSeg, nullptr );
+        IterateNodelist( link.SegNodes, bind_link( link, AllocSeg ), nullptr );
         ORLFileScan( filehdl, nullptr, ProcSymbols );
         ScanImported(link);
         ORLFileScan( filehdl, nullptr, ProcP1Specific );

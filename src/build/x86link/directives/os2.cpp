@@ -21,8 +21,7 @@
 
 namespace cb::x86link::directives {
 
-void SetOS2Fmt() {
-    Link& link = wlink();
+void SetOS2Fmt(Link& link) {
     // set up the structures needed to be able to process something in OS/2 mode.
     if (link.LinkState & LS_FMT_INITIALIZED) return;
     link.LinkState |= LS_FMT_INITIALIZED;
@@ -42,8 +41,7 @@ void SetOS2Fmt() {
     ChkBase(link, _64K);
 }
 
-void FreeOS2Fmt() {
-    Link& link = wlink();
+void FreeOS2Fmt(Link& link) {
     MemFree(link.FmtData.u.os2fam.stub_file_name);
     MemFree(link.FmtData.u.os2fam.module_name);
     MemFree(link.FmtData.u.os2fam.old_lib_name);

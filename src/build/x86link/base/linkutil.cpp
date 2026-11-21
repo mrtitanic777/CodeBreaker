@@ -472,7 +472,7 @@ void VMemQSort( virt_mem base, size_t n, size_t width,
     }
 }
 
-int Spawn( void (*fn)( void ) )
+int Spawn( FunctionRef<void( void )> fn )
 /*****************************/
 {
     jmp_buf *save_env;
@@ -483,7 +483,7 @@ int Spawn( void (*fn)( void ) )
     State().spawn_stack = &env;
     status = setjmp( env );
     if( status == 0 ) {
-        (*fn)();
+        fn();
     }
     State().spawn_stack = save_env;  /* unwind */
     return( status );

@@ -317,10 +317,9 @@ static void DwarfAddLines(Link& link,  lineinfo *info )
     link.CurrMod->u3.d->dasi.size += dwsize;
 }
 
-void DwarfP1ModuleFinished( mod_entry *mod )
+void DwarfP1ModuleFinished( Link& link, mod_entry *mod )
 /*************************************************/
 {
-    Link& link = wlink();
     DwarfState  &st = dwarfState();
 
     if( MOD_NOT_DEBUGGABLE( mod ) )
@@ -672,10 +671,9 @@ static void DwarfAddAddrAdd(Link& link,  segdata *sdata, offset delta, offset si
     }
 }
 
-void DwarfAddAddrInfo( seg_leader *seg )
+void DwarfAddAddrInfo( Link& link, seg_leader *seg )
 /*********************************************/
 {
-    Link& link = wlink();
     DBIAddrInfoScan(link,  seg, DwarfAddAddrInit, bind_link( link, DwarfAddAddrAdd ), nullptr );
 }
 

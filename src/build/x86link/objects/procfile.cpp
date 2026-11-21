@@ -61,17 +61,17 @@
 #include "build/x86link/formats/pe.h"
 
 
-static void BadSkip( const file_list *file, unsigned long *loc )
+static void BadSkip( Link& link, const file_list *file, unsigned long *loc )
 /**************************************************************/
 {
     /* unused parameters */ (void)file; (void)loc;
 
-    BadObjFormat();
+    BadObjFormat( link );
 }
 
 struct ProcessEntry {
-    void (*SkipObj)( const file_list *, unsigned long * );
-    unsigned long (*Pass1)( void );
+    void (*SkipObj)( Link& link, const file_list *, unsigned long * );
+    unsigned long (*Pass1)( Link& link );
 };
 
 static constexpr ProcessEntry Process[] = {
@@ -270,16 +270,15 @@ static void MarkDefaultSyms(Link& link)
     }
 }
 
-static void MarkRelocs( mod_entry *mod )
+static void MarkRelocs(Link& link,  mod_entry *mod )
 /**************************************/
 {
-    Link& link = wlink();
     IterateModRelocs( mod->relocs, mod->sizerelocs, bind_link( link, RelocMarkSyms ) );
 }
 
 static void KillASym(Link& link,  void *_sym )
 /********************************/
-{
+{
     symbol *sym = static_cast<symbol *>( _sym );
 
     sym->info |= SYM_KILL;
@@ -288,10 +287,9 @@ static void KillASym(Link& link,  void *_sym )
     }
 }
 
-static void KillSyms( mod_entry *mod )
+static void KillSyms(Link& link,  mod_entry *mod )
 /************************************/
 {
-    Link& link = wlink();
     Ring2Walk( mod->publist, bind_link( link, KillASym ) );
 }
 
@@ -349,7 +347,7 @@ static void SavedPass1(Link& link,  mod_entry *mod )
 
 static void FreeModSegments(Link& link,  mod_entry *mod )
 /*******************************************/
-{
+{
     mod->publist = nullptr;
     Ring2CarveFree( link.CarveSegData, &mod->segs );
 }
@@ -423,7 +421,7 @@ static void DoPass1(Link& link,  mod_entry *next, file_list *file )
                 if( size != 0 ) {
                     loc += size;
                 } else {
-                    Process[link.ObjFileFormat].SkipObj( file, &loc );
+                    Process[link.ObjFileFormat].SkipObj( link, file, &loc );
                 }
             } else {
                 if( next == nullptr ) {
@@ -541,12 +539,12 @@ static void IncLoadObjFiles(Link& link)
     PrepareModList(link);
     SetStartAddr(link);
     MarkDefaultSyms(link);
-    IncIterateMods( link.Root->mods, MarkRelocs, false );
-    IncIterateMods( link.LibModules, MarkRelocs, false );
+    IncIterateMods( link.Root->mods, bind_link( link, MarkRelocs ), false );
+    IncIterateMods( link.LibModules, bind_link( link, MarkRelocs ), false );
     IncIterateMods( link.Root->mods, FixModAltDefs, false );
     IncIterateMods( link.LibModules, FixModAltDefs, false );
-    IncIterateMods( link.Root->mods, KillSyms, true );
-    IncIterateMods( link.LibModules, KillSyms, true );
+    IncIterateMods( link.Root->mods, bind_link( link, KillSyms ), true );
+    IncIterateMods( link.LibModules, bind_link( link, KillSyms ), true );
     PurgeSymbols(link);
     IncIterateMods( link.Root->mods, bind_link( link, FreeModSegments ), true );
     IncIterateMods( link.LibModules, bind_link( link, FreeModSegments ), true );
@@ -590,7 +588,7 @@ void ProcObjFiles(Link& link)
 
 void LoadObjFiles(Link& link,  section *sect )
 /********************************/
-{
+{
     file_list   *file;
 
     link.CurrSect = sect;
@@ -649,7 +647,7 @@ unsigned long ObjPass1(Link& link)
     DBIInitModule(link,  link.CurrMod );
     RelocStartMod();
     P1Start();
-    loc = Process[link.ObjFileFormat].Pass1();
+    loc = Process[link.ObjFileFormat].Pass1( link );
     CollapseLazyExtdefs(link);
     SymModEnd(link);
     DBIP1ModuleScanned(link);

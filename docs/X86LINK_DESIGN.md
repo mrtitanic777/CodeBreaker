@@ -191,5 +191,10 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    anything callable as F) where wlink took `F *`, and a routine that needs the link's state takes `Link&` first and is
    handed as `bind_link(link, f)` (its arguments converted to the routine's types, as wlink's casts had them): the
    rings', carvers', hash tables', sections', areas', modules' and leaders' walks, the DBI scans, OrderGroups, the
-   relocation and string-table walks (31 walkers, 92 routines; work/x86link5/slotify.py, hand5c.py). 76 bindings left:
-   routines held in tables and variables, and the callbacks the support libraries make (ORL, wres, the messages).
+   relocation and string-table walks (31 walkers, 108 routines; work/x86link5/slotify.py, hand5c.py); the tables of routines take it too: the
+   directive formats' set-up and free, the object formats' skip and pass 1, the debugging formats' pass-1 routines, the
+   virtual function lists', permdata's block preparation (hand5c3.py). What is left of wlink() is the boundary, 26
+   functions that bind `Link& link = wlink();` first because something outside the linker calls them with a
+   signature of its own: the IDE entry points (the host), the callbacks OpenWatcom's libraries make (ORL's reader and
+   scans, wres's file routines, the rc merger's messages and copies, the memory tracker's allocations, LnkMsg), and
+   qsort's comparison (its order is wlink's). Both corpora as before, at the same speed.

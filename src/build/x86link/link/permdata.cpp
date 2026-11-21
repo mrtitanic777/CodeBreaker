@@ -271,10 +271,9 @@ static void FixSymAddr( void *_sym )
     }
 }
 
-static void PrepModEntry( void *_mod, void *info )
+static void PrepModEntry( Link& link, void *_mod, void *info )
 /************************************************/
 {
-    Link& link = wlink();
     mod_entry *mod = static_cast<mod_entry *>(_mod);
 
     if( mod->flags_mod & MOD_IS_FREE ) {
@@ -292,10 +291,9 @@ static void PrepModEntry( void *_mod, void *info )
     }
 }
 
-static void PrepSegData( void *_sdata, void *info )
+static void PrepSegData( Link& link, void *_sdata, void *info )
 /*************************************************/
 {
-    Link& link = wlink();
     segdata *sdata = static_cast<segdata *>(_sdata);
 
     /* unused parameters */ (void)info;
@@ -311,10 +309,9 @@ static void PrepSegData( void *_sdata, void *info )
     sdata->vm_data = 0;
 }
 
-static void PrepSymbol( void *_sym, void *info )
+static void PrepSymbol( Link& link, void *_sym, void *info )
 /**********************************************/
 {
-    Link& link = wlink();
     symbol      *sym = static_cast<symbol *>( _sym );
     char        *save;
     symbol      *mainsym;
@@ -456,7 +453,7 @@ static void DumpBlock(Link& link,  carve_t carver, void *block, void *_info )
     size_t          size;
 
     size = CarveBlockSize( carver );
-    CarveBlockScan( carver, block, info->prepfn, info );
+    CarveBlockScan( carver, block, bind_link( link, info->prepfn ), info );
     QWrite( info->incfhdl, CarveBlockData( block ), size, link.IncFileName );
 }
 

@@ -35,14 +35,14 @@
 extern void     CVInit( void );
 extern void     CVInitModule( mod_entry * );
 extern void     CVP1ModuleScanned( void );
-extern void     CVP1ModuleFinished( mod_entry * );
+extern void     CVP1ModuleFinished( Link& link, mod_entry * );
 extern void     CVAddModule(Link& link,  mod_entry *, section * );
 extern void     CVGenModule(Link& link);
 extern void     CVAddLocal( seg_leader *, offset );
 extern void     CVAddGlobal(Link& link,  symbol * );
 extern void     CVGenGlobal(Link& link,  symbol *, section * );
 extern void     CVGenLines(Link& link,  lineinfo * );
-extern void     CVAddAddrInfo( seg_leader * );
+extern void     CVAddAddrInfo( Link& link, seg_leader * );
 extern void     CVGenAddrInfo(Link& link,  seg_leader * );
 extern void     CVAddrStart(Link& link);
 extern void     CVDefClass(Link& link,  class_entry *, unsigned_32 );

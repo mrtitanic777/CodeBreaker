@@ -181,7 +181,7 @@ char * GetEnvString( const char *envname )
     return( retval );
 }
 
-void GetExtraCommands( void )
+void GetExtraCommands(Link& link)
 /***************************/
 {
     std::array<char, _MAX_PATH + DIRECTIVE_SIZE>    buff;
@@ -195,7 +195,7 @@ void GetExtraCommands( void )
                 p = buff.data() + DIRECTIVE_SIZE;
                 if( st.cbs->GetInfo( st.hdl, cmd.type, 0, reinterpret_cast<IDEGetInfoLParam>( p ) ) )
                     break;
-                if( DoBuffCmdParse( buff.data() ) )
+                if( DoBuffCmdParse(link,  buff.data() ) )
                     break;
                 if( !cmd.retry ) {
                     break;

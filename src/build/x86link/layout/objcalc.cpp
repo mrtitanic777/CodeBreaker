@@ -187,17 +187,16 @@ static void AddUpSegData(Link& link,  void *_sdata )
     }
 }
 
-static void CalcSeg( seg_leader *seg )
+static void CalcSeg(Link& link,  seg_leader *seg )
 /************************************/
-{
-    Link& link = wlink();
+{
     RingWalk( seg->pieces, bind_link( link, AddUpSegData ) );
 }
 
 void CalcSegSizes(Link& link)
 /******************************/
 {
-    WalkLeaders(link,  CalcSeg );
+    WalkLeaders(link,  bind_link( link, CalcSeg ) );
 }
 
 static bool SetGroupInitSize( void *_sdata, void *_delta )
@@ -418,10 +417,9 @@ static bool FindInitEndAddr(Link& link,  void *_seg, void *_info )
     return( false );
 }
 
-static bool FindCopyGroups( void *_seg, void *_info )
+static bool FindCopyGroups(Link& link,  void *_seg, void *_info )
 /************************************************/
-{
-    Link& link = wlink();
+{
     // This is called by the outer level iteration looking for classes
     //  that have more than one group in them
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
@@ -475,7 +473,7 @@ static void CalcGrpAddr(Link& link,  group_entry *group )
             // For copy classes must check eash segment to see if it is in a new group
             // this could be the case with FAR_DATA class in large model
             info.last_group = nullptr; // so it will use the first group
-            RingLookup( class_->DupClass->segs, FindCopyGroups, &info );
+            RingLookup( class_->DupClass->segs, bind_link( link, FindCopyGroups ), &info );
             group->size = info.end_offs - info.start_offs;
             group->totalsize = group->size;
             // for copy classes put it in class size, also, so map file can find it.
