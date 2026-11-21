@@ -1,7 +1,7 @@
 // build/x86link/directives/elf.cpp -- ELF's directives: `format elf dll`, `option` for it, `import`, `export`, `module`
 // and `runtime` (the ABI) (a port of wlink's cmdelf.c).
 #include "build/x86link/directives/formats.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 
 #ifdef _ELF
 
@@ -11,11 +11,11 @@
 #include "build/x86link/directives/common.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "exeelf.h"
-#include "linkutil.h"
-#include "loadelf.h"
-#include "msg.h"
-#include "syms.h"
-#include "wlnkmsg.h"
+#include "build/x86link/base/linkutil.h"
+#include "build/x86link/formats/elf.h"
+#include "build/x86link/messages/msg.h"
+#include "build/x86link/link/syms.h"
+#include "build/x86link/messages/wlnkmsg.h"
 
 // (defined after the namespace: objpass1.cpp calls it)
 void SetELFImportSymbol(symbol* sym);

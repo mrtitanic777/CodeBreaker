@@ -4,8 +4,8 @@
 
 #include "build/x86link/directives/common.hpp"
 #include "build/x86link/directives/formats.hpp"
-#include "fileio.h"
-#include "ideentry.h"
+#include "build/x86link/base/fileio.h"
+#include "build/x86link/driver/ideentry.h"
 
 namespace cb::x86link::directives {
 

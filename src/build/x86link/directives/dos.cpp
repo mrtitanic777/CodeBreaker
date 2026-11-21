@@ -2,14 +2,14 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
-#include "cmdline.h"
-#include "dbgall.h"
-#include "distrib.h"
-#include "objcalc.h"
-#include "overlays.h"
+#include "build/x86link/directives/cmdline.h"
+#include "build/x86link/debuginfo/dbgall.h"
+#include "build/x86link/layout/distrib.h"
+#include "build/x86link/layout/objcalc.h"
+#include "build/x86link/layout/overlays.h"
 
 #ifdef _EXE
 

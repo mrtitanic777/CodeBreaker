@@ -4,21 +4,21 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
-#include "cmdline.h"
-#include "dbgall.h"
-#include "fileio.h"
-#include "ideentry.h"
-#include "library.h"
-#include "loadfile.h"
-#include "mapio.h"
-#include "overlays.h"
+#include "build/x86link/directives/cmdline.h"
+#include "build/x86link/debuginfo/dbgall.h"
+#include "build/x86link/base/fileio.h"
+#include "build/x86link/driver/ideentry.h"
+#include "build/x86link/symbols/library.h"
+#include "build/x86link/formats/output.h"
+#include "build/x86link/map/map.h"
+#include "build/x86link/layout/overlays.h"
 #include "pathlist.h"
-#include "reloc.h"
-#include "symtrace.h"
-#include "sysblock.h"
+#include "build/x86link/fixups/reloc.h"
+#include "build/x86link/symbols/symtrace.h"
+#include "build/x86link/link/sysblock.h"
 
 namespace cb::x86link::directives {
 

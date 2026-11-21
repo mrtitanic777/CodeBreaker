@@ -1,5 +1,5 @@
-// build/x86link/x86link.cpp -- see x86link.hpp. The host side of wlink's IDE interface (wlink/watcom/h/idedll.h), as
-// wlink.exe's own driver is (wlink/watcom/c/idedrv.c with maindrv.c): init, pass the init info, run once with the command
+// build/x86link/x86link.cpp -- see x86link.hpp. The host side of wlink's IDE interface (support/watcom/h/idedll.h), as
+// wlink.exe's own driver is (support/watcom/c/idedrv.c with maindrv.c): init, pass the init info, run once with the command
 // line, fini; messages through the same callbacks, formatted by the same IdeMsgFormat.
 #include "build/x86link/x86link.hpp"
 
@@ -15,7 +15,7 @@
 
 #ifdef _WIN32
 extern "C" {
-#include "build/x86link/wlink/watcom/h/idedll.h"   // (IdeMsgFormat: wlink/watcom/c/idemsgpr.c, the text wlink.exe prints)
+#include "build/x86link/support/watcom/h/idedll.h"   // (IdeMsgFormat: support/watcom/c/idemsgpr.c, the text wlink.exe prints)
 }
 #endif
 

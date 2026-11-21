@@ -1,7 +1,7 @@
 // build/x86link/directives/common.cpp -- the directives and options common to every format: file, library, name, option,
 // debug, system blocks, order, output, sort, language (a port of wlink's cmdall.c, and NewOutFile of cmdutils.c).
 #include "build/x86link/directives/common.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 
 #include <cstddef>
 #include <cstdlib>
@@ -10,22 +10,22 @@
 
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
-#include "linkstd.h"
-#include "alloc.h"
-#include "strtab.h"
-#include "dbgall.h"
-#include "cmdline.h"
-#include "symtrace.h"
-#include "objio.h"
-#include "loadfile.h"
-#include "carve.h"
-#include "permdata.h"
+#include "build/x86link/link/linkstd.h"
+#include "build/x86link/base/alloc.h"
+#include "build/x86link/base/strtab.h"
+#include "build/x86link/debuginfo/dbgall.h"
+#include "build/x86link/directives/cmdline.h"
+#include "build/x86link/symbols/symtrace.h"
+#include "build/x86link/objects/objio.h"
+#include "build/x86link/formats/output.h"
+#include "build/x86link/base/carve.h"
+#include "build/x86link/link/permdata.h"
 #include "pathlist.h"
-#include "library.h"
-#include "sysblock.h"
-#include "linkutil.h"
-#include "msg.h"
-#include "wlnkmsg.h"
+#include "build/x86link/symbols/library.h"
+#include "build/x86link/link/sysblock.h"
+#include "build/x86link/base/linkutil.h"
+#include "build/x86link/messages/msg.h"
+#include "build/x86link/messages/wlnkmsg.h"
 
 #include "clibext.h"
 

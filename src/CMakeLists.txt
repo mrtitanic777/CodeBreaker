@@ -352,9 +352,9 @@ target_link_libraries(format_check PRIVATE cb_formats cb_core)
 # XenonRecomp and XenonAnalyse (recompile/xenonrecomp, CodeBreaker's fork) as libraries: cb::recompile::xenon_engine calls
 # their mains in-process. Their own build (its third-party libraries, its flags); the programs build on request only.
 add_subdirectory(recompile/xenonrecomp "${CMAKE_BINARY_DIR}/xenonrecomp")
-# OpenWatcom's linker from its own source, linked in (build/x86link/wlink; Windows: its file layer is Win32)
+# The linker (build/x86link: began as OpenWatcom's wlink, from its own source; Windows: its file layer is Win32)
 if(WIN32)
-  add_subdirectory(build/x86link/wlink "${CMAKE_BINARY_DIR}/wlink")
+  add_subdirectory(build/x86link "${CMAKE_BINARY_DIR}/wlink")
   # OpenWatcom's C compilers from their own source (build/x86cc: wcc and wcc386, their globals renamed per target)
   add_subdirectory(build/x86cc "${CMAKE_BINARY_DIR}/x86cc")
 endif()

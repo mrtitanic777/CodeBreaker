@@ -55,20 +55,21 @@ docs/BUILTIN_ENGINES_PLAN.md item 5; their IDE DLLs are `wccd.dll` / `wccd386.dl
 wlink's seams are kept, as C++ modules (idiomatic typed C++, docs/CPP rules); each ports wlink's file of the same job
 from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wlink's behaviour.
 
-| Module (`src/build/x86link/`) | wlink source it ports | Job |
+| Module (`src/build/x86link/`) | wlink source it came from | Job |
 |---|---|---|
-| `link.hpp/.cpp` | the globals of `wlink.c`, `linkstd.h` | `Link`: all state of one link (options, symbols, segments, groups, the output) |
-| `directives` | `cmdline.c`, `cmdall.c`, `cmddos.c`, `cmdnt.c`, `cmdos2.c`, `cmd16m.c` and `wlsystem.lnk` | the directive language, `system` blocks |
-| `objects` | `objomf.c`, `objorl.c` (OMF; COFF later if a caller needs it) | reading OMF objects and libraries (cb/formats/omf reads the records) |
-| `symbols` | `symtrace.c`, `objpass1.c`, `objpass2.c`, `libr.c` | symbol resolution, library search, the two passes |
-| `layout` | `mapio.c`'s order, `ring.c`, `distrib.c`, `objcalc.c` | segment and group placement, classes and their order |
-| `fixups` | `fixup.c`, `reloc.c` | applying fixups, the relocations each format keeps |
-| `format_dos` | `loaddos.c` | MZ and COM |
-| `format_ne` | `load16m.c`, `loados2.c` (NE), `wres` for resources | NE |
-| `format_pe` | `loadpe.c` | PE |
-| `format_le` | `loadflat.c` (LE/VxD) | LE |
-| `map` | `mapio.c` | `option map` |
-| `driver` | `wlink.c` | the passes, the command line (`codebreaker wlink <wlink's arguments>`) |
+| `link` | `global.c`, `globals.h`, `linkstd.h`, `link.h` (now `flags.h`), `formats.h`, `objstruc.h`, `syms.h`, `permdata.c` | `Link` (`link.hpp`): all state of one link; the run's state (`run_state`); the types of objects, symbols, segments and formats |
+| `base` | `wlmem.c`, `carve.c`, `virtmem.c`, `spillio.c`, `hash.c`, `strtab.c`, `ring.c`, `ring2.c`, `linkutil.c`, `ntio.c` (now `fileio.cpp`), `mixcache.c`, `debug.c` | memory, carvers, virtual memory, hash and string tables, rings, the file layer |
+| `messages` | `msg.c`, `wlnkmsg.c`, `lnkerror.msg`, `wlink.msg` | the messages, compiled in (`msgtable.cpp`) |
+| `directives` | `cmdline.c`, `cmdall.c`, `cmddos.c`, `cmdnt.c`, `cmdos2.c`, `cmd16m.c` ... and `wlsystem.lnk` | the directive language, `system` blocks |
+| `objects` | `objomf.c`, `objorl.c`, `objio.c`, `omfreloc.c`, `objnode.c`, `objfree.c`, `objstrip.c`, `procfile.c` | reading OMF and ORL (COFF, ELF) objects and libraries |
+| `symbols` | `symtrace.c`, `objpass1.c`, `objpass2.c`, `libr.c`, `libsupp.c`, `lsymtab.c`, `symmem.c`, `wcomdef.c`, `impexp.c` | the symbol table, the two passes, library search, communal data, imports and exports |
+| `layout` | `distrib.c`, `objcalc.c`, `autogrp.c`, `overlays.c`, `ovlsupp.c`, `salloc.c` | segment and group placement, classes and their order, overlays, addresses |
+| `fixups` | `obj2supp.c`, `reloc.c`, `toc.c` | applying fixups, the relocations each format keeps, the TOC |
+| `debuginfo` | `dbgall.c`, `dbgcv.c`, `dbghll.c`, `dbgdwarf.c`, `dbginfo.c` | Watcom, CodeView, HLL and DWARF debugging information |
+| `formats` | `loadfile.c` (now `output.cpp`), `dosstub.c`, and `load<format>.c` (now `<format>.cpp`): `dos`, `dos16m`, `os2` (NE, LX), `flat` (LE/VxD), `pe`, `novell`, `phar`, `qnx`, `elf`, `raw`, `rdos` | the output file and each executable format |
+| `map` | `mapio.c` (now `map.cpp`) | `option map` |
+| `driver` | `wlink.c`, `ideentry.c` | the passes, the IDE entry the program calls (`x86link.cpp`) |
+| `support` | OpenWatcom's `orl`, `wres`, `dwarf/dw`, `rc`, `watcom/c`, the demangler | the libraries the linker uses |
 
 ### Rules
 
@@ -171,3 +172,10 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    - Proof: every link of both corpora is the same in-process as wlink.exe, the gate's 47 and the directive corpus's
      1,930 (directives_known.txt is empty), at wlink's speed. Next (phase 5): the modules into the folders of the table
      above, and `Link&` passed instead of wlink() as each module's functions are reworked.
+5. The modules into their folders, and the `Link` passed.
+   **5a done (2026-11-20): the folders.** wlink's files are in the module folders of the table above (src/build/x86link:
+   link, base, messages, directives, objects, symbols, layout, fixups, debuginfo, formats, map, driver; OpenWatcom's
+   libraries under support/), the cryptic names made plain (`loadpe.c` is `formats/pe.cpp`, `mapio.c` `map/map.cpp`,
+   `ntio.c` `base/fileio.cpp`, `link.h` `link/flags.h`), every header of the linker included by its path under src/
+   (`build/x86link/<module>/<file>`), the build in src/build/x86link/CMakeLists.txt (work/x86link5/folders.py moved
+   them). Both corpora as before: the gate's 47 and the directive corpus's 1,930.

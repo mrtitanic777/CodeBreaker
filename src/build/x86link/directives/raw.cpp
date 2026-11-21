@@ -1,7 +1,7 @@
 // build/x86link/directives/raw.cpp -- `format raw bin|hex`: the image as it is, from `option offset` (a port of wlink's
 // cmdraw.c).
 #include "build/x86link/directives/formats.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 
 #ifdef _RAW
 

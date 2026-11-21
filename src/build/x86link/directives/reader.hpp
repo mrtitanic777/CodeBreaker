@@ -18,7 +18,7 @@
 #include <string>
 #include <string_view>
 
-#include "build/x86link/wlink/cb/cbcxx.h"
+#include "build/x86link/link/cbcxx.h"
 
 namespace cb::x86link::directives {
 

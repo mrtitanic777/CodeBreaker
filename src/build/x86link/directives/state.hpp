@@ -7,8 +7,8 @@
 
 #include "build/x86link/directives/language.hpp"
 #include "build/x86link/directives/reader.hpp"
-#include "linkstd.h"
-#include "sysblock.h"
+#include "build/x86link/link/linkstd.h"
+#include "build/x86link/link/sysblock.h"
 
 namespace cb::x86link::directives {
 

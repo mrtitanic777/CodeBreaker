@@ -1,5 +1,5 @@
 // build/x86link/x86link.hpp -- CodeBreaker's x86 linker (docs/X86LINK_DESIGN.md): OpenWatcom's wlink, built from its own
-// source into this program (build/x86link/wlink, cb_wlink) and run in-process, so a link no longer starts wlink.exe.
+// source into this program (build/x86link, cb_wlink) and run in-process, so a link no longer starts wlink.exe.
 //
 //     x86link::Run r = x86link::link({"system", "dos", "file", "hello.obj", "name", "hello.exe"}, folder);
 //     if (r.exit_code != 0) cb::err("{}", r.err);

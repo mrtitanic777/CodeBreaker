@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "build/x86link/directives/language.hpp"
-#include "linkstd.h"
+#include "build/x86link/link/linkstd.h"
 
 namespace cb::x86link::directives {
 

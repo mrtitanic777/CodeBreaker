@@ -1,6 +1,6 @@
 // build/x86link/directives/rdos.cpp -- RDOS (`format rdos dev|bin|mboot`): a port of wlink's cmdrdv.c.
 #include "build/x86link/directives/common.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 
 #ifdef _RDOS

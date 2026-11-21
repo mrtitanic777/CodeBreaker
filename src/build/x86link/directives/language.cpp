@@ -6,13 +6,13 @@
 
 #include "build/x86link/directives/state.hpp"
 #include "build/x86link/directives/common.hpp"
-#include "cmdline.h"
-#include "linkutil.h"
-#include "msg.h"
+#include "build/x86link/directives/cmdline.h"
+#include "build/x86link/base/linkutil.h"
+#include "build/x86link/messages/msg.h"
 #include "pathgrp2.h"
 #include "wdirent.h"
 #include "wio.h"
-#include "wlnkmsg.h"
+#include "build/x86link/messages/wlnkmsg.h"
 
 #include "clibext.h"
 

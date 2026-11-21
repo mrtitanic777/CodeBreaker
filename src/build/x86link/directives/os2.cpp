@@ -5,17 +5,17 @@
 #include <string_view>
 
 #include "build/x86link/directives/common.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
-#include "cmdline.h"
+#include "build/x86link/directives/cmdline.h"
 #include "exepe.h"
-#include "fileio.h"
-#include "impexp.h"
-#include "loados2.h"
-#include "loadpe.h"
-#include "objfree.h"
-#include "objpass1.h"
+#include "build/x86link/base/fileio.h"
+#include "build/x86link/symbols/impexp.h"
+#include "build/x86link/formats/os2.h"
+#include "build/x86link/formats/pe.h"
+#include "build/x86link/objects/objfree.h"
+#include "build/x86link/symbols/objpass1.h"
 
 #ifdef _OS2
 

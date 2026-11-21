@@ -1,7 +1,7 @@
 // build/x86link/directives/novell.cpp -- Netware's directives: `format novell nlm|lan|dsk|nam|<n> 'description'`, `option`
 // for it, `import`, `export` and `module` with their `(PREFIX)`, and `debug novell` (a port of wlink's cmdnov.c).
 #include "build/x86link/directives/formats.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 
 #ifdef _NOVELL
 
@@ -12,15 +12,15 @@
 #include <string>
 #include <string_view>
 
-#include "alloc.h"
+#include "build/x86link/base/alloc.h"
 #include "build/x86link/directives/common.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "exenov.h"
-#include "linkutil.h"
-#include "loadnov.h"
-#include "msg.h"
-#include "syms.h"
-#include "wlnkmsg.h"
+#include "build/x86link/base/linkutil.h"
+#include "build/x86link/formats/novell.h"
+#include "build/x86link/messages/msg.h"
+#include "build/x86link/link/syms.h"
+#include "build/x86link/messages/wlnkmsg.h"
 
 // (defined after the namespace: objpass1.cpp calls it)
 void SetNovImportSymbol(symbol* sym);

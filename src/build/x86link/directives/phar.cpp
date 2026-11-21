@@ -1,7 +1,7 @@
 // build/x86link/directives/phar.cpp -- Phar Lap (`format phar ext|rex|seg`, its options and runtime directives): a port of
 // wlink's cmdphar.c.
 #include "build/x86link/directives/common.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "exephar.h"
 

@@ -6,12 +6,12 @@
 #include <cctype>
 
 #include "build/x86link/directives/state.hpp"
-#include "linkstd.h"
-#include "fileio.h"
-#include "ideentry.h"
-#include "loadfile.h"
-#include "msg.h"
-#include "wlnkmsg.h"
+#include "build/x86link/link/linkstd.h"
+#include "build/x86link/base/fileio.h"
+#include "build/x86link/driver/ideentry.h"
+#include "build/x86link/formats/output.h"
+#include "build/x86link/messages/msg.h"
+#include "build/x86link/messages/wlnkmsg.h"
 
 namespace cb::x86link::directives {
 

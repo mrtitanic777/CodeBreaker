@@ -1,11 +1,11 @@
 // build/x86link/directives/qnx.cpp -- QNX (`format qnx [flat]`, its options and `segment` directive): a port of wlink's
 // cmdqnx.c.
 #include "build/x86link/directives/common.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "exeqnx.h"
-#include "loadqnx.h"
-#include "objfree.h"
+#include "build/x86link/formats/qnx.h"
+#include "build/x86link/objects/objfree.h"
 
 #ifdef _QNX
 

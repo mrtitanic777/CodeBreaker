@@ -2,12 +2,12 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
-#include "link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
-#include "cmdline.h"
+#include "build/x86link/directives/cmdline.h"
 #include "exe16m.h"
-#include "load16m.h"
+#include "build/x86link/formats/dos16m.h"
 
 #include "clibext.h"
 
