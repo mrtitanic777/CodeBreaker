@@ -330,7 +330,8 @@ CB_TEST("formats.inspect.hexdump_reads_a_window_of_a_file", [] {
     CB_CHECK_EQ(cb::text::split(win, '\n').size(), std::size_t{2});
     // a window that runs past the end is cut, one that starts past it is empty
     const std::uint64_t size = cb::fs::file_size(td("xcopy.exe"));
-    CB_CHECK_EQ(cb::text::split(insp::hexdump(td("xcopy.exe"), size - 3, 100), '\n').size(), std::size_t{1});
+    const std::string tail = insp::hexdump(td("xcopy.exe"), size - 3, 100);
+    CB_CHECK_EQ(cb::text::split(tail, '\n').size(), std::size_t{1});
     CB_CHECK_EQ(insp::hexdump(td("xcopy.exe"), size + 10, 16), std::string(""));
     CB_CHECK_EQ(insp::hexdump(td("xcopy.exe"), 0, 0), std::string(""));
     CB_CHECK_THROWS_AS(cb::IoError, insp::hexdump(td("no_such_file"), 0, 16));

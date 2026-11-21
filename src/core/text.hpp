@@ -13,6 +13,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <concepts>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -64,6 +65,15 @@ std::vector<std::string_view> split_trim(std::string_view s, char sep);
 // The lines of a text, splitting on \n and \r\n. A final line without a terminator counts; a trailing
 // terminator does not start an extra empty line.
 std::vector<std::string_view> lines(std::string_view s);
+// The pieces are views into the text: a temporary string would be gone before they are read (`for (line : lines(read_text(f)))`
+// reads freed memory), so the splitters refuse one; name the text first.
+template <class S> concept TemporaryString = std::same_as<S, std::string>;   // (an rvalue std::string deduces S = std::string; an lvalue S = std::string&)
+template <TemporaryString S> std::vector<std::string_view> lines(S&&) = delete;
+template <TemporaryString S> std::vector<std::string_view> split(S&&, char) = delete;
+template <TemporaryString S> std::vector<std::string_view> split(S&&, std::string_view) = delete;
+template <TemporaryString S> std::vector<std::string_view> split_n(S&&, char, std::size_t) = delete;
+template <TemporaryString S> std::vector<std::string_view> split_ws(S&&) = delete;
+template <TemporaryString S> std::vector<std::string_view> split_trim(S&&, char) = delete;
 
 // Join any range of string-likes with a separator.
 template <class Range>

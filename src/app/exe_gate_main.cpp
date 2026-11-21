@@ -414,7 +414,8 @@ bool translator_ready(const Env& env, const char* file_name) {
     spec.timeout = std::chrono::seconds(60);
     try {
         const process::ProcessResult r = process::run(spec);
-        for (std::string_view line : text::lines(as_string(r.out)))
+        const std::string out_text = as_string(r.out);
+        for (std::string_view line : text::lines(out_text))
             if (line.rfind("  cpp17", 0) == 0) return line.find("not available") == std::string_view::npos;
     } catch (const Error&) {   // isolation boundary: a probe that cannot run says no
     }
@@ -467,7 +468,8 @@ std::string head_commit(const stdfs::path& repo) {
         if (!head.starts_with("ref: ")) return head.substr(0, 9);
         const std::string ref = head.substr(5);
         if (stdfs::exists(git / ref)) return std::string(text::trim(fs::read_text(git / ref))).substr(0, 9);
-        for (std::string_view line : text::lines(fs::read_text(git / "packed-refs")))
+        const std::string packed = fs::read_text(git / "packed-refs");
+        for (std::string_view line : text::lines(packed))
             if (line.size() > 41 && line.substr(41) == ref) return std::string(line.substr(0, 9));
     } catch (const std::exception&) {   // isolation boundary: the commit is a label only
     }
@@ -634,11 +636,11 @@ int main(int argc, char** argv) {
         const stdfs::path case_times_file = env.repo / "work" / "gate-case-times.txt";   // seconds per case, last run: "secs<TAB>name"
         {   // the longest cases first (the pool takes them in order), so the last one started is a short one
             std::map<std::string, double> last;
-            if (stdfs::exists(case_times_file))
-                for (std::string_view line : text::lines(fs::read_text(case_times_file))) {
-                    const std::size_t tab = line.find('\t');
-                    if (tab != std::string_view::npos) last[std::string(line.substr(tab + 1))] = std::atof(std::string(line.substr(0, tab)).c_str());
-                }
+            const std::string case_times = stdfs::exists(case_times_file) ? fs::read_text(case_times_file) : std::string();
+            for (std::string_view line : text::lines(case_times)) {
+                const std::size_t tab = line.find('\t');
+                if (tab != std::string_view::npos) last[std::string(line.substr(tab + 1))] = std::atof(std::string(line.substr(0, tab)).c_str());
+            }
             auto weight = [&](const Case* c) { const auto it = last.find(c->name); return it != last.end() ? it->second : 30.0; };
             std::stable_sort(picked.begin(), picked.end(), [&](const Case* a, const Case* b) { return weight(a) > weight(b); });
         }
@@ -780,11 +782,11 @@ int main(int argc, char** argv) {
             try {
                 auto merge = [&](const stdfs::path& file, const std::vector<std::pair<double, std::string>>& now) {
                     std::map<std::string, double> all_times;
-                    if (stdfs::exists(file))
-                        for (std::string_view line : text::lines(fs::read_text(file))) {
-                            const std::size_t tab = line.find('\t');
-                            if (tab != std::string_view::npos) all_times[std::string(line.substr(tab + 1))] = std::atof(std::string(line.substr(0, tab)).c_str());
-                        }
+                    const std::string file_text = stdfs::exists(file) ? fs::read_text(file) : std::string();
+                    for (std::string_view line : text::lines(file_text)) {
+                        const std::size_t tab = line.find('\t');
+                        if (tab != std::string_view::npos) all_times[std::string(line.substr(tab + 1))] = std::atof(std::string(line.substr(0, tab)).c_str());
+                    }
                     for (const auto& [secs, name] : now) all_times[name] = secs;
                     std::string out;
                     for (const auto& [name, secs] : all_times) out += std::format("{:.3f}\t{}\n", secs, name);
@@ -796,7 +798,8 @@ int main(int argc, char** argv) {
                 for (std::size_t t = 0; t < nunit; ++t) {
                     const stdfs::path f = env.scratch / ("unit-" + std::to_string(t) + ".times");
                     if (!stdfs::exists(f)) continue;
-                    for (std::string_view line : text::lines(fs::read_text(f))) {
+                    const std::string f_text = fs::read_text(f);
+                    for (std::string_view line : text::lines(f_text)) {
                         const std::size_t tab = line.find('\t');
                         if (tab != std::string_view::npos) test_now.emplace_back(std::atof(std::string(line.substr(0, tab)).c_str()), std::string(line.substr(tab + 1)));
                     }

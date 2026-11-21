@@ -163,7 +163,7 @@ CtorParts ctor_parts(Dialect dialect, Context& ctx, const ir::Node& cls_node, co
     }
     for (const ir::Node* s : split.rest) w->stmt(s, out, "");
     std::optional<std::string> kind;
-    if (first != nullptr) kind = std::string(text::split(first->kind.value_or(""), ':')[0]);
+    if (first != nullptr) { const std::string first_kind = first->kind.value_or(""); kind = std::string(text::split(first_kind, ':')[0]); }
     return CtorParts{kind, args, std::move(out)};
 }
 

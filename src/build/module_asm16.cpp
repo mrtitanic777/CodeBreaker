@@ -175,7 +175,8 @@ std::map<std::string, asm16::Import> assemble16(AssemblyJob& job) {
             const stdfs::path obj = folder / (stem + ".obj");
             std::error_code ec;
             if (r.code != 0 || !stdfs::is_regular_file(obj, ec)) {
-                const std::vector<std::string_view> lines = text::split(f.write(good), '\n');
+                const std::string written = f.write(good);   // (kept: the lines are views into it)
+                const std::vector<std::string_view> lines = text::split(written, '\n');
                 std::set<std::string> bad;
                 error_line.for_each_match(r.message, [&](const RegexMatch& m) {
                     const auto n = text::parse_int<std::size_t>(m.group(1));

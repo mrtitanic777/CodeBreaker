@@ -116,7 +116,8 @@ struct Kit {
     int lines_of(const stdfs::path& file) {
         std::error_code ec;
         if (!stdfs::exists(file, ec)) return 0;
-        return static_cast<int>(text::lines(fs::read_text(file)).size());
+        const std::string text_of = fs::read_text(file);
+        return static_cast<int>(text::lines(text_of).size());
     }
 };
 

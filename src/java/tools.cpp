@@ -258,7 +258,8 @@ int ui_mark_tool(const cli::Args& a) {
         return kUsage;
     }
     std::vector<std::string> extra;
-    for (const std::string_view name : text::split(a.value_or("extra", ""), ',')) {
+    const std::string extra_list = a.value_or("extra", "");
+    for (const std::string_view name : text::split(extra_list, ',')) {
         const std::string_view trimmed = text::trim(name);
         if (!trimmed.empty()) extra.emplace_back(trimmed);
     }
@@ -720,7 +721,8 @@ std::optional<stdfs::path> port_mingw_prefix(const stdfs::path& build_dir) {
     const stdfs::path cache = build_dir / "CMakeCache.txt";
     if (!stdfs::is_regular_file(cache, ec)) return std::nullopt;
     std::string sdl2, cxx;
-    for (std::string_view line : text::split(fs::read_text(cache), '\n')) {
+    const std::string cached = fs::read_text(cache);
+    for (std::string_view line : text::split(cached, '\n')) {
         line = text::trim(line, "\r");
         if (line.starts_with("SDL2_DIR:PATH=")) sdl2 = std::string(line.substr(14));
         else if (line.starts_with("CMAKE_CXX_COMPILER:")) cxx = std::string(line.substr(line.find('=') + 1));

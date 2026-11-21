@@ -56,7 +56,8 @@ std::string golden(const std::string& name) {
 
 // "file <rel> <size> <sha1>" lines of the golden, as {rel: "size sha1"}.
 std::string golden_file(const std::string& name, const std::string& rel) {
-    for (const std::string_view line : text::lines(golden(name)))
+    const std::string text_of = golden(name);   // (kept: the lines are views into it)
+    for (const std::string_view line : text::lines(text_of))
         if (line.starts_with("file " + rel + " ")) return std::string(line.substr(5 + rel.size() + 1));
     testing::record_failure(__FILE__, __LINE__, "no file " + rel + " in the golden " + name);
     return {};

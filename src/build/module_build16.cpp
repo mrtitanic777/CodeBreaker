@@ -441,7 +441,8 @@ void decide_forced(Ctx16& c) {
     {
         const std::string only = env_text("CB_ASM_ONLY");
         std::set<std::uint32_t> segs_only;
-        for (std::string_view x : text::split(env_text("CB_ASM_SEGMENTS"), ',')) {
+        const std::string asm_segments = env_text("CB_ASM_SEGMENTS");
+        for (std::string_view x : text::split(asm_segments, ',')) {
             if (const auto n = text::parse_int<std::uint32_t>(text::trim(x))) segs_only.insert(*n);
         }
         if (!only.empty() || !segs_only.empty()) {
@@ -489,7 +490,8 @@ void decide_forced(Ctx16& c) {
             c.evidence(name, "its C, run beside the original, differs (not trusted as C): " + why.substr(0, 160));
         }
     }
-    for (std::string_view x : text::split(env_text("CB_FORCE_C"), ',')) c.forced.erase(std::string(x));   // (and these as C whatever origin says)
+    const std::string force_c = env_text("CB_FORCE_C");
+    for (std::string_view x : text::split(force_c, ',')) c.forced.erase(std::string(x));   // (and these as C whatever origin says)
     if (const std::optional<std::string> keep_c = env_value("CB_ASM_KEEP_C")) {   // (and the other way: C for these alone)
         std::set<std::string> kept;
         for (std::string_view x : text::split(*keep_c, ',')) kept.emplace(x);
