@@ -272,11 +272,10 @@ static int GetStmtHeaderSize( mod_entry *mod )
     return( len );
 }
 
-static void DwarfAddLines( lineinfo *info )
+static void DwarfAddLines(Link& link,  lineinfo *info )
 /*****************************************/
 // calculate the amount of space needed to hold all of the line # info.
-{
-    Link& link = wlink();
+{
     ln_off_pair _WCUNALIGNED *lineptr;
     unsigned_32         dwsize;
     std::array<unsigned_8, 3 + 2 * MAX_LEB128> buff;
@@ -329,8 +328,8 @@ void DwarfP1ModuleFinished( mod_entry *mod )
     link.CurrMod = mod;
     if( mod->flags_mod & MOD_DBI_SEEN )
         return;
-    DBILineWalk( reinterpret_cast<lineinfo *>( mod->lines ), DwarfAddLines );
-    Ring2Walk( mod->publist, DBIModGlobal );
+    DBILineWalk( reinterpret_cast<lineinfo *>( mod->lines ), bind_link( link, DwarfAddLines ) );
+    Ring2Walk( mod->publist, bind_link( link, DBIModGlobal ) );
     if( link.FmtData.type & MK_SEGMENTED ) {
         st.sect( Sect::abbrev ).size = SegmentedStandardAbbrevs.size();
     } else {
@@ -350,10 +349,9 @@ void DwarfP1ModuleFinished( mod_entry *mod )
     }
 }
 
-void DwarfStoreAddrInfo( mod_entry *mod )
+void DwarfStoreAddrInfo(Link& link,  mod_entry *mod )
 /**********************************************/
-{
-    Link& link = wlink();
+{
     sectioninfo &aranges = dwarfState().sect( Sect::aranges );
 
     if( (mod->flags_mod & MOD_DBI_SEEN) == 0 ) {
@@ -474,10 +472,9 @@ void DwarfGenModule(Link& link)
     PutInfoNulls( link.CurrMod->u3.d->pubsym.u.vm_ptr, 1 );
 }
 
-static void DefAClass( void *_seg )
+static void DefAClass(Link& link,  void *_seg )
 /*********************************/
-{
-    Link& link = wlink();
+{
     DwarfState  &st = dwarfState();
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
 
@@ -494,7 +491,7 @@ static void DefAClass( void *_seg )
     }
 }
 
-void DwarfDefClass( class_entry *class_, unsigned_32 size )
+void DwarfDefClass(Link& link,  class_entry *class_, unsigned_32 size )
 /************************************************************/
 // go through the list of dwarf segments, and make sure VM is allocated for
 // all of them.
@@ -503,7 +500,7 @@ void DwarfDefClass( class_entry *class_, unsigned_32 size )
 
     if( class_->flags & CLASS_DWARF ) {
         dwarfState().dbiClass = class_;
-        RingWalk( class_->segs, DefAClass );
+        RingWalk( class_->segs, bind_link( link, DefAClass ) );
     }
 }
 
@@ -575,10 +572,9 @@ void DwarfGenGlobal(Link& link,  symbol *sym, section *sect )
     }
 }
 
-void DwarfGenLines( lineinfo *info )
+void DwarfGenLines(Link& link,  lineinfo *info )
 /**********************************/
-{
-    Link& link = wlink();
+{
     ln_off_pair _WCUNALIGNED *lineptr;
     unsigned            dwsize;
     dw_linenum_delta    linedelta;
@@ -660,11 +656,10 @@ static void DwarfAddAddrInit( segdata *sdata, void *cookie )
     /* unused parameters */ (void)sdata; (void)cookie;
 }
 
-static void DwarfAddAddrAdd( segdata *sdata, offset delta, offset size,
+static void DwarfAddAddrAdd(Link& link,  segdata *sdata, offset delta, offset size,
                              void *cookie, bool isnewmod )
 /********************************************************/
-{
-    Link& link = wlink();
+{
     /* unused parameters */ (void)delta; (void)size; (void)cookie;
 
     if( isnewmod
@@ -681,7 +676,7 @@ void DwarfAddAddrInfo( seg_leader *seg )
 /*********************************************/
 {
     Link& link = wlink();
-    DBIAddrInfoScan(link,  seg, DwarfAddAddrInit, DwarfAddAddrAdd, nullptr );
+    DBIAddrInfoScan(link,  seg, DwarfAddAddrInit, bind_link( link, DwarfAddAddrAdd ), nullptr );
 }
 
 static offset GetNewAddrOffset(Link& link,  segdata *sdata, offset delta )
@@ -696,10 +691,9 @@ static offset GetNewAddrOffset(Link& link,  segdata *sdata, offset delta )
     return( off );
 }
 
-static void DwarfGenAddrInit( segdata *sdata, void *_tuple )
+static void DwarfGenAddrInit(Link& link,  segdata *sdata, void *_tuple )
 /**********************************************************/
-{
-    Link& link = wlink();
+{
     arange_tuple *tuple = static_cast<arange_tuple *>( _tuple );
 
     if( link.FmtData.type & MK_SEGMENTED ) {
@@ -710,11 +704,10 @@ static void DwarfGenAddrInit( segdata *sdata, void *_tuple )
     }
 }
 
-static void DwarfGenAddrAdd( segdata *sdata, offset delta, offset size,
+static void DwarfGenAddrAdd(Link& link,  segdata *sdata, offset delta, offset size,
                              void *_tuple, bool isnewmod )
 /*********************************************************************/
-{
-    Link& link = wlink();
+{
     arange_tuple *tuple = static_cast<arange_tuple *>( _tuple );
     mod_entry * mod;
     unsigned    tup_size;
@@ -754,13 +747,12 @@ static void DwarfGenAddrAdd( segdata *sdata, offset delta, offset size,
     }
 }
 
-void DwarfGenAddrInfo( seg_leader *seg )
+void DwarfGenAddrInfo(Link& link,  seg_leader *seg )
 /*********************************************/
-{
-    Link& link = wlink();
+{
     arange_tuple tuple;
 
-    DBIAddrInfoScan(link,  seg, DwarfGenAddrInit, DwarfGenAddrAdd, &tuple );
+    DBIAddrInfoScan(link,  seg, bind_link( link, DwarfGenAddrInit ), bind_link( link, DwarfGenAddrAdd ), &tuple );
 }
 
 void DwarfAddrSectStart(Link& link,  section *sect )
@@ -828,7 +820,7 @@ static unsigned_32 WriteELFSections(Link& link,  unsigned_32 file_off, unsigned_
             if( seg->size != 0 ) {
                 FillHeader( hdr, seg->segname.u.ptr, strtab, curr_off );
                 hdr->sh_size = seg->size + addsize;
-                WriteLeaderLoad( seg );
+                WriteLeaderLoad(link,  seg );
                 if( addsize != 0 ) {
                     WriteDwarfSect(link,  addidx, addsize );
                 }
@@ -954,7 +946,7 @@ void DwarfWrite(Link& link)
     FillHeader( sh, ".shstrtab", &strtab, virt_off );
     sh->sh_type = SHT_STRTAB;
     sh->sh_size = GetStringTableSize( &strtab );
-    WriteStringTable( &strtab, WriteLoad3, nullptr );
+    WriteStringTable( &strtab, bind_link( link, WriteLoad3 ), nullptr );
     FiniStringTable( &strtab );
     virt_off += sh->sh_size;
     virt_off += DwarfWriteTrailer(link,  virt_off );

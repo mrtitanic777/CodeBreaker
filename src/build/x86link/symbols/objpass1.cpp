@@ -257,10 +257,9 @@ static void AddCDatAltDef(Link& link,  segdata *sdata, symbol *sym, unsigned_8 *
     }
 }
 
-static void DoIncSymbol( void *_sym )
+static void DoIncSymbol(Link& link,  void *_sym )
 /***********************************/
-{
-    Link& link = wlink();
+{
     symbol      *sym = static_cast<symbol *>(_sym);
     symbol      *mainsym;
     void        *data;
@@ -323,10 +322,9 @@ static bool CmpSegName( void *leader, void *name )
     return( stricmp( static_cast<seg_leader *>(leader)->segname.u.ptr, static_cast<const char *>(name) ) == 0 );
 }
 
-static bool DefIncGroup( void *_def, void *_grouptab )
+static bool DefIncGroup(Link& link,  void *_def, void *_grouptab )
 /****************************************************/
-{
-    Link& link = wlink();
+{
     incgroupdef     *def = static_cast<incgroupdef *>(_def);
     group_entry     ***grouptab = static_cast<group_entry ***>(_grouptab);
     group_entry     *group;
@@ -359,7 +357,7 @@ void DoIncGroupDefs(Link& link)
     numgroups = RingCount( link.IncGroupDefs );
     link.IncGroups = static_cast<group_entry **>(MemAllocSafe( sizeof( group_entry * ) * numgroups ));
     grouptab = link.IncGroups;
-    RingLookup( link.IncGroupDefs, DefIncGroup, &grouptab );
+    RingLookup( link.IncGroupDefs, bind_link( link, DefIncGroup ), &grouptab );
     RingFree( &link.IncGroupDefs );
 }
 
@@ -483,10 +481,10 @@ unsigned long IncPass1( void )
     }
     publist = link.CurrMod->publist;
     link.CurrMod->publist = nullptr;
-    Ring2Walk( publist, DoIncSymbol );
+    Ring2Walk( publist, bind_link( link, DoIncSymbol ) );
     relocs = link.CurrMod->relocs;
     PermStartMod( link.CurrMod );    // destroys currmod->relocs
-    IterateModRelocs( relocs, link.CurrMod->sizerelocs, IncSaveRelocs );
+    IterateModRelocs( relocs, link.CurrMod->sizerelocs, bind_link( link, IncSaveRelocs ) );
     return( 0 );
 }
 
@@ -725,11 +723,10 @@ void AddSegment(Link& link,  segdata *sd, class_entry *class_ )
     }
 }
 
-void FreeLeader( void *seg )
+void FreeLeader(Link& link,  void *seg )
 /**************************/
-{
-    Link& link = wlink();
-    RingWalk( static_cast<seg_leader *>(seg)->pieces, FreeSegData );
+{
+    RingWalk( static_cast<seg_leader *>(seg)->pieces, bind_link( link, FreeSegData ) );
     CarveFree( link.CarveLeader, seg );
 }
 

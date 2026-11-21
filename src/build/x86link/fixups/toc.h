@@ -42,7 +42,7 @@ extern offset           FindIATSymAbsOff( symbol * );
 extern offset           FindSymPosInToc(Link& link,  symbol * );
 extern offset           FindSymPosInTocv(Link& link,  symbol * );
 extern unsigned long    GetTocSize( void );
-extern void             WriteToc( virt_mem );
+extern void             WriteToc(Link& link,  virt_mem );
 extern void             SetTocAddr(Link& link,  offset , group_entry * );
 extern void             CheckIfTocSym( symbol * );
 extern bool             IsTocSym( symbol * );

@@ -318,10 +318,9 @@ segdata *AllocSegData(Link& link)
 }
 
 // put a segdata on the list of free segdatas
-void FreeSegData( void *sdata )
+void FreeSegData(Link& link,  void *sdata )
 /*****************************/
-{
-    Link& link = wlink();
+{
     CarveFree( link.CarveSegData, sdata );
 }
 

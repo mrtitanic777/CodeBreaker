@@ -34,7 +34,7 @@
 
 
 extern void             ProcObjFiles(Link& link);
-extern void             LoadObjFiles( section * );
+extern void             LoadObjFiles(Link& link,  section * );
 extern char             *IdentifyObject(Link& link,  const file_list *, unsigned long *, unsigned long * );
 extern void             ResolveUndefined(Link& link);
 extern unsigned long    ObjPass1(Link& link);

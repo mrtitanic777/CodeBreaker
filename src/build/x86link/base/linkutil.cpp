@@ -62,11 +62,11 @@ namespace {
 
 /* what a walk over the sections hands to its per-section callback */
 struct mods_walk_data {
-    mods_walk_fn    *cbfn;
+    FunctionRef<mods_walk_fn> cbfn;
 };
 
 struct class_walk_data {
-    class_walk_fn   *cbfn;
+    FunctionRef<class_walk_fn> cbfn;
 };
 
 /* what the file keeps between its calls in one run */
@@ -150,7 +150,7 @@ void ClearBit( byte *array, unsigned num )
     array[num / 8] &= ~mask;
 }
 
-static void WalkModsList( mod_entry *list, mods_walk_fn *cbfn )
+static void WalkModsList( mod_entry *list, FunctionRef<mods_walk_fn> cbfn )
 /*************************************************************/
 {
     for( ; list != nullptr; list = list->u.next ) {
@@ -158,15 +158,14 @@ static void WalkModsList( mod_entry *list, mods_walk_fn *cbfn )
     }
 }
 
-static void WalkSectModsList( section *sect, void *mods_walk_cb )
+static void WalkSectModsList(Link& link,  section *sect, void *mods_walk_cb )
 /***************************************************************/
-{
-    Link& link = wlink();
+{
     link.CurrSect = sect;
     WalkModsList( sect->mods, static_cast<mods_walk_data *>( mods_walk_cb )->cbfn );
 }
 
-void WalkAllSects(Link& link,  void (*rtn)( section * ) )
+void WalkAllSects(Link& link,  FunctionRef<void( section * )> rtn )
 /*******************************************/
 {
     rtn( link.Root );
@@ -177,7 +176,7 @@ void WalkAllSects(Link& link,  void (*rtn)( section * ) )
 #endif
 }
 
-void ParmWalkAllSects(Link& link,  void (*rtn)( section *, void * ), void *parm )
+void ParmWalkAllSects(Link& link,  FunctionRef<void( section *, void * )> rtn, void *parm )
 /*******************************************************************/
 {
     rtn( link.Root, parm );
@@ -188,24 +187,24 @@ void ParmWalkAllSects(Link& link,  void (*rtn)( section *, void * ), void *parm 
 #endif
 }
 
-void WalkMods(Link& link,  mods_walk_fn *cbfn )
+void WalkMods(Link& link,  FunctionRef<mods_walk_fn> cbfn )
 /*********************************/
 {
     mods_walk_data      mods_walk_cb{ cbfn };
 
-    ParmWalkAllSects(link,  WalkSectModsList, &mods_walk_cb );
+    ParmWalkAllSects(link,  bind_link( link, WalkSectModsList ), &mods_walk_cb );
     link.CurrSect = link.Root;
     WalkModsList( link.LibModules, cbfn );
 }
 
-static void WalkClass( class_entry *class_, class_walk_fn *cbfn )
+static void WalkClass( class_entry *class_, FunctionRef<class_walk_fn> cbfn )
 /**************************************************************/
 {
     /* the ring hands each element over as a void *; the callback takes it as a seg_leader * */
-    RingWalk( class_->segs, reinterpret_cast<ringwalk_fn *>( cbfn ) );
+    RingWalk( class_->segs, [cbfn]( void *seg ) { cbfn( static_cast<seg_leader *>( seg ) ); } );
 }
 
-void SectWalkClass(Link& link,  section *sect, class_walk_fn *cbfn )
+void SectWalkClass(Link& link,  section *sect, FunctionRef<class_walk_fn> cbfn )
 /******************************************************/
 {
     link.CurrSect = sect;
@@ -214,22 +213,21 @@ void SectWalkClass(Link& link,  section *sect, class_walk_fn *cbfn )
     }
 }
 
-static void _SectWalkClass( section *sect, void *class_walk_cb )
+static void _SectWalkClass(Link& link,  section *sect, void *class_walk_cb )
 /**************************************************************/
-{
-    Link& link = wlink();
+{
     link.CurrSect = sect;
     for( class_entry *class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         WalkClass( class_, static_cast<class_walk_data *>( class_walk_cb )->cbfn );
     }
 }
 
-void WalkLeaders(Link& link,  class_walk_fn *cbfn )
+void WalkLeaders(Link& link,  FunctionRef<class_walk_fn> cbfn )
 /*************************************/
 {
     class_walk_data     class_walk_cb{ cbfn };
 
-    ParmWalkAllSects(link,  _SectWalkClass, &class_walk_cb );
+    ParmWalkAllSects(link,  bind_link( link, _SectWalkClass ), &class_walk_cb );
 }
 
 seg_leader *FindSegment( section *sect, const char *name )

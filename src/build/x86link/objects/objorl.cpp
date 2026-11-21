@@ -373,7 +373,7 @@ void AllocSeg( void *_snode, void * )
             }
             snode->info |= SEGINF_DEAD;
             snode->entry = nullptr;
-            FreeSegData( sdata );
+            FreeSegData(link,  sdata );
             return;
         }
     }
@@ -382,7 +382,7 @@ void AllocSeg( void *_snode, void * )
         if( link.CurrMod->flags_mod & MOD_IMPORT_LIB ) {
             snode->info |= SEGINF_DEAD;
             snode->entry = nullptr;
-            FreeSegData( sdata );
+            FreeSegData(link,  sdata );
             return;
         }
         isdbi = true;

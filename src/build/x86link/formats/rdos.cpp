@@ -86,7 +86,7 @@ static void WriteBinData(Link& link)
     group_entry         *group;
 
     DEBUG(( DBG_BASE, "Writing data" ));
-    OrderGroups(link,  CompareDosSegments );
+    OrderGroups(link,  bind_link( link, CompareDosSegments ) );
 
     link.Root->outfile->file_loc = link.Root->u.file_loc;
     link.Root->sect_addr = link.Groups->addr;
@@ -113,7 +113,7 @@ static void WriteRDOSCode(Link& link)
     bool                iscode;
 
     DEBUG(( DBG_BASE, "Writing code" ));
-    OrderGroups(link,  CompareDosSegments );
+    OrderGroups(link,  bind_link( link, CompareDosSegments ) );
 
     link.Root->outfile->file_loc = link.Root->u.file_loc;
     link.Root->sect_addr = link.Groups->addr;

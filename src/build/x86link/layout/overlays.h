@@ -38,8 +38,8 @@
 
 /* in ovlsupp.c */
 
-extern void             WalkAreas( AREASECT *area, walksecs_fn * );
-extern void             ParmWalkAreas( AREASECT *area, parmwalksecs_fn *, void * );
+extern void             WalkAreas( AREASECT *area, FunctionRef<walksecs_fn> );
+extern void             ParmWalkAreas( AREASECT *area, FunctionRef<parmwalksecs_fn>, void * );
 extern void             OvlProcPubsSect(Link& link,  section * );
 extern void             OvlProcPubs(Link& link);
 extern void             OvlCalc(Link& link);

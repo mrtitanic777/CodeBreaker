@@ -12,6 +12,7 @@
 
 namespace cb_wlink { struct Link; }
 using cb_wlink::Link;   // (the state of one link: every function of the linker that reads or changes it is given it, `Link& link`)
+#include "build/x86link/link/callback.hpp"   // (FunctionRef, bind_link: a routine handed to a walker)
 
 namespace cb_wlink_cxx {
 template <class E>

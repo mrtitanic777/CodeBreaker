@@ -341,7 +341,7 @@ void *CarveGetIndex( carve_t carver, void *elm )
     return( reinterpret_cast<void *>( static_cast<pointer_uint>( MK_INDEX( block_index, static_cast<char *>( elm ) - carve_data( block, 0 ) ) ) ) );
 }
 
-void CarveWalkBlocks( carve_t carver, void (*cbfn)(carve_t, void *, void *), void *cookie )
+void CarveWalkBlocks( carve_t carver, FunctionRef<void(carve_t, void *, void *)> cbfn, void *cookie )
 /*****************************************************************************************/
 {
     blk_t           *block;
@@ -357,7 +357,7 @@ bool CarveBlockModified( void *blk )
     return( static_cast<blk_t *>( blk )->modified != 0 );
 }
 
-void CarveBlockScan( carve_t carver, void *blk, void (*rtn)(void *, void *), void *data )
+void CarveBlockScan( carve_t carver, void *blk, FunctionRef<void(void *, void *)> rtn, void *data )
 /***************************************************************************************/
 {
     char            *compare;
@@ -368,7 +368,7 @@ void CarveBlockScan( carve_t carver, void *blk, void (*rtn)(void *, void *), voi
     compare = carve_data( blk, 0 );
     end = compare + carver->blk_top;
     do {
-        (*rtn)( compare, data );
+        rtn( compare, data );
         compare += esize;
     } while( compare != end );
 }
@@ -415,7 +415,7 @@ void CarveWalkAllFree( carve_t carver, void (*rtn)( void * ) )
     }
 }
 
-void CarveWalkAll( carve_t carver, void (*rtn)( void *, void * ), void *data )
+void CarveWalkAll( carve_t carver, FunctionRef<void( void *, void * )> rtn, void *data )
 /****************************************************************************/
 {
     blk_t           *block;

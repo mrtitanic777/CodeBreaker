@@ -66,11 +66,11 @@ typedef struct lineinfo {
 typedef void line_walk_fn( lineinfo * );
 
 extern virt_mem DBIAlloc( virt_mem_size );
-extern void     DBIModGlobal( void * );
+extern void     DBIModGlobal(Link& link,  void * );
 extern void     DBIAddrInfoScan(Link& link,  seg_leader *,
-                      void (*)(segdata *, void *),
-                      void (*)(segdata *, offset, offset, void *, bool),
+                      FunctionRef<void(segdata *, void *)>,
+                      FunctionRef<void(segdata *, offset, offset, void *, bool)>,
                       void * );
-extern void     DBILineWalk( lineinfo *, line_walk_fn * );
+extern void     DBILineWalk( lineinfo *, FunctionRef<line_walk_fn> );
 extern unsigned DBICalcLineQty( lineinfo * );
 

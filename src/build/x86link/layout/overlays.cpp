@@ -45,10 +45,9 @@
 
 #ifdef _EXE
 
-static void OvlNumASect( section *sect )
+static void OvlNumASect(Link& link,  section *sect )
 /**************************************/
-{
-    Link& link = wlink();
+{
     sect->ovlref = link.OvlSectNum++;
 }
 
@@ -61,7 +60,7 @@ void OvlNumberSections(Link& link)
     /* OvlSectNum value 0 is reserved for Root */
     /* Overlayed sections start at 1 */
     link.OvlSectNum = 1;
-    WalkAreas( link.Root->areas, OvlNumASect );
+    WalkAreas( link.Root->areas, bind_link( link, OvlNumASect ) );
 }
 
 void OvlSetSegments(Link& link)
@@ -70,10 +69,9 @@ void OvlSetSegments(Link& link)
     DistribSetSegments(link);
 }
 
-static void FillOutPtr( section *sect )
+static void FillOutPtr(Link& link,  section *sect )
 /*************************************/
-{
-    Link& link = wlink();
+{
     if( sect->outfile == nullptr ) {
         if( sect->parent != nullptr ) {
             sect->outfile = sect->parent->outfile;  //same file as ancestor.
@@ -86,7 +84,7 @@ static void FillOutPtr( section *sect )
 void OvlFillOutFilePtrs(Link& link)
 /*****************************/
 {
-    WalkAreas( link.Root->areas, FillOutPtr );
+    WalkAreas( link.Root->areas, bind_link( link, FillOutPtr ) );
 }
 
 void OvlTryDefVector(Link& link,  symbol *sym )
@@ -108,10 +106,9 @@ void OvlTryUseVector(Link& link,  symbol *sym, extnode *newnode )
     }
 }
 
-static void PSection( section *sect )
+static void PSection(Link& link,  section *sect )
 /***********************************/
-{
-    Link& link = wlink();
+{
     link.CurrSect = sect;
     PModList(link,  sect->mods );
 }
@@ -120,7 +117,7 @@ void OvlPass2(Link& link)
 /*******************/
 {
     OvlEmitVectors(link);
-    WalkAreas( link.Root->areas, PSection );
+    WalkAreas( link.Root->areas, bind_link( link, PSection ) );
 }
 
 #endif

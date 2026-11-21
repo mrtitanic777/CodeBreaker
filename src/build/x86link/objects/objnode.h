@@ -50,7 +50,7 @@ extern void             CollapseLazyExtdefs(Link& link);
 extern segnode          *FindSegdata( seg_leader * );
 extern extnode          *FindExtHandle(Link& link,  orl_symbol_handle );
 extern segdata          *AllocSegData(Link& link);
-extern void             FreeSegData( void * );
+extern void             FreeSegData(Link& link,  void * );
 extern list_of_names    *MakeListName( char *, size_t );
 extern unsigned long    BadObjFormat( void );
 

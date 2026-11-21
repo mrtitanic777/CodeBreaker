@@ -49,7 +49,7 @@ extern char     *AddStringStringTable( stringtable *, const char * );
 extern size_t   AddStringStringTableOffs( stringtable *, const char * );
 extern void     AddCharStringTable( stringtable *, char );
 extern void     ZeroStringTable( stringtable *, size_t );
-extern void     WriteStringTable( stringtable *, write_strtable_fn *, void * );
+extern void     WriteStringTable( stringtable *, FunctionRef<write_strtable_fn>, void * );
 extern void     FiniStringTable( stringtable * );
 extern size_t   GetStringTableSize( stringtable * );
 

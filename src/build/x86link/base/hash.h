@@ -116,7 +116,7 @@ int WalkHTableElem( pHTable table, void *elem, void (*action)( void * ) );
 /*  WalkHTable[Cookie] -- Perform 'action' for every single element in hash
     table. Use Cookie as an extra parameter to 'action'.
 */
-void WalkHTableCookie( pHTable table, void (*action)( void *, void * ),
+void WalkHTableCookie( pHTable table, FunctionRef<void( void *, void * )> action,
                        void* cookie );
 void WalkHTable( pHTable table, void (*action)( void * ) );
 

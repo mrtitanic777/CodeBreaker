@@ -69,7 +69,7 @@ QnxState &state()
     return cb_wlink::RunState::part<QnxState>();
 }
 
-using LoadWriter = void (*)( virt_mem, unsigned long );
+using LoadWriter = FunctionRef<void( virt_mem, unsigned long )>;
 using VerifyWriter = void (*)( char *, virt_mem, unsigned long );
 
 }
@@ -94,19 +94,17 @@ static void WriteLoadRec(Link& link)
     WriteLoad(link,  &data, sizeof( lmf_data ) );
 }
 
-static void ZeroLoad( virt_mem dummy, unsigned long length )
+static void ZeroLoad(Link& link,  virt_mem dummy, unsigned long length )
 /**********************************************************/
 {
-    Link& link = wlink();
     /* unused parameters */ (void)dummy;
 
     PadLoad(link,  length );
 }
 
-static void CopyLoad( virt_mem data, unsigned long length )
+static void CopyLoad(Link& link,  virt_mem data, unsigned long length )
 /*********************************************************/
 {
-    Link& link = wlink();
     WriteInfoLoad( data, length );
 }
 
@@ -174,10 +172,9 @@ static void SetVerifyInfo( VerifyWriter wrfn, virt_mem data, unsigned long lengt
     wrfn( targ, data, length );
 }
 
-static bool WriteSegData( void *_sdata, void *_start )
+static bool WriteSegData(Link& link,  void *_sdata, void *_start )
 /****************************************************/
 {
-    Link& link = wlink();
     QnxState &st = state();
     segdata *sdata = static_cast<segdata *>( _sdata );
     unsigned long *start = static_cast<unsigned long *>( _start );
@@ -192,25 +189,24 @@ static bool WriteSegData( void *_sdata, void *_start )
             if( st.InVerifySegment ) {
                 SetVerifyInfo( ZeroVerify, 0, pad );
             }
-            WriteQNXInfo(link,  ZeroLoad, 0, pad );
+            WriteQNXInfo(link,  bind_link( link, ZeroLoad ), 0, pad );
         }
         if( st.InVerifySegment ) {
             SetVerifyInfo( CopyVerify, sdata->u1.vm_ptr, sdata->length );
         }
-        WriteQNXInfo(link,  CopyLoad, sdata->u1.vm_ptr, sdata->length );
+        WriteQNXInfo(link,  bind_link( link, CopyLoad ), sdata->u1.vm_ptr, sdata->length );
     }
     return( false );
 }
 
-static void DoGroupLeader( void *_seg )
+static void DoGroupLeader(Link& link,  void *_seg )
 /*************************************/
 {
-    Link& link = wlink();
     offset      start;
     seg_leader *seg = static_cast<seg_leader *>( _seg );
 
     start = SEG_GROUP_DELTA( seg );
-    RingLookup( seg->pieces, WriteSegData, &start );
+    RingLookup( seg->pieces, bind_link( link, WriteSegData ), &start );
 }
 
 static void WriteQNXGroup(Link& link,  group_entry *group, std::span<unsigned_32> segments )
@@ -229,7 +225,7 @@ static void WriteQNXGroup(Link& link,  group_entry *group, std::span<unsigned_32
     st.AmountWritten = 0;
     st.CurrGroup = group;
     WriteLoadRec(link);
-    Ring2Walk( group->leaders, DoGroupLeader );
+    Ring2Walk( group->leaders, bind_link( link, DoGroupLeader ) );
 }
 
 static void WriteQNXRelocs(Link& link,  reloc_info reloclist, unsigned lmf_type, unsigned_16 seg )

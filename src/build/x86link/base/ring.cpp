@@ -184,10 +184,10 @@ void RINGNAME(Insert) (         // INSERT ELEMENT INTO RING
 
 void RINGNAME(Walk) (           // TRAVERSE RING
     void *hdr,                  // - ring header
-    ringwalk_fn *rtn )          // - traversal routine
+    FunctionRef<ringwalk_fn> rtn )          // - traversal routine
 {
     ForEachInRingSafe( hdr, [rtn]( RingNode *relement ) {
-        (*rtn)( relement );
+        rtn( relement );
     } );
 }
 
@@ -305,7 +305,7 @@ void * RINGNAME(Pop) (          // PRUNE FIRST ELEMENT IN THE RING
 
 void * RINGNAME(Lookup) (       // LOOKUP IN A RING
     void *hdr,                  // - ring hdr
-    ringcompare_fn *rtn,        // - comparison routine
+    FunctionRef<ringcompare_fn> rtn,        // - comparison routine
     void *comparand )           // - comparand
 {
     RingNode *rhdr = static_cast<RingNode *>( hdr );    // - ring hdr
@@ -317,7 +317,7 @@ void * RINGNAME(Lookup) (       // LOOKUP IN A RING
         curr = rhdr;
         for( ; ; ) {
             curr = curr->next;
-            if( (*rtn)( curr, comparand ) )
+            if( rtn( curr, comparand ) )
                 break;
             if( curr == rhdr ) {
                 curr = nullptr;

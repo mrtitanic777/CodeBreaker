@@ -190,10 +190,9 @@ static void BufWritePermFile(Link& link,  perm_write_info *info, void *data, uns
     DoWritePermFile(link,  info, static_cast<const char *>( data ), len, false );
 }
 
-static bool WriteLeaderName( void *_leader, void *info )
+static bool WriteLeaderName(Link& link,  void *_leader, void *info )
 /******************************************************/
-{
-    Link& link = wlink();
+{
     seg_leader *leader = static_cast<seg_leader *>(_leader);
 
     U32WritePermFile(link,  static_cast<perm_write_info *>(info), leader->class_->name.u.offs );
@@ -215,7 +214,7 @@ static unsigned WriteGroupsList(Link& link,  perm_write_info *info )
             U32WritePermFile(link,  info, static_cast<unsigned_32>( Ring2Count( group->leaders ) ) );
             group->sym->name.u.offs = GetString( info, group->sym->name.u.ptr );
             U32WritePermFile(link,  info, group->sym->name.u.offs );
-            Ring2Lookup( group->leaders, WriteLeaderName, info );
+            Ring2Lookup( group->leaders, bind_link( link, WriteLeaderName ), info );
         }
     }
     return( num );
@@ -230,10 +229,9 @@ static bool CheckFree(Link& link,  bool isfree, perm_write_info *info )
     return( isfree );
 }
 
-static void WriteDLLInfo( void *_dll, void *info )
+static void WriteDLLInfo(Link& link,  void *_dll, void *info )
 /************************************************/
-{
-    Link& link = wlink();
+{
     dll_sym_info *dll = static_cast<dll_sym_info *>(_dll);
 
     if( !CheckFree(link,  dll->isfree, static_cast<perm_write_info *>(info) ) ) {
@@ -245,10 +243,9 @@ static void WriteDLLInfo( void *_dll, void *info )
     }
 }
 
-static void WriteExportInfo( void *_exp, void *info )
+static void WriteExportInfo(Link& link,  void *_exp, void *info )
 /***************************************************/
-{
-    Link& link = wlink();
+{
     entry_export *exp = static_cast<entry_export *>(_exp);
 
     if( !CheckFree(link,  exp->isfree, static_cast<perm_write_info *>(info) ) ) {
@@ -431,15 +428,14 @@ static void FlushPermBuf(Link& link,  perm_write_info *info )
     QWrite( info->incfhdl, link.TokBuff, modpos, link.IncFileName );
 }
 
-static void WriteStringBlock( void *info, const char *data, size_t size )
+static void WriteStringBlock(Link& link,  void *info, const char *data, size_t size )
 /***********************************************************************/
-{
-    Link& link = wlink();
+{
     QWrite( static_cast<perm_write_info *>( info )->incfhdl, data, size, link.IncFileName );
 }
 
 static void FiniStringBlock( stringtable *strtab, size_t *size, void *info,
-                                            write_strtable_fn *writefn )
+                                            FunctionRef<write_strtable_fn> writefn )
 /************************************************************************/
 {
     size_t      rawsize;
@@ -453,10 +449,9 @@ static void FiniStringBlock( stringtable *strtab, size_t *size, void *info,
     FiniStringTable( strtab );
 }
 
-static void DumpBlock( carve_t carver, void *block, void *_info )
+static void DumpBlock(Link& link,  carve_t carver, void *block, void *_info )
 /***************************************************************/
-{
-    Link& link = wlink();
+{
     perm_write_info *info = static_cast<perm_write_info *>(_info);
     size_t          size;
 
@@ -465,17 +460,17 @@ static void DumpBlock( carve_t carver, void *block, void *_info )
     QWrite( info->incfhdl, CarveBlockData( block ), size, link.IncFileName );
 }
 
-static void DumpBlockStruct( carve_t carver, void (*markfn)(void *),
+static void DumpBlockStruct(Link& link,  carve_t carver, void (*markfn)(void *),
                              carve_info *loc, perm_write_info *info )
 /*******************************************************************/
 {
     CarveWalkAllFree( carver, markfn );
     loc->num = CarveNumElements( carver );
-    CarveWalkBlocks( carver, DumpBlock, info );
+    CarveWalkBlocks( carver, bind_link( link, DumpBlock ), info );
 }
 
 static unsigned WriteSmallCarve( carve_t carver, void (*markfn)(void *),
-                                 void (*writefn)(void *, void *),
+                                 FunctionRef<void(void *, void *)> writefn,
                                  perm_write_info *info )
 /**************************************************************************/
 {
@@ -571,8 +566,8 @@ void WritePermData(Link& link)
     if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
         PrepNameTable( link.FmtData.u.os2fam.mod_ref_list, &info );
         PrepNameTable( link.FmtData.u.os2fam.imp_tab_list, &info );
-        hdr.numdllsyms = WriteSmallCarve( link.CarveDLLInfo, MarkDLLInfo, WriteDLLInfo, &info );
-        hdr.numexports = WriteSmallCarve( link.CarveExportInfo, MarkExportInfo, WriteExportInfo, &info );
+        hdr.numdllsyms = WriteSmallCarve( link.CarveDLLInfo, MarkDLLInfo, bind_link( link, WriteDLLInfo ), &info );
+        hdr.numexports = WriteSmallCarve( link.CarveExportInfo, MarkExportInfo, bind_link( link, WriteExportInfo ), &info );
     }
     FlushPermBuf(link,  &info );
     WriteHashPointers(link,  &info );
@@ -581,12 +576,12 @@ void WritePermData(Link& link)
     hdr.altdefsize = info.currpos;
     PrepFileList(link,  &info );
     info.prepfn = PrepModEntry;
-    DumpBlockStruct( link.CarveModEntry, MarkModEntry, &hdr.mods, &info );
+    DumpBlockStruct(link,  link.CarveModEntry, MarkModEntry, &hdr.mods, &info );
     info.prepfn = PrepSegData;
-    DumpBlockStruct( link.CarveSegData, MarkSegData, &hdr.segdatas, &info );
+    DumpBlockStruct(link,  link.CarveSegData, MarkSegData, &hdr.segdatas, &info );
     info.prepfn = PrepSymbol;
-    DumpBlockStruct( link.CarveSymbol, MarkSymbol, &hdr.symbols, &info );
-    FiniStringBlock( &info.strtab, &strsize, &info, WriteStringBlock );
+    DumpBlockStruct(link,  link.CarveSymbol, MarkSymbol, &hdr.symbols, &info );
+    FiniStringBlock( &info.strtab, &strsize, &info, bind_link( link, WriteStringBlock ) );
     hdr.strtabsize = strsize;
     if( st.SizeRelocs ) {
         QWrite( info.incfhdl, st.ReadRelocs, st.SizeRelocs, link.IncFileName );
@@ -688,10 +683,9 @@ static void RebuildDLLInfo( void *_dll, perm_read_info *info )
     }
 }
 
-static void RebuildExportInfo( void *_exp, perm_read_info *info )
+static void RebuildExportInfo(Link& link,  void *_exp, perm_read_info *info )
 /***************************************************************/
-{
-    Link& link = wlink();
+{
     entry_export *exp = static_cast<entry_export *>(_exp);
 
     BufRead( info, exp, offsetof( entry_export, sym ) );
@@ -702,10 +696,9 @@ static void RebuildExportInfo( void *_exp, perm_read_info *info )
     exp->impname = nullptr;
 }
 
-static void RebuildModEntry( void *_mod, void *info )
+static void RebuildModEntry(Link& link,  void *_mod, void *info )
 /***************************************************/
-{
-    Link& link = wlink();
+{
     mod_entry *mod = static_cast<mod_entry *>(_mod);
 
     /* unused parameters */ (void)info;
@@ -721,10 +714,9 @@ static void RebuildModEntry( void *_mod, void *info )
     mod->u1.fname.u.ptr = MapString( mod->u1.fname.u.offs );
 }
 
-static void RebuildSegData( void *_sdata, void *info )
+static void RebuildSegData(Link& link,  void *_sdata, void *info )
 /****************************************************/
-{
-    Link& link = wlink();
+{
     segdata *sdata = static_cast<segdata *>(_sdata);
 
     /* unused parameters */ (void)info;
@@ -739,10 +731,9 @@ static void RebuildSegData( void *_sdata, void *info )
     sdata->o.clname.u.ptr = MapString( sdata->o.clname.u.offs );
 }
 
-static void RebuildSymbol( void *_sym, void *info )
+static void RebuildSymbol(Link& link,  void *_sym, void *info )
 /*************************************************/
-{
-    Link& link = wlink();
+{
     symbol *sym = static_cast<symbol *>(_sym);
 
     /* unused parameters */ (void)info;
@@ -777,10 +768,9 @@ static void RebuildSymbol( void *_sym, void *info )
     }
 }
 
-static void ReadBlockInfo( carve_t carver, void *blk, void *info )
+static void ReadBlockInfo(Link& link,  carve_t carver, void *blk, void *info )
 /****************************************************************/
-{
-    Link& link = wlink();
+{
     QRead( static_cast<perm_read_info *>( info )->incfhdl, CarveBlockData( blk ), CarveBlockSize( carver ), link.IncFileName );
 }
 
@@ -803,7 +793,7 @@ static void SmallFreeCheck( void *data, void *_info )
 }
 
 static void RebuildSmallCarve( carve_t carver, unsigned num,
-                               void (*fn)(void *,perm_read_info *),
+                               FunctionRef<void(void *,perm_read_info *)> fn,
                                perm_read_info * info )
 /*****************************************************************/
 {
@@ -917,9 +907,9 @@ void ReadPermData(Link& link)
         st.AltDefData = MemAllocSafe( hdr->altdefsize );
         QRead( info.incfhdl, st.AltDefData, hdr->altdefsize, link.IncFileName );
     }
-    CarveWalkBlocks( link.CarveModEntry, ReadBlockInfo, &info );
-    CarveWalkBlocks( link.CarveSegData, ReadBlockInfo, &info );
-    CarveWalkBlocks( link.CarveSymbol, ReadBlockInfo, &info );
+    CarveWalkBlocks( link.CarveModEntry, bind_link( link, ReadBlockInfo ), &info );
+    CarveWalkBlocks( link.CarveSegData, bind_link( link, ReadBlockInfo ), &info );
+    CarveWalkBlocks( link.CarveSymbol, bind_link( link, ReadBlockInfo ), &info );
     st.IncStrTab = static_cast<char *>( MemAllocSafe( hdr->strtabsize ) );
     QRead( info.incfhdl, st.IncStrTab, hdr->strtabsize, link.IncFileName );
     st.ReadRelocs = nullptr;
@@ -945,11 +935,11 @@ void ReadPermData(Link& link)
     ReadLibList( hdr->numdeflibs, &link.SavedDefLibs, &info );
     if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
         RebuildSmallCarve( link.CarveDLLInfo, hdr->numdllsyms, RebuildDLLInfo, &info );
-        RebuildSmallCarve( link.CarveExportInfo, hdr->numexports, RebuildExportInfo, &info );
+        RebuildSmallCarve( link.CarveExportInfo, hdr->numexports, bind_link( link, RebuildExportInfo ), &info );
     }
-    CarveWalkAll( link.CarveModEntry, RebuildModEntry, &info );
-    CarveWalkAll( link.CarveSegData, RebuildSegData, &info );
-    CarveWalkAll( link.CarveSymbol, RebuildSymbol, &info );
+    CarveWalkAll( link.CarveModEntry, bind_link( link, RebuildModEntry ), &info );
+    CarveWalkAll( link.CarveSegData, bind_link( link, RebuildSegData ), &info );
+    CarveWalkAll( link.CarveSymbol, bind_link( link, RebuildSymbol ), &info );
     link.Root->mods = static_cast<MOD_ENTRY *>( CarveMapIndex( link.CarveModEntry, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->rootmodidx ) ) ) );
     link.HeadSym = static_cast<symbol *>( CarveMapIndex( link.CarveSymbol, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->headsymidx ) ) ) );
     link.LibModules = static_cast<mod_entry *>( CarveMapIndex( link.CarveModEntry, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->libmodidx ) ) ) );
@@ -966,7 +956,7 @@ void PermSaveFixup( void *fix, size_t size )
     AddBufferStringTable( &st.StoredRelocs, fix, size );
 }
 
-void IterateModRelocs( size_t offset, size_t sizeleft, size_t (*fn)(void *) )
+void IterateModRelocs( size_t offset, size_t sizeleft, FunctionRef<size_t(void *)> fn )
 /***************************************************************************/
 {
     PermState &st = perm_state();

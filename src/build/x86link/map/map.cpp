@@ -555,12 +555,11 @@ static void WriteMapImportsHead(Link& link)
     WriteMapNL(link);
 }
 
-static void WriteMapSegment( void *_seg )
+static void WriteMapSegment(Link& link,  void *_seg )
 /****************************************
  * NYI: completely broken for absolute segments
  */
-{
-    Link& link = wlink();
+{
     segdata         *seg = static_cast<segdata *>( _seg );
     char            star;
     char            bang;
@@ -589,15 +588,14 @@ static void WriteMapSegment( void *_seg )
     WriteMapNL(link);
 }
 
-static void WriteMapModuleSegments( mod_entry *mod )
+static void WriteMapModuleSegments(Link& link,  mod_entry *mod )
 /**************************************************/
-{
-    Link& link = wlink();
+{
     if( (mod->flags_mod & MOD_NEED_PASS_2) && mod->segs != nullptr ) {
         WriteMapColPrintf(link,  0, "%s", mod->name.u.ptr );
         if( strlen( mod->name.u.ptr ) > 15 )
             WriteMapNL(link);
-        Ring2Walk( mod->segs, WriteMapSegment );
+        Ring2Walk( mod->segs, bind_link( link, WriteMapSegment ) );
     }
 }
 
@@ -605,7 +603,7 @@ void WriteMapModulesSegments(Link& link)
 /**********************************/
 {
     WriteMapModulesSegmentsHead(link);
-    WalkMods(link,  WriteMapModuleSegments );
+    WalkMods(link,  bind_link( link, WriteMapModuleSegments ) );
 }
 
 static void InitDwarfVMState( line_state_info *state, bool default_is_stmt )
@@ -900,10 +898,9 @@ static void WriteMapLines(Link& link)
     }
 }
 
-static bool CheckSymRecList( void *_info, void *sym )
+static bool CheckSymRecList(Link& link,  void *_info, void *sym )
 /***************************************************/
-{
-    Link& link = wlink();
+{
     symrecinfo *info = static_cast<symrecinfo *>( _info );
 
     return( ( sym == info->sym ) && ( link.CurrMod == info->mod ) );
@@ -914,7 +911,7 @@ static void AddSymRecList(Link& link,  symbol *sym, symrecinfo **head )
 {
     symrecinfo      *info;
 
-    if( RingLookup( *head, CheckSymRecList, sym ) == nullptr ) {
+    if( RingLookup( *head, bind_link( link, CheckSymRecList ), sym ) == nullptr ) {
         info = static_cast<symrecinfo *>( MemAllocSafe( sizeof( symrecinfo ) ) );
         info->next = nullptr;
         info->sym = sym;
@@ -931,10 +928,9 @@ void RecordUndefinedSym(Link& link,  symbol *sym )
     AddSymRecList(link,  sym, &map_state().UndefList );
 }
 
-static void PrintUndefinedSym( void *_info )
+static void PrintUndefinedSym(Link& link,  void *_info )
 /******************************************/
-{
-    Link& link = wlink();
+{
     symrecinfo  *info = static_cast<symrecinfo *>( _info );
     mod_entry   *mod;
 
@@ -959,7 +955,7 @@ void PrintUndefinedSyms(Link& link)
             WriteMapMsg(link,  MSG_MAP_TITLE_UNRES_REF_1 );
             WriteMapNL(link);
         }
-        RingWalk( st.UndefList, PrintUndefinedSym );
+        RingWalk( st.UndefList, bind_link( link, PrintUndefinedSym ) );
     }
 }
 

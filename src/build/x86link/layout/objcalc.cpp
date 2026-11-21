@@ -162,10 +162,9 @@ bool IsStackClass( const char *name, size_t namelen )
 
 /* -----------------------Allocating Segments-------------------------------- */
 
-static void AddUpSegData( void *_sdata )
+static void AddUpSegData(Link& link,  void *_sdata )
 /**************************************/
-{
-    Link& link = wlink();
+{
     segdata     *sdata = static_cast<segdata *>( _sdata );
     seg_leader  *leader;
 
@@ -191,7 +190,8 @@ static void AddUpSegData( void *_sdata )
 static void CalcSeg( seg_leader *seg )
 /************************************/
 {
-    RingWalk( seg->pieces, AddUpSegData );
+    Link& link = wlink();
+    RingWalk( seg->pieces, bind_link( link, AddUpSegData ) );
 }
 
 void CalcSegSizes(Link& link)
@@ -214,10 +214,9 @@ static bool SetGroupInitSize( void *_sdata, void *_delta )
     return( false );
 }
 
-static void CalcInitSize( seg_leader *seg )
+static void CalcInitSize(Link& link,  seg_leader *seg )
 /*****************************************/
-{
-    Link& link = wlink();
+{
     offset      delta;
 
     if( seg->group != nullptr ) {
@@ -359,10 +358,9 @@ static void FindUninitDataStart(Link& link)
     }
 }
 
-static bool FindEndAddr( void *_seg, void *_info )
+static bool FindEndAddr(Link& link,  void *_seg, void *_info )
 /**************************************************/
-{
-    Link& link = wlink();
+{
     seg_leader  *seg  = static_cast<seg_leader *>( _seg );
     grpaddrinfo *info = static_cast<grpaddrinfo *>( _info );
     offset      seg_offs;
@@ -389,12 +387,11 @@ static bool FindEndAddr( void *_seg, void *_info )
     return( false );
 }
 
-static bool FindInitEndAddr( void *_seg, void *_info )
+static bool FindInitEndAddr(Link& link,  void *_seg, void *_info )
 /******************************************************/
 // Only use initialized data segments.  Copy doesn't need uninitialized segments
 // This is really only advantageous if uninitialized segments are at the end
-{
-    Link& link = wlink();
+{
     seg_leader  *seg  = static_cast<seg_leader *>( _seg );
     grpaddrinfo *info = static_cast<grpaddrinfo *>( _info );
     offset      seg_offs;
@@ -424,6 +421,7 @@ static bool FindInitEndAddr( void *_seg, void *_info )
 static bool FindCopyGroups( void *_seg, void *_info )
 /************************************************/
 {
+    Link& link = wlink();
     // This is called by the outer level iteration looking for classes
     //  that have more than one group in them
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
@@ -432,17 +430,16 @@ static bool FindCopyGroups( void *_seg, void *_info )
     if( info->last_group != seg->group ) {   // Only interate new groups
         info->last_group = seg->group;
         // Check each initialized segment in group
-        Ring2Lookup( seg->group->leaders, FindInitEndAddr, info );
+        Ring2Lookup( seg->group->leaders, bind_link( link, FindInitEndAddr ), info );
     }
     return( false );
 }
 
 
-static void AllocSeg( void *_seg )
+static void AllocSeg(Link& link,  void *_seg )
 /********************************/
 /* Allocate a segment (process all segments in a given class) */
-{
-    Link& link = wlink();
+{
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
 
     if( (seg->info & SEGINF_ABSOLUTE) == 0 ) {
@@ -495,11 +492,11 @@ static void CalcGrpAddr(Link& link,  group_entry *group )
                     break;                      //   isn't already past here
                 }
                 if( (class_->flags & CLASS_DEBUG_INFO) == 0 ) { // skip Debug classes, they've already been done
-                    RingWalk( class_->segs, AllocSeg );
+                    RingWalk( class_->segs, bind_link( link, AllocSeg ) );
                 }
             }
         } else {
-            Ring2Lookup( seg, FindEndAddr, &info );
+            Ring2Lookup( seg, bind_link( link, FindEndAddr ), &info );
             if( (link.FmtData.type & MK_REAL_MODE)
               && (seg->info & SEGINF_USE_32) == 0
               && (info.end_offs - info.start_offs > _64K) ) {
@@ -527,7 +524,7 @@ void AllocClasses(Link& link,  section *sect )
             link.CurrLoc.off = 0;
             link.CurrLoc.seg = 0;
             size = link.CurrSect->size;
-            RingWalk( class_->segs, AllocSeg );
+            RingWalk( class_->segs, bind_link( link, AllocSeg ) );
             DBIDefClass(link,  class_, link.CurrSect->size - size );
             link.CurrSect->size = size;
             link.CurrLoc = save_addr;
@@ -543,7 +540,7 @@ void AllocClasses(Link& link,  section *sect )
                 save_addr = class_->BaseAddr;
                 ChkLocated(link,  &save_addr, ( (class_->flags & CLASS_FIXED) != 0 ) );    // Process fixed locations if any
             }
-            RingWalk( class_->segs, AllocSeg );
+            RingWalk( class_->segs, bind_link( link, AllocSeg ) );
         }
     }
 }
@@ -636,10 +633,9 @@ void ProcPubsSect(Link& link,  mod_entry *head, section *sect )
     }
 }
 
-static bool DefPubSym( void *_pub, void *_info )
+static bool DefPubSym(Link& link,  void *_pub, void *_info )
 /**********************************************/
-{
-    Link& link = wlink();
+{
     symbol      *sym = static_cast<symbol *>( _pub );
     pubdefinfo  *info = static_cast<pubdefinfo *>( _info );
     segdata     *seg;
@@ -688,7 +684,7 @@ void DoPubsSect(Link& link,  section *sect )
     if( link.MapFile != nullptr ) {
         WriteMapPubSortStart(link,  &info );
     }
-    Ring2Lookup( link.CurrMod->publist, DefPubSym, &info );
+    Ring2Lookup( link.CurrMod->publist, bind_link( link, DefPubSym ), &info );
     if( link.MapFile != nullptr ) {
         WriteMapPubSortEnd(link,  &info );
     }
@@ -899,7 +895,7 @@ void CalcAddresses(Link& link)
         ReallocFileSegs(link);
     }
     DBIAddrStart(link);
-    WalkLeaders(link,  CalcInitSize );
+    WalkLeaders(link,  bind_link( link, CalcInitSize ) );
     DefinePublics(link);
 }
 
@@ -1023,14 +1019,13 @@ static void SplitDGroupClasses(Link& link,  section *sect )
     }
 }
 
-static void ReOrderClasses( section *sect )
+static void ReOrderClasses(Link& link,  section *sect )
 /******************************************
  * rebuild the class list using the Microsoft DOS segment ordering.
  * This builds various classes into separate rings, and then joins them
  * together.
  */
-{
-    Link& link = wlink();
+{
     std::array<class_entry *, ORD_COUNT> rings{};   // all nullptr
     class_entry         *nextclass;
     class_entry         *class_;
@@ -1124,7 +1119,7 @@ static void ReOrderClasses( section *sect )
     *owner = nullptr;
 }
 
-static void SortClasses( section *sect )
+static void SortClasses(Link& link,  section *sect )
 /***************************************
  * rebuild the class list in the order specified by the ORDER directive
  * This builds various classes into separate rings, and then joins them
@@ -1132,8 +1127,7 @@ static void SortClasses( section *sect )
  * to the class and segment structures.  Sort segments in a class if
  * information is provided.
  */
-{
-    Link& link = wlink();
+{
     class_entry         *DefaultRing;   // Where to put classes that don't match anything
     class_entry         *nextclass;
     class_entry         *class_;
@@ -1295,8 +1289,8 @@ void CheckClassOrder(Link& link)
 {
     SortSegments(link);
     if( link.LinkState & LS_SPEC_ORDER_FLAG ) {
-       WalkAllSects(link,  SortClasses );
+       WalkAllSects(link,  bind_link( link, SortClasses ) );
     } else if( link.LinkState & LS_DOSSEG_FLAG ) {
-       WalkAllSects(link,  ReOrderClasses );
+       WalkAllSects(link,  bind_link( link, ReOrderClasses ) );
     }
 }

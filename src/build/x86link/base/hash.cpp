@@ -152,7 +152,7 @@ int WalkHTableElem( pHTable table, void *elem, void (*action)( void * ) )
 }
 
 /* ----------------------------------------------------------------------- */
-void WalkHTableCookie( pHTable table, void (*action)( void *, void *), void *cookie )
+void WalkHTableCookie( pHTable table, FunctionRef<void( void *, void *)> action, void *cookie )
 {
     unsigned    i;
     pHTElem     *tblPtr = table->tbl;

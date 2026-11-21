@@ -249,7 +249,7 @@ static void FreeRelocListSect( section *sect )
     FreeRelocList( sect->reloclist );
 }
 
-bool TraverseOS2RelocList(Link& link,  group_entry *group, bool (*fn)(reloc_info) )
+bool TraverseOS2RelocList(Link& link,  group_entry *group, FunctionRef<bool(reloc_info)> fn )
 /**********************************************************************
  * traverse all items in one of the big OS2 page relocation lists
  */
@@ -401,10 +401,9 @@ void CopyRelocList( reloc_info reloclist, void *buff )
     }
 }
 
-bool DumpRelocList( reloc_info reloclist )
+bool DumpRelocList(Link& link,  reloc_info reloclist )
 /****************************************/
-{
-    Link& link = wlink();
+{
     DumpMaxRelocList(link,  &reloclist, 0 );
     return( false );            /* so traverse works */
 }

@@ -42,7 +42,7 @@ extern void     HllAddGlobal(Link& link,  symbol * );
 extern void     HllGenGlobal(Link& link,  symbol *, section * );
 extern void     HllGenLines( lineinfo * );
 extern void     HllAddAddrInfo( seg_leader * );
-extern void     HllGenAddrInfo( seg_leader * );
+extern void     HllGenAddrInfo(Link& link,  seg_leader * );
 extern void     HllAddrStart(Link& link);
 extern void     HllDefClass(Link& link,  class_entry *, unsigned_32 );
 extern void     HllFini( section * );

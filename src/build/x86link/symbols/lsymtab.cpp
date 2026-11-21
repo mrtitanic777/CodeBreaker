@@ -816,10 +816,9 @@ static void UndefSymbol(Link& link,  symbol *sym )
     sym->mod = nullptr;
 }
 
-static void PurgeHashTable( symbol **curr )
+static void PurgeHashTable(Link& link,  symbol **curr )
 /*****************************************/
-{
-    Link& link = wlink();
+{
     while( *curr != nullptr ) {
         CleanAltDefs( *curr );
         if( (*curr)->info & SYM_KILL ) {
@@ -849,7 +848,7 @@ static void CleanupOldAltdefs( symbol **curr )
     }
 }
 
-static void WalkAHashTable( void (*fn)(symbol **), symbol **symtab,
+static void WalkAHashTable( FunctionRef<void(symbol **)> fn, symbol **symtab,
                                 unsigned size )
 /*****************************************************************/
 {
@@ -859,7 +858,7 @@ static void WalkAHashTable( void (*fn)(symbol **), symbol **symtab,
     }
 }
 
-static void WalkHashTables( void (*fn)(symbol **) )
+static void WalkHashTables( FunctionRef<void(symbol **)> fn )
 /***************************************************/
 {
     SymTabState &state = st();
@@ -874,7 +873,7 @@ void PurgeSymbols(Link& link)
     symbol      **owner;
     symbol      *sym;
 
-    WalkHashTables( PurgeHashTable );
+    WalkHashTables( bind_link( link, PurgeHashTable ) );
     WalkHashTables( CleanupOldAltdefs );
     for( owner = &link.HeadSym; (sym = *owner) != nullptr; ) {
         if( sym->info & SYM_KILL ) {

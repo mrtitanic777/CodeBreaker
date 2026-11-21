@@ -57,7 +57,7 @@ static unsigned_32 WriteDOSRootRelocs(Link& link,  unsigned_32 mz_hdr_size )
 {
     unsigned long       header_size;
 
-    DumpRelocList( link.Root->reloclist );
+    DumpRelocList(link,  link.Root->reloclist );
     NullAlign(link,  0x10 );
     header_size = static_cast<unsigned long>( link.Root->relocs ) * sizeof( dos_addr )
                     + mz_hdr_size;
@@ -87,17 +87,16 @@ static void WriteDOSSectRelocs(Link& link,  section *sect, bool repos )
             }
         }
         file_loc += sect->relocs * sizeof( dos_addr );
-        DumpRelocList( sect->reloclist );
+        DumpRelocList(link,  sect->reloclist );
         if( file_loc > out->file_loc ) {
             out->file_loc = file_loc;
         }
     }
 }
 
-static void AssignFileLocs( section *sect )
+static void AssignFileLocs(Link& link,  section *sect )
 /*****************************************/
-{
-    Link& link = wlink();
+{
     if( link.FmtData.u.dos.pad_sections ) {
         sect->outfile->file_loc = __ROUND_UP_SIZE_SECTOR( sect->outfile->file_loc );
     }
@@ -122,14 +121,14 @@ static unsigned long WriteDOSData(Link& link,  unsigned_32 mz_hdr_size )
     unsigned long       root_size;
 
     DEBUG(( DBG_BASE, "Writing data" ));
-    OrderGroups(link,  CompareDosSegments );
+    OrderGroups(link,  bind_link( link, CompareDosSegments ) );
     link.CurrSect = link.Root;        // needed for WriteInfo.
     header_size = WriteDOSRootRelocs(link,  mz_hdr_size );
 
     link.Root->u.file_loc = header_size;
     if( link.Root->areas != nullptr ) {
         link.Root->outfile->file_loc = header_size + link.Root->size;
-        WalkAreas( link.Root->areas, AssignFileLocs );
+        WalkAreas( link.Root->areas, bind_link( link, AssignFileLocs ) );
         OvlEmitTable(link);
     }
 
@@ -184,10 +183,9 @@ struct COMLeader {
 
 }
 
-static bool WriteSegData( void *_sdata, void *_leader )
+static bool WriteSegData(Link& link,  void *_sdata, void *_leader )
 /*****************************************************/
-{
-    Link& link = wlink();
+{
     segdata         *sdata = static_cast<segdata *>( _sdata );
     COMLeader       *leader = static_cast<COMLeader *>( _leader );
     soffset         &COMAmountWritten = leader->written;
@@ -215,15 +213,14 @@ static bool WriteSegData( void *_sdata, void *_leader )
     return( false );
 }
 
-static bool DoCOMGroup( void *_seg, void *_write )
+static bool DoCOMGroup(Link& link,  void *_seg, void *_write )
 /************************************************/
-{
-    Link& link = wlink();
+{
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
     COMWrite    *write = static_cast<COMWrite *>( _write );
     COMLeader   leader = { write->chop + SEG_GROUP_DELTA( seg ), write->written };
 
-    RingLookup( seg->pieces, WriteSegData, &leader );
+    RingLookup( seg->pieces, bind_link( link, WriteSegData ), &leader );
     return( false );
 }
 
@@ -252,7 +249,7 @@ static bool WriteCOMGroup(Link& link,  group_entry *group, soffset chop )
     DEBUG((DBG_LOADDOS, "group %a section %d to %l in %s",
             &group->addr, sect->ovlref, file_loc, finfo->fname ));
     COMWrite write = { chop, 0 };
-    Ring2Lookup( group->leaders, DoCOMGroup, &write );
+    Ring2Lookup( group->leaders, bind_link( link, DoCOMGroup ), &write );
     file_loc += write.written;
     if( file_loc > finfo->file_loc ) {
         finfo->file_loc = file_loc;
@@ -278,7 +275,7 @@ static void WriteCOMFile(Link& link)
       || ( link.StackAddr.off != 0 ) ) {
         LnkMsg( WRN+MSG_STACK_SEG_IGNORED, nullptr );
     }
-    OrderGroups(link,  CompareDosSegments );
+    OrderGroups(link,  bind_link( link, CompareDosSegments ) );
     link.CurrSect = link.Root;        // needed for WriteInfo.
     fnode = link.Root->outfile;
     fnode->file_loc = link.Root->u.file_loc = 0;

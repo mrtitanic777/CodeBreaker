@@ -179,11 +179,11 @@ extern void             WriteReloc(Link& link,  group_entry *group, offset, void
 extern void             WriteQNXFloatReloc(Link& link,  qnx_reloc_item * item );
 extern void             WriteQNXLinearReloc( group_entry *group, qnx_linear_item * );
 #endif
-extern bool             TraverseOS2RelocList(Link& link,  group_entry *group, bool (*fn)(reloc_info));
+extern bool             TraverseOS2RelocList(Link& link,  group_entry *group, FunctionRef<bool(reloc_info)> fn);
 extern void             FreeRelocInfo(Link& link);
 extern unsigned         RelocSize( reloc_info reloclist );
 extern unsigned         DumpMaxRelocList(Link& link,  reloc_info *reloclist_head, unsigned );
-extern bool             DumpRelocList( reloc_info reloclist );
+extern bool             DumpRelocList(Link& link,  reloc_info reloclist );
 extern void            CopyRelocList( reloc_info, void * );
 extern void             SetRelocSize(Link& link);
 extern bool             SwapOutRelocs(Link& link);

@@ -78,7 +78,7 @@ void ResetObjOMF(Link& link)
     link.EOObjRec = nullptr;
 }
 
-static unsigned long ProcObj(Link& link,  const file_list *file, unsigned long loc, void (*procrtn)( byte ) )
+static unsigned long ProcObj(Link& link,  const file_list *file, unsigned long loc, FunctionRef<void( byte )> procrtn )
 /************************************************************************************************
  * Process an object file.
  */
@@ -106,7 +106,7 @@ static unsigned long ProcObj(Link& link,  const file_list *file, unsigned long l
                 break;
             }
             link.EOObjRec = link.ObjBuff + len - 1;       /* 1 for the checksum. */
-            (*procrtn)( cmd );
+            procrtn( cmd );
             if( link.ObjBuff > link.EOObjRec ) {
                 BadObject(link);
                 break;
@@ -1272,6 +1272,6 @@ unsigned long OMFPass1( void )
     link.CurrMod->omfdbg = OMF_DBG_CODEVIEW; /* Assume MS style LINNUM records */
     retval = ProcObj(link,  link.CurrMod->u1.source, link.CurrMod->location, &Pass1Cmd );
     IterateNodelist( link.SegNodes, CheckUninit, nullptr );
-    ResolveComdats();
+    ResolveComdats(link);
     return( retval );
 }

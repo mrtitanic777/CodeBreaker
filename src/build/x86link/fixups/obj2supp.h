@@ -129,9 +129,9 @@ typedef struct {
 
 // functions external to obj2supp
 
-extern size_t   IncExecRelocs( void * );
-extern size_t   IncSaveRelocs( void * );
-extern size_t   RelocMarkSyms( void * );
+extern size_t   IncExecRelocs(Link& link,  void * );
+extern size_t   IncSaveRelocs(Link& link,  void * );
+extern size_t   RelocMarkSyms(Link& link,  void * );
 extern void     RelocStartMod( void );
 extern void     StoreFixup(Link& link,  offset, fix_type, frame_spec *, target_spec *, offset );
 extern void     ResetObj2Supp( void );

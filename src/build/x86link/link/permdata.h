@@ -93,7 +93,7 @@ struct perm_read_info_struct {
     size_t      currpos;
     char        *buffer;
     unsigned    num;
-    void        (*cbfn)(void *, struct perm_read_info_struct *);
+    FunctionRef<void(void *, struct perm_read_info_struct *)> cbfn;
     carve_t     carver;
 };
 
@@ -120,7 +120,7 @@ extern void     PermStartMod( mod_entry * );
 extern void     PermEndMod( mod_entry * );
 extern void     WritePermFile(Link& link,  perm_write_info *, const void *data, size_t len );
 extern void     ReadPermFile(Link& link,  perm_read_info *, void *, size_t );
-extern void     IterateModRelocs( size_t, size_t, size_t (*)(void *) );
+extern void     IterateModRelocs( size_t, size_t, FunctionRef<size_t(void *)> );
 extern void     *GetSegContents( segdata *, virt_mem_size );
 extern void     *GetAltdefContents( segdata * );
 extern void     FreeSavedRelocs(Link& link);

@@ -71,9 +71,9 @@ extern void     *CarveZeroAlloc( carve_t carver );
 extern void     CarveFree( carve_t carver, void *elm );
 
 extern void     *CarveGetIndex( carve_t, void * );
-extern void     CarveWalkBlocks( carve_t, void (*)(carve_t, void *, void *), void * );
+extern void     CarveWalkBlocks( carve_t, FunctionRef<void(carve_t, void *, void *)>, void * );
 extern bool     CarveBlockModified( void * );
-extern void     CarveBlockScan( carve_t, void *, void (*)(void *, void *), void *);
+extern void     CarveBlockScan( carve_t, void *, FunctionRef<void(void *, void *)>, void *);
 extern unsigned CarveBlockSize( carve_t );
 extern unsigned CarveNumElements( carve_t );
 extern void     *CarveBlockData( void * );
@@ -81,6 +81,6 @@ extern void     *CarveMapIndex( carve_t, void * );
 extern bool     CarveSizeChanged( carve_t );
 extern void     CarveInsertFree( carve_t, void * );
 extern void     CarveWalkAllFree( carve_t carver, void (*rtn)( void * ) );
-extern void     CarveWalkAll( carve_t, void (*)(void *, void *), void * );
+extern void     CarveWalkAll( carve_t, FunctionRef<void(void *, void *)>, void * );
 
 #endif

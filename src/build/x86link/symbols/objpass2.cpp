@@ -56,7 +56,7 @@ void ObjPass2(Link& link)
 {
     DEBUG(( DBG_BASE, "ObjPass2()" ));
     IncP2Start();
-    WalkAllSects(link,  DBIP2Start );
+    WalkAllSects(link,  bind_link( link, DBIP2Start ) );
     link.CurrSect = link.Root;/*  TAI */
     PModList(link,  link.Root->mods );
 #ifdef _EXE
@@ -85,7 +85,7 @@ void ObjPass2(Link& link)
         OvlSetStartAddr(link);
     }
 #endif
-    WalkAllSects(link,  DBIFini );
+    WalkAllSects(link,  bind_link( link, DBIFini ) );
 }
 
 void PModList(Link& link,  mod_entry *head )
@@ -105,7 +105,7 @@ void PModule(Link& link,  mod_entry *obj )
         return;
     DEBUG(( DBG_BASE, "2 : processing module %s", obj->name ));
     link.CurrMod = obj;
-    IterateModRelocs( link.CurrMod->relocs, link.CurrMod->sizerelocs, IncExecRelocs );
+    IterateModRelocs( link.CurrMod->relocs, link.CurrMod->sizerelocs, bind_link( link, IncExecRelocs ) );
     DoBakPats();
     DBIGenModule(link);
     CheckStop(link);

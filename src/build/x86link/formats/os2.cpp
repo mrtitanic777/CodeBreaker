@@ -325,7 +325,7 @@ static unsigned long WriteOS2Relocs(Link& link,  group_entry *group, unsigned lo
     if( link.FmtData.u.os2fam.selector_fixups )
         return( WriteChainedRelocs(link,  group, seg_start, relocsize ) );
     WriteLoadU16(link,  relocnum );
-    DumpRelocList( group->g.reloclist );
+    DumpRelocList(link,  group->g.reloclist );
     return( relocsize );
 }
 

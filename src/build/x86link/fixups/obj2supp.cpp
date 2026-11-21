@@ -488,10 +488,9 @@ static void FixTargetValue(Link& link,  target_type type, void **targ )
     }
 }
 
-size_t RelocMarkSyms( void *_save )
+size_t RelocMarkSyms(Link& link,  void *_save )
 /********************************/
-{
-    Link& link = wlink();
+{
     save_fixup  *save = static_cast<save_fixup *>(_save);
     frame_type  frame;
     target_type target;
@@ -657,10 +656,9 @@ void StoreFixup(Link& link,  offset off, fix_type type, frame_spec *frame, targe
     }
 }
 
-size_t IncSaveRelocs( void *_save )
+size_t IncSaveRelocs(Link& link,  void *_save )
 /*********************************/
-{
-    Link& link = wlink();
+{
     save_fixup  *save = static_cast<save_fixup *>(_save);
     segdata     *sdata;
     target_spec target;
@@ -1988,10 +1986,9 @@ static void BuildReloc(Link& link,  save_fixup *save, target_spec *target, frame
     Relocate(link,  off, &fix, target );
 }
 
-size_t IncExecRelocs( void *_save )
+size_t IncExecRelocs(Link& link,  void *_save )
 /*********************************/
-{
-    Link& link = wlink();
+{
     save_fixup  *save = static_cast<save_fixup *>(_save);
     segdata     *sdata;
     target_spec target;

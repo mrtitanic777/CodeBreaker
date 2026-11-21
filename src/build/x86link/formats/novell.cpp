@@ -91,7 +91,7 @@ static unsigned_32 WriteNovRelocs(Link& link,  fixed_header *header )
 /*******************************************************/
 // write the relocations.
 {
-    DumpRelocList( link.Root->reloclist );
+    DumpRelocList(link,  link.Root->reloclist );
     header->numberOfRelocationFixups = link.Root->relocs;
     return( static_cast<unsigned_32>( link.Root->relocs ) * sizeof( nov_reloc_item ) );
 }
@@ -223,10 +223,9 @@ static unsigned_32 WriteNovModules(Link& link,  fixed_header *header )
     return( wrote );
 }
 
-void NovDBIAddGlobal( void *_sym )
+void NovDBIAddGlobal(Link& link,  void *_sym )
 /********************************/
-{
-    Link& link = wlink();
+{
     symbol *sym = static_cast<symbol *>( _sym );
 
     if( !IS_SYM_A_REF( sym )

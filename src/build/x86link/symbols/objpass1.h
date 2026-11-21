@@ -66,7 +66,7 @@ extern void             AddSegment(Link& link,  segdata *, class_entry * );
 extern class_entry      *DuplicateClass(Link& link,  class_entry *class_ );
 extern class_entry      *FindClass(Link& link,  section *, const char *, byte bits, bool iscode );
 extern seg_leader       *InitLeader(Link& link,  const char * );
-extern void             FreeLeader( void * );
+extern void             FreeLeader(Link& link,  void * );
 extern void             AddToGroup(Link& link,  group_entry *, seg_leader * );
 extern void             SetAddPubSym( symbol *, sym_info, mod_entry *, offset, unsigned_16 );
 extern void             DefineSymbol(Link& link,  symbol *, segnode *, offset, unsigned_16 );

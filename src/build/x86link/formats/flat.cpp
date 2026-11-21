@@ -370,7 +370,7 @@ static unsigned WriteFixupTables(Link& link,  os2_flat_header *header, unsigned 
     header->fixrec_off = loc + numentries * sizeof( unsigned_32 );
     size += numentries * sizeof( unsigned_32 );
     for( group = link.Groups; group != nullptr; group = group->next ) {
-        TraverseOS2RelocList(link,  group, DumpRelocList );
+        TraverseOS2RelocList(link,  group, bind_link( link, DumpRelocList ) );
     }
     return( size );
 }

@@ -761,10 +761,9 @@ offset CalcSplitSize(Link& link)
     }
 }
 
-bool CompareDosSegments( addr_type *left, addr_type *right )
+bool CompareDosSegments(Link& link,  addr_type *left, addr_type *right )
 /**********************************************************/
-{
-    Link& link = wlink();
+{
     return( LESS_THAN_ADDR( *left, *right ) );
 }
 
@@ -783,7 +782,7 @@ bool CompareProtSegments( addr_type *left, addr_type *right )
     return( left->seg < right->seg );
 }
 
-void OrderGroups(Link& link,  bool (*lessthan)(addr_type *, addr_type *) )
+void OrderGroups(Link& link,  FunctionRef<bool(addr_type *, addr_type *)> lessthan )
 /************************************************************/
 {
     group_entry     *group;
@@ -1052,12 +1051,11 @@ void AddImpLibEntry(Link& link,  const char *intname, const char *extname, ordin
     }
 }
 
-void WriteLoad3( void *dummy, const char *buff, size_t size )
+void WriteLoad3(Link& link,  void *dummy, const char *buff, size_t size )
 /************************************************************
  * write a buffer out to the load file (useful as a callback)
  */
-{
-    Link& link = wlink();
+{
     /* unused parameters */ (void)dummy;
 
     WriteLoad(link,  buff, size );
@@ -1105,10 +1103,9 @@ unsigned long OffsetAlign(Link& link,  unsigned long off, unsigned long align )
     return( off + pad );
 }
 
-static bool WriteSegData( void *_sdata, void *_info )
+static bool WriteSegData(Link& link,  void *_sdata, void *_info )
 /***************************************************/
-{
-    Link& link = wlink();
+{
     segdata         *sdata = static_cast<segdata *>( _sdata );
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
     unsigned long   newpos;
@@ -1136,26 +1133,24 @@ static bool WriteSegData( void *_sdata, void *_info )
     return( false );
 }
 
-static void DoWriteLeader( seg_leader *seg, grpwriteinfo *info )
+static void DoWriteLeader(Link& link,  seg_leader *seg, grpwriteinfo *info )
 /**************************************************************/
 {
-    RingLookup( seg->pieces, WriteSegData, info );
+    RingLookup( seg->pieces, bind_link( link, WriteSegData ), info );
 }
 
-void WriteLeaderLoad( void *seg )
+void WriteLeaderLoad(Link& link,  void *seg )
 /*******************************/
-{
-    Link& link = wlink();
+{
     grpwriteinfo    info;
 
     info.seg_start = PosLoad(link);
-    DoWriteLeader( static_cast<seg_leader *>( seg ), &info );
+    DoWriteLeader(link,  static_cast<seg_leader *>( seg ), &info );
 }
 
-static bool DoGroupLeader( void *_seg, void *_info )
+static bool DoGroupLeader(Link& link,  void *_seg, void *_info )
 /**************************************************/
-{
-    Link& link = wlink();
+{
     seg_leader      *seg = static_cast<seg_leader *>( _seg );
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
@@ -1163,22 +1158,21 @@ static bool DoGroupLeader( void *_seg, void *_info )
     if( EMIT_CLASS( seg->class_ )
       && EMIT_SEG( seg ) ) {
         info->seg_start = info->grp_start + SEG_GROUP_DELTA( seg );
-        DoWriteLeader( seg, info );
+        DoWriteLeader(link,  seg, info );
     }
     return( false );
 }
 
-static bool DoDupGroupLeader( void *seg, void *_info )
+static bool DoDupGroupLeader(Link& link,  void *seg, void *_info )
 /*****************************************************
  * Substitute groups generally are sourced from NO_EMIT classes,
  * As copies, they need to be output, so ignore their MOEMIT flag here
  */
-{
-    Link& link = wlink();
+{
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
     info->seg_start = info->grp_start + SEG_GROUP_DELTA( static_cast<seg_leader *>( seg ) );
-    DoWriteLeader( static_cast<seg_leader *>( seg ), info );
+    DoWriteLeader(link,  static_cast<seg_leader *>( seg ), info );
     return( false );
 }
 
@@ -1188,13 +1182,14 @@ static bool WriteCopyGroups( void *_seg, void *_info )
  * that have more than one group in them
  */
 {
+    Link& link = wlink();
     seg_leader      *seg = static_cast<seg_leader *>( _seg );
     grpwriteinfo    *info = static_cast<grpwriteinfo *>( _info );
 
     if( info->last_group != seg->group ) {   // Only interate new groups
         info->last_group = seg->group;
         // Check each initialized segment in group
-        Ring2Lookup( seg->group->leaders, DoDupGroupLeader, info );
+        Ring2Lookup( seg->group->leaders, bind_link( link, DoDupGroupLeader ), info );
         info->grp_start += seg->group->totalsize;
     }
     return( false );
@@ -1218,7 +1213,7 @@ offset  WriteGroupLoad(Link& link,  group_entry *group, bool repos )
         RingLookup( class_->DupClass->segs->group->leaders, WriteCopyGroups, &info );
     } else {
         info.copy = false;
-        Ring2Lookup( group->leaders, DoGroupLeader, &info );
+        Ring2Lookup( group->leaders, bind_link( link, DoGroupLeader ), &info );
     }
     return( PosLoad(link) - grp_start );
 }
@@ -1239,10 +1234,9 @@ void FreeOutFiles(Link& link)
     }
 }
 
-static void *SetToFillChar( void *dest, const void *data, size_t size )
+static void *SetToFillChar(Link& link,  void *dest, const void *data, size_t size )
 /*********************************************************************/
-{
-    Link& link = wlink();
+{
     memset( dest, link.FmtData.FillChar, size );
     return( const_cast<void *>( data ) );
 }
@@ -1255,7 +1249,7 @@ static void *CopyData( void *dest, const void *data, size_t size )
 
 #define BUFF_BLOCK_SIZE _16K
 
-static void WriteBuffer( const char *data, size_t len, outfilelist *outfile, writebuffer_fn *rtn )
+static void WriteBuffer( const char *data, size_t len, outfilelist *outfile, FunctionRef<writebuffer_fn> rtn )
 /************************************************************************************************/
 {
     size_t   modpos;
@@ -1277,7 +1271,7 @@ static void WriteBuffer( const char *data, size_t len, outfilelist *outfile, wri
     }
 }
 
-static void SeekBuffer( unsigned long len, outfilelist *outfile, writebuffer_fn *rtn )
+static void SeekBuffer( unsigned long len, outfilelist *outfile, FunctionRef<writebuffer_fn> rtn )
 /************************************************************************************/
 {
     size_t   modpos;
@@ -1297,14 +1291,14 @@ static void SeekBuffer( unsigned long len, outfilelist *outfile, writebuffer_fn 
     }
 }
 
-void PadBuffFile( outfilelist *outfile, size_t size )
+void PadBuffFile(Link& link,  outfilelist *outfile, size_t size )
 /***************************************************/
 /* pad out load file with zeros */
 {
     if( size == 0 )
         return;
     if( outfile->buffer != nullptr ) {
-        WriteBuffer( nullptr, size, outfile, SetToFillChar );
+        WriteBuffer( nullptr, size, outfile, bind_link( link, SetToFillChar ) );
     } else {
         WriteNulls( outfile->handle, size, outfile->fname );
     }
@@ -1315,7 +1309,7 @@ void PadLoad(Link& link,  size_t size )
  * pad out load file with zeros
  */
 {
-    PadBuffFile( link.CurrSect->outfile, size );
+    PadBuffFile(link,  link.CurrSect->outfile, size );
 }
 
 void WriteLoad(Link& link,  const void *buff, size_t size )
@@ -1396,7 +1390,7 @@ void SeekLoad(Link& link,  unsigned long offset )
     if( outfile->buffer == nullptr ) {
         QSeek( outfile->handle, outfile->origin + offset, outfile->fname );
     } else {
-        SeekBuffer( outfile->origin + offset - outfile->bufpos, outfile, SetToFillChar );
+        SeekBuffer( outfile->origin + offset - outfile->bufpos, outfile, bind_link( link, SetToFillChar ) );
     }
 }
 

@@ -70,7 +70,7 @@ static void FreeClasses(Link& link,  class_entry *class_ )
 
     for( ; class_ != nullptr; class_ = next ) {
         next = class_->next;
-        RingWalk( class_->segs, FreeLeader );
+        RingWalk( class_->segs, bind_link( link, FreeLeader ) );
         CarveFree( link.CarveClass, class_ );
     }
 }

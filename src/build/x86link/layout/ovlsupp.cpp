@@ -95,7 +95,7 @@ void ResetOverlaySupp(Link& link)
     ResetDistribSupp();
 }
 
-static void ParmWalkSections( section *sect, void (*rtn)( section *, void * ), void *parm )
+static void ParmWalkSections( section *sect, FunctionRef<void( section *, void * )> rtn, void *parm )
 /*****************************************************************************************/
 {
     for( ; sect != nullptr; sect = sect->next ) {
@@ -104,7 +104,7 @@ static void ParmWalkSections( section *sect, void (*rtn)( section *, void * ), v
     }
 }
 
-void ParmWalkAreas( AREASECT *area, void (*rtn)( section *, void * ), void *parm )
+void ParmWalkAreas( AREASECT *area, FunctionRef<void( section *, void * )> rtn, void *parm )
 /********************************************************************************/
 {
     for( ; area != nullptr; area = area->next ) {
@@ -112,7 +112,7 @@ void ParmWalkAreas( AREASECT *area, void (*rtn)( section *, void * ), void *parm
     }
 }
 
-static void WalkSections( section *sect, void (*rtn)( section * ) )
+static void WalkSections( section *sect, FunctionRef<void( section * )> rtn )
 /*****************************************************************/
 {
     for( ; sect != nullptr; sect = sect->next ) {
@@ -121,7 +121,7 @@ static void WalkSections( section *sect, void (*rtn)( section * ) )
     }
 }
 
-void WalkAreas( AREASECT *area, void (*rtn)( section * ) )
+void WalkAreas( AREASECT *area, FunctionRef<void( section * )> rtn )
 /********************************************************/
 {
     for( ; area != nullptr; area = area->next ) {
@@ -129,10 +129,9 @@ void WalkAreas( AREASECT *area, void (*rtn)( section * ) )
     }
 }
 
-static void DoSecPubs( section *sect )
+static void DoSecPubs(Link& link,  section *sect )
 /************************************/
-{
-    Link& link = wlink();
+{
     if( link.MapFile != nullptr ) {
         WriteMapOvlPubHead(link,  sect );
         WriteMapPubStart();
@@ -158,7 +157,7 @@ void OvlProcPubs(Link& link)
     if( link.MapFile != nullptr ) {
         WriteMapOvlVectHead(link,  &ovl().vect );
     }
-    WalkAreas( link.Root->areas, DoSecPubs );
+    WalkAreas( link.Root->areas, bind_link( link, DoSecPubs ) );
 }
 
 static void AllocSections(Link& link,  section *first_sect )
@@ -309,7 +308,7 @@ void FreeOverlaySupp(Link& link)
     link.OvlClasses = nullptr;
     ovl().vect.OvlVectors = nullptr;
     if( link.OvlSeg != nullptr ) {
-        FreeLeader( link.OvlSeg );
+        FreeLeader(link,  link.OvlSeg );
     }
     FreeDistribSupp(link);
 }
@@ -662,7 +661,7 @@ void OvlPass1(Link& link)
 {
     symbol      *sym;
 
-    WalkAreas( link.Root->areas, LoadObjFiles );
+    WalkAreas( link.Root->areas, bind_link( link, LoadObjFiles ) );
 
     /* define symbols for overlay table */
     ovl().vect.OverlayTable = DefISymbol(link,  _OvltabName );
@@ -697,10 +696,9 @@ void OvlPass1(Link& link)
     sym->u.d.ovlstate |= OVL_REF;
 }
 
-static void EmitOvlEntry( section *sect, void *_off )
+static void EmitOvlEntry(Link& link,  section *sect, void *_off )
 /***************************************************/
-{
-    Link& link = wlink();
+{
     ovltab_entry        entry;
     offset              len;
     unsigned_16         flags_anc;
@@ -758,7 +756,7 @@ void OvlEmitTable(Link& link)
      *  Generate entries :
      */
     off += sizeof( prolog );
-    ParmWalkAreas( link.Root->areas, EmitOvlEntry, &off );
+    ParmWalkAreas( link.Root->areas, bind_link( link, EmitOvlEntry ), &off );
     /*
      *  Generate epilog :
      */
@@ -784,7 +782,7 @@ void OvlPadOvlFiles(Link& link)
     for( fnode = link.OutFiles; fnode != nullptr; fnode = fnode->next ) {
         pad = __ROUND_UP_SIZE_PARA( fnode->file_loc ) - fnode->file_loc;
         if( pad ) {
-            PadBuffFile( fnode, pad );
+            PadBuffFile(link,  fnode, pad );
         }
     }
 }

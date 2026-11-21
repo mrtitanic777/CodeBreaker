@@ -187,3 +187,9 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    callbacks given to walkers by address (RingWalk, CarveWalkAll, WalkAllSects, OrderGroups ...), and the few the support
    libraries call (LnkMsg, MemAlloc, the resource callbacks); next, the walkers take callables and those functions the
    Link. Both corpora as before, at the same speed (CPU, the binaries alternated).
+   **5c (2026-11-20): the walkers.** A walker takes its routine as `FunctionRef<F>` (link/callback.hpp: a reference to
+   anything callable as F) where wlink took `F *`, and a routine that needs the link's state takes `Link&` first and is
+   handed as `bind_link(link, f)` (its arguments converted to the routine's types, as wlink's casts had them): the
+   rings', carvers', hash tables', sections', areas', modules' and leaders' walks, the DBI scans, OrderGroups, the
+   relocation and string-table walks (31 walkers, 92 routines; work/x86link5/slotify.py, hand5c.py). 76 bindings left:
+   routines held in tables and variables, and the callbacks the support libraries make (ORL, wres, the messages).

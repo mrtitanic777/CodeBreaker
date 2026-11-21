@@ -566,7 +566,7 @@ static void WriteImportInfo(Link& link)
     PutInfoNulls( buf + pos, sizeof( dir ) );    /* NULL entry marks end of table */
     pos += sizeof( dir );
     WriteIAT( buf + st.IData.ilt_off, linear ); // Import Lookup table
-    WriteToc( buf + st.IData.eof_ilt_off );
+    WriteToc(link,  buf + st.IData.eof_ilt_off );
     for( pos = st.IData.eof_ilt_off; pos < st.IData.iat_off; pos += sizeof( pe_va ) ) {
         XFerReloc(link,  pos, group, PE_FIX_HIGHLOW, 0 );
     }
@@ -714,7 +714,7 @@ static unsigned_32 WriteRelocList(Link& link,  reloc_info reloclist, unsigned_32
         pagesize += 2 * sizeof( unsigned_32 );
         WriteLoadU32(link,  pagerva );
         WriteLoadU32(link,  pagesize );
-        DumpRelocList( reloclist );
+        DumpRelocList(link,  reloclist );
         if( padme ) {
             PadLoad(link,  sizeof( pe_reloc_item ) );
         }

@@ -70,7 +70,7 @@ void RINGHNAME(Insert) (        // INSERT ELEMENT INTO RING
 ;
 void *RINGHNAME(Lookup) (       // LOOKUP IN A RING (also used for walks)
     void *hdr,                  // - ring hdr
-    ringcompare_fn *rtn,        // - comparison routine
+    FunctionRef<ringcompare_fn> rtn,        // - comparison routine
     void *comparand )           // - comparand
 ;
 void *RINGHNAME(Pop) (          // PRUNE FIRST ELEMENT IN THE RING
@@ -101,7 +101,7 @@ void* RINGHNAME(Push) (         // INSERT ELEMENT AT START OF RING
 ;
 void RINGHNAME(Walk) (          // TRAVERSE RING
     void *hdr,                  // - ring header
-    ringwalk_fn *rtn )          // - - passed current element
+    FunctionRef<ringwalk_fn> rtn )          // - - passed current element
 ;
 void *RINGHNAME(Step) (         // STEP ALONG ELEMENTS (NULL -> e1 -> e2 -> NULL)
     void *hdr,                  // - ring header

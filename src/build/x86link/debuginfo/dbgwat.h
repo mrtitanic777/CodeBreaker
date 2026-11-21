@@ -45,7 +45,7 @@ extern void     ODBIAddLocal(Link& link,  seg_leader *, offset );
 extern void     ODBIGenLocal(Link& link,  segdata * );
 extern void     ODBIAddGlobal(Link& link,  symbol * );
 extern void     ODBIGenGlobal(Link& link,  symbol *, section * );
-extern void     ODBIGenLines( lineinfo * );
+extern void     ODBIGenLines(Link& link,  lineinfo * );
 extern void     ODBIAddAddrInfo( seg_leader * );
 extern void     ODBIAddrSectStart(Link& link,  section * );
 extern void     ODBIP2Start(Link& link,  section * );

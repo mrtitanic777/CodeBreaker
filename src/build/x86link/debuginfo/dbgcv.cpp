@@ -243,11 +243,10 @@ void CVP1ModuleScanned( void )
 {
 }
 
-static void CVAddLines( lineinfo *info )
+static void CVAddLines(Link& link,  lineinfo *info )
 /**************************************/
 // called during pass 1 linnum processing
-{
-    Link& link = wlink();
+{
     link.CurrMod->u3.cv->numlines += DBICalcLineQty( info );
 }
 
@@ -267,9 +266,9 @@ void CVP1ModuleFinished( mod_entry *obj )
     link.CurrMod = obj;
     obj->u3.cv->modidx = st.temp_index;
     if( link.CurrMod->flags_dbi & DBI_LINE ) {
-        DBILineWalk( reinterpret_cast<lineinfo *>( obj->lines ), CVAddLines );
+        DBILineWalk( reinterpret_cast<lineinfo *>( obj->lines ), bind_link( link, CVAddLines ) );
     }
-    Ring2Walk( obj->publist, DBIModGlobal );
+    Ring2Walk( obj->publist, bind_link( link, DBIModGlobal ) );
     namelen = std::string_view( obj->name.u.ptr ).size();
     //  required alignment ???
     size = sizeof( cv_sst_module ) + namelen + 1 - sizeof( cv_seginfo );
@@ -501,11 +500,10 @@ void CVGenGlobal(Link& link,  symbol *sym, section *sect )
     }
 }
 
-void CVGenLines( lineinfo *info )
+void CVGenLines(Link& link,  lineinfo *info )
 /*******************************/
 // called during pass 2 linnum processing
-{
-    Link& link = wlink();
+{
     CvState                     &st = state();
     cvlineinfo                  &line_info = st.line_info;
     ln_off_pair _WCUNALIGNED    *pair;
@@ -603,10 +601,9 @@ void CVAddAddrInfo( seg_leader *seg )
     }
 }
 
-static void CVGenAddrInit( segdata *sdata, void *_info )
+static void CVGenAddrInit(Link& link,  segdata *sdata, void *_info )
 /******************************************************/
-{
-    Link& link = wlink();
+{
     cv_seginfo *info = static_cast<cv_seginfo *>( _info );
     info->Seg = GetCVSegment(link,  sdata->u.leader );
     info->pad = 0;
@@ -625,14 +622,13 @@ static void CVGenAddrAdd( segdata *sdata, offset delta, offset size, void *_info
     }
 }
 
-void CVGenAddrInfo( seg_leader *seg )
+void CVGenAddrInfo(Link& link,  seg_leader *seg )
 /***********************************/
-{
-    Link& link = wlink();
+{
     cv_seginfo          info;
 
     if( seg->info & SEGINF_CODE ) {
-        DBIAddrInfoScan(link,  seg, CVGenAddrInit, CVGenAddrAdd, &info );
+        DBIAddrInfoScan(link,  seg, bind_link( link, CVGenAddrInit ), CVGenAddrAdd, &info );
     }
 }
 
@@ -649,11 +645,10 @@ void CVDefClass(Link& link,  class_entry *class_, unsigned_32 size )
     group->addr.seg = 0;
 }
 
-static void DefLocal( void *_sdata )
+static void DefLocal(Link& link,  void *_sdata )
 /**********************************/
 /* NOTE: this assumes that codeview segments are byte aligned! */
-{
-    Link& link = wlink();
+{
     virt_mem_ptr &misc = state().at( CvSect::misc );
     segdata    *sdata = static_cast<segdata *>( _sdata );
     seg_leader *leader;
@@ -678,10 +673,11 @@ static void DefLocal( void *_sdata )
 static bool DefLeader( void *_leader, void *group )
 /*************************************************/
 {
+    Link& link = wlink();
     seg_leader *leader = static_cast<seg_leader *>( _leader );
 
     leader->group = static_cast<group_entry *>( group );
-    RingWalk( leader->pieces, DefLocal );
+    RingWalk( leader->pieces, bind_link( link, DefLocal ) );
     return( false );
 }
 

@@ -230,7 +230,7 @@ size_t AddSecName( ElfHdr *hdr, const char *name )
 }
 
 
-static void WriteSHStrings( ElfHdr *hdr, int str_idx, stringtable *strtab )
+static void WriteSHStrings(Link& link,  ElfHdr *hdr, int str_idx, stringtable *strtab )
 /*************************************************************************/
 {
     Elf32_Shdr      *sh;
@@ -241,7 +241,7 @@ static void WriteSHStrings( ElfHdr *hdr, int str_idx, stringtable *strtab )
     sh->sh_type = SHT_STRTAB;
     sh->sh_size = GetStringTableSize( strtab );
     hdr->curr_off += sh->sh_size;
-    WriteStringTable( strtab, WriteLoad3, nullptr );
+    WriteStringTable( strtab, bind_link( link, WriteLoad3 ), nullptr );
 }
 
 static void SetGroupHeaders(Link& link,  group_entry *group, offset off, Elf32_Phdr *ph,
@@ -368,7 +368,7 @@ static void WriteRelocsSections(Link& link,  ElfHdr *hdr )
             sh->sh_addralign = 4;
             sh->sh_size = RelocSize( reloclist );
             sh->sh_name = AddRelocSectName( hdr, GroupSecName( group ) );
-            DumpRelocList( reloclist );
+            DumpRelocList(link,  reloclist );
             hdr->curr_off += sh->sh_size;
             sh++;
         }
@@ -402,9 +402,9 @@ void FiniELFLoadFile(Link& link)
         ZapElfSymTable( state().ElfSymTab );
     }
     if( hdr.i.symstr != 0 ) {           // String sections
-        WriteSHStrings( &hdr, hdr.i.symstr, &state().SymStrTab );
+        WriteSHStrings(link,  &hdr, hdr.i.symstr, &state().SymStrTab );
     }
-    WriteSHStrings( &hdr, hdr.i.secstr, &hdr.secstrtab );
+    WriteSHStrings(link,  &hdr, hdr.i.secstr, &hdr.secstrtab );
     hdr.eh.e_shoff = hdr.curr_off;
     WriteLoad(link,  hdr.sh, hdr.sh_size );
     hdr.curr_off += hdr.sh_size;

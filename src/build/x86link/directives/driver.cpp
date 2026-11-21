@@ -140,7 +140,7 @@ void parse_command() {
     }
 }
 
-void init_format(Link& link, void (*set)()) {
+void init_format(Link& link, FunctionRef<void()> set) {
     if (link.LinkState & LS_FMT_INITIALIZED) return;
     if (set != nullptr) set();
     link.LinkState |= LS_FMT_INITIALIZED;

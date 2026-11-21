@@ -250,7 +250,7 @@ static void DoAltDef(Link& link,  comdat_info *info )
 /***************************************/
 {
     if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        FreeSegData( info->sdata );
+        FreeSegData(link,  info->sdata );
     } else {
         Ring2Append( &link.CurrMod->segs, info->sdata );
         info->sdata->isdead = true;
@@ -258,10 +258,9 @@ static void DoAltDef(Link& link,  comdat_info *info )
     }
 }
 
-static void FinishComdat( void *inf )
+static void FinishComdat(Link& link,  void *inf )
 /***********************************/
-{
-    Link& link = wlink();
+{
     comdat_info *info = static_cast<comdat_info *>( inf );
 
     if( info->flags & SYM_DEAD ) {      // is redefined
@@ -273,10 +272,10 @@ static void FinishComdat( void *inf )
     FreeCDatInfo( info );
 }
 
-void ResolveComdats( void )
+void ResolveComdats(Link& link)
 /*************************/
 {
-    RingWalk( state().CDatList, FinishComdat );
+    RingWalk( state().CDatList, bind_link( link, FinishComdat ) );
     state().CDatList = nullptr;
 }
 

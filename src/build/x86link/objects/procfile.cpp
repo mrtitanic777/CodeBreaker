@@ -273,13 +273,13 @@ static void MarkDefaultSyms(Link& link)
 static void MarkRelocs( mod_entry *mod )
 /**************************************/
 {
-    IterateModRelocs( mod->relocs, mod->sizerelocs, RelocMarkSyms );
+    Link& link = wlink();
+    IterateModRelocs( mod->relocs, mod->sizerelocs, bind_link( link, RelocMarkSyms ) );
 }
 
-static void KillASym( void *_sym )
+static void KillASym(Link& link,  void *_sym )
 /********************************/
-{
-    Link& link = wlink();
+{
     symbol *sym = static_cast<symbol *>( _sym );
 
     sym->info |= SYM_KILL;
@@ -291,7 +291,8 @@ static void KillASym( void *_sym )
 static void KillSyms( mod_entry *mod )
 /************************************/
 {
-    Ring2Walk( mod->publist, KillASym );
+    Link& link = wlink();
+    Ring2Walk( mod->publist, bind_link( link, KillASym ) );
 }
 
 static void SetAltDefData( void *_sym )
@@ -312,7 +313,7 @@ static void FixModAltDefs( mod_entry *mod )
     Ring2Walk( mod->publist, SetAltDefData );
 }
 
-static void IncIterateMods( mod_entry *mod, void (*proc_fn)(mod_entry *), bool dochanged )
+static void IncIterateMods( mod_entry *mod, FunctionRef<void(mod_entry *)> proc_fn, bool dochanged )
 /****************************************************************************************/
 {
     bool haschanged;
@@ -346,10 +347,9 @@ static void SavedPass1(Link& link,  mod_entry *mod )
     ObjPass1(link);
 }
 
-static void FreeModSegments( mod_entry *mod )
+static void FreeModSegments(Link& link,  mod_entry *mod )
 /*******************************************/
-{
-    Link& link = wlink();
+{
     mod->publist = nullptr;
     Ring2CarveFree( link.CarveSegData, &mod->segs );
 }
@@ -548,8 +548,8 @@ static void IncLoadObjFiles(Link& link)
     IncIterateMods( link.Root->mods, KillSyms, true );
     IncIterateMods( link.LibModules, KillSyms, true );
     PurgeSymbols(link);
-    IncIterateMods( link.Root->mods, FreeModSegments, true );
-    IncIterateMods( link.LibModules, FreeModSegments, true );
+    IncIterateMods( link.Root->mods, bind_link( link, FreeModSegments ), true );
+    IncIterateMods( link.LibModules, bind_link( link, FreeModSegments ), true );
     ProcessMods(link);
     DoIncGroupDefs(link);
     DoIncLibDefs(link);
@@ -579,7 +579,7 @@ void ProcObjFiles(Link& link)
     if( link.LinkState & LS_GOT_PREV_STRUCTS ) {
         IncLoadObjFiles(link);
     } else {
-        LoadObjFiles( link.Root );
+        LoadObjFiles(link,  link.Root );
 #ifdef _EXE
         if( link.FmtData.type & MK_OVERLAYS ) {
             OvlPass1(link);
@@ -588,10 +588,9 @@ void ProcObjFiles(Link& link)
     }
 }
 
-void LoadObjFiles( section *sect )
+void LoadObjFiles(Link& link,  section *sect )
 /********************************/
-{
-    Link& link = wlink();
+{
     file_list   *file;
 
     link.CurrSect = sect;

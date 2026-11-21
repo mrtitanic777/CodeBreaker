@@ -132,7 +132,7 @@ void BinOutput(Link& link)
         }
     } else {
 #endif
-        OrderGroups(link,  CompareDosSegments );
+        OrderGroups(link,  bind_link( link, CompareDosSegments ) );
         link.CurrSect = link.Root;        // needed for WriteInfo.
         link.Root->sect_addr = link.Groups->addr;
         fnode = link.Root->outfile;
@@ -237,10 +237,9 @@ static void WriteHexLine(Link& link)
     WriteLoad(link,  str_buf, 13 + 2 * i );
 }
 
-static bool WriteHexData( void *_sdata, void *_offs )
+static bool WriteHexData(Link& link,  void *_sdata, void *_offs )
 /***************************************************/
-{
-    Link& link = wlink();
+{
     HexState         &hs = hexState();
     segdata          *sdata = static_cast<segdata *>( _sdata );
     hex_offset       offs = *static_cast<hex_offset *>( _offs ) + sdata->a.delta;
@@ -282,27 +281,25 @@ static bool WriteHexData( void *_sdata, void *_offs )
     return( false );
 }
 
-static bool DoHexLeader( void *_seg, void *_grp_offs )
+static bool DoHexLeader(Link& link,  void *_seg, void *_grp_offs )
 /***************************************************/
-{
-    Link& link = wlink();
+{
     seg_leader      *seg = static_cast<seg_leader *>( _seg );
 
     if( EMIT_CLASS( seg->class_ )
       && EMIT_SEG( seg ) ) {
         hex_offset   offs = *static_cast<hex_offset *>( _grp_offs ) + SEG_GROUP_DELTA( seg );
-        RingLookup( seg->pieces, WriteHexData, &offs );
+        RingLookup( seg->pieces, bind_link( link, WriteHexData ), &offs );
     }
     return( false );
 }
 
-static bool DoHexDupLeader( void *seg, void *_grp_offs )
+static bool DoHexDupLeader(Link& link,  void *seg, void *_grp_offs )
 /******************************************************/
-{
-    Link& link = wlink();
+{
     hex_offset offs = *static_cast<hex_offset *>( _grp_offs ) + SEG_GROUP_DELTA( static_cast<seg_leader *>( seg ) );
 
-    RingLookup( static_cast<seg_leader *>( seg )->pieces, WriteHexData, &offs );
+    RingLookup( static_cast<seg_leader *>( seg )->pieces, bind_link( link, WriteHexData ), &offs );
     return( false );
 }
 
@@ -330,6 +327,7 @@ typedef struct {
 static bool WriteHexCopyGroups( void *_seg, void *_info )
 /*******************************************************/
 {
+    Link& link = wlink();
     // This is called by the outer level iteration looking for classes
     //  that have more than one group in them
     seg_leader *seg = static_cast<seg_leader *>( _seg );
@@ -338,7 +336,7 @@ static bool WriteHexCopyGroups( void *_seg, void *_info )
     if( info->last_group != seg->group ) {   // Only interate new groups
         info->last_group = seg->group;
         // Check each initialized segment in group
-        Ring2Lookup( seg->group->leaders, DoHexDupLeader, &info->offs );
+        Ring2Lookup( seg->group->leaders, bind_link( link, DoHexDupLeader ), &info->offs );
         info->offs += seg->group->totalsize;
     }
     return( false );
@@ -394,15 +392,15 @@ void HexOutput(Link& link)
                     &group->addr, sect->ovlref, info.offs, finfo->fname ));
     #endif
                 if( group->leaders->class_->flags & CLASS_COPY ) {
-                    Ring2Lookup( wrkgrp->leaders, DoHexDupLeader, &info.offs );
+                    Ring2Lookup( wrkgrp->leaders, bind_link( link, DoHexDupLeader ), &info.offs );
                 } else {
-                    Ring2Lookup( wrkgrp->leaders, DoHexLeader, &info.offs );
+                    Ring2Lookup( wrkgrp->leaders, bind_link( link, DoHexLeader ), &info.offs );
                 }
             }
         }
     } else {
 #endif
-        OrderGroups(link,  CompareDosSegments );
+        OrderGroups(link,  bind_link( link, CompareDosSegments ) );
         link.CurrSect = link.Root;    // needed for WriteInfo.
         link.Root->sect_addr = link.Groups->addr;
         fnode = link.Root->outfile;
@@ -432,7 +430,7 @@ void HexOutput(Link& link)
                     DEBUG((DBG_LOADDOS, "group %a section %d to %l in %s",
                         &group->addr, sect->ovlref, info.offs, finfo->fname ));
 #endif
-                    Ring2Lookup( group->leaders, DoHexLeader, &info.offs );
+                    Ring2Lookup( group->leaders, bind_link( link, DoHexLeader ), &info.offs );
                 }
             }
         }
@@ -463,7 +461,7 @@ static unsigned long WriteGroupLoadHex(Link& link,  group_entry *group )
         info.last_group = nullptr; // so it will use the first group
         RingLookup( class_->DupClass->segs->group->leaders, WriteHexCopyGroups, &info );
     } else {
-        Ring2Lookup( group->leaders, DoHexLeader, &info.offs );
+        Ring2Lookup( group->leaders, bind_link( link, DoHexLeader ), &info.offs );
     }
     return( PosLoad(link) - file_loc );
 }

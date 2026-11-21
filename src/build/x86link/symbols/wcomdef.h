@@ -34,6 +34,6 @@
 
 extern void     ProcComdef(Link& link,  bool );
 extern void     ProcLinsym(Link& link);
-extern void     ResolveComdats( void );
+extern void     ResolveComdats(Link& link);
 extern void     ProcComdat(Link& link);
 extern void     ResetComdef( void );

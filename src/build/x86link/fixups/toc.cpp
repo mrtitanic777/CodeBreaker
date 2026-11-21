@@ -169,9 +169,8 @@ offset FindEntryPosInToc(Link& link,  const TocEntryId &e )
     return kBogus; // return bogus position; likely to cause alignment exception
 }
 
-void WriteOutTokElem( void *_elem, void *buf )
-{
-    Link& link = wlink();
+void WriteOutTokElem(Link& link,  void *_elem, void *buf )
+{
     TocEntry   *elem = static_cast<TocEntry *>(_elem);
     offset      addr;
 
@@ -297,11 +296,11 @@ offset FindSymPosInToc(Link& link,  symbol * sym )
     return FindEntryPosInToc(link,  e );
 }
 
-void WriteToc( virt_mem buf )
+void WriteToc(Link& link,  virt_mem buf )
 /**********************************/
 {
     if( state().Toc == nullptr )
         return;
-    WalkHTableCookie( state().Toc, WriteOutTokElem, &buf );
+    WalkHTableCookie( state().Toc, bind_link( link, WriteOutTokElem ), &buf );
     // (OS/2 PPC's reserved GOT words, development on hold in the original, are not written.)
 }

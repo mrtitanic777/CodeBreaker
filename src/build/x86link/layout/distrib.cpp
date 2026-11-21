@@ -80,10 +80,9 @@ inline overlay_ref LowestAncestorMap( overlay_ref o, overlay_ref i )
 
 static void     ScanArcs(Link& link,  mod_entry *mod );
 
-static void DistribNumASect( section *sect )
+static void DistribNumASect(Link& link,  section *sect )
 /******************************************/
-{
-    Link& link = wlink();
+{
     DistribState    &d = distrib();
 
     d.SectOvlTab[link.OvlSectNum++] = sect;
@@ -98,8 +97,8 @@ void DistribNumberSections(Link& link)
     /* OvlSectNum value 0 is reserved for Root */
     /* Overlayed sections start at 1 */
     link.OvlSectNum = 0;
-    DistribNumASect( link.Root );
-    WalkAreas( link.Root->areas, DistribNumASect );
+    DistribNumASect(link,  link.Root );
+    WalkAreas( link.Root->areas, bind_link( link, DistribNumASect ) );
 }
 
 void ResetDistribSupp( void )
@@ -174,10 +173,9 @@ void InitArcList(Link& link,  mod_entry *mod )
     }
 }
 
-static void MarkDead( void *_seg )
+static void MarkDead(Link& link,  void *_seg )
 /********************************/
-{
-    Link& link = wlink();
+{
     segdata     *seg = static_cast<segdata *>( _seg );
 
     if( seg->isrefd )
@@ -198,10 +196,9 @@ static void MarkDead( void *_seg )
     }
 }
 
-static void KillUnrefedSyms( void *_sym )
+static void KillUnrefedSyms(Link& link,  void *_sym )
 /***************************************/
-{
-    Link& link = wlink();
+{
     symbol      *sym = static_cast<symbol *>( _sym );
     segdata     *seg;
 
@@ -234,8 +231,9 @@ static void DefineOvlSegments( mod_entry *mod )
  * figure out which of the segments are live
  */
 {
-    Ring2Walk( mod->segs, MarkDead );
-    Ring2Walk( mod->publist, KillUnrefedSyms );
+    Link& link = wlink();
+    Ring2Walk( mod->segs, bind_link( link, MarkDead ) );
+    Ring2Walk( mod->publist, bind_link( link, KillUnrefedSyms ) );
 }
 
 void DistribSetSegments(Link& link)

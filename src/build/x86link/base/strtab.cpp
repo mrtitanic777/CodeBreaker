@@ -60,7 +60,7 @@ struct stringblock {
 namespace {
 
 struct strblkparam {
-    write_strtable_fn   *fn;
+    FunctionRef<write_strtable_fn> fn;
     void                *info;
 };
 
@@ -201,7 +201,7 @@ void ZeroStringTable( stringtable *strtab, size_t len )
     blk->size += len;
 }
 
-void WriteStringTable( stringtable *strtab, write_strtable_fn *fn, void *info )
+void WriteStringTable( stringtable *strtab, FunctionRef<write_strtable_fn> fn, void *info )
 /*****************************************************************************/
 {
     strblkparam param{ fn, info };

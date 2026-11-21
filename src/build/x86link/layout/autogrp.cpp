@@ -314,11 +314,10 @@ group_entry *AllocGroup(Link& link,  const char *name, group_entry **grp_list )
     return( group );
 }
 
-static void SortGroup( seg_leader *seg )
+static void SortGroup(Link& link,  seg_leader *seg )
 /**************************************/
 // Go through the classes & segments, and rebuild the group list in sorted form
-{
-    Link& link = wlink();
+{
     if( seg->group == nullptr )
         return;
     if( seg->info & SEGINF_ABSOLUTE )
@@ -360,7 +359,7 @@ static void SortGroupList(Link& link)
     }
     number = link.NumGroups;
     state().curr_group = nullptr;
-    WalkLeaders(link,  SortGroup );
+    WalkLeaders(link,  bind_link( link, SortGroup ) );
     state().curr_group->next = nullptr;  // break the circular list.
     link.NumGroups = number;            // save # of groups.
 }

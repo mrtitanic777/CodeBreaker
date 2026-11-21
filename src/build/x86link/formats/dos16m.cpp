@@ -448,10 +448,9 @@ static void SetSegDataAbs( void *_sdata )
     }
 }
 
-static void RemapAliasSels( void *_leader )
+static void RemapAliasSels(Link& link,  void *_leader )
 /*****************************************/
-{
-    Link& link = wlink();
+{
     seg_leader  *leader = static_cast<seg_leader *>( _leader );
     seg_leader  *seg;
     section     *sect;
@@ -480,7 +479,7 @@ void MakeDos16PM(Link& link)
      */
     for( class_ = link.Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( (class_->flags & CLASS_DEBUG_INFO) == 0 ) {
-            RingWalk( class_->segs, RemapAliasSels );
+            RingWalk( class_->segs, bind_link( link, RemapAliasSels ) );
         }
     }
     /*

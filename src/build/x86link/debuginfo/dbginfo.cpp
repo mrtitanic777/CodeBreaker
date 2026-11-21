@@ -291,10 +291,9 @@ void ODBIGenLocal(Link& link,  segdata *sdata )
     }
 }
 
-static void ODBIAddLines( lineinfo *info )
+static void ODBIAddLines(Link& link,  lineinfo *info )
 /****************************************/
-{
-    Link& link = wlink();
+{
     unsigned            lineqty;
     unsigned_32         linesize;
     debug_info          *dinfo;
@@ -320,9 +319,9 @@ void ODBIP1ModuleFinished( mod_entry *obj )
         return;
     link.CurrMod = obj;
     if( link.CurrMod->flags_dbi & DBI_LINE ) {
-        DBILineWalk( reinterpret_cast<lineinfo *>( obj->lines ), ODBIAddLines );
+        DBILineWalk( reinterpret_cast<lineinfo *>( obj->lines ), bind_link( link, ODBIAddLines ) );
     }
-    Ring2Walk( obj->publist, DBIModGlobal );
+    Ring2Walk( obj->publist, bind_link( link, DBIModGlobal ) );
     dinfo->mod.curr.u.vm_offs += std::string_view( obj->name.u.ptr ).size() + sizeof( mod_dbg_info );
     dinfo->linelinks.size = 0;
 }
@@ -513,10 +512,9 @@ void ODBIAddModule( mod_entry *obj, section *sect )
     obj->u3.o->modnum = dptr->modnum;
 }
 
-static void ODBIGenAddrInit( segdata *sdata, void *_dinfo )
+static void ODBIGenAddrInit(Link& link,  segdata *sdata, void *_dinfo )
 /*********************************************************/
-{
-    Link& link = wlink();
+{
     seg_dbg_info    seghdr;
     seg_leader      *seg;
     debug_info      *dptr = static_cast<debug_info *>( _dinfo );
@@ -555,10 +553,9 @@ static void ODBIGenAddrAdd( segdata *sdata, offset delta, offset size, void *_di
     }
 }
 
-static void ODBIGenAddrInfo( seg_leader *seg )
+static void ODBIGenAddrInfo(Link& link,  seg_leader *seg )
 /********************************************/
-{
-    Link& link = wlink();
+{
     debug_info  *dptr;
 
     if( link.CurrSect == link.NonSect ) {
@@ -569,7 +566,7 @@ static void ODBIGenAddrInfo( seg_leader *seg )
     if( ( dptr == nullptr )
       || ( seg->num == 0 ) )
         return;
-    DBIAddrInfoScan(link,  seg, ODBIGenAddrInit, ODBIGenAddrAdd, dptr );
+    DBIAddrInfoScan(link,  seg, bind_link( link, ODBIGenAddrInit ), ODBIGenAddrAdd, dptr );
 }
 
 static void WriteBogusAddrInfo( debug_info *dptr )
@@ -608,7 +605,7 @@ void ODBIP2Start(Link& link,  section *sect )
             WriteBogusAddrInfo( dptr );
         } else {
             dptr->dump_addr = dptr->addr.curr.u.vm_ptr;
-            SectWalkClass(link,  sect, ODBIGenAddrInfo );
+            SectWalkClass(link,  sect, bind_link( link, ODBIGenAddrInfo ) );
         }
         dptr->dump_addr = dptr->line.curr.u.vm_ptr;
         dptr->modnum = 0;
@@ -640,10 +637,9 @@ static bool CheckFirst( void *_seg, void *_firstseg )
     return( false );
 }
 
-void ODBIGenLines( lineinfo *info )
+void ODBIGenLines(Link& link,  lineinfo *info )
 /*********************************/
-{
-    Link& link = wlink();
+{
     size_t              linelen;
     ln_off_pair _WCUNALIGNED *pair;
     ln_off_386          tmp_ln;
@@ -874,10 +870,9 @@ static unsigned_16 WriteSegValues(Link& link)
     }
 }
 
-static void WriteDBISecs( section *sect )
+static void WriteDBISecs(Link& link,  section *sect )
 /***************************************/
-{
-    Link& link = wlink();
+{
     debug_info          *dptr;
     section_dbg_header  header;
     unsigned long       pos;
@@ -895,10 +890,10 @@ static void WriteDBISecs( section *sect )
         DBIWriteInfo(link,  dptr->linelinks.init.u.vm_ptr, dptr->linelinks.size );
         pos = PosLoad(link);
         if( dptr->LocalClass != nullptr ) {
-            RingWalk( dptr->LocalClass->segs, WriteLeaderLoad );
+            RingWalk( dptr->LocalClass->segs, bind_link( link, WriteLeaderLoad ) );
         }
         if( dptr->TypeClass != nullptr ) {
-            RingWalk( dptr->TypeClass->segs, WriteLeaderLoad );
+            RingWalk( dptr->TypeClass->segs, bind_link( link, WriteLeaderLoad ) );
         }
         dbgInfoState().dbiSize += PosLoad(link) - pos;
         DBIWriteInfo(link,  dptr->line.init.u.vm_ptr, dptr->line.size );
@@ -928,7 +923,7 @@ void ODBIWrite(Link& link)
     MPUT_LE_16( st.master.data() + offsetof( master_dbg_header, lang_size ), langsize );
     st.dbiSourceLang = nullptr;
     MPUT_LE_16( st.master.data() + offsetof( master_dbg_header, segment_size ), WriteSegValues(link) );
-    WalkAllSects(link,  WriteDBISecs );
+    WalkAllSects(link,  bind_link( link, WriteDBISecs ) );
     MPUT_LE_32_UN( st.master.data() + offsetof( master_dbg_header, debug_size ), st.dbiSize );
     if( st.master[MASTER_OBJ_MAJOR] == 0 )
         st.master[MASTER_OBJ_MAJOR] = 1;

@@ -222,7 +222,7 @@ void HllP1ModuleFinished( mod_entry *obj )
     hllAddSubSection();
 
     /* add public symbols subsection */
-    Ring2Walk( obj->publist, DBIModGlobal );
+    Ring2Walk( obj->publist, bind_link( link, DBIModGlobal ) );
     if( obj->u3.hll->pubsize > 0 ) {
         hllAddSubSection();
     }
@@ -411,10 +411,9 @@ void HllAddAddrInfo( seg_leader *seg )
     DBIAddrInfoScan(link,  seg, hllAddAddrInit, hllAddAddrAdd, nullptr );
 }
 
-static void hllGenAddrInit( segdata *sdata, void *_info )
+static void hllGenAddrInit(Link& link,  segdata *sdata, void *_info )
 /*******************************************************/
-{
-    Link& link = wlink();
+{
     hll_seginfo *info = static_cast<hll_seginfo *>( _info );
     info->Seg = hllGetSegment(link,  sdata->u.leader );
     info->offset = sdata->u.leader->seg_addr.off + sdata->a.delta;
@@ -434,18 +433,17 @@ static void hllGenAddrAdd( segdata *sdata, offset delta, offset size,
     info->offset = sdata->u.leader->seg_addr.off + delta;
 }
 
-void HllGenAddrInfo( seg_leader *seg )
+void HllGenAddrInfo(Link& link,  seg_leader *seg )
 /************************************/
 // called for each section just before pass 2 starts
 // Fill in seginfo.
-{
-    Link& link = wlink();
+{
     hll_seginfo info;
 
     if( (seg->info & SEGINF_CODE) == 0 )
         return;
     DEBUG(( DBG_HLL, "HllGenAddrInfo: seg=%p %s", seg, seg->segname ));
-    DBIAddrInfoScan(link,  seg, hllGenAddrInit, hllGenAddrAdd, &info );
+    DBIAddrInfoScan(link,  seg, bind_link( link, hllGenAddrInit ), hllGenAddrAdd, &info );
 }
 
 void HllDefClass(Link& link,  class_entry *class_, unsigned size )
@@ -474,12 +472,11 @@ void HllDefClass(Link& link,  class_entry *class_, unsigned size )
     }
 }
 
-static void hllDefSegData( void *_sdata )
+static void hllDefSegData(Link& link,  void *_sdata )
 /***************************************/
 // Creates a Type or Symbol subsection for a module and copies the data into it.
 /* NOTE: this assumes that codeview segments are byte aligned! */
-{
-    Link& link = wlink();
+{
     segdata    *sdata = static_cast<segdata *>( _sdata );
     seg_leader *leader = sdata->u.leader;
 
@@ -512,11 +509,12 @@ static void hllDefSegData( void *_sdata )
 static bool hllDefLeader( void *_leader, void *group )
 /****************************************************/
 {
+    Link& link = wlink();
     seg_leader *leader = static_cast<seg_leader *>( _leader );
     DEBUG((DBG_HLL, "hllDefLeader: leader=%p %s", leader, leader->segname ));
 
     leader->group = static_cast<group_entry *>( group );
-    RingWalk( leader->pieces, hllDefSegData );
+    RingWalk( leader->pieces, bind_link( link, hllDefSegData ) );
     return( false );
 }
 
