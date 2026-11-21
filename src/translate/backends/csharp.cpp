@@ -1044,7 +1044,8 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
     if (kind.empty()) throw Decline("class-kind", "a " + c.kind.value_or(""));
     if (java_) lib().check_class(*this, c);
     const std::vector<std::string> mods = class_mods(c);
-    std::string head = ind + mods_text(mods) + std::string(kind) + " " + ident(c.name.value_or("")) + tparams_text(c.typeparams, c.tparams);
+    const std::optional<std::string> keyword = java_ ? lib().class_keyword(c) : std::nullopt;
+    std::string head = ind + mods_text(mods) + (keyword ? *keyword : std::string(kind)) + " " + ident(c.name.value_or("")) + tparams_text(c.typeparams, c.tparams);
     ir::MethodDecl* primary = nullptr;
     Node* primary_node = nullptr;
     for (Node* m : c.members) {
@@ -1154,7 +1155,7 @@ Lines Writer::member(Node* m, ir::ClassDecl& c, const std::string& ind) {
 Lines Writer::field(Node* node, ir::ClassDecl& c, const std::string& ind) {
     auto& f = *ir::get<ir::FieldDecl>(node);
     const std::vector<std::string> mods = java_ ? lib().field_mods(*this, f, c) : f.mods;
-    std::string line = ind + mods_text(mods) + ctype(f.type) + " " + ident(f.sym->name);
+    std::string line = ind + mods_text(mods) + ctype(f.type) + " " + member_name(*f.sym);
     Node* init = prog_.has_init_override(node) ? prog_.init_override(node) : f.init;
     if (init != nullptr) {
         method_ = nullptr;
@@ -2067,7 +2068,7 @@ Ex Writer::dispatch(Node* e) {
         if (th != nullptr && !th->qualifier && !shadowed(s->name)) return {member_name(*s), kPrimary};   // this.x, where no local hides x
         if (ir::is<ir::TypeName>(x->obj) && cls_ != nullptr) {
             const std::string* tn = class_of(type_of(x->obj));
-            if (tn != nullptr && cls_->qname && *tn == *cls_->qname) return {ident(s->name), kPrimary};   // a static of this class
+            if (tn != nullptr && cls_->qname && *tn == *cls_->qname) return {member_name(*s), kPrimary};   // a static of this class
         }
         return {wrap(x->obj, kPrimary) + "." + member_name(*s), kPrimary};
     }
@@ -2199,6 +2200,9 @@ Ex Writer::dispatch(Node* e) {
         return {ps + " => " + expr(x->body).text, kAssign};
     }
     if (const auto* x = ir::get<ir::MethodRef>(e)) {
+        if (java_) {
+            if (Node* lambda = lib().method_ref(*this, e)) return dispatch(lambda);
+        }
         if (x->mode == "new") throw Decline("method-ref", "a constructor reference");
         if (ir::is<ir::TypeName>(x->target) && !x->sym->is_static) throw Decline("method-ref", "an unbound method reference (Type::instanceMethod)");
         return {wrap(x->target, kPrimary) + "." + member_name(*x->sym), kPrimary};

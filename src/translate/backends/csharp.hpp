@@ -155,6 +155,10 @@ public:
     virtual void record(Context&, const ir::SymP&, ir::Node* /*init*/) {}
     // A lambda of this type (the node's: the interface it is written for).
     virtual void check_lambda(Context&, ir::Lambda&, const ir::TypeP& /*type*/) {}
+    // A method reference as the lambda it stands for, where C# has no method group for it; null for "as written".
+    virtual ir::Node* method_ref(Context&, ir::Node*) { return nullptr; }
+    // The word a class of this kind is declared with, where it is not the source's own (a Java record is a C# class).
+    virtual std::optional<std::string> class_keyword(const ir::ClassDecl&) { return std::nullopt; }
 };
 
 // A library for a language, made once per Program.

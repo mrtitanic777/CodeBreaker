@@ -79,8 +79,19 @@ public:
     std::optional<std::string> iterable(cs::Context& w, ir::Node* e) override;
     void record(cs::Context& w, const ir::SymP& sym, ir::Node* init) override;
     void check_lambda(cs::Context& w, ir::Lambda& lambda, const ir::TypeP& type) override;
+    // `Type::method`, and any reference into Java's library, as the lambda it stands for.
+    ir::Node* method_ref(cs::Context& w, ir::Node* e) override;
+    // A Java record is written as a sealed class: javac's members for it (its accessors, equals, hashCode, toString) are in the tree.
+    std::optional<std::string> class_keyword(const ir::ClassDecl& c) override;
 
 private:
+    // A call into java.util.stream, Optional, Comparator's combinators and the few statics a record's members use: these go to
+    // JavaStreams.cs, which keeps Java's method names. Nothing for any other call.
+    std::optional<cs::Ex> stream_call(cs::Context& w, ir::Node* e);
+    // Declines a call that changes a list Java would refuse to change (Arrays.asList's size, Stream.toList's anything).
+    void check_list_change(const ir::Call& call) const;
+    // What the list an expression holds cannot do: empty, "fixed" or "immutable".
+    std::string_view list_limit(ir::Node* e) const;
     // The mapping row of a library call, and the row's C# extras (null when the registry has no row).
     struct Row {
         std::optional<cb::java::apimap::Mapping> mapping;
