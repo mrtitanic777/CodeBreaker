@@ -64,7 +64,7 @@ std::string cjt_golden(const std::string& name, const std::string& ext) {
 std::string cjt_files_text(cs::Program& p) {
     std::string out;
     for (const cs::File& f : p.files()) {
-        if (f.name == "JavaRt.cs") continue;
+        if (f.name == "JavaRt.cs" || f.name == "JavaCollections.cs" || f.name == "JavaStreams.cs") continue;
         out += "// ==== " + f.name + " ====\n" + f.text;
         if (!f.text.ends_with('\n')) out += '\n';
     }
@@ -138,9 +138,7 @@ CB_TEST("translate.csharp_java.what_it_declines", [] {
     };
     const Case cases[] = {
         // a class it cannot carry declines the whole unit; the others only the method
-        {"inner_outer", "inner-class", "was not translated: an inner class that uses its outer instance (Counter)", "plain(int x)"},
         {"enum_object", "enum", "was not translated: a Java enum with fields", "Color"},
-        {"hash_order", "hash-order", "foreach (int v in m.Values)", "HashMap<"},
         {"boxed_null", "boxed-null", "int x = 5;", "Integer x"},
         {"exception_cause", "exception", "throw new ArgumentException(\"bad\");", "RuntimeException"},
     };
@@ -152,6 +150,23 @@ CB_TEST("translate.csharp_java.what_it_declines", [] {
         if (!p.ledger().empty()) CB_CHECK_EQ(p.ledger()[0].kind, std::string(c.kind));
         CB_CHECK(text.find(c.in_text) != std::string::npos);
         CB_CHECK(std::string_view(c.not_in_text).empty() || text.find(c.not_in_text) == std::string::npos);
+    }
+});
+
+CB_TEST("translate.csharp_java.an_inner_class_and_a_walk_of_a_hash_map_are_written", [] {
+    {   // the instance around it is a field, given to the constructor
+        auto u = cjt_load("inner_outer");
+        cs::Program p(u->units, cjt_options());
+        const std::string text = cjt_files_text(p);
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(text.find("outer_") != std::string::npos);
+    }
+    {   // the map is Java's table, so its order is Java's
+        auto u = cjt_load("hash_order");
+        cs::Program p(u->units, cjt_options());
+        const std::string text = cjt_files_text(p);
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(text.find("JHashMap<") != std::string::npos);
     }
 });
 

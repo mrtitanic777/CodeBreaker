@@ -11,19 +11,19 @@ public class Library
     {
     }
 
-    enum Genre
+    internal enum Genre
     {
         NOVEL,
         POETRY,
         SCIENCE
     }
 
-    interface Priced
+    internal interface Priced
     {
         int price();
     }
 
-    abstract class Item : Priced, IComparable<Item>
+    internal abstract class Item : Priced, IComparable<Item>
     {
         protected internal string title;
         internal static int created;
@@ -49,7 +49,7 @@ public class Library
         public abstract int price();
     }
 
-    class Book : Item
+    internal class Book : Item
     {
         internal Genre genre;
         internal int pages;
@@ -81,7 +81,7 @@ public class Library
         }
     }
 
-    class Magazine : Item
+    internal class Magazine : Item
     {
         internal int issue;
 
@@ -106,7 +106,7 @@ public class Library
         }
     }
 
-    class Ledger : IDisposable
+    internal class Ledger : IDisposable
     {
         internal Ledger()
         {
@@ -221,7 +221,7 @@ public class Library
         List<Item> cheap = filter(items, x => x.price() < 1500);
         List<string> names = map(cheap, x => x.title.ToUpperInvariant());
         Console.WriteLine("cheap: " + JavaRt.Str(names) + " of " + Item.created);
-        IDictionary<string, int> totals = new SortedDictionary<string, int>();
+        IDictionary<string, int> totals = new SortedDictionary<string, int>(JLib.Order<string>());
         foreach (Item i in items)
         {
             string k = i.kind();

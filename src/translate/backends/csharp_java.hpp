@@ -83,8 +83,16 @@ public:
     ir::Node* method_ref(cs::Context& w, ir::Node* e) override;
     // A Java record is written as a sealed class: javac's members for it (its accessors, equals, hashCode, toString) are in the tree.
     std::optional<std::string> class_keyword(const ir::ClassDecl& c) override;
+    std::optional<std::string> this_text(cs::Context& w, ir::Node* e) override;
 
 private:
+    // An inner class that reaches its enclosing instance holds it in a field `outer_`, given to each constructor first.
+    void prepare_inner_classes(cs::Program& program, const std::vector<ir::Node*>& classes);
+    // The path from the class being written to the instance of `qname` it is inside ("outer_", "outer_.outer_"): empty when it is `this`.
+    std::string outer_path(cs::Context& w, const std::string& qname) const;
+    bool needs_outer(const ir::ClassDecl& c) const { return c.qname && inner_.contains(*c.qname); }
+    std::optional<cs::Ex> new_inner(cs::Context& w, ir::Node* e, const ir::ClassDecl& c);
+
     // A call into java.util.stream, Optional, Comparator's combinators and the few statics a record's members use: these go to
     // JavaStreams.cs, which keeps Java's method names. Nothing for any other call.
     std::optional<cs::Ex> stream_call(cs::Context& w, ir::Node* e);
@@ -113,6 +121,7 @@ private:
     std::unordered_set<const ir::FieldDecl*> moved_;                      // fields whose initialiser moved into a constructor or the static one
     std::unordered_map<std::string, std::vector<ir::Node*>> prologue_;    // class -> the statements its constructors run after the base call
     std::map<std::pair<std::string, std::string>, std::string> concrete_;   // (owner, name) -> the class the value held was made of
+    std::unordered_map<std::string, ir::SymP> inner_;                     // an inner class that needs its outer instance -> its `outer_` field
 };
 
 // The factory the C# back end's Options take for "java".

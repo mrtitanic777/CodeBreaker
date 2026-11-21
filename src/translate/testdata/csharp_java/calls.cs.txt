@@ -48,13 +48,18 @@ public class Calls
 
     internal static int hashed(ISet<int> hs)
     {
-        throw new System.NotSupportedException("CB-GAP: iterating a java.util.Set: Java visits it in hash order, .NET in another");
+        int total = 0;
+        foreach (int x in hs)
+        {
+            total += x;
+        }
+        return total;
     }
 
     internal static List<string> make()
     {
         List<string> @out = new List<string>();
-        ISet<int> seen = new HashSet<int>();
+        ISet<int> seen = new JHashSet<int>();
         seen.Add(1);
         @out.Add("a" + seen.Count);
         return @out;

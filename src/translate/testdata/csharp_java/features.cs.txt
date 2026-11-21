@@ -13,7 +13,7 @@ namespace feat
         {
         }
 
-        class Resource : IDisposable
+        internal class Resource : IDisposable
         {
             internal Resource()
             {
@@ -25,7 +25,7 @@ namespace feat
             }
         }
 
-        abstract class Shape : IComparable<Shape>
+        internal abstract class Shape : IComparable<Shape>
         {
             internal Shape()
             {
@@ -44,7 +44,7 @@ namespace feat
             }
         }
 
-        sealed class Square : Shape
+        internal sealed class Square : Shape
         {
             internal double side;
 
@@ -69,12 +69,12 @@ namespace feat
             }
         }
 
-        interface Greeter
+        internal interface Greeter
         {
             string greet(string name);
         }
 
-        abstract class Partial : Greeter
+        internal abstract class Partial : Greeter
         {
             internal Partial()
             {
@@ -83,7 +83,7 @@ namespace feat
             public abstract string greet(string name);
         }
 
-        class Polite : Partial
+        internal class Polite : Partial
         {
             internal Polite()
             {
@@ -95,7 +95,7 @@ namespace feat
             }
         }
 
-        class Base
+        internal class Base
         {
             internal int v = 1;
 
@@ -105,7 +105,7 @@ namespace feat
             }
         }
 
-        class Derived : Base
+        internal class Derived : Base
         {
             internal int w;
 
@@ -132,7 +132,7 @@ namespace feat
             List<int> xs = new List<int>();
             xs.Add(3);
             xs.Add(4);
-            IDictionary<string, int> sorted = new SortedDictionary<string, int>();
+            IDictionary<string, int> sorted = new SortedDictionary<string, int>(JLib.Order<string>());
             sorted["b"] = 2;
             sorted["a"] = 1;
             foreach (KeyValuePair<string, int> e in sorted)

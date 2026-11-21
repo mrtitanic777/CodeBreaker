@@ -665,6 +665,7 @@ public:
 
     // ---- Context
     Program& program() override { return prog_; }
+    ir::ClassDecl* current_class() override { return cls_; }
     const std::string& lang() const override { return lang_; }
     std::string ctype(const TypeP& t) override;
     Ex expr(Node* e, bool statement = false) override;
@@ -2073,6 +2074,9 @@ Ex Writer::dispatch(Node* e) {
         return {wrap(x->obj, kPrimary) + "." + member_name(*s), kPrimary};
     }
     if (const auto* x = ir::get<ir::This>(e)) {
+        if (java_) {
+            if (auto outer = lib().this_text(*this, e)) return {*outer, kPrimary};
+        }
         if (x->qualifier && cls_ != nullptr) {
             const std::string* qn = class_of(x->qualifier);
             if (qn == nullptr || qn->empty() || !cls_->qname || *qn != *cls_->qname) throw Decline("outer-this", "an outer instance (Outer.this)");
@@ -2230,10 +2234,10 @@ Ex Writer::dispatch(Node* e) {
     }
     if (const auto* x = ir::get<ir::New>(e)) {
         if (x->body != nullptr) throw Decline("anonymous-class", "an anonymous class");
-        if (x->outer != nullptr) throw Decline("inner-class", "an inner class made on an outer instance");
         if (java_) {
             if (auto got = lib().new_object(*this, e)) return *got;
         }
+        if (x->outer != nullptr) throw Decline("inner-class", "an inner class made on an outer instance");
         return {"new " + ctype(e->type) + "(" + args_text(x->args, x->sym.get()) + ")", kPrimary};
     }
     if (const auto* x = ir::get<ir::NewArray>(e)) {

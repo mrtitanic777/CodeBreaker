@@ -30,9 +30,26 @@ public static class JavaRt
             case float f: return Str(f);
             case bool b: return Str(b);
             case System.Collections.IDictionary m: return MapStr(m);
-            case System.Collections.IList l: return ListStr(l);
-            default: return o.ToString() ?? "null";
+            case System.Collections.IList l when !(o is Array): return ListStr(l);
+            case System.Collections.ICollection c when !(o is Array): return CollectionStr(c);     // (a TreeSet)
         }
+        Type type = o.GetType();
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))      // a Map.Entry
+            return Str(type.GetProperty("Key")!.GetValue(o)) + "=" + Str(type.GetProperty("Value")!.GetValue(o));
+        return o.ToString() ?? "null";
+    }
+
+    static string CollectionStr(System.Collections.ICollection c)
+    {
+        var sb = new StringBuilder("[");
+        bool first = true;
+        foreach (object x in c)
+        {
+            if (!first) sb.Append(", ");
+            first = false;
+            sb.Append(Str(x));
+        }
+        return sb.Append(']').ToString();
     }
 
     static string ListStr(System.Collections.IList l)

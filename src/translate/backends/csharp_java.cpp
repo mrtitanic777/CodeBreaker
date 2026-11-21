@@ -45,24 +45,22 @@ const std::unordered_map<std::string_view, std::string_view>& cj_generic() {
     static const std::unordered_map<std::string_view, std::string_view> table = {
         {"java.util.List", "List"}, {"java.util.ArrayList", "List"}, {"java.util.LinkedList", "List"}, {"java.util.Vector", "List"},
         {"java.util.Collection", "ICollection"}, {"java.util.AbstractList", "List"}, {"java.util.Map", "IDictionary"},
-        {"java.util.HashMap", "Dictionary"}, {"java.util.LinkedHashMap", "Dictionary"}, {"java.util.Hashtable", "Dictionary"},
+        {"java.util.HashMap", "JHashMap"}, {"java.util.LinkedHashMap", "JLinkedHashMap"}, {"java.util.Hashtable", "Dictionary"},
         {"java.util.TreeMap", "SortedDictionary"}, {"java.util.SortedMap", "IDictionary"}, {"java.util.Set", "ISet"},
-        {"java.util.HashSet", "HashSet"}, {"java.util.LinkedHashSet", "HashSet"}, {"java.util.TreeSet", "SortedSet"},
+        {"java.util.HashSet", "JHashSet"}, {"java.util.LinkedHashSet", "JLinkedHashSet"}, {"java.util.TreeSet", "SortedSet"},
         {"java.util.SortedSet", "ISet"}, {"java.util.Map.Entry", "KeyValuePair"}};
     return table;
 }
 
 std::size_t cj_arity(std::string_view generic) {
     static const std::unordered_map<std::string_view, std::size_t> table = {
-        {"List", 1}, {"Dictionary", 2}, {"SortedDictionary", 2}, {"HashSet", 1}, {"SortedSet", 1}, {"KeyValuePair", 2},
-        {"IDictionary", 2}, {"ISet", 1}, {"ICollection", 1}};
+        {"List", 1}, {"Dictionary", 2}, {"JHashMap", 2}, {"JLinkedHashMap", 2}, {"SortedDictionary", 2}, {"JHashSet", 1}, {"JLinkedHashSet", 1},
+        {"SortedSet", 1}, {"KeyValuePair", 2}, {"IDictionary", 2}, {"ISet", 1}, {"ICollection", 1}};
     return table.at(generic);
 }
 
-// The collections whose iteration order is the same in Java and .NET.
-bool cj_ordered(std::string_view qname) {
-    return qname == "java.util.TreeMap" || qname == "java.util.LinkedHashMap" || qname == "java.util.TreeSet" || qname == "java.util.LinkedHashSet";
-}
+// The collections whose iteration order is the same in Java and in the translation: all but Hashtable, which walks its table its own way.
+bool cj_ordered(std::string_view qname) { return qname != "java.util.Hashtable"; }
 
 // A functional interface as a .NET delegate: its generic, and how the interface's own type arguments become the delegate's.
 using Args = std::vector<std::string>;
@@ -255,6 +253,7 @@ void JavaLibrary::prepare(cs::Program& program) {
             for (Node* t : unit->types) cj_collect(t, classes);
         }
     }
+    prepare_inner_classes(program, classes);
     for (Node* cn : classes) {
         ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
         if (c.kind != "class" || !cj_has(c.mods, "abstract")) continue;
@@ -300,6 +299,7 @@ std::optional<std::string> JavaLibrary::type_name(cs::Context& w, const ir::Type
     if (q == "java.util.stream.Stream" || q == "java.util.stream.IntStream" || q == "java.util.Optional" || q == "java.util.OptionalInt" ||
         q == "java.util.OptionalDouble" || q == "java.util.stream.Collector") {
         w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaCollections");
         w.program().use_runtime("JavaStreams");
         if (q == "java.util.stream.IntStream") return "JIntStream";
         if (q == "java.util.OptionalInt") return "JOptionalInt";
@@ -318,6 +318,10 @@ std::optional<std::string> JavaLibrary::type_name(cs::Context& w, const ir::Type
     if (const auto g = cj_generic().find(q); g != cj_generic().end()) {
         const std::string generic(g->second);
         w.add_using("System.Collections.Generic");
+        if (generic.starts_with("J")) {
+            w.program().use_runtime("JavaRt");
+            w.program().use_runtime("JavaCollections");
+        }
         const std::size_t n = cj_arity(generic);
         std::vector<std::string> args = ctypes();
         if (args.empty()) args.assign(n, "object");   // a raw type: of Object
@@ -346,23 +350,11 @@ bool JavaLibrary::keep_interface(const ir::TypeP& t) {
 // ---- declarations -------------------------------------------------------------------------------------------------------------
 
 void JavaLibrary::check_class(cs::Context& w, ir::ClassDecl& c) {
-    if (c.kind == "class" && c.outer && !cj_has(c.mods, "static")) {
-        const ir::ClassDecl* outer = w.program().class_named(*c.outer);
-        if (outer != nullptr && outer->kind == "class") {
-            for (Node* m : c.members) {
-                for (Node* n : ir::walk(m)) {
-                    if (ir::is<ir::This>(n)) {
-                        const std::string* q = cj_qual(n->type);
-                        if (q != nullptr && outer->qname && *q == *outer->qname) {
-                            throw Decline("inner-class", "an inner class that uses its outer instance (" + c.name.value_or("") + ")");
-                        }
-                    }
-                    if (const ir::Call* call = ir::get<ir::Call>(n);
-                        call != nullptr && call->target == nullptr && call->sym != nullptr && call->sym->owner == outer->qname) {
-                        throw Decline("inner-class", "an inner class that calls its outer instance (" + c.name.value_or("") + ")");
-                    }
-                }
-            }
+    if (needs_outer(c)) {
+        // C# runs a base constructor before anything here can be set, and that constructor may reach the outer instance through an override
+        const std::string* base = cj_qual(c.extends);
+        if (base != nullptr && w.program().class_named(*base) != nullptr) {
+            throw Decline("inner-class", "an inner class with a base class of the program that uses its outer instance (" + c.name.value_or("") + ")");
         }
     }
     if (c.kind == "enum") {
@@ -384,7 +376,7 @@ std::vector<std::string> JavaLibrary::class_mods(cs::Context&, ir::ClassDecl& c)
     }
     if (c.kind == "record") out.push_back("sealed");   // (a Java record is final)
     if (!c.outer && !cj_has(out, "public")) out.insert(out.begin(), "internal");
-    if (c.kind == "record" && c.outer && !cj_has(out, "public") && !cj_has(out, "protected")) {   // a nested record is named by the methods around it
+    if (c.outer && !cj_has(out, "public") && !cj_has(out, "protected")) {   // Java's package and private nested classes are named by the methods around them
         std::erase(out, "private");
         out.insert(out.begin(), "internal");
     }
@@ -525,7 +517,7 @@ std::vector<Node*> JavaLibrary::arrange_members(cs::Context& w, ir::ClassDecl& c
         }
         if (const ir::FieldDecl* f = ir::get<ir::FieldDecl>(mn)) {
             if (cj_has(f->mods, "static") && f->init != nullptr && !is_const(*f)) statics.push_back(mn);
-            if (!cj_has(f->mods, "static") && f->init != nullptr && base_is_ours) moves.push_back(mn);
+            if (!cj_has(f->mods, "static") && f->init != nullptr && (base_is_ours || needs_outer(c))) moves.push_back(mn);
         }
         if (md != nullptr && md->kind == "init") moves.push_back(mn);
         out.push_back(mn);
@@ -578,15 +570,168 @@ std::vector<Node*> JavaLibrary::arrange_members(cs::Context& w, ir::ClassDecl& c
 }
 
 bool JavaLibrary::ctor_needed(cs::Context&, ir::ClassDecl& c, ir::MethodDecl&) {
-    if (c.kind == "record") return true;   // (its canonical constructor assigns the components)
+    if (c.kind == "record" || needs_outer(c)) return true;   // (a record's assigns the components, an inner class's takes the outer instance)
     const auto it = prologue_.find(c.qname.value_or(""));
     return it != prologue_.end() && !it->second.empty();
 }
 
-std::vector<Node*> JavaLibrary::ctor_prologue(cs::Context&, ir::ClassDecl& c, ir::MethodDecl&, ir::CtorCall* call) {
+std::vector<Node*> JavaLibrary::ctor_prologue(cs::Context& w, ir::ClassDecl& c, ir::MethodDecl& m, ir::CtorCall* call) {
     if (call != nullptr && call->kind == "this") return {};
+    std::vector<Node*> out;
+    if (needs_outer(c) && !m.params.empty()) {   // the outer instance first: what follows may use it
+        Arena& arena = w.program().arena();
+        const ir::SymP& field = inner_.at(*c.qname);
+        const ir::Param* given = ir::get<ir::Param>(m.params.front());
+        Node* self = ir::make(arena, ir::This{}, ir::class_type(*c.qname));
+        Node* target = ir::make(arena, ir::Select{.obj = self, .sym = field}, field->type);
+        Node* value = ir::make(arena, ir::Name{.sym = given->sym}, field->type);
+        Node* assign = ir::make(arena, ir::Assign{.op = std::nullopt, .target = target, .value = value}, field->type);
+        out.push_back(ir::make(arena, ir::ExprStmt{.expr = assign}));
+    }
     const auto it = prologue_.find(c.qname.value_or(""));
-    return it != prologue_.end() ? it->second : std::vector<Node*>{};
+    if (it != prologue_.end()) out.insert(out.end(), it->second.begin(), it->second.end());
+    return out;
+}
+
+// ---- inner classes -------------------------------------------------------------------------------------------------------------
+
+namespace {
+
+// Is `q` this class or one it extends (among the program's classes)?
+bool cj_is_a(const cs::Program& program, const ir::ClassDecl* c, const std::string& q) {
+    std::set<std::string> seen;
+    for (; c != nullptr && c->qname && seen.insert(*c->qname).second; c = program.base_of(*c)) {
+        if (*c->qname == q) return true;
+    }
+    return false;
+}
+
+bool cj_is_inner(const ir::ClassDecl& c) { return c.kind == "class" && c.outer && !cj_has(c.mods, "static"); }
+
+// Does anything in `c` reach an instance of a class around it?
+bool cj_reaches_outer(const cs::Program& program, const ir::ClassDecl& c, const std::unordered_map<std::string, ir::SymP>& inner) {
+    const auto around = [&](const std::string& q) {
+        if (cj_is_a(program, &c, q)) return false;
+        for (const ir::ClassDecl* k = c.outer ? program.class_named(*c.outer) : nullptr; k != nullptr; k = k->outer ? program.class_named(*k->outer) : nullptr) {
+            if (cj_is_a(program, k, q)) return true;
+        }
+        return false;
+    };
+    for (Node* m : c.members) {
+        if (const ir::ClassDecl* nested = ir::get<ir::ClassDecl>(m); nested != nullptr && cj_has(nested->mods, "static")) continue;
+        for (Node* n : ir::walk(m)) {
+            if (const ir::This* th = ir::get<ir::This>(n)) {
+                const std::string* q = cj_qual(th->qualifier ? th->qualifier : n->type);
+                if (q != nullptr && around(*q)) return true;
+            }
+            if (const ir::Call* call = ir::get<ir::Call>(n);
+                call != nullptr && call->target == nullptr && call->sym != nullptr && !call->sym->is_static && call->sym->owner && around(*call->sym->owner)) {
+                return true;
+            }
+            if (const ir::New* made = ir::get<ir::New>(n); made != nullptr && made->outer == nullptr && made->body == nullptr) {
+                const std::string* q = cj_qual(n->type);
+                if (q != nullptr && inner.contains(*q)) {
+                    const ir::ClassDecl* other = program.class_named(*q);
+                    if (other != nullptr && other->outer && around(*other->outer)) return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+void JavaLibrary::prepare_inner_classes(cs::Program& program, const std::vector<Node*>& classes) {
+    // which inner classes need their instance: one that makes another that does needs its own, so until nothing changes
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (Node* cn : classes) {
+            const ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
+            if (!cj_is_inner(c) || !c.qname || inner_.contains(*c.qname) || !cj_reaches_outer(program, c, inner_)) continue;
+            inner_[*c.qname] = ir::make_sym(ir::SymKind::Field, "outer_", *c.qname, false, ir::class_type(*c.outer));
+            changed = true;
+        }
+    }
+    for (Node* cn : classes) {   // `outer.new Inner()` hands it one whether it reads it or not
+        for (Node* n : ir::walk(cn)) {
+            const ir::New* made = ir::get<ir::New>(n);
+            const std::string* q = made != nullptr && made->outer != nullptr ? cj_qual(n->type) : nullptr;
+            const ir::ClassDecl* c = q != nullptr ? program.class_named(*q) : nullptr;
+            if (c != nullptr && c->outer && !inner_.contains(*q)) inner_[*q] = ir::make_sym(ir::SymKind::Field, "outer_", *q, false, ir::class_type(*c->outer));
+        }
+    }
+    Arena& arena = program.arena();
+    for (Node* cn : classes) {
+        ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
+        if (!needs_outer(c)) continue;
+        const ir::SymP& field = inner_.at(*c.qname);
+        program.add_member(c, ir::make(arena, ir::FieldDecl{.sym = field, .type = field->type, .mods = {}}));
+        for (Node* mn : c.members) {
+            ir::MethodDecl* m = ir::get<ir::MethodDecl>(mn);
+            if (m == nullptr || m->kind != "ctor") continue;
+            if (m->sym && m->sym->varargs) throw Decline("inner-class", "an inner class with a varargs constructor (" + c.name.value_or("") + ")");
+            const ir::SymP given = ir::make_sym(ir::SymKind::Param, "outer_arg", std::nullopt, false, field->type);
+            m->params.insert(m->params.begin(), ir::make(arena, ir::Param{.sym = given, .type = field->type}));
+            for (Node* s : ir::statements(m->body)) {
+                const ir::Block* block = ir::get<ir::Block>(s);
+                for (Node* st : block != nullptr ? block->stmts : std::vector<Node*>{s}) {
+                    ir::CtorCall* chained = ir::get<ir::CtorCall>(st);
+                    if (chained == nullptr || chained->kind != "this") continue;
+                    chained->args.insert(chained->args.begin(), ir::make(arena, ir::Name{.sym = given}, field->type));
+                    if (chained->sym) {   // (its parameters line up with its arguments)
+                        auto shifted = std::make_shared<ir::Sym>(*chained->sym);
+                        shifted->params.insert(shifted->params.begin(), field->type);
+                        if (!shifted->refs.empty()) shifted->refs.insert(shifted->refs.begin(), shifted->refs.front());
+                        chained->sym = std::move(shifted);
+                    }
+                }
+            }
+        }
+    }
+}
+
+std::string JavaLibrary::outer_path(cs::Context& w, const std::string& qname) const {
+    const cs::Program& program = w.program();
+    const ir::ClassDecl* k = w.current_class();
+    std::string path;
+    while (k != nullptr && !cj_is_a(program, k, qname)) {
+        if (!needs_outer(*k)) return {};   // (not an instance it holds: as written)
+        path += path.empty() ? "outer_" : ".outer_";
+        k = k->outer ? program.class_named(*k->outer) : nullptr;
+    }
+    return k != nullptr ? path : std::string();
+}
+
+std::optional<std::string> JavaLibrary::this_text(cs::Context& w, Node* e) {
+    const ir::This& th = *ir::get<ir::This>(e);
+    const std::string* q = cj_qual(th.qualifier ? th.qualifier : e->type);
+    if (q == nullptr) return std::nullopt;
+    std::string path = outer_path(w, *q);
+    if (path.empty()) {
+        if (th.qualifier && w.current_class() != nullptr && cj_is_a(w.program(), w.current_class(), *q)) return "this";   // (`Self.this`)
+        return std::nullopt;
+    }
+    return path;
+}
+
+std::optional<Ex> JavaLibrary::new_inner(cs::Context& w, Node* e, const ir::ClassDecl& c) {
+    const ir::New& made = *ir::get<ir::New>(e);
+    std::string outer;
+    if (made.outer != nullptr) {
+        outer = "JLib.NonNull(" + w.expr(made.outer).text + ")";   // (Java throws on `null.new Inner()`)
+        w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaCollections");
+    } else {
+        outer = outer_path(w, *c.outer);
+        if (outer.empty()) outer = "this";
+    }
+    std::vector<std::string> parts{outer};
+    for (std::size_t i = 0; i < made.args.size(); ++i) {
+        const bool typed = made.sym != nullptr && i < made.sym->params.size() && made.sym->params[i] && made.sym->params[i]->kind() != "typevar";
+        parts.push_back(typed ? w.coerce(made.args[i], made.sym->params[i]) : w.expr(made.args[i]).text);
+    }
+    return Ex{"new " + w.ctype(e->type) + "(" + text::join(parts, ", ") + ")", cs::kPrimary};
 }
 
 // ---- expressions --------------------------------------------------------------------------------------------------------------
@@ -596,6 +741,9 @@ std::optional<Ex> JavaLibrary::select(cs::Context& w, Node* e) {
     const ir::SymP& s = sel.sym;
     if (s == nullptr || s->kind != ir::SymKind::Field) return std::nullopt;
     const std::string owner = s->owner.value_or("");
+    if (ir::is<ir::This>(sel.obj)) {   // a field of an enclosing instance
+        if (const std::optional<std::string> path = this_text(w, sel.obj); path && *path != "this") return Ex{*path + "." + member_name(w, *s), cs::kPrimary};
+    }
     if (const auto text = cj_field(owner, s->name)) {
         w.add_using("System");
         return Ex{std::string(*text), cs::kPrimary};
@@ -637,6 +785,14 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
         const std::string tn = w.ctype(ir::class_type(c->qname.value_or("")));
         if (s->name == "values") return Ex{"Enum.GetValues<" + tn + ">()", cs::kPrimary};
         return Ex{"Enum.Parse<" + tn + ">(" + w.expr(call.args.at(0)).text + ")", cs::kPrimary};
+    }
+    if (c != nullptr && call.target == nullptr && !s->is_static) {   // a method of an enclosing instance, called by its name alone
+        if (!outer_path(w, owner).empty()) {
+            Node* outer = ir::make(w.program().arena(), ir::This{}, ir::class_type(owner));
+            ir::Call through = call;
+            through.target = outer;
+            return w.expr(ir::make(w.program().arena(), std::move(through), e->type), statement);
+        }
     }
     if (c != nullptr || owner.empty()) return std::nullopt;
     check_list_change(call);
@@ -687,6 +843,7 @@ std::string_view JavaLibrary::list_limit(Node* e) const {
     if (const ir::Call* made = ir::get<ir::Call>(x); made != nullptr && made->sym != nullptr) {
         if (made->sym->owner == "java.util.Arrays" && made->sym->name == "asList") return "fixed";
         if (made->sym->owner == "java.util.stream.Stream" && made->sym->name == "toList") return "immutable";
+        if (made->sym->owner == "java.util.List" && made->sym->name == "of") return "immutable";
     }
     const std::optional<std::string> held = concrete(x);
     if (held == "java.util.Arrays.asList") return "fixed";
@@ -705,7 +862,7 @@ void JavaLibrary::check_list_change(const ir::Call& call) const {
     const bool writes = utility || s.name == "set" || s.name == "sort" || s.name == "replaceAll";
     if (resizes || (limit == "immutable" && writes)) {
         throw Decline("fixed-list", "changing a list Java refuses to change (" + s.name + " on " +
-                                        (limit == "fixed" ? "Arrays.asList" : "Stream.toList") + "): Java throws, a C# List would not");
+                                        (limit == "fixed" ? "Arrays.asList" : "an immutable list") + "): Java throws, a C# List would not");
     }
 }
 
@@ -720,6 +877,7 @@ std::optional<Ex> JavaLibrary::stream_call(cs::Context& w, Node* e) {
     };
     const auto uses = [&] {
         w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaCollections");
         w.program().use_runtime("JavaStreams");
         w.add_using("System");
     };
@@ -769,6 +927,10 @@ std::optional<Ex> JavaLibrary::stream_call(cs::Context& w, Node* e) {
         if (array == nullptr || array->elem->is_prim()) throw Decline("library", "Arrays.stream of this array");
         return Ex{"JStream<" + w.ctype(array->elem) + ">.of(" + arguments() + ")", cs::kPrimary};
     }
+    if (owner == "java.util.List" && s.name == "of" && is_static) {
+        uses();
+        return Ex{"JLib.listOf<" + result_arg(0) + ">(" + arguments() + ")", cs::kPrimary};
+    }
     if (owner == "java.util.Arrays" && s.name == "asList") {
         if (call.args.size() == 1 && call.args[0]->type && call.args[0]->type->kind() == "array") {
             throw Decline("library", "Arrays.asList over an existing array: Java's list writes through to it");
@@ -787,6 +949,17 @@ std::optional<Ex> JavaLibrary::stream_call(cs::Context& w, Node* e) {
             }
             uses();
             return Ex{"JLib.stream(" + w.expr(call.target).text + ")", cs::kPrimary};
+        }
+    }
+    // equals and hashCode of a hash collection compare what it holds
+    if (call.target != nullptr && ((s.name == "equals" && call.args.size() == 1) || (s.name == "hashCode" && call.args.empty()))) {
+        const auto fam = cj_family().find(owner);
+        const std::optional<std::string> held = concrete(call.target);
+        if (fam != cj_family().end() && (fam->second == "Map" || fam->second == "Set") && held && *held != "java.util.TreeMap" && *held != "java.util.TreeSet" &&
+            *held != "java.util.Hashtable") {
+            uses();
+            if (s.name == "hashCode") return Ex{"JLib.Hash(" + w.expr(call.target).text + ")", cs::kPrimary};
+            return Ex{"JLib.Equal(" + w.expr(call.target).text + ", " + arguments() + ")", cs::kPrimary};
         }
     }
     // the statics javac's members for a record call, and the ones a method reference names
@@ -890,6 +1063,9 @@ std::optional<std::string> JavaLibrary::concat_part(cs::Context& w, Node* part) 
 std::optional<Ex> JavaLibrary::new_object(cs::Context& w, Node* e) {
     const ir::TypeP& t = e->type;
     const std::string* q = cj_qual(t);
+    if (q != nullptr) {
+        if (const ir::ClassDecl* own = w.program().class_named(*q); own != nullptr && needs_outer(*own)) return new_inner(w, e, *own);
+    }
     if (q == nullptr || w.program().class_named(*q) != nullptr) return std::nullopt;
     const std::string tn = w.ctype(t);
     const std::vector<Node*>& args = ir::get<ir::New>(e)->args;
@@ -898,6 +1074,18 @@ std::optional<Ex> JavaLibrary::new_object(cs::Context& w, Node* e) {
         for (Node* a : args) parts.push_back(w.expr(a).text);
         return text::join(parts, ", ");
     };
+    if (*q == "java.util.TreeMap" || *q == "java.util.TreeSet") {   // ordered as Java orders its keys, not by the culture's rules for text
+        const auto* made = std::get_if<ir::ClassType>(&t->body);
+        const std::string key = made != nullptr && !made->args.empty() ? w.ctype(made->args[0]) : std::string("object");
+        w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaCollections");
+        if (args.empty()) return Ex{"new " + tn + "(JLib.Order<" + key + ">())", cs::kPrimary};
+        const std::string* given = args.size() == 1 ? cj_qual(args[0]->type) : nullptr;
+        if (given != nullptr && *given == "java.util.Comparator") return Ex{"new " + tn + "(Comparer<" + key + ">.Create(" + w.expr(args[0]).text + "))", cs::kPrimary};
+        if (args.size() == 1) return Ex{"new " + tn + "(" + joined() + ", JLib.Order<" + key + ">())", cs::kPrimary};
+        throw Decline("library", "new " + *q + " with these arguments");
+    }
+    if (*q == "java.util.LinkedHashMap" && args.size() == 3) throw Decline("library", "a LinkedHashMap in access order");
     if (cj_generic().contains(*q)) return Ex{"new " + tn + "(" + joined() + ")", cs::kPrimary};   // (a capacity, or the collection copied)
     if (*q == "java.lang.StringBuilder" || *q == "java.lang.StringBuffer") {
         w.add_using("System.Text");

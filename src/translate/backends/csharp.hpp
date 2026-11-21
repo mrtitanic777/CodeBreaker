@@ -103,6 +103,8 @@ public:
     virtual std::string wrap(ir::Node* expr, int prec, bool right = false) = 0;
     // `expr` as a value of type `type`: a char from an int, as Java converts a constant implicitly.
     virtual std::string coerce(ir::Node* expr, const ir::TypeP& type) = 0;
+    // The class being written.
+    virtual ir::ClassDecl* current_class() = 0;
     // A `using` the unit needs.
     virtual void add_using(std::string_view ns) = 0;
 };
@@ -157,6 +159,8 @@ public:
     virtual void check_lambda(Context&, ir::Lambda&, const ir::TypeP& /*type*/) {}
     // A method reference as the lambda it stands for, where C# has no method group for it; null for "as written".
     virtual ir::Node* method_ref(Context&, ir::Node*) { return nullptr; }
+    // `this` (or `Outer.this`) as C# reaches it, where it is an enclosing instance; nothing for plain `this`.
+    virtual std::optional<std::string> this_text(Context&, ir::Node*) { return std::nullopt; }
     // The word a class of this kind is declared with, where it is not the source's own (a Java record is a C# class).
     virtual std::optional<std::string> class_keyword(const ir::ClassDecl&) { return std::nullopt; }
 };

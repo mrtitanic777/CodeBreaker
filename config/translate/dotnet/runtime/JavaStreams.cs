@@ -6,42 +6,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-public static class JLib
+public static partial class JLib
 {
     public static JStream<T> stream<T>(IEnumerable<T> items) => new JStream<T>(items);
-
-    // Comparable.compareTo, as Java orders each kind of value.
-    public static int Natural<T>(T a, T b)
-    {
-        if (a is null || b is null) throw new NullReferenceException();
-        if (a is string x && b is string y) return JavaRt.CompareTo(x, y);
-        if (a is double d && b is double e) return JavaRt.CompareDouble(d, e);
-        if (a is float f && b is float g) return JavaRt.CompareDouble(f, g);
-        return Comparer<T>.Default.Compare(a, b);
-    }
-
-    public static bool Equal<T, U>(T a, U b) => a is null ? b is null : a.Equals(b);
-
-    // hashCode as Java computes it for each kind of value.
-    public static int Hash<T>(T v)
-    {
-        switch (v)
-        {
-            case null: return 0;
-            case string s: return JavaRt.HashCode(s);
-            case bool b: return b ? 1231 : 1237;
-            case char c: return c;
-            case sbyte i8: return i8;
-            case short i16: return i16;
-            case int i32: return i32;
-            case long i64: return HashLong(i64);
-            case double d: return HashLong(double.IsNaN(d) ? 0x7ff8000000000000L : BitConverter.DoubleToInt64Bits(d));
-            case float f: return float.IsNaN(f) ? 0x7fc00000 : BitConverter.SingleToInt32Bits(f);
-            default: return v.GetHashCode();
-        }
-    }
-
-    static int HashLong(long v) => unchecked((int)(v ^ (long)((ulong)v >> 32)));
 
     internal static long NotNegative(long n)
     {
@@ -273,7 +240,12 @@ public sealed class JCollector<T, R>
 public static class JCollectors<T>
 {
     public static JCollector<T, List<T>> toList() => new JCollector<T, List<T>>(s => new List<T>(s));
-    public static JCollector<T, ISet<T>> toSet() => new JCollector<T, ISet<T>>(s => new HashSet<T>(s));
+    public static JCollector<T, ISet<T>> toSet() => new JCollector<T, ISet<T>>(s =>
+    {
+        var set = new JHashSet<T>();
+        foreach (T x in s) set.Add(x);
+        return set;
+    });
     public static JCollector<T, string> joining() => joining("", "", "");
     public static JCollector<T, string> joining(string separator) => joining(separator, "", "");
 
@@ -293,26 +265,33 @@ public static class JCollectors<T>
     public static JCollector<T, long> counting() => new JCollector<T, long>(s => { long n = 0; foreach (T _ in s) n++; return n; });
     public static JCollector<T, int> summingInt(Func<T, int> f) => new JCollector<T, int>(s => { int t = 0; foreach (T x in s) t = unchecked(t + f(x)); return t; });
 
-    static Dictionary<K, List<T>> Groups<K>(IEnumerable<T> s, Func<T, K> key)
+    // The groups, and their keys in the order each was first met: a map filled in that order has the same bins as Java's.
+    static JHashMap<K, List<T>> Groups<K>(IEnumerable<T> s, Func<T, K> key, List<K> first)
     {
-        var groups = new Dictionary<K, List<T>>();
+        var groups = new JHashMap<K, List<T>>();
         foreach (T x in s)
         {
             K k = key(x);
             if (k is null) throw new NullReferenceException("element cannot be mapped to a null key");
-            if (!groups.TryGetValue(k, out List<T> l)) groups[k] = l = new List<T>();
+            if (!groups.TryGetValue(k, out List<T> l))
+            {
+                groups[k] = l = new List<T>();
+                first.Add(k);
+            }
             l.Add(x);
         }
         return groups;
     }
 
     public static JCollector<T, IDictionary<K, List<T>>> groupingBy<K>(Func<T, K> key) =>
-        new JCollector<T, IDictionary<K, List<T>>>(s => Groups(s, key));
+        new JCollector<T, IDictionary<K, List<T>>>(s => Groups(s, key, new List<K>()));
 
     public static JCollector<T, IDictionary<K, D>> groupingBy<K, D>(Func<T, K> key, JCollector<T, D> down) => new JCollector<T, IDictionary<K, D>>(s =>
     {
-        var result = new Dictionary<K, D>();
-        foreach (KeyValuePair<K, List<T>> g in Groups(s, key)) result[g.Key] = down.Finish(g.Value);
+        var first = new List<K>();
+        JHashMap<K, List<T>> groups = Groups(s, key, first);
+        var result = new JHashMap<K, D>();
+        foreach (K k in first) result[k] = down.Finish(groups[k]);
         return result;
     });
 }

@@ -133,7 +133,8 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
                        "        System.out.println(ps.get(0).age() + \" \" + ps.stream().mapToInt(P::age).max().getAsInt());\n"
                        "    }\n"
                        "}\n");
-    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}};
+    cb::fs::write_text(work / "CollectionKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/CollectionKit.java")));
+    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}};
     for (const auto& [to, program] : cases) {
         const cap::Path* path = cap::find_path("java", to);
         CB_CHECK(path != nullptr);
@@ -141,7 +142,7 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
         const std::string id = to;
         const std::string run = id + "-" + program;
         const tf::Result r = capt_run("java", id, work / (std::string(program) + ".java"), work / ("out-" + run), work / ("scratch-" + run));
-        if (r.verdict != tf::Verdict::Agrees) std::cerr << id << ": " << r.detail.substr(0, 1000) << std::endl;
+        if (r.verdict != tf::Verdict::Agrees) std::cerr << id << ": " << r.detail.substr(0, 1800) << std::endl;
         CB_CHECK(r.verdict == tf::Verdict::Agrees);
         CB_CHECK(!r.files.empty());
     }
@@ -152,6 +153,16 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
         const tf::Result fixed = capt_run("java", "csharp", work / "Fixed.java", work / "out-fixed", work / "scratch-fixed");
         CB_CHECK(fixed.verdict == tf::Verdict::Refused);
         CB_CHECK(fixed.detail.find("Arrays.asList") != std::string::npos);
+        // a bin Java keeps as a tree has an order the translation cannot promise: the run fails and nothing is handed over
+        cb::fs::write_text(work / "TreeBin.java",
+                           "import java.util.*;\npublic class TreeBin {\n    static class K { final int id; K(int id) { this.id = id; }\n"
+                           "        @Override public int hashCode() { return 7; }\n        @Override public boolean equals(Object o) { return o instanceof K && ((K) o).id == id; }\n"
+                           "        @Override public String toString() { return \"k\" + id; } }\n    public static void main(String[] args) {\n"
+                           "        Map<K, Integer> m = new HashMap<>();\n        for (int i = 0; i < 12; i++) m.put(new K(i), i);\n        System.out.println(m.size());\n"
+                           "        for (K k : m.keySet()) System.out.println(k);\n    }\n}\n");
+        const tf::Result tree = capt_run("java", "csharp", work / "TreeBin.java", work / "out-tree", work / "scratch-tree");
+        CB_CHECK(tree.verdict == tf::Verdict::Differs);
+        CB_CHECK(tree.files.empty());
     }
     std::error_code ec;
     stdfs::remove_all(work, ec);
