@@ -8,6 +8,8 @@
 #include "base/config.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
+#include "decompile/jar.hpp"
+#include "translate/backends/c_java.hpp"
 #include "translate/dotnet/package.hpp"
 #include "translate/judge_cs_cpp_command.hpp"
 #include "translate/native_l2.hpp"
@@ -75,8 +77,31 @@ bool cap_has_python() {
     return false;
 }
 
+bool cap_on_path(std::string_view name) {
+    const auto path_var = fs::get_env("PATH");
+    if (!path_var) return false;
+#ifdef _WIN32
+    constexpr char kSeparator = ';';
+    const std::string file = std::string(name) + ".exe";
+#else
+    constexpr char kSeparator = ':';
+    const std::string file(name);
+#endif
+    for (const std::string_view dir : text::split(*path_var, kSeparator))
+        if (!dir.empty() && cap_is_file(fs::from_text(dir) / file)) return true;
+    return false;
+}
+
+// A JDK: a java with its javac beside it.
+bool cap_has_jdk() {
+    const auto java = decompile::jar::find_java({});
+    return java && cap_is_file(java->parent_path() / (java->extension() == ".exe" ? "javac.exe" : "javac"));
+}
+
 // "" when the tool is there, else the phrase that names it.
 std::string cap_check_tool(const std::string& tool) {
+    if (tool == "jdk") return cap_has_jdk() ? std::string() : "a Java JDK (java and javac)";
+    if (tool == "cc") return cap_is_file(fs::from_text(std::string(backends::c_java::kClang))) || cap_on_path("gcc") ? std::string() : "a C compiler (clang or gcc)";
     if (tool == "dotnet") {
         const auto sdk = dotnet::Sdk::find();
         return sdk && sdk->available() ? std::string() : "the .NET SDK";

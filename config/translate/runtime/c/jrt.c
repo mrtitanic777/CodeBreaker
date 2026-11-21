@@ -943,6 +943,7 @@ static void al_add(jrt_ArrayList* l, int32_t at, jobject* x) {
 }
 static jrt_ArrayList* as_list(jobject* o) { return (jrt_ArrayList*)jrt_cast((jobject*)jrt_nn(o), &jrt_ArrayList_class); }
 static void immutable(jrt_ArrayList* l) { if (l->immutable) jrt_throw_new(&jrt_UnsupportedOperationException_class, 0); }
+static void resizable(jrt_ArrayList* l) { if (l->immutable || l->fixed) jrt_throw_new(&jrt_UnsupportedOperationException_class, 0); }
 static void ioobe(int32_t i, int32_t n) {
 	char b[96];
 	snprintf(b, sizeof b, "Index %d out of bounds for length %d", i, n);
@@ -963,11 +964,25 @@ jobject* jrt_List_of(int n, ...) {
 	l->immutable = true;
 	return (jobject*)l;
 }
+/* Arrays.asList: a list of the array's own elements, so a set reaches the array; its size cannot change */
+jobject* jrt_Arrays_asList_OA(jarray* a) {
+	jrt_nn(a);
+	jrt_ArrayList* l = (jrt_ArrayList*)jrt_ArrayList_new_();
+	l->items = (jobject**)a->data;
+	l->size = l->cap = a->length;
+	l->fixed = true;
+	return (jobject*)l;
+}
+void jrt_Iterable_forEach_O(jobject* c, jobject* f) {
+	jrt_nn(f);
+	jobject* it = jrt_Collection_iterator_(c);
+	while (jrt_Iterator_hasNext_(it)) jrt_Consumer_accept_O(f, jrt_Iterator_next_(it));
+}
 static jrt_HashMap* as_map(jobject* o) { return (jrt_HashMap*)jrt_cast((jobject*)jrt_nn(o), &jrt_HashMap_class); }
 static void map_entries(jrt_HashMap* m, jobject*** out, int32_t* n);
 bool jrt_Collection_add_O(jobject* c, jobject* x) {
 	jrt_nn(c);
-	if (c->cls == &jrt_ArrayList_class) { jrt_ArrayList* l = (jrt_ArrayList*)c; immutable(l); al_add(l, l->size, x); return true; }
+	if (c->cls == &jrt_ArrayList_class) { jrt_ArrayList* l = (jrt_ArrayList*)c; resizable(l); al_add(l, l->size, x); return true; }
 	if (c->cls == &jrt_MapSet_class) {
 		jrt_MapSet* s = (jrt_MapSet*)c;
 		if (s->kind != 0) jrt_throw_new(&jrt_UnsupportedOperationException_class, 0);
@@ -1022,15 +1037,21 @@ bool jrt_Collection_remove_O(jobject* c, jobject* x) {
 }
 void jrt_Collection_clear_(jobject* c) {
 	jrt_nn(c);
-	if (c->cls == &jrt_ArrayList_class) { immutable((jrt_ArrayList*)c); ((jrt_ArrayList*)c)->size = 0; return; }
+	if (c->cls == &jrt_ArrayList_class) {
+		jrt_ArrayList* l = (jrt_ArrayList*)c;
+		if (l->fixed && l->size == 0) return;   /* (Java's clear of an empty fixed list removes nothing, so it does not throw) */
+		resizable(l);
+		l->size = 0;
+		return;
+	}
 	if (c->cls == &jrt_MapSet_class) { jrt_HashMap* m = ((jrt_MapSet*)c)->m; memset(m->table, 0, sizeof(jrt_node*) * m->cap); m->count = 0; m->head = m->tail = 0; return; }
 }
 jobject* jrt_List_get_I(jobject* o, int32_t i) { jrt_ArrayList* l = as_list(o); if (i < 0 || i >= l->size) ioobe(i, l->size); return l->items[i]; }
 jobject* jrt_List_set_IO(jobject* o, int32_t i, jobject* x) { jrt_ArrayList* l = as_list(o); immutable(l); if (i < 0 || i >= l->size) ioobe(i, l->size); jobject* old = l->items[i]; l->items[i] = x; return old; }
-void jrt_List_add_IO(jobject* o, int32_t i, jobject* x) { jrt_ArrayList* l = as_list(o); immutable(l); if (i < 0 || i > l->size) ioobe(i, l->size); al_add(l, i, x); }
+void jrt_List_add_IO(jobject* o, int32_t i, jobject* x) { jrt_ArrayList* l = as_list(o); resizable(l); if (i < 0 || i > l->size) ioobe(i, l->size); al_add(l, i, x); }
 jobject* jrt_List_remove_I(jobject* o, int32_t i) {
 	jrt_ArrayList* l = as_list(o);
-	immutable(l);
+	resizable(l);
 	if (i < 0 || i >= l->size) ioobe(i, l->size);
 	jobject* old = l->items[i];
 	memmove(l->items + i, l->items + i + 1, sizeof(jobject*) * (l->size - i - 1));
@@ -1505,6 +1526,181 @@ jobject* jrt_Stream_collect_O(jobject* o, jobject* how) {
 	}
 	}
 }
+
+/* ------------------------------------------------------------------------------------------- Optional
+ * One structure for the three classes; the class says which half holds the value. */
+typedef struct jopt { jobject hdr; jobject* o; double d; int32_t i; bool has; } jopt;
+static jstring* opt_toString(jobject* s);
+static jstring* opti_toString(jobject* s);
+static jstring* optd_toString(jobject* s);
+static bool opt_equals(jobject* a, jobject* b);
+static int32_t opt_hashCode(jobject* s);
+static const jobject_vt opt_vt = {opt_toString, opt_equals, opt_hashCode};
+static const jobject_vt opti_vt = {opti_toString, opt_equals, opt_hashCode};
+static const jobject_vt optd_vt = {optd_toString, opt_equals, opt_hashCode};
+static const jclass opt_class = {"java.util.Optional", &jrt_Object_class, sizeof(jopt), &opt_vt, 0, 0, 0};
+static const jclass opti_class = {"java.util.OptionalInt", &jrt_Object_class, sizeof(jopt), &opti_vt, 0, 0, 0};
+static const jclass optd_class = {"java.util.OptionalDouble", &jrt_Object_class, sizeof(jopt), &optd_vt, 0, 0, 0};
+static jstring* opt_text(const char* name, bool has, jstring* value) {
+	jrt_StringBuilder* b = jrt_StringBuilder_new_();
+	sb_add8(b, name);
+	if (!has) { sb_add8(b, ".empty"); return jrt_StringBuilder_toString_(b); }
+	jrt_StringBuilder_append_C(b, '[');
+	jrt_StringBuilder_append_Str(b, value);
+	jrt_StringBuilder_append_C(b, ']');
+	return jrt_StringBuilder_toString_(b);
+}
+static jstring* opt_toString(jobject* s) { const jopt* p = (const jopt*)s; return opt_text("Optional", p->has, p->has ? jrt_str_O(p->o) : 0); }
+static jstring* opti_toString(jobject* s) { const jopt* p = (const jopt*)s; return opt_text("OptionalInt", p->has, p->has ? jrt_str_I(p->i) : 0); }
+static jstring* optd_toString(jobject* s) { const jopt* p = (const jopt*)s; return opt_text("OptionalDouble", p->has, p->has ? jrt_str_D(p->d) : 0); }
+static bool opt_equals(jobject* a, jobject* b) {
+	if (a == b) return true;
+	if (!b || a->cls != b->cls) return false;
+	const jopt *x = (const jopt*)a, *y = (const jopt*)b;
+	if (x->has != y->has) return false;
+	if (!x->has) return true;
+	if (a->cls == &opti_class) return x->i == y->i;
+	if (a->cls == &optd_class) return jrt_Double_compare_DD(x->d, y->d) == 0;
+	return jrt_Objects_equals_OO(x->o, y->o);
+}
+static int32_t opt_hashCode(jobject* s) {
+	const jopt* p = (const jopt*)s;
+	if (!p->has) return 0;
+	if (s->cls == &opti_class) return p->i;
+	if (s->cls == &optd_class) return jrt_Double_hashCode_D(p->d);
+	return jrt_Objects_hashCode_O(p->o);
+}
+static jopt* opt_new(const jclass* c, bool has) { jopt* p = (jopt*)jrt_alloc(c); p->has = has; return p; }
+static const jopt* opt_of(jobject* o, const jclass* c) { return (const jopt*)jrt_cast((jobject*)jrt_nn(o), c); }
+static _Noreturn void opt_none(void) { jrt_throw_new(&jrt_NoSuchElementException_class, "No value present"); }
+static jobject* opt_int(bool has, int32_t v) { jopt* p = opt_new(&opti_class, has); p->i = v; return (jobject*)p; }
+
+jobject* jrt_Optional_empty_(void) { return (jobject*)opt_new(&opt_class, false); }
+jobject* jrt_Optional_of_O(jobject* v) { jrt_nn(v); jopt* p = opt_new(&opt_class, true); p->o = v; return (jobject*)p; }
+jobject* jrt_Optional_ofNullable_O(jobject* v) { return v ? jrt_Optional_of_O(v) : jrt_Optional_empty_(); }
+bool jrt_Optional_isPresent_(jobject* o) { return opt_of(o, &opt_class)->has; }
+bool jrt_Optional_isEmpty_(jobject* o) { return !opt_of(o, &opt_class)->has; }
+jobject* jrt_Optional_get_(jobject* o) { const jopt* p = opt_of(o, &opt_class); if (!p->has) opt_none(); return p->o; }
+jobject* jrt_Optional_orElse_O(jobject* o, jobject* other) { const jopt* p = opt_of(o, &opt_class); return p->has ? p->o : other; }
+jobject* jrt_Optional_orElseGet_O(jobject* o, jobject* f) { const jopt* p = opt_of(o, &opt_class); return p->has ? p->o : jrt_Supplier_get_(f); }
+jobject* jrt_Optional_map_O(jobject* o, jobject* f) {
+	const jopt* p = opt_of(o, &opt_class);
+	jrt_nn(f);
+	return p->has ? jrt_Optional_ofNullable_O(call1(f, p->o)) : o;
+}
+jobject* jrt_Optional_filter_O(jobject* o, jobject* f) {
+	const jopt* p = opt_of(o, &opt_class);
+	jrt_nn(f);
+	return !p->has || jrt_Predicate_test_O(f, p->o) ? o : jrt_Optional_empty_();
+}
+void jrt_Optional_ifPresent_O(jobject* o, jobject* f) { const jopt* p = opt_of(o, &opt_class); if (p->has) jrt_Consumer_accept_O(f, p->o); }
+bool jrt_OptionalInt_isPresent_(jobject* o) { return opt_of(o, &opti_class)->has; }
+int32_t jrt_OptionalInt_getAsInt_(jobject* o) { const jopt* p = opt_of(o, &opti_class); if (!p->has) opt_none(); return p->i; }
+int32_t jrt_OptionalInt_orElse_I(jobject* o, int32_t other) { const jopt* p = opt_of(o, &opti_class); return p->has ? p->i : other; }
+bool jrt_OptionalDouble_isPresent_(jobject* o) { return opt_of(o, &optd_class)->has; }
+double jrt_OptionalDouble_getAsDouble_(jobject* o) { const jopt* p = opt_of(o, &optd_class); if (!p->has) opt_none(); return p->d; }
+double jrt_OptionalDouble_orElse_D(jobject* o, double other) { const jopt* p = opt_of(o, &optd_class); return p->has ? p->d : other; }
+
+/* the terminal stages that answer with an Optional */
+jobject* jrt_Stream_findFirst_(jobject* o) {
+	jrt_Stream* s = stream_used(o);
+	jitem x = {0, 0};
+	return s->pull(s, &x) ? jrt_Optional_of_O(x.o) : jrt_Optional_empty_();
+}
+jobject* jrt_Stream_reduce_O(jobject* o, jobject* f) {
+	jrt_Stream* s = stream_used(o);
+	jitem x = {0, 0};
+	if (!s->pull(s, &x)) return jrt_Optional_empty_();
+	jobject* acc = x.o;
+	while (s->pull(s, &x)) acc = call2(f, acc, x.o);
+	return jrt_Optional_of_O(acc);
+}
+/* as Java's BinaryOperator.minBy and maxBy: on a tie the earlier element stays */
+static jobject* best_of(jobject* o, jobject* c, int sign) {
+	jrt_nn(c);
+	jrt_Stream* s = stream_used(o);
+	jitem x = {0, 0};
+	if (!s->pull(s, &x)) return jrt_Optional_empty_();
+	jobject* acc = x.o;
+	while (s->pull(s, &x)) if (sign * jrt_Comparator_compare_OO(c, acc, x.o) < 0) acc = x.o;
+	return jrt_Optional_of_O(acc);
+}
+jobject* jrt_Stream_min_O(jobject* o, jobject* c) { return best_of(o, c, -1); }
+jobject* jrt_Stream_max_O(jobject* o, jobject* c) { return best_of(o, c, 1); }
+static bool p_iiterate(jrt_Stream* s, jitem* x) {
+	if (s->n) s->i = jrt_IntUnaryOperator_applyAsInt_I(s->fn, (int32_t)s->i); else s->n = 1;
+	x->v = (int32_t)s->i;
+	return true;
+}
+jobject* jrt_IntStream_iterate_IO(int32_t seed, jobject* f) {
+	jrt_nn(f);
+	jrt_Stream* s = (jrt_Stream*)stage(p_iiterate, 0, f, true, 0);
+	s->i = seed;
+	return (jobject*)s;
+}
+jobject* jrt_IntStream_findFirst_(jobject* o) {
+	jrt_Stream* s = stream_used(o);
+	jitem x = {0, 0};
+	return s->pull(s, &x) ? opt_int(true, x.v) : opt_int(false, 0);
+}
+static jobject* int_best(jobject* o, bool want_max) {
+	jrt_Stream* s = stream_used(o);
+	jitem x = {0, 0};
+	if (!s->pull(s, &x)) return opt_int(false, 0);
+	int32_t acc = x.v;
+	while (s->pull(s, &x)) if (want_max ? x.v > acc : x.v < acc) acc = x.v;
+	return opt_int(true, acc);
+}
+jobject* jrt_IntStream_min_(jobject* o) { return int_best(o, false); }
+jobject* jrt_IntStream_max_(jobject* o) { return int_best(o, true); }
+jobject* jrt_IntStream_average_(jobject* o) {
+	jrt_Stream* s = stream_used(o);
+	jitem x = {0, 0};
+	int64_t n = 0, total = 0;
+	while (s->pull(s, &x)) { ++n; total += x.v; }
+	jopt* p = opt_new(&optd_class, n > 0);
+	if (n > 0) p->d = (double)total / (double)n;
+	return (jobject*)p;
+}
+
+/* ------------------------------------------------------------------------------------------- Comparator */
+enum { CMP_NATURAL, CMP_REVERSE, CMP_KEY, CMP_KEY_BY, CMP_KEY_INT, CMP_REVERSED, CMP_THEN };
+typedef struct jcmp { jobject hdr; int kind; jobject* a; jobject* b; } jcmp;
+static int32_t cmp_compare(jobject* self, jobject* x, jobject* y) {
+	const jcmp* c = (const jcmp*)self;
+	switch (c->kind) {
+	case CMP_NATURAL: return jrt_natural((jobject*)jrt_nn(x), (jobject*)jrt_nn(y));
+	case CMP_REVERSE: return jrt_natural((jobject*)jrt_nn(y), (jobject*)jrt_nn(x));
+	case CMP_KEY: { jobject* kx = call1(c->a, x); return jrt_natural(kx, call1(c->a, y)); }
+	case CMP_KEY_BY: { jobject* kx = call1(c->a, x); return jrt_Comparator_compare_OO(c->b, kx, call1(c->a, y)); }
+	case CMP_KEY_INT: { int32_t kx = jrt_ToIntFunction_applyAsInt_O(c->a, x); return jrt_Integer_compare_II(kx, jrt_ToIntFunction_applyAsInt_O(c->a, y)); }
+	case CMP_REVERSED: return jrt_Comparator_compare_OO(c->a, y, x);
+	default: { int32_t r = jrt_Comparator_compare_OO(c->a, x, y); return r != 0 ? r : jrt_Comparator_compare_OO(c->b, x, y); }
+	}
+}
+static const jrt_Comparator_vt cmp_vt = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, cmp_compare};
+static const jitab cmp_itabs[] = {{&jrt_Comparator_class, &cmp_vt}};
+static const jclass cmp_class = {"java.util.Comparator", &jrt_Object_class, sizeof(jcmp), &cmp_vt, JRT_ITABS(cmp_itabs), 0};
+static jobject* cmp_new(int kind, jobject* a, jobject* b) {
+	jcmp* c = (jcmp*)jrt_alloc(&cmp_class);
+	c->kind = kind;
+	c->a = a;
+	c->b = b;
+	return (jobject*)c;
+}
+jobject* jrt_Comparator_naturalOrder_(void) { return cmp_new(CMP_NATURAL, 0, 0); }
+jobject* jrt_Comparator_reverseOrder_(void) { return cmp_new(CMP_REVERSE, 0, 0); }
+jobject* jrt_Comparator_comparing_O(jobject* key) { return cmp_new(CMP_KEY, (jobject*)jrt_nn(key), 0); }
+jobject* jrt_Comparator_comparing_OO(jobject* key, jobject* by) { return cmp_new(CMP_KEY_BY, (jobject*)jrt_nn(key), (jobject*)jrt_nn(by)); }
+jobject* jrt_Comparator_comparingInt_O(jobject* key) { return cmp_new(CMP_KEY_INT, (jobject*)jrt_nn(key), 0); }
+jobject* jrt_Comparator_reversed_(jobject* c) { return cmp_new(CMP_REVERSED, (jobject*)jrt_nn(c), 0); }
+static jobject* cmp_then(jobject* c, jobject* next) { return cmp_new(CMP_THEN, (jobject*)jrt_nn(c), next); }
+jobject* jrt_Comparator_thenComparing_O(jobject* c, jobject* next) {
+	jrt_nn(next);
+	return cmp_then(c, jrt_instanceof(next, &jrt_Comparator_class) ? next : jrt_Comparator_comparing_O(next));
+}
+jobject* jrt_Comparator_thenComparing_OO(jobject* c, jobject* key, jobject* by) { return cmp_then(c, jrt_Comparator_comparing_OO(key, by)); }
+jobject* jrt_Comparator_thenComparingInt_O(jobject* c, jobject* key) { return cmp_then(c, jrt_Comparator_comparingInt_O(key)); }
 
 /* ------------------------------------------------------------------------------------------- enums */
 jstring* jrt_Enum_toString(jobject* o) { return ((jrt_Enum*)o)->name; }

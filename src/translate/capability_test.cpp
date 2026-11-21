@@ -4,6 +4,7 @@
 #include "translate/capability.hpp"
 
 #include <algorithm>
+#include <iostream>
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -87,6 +88,26 @@ CB_TEST("translate.capability.csharp_source_can_become_cpp17_and_csharp_and_the_
     // every target of the languages table is listed once, Original first
     CB_CHECK_EQ(list.size(), cap::languages().size() + 1);
     CB_CHECK(list.front().id == "original");
+});
+
+CB_TEST("translate.capability.java_source_becomes_c_only_when_both_programs_agree", [] {
+    const cap::Path* path = cap::find_path("java", "c");
+    CB_CHECK(path != nullptr);
+    if (path == nullptr || !cap::missing_tool(*path).empty()) return;   // (no JDK or C compiler here)
+    const stdfs::path work = capt_work("java-c");
+    cb::fs::write_text(work / "Streams.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/cpp03/streams/src/000_Streams.java")));
+    const tf::Result r = capt_run("java", "c", work / "Streams.java", work / "out", work / "scratch");
+    CB_CHECK(r.verdict == tf::Verdict::Agrees);
+    if (r.verdict != tf::Verdict::Agrees) std::cerr << r.detail.substr(0, 1000) << std::endl;
+    for (const char* file : {"Streams.c", "runtime/jrt.c", "runtime/jrt.h", "BUILD.txt"}) CB_CHECK(stdfs::is_regular_file(work / "out" / file));
+    // a class with no main has nothing to run beside its translation, so nothing is handed over
+    cb::fs::write_text(work / "Quiet.java", "public class Quiet { int x; }\n");
+    const tf::Result quiet = capt_run("java", "c", work / "Quiet.java", work / "out2", work / "scratch2");
+    CB_CHECK(quiet.verdict == tf::Verdict::BadInput);
+    CB_CHECK(quiet.detail.find("no main") != std::string::npos);
+    CB_CHECK(quiet.files.empty());
+    std::error_code ec;
+    stdfs::remove_all(work, ec);
 });
 
 CB_TEST("translate.capability.python_source_goes_to_cpp17_only", [] {

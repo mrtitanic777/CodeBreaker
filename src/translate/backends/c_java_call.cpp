@@ -56,13 +56,18 @@ std::string MethodWriter::args(std::span<ir::Node* const> list, const std::vecto
     if (sym && sym->varargs && !params.empty()) {
         bool direct = false;
         if (list.size() == params.size()) {
-            const std::string_view last = kind_of(type_of(list.back()));
+            const ir::TypeP given = type_of(list.back());
+            const std::string_view last = kind_of(given);
             direct = last == "array" || last == "null";
+            // an int[] given to `T...` is one element, not the array of them
+            if (last == "array" && !sym->params.empty() && kind_of(sym->params.back()) == "array" && !prim_ctype(kind_of(elem_of(given))).empty() &&
+                prim_ctype(kind_of(elem_of(sym->params.back()))).empty())
+                direct = false;
         }
         packed = !direct;
     }
     if (packed) {
-        if (lib) throw Decline("library varargs " + sym->name);
+        if (lib && !(sym->owner == "java.util.Arrays" && sym->name == "asList")) throw Decline("library varargs " + sym->name);
         const std::size_t fixed = params.size() - 1;
         std::vector<std::string> head;
         for (std::size_t i = 0; i < std::min(fixed, list.size()); ++i) head.push_back(converted(list[i], params[i]));
