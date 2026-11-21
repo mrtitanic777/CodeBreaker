@@ -5570,31 +5570,32 @@ armEndianNess: "BE" is c0031=0xf1010200 { export 1:1; }
 :str^COND Rd,addrmode2 		is $(AMODE) & ARMcond=1 & COND & c2627=1 & B22=0 & L20=0 & Rd & (I25=0 | (I25=1 & c0404=0)) & addrmode2
 {
   build COND;
+  local tmpRd = Rd;   # (the register stored is read before the base is written back: STR r0,[r0],#4 stores the old r0)
   build addrmode2;
-  *addrmode2 = Rd;
+  *addrmode2 = tmpRd;
 }
 
 :strb^COND Rd,addrmode2 	is $(AMODE) & ARMcond=1 & COND & c2627=1 & B22=1 & L20=0 & Rd & (I25=0 | (I25=1 & c0404=0)) & addrmode2
 {
   build COND;
-  build addrmode2;
   local tmpRd = Rd;
+  build addrmode2;
   *addrmode2 = tmpRd:1;
 }
 
 :strbt^COND Rd,addrmode2 	is $(AMODE) & ARMcond=1 & COND & c2627=1 & P24=0 & B22=1 & W21=1 & L20=0 & Rd & (I25=0 | (I25=1 & c0404=0)) & addrmode2
 {
   build COND;
-  build addrmode2;
   local tmpRd = Rd;
+  build addrmode2;
   *addrmode2 = tmpRd:1;
 }
 
 :strh^COND Rd,addrmode3 	is $(AMODE) & ARMcond=1 & COND & c2527=0 & L20=0 & c0407=11 & Rd & addrmode3
 {
   build COND;
-  build addrmode3;
   local tmpRd = Rd;
+  build addrmode3;
   *addrmode3 = tmpRd:2;
 }
 
@@ -5603,11 +5604,13 @@ armEndianNess: "BE" is c0031=0xf1010200 { export 1:1; }
 :strd^COND Rd,Rd2,addrmode3   is $(AMODE) & ARMcond=1 & COND & c2527=0 & c0407=0xf & L20=0 & Rd & Rd2 & addrmode3
 {
   build COND;
+  local tmpRd = Rd;
+  local tmpRd2 = Rd2;
   build addrmode3;
   local addr = addrmode3;
-  *(addr) = Rd;
+  *(addr) = tmpRd;
   addr = addr + 4;
-  *(addr) = Rd2;
+  *(addr) = tmpRd2;
 }
 
 @endif # VERSION_5E
@@ -5688,8 +5691,9 @@ armEndianNess: "BE" is c0031=0xf1010200 { export 1:1; }
 :strt^COND Rd,addrmode2 	is $(AMODE) & ARMcond=1 & COND & c2627=1 & B22=0 & L20=0 & P24=0 & W21=1 & Rd & (I25=0 | (I25=1 & c0404=0)) & addrmode2
 {
   build COND;
+  local tmpRd = Rd;
   build addrmode2;
-  *addrmode2 = Rd;
+  *addrmode2 = tmpRd;
 }
 
 :sub^COND^SBIT_CZNO Rd,rn,shift1	is $(AMODE) & ARMcond=1 & COND & c2124=2 & SBIT_CZNO & rn & Rd & c2627=0 & shift1
