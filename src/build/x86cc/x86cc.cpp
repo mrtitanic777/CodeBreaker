@@ -16,6 +16,7 @@
 #ifdef _WIN32
 extern "C" {
 #include "build/x86cc/watcom/h/idedll.h"
+#include "core/working_folder.hpp"
 
 #define CB_WCC_ENTRIES(p)                                                                                                  \
     IDEBool IDEAPI p##IDEInitDLL(IDECBHdl cbhdl, IDECallBacks* cb, IDEDllHdl* hdl);                                      \
@@ -112,23 +113,6 @@ IDEBool IDEAPI get_info(IDECBHdl, IDEInfoType type, IDEGetInfoWParam extra, IDEG
     return false;
 }
 
-// The working folder for the run, given back after (the compiler opens its files relative to the process's).
-class InFolder {
-public:
-    explicit InFolder(const stdfs::path& folder) : before_(stdfs::current_path()) {
-        if (!folder.empty()) stdfs::current_path(folder);
-    }
-    ~InFolder() {
-        std::error_code ec;
-        stdfs::current_path(before_, ec);
-    }
-    InFolder(const InFolder&) = delete;
-    InFolder& operator=(const InFolder&) = delete;
-
-private:
-    stdfs::path before_;
-};
-
 }  // namespace
 
 bool available() { return true; }
@@ -154,7 +138,7 @@ Run compile(Target target, const std::vector<std::string>& args, const stdfs::pa
     // the command line the program would have after its own name (maindrv.c: _bgetcmd)
     const std::string command = process::command_line(args);
 
-    const InFolder in(folder);
+    const WorkingFolder in(folder);   // (the compiler opens its files relative to the process's)
     IDEDllHdl dll = nullptr;
     if (host.entries->init(nullptr, &callbacks, &dll)) throw Error("x86cc: the compiler would not start");
     IDEInitInfo info{};
