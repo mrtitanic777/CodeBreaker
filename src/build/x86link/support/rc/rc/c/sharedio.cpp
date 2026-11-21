@@ -265,6 +265,11 @@ void ReportDupResource(Link& link,  WResID *res_id, WResID *type_id, const char 
         type.owned = WResIDToStr( link, type_id );
         type.shown = type.owned;
     } else {
+        // (the case labels are the resource numbers: a constant expression, which windows.h's MAKEINTRESOURCE, a cast of
+        // the number to a pointer, is not to a standard compiler; for these labels it stays the number)
+#pragma push_macro( "MAKEINTRESOURCE" )
+#undef MAKEINTRESOURCE
+#define MAKEINTRESOURCE( x )    ((unsigned long)(unsigned short)(x))
         switch( type_id->ID.Num ) {
         case RESOURCE2INT( RT_CURSOR ):
         case RESOURCE2INT( RT_GROUP_CURSOR ):
@@ -309,6 +314,7 @@ void ReportDupResource(Link& link,  WResID *res_id, WResID *type_id, const char 
             type.shown = type.text.c_str();
             break;
         }
+#pragma pop_macro( "MAKEINTRESOURCE" )
     }
 
     if( res_id->IsName ) {

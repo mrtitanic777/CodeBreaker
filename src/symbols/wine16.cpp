@@ -202,7 +202,13 @@ void Specs::load() const {
 
 const Exports& Specs::exports(std::string_view module) const {
     static const Exports kNone;
-    std::call_once(loaded_, [this] { load(); });
+    if (!loaded_.load(std::memory_order_acquire)) {   // (once loaded, a lookup takes no lock)
+        const std::lock_guard<std::mutex> lock(load_mutex_);
+        if (!loaded_.load(std::memory_order_relaxed)) {
+            load();
+            loaded_.store(true, std::memory_order_release);
+        }
+    }
     const auto it = modules_.find(text::upper(module));
     return it == modules_.end() ? kNone : it->second;
 }

@@ -1251,6 +1251,261 @@ jstring* jrt_String_join(jstring* sep, jobject* parts) {
 	return jrt_StringBuilder_toString_(b);
 }
 
+/* ------------------------------------------------------------------------------------------- streams
+ * Lazy, as Java's are: each stage pulls one element from the stage before it, so a filter or a map runs only for what the end of the
+ * pipeline asks for, in Java's order, and an endless source with a limit ends. A stage is used once. Stream and IntStream are one
+ * structure: `ints` says which half of an item is the value.
+ */
+typedef struct jitem { jobject* o; int32_t v; } jitem;
+typedef struct jrt_Stream {
+	jobject hdr;
+	bool (*pull)(struct jrt_Stream*, jitem*);
+	struct jrt_Stream* up;
+	jobject* fn;
+	jobject* held;
+	int64_t i, n;
+	bool ints, used;
+} jrt_Stream;
+static const jclass jrt_Stream_class = {"java.util.stream.ReferencePipeline", &jrt_Object_class, sizeof(jrt_Stream), &jrt_Object_vt, 0, 0, 0};
+
+static jrt_Stream* stream_used(jobject* o) {
+	jrt_Stream* s = (jrt_Stream*)jrt_nn(o);
+	if (s->used) jrt_throw_new(&jrt_IllegalStateException_class, "stream has already been operated upon or closed");
+	s->used = true;
+	return s;
+}
+static jobject* stage(bool (*pull)(jrt_Stream*, jitem*), jobject* up, jobject* fn, bool ints, int64_t n) {
+	jrt_Stream* s = (jrt_Stream*)jrt_alloc(&jrt_Stream_class);
+	s->pull = pull;
+	s->up = up ? stream_used(up) : 0;
+	s->fn = fn;
+	s->ints = ints;
+	s->n = n;
+	return (jobject*)s;
+}
+#define NEXT(s, x) ((s)->up->pull((s)->up, (x)))
+/* a lambda is made for the interface its parameter names: UnaryOperator is a Function, BinaryOperator a BiFunction */
+static jobject* call1(jobject* f, jobject* x) {
+	return jrt_instanceof(f, &jrt_UnaryOperator_class) ? jrt_UnaryOperator_apply_O(f, x) : jrt_Function_apply_O(f, x);
+}
+static jobject* call2(jobject* f, jobject* a, jobject* b) {
+	return jrt_instanceof(f, &jrt_BinaryOperator_class) ? jrt_BinaryOperator_apply_OO(f, a, b) : jrt_BiFunction_apply_OO(f, a, b);
+}
+
+static bool p_iter(jrt_Stream* s, jitem* x) {
+	if (!jrt_Iterator_hasNext_(s->held)) return false;
+	x->o = jrt_Iterator_next_(s->held);
+	return true;
+}
+static bool p_range(jrt_Stream* s, jitem* x) { if (s->i >= s->n) return false; x->v = (int32_t)s->i++; return true; }
+static bool p_array(jrt_Stream* s, jitem* x) {
+	jarray* a = (jarray*)s->held;
+	if (s->i >= a->length) return false;
+	if (s->ints) x->v = ((int32_t*)a->data)[s->i++]; else x->o = ((jobject**)a->data)[s->i++];
+	return true;
+}
+static bool p_filter(jrt_Stream* s, jitem* x) { while (NEXT(s, x)) if (jrt_Predicate_test_O(s->fn, x->o)) return true; return false; }
+static bool p_ifilter(jrt_Stream* s, jitem* x) { while (NEXT(s, x)) if (jrt_IntPredicate_test_I(s->fn, x->v)) return true; return false; }
+static bool p_map(jrt_Stream* s, jitem* x) { if (!NEXT(s, x)) return false; x->o = call1(s->fn, x->o); return true; }
+static bool p_imap(jrt_Stream* s, jitem* x) { if (!NEXT(s, x)) return false; x->v = jrt_IntUnaryOperator_applyAsInt_I(s->fn, x->v); return true; }
+static bool p_to_int(jrt_Stream* s, jitem* x) { if (!NEXT(s, x)) return false; x->v = jrt_ToIntFunction_applyAsInt_O(s->fn, x->o); return true; }
+static bool p_to_obj(jrt_Stream* s, jitem* x) { if (!NEXT(s, x)) return false; x->o = jrt_IntFunction_apply_I(s->fn, x->v); return true; }
+static bool p_boxed(jrt_Stream* s, jitem* x) { if (!NEXT(s, x)) return false; x->o = jrt_box_I(x->v); return true; }
+static bool p_peek(jrt_Stream* s, jitem* x) { if (!NEXT(s, x)) return false; jrt_Consumer_accept_O(s->fn, x->o); return true; }
+static bool p_ipeek(jrt_Stream* s, jitem* x) { if (!NEXT(s, x)) return false; jrt_IntConsumer_accept_I(s->fn, x->v); return true; }
+static bool p_limit(jrt_Stream* s, jitem* x) { if (s->i >= s->n) return false; ++s->i; return NEXT(s, x); }
+static bool p_skip(jrt_Stream* s, jitem* x) {
+	for (; s->i < s->n; ++s->i) if (!NEXT(s, x)) return false;
+	return NEXT(s, x);
+}
+static bool p_flat(jrt_Stream* s, jitem* x) {
+	for (;;) {
+		jrt_Stream* inner = (jrt_Stream*)s->held;
+		if (inner && inner->pull(inner, x)) return true;
+		s->held = 0;
+		if (!NEXT(s, x)) return false;
+		jobject* made = call1(s->fn, x->o);
+		if (made) s->held = (jobject*)stream_used((jobject*)jrt_cast(made, &jrt_Stream_class));
+	}
+}
+static bool p_sorted(jrt_Stream* s, jitem* x) {
+	if (!s->held) {
+		jobject* l = jrt_ArrayList_new_();
+		jitem y = {0, 0};
+		while (NEXT(s, &y)) jrt_Collection_add_O(l, s->ints ? jrt_box_I(y.v) : y.o);
+		jrt_List_sort_O(l, s->fn);
+		s->held = l;
+	}
+	const jrt_ArrayList* l = (const jrt_ArrayList*)s->held;
+	if (s->i >= l->size) return false;
+	jobject* v = l->items[s->i++];
+	if (s->ints) x->v = jrt_unbox_I(v); else x->o = v;
+	return true;
+}
+static bool p_distinct(jrt_Stream* s, jitem* x) {
+	if (!s->held) s->held = jrt_LinkedHashSet_new_();
+	while (NEXT(s, x)) if (jrt_Collection_add_O(s->held, s->ints ? jrt_box_I(x->v) : x->o)) return true;
+	return false;
+}
+
+jobject* jrt_Collection_stream_(jobject* c) {
+	jrt_Stream* s = (jrt_Stream*)stage(p_iter, 0, 0, false, 0);
+	s->held = jrt_Collection_iterator_((jobject*)jrt_nn(c));
+	return (jobject*)s;
+}
+static jobject* array_stream(jarray* a, bool ints) {
+	jrt_Stream* s = (jrt_Stream*)stage(p_array, 0, 0, ints, 0);
+	s->held = (jobject*)jrt_nn(a);
+	return (jobject*)s;
+}
+jobject* jrt_Arrays_stream_OA(jarray* a) { return array_stream(a, false); }
+jobject* jrt_Arrays_stream_IA(jarray* a) { return array_stream(a, true); }
+jobject* jrt_IntStream_range_II(int32_t a, int32_t b) { jrt_Stream* s = (jrt_Stream*)stage(p_range, 0, 0, true, b); s->i = a; return (jobject*)s; }
+jobject* jrt_IntStream_rangeClosed_II(int32_t a, int32_t b) { jrt_Stream* s = (jrt_Stream*)stage(p_range, 0, 0, true, (int64_t)b + 1); s->i = a; return (jobject*)s; }
+
+static int64_t count_of(jobject* o, bool ints) { (void)ints; jrt_Stream* s = stream_used(o); jitem x = {0, 0}; int64_t n = 0; while (s->pull(s, &x)) ++n; return n; }
+static int64_t not_negative(int64_t n) {
+	if (n < 0) { char b[48]; snprintf(b, sizeof b, "%lld", (long long)n); jrt_throw_new(&jrt_IllegalArgumentException_class, b); }
+	return n;
+}
+
+jobject* jrt_Stream_filter_O(jobject* s, jobject* f) { return stage(p_filter, s, f, false, 0); }
+jobject* jrt_Stream_map_O(jobject* s, jobject* f) { return stage(p_map, s, f, false, 0); }
+jobject* jrt_Stream_mapToInt_O(jobject* s, jobject* f) { return stage(p_to_int, s, f, true, 0); }
+jobject* jrt_Stream_flatMap_O(jobject* s, jobject* f) { return stage(p_flat, s, f, false, 0); }
+jobject* jrt_Stream_peek_O(jobject* s, jobject* f) { return stage(p_peek, s, f, false, 0); }
+jobject* jrt_Stream_limit_J(jobject* s, int64_t n) { return stage(p_limit, s, 0, false, not_negative(n)); }
+jobject* jrt_Stream_skip_J(jobject* s, int64_t n) { return stage(p_skip, s, 0, false, not_negative(n)); }
+jobject* jrt_Stream_sorted_(jobject* s) { return stage(p_sorted, s, 0, false, 0); }
+jobject* jrt_Stream_sorted_O(jobject* s, jobject* c) { return stage(p_sorted, s, c, false, 0); }
+jobject* jrt_Stream_distinct_(jobject* s) { return stage(p_distinct, s, 0, false, 0); }
+int64_t jrt_Stream_count_(jobject* s) { return count_of(s, false); }
+void jrt_Stream_forEach_O(jobject* o, jobject* f) { jrt_Stream* s = stream_used(o); jitem x = {0, 0}; while (s->pull(s, &x)) jrt_Consumer_accept_O(f, x.o); }
+jobject* jrt_Stream_toList_(jobject* o) {
+	jrt_Stream* s = stream_used(o);
+	jobject* l = jrt_ArrayList_new_();
+	jitem x = {0, 0};
+	while (s->pull(s, &x)) jrt_Collection_add_O(l, x.o);
+	((jrt_ArrayList*)l)->immutable = true;
+	return l;
+}
+jobject* jrt_Stream_reduce_OO(jobject* o, jobject* id, jobject* f) {
+	jrt_Stream* s = stream_used(o);
+	jobject* acc = id;
+	jitem x = {0, 0};
+	while (s->pull(s, &x)) acc = call2(f, acc, x.o);
+	return acc;
+}
+bool jrt_Stream_anyMatch_O(jobject* o, jobject* p) { jrt_Stream* s = stream_used(o); jitem x = {0, 0}; while (s->pull(s, &x)) if (jrt_Predicate_test_O(p, x.o)) return true; return false; }
+bool jrt_Stream_allMatch_O(jobject* o, jobject* p) { jrt_Stream* s = stream_used(o); jitem x = {0, 0}; while (s->pull(s, &x)) if (!jrt_Predicate_test_O(p, x.o)) return false; return true; }
+bool jrt_Stream_noneMatch_O(jobject* o, jobject* p) { return !jrt_Stream_anyMatch_O(o, p); }
+
+jobject* jrt_IntStream_filter_O(jobject* s, jobject* f) { return stage(p_ifilter, s, f, true, 0); }
+jobject* jrt_IntStream_map_O(jobject* s, jobject* f) { return stage(p_imap, s, f, true, 0); }
+jobject* jrt_IntStream_mapToObj_O(jobject* s, jobject* f) { return stage(p_to_obj, s, f, false, 0); }
+jobject* jrt_IntStream_boxed_(jobject* s) { return stage(p_boxed, s, 0, false, 0); }
+jobject* jrt_IntStream_peek_O(jobject* s, jobject* f) { return stage(p_ipeek, s, f, true, 0); }
+jobject* jrt_IntStream_limit_J(jobject* s, int64_t n) { return stage(p_limit, s, 0, true, not_negative(n)); }
+jobject* jrt_IntStream_skip_J(jobject* s, int64_t n) { return stage(p_skip, s, 0, true, not_negative(n)); }
+jobject* jrt_IntStream_sorted_(jobject* s) { return stage(p_sorted, s, 0, true, 0); }
+jobject* jrt_IntStream_distinct_(jobject* s) { return stage(p_distinct, s, 0, true, 0); }
+int32_t jrt_IntStream_sum_(jobject* o) { jrt_Stream* s = stream_used(o); jitem x = {0, 0}; uint32_t t = 0; while (s->pull(s, &x)) t += (uint32_t)x.v; return (int32_t)t; }
+int64_t jrt_IntStream_count_(jobject* s) { return count_of(s, true); }
+void jrt_IntStream_forEach_O(jobject* o, jobject* f) { jrt_Stream* s = stream_used(o); jitem x = {0, 0}; while (s->pull(s, &x)) jrt_IntConsumer_accept_I(f, x.v); }
+int32_t jrt_IntStream_reduce_IO(jobject* o, int32_t id, jobject* f) {
+	jrt_Stream* s = stream_used(o);
+	int32_t acc = id;
+	jitem x = {0, 0};
+	while (s->pull(s, &x)) acc = jrt_IntBinaryOperator_applyAsInt_II(f, acc, x.v);
+	return acc;
+}
+bool jrt_IntStream_anyMatch_O(jobject* o, jobject* p) { jrt_Stream* s = stream_used(o); jitem x = {0, 0}; while (s->pull(s, &x)) if (jrt_IntPredicate_test_I(p, x.v)) return true; return false; }
+bool jrt_IntStream_allMatch_O(jobject* o, jobject* p) { jrt_Stream* s = stream_used(o); jitem x = {0, 0}; while (s->pull(s, &x)) if (!jrt_IntPredicate_test_I(p, x.v)) return false; return true; }
+bool jrt_IntStream_noneMatch_O(jobject* o, jobject* p) { return !jrt_IntStream_anyMatch_O(o, p); }
+jarray* jrt_IntStream_toArray_(jobject* o) {
+	jrt_Stream* s = stream_used(o);
+	jobject* l = jrt_ArrayList_new_();
+	jitem x = {0, 0};
+	while (s->pull(s, &x)) jrt_Collection_add_O(l, jrt_box_I(x.v));
+	const int32_t n = jrt_Collection_size_(l);
+	jarray* a = jrt_new_array(sizeof(int32_t), n);
+	for (int32_t i = 0; i < n; ++i) ((int32_t*)a->data)[i] = jrt_unbox_I(jrt_List_get_I(l, i));
+	return a;
+}
+
+/* Collectors: what to do with the elements, run by collect */
+enum { C_LIST, C_SET, C_JOIN, C_COUNT, C_GROUP, C_SUM };
+typedef struct jrt_Collector { jobject hdr; int kind; jobject* a; jobject* b; jobject* c; } jrt_Collector;
+static const jclass jrt_Collector_class = {"java.util.stream.Collectors.CollectorImpl", &jrt_Object_class, sizeof(jrt_Collector), &jrt_Object_vt, 0, 0, 0};
+static jobject* collector(int kind, jobject* a, jobject* b, jobject* c) {
+	jrt_Collector* r = (jrt_Collector*)jrt_alloc(&jrt_Collector_class);
+	r->kind = kind;
+	r->a = a;
+	r->b = b;
+	r->c = c;
+	return (jobject*)r;
+}
+jobject* jrt_Collectors_toList_(void) { return collector(C_LIST, 0, 0, 0); }
+jobject* jrt_Collectors_toSet_(void) { return collector(C_SET, 0, 0, 0); }
+jobject* jrt_Collectors_joining_(void) { return collector(C_JOIN, 0, 0, 0); }
+jobject* jrt_Collectors_joining_O(jobject* sep) { return collector(C_JOIN, (jobject*)jrt_nn(sep), 0, 0); }
+jobject* jrt_Collectors_joining_OOO(jobject* sep, jobject* pre, jobject* post) { return collector(C_JOIN, (jobject*)jrt_nn(sep), (jobject*)jrt_nn(pre), (jobject*)jrt_nn(post)); }
+jobject* jrt_Collectors_counting_(void) { return collector(C_COUNT, 0, 0, 0); }
+jobject* jrt_Collectors_summingInt_O(jobject* f) { return collector(C_SUM, (jobject*)jrt_nn(f), 0, 0); }
+jobject* jrt_Collectors_groupingBy_O(jobject* key) { return collector(C_GROUP, (jobject*)jrt_nn(key), 0, 0); }
+jobject* jrt_Collectors_groupingBy_OO(jobject* key, jobject* down) { return collector(C_GROUP, (jobject*)jrt_nn(key), (jobject*)jrt_nn(down), 0); }
+
+jobject* jrt_Stream_collect_O(jobject* o, jobject* how) {
+	const jrt_Collector* c = (const jrt_Collector*)jrt_cast((jobject*)jrt_nn(how), &jrt_Collector_class);
+	jrt_Stream* s = stream_used(o);
+	jitem x = {0, 0};
+	switch (c->kind) {
+	case C_LIST: case C_SET: {
+		jobject* r = c->kind == C_LIST ? jrt_ArrayList_new_() : jrt_HashSet_new_();
+		while (s->pull(s, &x)) jrt_Collection_add_O(r, x.o);
+		return r;
+	}
+	case C_JOIN: {
+		jrt_StringBuilder* b = jrt_StringBuilder_new_();
+		if (c->b) jrt_StringBuilder_append_Str(b, jrt_str_O(c->b));
+		for (bool first = true; s->pull(s, &x); first = false) {
+			if (!first && c->a) jrt_StringBuilder_append_Str(b, jrt_str_O(c->a));
+			jrt_StringBuilder_append_Str(b, jrt_str_O(x.o));
+		}
+		if (c->c) jrt_StringBuilder_append_Str(b, jrt_str_O(c->c));
+		return (jobject*)jrt_StringBuilder_toString_(b);
+	}
+	case C_COUNT: {
+		int64_t n = 0;
+		while (s->pull(s, &x)) ++n;
+		return jrt_box_J(n);
+	}
+	case C_SUM: {
+		uint32_t t = 0;
+		while (s->pull(s, &x)) t += (uint32_t)jrt_ToIntFunction_applyAsInt_O(c->a, x.o);
+		return jrt_box_I((int32_t)t);
+	}
+	default: {
+		jobject* m = jrt_HashMap_new_();
+		while (s->pull(s, &x)) {
+			jobject* k = call1(c->a, x.o);
+			if (!k) jrt_throw_new(&jrt_NullPointerException_class, "element cannot be mapped to a null key");
+			jobject* l = jrt_Map_get_O(m, k);
+			if (!l) { l = jrt_ArrayList_new_(); jrt_Map_put_OO(m, k, l); }
+			jrt_Collection_add_O(l, x.o);
+		}
+		if (c->b) {
+			jobject* it = jrt_Collection_iterator_(jrt_Map_entrySet_(m));
+			while (jrt_Iterator_hasNext_(it)) {
+				jobject* e = jrt_Iterator_next_(it);
+				jrt_Map_put_OO(m, jrt_MapEntry_getKey_(e), jrt_Stream_collect_O(jrt_Collection_stream_(jrt_MapEntry_getValue_(e)), c->b));
+			}
+		}
+		return m;
+	}
+	}
+}
+
 /* ------------------------------------------------------------------------------------------- enums */
 jstring* jrt_Enum_toString(jobject* o) { return ((jrt_Enum*)o)->name; }
 static const jobject_vt enum_vt = {jrt_Enum_toString, jrt_Object_equals, jrt_Object_hashCode};

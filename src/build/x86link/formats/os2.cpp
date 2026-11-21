@@ -877,9 +877,9 @@ static void CheckGrpFlags( void *_leader )
 
     sflags = leader->segflags;
     // if any of these flags are on, turn it on for the entire group.
-    leader->group->segflags |= sflags & DEF_SEG_OFF;
+    leader->group->segflags = static_cast<seg_flags_type>( leader->group->segflags | ( sflags & DEF_SEG_OFF ) );
     // if any of these flags off, make sure they are off in the group.
-    leader->group->segflags &= (sflags & DEF_SEG_ON) | ~DEF_SEG_ON;
+    leader->group->segflags = static_cast<seg_flags_type>( leader->group->segflags & ( (sflags & DEF_SEG_ON) | ~DEF_SEG_ON ) );
     if( GET_SEG_PMODE_DPL( sflags ) == SEG_PMODE_DPL_2 ) {
         /* if any are level 2 then all have to be. */
         SET_SEG_PMODE_DPL( leader->group->segflags, SEG_PMODE_DPL_2 );
@@ -897,7 +897,7 @@ void SetOS2GroupFlags(Link& link)
     for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
-        group->segflags |= DEF_SEG_ON;
+        group->segflags = static_cast<seg_flags_type>( group->segflags | ( DEF_SEG_ON ) );
         Ring2Walk( group->leaders, CheckGrpFlags );
         /*
          * for some insane reason, level 2 segments must be marked as movable
@@ -992,7 +992,7 @@ void PhoneyStack(Link& link)
  * signal that we will be making a fake stack later on.
  */
 {
-    link.FmtData.u.os2fam.flags |= PHONEY_STACK_FLAG;
+    link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( PHONEY_STACK_FLAG ) );
 }
 
 static FILE *InitNEResources(Link& link,  WResDir *inRes, ResTable *outRes )
@@ -1099,7 +1099,7 @@ void FiniOS2LoadFile(Link& link)
     if( link.DataGroup != nullptr ) {
         adseg = link.DataGroup->addr.seg;
         if( link.DataGroup->segflags & SEG_PURE ) {
-            link.FmtData.u.os2fam.flags |= SHARABLE_DGROUP;
+            link.FmtData.u.os2fam.flags = static_cast<seg_flags_type>( link.FmtData.u.os2fam.flags | ( SHARABLE_DGROUP ) );
         }
         if( link.StackSegPtr != nullptr ) {
             if( link.DataGroup->totalsize - link.DataGroup->size < link.StackSize ) {

@@ -160,6 +160,21 @@ std::uint8_t* Bus::place(std::uint32_t a, std::size_t& room) {
     }
 }
 
+const std::uint8_t* Bus::plain_block(std::uint32_t address, std::size_t size) {
+    if (system_ != System::Gba || big_endian_) return nullptr;
+    for (const Range& range : ranges_)
+        if (address <= range.hi && address + size - 1 >= range.lo) return nullptr;
+    const std::uint32_t region = address >> 24;
+    if (region >= 0x08 && region <= 0x0D) {
+        const std::size_t offset = address & 0x1FFFFFF;
+        return offset + size <= rom_.size() ? rom_.data() + offset : nullptr;
+    }
+    if (region != 0x02 && region != 0x03) return nullptr;
+    std::size_t room = 0;
+    const std::uint8_t* from = place(address, room);
+    return from && size <= room ? from : nullptr;
+}
+
 bool Bus::mapped(std::uint32_t address) const {
     if (range_of(address)) return true;
     if (paged()) return system_ == System::N3ds ? address >= 0x00100000 && address < 0x20000000 : address >= 0x81000000;
@@ -1114,5 +1129,7 @@ cb::emulate::Run record(const RunResult& result) {
 }
 
 cb::emulate::Run recorded(Bus& bus, std::uint32_t entry, const RunOptions& options) { return record(run(bus, entry, options)); }
+
+void bios_answer(Cpu& cpu, std::uint32_t function) { bios_call(cpu, function); }
 
 }  // namespace cb::emulate::arm

@@ -310,7 +310,7 @@ lanes::Effects gba_effects(const stdfs::path& path, std::uint32_t entry, const l
     options.a = {static_cast<std::uint32_t>(at(state, "a0")), static_cast<std::uint32_t>(at(state, "a1")), static_cast<std::uint32_t>(at(state, "a2")),
                  static_cast<std::uint32_t>(at(state, "a3"))};
     options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
-    const emulate::arm::RunResult run = emulate::arm::run(bus, entry, options);
+    const emulate::arm::RunResult run = pcode_cpu::call(bus, entry, options);
     // what the run changed in the machine's memories (the program is in the ROM, which a run cannot write)
     std::vector<std::string> changed;
     for (std::size_t k = 0; k < regions.size(); ++k)

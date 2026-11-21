@@ -17,6 +17,7 @@ namespace {
 
 constexpr std::int64_t kMaxImageBytes = 16 * 1024 * 1024;
 constexpr std::int64_t kGuessDistance = 8;
+constexpr unsigned kSizePasses = 8;   // how many times the sizes of the instructions are taken again before an assembly gives up on their settling
 
 class LineFault : public Error {
 public:
@@ -134,6 +135,8 @@ public:
     Pass(const Encoder& isa, Labels& labels, std::unordered_map<std::uint32_t, std::size_t>& sizes, bool final, ByteOrder order, unsigned alignment)
         : isa_(isa), labels_(labels), sizes_(sizes), final_(final), order_(order), alignment_(alignment) {}
 
+    bool size_changed() const { return size_changed_; }
+
     Bytes run(const std::vector<SourceLine>& lines) {
         for (const SourceLine& l : lines) {
             try {
@@ -233,7 +236,27 @@ private:
             return put(Bytes(static_cast<std::size_t>(pad), 0));
         }
         if (text::iequals(head, ".context")) {   // `.context m16=1 x16=0`: what the processor's description is read in, from here on
-            context_ = std::string(rest);
+            // (a variable the line leaves out keeps what an earlier one set: ca65's `.a16` and `.i16` are one variable each)
+            std::vector<std::pair<std::string, std::string>> vars;
+            const auto add = [&](std::string_view list) {
+                for (std::size_t k = 0; k < list.size();) {
+                    while (k < list.size() && (list[k] == ' ' || list[k] == '\t' || list[k] == ',')) ++k;
+                    const std::size_t start = k;
+                    while (k < list.size() && list[k] != ' ' && list[k] != '\t' && list[k] != ',') ++k;
+                    if (k == start) continue;
+                    const std::string_view item = list.substr(start, k - start);
+                    const std::size_t eq = item.find('=');
+                    const std::string name(item.substr(0, eq));
+                    const std::string value = eq == std::string_view::npos ? std::string() : std::string(item.substr(eq));
+                    const auto have = std::ranges::find(vars, name, &std::pair<std::string, std::string>::first);
+                    if (have != vars.end()) have->second = value;
+                    else vars.emplace_back(name, value);
+                }
+            };
+            add(context_);
+            add(rest);
+            context_.clear();
+            for (const auto& [name, value] : vars) context_ += (context_.empty() ? "" : " ") + name + value;
             return;
         }
         if (head.starts_with('.')) fail("unknown directive " + std::string(head));
@@ -270,6 +293,7 @@ private:
         if (!final_) {
             sizes_[line_number_] = code.size();
         } else if (const auto it = sizes_.find(line_number_); it != sizes_.end() && it->second != code.size()) {
+            size_changed_ = true;
             fail("the instruction's size changed between passes");
         }
         put(code);
@@ -284,6 +308,7 @@ private:
     Bytes image_;
     std::string context_;   // (the last `.context`'s text; empty: the encoder's own)
     std::int64_t pc_ = 0;
+    bool size_changed_ = false;   // (the last failure was an instruction found a different size than the pass before gave it)
     std::string_view current_;
     std::uint32_t line_number_ = 0;
 };
@@ -320,9 +345,22 @@ Bytes Assembler::build(std::string_view source) const {
     Labels labels;
     std::unordered_map<std::uint32_t, std::size_t> sizes;
     Bytes image;
-    for (const bool final : {false, true}) {
-        Pass pass(*isa_, labels, sizes, final, order_, alignment_);
-        image = pass.run(lines);
+    {
+        Pass first(*isa_, labels, sizes, false, order_, alignment_);
+        image = first.run(lines);
+    }
+    // The final pass finds an instruction larger than the first pass took it (a long operand's label, ahead of its line and guessed near): the
+    // sizes it found and the labels they move are taken in another pass, and the final pass again, until the sizes stop changing.
+    for (unsigned again = 0;; ++again) {
+        Pass last(*isa_, labels, sizes, true, order_, alignment_);
+        try {
+            image = last.run(lines);
+            break;
+        } catch (const AsmError&) {
+            if (!last.size_changed() || again >= kSizePasses) throw;
+        }
+        Pass redo(*isa_, labels, sizes, false, order_, alignment_);
+        image = redo.run(lines);
     }
     return image;
 }

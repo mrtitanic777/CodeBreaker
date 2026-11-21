@@ -159,6 +159,8 @@ CB_TEST("build.mips_asm.every_refusal_names_its_line", [] {
     } catch (const AsmError& e) {
         CB_CHECK_EQ(e.line(), 3u);   // the line that failed
     }
-    // an instruction whose size depends on a label does not settle between the passes
-    CB_CHECK_THROWS_AS(AsmError, build("li $t0, far\n.equ far, 0x12345678\n"));
+    // an instruction whose size depends on a label defined later settles in another pass: lui $t0,0x1234 and ori $t0,$t0,0x5678
+    CB_CHECK(build("li $t0, far\n.equ far, 0x12345678\n") == (Bytes{0x34, 0x12, 0x08, 0x3C, 0x78, 0x56, 0x08, 0x35}));
+    // one that can never settle is still refused: one word puts `after` where the value needs two, two words where it needs one
+    CB_CHECK_THROWS_AS(AsmError, build("li $t0, 0x10005-after\nafter:\n"));
 });

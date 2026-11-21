@@ -109,6 +109,19 @@ CB_TEST("source.dialect.gas_arm_keeps_the_descriptions_own_zero_of_a_float_compa
     CB_CHECK_EQ(d.parse("        movs r0, r0, lsr #32"), "        movs r0,r0, lsr #32\n");
 });
 
+CB_TEST("source.dialect.ca65_says_the_long_form_with_f_and_reads_it_back_as_four_bytes", [] {
+    const Dialect& d = find("ca65-65816");
+    CB_CHECK_EQ(d.forced_long("lda", "D_009000", true), "LDA f:D_009000,x");
+    CB_CHECK_EQ(d.forced_long("sta", "$009000", false), "STA f:$009000");
+    CB_CHECK(d.forced_long("jsl", "x", false).empty());   // (JSL has only the long form)
+    CB_CHECK(find("ca65").forced_long("lda", "x", false).empty());   // (a dialect with no long form says none)
+    CB_CHECK_EQ(d.parse("        LDA f:$009000,x"), "        .byte 191,(0x9000)&0xff,((0x9000)>>8)&0xff,(0x9000)>>16\n");
+    CB_CHECK_EQ(d.parse("        STA f:D_009000"), "        .byte 143,(D_009000)&0xff,((D_009000)>>8)&0xff,(D_009000)>>16\n");
+    CB_CHECK_EQ(d.parse("        STA a:.loword(D_C02000)"), "        .byte 141,(0xffff&(D_C02000))&0xff,(0xffff&(D_C02000))>>8\n");
+    CB_CHECK_EQ(d.parse("        JSR .loword(sub_808050)"), "        JSR sub_808050\n");
+    CB_CHECK_EQ(d.print("        .context m16=1\n        .context x16=0\n"), "        .a16\n        .i8\n");
+});
+
 CB_TEST("source.dialect.gas_sh_writes_the_immediates_of_the_sh2_and_the_sh4_each_way_round", [] {
     // the SH-2's description writes `add 0x3,r0` and `mov #0x40,r1`; the SH-4's writes every immediate with its `#`: both say `add     #3,r0`
     const Dialect& sh2 = find("gas-sh");

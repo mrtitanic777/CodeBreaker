@@ -134,6 +134,9 @@ public:
 
     // Does an address reach memory, a register, or a mapped range?
     bool mapped(std::uint32_t address) const;
+    // The bytes of `size` at an address when they are plain memory of the Game Boy Advance (the ROM, EWRAM or IWRAM, no mapped hardware in the bus): read without a
+    // log or a call; null otherwise.
+    const std::uint8_t* plain_block(std::uint32_t address, std::size_t size);
     // `size` is 1, 2 or 4 and the address is aligned to it (the CPU aligns; a read of an address that is not mapped reads 0).
     std::uint32_t read(std::uint32_t address, unsigned size);
     void write(std::uint32_t address, unsigned size, std::uint32_t value);
@@ -286,5 +289,9 @@ cb::emulate::Run record(const RunResult& result);
 
 // run + record: the platform's runner.
 cb::emulate::Run recorded(Bus& bus, std::uint32_t entry, const RunOptions& options = {});
+
+// The BIOS's answer to a software interrupt, as run() gives it (Div, DivArm, Sqrt, CpuSet and CpuFastSet are done as the BIOS does them, any other call returns 0 in r0):
+// it reads and writes `cpu`'s registers r0-r3 and the bus's memory. For the p-code adapter (engine/pcode_cpu_arm.cpp).
+void bios_answer(Cpu& cpu, std::uint32_t function);
 
 }  // namespace cb::emulate::arm

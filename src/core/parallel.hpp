@@ -20,7 +20,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <shared_mutex>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
@@ -151,7 +150,7 @@ public:
     Value get_or_compute(const Key& key, Compute&& compute) {
         Shard& s = shard(key);
         {
-            std::shared_lock lock(s.mutex);
+            std::lock_guard lock(s.mutex);
             if (auto it = s.map.find(key); it != s.map.end()) return it->second;
         }
         Value fresh = compute();
@@ -160,7 +159,7 @@ public:
     }
     std::optional<Value> find(const Key& key) const {
         const Shard& s = shard(key);
-        std::shared_lock lock(s.mutex);
+        std::lock_guard lock(s.mutex);
         auto it = s.map.find(key);
         if (it == s.map.end()) return std::nullopt;
         return it->second;
@@ -168,7 +167,7 @@ public:
     std::size_t size() const {
         std::size_t n = 0;
         for (const Shard& s : shards_) {
-            std::shared_lock lock(s.mutex);
+            std::lock_guard lock(s.mutex);
             n += s.map.size();
         }
         return n;
@@ -182,7 +181,9 @@ public:
 
 private:
     struct Shard {
-        mutable std::shared_mutex mutex;
+        // (a plain mutex: std::shared_mutex of MinGW-w64's libstdc++ (winpthreads' read-write lock) lets a writer in beside
+        // readers, and two threads then insert into one shard's map at once: a cache of ten keys held eleven)
+        mutable std::mutex mutex;
         std::unordered_map<Key, Value, Hash> map;
     };
     Shard& shard(const Key& k) { return shards_[Hash{}(k) % Shards]; }

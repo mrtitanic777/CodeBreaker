@@ -93,6 +93,7 @@ CB_TEST("source.neogeo_writer.a_word_swapped_prom_is_written_from_the_68000s_ord
     const Bytes plain = prom();
     const image_writer::Written r = write(formats::neogeo::parse(formats::neogeo::swap_words(plain)), "swapped.p1", dir.path());
     CB_CHECK(r.same);
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*r.built) == plain);   // what it builds back is the P-ROM in the 68000's order
     CB_CHECK(fs::read_text(r.source).find("(P-ROM, words swapped)") != std::string::npos);
     CB_CHECK_EQ(r.functions.size(), 5u);
@@ -107,6 +108,7 @@ CB_TEST("source.neogeo_writer.the_second_megabyte_is_written_at_the_bank_window"
     CB_CHECK(r.notes.empty());
     CB_CHECK_EQ(r.image_bytes, 0x180000u);
     CB_CHECK(fs::read_text(r.source).find("        org $200000") != std::string::npos);
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*r.built) == big);
 });
 

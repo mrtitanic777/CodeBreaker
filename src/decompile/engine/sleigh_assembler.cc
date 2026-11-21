@@ -544,6 +544,15 @@ struct Assembler::Impl {
             if (nd.kind == Kind::LeftShift && r && *r >= 0 && *r < 64) return maskOf(nd.left, n, curOff, env, st, depth + 1) << *r;
             if (nd.kind == Kind::RightShift && r && *r >= 0 && *r < 64) return maskOf(nd.left, n, curOff, env, st, depth + 1) >> *r;
             if (nd.kind == Kind::And && r) return maskOf(nd.left, n, curOff, env, st, depth + 1) & static_cast<std::uint64_t>(*r);
+            if (nd.kind == Kind::Mult) {   // (a power of two: a shift)
+                const auto kl = eval(nd.left, n, curOff, env, st, nullptr);
+                const auto k = r ? r : kl;
+                if (k && *k > 0 && (*k & (*k - 1)) == 0 && !(r && kl)) {
+                    unsigned s = 0;
+                    while ((intb{1} << s) != *k) ++s;
+                    return maskOf(r ? nd.left : nd.right, n, curOff, env, st, depth + 1) << s;
+                }
+            }
             if (nd.kind == Kind::Or || nd.kind == Kind::Plus) return maskOf(nd.left, n, curOff, env, st, depth + 1) | maskOf(nd.right, n, curOff, env, st, depth + 1);
         }
         return ~std::uint64_t{0};
@@ -590,6 +599,61 @@ struct Assembler::Impl {
             return pe == nullptr ? true : solveLow(pe, r, m, n, n.opOff[static_cast<std::size_t>(idx)], env, st, out, depth + 1);
         }
         if (nd.kind == Kind::Minus) return solveLow(nd.left, 0 - r, m, n, curOff, env, st, out, depth + 1);
+        if (nd.kind == Kind::Mult) {   // a field times a power of two (a displacement counted in halfwords or words)
+            const auto kl = eval(nd.left, n, curOff, env, st, nullptr), kr = eval(nd.right, n, curOff, env, st, nullptr);
+            const auto k = kr ? kr : kl;
+            const PatternExpression* x = kr ? nd.left : (kl ? nd.right : nullptr);
+            if (x == nullptr || kl == kr || *k <= 0 || (*k & (*k - 1)) != 0) return false;
+            unsigned s = 0;
+            while ((intb{1} << s) != *k) ++s;
+            if ((r & ((std::uint64_t{1} << s) - 1)) != 0) return true;
+            return solveLow(x, r >> s, m >> s, n, curOff, env, st, out, depth + 1);
+        }
+        if (nd.kind == Kind::Plus && !eval(nd.left, n, curOff, env, st, nullptr) == !eval(nd.right, n, curOff, env, st, nullptr)) {
+            // a sum of fields that take bits of their own (a pc plus a displacement in two parts): each part is what its bits of the
+            // target (less the sum's constant part) say
+            std::vector<const PatternExpression*> terms;
+            std::uint64_t constant = 0;
+            std::vector<const PatternExpression*> stack{e};
+            while (!stack.empty()) {
+                const PatternExpression* x = stack.back();
+                stack.pop_back();
+                const Node& xn = nodeOf(x);
+                if (xn.kind == Kind::Plus) {
+                    stack.push_back(xn.left);
+                    stack.push_back(xn.right);
+                } else if (const auto k = eval(x, n, curOff, env, st, nullptr)) {
+                    constant += static_cast<std::uint64_t>(*k);
+                } else {
+                    terms.push_back(x);
+                }
+            }
+            if (terms.size() < 2) return false;
+            std::vector<std::uint64_t> masks;
+            std::uint64_t used = 0;
+            for (const PatternExpression* t : terms) {
+                const std::uint64_t mt = maskOf(t, n, curOff, env, st) & m;
+                if (mt == 0 || (used & mt) != 0) return false;
+                used |= mt;
+                masks.push_back(mt);
+            }
+            const std::uint64_t want = (r - constant) & m;
+            if ((want & ~used) != 0) return true;
+            std::vector<Alt> acc{Alt{}};
+            for (std::size_t i = 0; i < terms.size(); ++i) {
+                std::vector<Alt> part;
+                if (!solveLow(terms[i], want & masks[i], m, n, curOff, env, st, part, depth + 1)) return false;
+                if (part.empty()) return true;
+                std::vector<Alt> next;
+                crossAdd(next, acc, part);
+                acc = std::move(next);
+            }
+            for (Alt& a : acc) {
+                if (out.size() >= kMaxAlts) break;
+                out.push_back(std::move(a));
+            }
+            return true;
+        }
         if (nd.kind == Kind::Plus || nd.kind == Kind::Sub) {
             const bool plus = nd.kind == Kind::Plus;
             const auto kl = eval(nd.left, n, curOff, env, st, nullptr), kr = eval(nd.right, n, curOff, env, st, nullptr);

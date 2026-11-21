@@ -175,7 +175,7 @@ orl_return CoffCreateSymbolHandles( coff_file_handle file_hnd )
 
                 current->type |= ORL_SYM_TYPE_SECTION;
                 current->type &= ~ORL_SYM_CDAT_MASK;
-                current->type |= ( aux->selection << ORL_SYM_CDAT_SHIFT ) & ORL_SYM_CDAT_MASK;
+                current->type = static_cast<orl_symbol_type>( current->type | ( ( aux->selection << ORL_SYM_CDAT_SHIFT ) & ORL_SYM_CDAT_MASK ) );
             } else if( is_function( current->symbol ) ) {
                 current->type |= ORL_SYM_TYPE_FUNCTION;
             }

@@ -34,6 +34,7 @@ CB_TEST("source.gekko_writer.a_dol_builds_back_into_itself", [] {
     CB_CHECK(r.linked);
     CB_CHECK(r.same);
     CB_CHECK(r.built.has_value());
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(cb::fs::read_file(*r.built) == gt::dol());
     // entry, helper (called), callback (named only by the table in the data)
     CB_CHECK_EQ(r.functions.size(), std::size_t{3});
@@ -84,6 +85,7 @@ CB_TEST("source.gekko_writer.an_elf_builds_back_into_itself", [] {
     const cb::source::image_writer::Written r = write_to(dir, "game.elf", gt::elf());
     CB_CHECK(r.notes.empty());
     CB_CHECK(r.same);
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(cb::fs::read_file(*r.built) == gt::elf());
     CB_CHECK_EQ(r.functions.size(), std::size_t{3});
     const string text = cb::fs::read_text(r.source);
@@ -104,6 +106,7 @@ CB_TEST("source.gekko_writer.an_rpx_is_written_decompressed", [] {
     CB_CHECK(r.notes.empty());
     CB_CHECK(r.same);
     // what was rebuilt is the decompressed file: the .text bytes, not the stored zlib block, and a flag word that no longer says deflated
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     const cb::Bytes rebuilt = cb::fs::read_file(*r.built);
     CB_CHECK(rebuilt != rpx);
     CB_CHECK_EQ(r.functions.size(), std::size_t{3});

@@ -1,0 +1,12 @@
+{
+  "name": "v810",
+  "description": "A V810 assembler: the Virtual Boy as its programs are written. ; comments, .equ name, 0x value ahead of the code, hi(name) / lo(name) for the halves of an address, small numbers decimal (shl 1,r10), 0x hex in capitals, .fill n,v.",
+  "comment": ";",
+  "number": {"prefix": "0x", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "decimal": {"unless": []},
+  "directives": [
+    {"neutral": ".byte {list}", "dialect": ".byte {list}", "bytes": true},
+    {"neutral": ".space {n}, {v}", "dialect": ".fill {n},{v}"}
+  ]
+}
