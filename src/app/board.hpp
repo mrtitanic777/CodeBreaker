@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -100,6 +101,16 @@ struct Stack {
     std::size_t total() const { return todo.size() + done.size(); }
 };
 using Stacks = std::array<Stack, kPileCount>;
+// A cabinet entry whose stored name climbs out of its folder, read by a person and found harmless: exactly this name and these bytes.
+struct ReviewedEntry {
+    std::string_view name;             // as the cabinet stores it
+    std::string_view sha256;
+};
+// The entries reviewed so far. Microsoft's XML Parser for Java stores its manifest as "..\<name>.osd"; every other package's manifest sits at its root.
+std::span<const ReviewedEntry> reviewed_entries();
+// `file`, kept contained under `folder`, goes to the root of `folder` when it is a reviewed entry and nothing different is there. The path it ends at.
+std::filesystem::path place_reviewed(const std::filesystem::path& folder, std::string_view name, const std::filesystem::path& file, std::span<const ReviewedEntry> reviewed);
+
 // `group`: the first card with the same bytes, per card: identical files become one master card (a converted copy stands for them, else the first).
 // `allowed`: only these cards. Both may be null.
 struct StackOptions {

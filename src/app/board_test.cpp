@@ -3,6 +3,7 @@
 
 #include <atomic>
 
+#include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 
@@ -166,6 +167,30 @@ CB_TEST("app.board.another_image_or_a_changed_one_has_another_folder", [] {
     CB_CHECK(a == board_folder(root / "boards", root / "a.iso"));
     fs::write_text(root / "a.iso", "longer");
     CB_CHECK(a != board_folder(root / "boards", root / "a.iso"));
+});
+
+CB_TEST("app.board.only_the_exact_reviewed_entry_leaves_containment", [] {
+    const stdfs::path root = bt_folder("reviewed");
+    const std::string good = crypto::to_hex(crypto::sha256(as_bytes("manifest")));
+    const ReviewedEntry table[] = {{"..\\a.osd", good}};
+    const stdfs::path contained = root / "_outside_cabinet" / "a.osd";
+    fs::write_text(contained, "changed");
+    CB_CHECK(place_reviewed(root, "..\\a.osd", contained, table) == contained);   // the right name, other bytes
+    fs::write_text(contained, "manifest");
+    CB_CHECK(place_reviewed(root, "..\\b.osd", contained, table) == contained);   // the right bytes, another name
+    fs::write_text(root / "a.osd", "something else");
+    CB_CHECK(place_reviewed(root, "..\\a.osd", contained, table) == contained);   // never over a different file
+    CB_CHECK_EQ(fs::read_text(root / "a.osd"), std::string("something else"));
+    fs::remove_tree(root / "a.osd");
+    const stdfs::path placed = place_reviewed(root, "..\\a.osd", contained, table);
+    CB_CHECK(placed == root / "a.osd");
+    CB_CHECK_EQ(fs::read_text(placed), std::string("manifest"));
+    CB_CHECK(!stdfs::exists(root / "_outside_cabinet"));
+});
+
+CB_TEST("app.board.the_reviewed_list_is_the_one_manifest", [] {
+    CB_CHECK_EQ(reviewed_entries().size(), std::size_t{1});
+    CB_CHECK_EQ(reviewed_entries()[0].sha256.size(), std::size_t{64});
 });
 
 CB_TEST("app.board.words", [] {

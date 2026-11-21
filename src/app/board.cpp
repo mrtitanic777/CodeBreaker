@@ -12,6 +12,7 @@
 #include <set>
 #include <unordered_map>
 
+#include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "formats/cab.hpp"
@@ -264,6 +265,28 @@ stdfs::path board_folder(const stdfs::path& boards, const stdfs::path& image) {
     return boards / std::format("{}-{:016x}", stem, hash);
 }
 
+std::span<const ReviewedEntry> reviewed_entries() {
+    static constexpr ReviewedEntry kReviewed[] = {
+        {"..\\Microsoft XML Parser for Java.osd", "d1eae9d83b6a26f3db7ef79cf541262daa4833e8fdfacfbcc0c7409904a1e6d6"},
+    };
+    return kReviewed;
+}
+
+stdfs::path place_reviewed(const stdfs::path& folder, std::string_view name, const stdfs::path& file, std::span<const ReviewedEntry> reviewed) {
+    const auto entry = std::find_if(reviewed.begin(), reviewed.end(), [&](const ReviewedEntry& r) { return r.name == name; });
+    if (entry == reviewed.end()) return file;
+    const std::string digest = crypto::to_hex(crypto::sha256(fs::read_file(file)));
+    if (digest != entry->sha256) return file;             // the same name with other bytes was not what was read: it stays contained
+    const stdfs::path target = folder / file.filename();
+    std::error_code ec;
+    if (stdfs::exists(target, ec) && crypto::to_hex(crypto::sha256(fs::read_file(target))) != digest) return file;   // never over something else
+    fs::remove_tree(target);
+    stdfs::rename(file, target);
+    const stdfs::path contained = file.parent_path();
+    if (stdfs::is_empty(contained, ec)) stdfs::remove(contained, ec);
+    return target;
+}
+
 Board scan(const stdfs::path& image, const stdfs::path& root, const ScanReport& report, const std::atomic<bool>& cancel) {
     Board board;
     board.root = root;
@@ -419,7 +442,7 @@ Board scan(const stdfs::path& image, const stdfs::path& root, const ScanReport& 
             for (const formats::cab::Extracted& x : written) {
                 if (cancel) break;
                 try {
-                    add_file(x.path, cabinet.rel, cabinet.depth + 1);
+                    add_file(place_reviewed(out, x.name, x.path, reviewed_entries()), cabinet.rel, cabinet.depth + 1);
                 } catch (const std::exception& error) {
                     board.failures.push_back({cabinet.rel + "/" + x.name, error.what()});
                 }
