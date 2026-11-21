@@ -26,6 +26,7 @@
 #include "emulate/arm.hpp"
 #include "emulate/mips.hpp"
 #include "emulate/r4300.hpp"
+#include "emulate/sh2.hpp"
 #include "emulate/z80.hpp"
 
 namespace cb::engine::pcode_cpu {
@@ -76,5 +77,11 @@ emulate::r4300::RunResult call(emulate::r4300::Bus& bus, std::uint32_t entry, co
 // adapter. call() gives every other machine (the DS, the 3DS, the Vita) to the own core.
 emulate::arm::RunResult run(emulate::arm::Bus& bus, std::uint32_t entry, const emulate::arm::RunOptions& options = {});
 emulate::arm::RunResult call(emulate::arm::Bus& bus, std::uint32_t entry, const emulate::arm::RunOptions& options = {});
+
+// The SuperH lanes' SH-2 (the Saturn, the 32X; emulate::sh2::Bus) on sh-2.sla and SH-4 (the Dreamcast) on SuperH4_le.sla: a delayed branch and its slot are one step of
+// the emulator, the faults, the on-chip registers and the bus's devices are the adapter's and the bus's; what the descriptions leave out (the SH-4's FPU, banks and
+// cache instructions) runs as the own core runs it.
+emulate::sh2::RunResult run(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
+emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
 
 }  // namespace cb::engine::pcode_cpu
