@@ -211,3 +211,54 @@ CB_TEST("translate.c_java.build_declined", [] {
     CB_CHECK(!built.exe.has_value());
     CB_CHECK(built.why.starts_with("Decline: "));
 });
+
+// The C runtime's collector. Its own check: garbage goes, what a static or only the stack holds stays. Then real programs with a collection at
+// every allocation (JRT_GC_STRESS=1): a block freed too early would change what they print, which is held to what the JVM printed.
+namespace {
+std::optional<std::string> built_with_runtime(const std::filesystem::path& source, const std::filesystem::path& dir) {
+    const std::filesystem::path clang = cb::fs::from_text(std::string(cj::kClang));
+    if (!std::filesystem::is_regular_file(clang)) return std::nullopt;
+    const std::filesystem::path runtime = cb::testing::data_path("../config/translate/runtime/c");
+    const std::string exe = cb::fs::to_text(dir / "program.exe");
+    cb::process::ProcessSpec build;
+    build.argv = {cb::fs::to_text(clang), "-std=c11", "-fwrapv", "-O1", "-w", "-I" + cb::fs::to_text(runtime), "-o", exe, "-x", "c", cb::fs::to_text(source),
+                  "-x", "c", cb::fs::to_text(runtime / "jrt.c")};
+    build.timeout = std::chrono::seconds(120);
+    CB_CHECK(cb::process::run(build).exit_code == 0);
+    return exe;
+}
+
+void runs_as_the_jvm_under_stress(const std::string& name, const std::string& golden) {
+    cb::fs::ScopedTempDir dir;
+    const auto exe = built_with_runtime(data(golden), dir.path());
+    if (!exe) return;
+    const std::string want = cb::text::replace_all(cb::fs::read_text(data("cpp17/" + name + ".jvm.txt")), "\r\n", "\n");
+    for (const bool stress : {false, true}) {
+        const cb::fs::ScopedEnv env("JRT_GC_STRESS", stress ? std::optional<std::string>("1") : std::nullopt);
+        cb::process::ProcessSpec spec;
+        spec.argv = {*exe};
+        spec.timeout = std::chrono::seconds(120);
+        const cb::process::ProcessResult ran = cb::process::run(spec);
+        CB_CHECK(ran.exit_code == 0);
+        CB_CHECK_EQ(cb::text::replace_all(std::string(cb::as_text(ran.out)), "\r\n", "\n"), want);
+    }
+}
+}  // namespace
+
+CB_TEST("translate.c_java.collector.frees_garbage_and_keeps_what_is_reachable", [] {
+    cb::fs::ScopedTempDir dir;
+    const auto exe = built_with_runtime(data("c_java/gc_check.c"), dir.path());
+    if (!exe) return;
+    cb::process::ProcessSpec spec;
+    spec.argv = {*exe};
+    spec.timeout = std::chrono::seconds(120);
+    CB_CHECK(cb::process::run(spec).exit_code == 0);
+});
+CB_TEST("translate.c_java.collector.bank_runs_under_stress", [] { runs_as_the_jvm_under_stress("bank", "c_java/bank.golden.c"); });
+CB_TEST("translate.c_java.collector.calc_runs_under_stress", [] { runs_as_the_jvm_under_stress("calc", "c_java/calc.golden.c"); });
+CB_TEST("translate.c_java.collector.generics_runs_under_stress", [] { runs_as_the_jvm_under_stress("generics", "c_java/generics.golden.c"); });
+CB_TEST("translate.c_java.collector.shapes_runs_under_stress", [] { runs_as_the_jvm_under_stress("shapes", "c_java/shapes.golden.c"); });
+CB_TEST("translate.c_java.collector.textstats_runs_under_stress", [] { runs_as_the_jvm_under_stress("textstats", "c_java/textstats.golden.c"); });
+CB_TEST("translate.c_java.collector.mix_runs_under_stress", [] { runs_as_the_jvm_under_stress("mix", "c_java/mix/golden.c"); });
+CB_TEST("translate.c_java.collector.names_runs_under_stress", [] { runs_as_the_jvm_under_stress("names", "c_java/names/golden.c"); });
+CB_TEST("translate.c_java.collector.zoo_runs_under_stress", [] { runs_as_the_jvm_under_stress("zoo", "c_java/zoo/golden.c"); });
