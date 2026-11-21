@@ -165,6 +165,40 @@ void prints_what_the_jvm_printed(const std::string& name) {
 }
 }  // namespace
 
+// The runtime is not GCC's alone: with MSVC, the program that uses the most of its library prints what the JVM printed, and the collector holds.
+CB_TEST("translate.cpp17.the_java_runtime_builds_and_runs_with_msvc", [] {
+    if (!host_compiler_present()) {
+        std::cerr << "cpp17 MSVC test: no cl on PATH; skipped\n";
+        return;
+    }
+    const std::filesystem::path data = cb::testing::data_path("translate/testdata/cpp17");
+    cb::fs::ScopedTempDir work("cb_cpp17_msvc");
+    const auto build_and_run = [&](const std::string& name, const std::filesystem::path& source) {
+        const std::string exe = cb::fs::to_text(work.path() / (name + ".exe"));
+        cb::process::ProcessSpec build;
+        build.argv = {"cl", "/nologo", "/std:c++17", "/EHsc", "/utf-8", "/permissive-", "/bigobj", "/w", "/Od",
+                      "/I" + cb::fs::to_text(cb::testing::data_path("../config/translate/runtime/cpp17")), "/Fe" + exe,
+                      "/Fo" + cb::fs::to_text(work.path() / (name + ".obj")), "/TP", cb::fs::to_text(source)};
+        build.cwd = work.path();
+        build.err = cb::process::Capture::Merge;
+        build.timeout = std::chrono::minutes(5);
+        const auto built = cb::process::run(build);
+        CB_CHECK(built.exit_code == 0);
+        if (built.exit_code != 0) {
+            std::cerr << std::string(built.out.begin(), built.out.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(built.out.size(), 3000))) << "\n";
+            return std::string();
+        }
+        cb::process::ProcessSpec run;
+        run.argv = {exe};
+        run.timeout = std::chrono::seconds(120);
+        const auto ran = cb::process::run(run);
+        CB_CHECK(ran.exit_code == 0);
+        return cb::text::replace_all(std::string(ran.out.begin(), ran.out.end()), "\r", "");
+    };
+    CB_CHECK_EQ(build_and_run("streams", data / "streams.golden.cpp"), cb::text::replace_all(cb::fs::read_text(data / "streams.jvm.txt"), "\r", ""));
+    (void)build_and_run("gc_check", data / "gc_check.cpp");
+});
+
 CB_TEST("translate.cpp17.runs_as_the_jvm.bank", [] { prints_what_the_jvm_printed("bank"); });
 CB_TEST("translate.cpp17.runs_as_the_jvm.calc", [] { prints_what_the_jvm_printed("calc"); });
 CB_TEST("translate.cpp17.runs_as_the_jvm.generics", [] { prints_what_the_jvm_printed("generics"); });

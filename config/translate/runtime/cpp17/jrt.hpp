@@ -221,6 +221,19 @@ template <class T, class U> ref<T> as(const ref<U>& o) { return std::dynamic_poi
 template <class T, class U> bool isa(const ref<U>& o) { return o && std::dynamic_pointer_cast<T>(o) != nullptr; }
 template <class T> T* nn(const ref<T>& p) { if (!p) raise_npe(); return p.get(); }
 
+// ------------------------------------------------------------------------------------------- bits
+// Written out, so every compiler builds them the same way (the callers have ruled out zero where it matters).
+namespace bits {
+inline int popcount32(std::uint32_t v) { int n = 0; for (; v; v &= v - 1) ++n; return n; }
+inline int popcount64(std::uint64_t v) { int n = 0; for (; v; v &= v - 1) ++n; return n; }
+inline int clz32(std::uint32_t v) { int n = 0; for (std::uint32_t m = 0x80000000u; m && !(v & m); m >>= 1) ++n; return n; }
+inline int clz64(std::uint64_t v) { int n = 0; for (std::uint64_t m = 1ull << 63; m && !(v & m); m >>= 1) ++n; return n; }
+inline int ctz32(std::uint32_t v) { int n = 0; for (; n < 32 && !(v >> n & 1); ++n) {} return n; }
+inline int ctz64(std::uint64_t v) { int n = 0; for (; n < 64 && !(v >> n & 1); ++n) {} return n; }
+inline bool add_overflows(std::int32_t a, std::int32_t b, std::int32_t& r) { const std::int64_t x = (std::int64_t)a + b; r = (std::int32_t)x; return x != r; }
+inline bool mul_overflows(std::int32_t a, std::int32_t b, std::int32_t& r) { const std::int64_t x = (std::int64_t)a * b; r = (std::int32_t)x; return x != r; }
+}  // namespace bits
+
 // ------------------------------------------------------------------------------------------- text
 inline std::string utf8(const std::u16string& s) {
 	std::string out;
@@ -412,17 +425,17 @@ JRT_THROWABLE(IOException, Exception, u"java.io.IOException")
 JRT_THROWABLE(InterruptedException, Exception, u"java.lang.InterruptedException")
 JRT_THROWABLE(CloneNotSupportedException, Exception, u"java.lang.CloneNotSupportedException")
 
-inline void raise(const ref<Throwable>& t) {
+[[noreturn]] inline void raise(const ref<Throwable>& t) {
 	if (!t) raise_npe();
 	throw JavaThrow(t);
 }
-template <class T> void raise_new(const char16_t* msg) {
+template <class T> [[noreturn]] void raise_new(const char16_t* msg) {
 	auto e = std::make_shared<T>();
 	if (msg) e->ctor_(lit(msg)); else e->ctor_();
 	throw JavaThrow(e);
 }
-inline void raise_npe() { raise_new<NullPointerException>(nullptr); }
-inline void raise_msg(ref<Throwable> e, const std::u16string& m) { e->ctor_(str(m)); throw JavaThrow(e); }
+[[noreturn]] inline void raise_npe() { raise_new<NullPointerException>(nullptr); }
+[[noreturn]] inline void raise_msg(ref<Throwable> e, const std::u16string& m) { e->ctor_(str(m)); throw JavaThrow(e); }
 
 template <class T, class U> ref<T> cast(const ref<U>& o) {
 	if (!o) return nullptr;
@@ -613,16 +626,16 @@ inline int64_t parse_long(const ref<String>& s, int radix, int64_t lo, int64_t h
 	bool neg = false;
 	if (!t.empty() && (t[0] == '-' || t[0] == '+')) { neg = t[0] == '-'; i = 1; }
 	if (i >= t.size()) raise_msg(std::make_shared<NumberFormatException>(), u"For input string: \"" + t + u"\"");
-	__int128 v = 0;
+	const int64_t limit = neg ? lo : -hi, before_last = limit / radix;   // (counted downward, as Java does: the lowest value has no positive)
+	int64_t v = 0;
 	for (; i < t.size(); ++i) {
 		int d = Character::digit(t[i], radix);
-		if (d < 0) raise_msg(std::make_shared<NumberFormatException>(), u"For input string: \"" + t + u"\"");
-		v = v * radix + d;
-		if (v > (__int128)hi + 1) raise_msg(std::make_shared<NumberFormatException>(), u"For input string: \"" + t + u"\"");
+		if (d < 0 || v < before_last) raise_msg(std::make_shared<NumberFormatException>(), u"For input string: \"" + t + u"\"");
+		v *= radix;
+		if (v < limit + d) raise_msg(std::make_shared<NumberFormatException>(), u"For input string: \"" + t + u"\"");
+		v -= d;
 	}
-	if (neg) v = -v;
-	if (v < lo || v > hi) raise_msg(std::make_shared<NumberFormatException>(), u"For input string: \"" + t + u"\"");
-	return (int64_t)v;
+	return neg ? v : -v;
 }
 struct IntegerS {
 	static constexpr int32_t MAX_VALUE = 2147483647, MIN_VALUE = (-2147483647 - 1);
@@ -646,11 +659,11 @@ struct Integer_ {   // java.lang.Integer's statics (the class itself is the box 
 	static int32_t sum(int32_t a, int32_t b) { return a + b; }
 	static int32_t signum(int32_t v) { return (v > 0) - (v < 0); }
 	static int32_t abs(int32_t v) { return v < 0 ? -v : v; }
-	static int32_t bitCount(int32_t v) { return __builtin_popcount((uint32_t)v); }
+	static int32_t bitCount(int32_t v) { return bits::popcount32((uint32_t)v); }
 	static int32_t reverse(int32_t v) { uint32_t u = (uint32_t)v, r = 0; for (int i = 0; i < 32; ++i) { r = (r << 1) | (u & 1); u >>= 1; } return (int32_t)r; }
-	static int32_t numberOfLeadingZeros(int32_t v) { return v == 0 ? 32 : __builtin_clz((uint32_t)v); }
-	static int32_t numberOfTrailingZeros(int32_t v) { return v == 0 ? 32 : __builtin_ctz((uint32_t)v); }
-	static int32_t highestOneBit(int32_t v) { return v == 0 ? 0 : (int32_t)(0x80000000u >> __builtin_clz((uint32_t)v)); }
+	static int32_t numberOfLeadingZeros(int32_t v) { return v == 0 ? 32 : bits::clz32((uint32_t)v); }
+	static int32_t numberOfTrailingZeros(int32_t v) { return v == 0 ? 32 : bits::ctz32((uint32_t)v); }
+	static int32_t highestOneBit(int32_t v) { return v == 0 ? 0 : (int32_t)(0x80000000u >> bits::clz32((uint32_t)v)); }
 	static int32_t rotateLeft(int32_t v, int32_t d) { return (int32_t)(((uint32_t)v << (d & 31)) | ((uint32_t)v >> ((32 - d) & 31))); }
 };
 struct Long_ {
@@ -665,9 +678,9 @@ struct Long_ {
 	static int64_t max(int64_t a, int64_t b) { return a > b ? a : b; }
 	static int64_t min(int64_t a, int64_t b) { return a < b ? a : b; }
 	static int64_t sum(int64_t a, int64_t b) { return a + b; }
-	static int32_t bitCount(int64_t v) { return __builtin_popcountll((uint64_t)v); }
-	static int32_t numberOfTrailingZeros(int64_t v) { return v == 0 ? 64 : __builtin_ctzll((uint64_t)v); }
-	static int32_t numberOfLeadingZeros(int64_t v) { return v == 0 ? 64 : __builtin_clzll((uint64_t)v); }
+	static int32_t bitCount(int64_t v) { return bits::popcount64((uint64_t)v); }
+	static int32_t numberOfTrailingZeros(int64_t v) { return v == 0 ? 64 : bits::ctz64((uint64_t)v); }
+	static int32_t numberOfLeadingZeros(int64_t v) { return v == 0 ? 64 : bits::clz64((uint64_t)v); }
 };
 struct Double_ {
 	static constexpr double MAX_VALUE = 1.7976931348623157e308, MIN_VALUE = 4.9e-324;
@@ -745,8 +758,8 @@ struct Math {
 	static int32_t floorDiv(int32_t a, int32_t b) { int32_t q = div(a, b); if ((a % b != 0) && ((a < 0) != (b < 0))) --q; return q; }
 	static int32_t floorMod(int32_t a, int32_t b) { int32_t m = rem(a, b); if (m != 0 && ((m < 0) != (b < 0))) m += b; return m; }
 	static int64_t floorMod(int64_t a, int64_t b) { int64_t m = rem(a, b); if (m != 0 && ((m < 0) != (b < 0))) m += b; return m; }
-	static int32_t addExact(int32_t a, int32_t b) { int32_t r; if (__builtin_add_overflow(a, b, &r)) raise_new<ArithmeticException>(u"integer overflow"); return r; }
-	static int32_t multiplyExact(int32_t a, int32_t b) { int32_t r; if (__builtin_mul_overflow(a, b, &r)) raise_new<ArithmeticException>(u"integer overflow"); return r; }
+	static int32_t addExact(int32_t a, int32_t b) { int32_t r; if (bits::add_overflows(a, b, r)) raise_new<ArithmeticException>(u"integer overflow"); return r; }
+	static int32_t multiplyExact(int32_t a, int32_t b) { int32_t r; if (bits::mul_overflows(a, b, r)) raise_new<ArithmeticException>(u"integer overflow"); return r; }
 	static int32_t toIntExact(int64_t v) { if (v < IntegerS::MIN_VALUE || v > IntegerS::MAX_VALUE) raise_new<ArithmeticException>(u"integer overflow"); return (int32_t)v; }
 };
 
