@@ -304,6 +304,7 @@ Outcome run_case(const Env& env, const Vars& vars, const Case& c, const stdfs::p
     }
     spec.cwd = c.cwd_work ? work_abs : env.repo;
     spec.env["CB_STATE"] = work_s + "/state";
+    spec.env["CB_CONVERTED"] = work_s + "/converted";   // (likewise the converted projects: what another session builds in the target is not this case's)
     // the case's own knowledge base too (the checkout's is build/knowledge.v2.sqlite, which a case must neither read nor change)
     spec.env["CB_KNOWLEDGE_DB"] = work_s + "/state/db/knowledge.v2.sqlite";
     spec.env["CB_JOBS"] = "2";                  // each case is itself parallel inside; the gate holds the total down
