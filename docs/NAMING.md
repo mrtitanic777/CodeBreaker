@@ -33,7 +33,7 @@ fills in left out (addresses inside the module, calls and jumps out of the funct
 same wherever the code sits (`names::body_digest`, `bodies32`, `bodies16`). Bodies shorter than 24 bytes or
 with fewer than six instructions of their own are everybody's and have no digest.
 
-The knowledge base (`state/db/knowledge.v2.sqlite`, `src/knowledge/store.cpp`) keeps:
+The knowledge base (`<state>/db/knowledge.v2.sqlite`, `src/knowledge/store.cpp`) keeps:
 
 * `body(module, addr, hash, name, source)`: a function's body in one module, with the name the module itself
   gives it (an export, a symbol file);

@@ -39,7 +39,7 @@ engine returns it if those still match, else recomputes it -- and, through the s
 depends on what changed. This replaces state/cache (its generations become step versions), the
 describe text files, the notes inside C, and most of state/.
 
-The database is SQLite per binary (state/db/<sha>.sqlite): tables for facts by kind, blobs for
+The database is SQLite per binary (<state>/db/<sha>.sqlite): tables for facts by kind, blobs for
 large ones, kept to the facts of the current step versions (part of the size rule that
 base/cache.py already enforces). The function store becomes the database's verdict table, so the
 UI and the ledger read the same place.
@@ -71,7 +71,7 @@ behind a switch: `codebreaker build <module> --engine`, or `CB_ENGINE=1` (module
 then hands a 16-bit module to the engine). (Since 2026-10-31 the engine is the default and
 `CB_ENGINE=0` is the fallback -- "Built: the engine is the default" below.)
 
-**The database** (engine/facts.py). One SQLite file per binary, state/db/<sha256>.sqlite. A fact
+**The database** (engine/facts.py). One SQLite file per binary, <state>/db/<sha256>.sqlite. A fact
 is (kind, key, value): `function.object` at `1:7cd4` (a function's address in the original), or
 `ne.image` at "" (the whole binary). Each row keeps the step that made it, that step's version,
 and the (kind, key, hash) of every fact it was made from. A value is kept as bytes, text, JSON
@@ -705,7 +705,7 @@ resolves; the slots give what the lanes' own tables said), test_engine (12), tes
 
 ## Built: phase E (2026-10-29)
 
-The knowledge base is `codebreaker/knowledge/`: one SQLite file, state/db/knowledge.sqlite
+The knowledge base is `codebreaker/knowledge/`: one SQLite file, <state>/db/knowledge.sqlite
 (CB_KNOWLEDGE_DB), keyed by platform -- win16, win32, windows (both halves), vxd, dos, xbox360
 (the lanes' names ne, pe, le, mz, powerpc, 16, 32 are taken too). It sits beside the program
 databases but is not one of them: facts.hold never deletes it, since what was learned and given
@@ -856,7 +856,7 @@ export calls the same (lz32: 11 alike with the original's, version.dll: 10). War
 
 **One function store.** store/functions.py keeps its API (the UI, the MCP server, the ledger and the
 module writer read it), and a module's tables -- function, candidate, verdict, text, identified,
-built, variant -- are now in that binary's program database (state/db/<sha>.sqlite, the engine's
+built, variant -- are now in that binary's program database (<state>/db/<sha>.sqlite, the engine's
 file): the verdict table is the database's. The store's own file (state/functions.sqlite) is their
 index: the modules (sha, name, path, kind), the profiles and a summary per module (functions,
 verdicts, the latest class of each function, the profiles judged under) kept as each module is

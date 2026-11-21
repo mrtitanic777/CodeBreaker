@@ -161,11 +161,7 @@ std::string write(const config::Config& config, const std::string& key, const st
 namespace {
 
 stdfs::path st_file() {
-    if (const auto named = fs::get_env("CB_APP_SETTINGS"); named && !named->empty()) return fs::from_text(*named);
-    if (const auto local = fs::get_env("LOCALAPPDATA"); local && !local->empty()) return fs::from_text(*local) / "CodeBreaker" / "app.json";
-    if (const auto xdg = fs::get_env("XDG_CONFIG_HOME"); xdg && !xdg->empty()) return fs::from_text(*xdg) / "codebreaker" / "app.json";
-    if (const auto home = fs::get_env("HOME"); home && !home->empty()) return fs::from_text(*home) / ".config" / "codebreaker" / "app.json";
-    return {};
+    return convert::settings_file();
 }
 
 }  // namespace

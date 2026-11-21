@@ -5,7 +5,7 @@
 // recovered as HLSL (decompile/xbox_effect); the original .fx and the recovered one are both compiled by MonoGame's mgfxc and drawn by
 // config/xna/shadercheck with the same vertices, parameters and texture; every technique draws something and every pixel agrees within one
 // step. A machine without mgfxc or dotnet skips the test (neither is ours to install: NOT_IN_REPO.md); a shadercheck that is built is
-// kept in state/xna/shadercheck and rebuilt only when its sources are newer.
+// kept in build/xna/shadercheck and rebuilt only when its sources are newer.
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
@@ -60,7 +60,7 @@ CB_TEST("xna.proof.recovered_hlsl_behaves_as_the_source", [] {
 
     const stdfs::path data = testing::data_path("../tests/data/xbox_effects");
     const stdfs::path source = testing::data_path("../config/xna/shadercheck");
-    const stdfs::path built = testing::data_path("../state/xna/shadercheck");
+    const stdfs::path built = testing::data_path("../build/xna/shadercheck");
     const stdfs::path exe = built / "shadercheck.exe";
     if (!stdfs::exists(exe) || cb::fs::last_write_time(exe) < cb::fs::last_write_time(newest_source(source))) {
         stdfs::create_directories(built);

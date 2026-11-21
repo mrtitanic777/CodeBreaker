@@ -148,7 +148,7 @@ Locations Locations::of_checkout(const stdfs::path& checkout_root) {
     Locations l;
     l.checkout_root = checkout_root;
     l.profiles = checkout_root / "config" / "exact" / "toolchains";
-    l.state = checkout_root / "state";
+    l.state = checkout_root / "work" / "state";
     const stdfs::path settings = checkout_root / "settings.json";
     std::error_code ec;
     if (stdfs::is_regular_file(settings, ec)) {

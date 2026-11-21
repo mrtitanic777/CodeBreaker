@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- CodeBreaker's effect comparer (Program.cs); built by tests/test_xbox_effect.py into state/xna/shadercheck. -->
+  <!-- CodeBreaker's effect comparer (Program.cs); built by src/xna/effect_proof_test.cpp into build/xna/shadercheck. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0</TargetFramework>

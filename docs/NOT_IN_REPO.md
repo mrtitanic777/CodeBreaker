@@ -41,7 +41,7 @@ setting for one run.
 | XNA Game Studio 4.0 (its GamerServices, Net, Storage and Avatar assemblies: `xna port` generates its stubs from their metadata) | the Windows GAC | |
 | MonoGame DesktopGL 3.8.1 and the .NET 8 SDK (`xna port` builds against them) | NuGet's cache | |
 | ffmpeg (XMA / XMA2 audio decoded to WAV) | PATH | `ffmpeg` |
-| Per-game hand work for `xna port` (a hand port's shaders and fixes) | `state/xna/overlays/<name>/` | `xna_overlays` |
+| Per-game hand work for `xna port` (a hand port's shaders and fixes) | `<state>/xna/overlays/<name>/` | `xna_overlays` |
 
 None of these is redistributable, and none is needed to read the code: each command says which
 setting it is missing.

@@ -205,11 +205,11 @@ Planner standard_planner(const std::string& target = "original");
 // output, anything else the plain list. Not-supported ones carry their reason.
 std::vector<translate::capability::Target> targets_for(const std::filesystem::path& file);
 
-// The language last chosen in the window ("original" when none), kept per user (a small JSON file in the user's application-data folder; the
+// The language last chosen in the window ("original" when none), kept per user (a small JSON file, config/app.json; the
 // environment variable CB_APP_SETTINGS names another file). remember_target writes it; failures to write are ignored.
 std::string remembered_target();
 void remember_target(const std::string& id);
-// The per-user file above (app.json); empty when the system names no application-data folder. The recent-conversions list is kept beside it.
+// The per-user file above (config/app.json). The recent-conversions list is kept beside it.
 std::filesystem::path settings_file();
 
 // The hint under "Drag a file here": what the window takes, from what the translator reads (".exe, .dll, ROMs, disc images, source code (.cs .py ...)").

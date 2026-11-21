@@ -187,7 +187,7 @@ CB_TEST("exact.toolchain.a_checkouts_locations_come_from_its_settings", [] {
     CB_CHECK(fs::same_path(l.profiles, dir.path() / "config" / "exact" / "toolchains"));
     // no settings file: the defaults
     fs::ScopedTempDir bare("toolchain-bare");
-    CB_CHECK(fs::same_path(Locations::of_checkout(bare.path()).state, bare.path() / "state"));
+    CB_CHECK(fs::same_path(Locations::of_checkout(bare.path()).state, bare.path() / "work" / "state"));
 });
 
 CB_TEST("exact.toolchain.a_sources_first_line_gives_its_own_switches", [] {

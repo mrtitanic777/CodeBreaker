@@ -30,8 +30,8 @@ P16Setup p16_setup() {
     };
     for (const stdfs::path& root : {s.config.checkout_root(), s.config.main_checkout()}) {
         if (s.fixture.empty() && exists(root / "tests" / "fixtures" / "lzexpand")) s.fixture = root / "tests" / "fixtures" / "lzexpand";
-        if (s.original.empty() && exists(root / "state" / "mini" / "original" / "LZEXPAND.DLL")) s.original = root / "state" / "mini" / "original" / "LZEXPAND.DLL";
     }
+    if (const auto boot = s.config.path("win95_boot"); boot && exists(*boot / "mini" / "original" / "LZEXPAND.DLL")) s.original = *boot / "mini" / "original" / "LZEXPAND.DLL";
     s.ready = exists(tools.dosbox_x) && exists(tools.msc6) && exists(tools.msvc152) && tools.win31_kit && !s.fixture.empty() && !s.original.empty();
     if (!s.ready) std::cerr << "build16: the period tools or the fixture are not here; skipped\n";
     return s;

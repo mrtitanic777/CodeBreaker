@@ -23,13 +23,10 @@ std::filesystem::path converted_root() {
 
 namespace {
 
-// <application data>/CodeBreaker/app.json: %LOCALAPPDATA% on Windows, $XDG_CONFIG_HOME or ~/.config elsewhere; CB_APP_SETTINGS names a file instead.
+// config/app.json of the main checkout (what a person sets for the app, beside the rest of the configuration; not committed); CB_APP_SETTINGS names a file instead.
 std::filesystem::path cv_settings_file() {
     if (const auto named = fs::get_env("CB_APP_SETTINGS"); named && !named->empty()) return fs::from_text(*named);
-    if (const auto local = fs::get_env("LOCALAPPDATA"); local && !local->empty()) return fs::from_text(*local) / "CodeBreaker" / "app.json";
-    if (const auto xdg = fs::get_env("XDG_CONFIG_HOME"); xdg && !xdg->empty()) return fs::from_text(*xdg) / "codebreaker" / "app.json";
-    if (const auto home = fs::get_env("HOME"); home && !home->empty()) return fs::from_text(*home) / ".config" / "codebreaker" / "app.json";
-    return {};
+    return config::current().main_checkout() / "config" / "app.json";
 }
 
 }  // namespace
