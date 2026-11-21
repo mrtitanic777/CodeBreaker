@@ -30,7 +30,8 @@ void register_cpp03_back_end(Registry& r) {
 void register_cpp17_back_end(Registry& r) {
     r.add(BackEnd{"cpp17",
                   "l2 core cpp17",
-                  {{"java", "javajudge", "five modern programs, 635 cases, each run as Java and as C++17", {"jdk", "cxx", "l2"}, false},
+                  {{"java", "translate_file", "builds the C++17 translation, runs it beside the Java program (javac and the JVM), and compares what they print and their exit code",
+                    {"jdk", "cxx", "l2"}, true},
                    {"python", "judge-py-cpp",
                     "builds the C++17 translation, runs it beside the Python module (CPython), and compares the answer of every run_* function",
                     {"python", "cxx", "l2"}, true}}});
@@ -42,7 +43,8 @@ void register_csharp_back_end(Registry& r) {
                   "backends/csharp",
                   {{"csharp", "judge-cs-cpp", "writes the program as C# again, runs both (csc and the installed .NET), and compares what they print and their exit code",
                     {"dotnet"}, true},
-                   {"java", "javajudge", "four of four programs run alike as Java and as C#", {"jdk", "dotnet"}, false}}});
+                   {"java", "translate_file", "writes the program as C#, runs it beside the Java program (javac and the JVM), and compares what they print and their exit code",
+                    {"jdk", "dotnet"}, true}}});
 }
 
 // C# as C++17 on its own runtime (csrt.hpp): the emitter the plan folds into the L2 core's C++17 writer.

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <format>
+#include <functional>
 
 #include "core/arena.hpp"
 #include "core/error.hpp"
@@ -10,9 +11,12 @@
 #include "core/process.hpp"
 #include "core/text.hpp"
 #include "decompile/jar.hpp"
+#include "java/apimap.hpp"
 #include "java/frontend.hpp"
 #include "translate/backends/c_java.hpp"
+#include "translate/backends/cpp17.hpp"
 #include "translate/backends/csharp.hpp"
+#include "translate/backends/csharp_java.hpp"
 #include "translate/dotnet/judge.hpp"
 #include "translate/dotnet/pairs.hpp"
 #include "translate/frontends/csharp/frontend.hpp"
@@ -60,7 +64,7 @@ void tf_write_cpp17(const stdfs::path& built_dir, const std::string& name, const
     fs::write_text(note, "The C++17 translation of " + name + ".\n\nIt builds with any C++17 compiler; the runtime it needs is in runtime/.\n\n"
                          "  g++ -std=c++17 -fwrapv -O1 -I runtime " + name + ".cpp -o " + name + "\n"
                          "  clang++ -std=c++17 -fwrapv -O1 -I runtime " + name + ".cpp -o " + name + "\n"
-                         "  cl /std:c++17 /EHsc /utf-8 /I runtime " + name + ".cpp\n");
+                         "  cl /std:c++17 /EHsc /utf-8 /bigobj /I runtime " + name + ".cpp\n");
     result.files.push_back(stdfs::relative(note, out));
 }
 
@@ -210,20 +214,16 @@ JavaMain tf_java_main(std::span<ir::Node* const> units, const std::string& stem)
     return chosen;
 }
 
-// What a program printed, with Windows' line ends as Java's own, and how it ended.
-struct JavaRun {
-    std::string out;
-    std::uint32_t exit_code = 0;
-    bool timed_out = false;
-};
-
-JavaRun tf_java_run(process::ProcessSpec spec) {
-    spec.timeout = std::chrono::seconds(120);
+// A built program run, as the judge compares it.
+dj::Run tf_java_run(process::ProcessSpec spec) {
+    spec.timeout = dj::kTimeout;
     const process::ProcessResult ran = process::run(spec);
-    return {text::replace_all(text::sanitize_utf8(as_text(ran.out)), "\r\n", "\n"), ran.exit_code, ran.timed_out};
+    if (ran.timed_out) return {.ok = true, .log = "it did not finish in two minutes"};
+    return {.ok = true, .exit = ran.exit_code, .out = text::sanitize_utf8(as_text(ran.out)), .err = text::sanitize_utf8(as_text(ran.err))};
 }
 
-Result tf_java_c(const stdfs::path& input, const stdfs::path& out, const stdfs::path& work, const judge_cs_cpp::Environment& environment) {
+// Java as C, C++17 or C#: the program and its translation are both run, and only a translation that does what the program does is handed over.
+Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::path& out, const stdfs::path& work, const judge_cs_cpp::Environment& environment) {
     const auto java = decompile::jar::find_java({});
     if (!java) throw Error("translating Java needs a JDK (java and javac): none found");
     const stdfs::path javac = java->parent_path() / (java->extension() == ".exe" ? "javac.exe" : "javac");
@@ -265,53 +265,107 @@ Result tf_java_c(const stdfs::path& input, const stdfs::path& out, const stdfs::
                                               : "this file has several classes with a main and none named for the file, so which one to run is not known";
         return result;
     }
-    const backends::c_java::Built built = backends::c_java::build(arena, units, judged / "c");
-    if (!built.exe) {
-        result.verdict = built.why.starts_with("Decline:") ? Verdict::Refused : Verdict::CompileFailed;
-        result.detail = built.why;
-        return result;
+    // write and build the translation; `run_it` then runs it
+    std::function<dj::Run()> run_it;
+    std::vector<stdfs::path> csharp_files;
+    const auto native_run = [&main_class](const stdfs::path& exe) {
+        process::ProcessSpec native;
+        native.argv = {fs::to_text(exe)};
+        native.env["JRT_MAIN"] = main_class.simple;
+        return tf_java_run(std::move(native));
+    };
+    if (to == "c") {
+        const backends::c_java::Built built = backends::c_java::build(arena, units, judged / "c");
+        if (!built.exe) {
+            result.verdict = built.why.starts_with("Decline:") ? Verdict::Refused : Verdict::CompileFailed;
+            result.detail = built.why;
+            return result;
+        }
+        run_it = [&native_run, exe = *built.exe] { return native_run(exe); };
+    } else if (to == "cpp17") {
+        const auto cxx = judge_cs_cpp::find_cxx("");
+        if (!cxx) throw Error("translating Java to C++17 needs a C++17 compiler (g++, clang++ or Visual Studio's cl): none found");
+        std::string text_of_program;
+        try {
+            const native_l2::Library library = native_l2::Library::builtin();
+            text_of_program = backends::cpp17::program(library, arena, units);
+        } catch (const backends::cpp17::Decline& declined) {
+            result.verdict = Verdict::Refused;
+            result.detail = std::string("Decline: ") + declined.what();
+            return result;
+        }
+        const stdfs::path written = judged / "cpp" / (name + ".cpp");
+        fs::make_dirs(written.parent_path());
+        fs::write_text(written, text_of_program);
+        const stdfs::path exe = judged / "cpp" / (name + ".exe");
+        std::string log;
+        if (!judge_cs_cpp::build_program(*cxx, backends::cpp17::runtime_dir(), written, exe, log)) {
+            result.verdict = Verdict::CompileFailed;
+            result.detail = dj::first_errors(log);
+            return result;
+        }
+        run_it = [&native_run, exe] { return native_run(exe); };
+    } else {
+        const auto sdk = dotnet::Sdk::find();
+        if (!sdk || !sdk->available()) throw Error("translating Java to C# needs the .NET SDK (dotnet.exe with Roslyn and the targeting pack)");
+        for (ir::Node* unit : units) ir::get<ir::Unit>(unit)->lang = "java";
+        const java::apimap::Registry registry = java::apimap::Registry::load(backends::cpp17::api_maps_dir());
+        cs::Options options;
+        options.libraries["java"] = backends::csharp_java::factory(registry);
+        options.runtime_dir = environment.config.checkout_root() / "config" / "translate" / "dotnet" / "runtime";
+        cs::Program written(units, options);
+        csharp_files = written.write(judged / "cs");
+        std::vector<std::string> why;
+        for (const cs::Gap& g : written.ledger()) why.push_back(std::format("{} {}: {}", g.where, g.kind, g.why));
+        for (ir::Node* unit : units)
+            for (ir::Node* n : ir::unsupported(unit)) why.push_back(ir::get<ir::Unsupported>(n)->raw.value_or("a construct the front end does not read"));
+        if (!why.empty()) {
+            result.verdict = Verdict::Refused;
+            result.detail = "declined: " + text::join(why, "; ");
+            return result;
+        }
+        const dj::Run csharp_run = dj::csharp(dj::CSharpToolchain::of(*sdk), csharp_files, judged / "run-trans", {.main = main_class.binary});
+        run_it = [csharp_run] { return csharp_run; };
     }
     translating(1, 1, {});
 
     checking(0, 3, "Running the Java program");
     process::ProcessSpec jvm;
     jvm.argv = {fs::to_text(*java), "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-cp", fs::to_text(judged / "classes"), main_class.binary};
-    const JavaRun original = tf_java_run(jvm);
-    if (original.timed_out) {
-        result.verdict = Verdict::BadInput;
-        result.detail = "the Java program did not finish in two minutes";
-        return result;
-    }
+    const dj::Run original = tf_java_run(std::move(jvm));
     checking(1, 3, "Running the translation");
-    process::ProcessSpec native;
-    native.argv = {fs::to_text(*built.exe)};
-    native.env["JRT_MAIN"] = main_class.simple;
-    const JavaRun translation = tf_java_run(native);
+    const dj::Run translation = run_it();
     checking(2, 3, "Comparing what both print");
-    if (translation.timed_out || translation.exit_code != original.exit_code || translation.out != original.out) {
-        result.verdict = Verdict::Differs;
-        if (translation.timed_out) {
-            result.detail = "the translation did not finish in two minutes";
-        } else if (translation.exit_code != original.exit_code) {
-            result.detail = std::format("Java exited with {}, the translation with {}", original.exit_code, translation.exit_code);
-        } else {
-            const auto first = std::mismatch(original.out.begin(), original.out.end(), translation.out.begin(), translation.out.end());
-            const auto line = 1 + std::count(original.out.begin(), first.first, '\n');
-            result.detail = std::format("what they print first differs on line {}", line);
-        }
+    const dj::Judgement j = dj::compare(original, translation);
+    checking(3, 3, {});
+    switch (j.verdict) {
+        case dj::Verdict::Equivalent: result.verdict = Verdict::Agrees; break;
+        case dj::Verdict::Divergent: result.verdict = Verdict::Differs; break;
+        case dj::Verdict::Refused: result.verdict = Verdict::Refused; break;
+        case dj::Verdict::NoCompile: result.verdict = Verdict::CompileFailed; break;
+        case dj::Verdict::NoOriginal: result.verdict = Verdict::BadInput; break;
+    }
+    if (result.verdict != Verdict::Agrees) {
+        result.detail = std::string(dj::word(j.verdict)) + ": " + j.detail;
         return result;
     }
-    checking(3, 3, {});
-    result.verdict = Verdict::Agrees;
-    tf_copy(judged / "c" / "program.c", out / (name + ".c"), result.files, out);
-    const stdfs::path runtime = backends::c_java::default_runtime_dir();
-    for (const char* file : {"jrt.h", "jrt.c"}) tf_copy(runtime / file, out / "runtime" / file, result.files, out);
-    const stdfs::path note = out / "BUILD.txt";
-    fs::write_text(note, "The C translation of " + name + ".java.\n\nIt builds with a C11 compiler; the runtime it needs is in runtime/.\n\n"
-                         "  gcc -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + " -lm\n"
-                         "  clang -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + "\n");
-    result.files.push_back(stdfs::relative(note, out));
-    result.checked = "The Java program and its C translation printed the same output and exited with the same code.";
+
+    if (to == "c") {
+        tf_copy(judged / "c" / "program.c", out / (name + ".c"), result.files, out);
+        const stdfs::path runtime = backends::c_java::default_runtime_dir();
+        for (const char* file : {"jrt.h", "jrt.c"}) tf_copy(runtime / file, out / "runtime" / file, result.files, out);
+        const stdfs::path note = out / "BUILD.txt";
+        fs::write_text(note, "The C translation of " + name + ".java.\n\nIt builds with a C11 compiler; the runtime it needs is in runtime/.\n\n"
+                             "  gcc -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + " -lm\n"
+                             "  clang -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + "\n");
+        result.files.push_back(stdfs::relative(note, out));
+    } else if (to == "cpp17") {
+        tf_write_cpp17(judged / "cpp", name, {"jrt.hpp"}, {name + ".cpp"}, out, result);
+    } else {
+        for (const stdfs::path& p : csharp_files) tf_copy(p, out / p.filename(), result.files, out);
+    }
+    const std::string_view language = to == "c" ? "C" : to == "cpp17" ? "C++17" : "C#";
+    result.checked = std::format("The Java program and its {} translation printed the same output and exited with the same code.", language);
     return result;
 }
 
@@ -319,7 +373,7 @@ Result tf_java_c(const stdfs::path& input, const stdfs::path& out, const stdfs::
 
 bool can_run(const capability::Path& path) {
     return (path.from == "csharp" && (path.to == "cpp17" || path.to == "csharp")) || (path.from == "python" && path.to == "cpp17") ||
-           (path.from == "java" && path.to == "c");
+           (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp"));
 }
 
 Result run(const capability::Path& path, const stdfs::path& input, const stdfs::path& out, const stdfs::path& work, const judge_cs_cpp::Environment& environment) {
@@ -331,7 +385,7 @@ Result run(const capability::Path& path, const stdfs::path& input, const stdfs::
     if (path.from == "csharp" && path.to == "cpp17") result = tf_csharp_cpp17(absolute_input, out, absolute_work, environment);
     else if (path.from == "csharp" && path.to == "csharp") result = tf_csharp_csharp(absolute_input, out, absolute_work, environment);
     else if (path.from == "python" && path.to == "cpp17") result = tf_python_cpp17(absolute_input, out, absolute_work, environment);
-    else if (path.from == "java" && path.to == "c") result = tf_java_c(absolute_input, out, absolute_work, environment);
+    else if (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp")) result = tf_java(path.to, absolute_input, out, absolute_work, environment);
     else throw Error("no way to translate " + path.from + " to " + path.to + " is wired");
     if (result.verdict != Verdict::Agrees) result.files.clear();
     return result;

@@ -82,7 +82,7 @@ bool build(const Cxx& cxx, const stdfs::path& runtime, const stdfs::path& source
     if (cxx.kind == Compiler::Msvc) {
         // cl needs Visual Studio's environment: a small batch file sets it and builds
         const stdfs::path bat = source.parent_path() / "build.cmd";
-        fs::write_text(bat, std::format("@echo off\r\ncall \"{}\" >nul\r\ncl /nologo /std:c++17 /EHsc /utf-8 /permissive- /W3 /wd4244 /wd4267 /wd4018 /wd4146 /wd4309 /wd4305 /I\"{}\" /Fe\"{}\" /Fo\"{}\\\\\" \"{}\"\r\n",
+        fs::write_text(bat, std::format("@echo off\r\ncall \"{}\" >nul\r\ncl /nologo /std:c++17 /EHsc /utf-8 /permissive- /bigobj /W3/wd4244 /wd4267 /wd4018 /wd4146 /wd4309 /wd4305 /I\"{}\" /Fe\"{}\" /Fo\"{}\\\\\" \"{}\"\r\n",
                                         fs::to_text(*vcvars()), fs::to_text(runtime), fs::to_text(exe), fs::to_text(source.parent_path()), fs::to_text(source)));
         spec.argv = {"cmd", "/c", fs::to_text(bat)};
     } else {

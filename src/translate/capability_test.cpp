@@ -110,6 +110,27 @@ CB_TEST("translate.capability.java_source_becomes_c_only_when_both_programs_agre
     stdfs::remove_all(work, ec);
 });
 
+CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_programs_agree", [] {
+    const stdfs::path work = capt_work("java-others");
+    cb::fs::write_text(work / "Streams.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/cpp03/streams/src/000_Streams.java")));
+    cb::fs::write_text(work / "Shapes.java", "public class Shapes {\n    interface Shape { double area(); }\n"
+                                             "    static class Square implements Shape { final double width; Square(double w) { width = w; } public double area() { return width * width; } }\n"
+                                             "    public static void main(String[] args) {\n        Shape s = new Square(1.5);\n        System.out.println(s.area());\n    }\n}\n");
+    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}};
+    for (const auto& [to, program] : cases) {
+        const cap::Path* path = cap::find_path("java", to);
+        CB_CHECK(path != nullptr);
+        if (path == nullptr || !cap::missing_tool(*path).empty()) continue;   // (no JDK, C++ compiler or .NET SDK here)
+        const std::string id = to;
+        const tf::Result r = capt_run("java", id, work / (std::string(program) + ".java"), work / ("out-" + id), work / ("scratch-" + id));
+        if (r.verdict != tf::Verdict::Agrees) std::cerr << id << ": " << r.detail.substr(0, 1000) << std::endl;
+        CB_CHECK(r.verdict == tf::Verdict::Agrees);
+        CB_CHECK(!r.files.empty());
+    }
+    std::error_code ec;
+    stdfs::remove_all(work, ec);
+});
+
 CB_TEST("translate.capability.python_source_goes_to_cpp17_only", [] {
     const std::vector<cap::Target> list = cap::targets_for_file("tool.py");
     const std::string missing = cap::missing_tool(*cap::find_path("python", "cpp17"));
