@@ -106,6 +106,21 @@ std::vector<std::string> data_lines(const Disassembly& code, std::uint32_t objec
 
 std::string module_listing_name(const std::string& name) { return text::lower(name) + ".asm"; }
 
+struct VerifyTotals {
+    std::size_t code = 0, data = 0, overlap = 0, overrun = 0;
+};
+
+// (out of line: MSVC 14.52 at /O2 printed garbage for these sums when they were written inline in the command's loop)
+#if defined(_MSC_VER) && !defined(__clang__)
+__declspec(noinline)
+#endif
+void add_to_totals(VerifyTotals& totals, std::size_t code, std::size_t data, std::size_t overlap, std::size_t overrun) {
+    totals.code += code;
+    totals.data += data;
+    totals.overlap += overlap;
+    totals.overrun += overrun;
+}
+
 }  // namespace
 
 std::string service_text(const ServiceCall& call, const DdkNames& names) {
@@ -265,7 +280,8 @@ int main(const Environment& env, std::span<const std::string> args) {
             const std::vector<std::string> paths = a.values("paths");
             if (a.flag("--verify")) {
                 const std::filesystem::path folder = paths.empty() ? env.corpus.root() : fs::from_text(paths[0]);
-                std::size_t clean = 0, dirty = 0, modules = 0, code_total = 0, data_total = 0, overlap_total = 0, overrun_total = 0;
+                std::size_t clean = 0, dirty = 0, modules = 0;
+                VerifyTotals totals;
                 for (const std::filesystem::path& file : drivers_of(folder)) {
                     try {
                         for (const auto& [name, driver] : le::open_modules(file)) {
@@ -273,7 +289,8 @@ int main(const Environment& env, std::span<const std::string> args) {
                             for (const ObjectCheck& c : verify(Disassembly::run(driver, env.names))) {
                                 overlap += c.overlap, overrun += c.overrun, code += c.code, data += c.data;
                             }
-                            code_total += code, data_total += data, overlap_total += overlap, overrun_total += overrun, ++modules;
+                            add_to_totals(totals, code, data, overlap, overrun);
+                            ++modules;
                             if (overlap != 0 || overrun != 0) {
                                 ++dirty;
                                 cb::out("  DIRTY {:<12} overlap={} overrun={}\n", name, overlap, overrun);
@@ -285,8 +302,8 @@ int main(const Environment& env, std::span<const std::string> args) {
                         cb::out("  ERROR {:<16} {}\n", file.filename().string(), cut(e.what()));
                     }
                 }
-                cb::out("== verify: {} modules, {} CLEAN, {} dirty | code={} data={} overlap={} overrun={} ==\n", modules, clean, dirty, code_total, data_total, overlap_total,
-                        overrun_total);
+                cb::out("== verify: {} modules, {} CLEAN, {} dirty | code={} data={} overlap={} overrun={} ==\n", modules, clean, dirty, totals.code, totals.data, totals.overlap,
+                        totals.overrun);
             } else if (a.flag("--all")) {
                 const std::filesystem::path folder = paths.empty() ? env.corpus.root() : fs::from_text(paths[0]);
                 const std::filesystem::path out_folder = paths.size() > 1 ? fs::from_text(paths[1]) : env.listing_folder;

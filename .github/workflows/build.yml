@@ -13,7 +13,8 @@ on:
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  # (a run on master finishes, so that frequent pushes cannot keep every compiler from ever reporting; the newest waiting push runs next)
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   msvc:
