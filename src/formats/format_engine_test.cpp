@@ -193,6 +193,101 @@ CB_TEST("formats.format_engine.language", [] {
     CB_CHECK_EQ(reg.identify(w.b).size(), std::size_t{1});
 });
 
+// The language of the tables behind pointers: functions, xlat (a section table), scan, cstr, `[while ...]`, `try`, `part`,
+// variables, a root at an offset, and 3-byte integers.
+CB_TEST("formats.format_engine.tables", [] {
+    eng::Registry reg;
+    reg.add_text(R"(
+        format tab
+        endian le
+        struct File {
+            n       : u8
+            maps    : Map[n]
+            at_rva  : u16
+            names @ off(at_rva)       : Name[3] try part names
+            late  @ off(at_rva + 100) : u16 try
+            missing : u16 try
+            pad     : u8 try
+            var     : u8 if $mode == 7
+            let where   = scan(1, "XY")
+            let nowhere = scan(0, "QQ")
+            list @ 20 : Elt[while $pos < 22 until _.v == 0] try part list
+            let tail = $mode + 1
+        }
+        struct Map { va : u16  size : u16  raw : u16  let end = va + size }
+        struct Name { text : cstr(4) }
+        struct Elt { v : u8 }
+        struct Page { number : u24be  kind : u8 }
+        struct Root { first : Page  second : Page }
+        fn off(rva) = xlat(maps, rva, va, size, raw)
+    )");
+    W w;
+    w.u8(2).u16(0x1000).u16(0x100).u16(0x40).u16(0x2000).u16(0x80).u16(0x60);   // two sections: 0x1000+0x100 -> 0x40, 0x2000+0x80 -> 0x60
+    w.u16(0x2004).u16(0xBEEF).u8(0x55);                                         // at_rva: 4 bytes into the second section; missing; pad
+    w.pad_to(20).u8(5).u8(6).u8(7).u8(0);                                       // the list at 20
+    w.pad_to(0x40).str("ab").u8(0).str("cdefg").u8(0).str("h");                 // the first section's start
+    w.pad_to(0x64).str("Z").u8(0).str("hi").u8(0).u8(0).str("XY").pad_to(0x70);
+    const eng::Tree whole = reg.read("tab", w.b);
+    CB_CHECK_EQ(whole.root.get("maps").children.size(), std::size_t{2});
+    CB_CHECK_EQ(whole.root.u("maps[1].end"), 0x2080u);
+    CB_CHECK_EQ(whole.root.u("missing"), 0xBEEFu);
+    CB_CHECK_EQ(whole.root.u("pad"), 0x55u);
+    CB_CHECK(whole.root.find("names") == nullptr);                              // a part not asked for
+    CB_CHECK(whole.root.find("list") == nullptr);
+    CB_CHECK_EQ(whole.root.u("late"), 0u);                                      // outside every section: a number that cannot be read is 0 ...
+    CB_CHECK(whole.root.get("late").kind == eng::Kind::Let);                    // ... with no bytes behind it
+    CB_CHECK_EQ(whole.root.i("nowhere"), -1);
+    CB_CHECK_EQ(whole.root.i("where"), 0x6A);
+    CB_CHECK(whole.root.find("var") == nullptr);
+    CB_CHECK_EQ(whole.root.i("tail"), 1);
+
+    eng::ReadOptions with;
+    with.parts.insert("names");
+    with.parts.insert("list");
+    const eng::Tree t = reg.read("tab", w.b, with);
+    const eng::Node& names = t.root.get("names");
+    CB_CHECK_EQ(names.offset, 0x64u);                                           // 0x2004 -> 0x60 + 4
+    CB_CHECK_EQ(names.children.size(), std::size_t{3});
+    CB_CHECK_EQ(t.root.str("names[0].text"), "Z");                              // a cstr: the text up to its terminator ...
+    CB_CHECK_EQ(t.root.get("names[0].text").size, 2u);                          // ... and the node covers the terminator too
+    CB_CHECK_EQ(t.root.str("names[1].text"), "hi");
+    CB_CHECK_EQ(t.root.get("names[2].text").size, 1u);                          // an empty string: just the terminator
+    CB_CHECK_EQ(t.root.get("list").children.size(), std::size_t{2});            // 5, 6: the cursor reached the limit before the 0
+    CB_CHECK(eng::write(t) == w.b);
+    CB_CHECK_EQ(reg.parts("tab").size(), std::size_t{2});                       // list, names
+
+    // `try`: a number past the end of the data is 0, a field is not there, an array keeps what was read.
+    const Bytes cut(w.b.begin(), w.b.begin() + 0x10);                           // `missing` has one of its two bytes
+    CB_CHECK_EQ(reg.read("tab", cut).root.u("missing"), 0u);
+    CB_CHECK(reg.read("tab", cut).root.get("missing").kind == eng::Kind::Let);
+    eng::ReadOptions all;
+    all.all_parts = true;
+    const Bytes early(w.b.begin(), w.b.begin() + 0x42);
+    CB_CHECK_EQ(reg.read("tab", early, all).root.get("names").children.size(), std::size_t{0});   // the pointer lies beyond the data
+
+    // variables, 3-byte integers and a root struct at an offset.
+    eng::ReadOptions vars;
+    vars.vars["mode"] = 7;
+    const eng::Tree v = reg.read("tab", w.b, vars);
+    CB_CHECK_EQ(v.root.i("tail"), 8);
+    CB_CHECK_EQ(v.root.u("var"), 0u);                                           // read: the byte after `pad`
+    const Bytes pages{0xAA, 0x01, 0x02, 0x03, 0x07, 0x00, 0x00, 0x09, 0x02};
+    eng::ReadOptions at;
+    at.root = "Root";
+    at.at = 1;
+    const eng::Tree r = reg.read("tab", pages, at);
+    CB_CHECK_EQ(r.root.u("first.number"), 0x010203u);                           // big-endian, 3 bytes
+    CB_CHECK_EQ(r.root.u("first.kind"), 7u);
+    CB_CHECK_EQ(r.root.u("second.number"), 9u);
+    CB_CHECK_EQ(r.root.get("second.number").offset, 5u);
+    at.at = 100;
+    CB_CHECK_THROWS_AS(Error, reg.read("tab", pages, at));
+    // a tree read with keep_source = false is for reading only
+    eng::ReadOptions lean;
+    lean.keep_source = false;
+    CB_CHECK(reg.read("tab", w.b, lean).source.empty());
+});
+
 CB_TEST("formats.format_engine.description_errors", [] {
     eng::Registry reg;
     CB_CHECK_THROWS_AS(ParseError, reg.add_text("struct File { a : u8 }"));                  // no `format` line

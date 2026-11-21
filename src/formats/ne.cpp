@@ -7,9 +7,12 @@
 
 #include "core/fs.hpp"
 #include "core/io.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/read.hpp"
 
 namespace cb::formats::ne {
+
+namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -57,40 +60,74 @@ const char* resource_type_name(std::uint16_t id) {
 
 // ---- opening ---------------------------------------------------------------------------------------------
 
+namespace {
+
+// The module read through ne.fmt: the struct `Ne` at the header's offset, and the tables of one part ("names",
+// "resources", "relocs") when a reader asks for it. A module embedded in a larger file, or of a boot image, tells the
+// description where its segments' data starts ($base) and where its overlay does ($overlay).
+eng::Tree read_ne(ByteView data, std::uint64_t at, std::uint64_t base, std::optional<std::uint64_t> overlay, std::string_view part = {}) {
+    eng::ReadOptions options;
+    options.root = "Ne";
+    options.at = at;
+    options.keep_source = false;   // only read from
+    options.vars["base"] = static_cast<std::int64_t>(base);
+    options.vars["overlay"] = static_cast<std::int64_t>(overlay.value_or(0));
+    if (!part.empty()) options.parts.insert(std::string(part));
+    return eng::builtin().read("ne", data, options);
+}
+
+// A structure at any offset of the file, as its own root (a name table).
+eng::Tree read_ne_struct(ByteView data, std::string_view root, std::uint64_t at) {
+    eng::ReadOptions options;
+    options.root = std::string(root);
+    options.at = at;
+    options.keep_source = false;
+    return eng::builtin().read("ne", data, options);
+}
+
+std::string name_of(const eng::Node& entry, std::string_view child) {
+    const eng::Node* n = entry.child(child);
+    return n ? text::from_latin1(as_bytes(n->text)) : std::string();
+}
+
+}  // namespace
+
 Module Module::parse(Bytes data, std::uint64_t ne_offset) {
     Module m;
     m.data_ = std::move(data);
     m.ne_offset_ = ne_offset;
-    const ByteView d = m.data_;
-    const std::uint64_t o = ne_offset;
-    if (!starts_with(d, o, "NE")) throw FormatError(kReader, o, "no NE signature");
+    const eng::Tree tree = read_ne(m.data_, ne_offset, 0, std::nullopt);
+    const eng::Node& n = tree.root;
     Header& h = m.header_;
-    h.linker_version = u8(d, o + 0x02);
-    h.linker_revision = u8(d, o + 0x03);
-    h.entry_table_offset = u16(d, o + 0x04);
-    h.entry_table_length = u16(d, o + 0x06);
-    h.crc = u32(d, o + 0x08);
-    h.flags = u16(d, o + 0x0C);
-    h.autodata_segment = u16(d, o + 0x0E);
-    h.heap_size = u16(d, o + 0x10);
-    h.stack_size = u16(d, o + 0x12);
-    h.cs_ip = u32(d, o + 0x14);
-    h.ss_sp = u32(d, o + 0x18);
-    h.segment_count = u16(d, o + 0x1C);
-    h.module_ref_count = u16(d, o + 0x1E);
-    h.nonresident_size = u16(d, o + 0x20);
-    h.segment_table = u16(d, o + 0x22);
-    h.resource_table = u16(d, o + 0x24);
-    h.resident_names_table = u16(d, o + 0x26);
-    h.module_ref_table = u16(d, o + 0x28);
-    h.imported_names_table = u16(d, o + 0x2A);
-    h.nonresident_offset = u32(d, o + 0x2C);
-    h.movable_entries = u16(d, o + 0x30);
-    h.alignment_shift = u16(d, o + 0x32);
-    if (!h.alignment_shift) h.alignment_shift = 9;
-    h.resource_segments = u16(d, o + 0x34);
-    h.target_os = u8(d, o + 0x36);
-    if (h.segment_table >= 0x40) h.expected_windows_version = u16(d, o + 0x3E);
+    h.linker_version = static_cast<std::uint8_t>(n.u("linker_version"));
+    h.linker_revision = static_cast<std::uint8_t>(n.u("linker_revision"));
+    h.entry_table_offset = static_cast<std::uint16_t>(n.u("entry_table_offset"));
+    h.entry_table_length = static_cast<std::uint16_t>(n.u("entry_table_length"));
+    h.crc = static_cast<std::uint32_t>(n.u("crc"));
+    h.flags = static_cast<std::uint16_t>(n.u("flags"));
+    h.autodata_segment = static_cast<std::uint16_t>(n.u("autodata_segment"));
+    h.heap_size = static_cast<std::uint16_t>(n.u("heap_size"));
+    h.stack_size = static_cast<std::uint16_t>(n.u("stack_size"));
+    h.cs_ip = static_cast<std::uint32_t>(n.u("cs_ip"));
+    h.ss_sp = static_cast<std::uint32_t>(n.u("ss_sp"));
+    h.segment_count = static_cast<std::uint16_t>(n.u("segment_count"));
+    h.module_ref_count = static_cast<std::uint16_t>(n.u("module_ref_count"));
+    h.nonresident_size = static_cast<std::uint16_t>(n.u("nonresident_size"));
+    h.segment_table = static_cast<std::uint16_t>(n.u("segment_table_offset"));
+    h.resource_table = static_cast<std::uint16_t>(n.u("resource_table_offset"));
+    h.resident_names_table = static_cast<std::uint16_t>(n.u("resident_names_offset"));
+    h.module_ref_table = static_cast<std::uint16_t>(n.u("module_ref_offset"));
+    h.imported_names_table = static_cast<std::uint16_t>(n.u("imported_names_offset"));
+    h.nonresident_offset = static_cast<std::uint32_t>(n.u("nonresident_offset"));
+    h.movable_entries = static_cast<std::uint16_t>(n.u("movable_entries"));
+    h.alignment_shift = static_cast<std::uint16_t>(n.u("shift"));   // a stored 0 means 9
+    h.resource_segments = static_cast<std::uint16_t>(n.u("resource_segments"));
+    h.target_os = static_cast<std::uint8_t>(n.u("target_os"));
+    if (h.segment_table >= 0x40) {   // the field is there when the segment table leaves room for it
+        const eng::Node& v = n.get("expected_windows_version");
+        if (v.kind != eng::Kind::Int) throw TruncatedError(kReader, ne_offset + 0x3E, 2, 0);
+        h.expected_windows_version = static_cast<std::uint16_t>(v.value);
+    }
     return m;
 }
 
@@ -123,18 +160,10 @@ std::uint64_t Module::shifted(std::uint64_t value) const { return shift_left(val
 
 std::vector<Name> Module::read_name_table(std::uint64_t p) const {
     std::vector<Name> out;
-    const ByteView d = data_;
-    while (p < d.size()) {
-        const std::uint8_t len = d[p];
-        ++p;
-        if (len == 0) break;
-        Name n;
-        n.name = text::from_latin1(slice(d, p, len, kReader));
-        p += len;
-        n.ordinal = u16(d, p);
-        p += 2;
-        out.push_back(std::move(n));
-    }
+    if (p >= data_.size()) return out;
+    const eng::Tree tree = read_ne_struct(data_, "NameTable", p);
+    for (const eng::Node& e : tree.root.get("names").children)
+        if (e.u("length") != 0) out.push_back({name_of(e, "name"), static_cast<std::uint16_t>(e.u("ordinal"))});
     return out;
 }
 
@@ -160,8 +189,15 @@ std::vector<std::string> Module::module_refs() const {
     std::vector<std::string> names;
     const std::uint64_t table = ne_offset_ + header_.module_ref_table;
     const std::uint64_t imported = ne_offset_ + header_.imported_names_table;
-    for (std::uint32_t i = 0; i < header_.module_ref_count; ++i)
-        names.push_back(pascal_string(data_, imported + u16(data_, table + std::uint64_t{i} * 2)));
+    const eng::Tree tree = read_ne(data_, ne_offset_, base_, overlay_at_, "names");
+    const eng::Node* refs = tree.root.find("module_refs");
+    const std::size_t have = refs ? refs->children.size() : 0;
+    if (have < header_.module_ref_count) throw TruncatedError(kReader, table + 2 * std::uint64_t{have}, 2, 0);
+    for (std::uint32_t i = 0; i < header_.module_ref_count; ++i) {
+        const eng::Node& ref = refs->children[i];
+        if (const eng::Node* name = ref.child("name")) names.push_back(name_of(*name, "text"));
+        else names.push_back(pascal_string(data_, imported + ref.u("offset")));   // (a name cut short by the end of the file: what is there)
+    }
     return names;
 }
 
@@ -175,18 +211,20 @@ std::string Module::imported_name(std::uint64_t offset) const {
 
 std::vector<Segment> Module::segments() const {
     std::vector<Segment> segs;
-    const std::uint64_t table = ne_offset_ + header_.segment_table;
+    const eng::Tree tree = read_ne(data_, ne_offset_, base_, overlay_at_);
+    const eng::Node* table = tree.root.find("segments");
+    const std::size_t have = table ? table->children.size() : 0;
+    if (have < header_.segment_count)
+        throw TruncatedError(kReader, ne_offset_ + header_.segment_table + 8 * std::uint64_t{have}, 8, 0);
     for (std::uint32_t i = 0; i < header_.segment_count; ++i) {
-        const std::uint64_t o = table + std::uint64_t{i} * 8;
-        const std::uint16_t sector = u16(data_, o), length = u16(data_, o + 2), flags = u16(data_, o + 4),
-                            min_alloc = u16(data_, o + 6);
+        const eng::Node& n = table->children[i];
+        if (n.u("sector")) (void)shifted(n.u("sector"));   // a damaged alignment shift
         Segment s;
         s.index = static_cast<std::uint16_t>(i + 1);
-        s.file_offset = shifted(sector) + (sector ? base_ : 0);
-        s.length = length ? length : (sector ? 0x10000u : 0u);
-        s.flags = flags;
-        s.min_alloc = min_alloc ? min_alloc : 0x10000u;
-        if (overlay_at_ && s.file_offset && !(flags & kPreload)) s.file_offset += *overlay_at_;
+        s.file_offset = n.u("file_offset");
+        s.length = static_cast<std::uint32_t>(n.u("byte_length"));
+        s.flags = static_cast<std::uint16_t>(n.u("flags"));
+        s.min_alloc = n.u("min_alloc") ? static_cast<std::uint32_t>(n.u("min_alloc")) : 0x10000u;
         segs.push_back(s);
     }
     return segs;
@@ -195,25 +233,28 @@ std::vector<Segment> Module::segments() const {
 std::vector<Relocation> Module::relocations(const Segment& seg) const {
     std::vector<Relocation> recs;
     if (!(seg.flags & kRelocInfo)) return recs;
-    const std::uint64_t end = seg.file_offset + seg.length;
     // A relocated segment base does not relocate its reloc table, so the count can be garbage: then there is
     // nothing to read rather than an error.
-    auto count = try_get<std::uint16_t>(data_, end);
-    if (!count) return recs;
-    std::uint64_t p = end + 2;
-    if (p + 8 * std::uint64_t{*count} > data_.size()) return recs;
-    for (std::uint32_t k = 0; k < *count; ++k, p += 8) {
+    const std::uint64_t at = seg.file_offset + seg.length;
+    if (at > data_.size()) return recs;
+    eng::Tree tree;
+    try {
+        tree = read_ne_struct(data_, "SegmentRelocs", at);
+    } catch (const FormatError&) {
+        return recs;
+    }
+    for (const eng::Node& n : tree.root.get("records").children) {
         Relocation r;
-        const std::uint8_t src_type = u8(data_, p), flags = u8(data_, p + 1);
-        r.offset = u16(data_, p + 2);
-        const std::uint16_t b4 = u16(data_, p + 4), b6 = u16(data_, p + 6);
+        const std::uint8_t flags = static_cast<std::uint8_t>(n.u("flags"));
+        const std::uint16_t b4 = static_cast<std::uint16_t>(n.u("b4")), b6 = static_cast<std::uint16_t>(n.u("b6"));
         switch (flags & 3) {
-            case 0: r.target = InternalRef{u8(data_, p + 4), b6}; break;
+            case 0: r.target = InternalRef{static_cast<std::uint8_t>(b4 & 0xFF), b6}; break;
             case 1: r.target = ImportOrdinalRef{b4, b6}; break;
             case 2: r.target = ImportNameRef{b4, b6}; break;
             default: r.target = OsFixupRef{b4}; break;
         }
-        r.source = src_type & 0x0f;
+        r.offset = static_cast<std::uint16_t>(n.u("offset"));
+        r.source = static_cast<std::uint8_t>(n.u("source") & 0x0F);
         r.flags = flags;
         recs.push_back(r);
     }
@@ -222,21 +263,24 @@ std::vector<Relocation> Module::relocations(const Segment& seg) const {
 
 std::vector<Entry> Module::entries() const {
     std::vector<Entry> out;
-    std::uint64_t p = ne_offset_ + header_.entry_table_offset;
-    const std::uint64_t end = p + header_.entry_table_length;
+    const eng::Tree tree = read_ne(data_, ne_offset_, base_, overlay_at_);
+    const eng::Node* table = tree.root.find("entry_table");
+    if (!table) return out;
     std::uint32_t ordinal = 1;
-    while (p < end) {
-        const std::uint8_t count = u8(data_, p), seg_indicator = u8(data_, p + 1);
-        p += 2;
+    for (const eng::Node& bundle : table->children) {
+        const std::uint64_t count = bundle.u("count");
         if (count == 0) break;
-        if (seg_indicator == 0x00) {  // a run of unused ordinals
-            for (int k = 0; k < count; ++k) out.push_back({ordinal++, Entry::Kind::Unused, 0, 0, 0});
-        } else if (seg_indicator == 0xFF) {  // moveable: flags, INT 3F, segment, offset
-            for (int k = 0; k < count; ++k, p += 6)
-                out.push_back({ordinal++, Entry::Kind::Moveable, u8(data_, p + 3), u8(data_, p), u16(data_, p + 4)});
-        } else {  // fixed, in segment seg_indicator
-            for (int k = 0; k < count; ++k, p += 3)
-                out.push_back({ordinal++, Entry::Kind::Fixed, seg_indicator, u8(data_, p), u16(data_, p + 1)});
+        const std::uint64_t kind = bundle.u("kind");
+        if (kind == 0) {  // a run of unused ordinals
+            for (std::uint64_t k = 0; k < count; ++k) out.push_back({ordinal++, Entry::Kind::Unused, 0, 0, 0});
+        } else if (kind == 0xFF) {  // moveable: flags, INT 3F, segment, offset
+            for (const eng::Node& e : bundle.get("moveable").children)
+                out.push_back({ordinal++, Entry::Kind::Moveable, static_cast<std::uint8_t>(e.u("segment")), static_cast<std::uint8_t>(e.u("flags")),
+                               static_cast<std::uint16_t>(e.u("offset"))});
+        } else {  // fixed, in segment `kind`
+            for (const eng::Node& e : bundle.get("fixed").children)
+                out.push_back({ordinal++, Entry::Kind::Fixed, static_cast<std::uint8_t>(kind), static_cast<std::uint8_t>(e.u("flags")),
+                               static_cast<std::uint16_t>(e.u("offset"))});
         }
     }
     return out;
@@ -256,37 +300,40 @@ std::string Module::resource_string(std::uint64_t table, std::uint64_t offset) c
 std::vector<Resource> Module::resources() const {
     std::vector<Resource> out;
     if (header_.resource_table == header_.resident_names_table) return out;  // no resource table
-    const std::uint64_t table = ne_offset_ + header_.resource_table;
-    std::uint64_t p = table;
-    const std::uint16_t shift = u16(data_, p);
-    p += 2;
-    for (;;) {
-        const std::uint16_t type_id = u16(data_, p);
+    const std::uint64_t table_at = ne_offset_ + header_.resource_table;
+    const eng::Tree tree = read_ne(data_, ne_offset_, base_, overlay_at_, "resources");
+    const eng::Node* table = tree.root.find("resources");
+    if (!table) throw TruncatedError(kReader, table_at, 2, table_at < data_.size() ? data_.size() - table_at : 0);
+    const std::uint16_t shift = static_cast<std::uint16_t>(table->u("shift"));
+    for (const eng::Node& type : table->get("types").children) {
+        const std::uint16_t type_id = static_cast<std::uint16_t>(type.u("type_id"));
         if (type_id == 0) break;
-        const std::uint16_t count = u16(data_, p + 2);
-        p += 8;
         std::string type_name;
         std::optional<std::uint16_t> type_number;
         if (type_id & 0x8000) {
             type_number = static_cast<std::uint16_t>(type_id & 0x7fff);
             const char* n = resource_type_name(*type_number);
             type_name = n ? n : "#" + std::to_string(*type_number);
+        } else if (const eng::Node* name = type.child("name")) {
+            type_name = name_of(*name, "text");
         } else {
-            type_name = resource_string(table, type_id);
+            type_name = resource_string(table_at, type_id);
         }
-        for (int k = 0; k < count; ++k, p += 12) {
+        for (const eng::Node& item : type.get("items").children) {
             Resource r;
             r.type = type_name;
             r.type_number = type_number;
-            r.file_offset = shift_left(u16(data_, p), shift);
-            r.length = shift_left(u16(data_, p + 2), shift);
-            r.flags = u16(data_, p + 4);
-            const std::uint16_t rid = u16(data_, p + 6);
+            r.file_offset = shift_left(item.u("offset"), shift);
+            r.length = shift_left(item.u("length"), shift);
+            r.flags = static_cast<std::uint16_t>(item.u("flags"));
+            const std::uint16_t rid = static_cast<std::uint16_t>(item.u("id"));
             if (rid & 0x8000) {
                 r.id_number = static_cast<std::uint16_t>(rid & 0x7fff);
                 r.id = "#" + std::to_string(*r.id_number);
+            } else if (const eng::Node* name = item.child("name")) {
+                r.id = name_of(*name, "text");
             } else {
-                r.id = resource_string(table, rid);
+                r.id = resource_string(table_at, rid);
             }
             if (overlay_at_ && !(r.flags & kPreload)) r.file_offset += *overlay_at_;
             out.push_back(std::move(r));
@@ -358,19 +405,18 @@ std::uint64_t Module::tables_end() const {
     std::uint64_t end = std::max({o + 0x40, o + h.segment_table + 8 * std::uint64_t{h.segment_count},
                                   o + h.entry_table_offset + std::uint64_t{h.entry_table_length},
                                   o + h.module_ref_table + 2 * std::uint64_t{h.module_ref_count}});
-    std::uint64_t p = o + h.resident_names_table;  // resident names
-    while (p < d.size() && d[p]) p += d[p] + 3u;
-    end = std::max(end, p + 1);
-    if (h.resource_table != h.resident_names_table) {  // the resource table, then its names
-        p = o + h.resource_table + 2;
-        while (u16(d, p)) p += 8 + 12 * std::uint64_t{u16(d, p + 2)};
-        p += 2;
-        while (p < d.size() && d[p]) p += d[p] + 1u;
-        end = std::max(end, p + 1);
+    // the resident names, then (when there is one) the resource table and the names after its groups
+    const eng::Tree names_tree = read_ne(d, o, base_, overlay_at_, "names");
+    if (const eng::Node* names = names_tree.root.find("resident_names")) end = std::max(end, names->offset + names->size);
+    if (h.resource_table != h.resident_names_table) {
+        const eng::Tree res_tree = read_ne(d, o, base_, overlay_at_, "resources");
+        if (const eng::Node* table = res_tree.root.find("resources"))
+            end = std::max(end, table->offset + table->size);
     }
     const std::uint64_t imported = o + h.imported_names_table;  // imported names that are referred to
     std::vector<std::uint64_t> refs;
-    for (std::uint32_t i = 0; i < h.module_ref_count; ++i) refs.push_back(u16(d, o + h.module_ref_table + 2 * std::uint64_t{i}));
+    if (const eng::Node* mod_refs = names_tree.root.find("module_refs"))
+        for (const eng::Node& r : mod_refs->children) refs.push_back(r.u("offset"));
     for (const Segment& s : segments())
         for (const Relocation& r : relocations(s))
             if (const auto* by_name = std::get_if<ImportNameRef>(&r.target)) refs.push_back(by_name->name_offset);
@@ -415,17 +461,16 @@ Bytes Module::standalone() const {
     }
     if (h.resource_table != h.resident_names_table) {
         const auto res = resources();
+        const eng::Tree tree = read_ne(d, o, base_, overlay_at_, "resources");
+        const eng::Node& table = tree.root.get("resources");
+        const unsigned rshift = static_cast<unsigned>(table.u("shift"));
         std::size_t next = 0;
-        std::uint64_t p = o + h.resource_table;
-        const unsigned rshift = u16(d, p);
-        p += 2;
-        while (u16(d, p)) {
-            const std::uint32_t count = u16(d, p + 2);
-            p += 8;
-            for (std::uint32_t k = 0; k < count; ++k, p += 12) {
-                if (next >= res.size()) throw FormatError(kReader, p, "resource table is inconsistent");
+        for (const eng::Node& type : table.get("types").children) {
+            if (type.u("type_id") == 0) break;
+            for (const eng::Node& item : type.get("items").children) {   // the record's first field is the resource's place
+                if (next >= res.size()) throw FormatError(kReader, item.offset, "resource table is inconsistent");
                 const Resource& r = res[next++];
-                out.patch_u16(0x40 + (p - o), place(out, clamped(d, r.file_offset, r.length), rshift));
+                out.patch_u16(0x40 + (item.offset - o), place(out, clamped(d, r.file_offset, r.length), rshift));
             }
         }
     }

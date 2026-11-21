@@ -256,6 +256,7 @@ private:
     Header header_;
     std::uint64_t objtab_ = 0, pagemap_ = 0, resnames_ = 0, entrytab_ = 0, fixup_page_ = 0, fixup_rec_ = 0;
     std::vector<Object> objects_;
+    std::vector<PageEntry> pages_;                       // the page map as far as the file holds it
     std::map<std::uint32_t, std::uint32_t> page_order_;  // page number -> first place in the map carrying it
 };
 

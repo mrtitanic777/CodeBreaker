@@ -13,7 +13,7 @@
 //     }
 //     struct Reloc { offset : u16  segment : u16 }
 //
-// Types: u8 u16 u32 u64 i8..i64 (little-endian by the format's `endian`, or `be`/`le` as a suffix: u32be), str(n)
+// Types: u8 u16 u24 u32 u64 i8..i64 (little-endian by the format's `endian`, or `be`/`le` as a suffix: u32be, u24be), str(n)
 // (n raw bytes of text), bytes(n), or the name of a struct. Arrays: T[count], T[until cond] (cond sees `_`, the
 // element just read), T[size n] (elements while fewer than n bytes are consumed). After the type: `as Name` (an
 // enum or flags: the tree shows the names), `== a | b` (magic), `size(n)` (the field takes exactly n bytes: its
@@ -26,6 +26,20 @@
 // offset o added: a header checksum) and printable(o,n) (how many of them are printable ASCII). `use name` brings in
 // another description's structures.
 //
+// Tables that sit behind pointers, as a loader reads them:
+//   * `fn name(a, b) = expr` a function of the description (its names are those of the place it is called from);
+//     xlat(array, v, from, len, to) maps v through the elements whose [from, from+len) holds it to `to` + the distance
+//     (an RVA to a file offset through a section table), -1 when none does; scan(o, "text") is the offset of the next
+//     occurrence of the text from o, or -1.
+//   * `cstr` / `cstr(max)`: a zero-terminated string (the node covers the string and its terminator; at most `max`
+//     bytes; it also ends where the data does).
+//   * `T[while cond]`, `T[while cond until cond]`: cond is tested before each element, with $pos the cursor.
+//   * a field may end with `try`: when it cannot be read (it runs past the data, its pointer is negative, its magic
+//     differs) it is simply not in the tree (a fixed-size one is skipped); an array keeps the elements read before.
+//   * a field may end with `part NAME`: it is only read when the read asks for that part (ReadOptions): a table a
+//     caller wants is read behind the headers every caller wants.
+//   * `$name` in an expression is a variable the caller gave (ReadOptions::vars), 0 when it did not.
+//
 // The tree keeps every field's offset and size. write() puts the values back: onto the bytes that were read (so what
 // the description does not cover stays as it was; an unmodified tree gives the same bytes), or, with
 // `covered_only`, onto zeros (only what the description names; a check that the description covers what it says).
@@ -37,6 +51,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -102,6 +117,17 @@ Bytes write(const Tree& tree, bool covered_only = false);
 
 class Format;   // a parsed description (opaque)
 
+// How a read goes. All of it is optional: Registry::read(format, data) reads the root struct at 0, the parts of the
+// description (`part NAME` fields) left out.
+struct ReadOptions {
+    std::string root;                          // the struct to read ("" = the format's root; `root Name` in the description)
+    std::uint64_t at = 0;                      // where that struct starts (a module inside a larger file)
+    std::set<std::string> parts;               // the `part NAME` fields to read as well
+    bool all_parts = false;                    // every part
+    std::map<std::string, std::int64_t> vars;  // what `$name` means in expressions (a name not given is 0)
+    bool keep_source = true;                   // false: Tree::source stays empty (the tree is only read from, never written)
+};
+
 class Registry {
 public:
     Registry();
@@ -121,7 +147,11 @@ public:
 
     // Read `data` as `format`. FormatError / TruncatedError when it is not one (a magic differs, a field is cut short).
     Tree read(std::string_view format, ByteView data) const;
+    Tree read(std::string_view format, ByteView data, const ReadOptions& options) const;
     std::optional<Tree> try_read(std::string_view format, ByteView data) const;
+    std::optional<Tree> try_read(std::string_view format, ByteView data, const ReadOptions& options) const;
+    // The names of the `part` fields of a format's description (and of what it `use`s).
+    std::vector<std::string> parts(std::string_view format) const;
     // The formats whose description reads `data` without an error.
     std::vector<std::string> identify(ByteView data) const;
 

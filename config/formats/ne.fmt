@@ -44,16 +44,87 @@ struct Ne {
     alignment_shift         : u16
     resource_segments       : u16
     target_os               : u8 as TargetOs
-    os2_flags               : u8
-    gangload_offset         : u16
-    gangload_length         : u16
-    min_code_swap           : u16
-    expected_windows_version : u16
+    os2_flags               : u8 try
+    gangload_offset         : u16 try
+    gangload_length         : u16 try
+    min_code_swap           : u16 try
+    expected_windows_version : u16 try
 
     let shift = alignment_shift ? alignment_shift : 9      # a stored 0 means 9
 
-    segments    @ $start + segment_table_offset : Segment[segment_count]
-    entry_table @ $start + entry_table_offset   : Bundle[until _.count == 0] size(entry_table_length)
+    # (a table that is damaged is not in the tree: the header is still a header)
+    segments    @ $start + segment_table_offset : Segment[segment_count] try
+    entry_table @ $start + entry_table_offset   : Bundle[until _.count == 0] size(entry_table_length) try
+
+    # Parts (read when a caller asks): the name tables, the module references, the resource table; a segment's
+    # relocations are a part of the segment.
+    let imported_at = $start + imported_names_offset
+    let res_table   = $start + resource_table_offset
+    resident_names    @ $start + resident_names_offset : NameEntry[until _.length == 0] try part names
+    # the non-resident names sit at a file offset; a module of a Windows 1.x boot image counts it in alignment units
+    # from the start of its overlay ($overlay: where that is, else 0)
+    if nonresident_offset != 0 {
+        nonresident_names @ ($overlay ? $overlay + (nonresident_offset << shift) : nonresident_offset) : NameEntry[until _.length == 0] try part names
+    }
+    module_refs       @ $start + module_ref_offset : ModuleRef[module_ref_count] try part names
+    resources         @ res_table : ResourceTable if resource_table_offset != resident_names_offset try part resources
+}
+
+# A length-prefixed name: bytes, then the ordinal. A zero length ends a name table.
+struct NameEntry {
+    length : u8
+    if length != 0 {
+        name    : str(length)
+        ordinal : u16
+    }
+}
+
+# A length-prefixed string (the imported-names table, the resource table's names).
+struct PString {
+    length : u8
+    text   : str(length)
+}
+
+struct ModuleRef {
+    offset : u16                                 # into the imported-names table
+    name @ imported_at + offset : PString try
+}
+
+# The resource table: an alignment shift, then a group of resources per type until a type of 0. A type or an id with
+# the top bit set is a number, else the offset (from the start of the table) of a name.
+struct ResourceTable {
+    shift : u16
+    types : ResourceType[until _.type_id == 0]
+    names : PString[until _.length == 0] try              # the names the types and ids point at follow the groups
+}
+
+# The name table at any offset (a root struct: read with ReadOptions::root and ::at).
+struct NameTable {
+    names : NameEntry[until _.length == 0]
+}
+
+struct ResourceType {
+    type_id : u16
+    if type_id != 0 {
+        count    : u16
+        reserved : u32
+        items    : ResourceInfo[count]
+        if (type_id & 0x8000) == 0 {
+            name @ res_table + type_id : PString try
+        }
+    }
+}
+
+struct ResourceInfo {
+    offset : u16                                 # in 1 << shift units
+    length : u16
+    flags  : u16
+    id     : u16
+    handle : u16
+    usage  : u16
+    if (id & 0x8000) == 0 {
+        name @ res_table + id : PString try
+    }
 }
 
 flags SegmentFlags { data = 0x1, allocated = 0x2, loaded = 0x4, iterated = 0x8, movable = 0x10, shareable = 0x20,
@@ -66,8 +137,31 @@ struct Segment {
     flags     : u16 as SegmentFlags
     min_alloc : u16
 
-    let file_offset = sector << _parent.shift            # 0 when the segment has no data in the file
+    # 0 when the segment has no data in the file. A module embedded in a larger file ($base) or of a boot image ($overlay:
+    # the demand-loaded segments follow the resident file) reads the same table.
+    let file_offset = sector ? (sector << _parent.shift) + $base + (((flags & 0x40) == 0 && $overlay != 0) ? $overlay : 0) : 0
     let byte_length = length ? length : (sector ? 0x10000 : 0)
+
+    # The relocation records after the data. A table whose count runs past the file is garbage (a moved segment's table
+    # does not move with it): not in the tree.
+    if (flags & 0x100) != 0 {
+        relocs @ file_offset + byte_length : SegmentRelocs try part relocs
+    }
+}
+
+struct SegmentRelocs {
+    count   : u16
+    records : Reloc[count]
+}
+
+# source: the kind of the patched place (low nibble: byte, selector, far pointer, offset ...); flags: the target's kind in
+# the low 2 bits (0 internal, 1 import by ordinal, 2 import by name, 3 an OS fix-up), bit 2 additive.
+struct Reloc {
+    source : u8
+    flags  : u8
+    offset : u16
+    b4     : u16                  # an internal ref: the segment (low byte) and the next word; an import: the module; an OS fix-up: its type
+    b6     : u16                  # the offset or ordinal or name offset
 }
 
 # The entry table: bundles of entries sharing a segment. A bundle is `count` entries, then (if count is not 0) what

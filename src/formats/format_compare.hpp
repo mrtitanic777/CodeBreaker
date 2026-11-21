@@ -32,6 +32,9 @@ struct Comparison {
     bool agree() const { return reader_accepts == engine_accepts && mismatch_count == 0; }
 };
 
+// A digest of everything the hand-written readers of pe, ne and le answer about the file (format_check --readers).
+std::string reader_digest(ByteView data);
+
 // Every format compare() knows, in the order format_check goes through them.
 const std::vector<std::string>& compared_formats();
 

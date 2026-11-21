@@ -371,7 +371,7 @@ void check_msx(Checker& k, const Tree& t, const msx::Program& p) {
 }  // namespace
 
 const std::vector<std::string>& compared_formats() {
-    static const std::vector<std::string> formats = {"mz",  "pe",  "ne",       "ines", "gb",      "gba", "ngp",  "nds",    "vb",  "pce",
+    static const std::vector<std::string> formats = {"mz",  "pe",  "ne",  "le",     "ines", "gb",      "gba", "ngp",  "nds",    "vb",  "pce",
                                                      "atari7800", "sms", "genesis", "n64", "snes", "lynx", "intv", "coleco", "msx"};
     return formats;
 }

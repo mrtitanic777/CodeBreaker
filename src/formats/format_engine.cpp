@@ -200,7 +200,7 @@ namespace desc {
 struct Expr;
 using ExprP = std::shared_ptr<const Expr>;
 struct Expr {
-    enum class Op { Num, Name, Special, Unary, Binary, Cond, Call, Member, Index };
+    enum class Op { Num, Text, Name, Special, Unary, Binary, Cond, Call, Member, Index };
     Op op = Op::Num;
     std::int64_t num = 0;
     std::string name;          // a Name, a Special, a Member, a Call's function; a Unary/Binary's operator
@@ -214,14 +214,14 @@ struct Literal {
 };
 
 struct TypeRef {
-    enum class K { Int, Str, Bytes, Struct } k = K::Int;
+    enum class K { Int, Str, Bytes, Cstr, Struct } k = K::Int;
     unsigned width = 0;
     bool big = false, sgn = false, endian_set = false;
     ExprP len;
     std::string name;
 };
 
-enum class Arr { None, Count, Until, Size };
+enum class Arr { None, Count, Until, Size, While };
 
 struct FieldDef {
     std::string name;
@@ -229,10 +229,18 @@ struct FieldDef {
     TypeRef type;
     Arr arr = Arr::None;
     ExprP arr_expr;
+    ExprP arr_until;   // `[while a until b]`: b
     std::string as;
     std::vector<Literal> magic;
     ExprP window;
     ExprP when;
+    bool tolerant = false;   // `try`
+    std::string part;        // `part NAME`
+};
+
+struct FnDef {
+    std::vector<std::string> params;
+    ExprP body;
 };
 
 struct Stmt {
@@ -266,6 +274,8 @@ public:
     std::vector<std::string> uses;
     std::map<std::string, desc::StructDef, std::less<>> structs;
     std::map<std::string, desc::EnumDef, std::less<>> enums;
+    std::map<std::string, desc::FnDef, std::less<>> fns;
+    std::set<std::string> parts;
 };
 
 namespace {
@@ -306,6 +316,19 @@ public:
                 f->root = ident("a struct name");
             } else if (kw == "use") {
                 f->uses.push_back(ident("a format name"));
+            } else if (kw == "fn") {
+                const std::string name = ident("a function name");
+                FnDef d;
+                expect("(");
+                while (!punct(")")) {
+                    d.params.push_back(ident("a parameter name"));
+                    if (punct(",")) next();
+                    else if (!punct(")")) fail(peek(), "expected ',' or ')'");
+                }
+                next();
+                expect("=");
+                d.body = expr(true);
+                f->fns[name] = std::move(d);
             } else if (kw == "struct") {
                 StructDef d;
                 d.name = ident("a struct name");
@@ -330,6 +353,7 @@ public:
             }
         }
         if (f->name.empty()) throw ParseError(origin_, 1, 1, "the description has no `format name` line");
+        f->parts = parts_;
         return f;
     }
 
@@ -337,6 +361,7 @@ private:
     std::string origin_;
     std::vector<Token> toks_;
     std::size_t i_ = 0;
+    std::set<std::string> parts_;
 
     [[noreturn]] void fail(const Token& t, const std::string& what) const { throw ParseError(origin_, t.line, t.col, what); }
 
@@ -513,6 +538,14 @@ private:
                 next();
                 f.arr = Arr::Until;
                 f.arr_expr = expr(true);
+            } else if (word("while")) {
+                next();
+                f.arr = Arr::While;
+                f.arr_expr = expr(true);
+                if (word("until")) {
+                    next();
+                    f.arr_until = expr(true);
+                }
             } else if (word("size") && !punct("]", 1)) {
                 next();
                 f.arr = Arr::Size;
@@ -546,6 +579,13 @@ private:
             } else if (word("if") && peek().line == prev().line) {
                 next();
                 f.when = expr(true);
+            } else if (word("try") && peek().line == prev().line) {
+                next();
+                f.tolerant = true;
+            } else if (word("part") && peek().line == prev().line) {
+                next();
+                f.part = ident("a part name");
+                parts_.insert(f.part);
             } else {
                 break;
             }
@@ -554,6 +594,15 @@ private:
 
     void type(TypeRef& t) {
         const std::string n = ident("a type");
+        if (n == "cstr") {
+            t.k = TypeRef::K::Cstr;
+            if (punct("(")) {
+                next();
+                t.len = expr(true);
+                expect(")");
+            }
+            return;
+        }
         if (n == "str" || n == "bytes") {
             t.k = n == "str" ? TypeRef::K::Str : TypeRef::K::Bytes;
             expect("(");
@@ -567,7 +616,7 @@ private:
             unsigned bits = 0;
             while (e < n.size() && std::isdigit(static_cast<unsigned char>(n[e]))) bits = bits * 10 + static_cast<unsigned>(n[e++] - '0');
             const std::string rest = n.substr(e);
-            if ((bits == 8 || bits == 16 || bits == 32 || bits == 64) && (rest.empty() || rest == "le" || rest == "be")) {
+            if ((bits == 8 || bits == 16 || bits == 24 || bits == 32 || bits == 64) && (rest.empty() || rest == "le" || rest == "be")) {
                 t.k = TypeRef::K::Int;
                 t.width = bits / 8;
                 t.sgn = n[0] == 'i';
@@ -653,6 +702,10 @@ private:
             next();
             return make(Expr::Op::Special, t.s);
         }
+        if (t.t == T::Text) {
+            next();
+            return make(Expr::Op::Text, t.s);
+        }
         if (t.t == T::Punct && t.s == "(") {
             next();
             ExprP e = expr(true);
@@ -691,6 +744,7 @@ struct Scope {
 struct Ctx {
     const Scope* sc = nullptr;
     const Node* under = nullptr;   // `_` in an `until`
+    const std::vector<std::pair<std::string, std::int64_t>>* params = nullptr;   // the arguments of a function being evaluated
 };
 
 struct Val {
@@ -700,19 +754,31 @@ struct Val {
 
 class Reader {
 public:
-    Reader(std::vector<const Format*> chain, ByteView data) : chain_(std::move(chain)), data_(data) {}
+    Reader(std::vector<const Format*> chain, ByteView data, const ReadOptions& options)
+        : chain_(std::move(chain)), data_(data), opt_(options) {}
 
     Node read_root() {
         const Format& f = *chain_.front();
-        const StructDef* root = find_struct(f.root);
-        if (!root) throw FormatError(f.name, 0, "the description has no struct '" + f.root + "'");
-        Node n = read_struct(*root, {}, 0, data_.size(), nullptr, 0);
+        const std::string& root_name = opt_.root.empty() ? f.root : opt_.root;
+        const StructDef* root = find_struct(root_name);
+        if (!root) throw FormatError(f.name, 0, "the description has no struct '" + root_name + "'");
+        if (opt_.at > data_.size()) throw TruncatedError(f.name, opt_.at, 1, 0);
+        Node n = read_struct(*root, {}, opt_.at, data_.size(), nullptr, 0);
         return n;
     }
 
 private:
     std::vector<const Format*> chain_;
     ByteView data_;
+    const ReadOptions& opt_;
+
+    const FnDef* find_fn(std::string_view name) const {
+        for (const Format* f : chain_) {
+            auto it = f->fns.find(name);
+            if (it != f->fns.end()) return &it->second;
+        }
+        return nullptr;
+    }
 
     const std::string& fmt() const { return chain_.front()->name; }
     [[noreturn]] void fail(std::uint64_t at, const std::string& what) const { throw FormatError(fmt(), at, what); }
@@ -742,6 +808,9 @@ private:
 
     Val lookup(const std::string& name, const Ctx& c) const {
         const Scope* s = c.sc;
+        if (c.params)
+            for (const auto& [pname, pvalue] : *c.params)
+                if (pname == name) return {pvalue, nullptr};
         if (name == "_") {
             if (!c.under) fail(*s->pos, "`_` is only meant in an `until`");
             return {0, c.under};
@@ -776,8 +845,10 @@ private:
                 if (e.name == "remaining") return {s64(s.end > *s.pos ? s.end - *s.pos : 0), nullptr};
                 if (e.name == "size") return {s64(data_.size()), nullptr};
                 if (e.name == "index") return {s64(s.index), nullptr};
-                fail(here, "unknown $" + e.name);
+                auto var = opt_.vars.find(e.name);   // a variable the caller gave; 0 when it did not
+                return {var == opt_.vars.end() ? 0 : var->second, nullptr};
             }
+            case Expr::Op::Text: fail(here, "a string is only meant as an argument of scan()");
             case Expr::Op::Unary: {
                 const std::int64_t v = num(e.kids[0]);
                 if (e.name == "-") return {s64(0 - u(v)), nullptr};
@@ -825,6 +896,39 @@ private:
             }
             case Expr::Op::Call: {
                 const std::string& f = e.name;
+                if (const FnDef* fn = find_fn(f)) {   // a function of the description: its arguments, then its body
+                    if (e.kids.size() != fn->params.size()) fail(here, f + " takes " + std::to_string(fn->params.size()) + " arguments");
+                    std::vector<std::pair<std::string, std::int64_t>> args;
+                    for (std::size_t k = 0; k < e.kids.size(); ++k) args.emplace_back(fn->params[k], num(e.kids[k]));
+                    Ctx inner{c.sc, c.under, &args};
+                    return {scalar(eval(*fn->body, inner), here), nullptr};
+                }
+                if (f == "xlat") {   // xlat(array, v, from, len, to)
+                    if (e.kids.size() != 5) fail(here, "xlat(array, value, from, len, to)");
+                    const Val arr = eval(*e.kids[0], c);
+                    if (!arr.ref || arr.ref->kind != Kind::Array) fail(here, "xlat of something that is not an array");
+                    const std::int64_t v = num(e.kids[1]);
+                    for (std::size_t k = 2; k < 5; ++k)
+                        if (e.kids[k]->op != Expr::Op::Name) fail(here, "xlat names the fields from, len and to");
+                    for (const Node& el : arr.ref->children) {
+                        const Node* from = el.child(e.kids[2]->name);
+                        const Node* len = el.child(e.kids[3]->name);
+                        const Node* to = el.child(e.kids[4]->name);
+                        if (!from || !len || !to) fail(here, "an element of the array lacks the field xlat names");
+                        const std::int64_t f0 = from->as_signed();
+                        if (v >= f0 && v < f0 + len->as_signed()) return {to->as_signed() + (v - f0), nullptr};
+                    }
+                    return {-1, nullptr};
+                }
+                if (f == "scan") {   // scan(from, "text"): the offset of the next occurrence in the file, or -1
+                    if (e.kids.size() != 2 || e.kids[1]->op != Expr::Op::Text) fail(here, "scan(offset, \"text\")");
+                    const std::int64_t from = num(e.kids[0]);
+                    const std::string& needle = e.kids[1]->name;
+                    if (from < 0 || needle.empty() || u(from) > data_.size()) return {-1, nullptr};
+                    for (std::uint64_t at = u(from); at + needle.size() <= data_.size(); ++at)
+                        if (std::equal(needle.begin(), needle.end(), data_.begin() + static_cast<std::ptrdiff_t>(at))) return {s64(at), nullptr};
+                    return {-1, nullptr};
+                }
                 if (f == "count") {
                     if (e.kids.size() != 1) fail(here, "count(array)");
                     const Val v = eval(*e.kids[0], c);
@@ -971,6 +1075,19 @@ private:
                 c += len;
                 break;
             }
+            case TypeRef::K::Cstr: {   // up to the terminator (kept in the text), the maximum, or the end
+                if (c > end) throw TruncatedError(fmt(), c, 1, 0);   // (a string at the very end of the data is empty)
+                std::uint64_t limit = end - c;
+                if (t.len) limit = std::min(limit, length(t.len, cx));
+                std::uint64_t len = 0;
+                while (len < limit && data_[c + len] != 0) ++len;
+                if (len < limit) ++len;   // the terminator
+                n.kind = Kind::Str;
+                n.size = len;
+                n.text.assign(reinterpret_cast<const char*>(data_.data() + c), len);
+                c += len;
+                break;
+            }
             case TypeRef::K::Struct: {
                 const StructDef* def = find_struct(t.name);
                 if (!def) fail(c, "unknown struct '" + t.name + "'");
@@ -996,48 +1113,109 @@ private:
 
     void read_field(const FieldDef& f, Node& self, Scope& sc) {
         const Ctx cx{&sc, nullptr};
+        if (!f.part.empty() && !opt_.all_parts && !opt_.parts.contains(f.part)) return;   // a part the caller did not ask for
         if (f.when && !num(f.when, cx)) return;
         const bool ptr = f.at != nullptr;
-        const std::uint64_t at = ptr ? length(f.at, cx) : *sc.pos;
-        std::uint64_t end = ptr ? data_.size() : sc.end;
-        std::optional<std::uint64_t> window;
-        if (f.window) {
-            window = length(f.window, cx);
-            end = std::min(end, at + *window);
-        }
-        std::uint64_t c = at;
+        std::uint64_t at = 0;
+        std::uint64_t c = 0;
         Node node;
-        switch (f.arr) {
-            case Arr::None:
-                node = read_value(f, f.name, c, end, sc, 0);
-                if (!magic_ok(f, node)) fail(at, "'" + f.name + "' is not what the format starts with (magic mismatch)");
-                break;
-            case Arr::Count: {
-                node.kind = Kind::Array;
-                const std::uint64_t count = length(f.arr_expr, cx);
-                if (count > (1u << 24)) fail(at, "'" + f.name + "' claims " + std::to_string(count) + " elements");
-                for (std::uint64_t i = 0; i < count; ++i) node.children.push_back(read_value(f, std::to_string(i), c, end, sc, i));
-                break;
+        std::uint64_t window_size = 0;
+        bool windowed = false;
+        // The cursor a condition sees as $pos is the one after the last element read.
+        const std::uint64_t saved_pos = *sc.pos;
+        auto cond = [&](const ExprP& e, const Node* under) {
+            *sc.pos = c;
+            const Ctx inner{&sc, under};
+            const bool v = num(e, inner) != 0;
+            *sc.pos = saved_pos;
+            return v;
+        };
+        // One element; a `try` field gives up at the first one it cannot read (the elements before it stay).
+        auto element = [&](std::uint64_t i, std::uint64_t end) {
+            if (!f.tolerant) {
+                node.children.push_back(read_value(f, std::to_string(i), c, end, sc, i));
+                return true;
             }
-            case Arr::Until:
-                node.kind = Kind::Array;
-                for (std::uint64_t i = 0; c < end; ++i) {
-                    node.children.push_back(read_value(f, std::to_string(i), c, end, sc, i));
-                    const Ctx inner{&sc, &node.children.back()};
-                    if (num(f.arr_expr, inner)) break;
+            try {
+                node.children.push_back(read_value(f, std::to_string(i), c, end, sc, i));
+                return true;
+            } catch (const FormatError&) {
+                return false;
+            }
+        };
+        try {
+            at = ptr ? length(f.at, cx) : *sc.pos;
+            std::uint64_t end = ptr ? data_.size() : sc.end;
+            if (f.window) {
+                window_size = length(f.window, cx);
+                windowed = true;
+                end = std::min(end, at + window_size);
+            }
+            c = at;
+            switch (f.arr) {
+                case Arr::None:
+                    node = read_value(f, f.name, c, end, sc, 0);
+                    if (!magic_ok(f, node)) fail(at, "'" + f.name + "' is not what the format starts with (magic mismatch)");
+                    break;
+                case Arr::Count: {
+                    node.kind = Kind::Array;
+                    const std::uint64_t count = length(f.arr_expr, cx);
+                    if (count > (1u << 24)) fail(at, "'" + f.name + "' claims " + std::to_string(count) + " elements");
+                    for (std::uint64_t i = 0; i < count; ++i)
+                        if (!element(i, end)) break;
+                    break;
                 }
-                break;
-            case Arr::Size: {
-                node.kind = Kind::Array;
-                const std::uint64_t limit = at + length(f.arr_expr, cx);
-                for (std::uint64_t i = 0; c < limit && c < end; ++i) node.children.push_back(read_value(f, std::to_string(i), c, end, sc, i));
-                break;
+                case Arr::Until:
+                    node.kind = Kind::Array;
+                    for (std::uint64_t i = 0; c < end; ++i) {
+                        if (!element(i, end)) break;
+                        if (cond(f.arr_expr, &node.children.back())) break;
+                    }
+                    break;
+                case Arr::Size: {
+                    node.kind = Kind::Array;
+                    const std::uint64_t limit = at + length(f.arr_expr, cx);
+                    for (std::uint64_t i = 0; c < limit && c < end; ++i)
+                        if (!element(i, end)) break;
+                    break;
+                }
+                case Arr::While:
+                    node.kind = Kind::Array;
+                    for (std::uint64_t i = 0; cond(f.arr_expr, nullptr); ++i) {
+                        if (i >= (1u << 24)) fail(at, "'" + f.name + "' has more than 16 million elements");
+                        if (!element(i, end)) break;
+                        if (f.arr_until && cond(f.arr_until, &node.children.back())) break;
+                    }
+                    break;
             }
+        } catch (const FormatError&) {
+            *sc.pos = saved_pos;
+            if (!f.tolerant) throw;
+            // not in the tree (a number that cannot be read is 0: a Let, with no bytes behind it); a fixed-size field of
+            // the sequence still takes its place
+            if (f.arr == Arr::None && f.type.k == TypeRef::K::Int) {
+                Node zero;
+                zero.name = f.name;
+                zero.kind = Kind::Let;
+                zero.offset = saved_pos;
+                self.children.push_back(std::move(zero));
+            }
+            if (!ptr && f.arr == Arr::None) {
+                std::uint64_t width = 0;
+                try {
+                    if (f.type.k == TypeRef::K::Int) width = f.type.width;
+                    else if ((f.type.k == TypeRef::K::Str || f.type.k == TypeRef::K::Bytes) && f.type.len) width = length(f.type.len, cx);
+                } catch (const FormatError&) {
+                }
+                *sc.pos = saved_pos + width;
+            }
+            return;
         }
         node.name = f.name;
         node.offset = at;
-        node.size = window ? *window : c - at;
-        if (!ptr) *sc.pos = window ? at + *window : c;
+        node.size = windowed ? window_size : c - at;
+        *sc.pos = saved_pos;
+        if (!ptr) *sc.pos = windowed ? at + window_size : c;
         self.children.push_back(std::move(node));
     }
 };
@@ -1078,7 +1256,9 @@ std::vector<std::string> Registry::names() const {
     return out;
 }
 
-Tree Registry::read(std::string_view format, ByteView data) const {
+Tree Registry::read(std::string_view format, ByteView data) const { return read(format, data, ReadOptions{}); }
+
+Tree Registry::read(std::string_view format, ByteView data, const ReadOptions& options) const {
     auto it = formats_.find(format);
     if (it == formats_.end()) throw NotFoundError(std::filesystem::path(std::string(format)), 0, "no format description named this");
     std::vector<const Format*> chain;   // the format, then what it `use`s (depth first, each once)
@@ -1093,16 +1273,34 @@ Tree Registry::read(std::string_view format, ByteView data) const {
     add(it->first);
     Tree tree;
     tree.format = it->first;
-    tree.source.assign(data.begin(), data.end());
-    Reader reader(std::move(chain), tree.source);
+    if (options.keep_source) tree.source.assign(data.begin(), data.end());
+    Reader reader(std::move(chain), data, options);
     tree.root = reader.read_root();
     tree.root.name = it->first;
     return tree;
 }
 
-std::optional<Tree> Registry::try_read(std::string_view format, ByteView data) const {
+std::vector<std::string> Registry::parts(std::string_view format) const {
+    auto it = formats_.find(format);
+    if (it == formats_.end()) throw NotFoundError(std::filesystem::path(std::string(format)), 0, "no format description named this");
+    std::set<std::string> out;
+    std::set<std::string> seen;
+    std::function<void(const std::string&)> add = [&](const std::string& name) {
+        if (!seen.insert(name).second) return;
+        auto f = formats_.find(name);
+        if (f == formats_.end()) return;
+        out.insert(f->second->parts.begin(), f->second->parts.end());
+        for (const std::string& u : f->second->uses) add(u);
+    };
+    add(it->first);
+    return {out.begin(), out.end()};
+}
+
+std::optional<Tree> Registry::try_read(std::string_view format, ByteView data) const { return try_read(format, data, ReadOptions{}); }
+
+std::optional<Tree> Registry::try_read(std::string_view format, ByteView data, const ReadOptions& options) const {
     try {
-        return read(format, data);
+        return read(format, data, options);
     } catch (const FormatError&) {   // probing: a file of another format is an ordinary answer
         return std::nullopt;
     }

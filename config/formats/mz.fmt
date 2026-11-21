@@ -24,7 +24,7 @@ struct MzHeader {
     cs                : u16
     reloc_offset      : u16
     overlay_number    : u16
-    relocs @ reloc_offset : Reloc[reloc_count]
+    relocs @ reloc_offset : Reloc[reloc_count] try       # (a header whose table is cut short is still a header)
 
     let header_size = header_paragraphs * 16
     let image_size  = pages * 512 - (last_page_bytes ? 512 - last_page_bytes : 0)

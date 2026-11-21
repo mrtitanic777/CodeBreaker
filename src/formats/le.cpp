@@ -5,12 +5,14 @@
 #include <unordered_map>
 
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/le_internal.hpp"
 #include "formats/read.hpp"
 
 namespace cb::formats::le {
 
 using detail::kReader;
+namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -20,17 +22,6 @@ bool printable(ByteView b) {
     return std::all_of(b.begin(), b.end(), [](std::uint8_t c) { return c >= 32 && c < 127; });
 }
 bool is_alnum(std::uint8_t c) { return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
-
-// the entry-record size of an entry-table bundle kind, or 0 when the kind is unknown
-std::size_t entry_size(int kind) {
-    switch (kind) {
-        case 1: return 3;
-        case 2:
-        case 3: return 5;
-        case 4: return 7;
-        default: return 0;
-    }
-}
 
 }  // namespace
 
@@ -49,71 +40,89 @@ ByteView rstrip_blanks(ByteView b) {  // bytes.rstrip(b" \x00")
 
 // ---- opening -----------------------------------------------------------------------------------------
 
+namespace {
+
+// The module read through le.fmt: the struct `Le` at the header's offset, and the tables of one part ("pages", "names",
+// "entries", "fixups", "imports") when a reader asks for it.
+eng::Tree read_le(ByteView data, std::uint64_t lfa, std::string_view part = {}) {
+    eng::ReadOptions options;
+    options.root = "Le";
+    options.at = lfa;
+    options.keep_source = false;   // only read from
+    if (!part.empty()) options.parts.insert(std::string(part));
+    return eng::builtin().read("le", data, options);
+}
+
+std::string latin1_of(const eng::Node* n) { return n ? text::from_latin1(as_bytes(n->text)) : std::string(); }
+
+}  // namespace
+
 Module Module::parse(std::shared_ptr<const Bytes> data, std::uint64_t lfa) {
     Module m;
     m.data_ = std::move(data);
     m.lfa_ = lfa;
-    const ByteView d = *m.data_;
-    m.signature_ = text::from_latin1(clamped(d, lfa, 2));
-    auto req32 = [&](std::uint64_t o) { return get<std::uint32_t>(d, lfa + o, kReader); };
-    auto req16 = [&](std::uint64_t o) { return get<std::uint16_t>(d, lfa + o, kReader); };
-    auto opt32 = [&](std::uint64_t o) { return get_or_zero<std::uint32_t>(d, lfa + o); };
-    auto opt16 = [&](std::uint64_t o) { return get_or_zero<std::uint16_t>(d, lfa + o); };
+    // The header and the object table, strict; the fields from the fix-up size on are 0 where the header is cut short
+    // (le.fmt marks them `try`), and the page map is read tolerantly.
+    const eng::Tree tree = read_le(*m.data_, lfa, "pages");
+    const eng::Node& n = tree.root;
+    m.signature_ = latin1_of(n.child("signature"));
     Header& h = m.header_;
-    h.byte_order = get_or_zero<std::uint8_t>(d, lfa + 0x02);
-    h.word_order = get_or_zero<std::uint8_t>(d, lfa + 0x03);
-    h.level = opt32(0x04);
-    h.cpu = req16(0x08);
-    h.os = req16(0x0a);
-    h.version = opt32(0x0c);
-    h.module_flags = opt32(0x10);
-    h.pages = req32(0x14);
-    h.eip_object = req32(0x18);
-    h.eip = req32(0x1c);
-    h.esp_object = opt32(0x20);
-    h.esp = opt32(0x24);
-    h.page_size = req32(0x28);
-    h.last_page_bytes = req32(0x2c);
-    h.fixup_size = opt32(0x30);
-    h.loader_size = opt32(0x38);
-    h.object_table = req32(0x40);
-    h.objects = req32(0x44);
-    h.page_map = req32(0x48);
-    h.resources = opt32(0x50);
-    h.resident_names = req32(0x58);
-    h.entry_table = req32(0x5c);
-    h.fixup_pages = req32(0x68);
-    h.fixup_records = req32(0x6c);
-    h.import_modules = opt32(0x70);
-    h.import_module_count = opt32(0x74);
-    h.import_names = opt32(0x78);
-    h.data_pages = req32(0x80);  // an offset from the top of the file (not the one at 0x7c)
-    h.preload_pages = opt32(0x84);
-    h.nonresident_names = opt32(0x88);
-    h.nonresident_size = opt32(0x8c);
-    h.debug_info = opt32(0x98);
-    h.debug_size = opt32(0x9c);
-    h.resource_data = opt32(0xb8);
-    h.resource_size = opt32(0xbc);
-    h.device_id = opt16(0xc0);
-    h.kit_version = opt16(0xc2);
+    h.byte_order = static_cast<std::uint8_t>(n.u("byte_order"));
+    h.word_order = static_cast<std::uint8_t>(n.u("word_order"));
+    h.level = static_cast<std::uint32_t>(n.u("level"));
+    h.cpu = static_cast<std::uint16_t>(n.u("cpu"));
+    h.os = static_cast<std::uint16_t>(n.u("os"));
+    h.version = static_cast<std::uint32_t>(n.u("version"));
+    h.module_flags = static_cast<std::uint32_t>(n.u("module_flags"));
+    h.pages = static_cast<std::uint32_t>(n.u("pages"));
+    h.eip_object = static_cast<std::uint32_t>(n.u("eip_object"));
+    h.eip = static_cast<std::uint32_t>(n.u("eip"));
+    h.esp_object = static_cast<std::uint32_t>(n.u("esp_object"));
+    h.esp = static_cast<std::uint32_t>(n.u("esp"));
+    h.page_size = static_cast<std::uint32_t>(n.u("page_size"));
+    h.last_page_bytes = static_cast<std::uint32_t>(n.u("last_page_bytes"));
+    h.fixup_size = static_cast<std::uint32_t>(n.u("fixup_size"));
+    h.loader_size = static_cast<std::uint32_t>(n.u("loader_size"));
+    h.object_table = static_cast<std::uint32_t>(n.u("object_table"));
+    h.objects = static_cast<std::uint32_t>(n.u("objects"));
+    h.page_map = static_cast<std::uint32_t>(n.u("page_map"));
+    h.resources = static_cast<std::uint32_t>(n.u("resources"));
+    h.resident_names = static_cast<std::uint32_t>(n.u("resident_names"));
+    h.entry_table = static_cast<std::uint32_t>(n.u("entry_table"));
+    h.fixup_pages = static_cast<std::uint32_t>(n.u("fixup_pages"));
+    h.fixup_records = static_cast<std::uint32_t>(n.u("fixup_records"));
+    h.import_modules = static_cast<std::uint32_t>(n.u("import_modules"));
+    h.import_module_count = static_cast<std::uint32_t>(n.u("import_module_count"));
+    h.import_names = static_cast<std::uint32_t>(n.u("import_names"));
+    h.data_pages = static_cast<std::uint32_t>(n.u("data_pages"));  // an offset from the top of the file
+    h.preload_pages = static_cast<std::uint32_t>(n.u("preload_pages"));
+    h.nonresident_names = static_cast<std::uint32_t>(n.u("nonresident_names"));
+    h.nonresident_size = static_cast<std::uint32_t>(n.u("nonresident_size"));
+    h.debug_info = static_cast<std::uint32_t>(n.u("debug_info"));
+    h.debug_size = static_cast<std::uint32_t>(n.u("debug_size"));
+    h.resource_data = static_cast<std::uint32_t>(n.u("resource_data"));
+    h.resource_size = static_cast<std::uint32_t>(n.u("resource_size"));
+    h.device_id = static_cast<std::uint16_t>(n.u("device_id"));
+    h.kit_version = static_cast<std::uint16_t>(n.u("kit_version"));
     m.objtab_ = lfa + h.object_table;
     m.pagemap_ = lfa + h.page_map;
     m.resnames_ = lfa + h.resident_names;
     m.entrytab_ = lfa + h.entry_table;
     m.fixup_page_ = lfa + h.fixup_pages;
     m.fixup_rec_ = lfa + h.fixup_records;
-    for (std::uint32_t i = 0; i < h.objects; ++i) {
-        const std::uint64_t at = m.objtab_ + std::uint64_t{i} * 24;
+    std::uint32_t index = 0;
+    for (const eng::Node& e : n.get("object_entries").children) {
         Object o;
-        o.index = i + 1;
-        o.vsize = get<std::uint32_t>(d, at, kReader);
-        o.base = get<std::uint32_t>(d, at + 4, kReader);
-        o.flags = get<std::uint32_t>(d, at + 8, kReader);
-        o.first_page = get<std::uint32_t>(d, at + 12, kReader);
-        o.page_count = get<std::uint32_t>(d, at + 16, kReader);
+        o.index = ++index;
+        o.vsize = static_cast<std::uint32_t>(e.u("vsize"));
+        o.base = static_cast<std::uint32_t>(e.u("base"));
+        o.flags = static_cast<std::uint32_t>(e.u("flags"));
+        o.first_page = static_cast<std::uint32_t>(e.u("first_page"));
+        o.page_count = static_cast<std::uint32_t>(e.u("page_count"));
         m.objects_.push_back(o);
     }
+    if (const eng::Node* map = n.child("page_entries"))
+        for (const eng::Node& e : map->children) m.pages_.push_back({static_cast<std::uint32_t>(e.u("number")), static_cast<std::uint8_t>(e.u("kind"))});
     m.index_pages();
     return m;
 }
@@ -127,15 +136,11 @@ Module Module::from_buffer(Bytes data) {
 Module Module::open(const std::filesystem::path& file) { return from_buffer(fs::read_file(file)); }
 
 // The page map numbers each page of the image in order; a page's bytes and its row of the fix-up page table are
-// found by that number (the first page carrying a number wins). Read once, here, tolerantly: past the end of the
-// file every number is 0 and nothing new follows.
+// found by that number (the first page carrying a number wins). Read once, with the header, tolerantly: the pages the
+// file holds, then (when it ends early) one place with the number 0.
 void Module::index_pages() {
-    const ByteView d = *data_;
-    for (std::uint32_t i = 0; i < header_.pages; ++i) {
-        const std::uint64_t at = pagemap_ + 4 * std::uint64_t{i};
-        page_order_.emplace(detail::be24(d, at), i + 1);
-        if (at >= d.size()) break;
-    }
+    for (std::size_t i = 0; i < pages_.size(); ++i) page_order_.emplace(pages_[i].number, static_cast<std::uint32_t>(i + 1));
+    if (pages_.size() < header_.pages) page_order_.emplace(0u, static_cast<std::uint32_t>(pages_.size() + 1));
 }
 
 bool Module::is_member() const { return get<std::uint32_t>(*data_, 0x3C, kReader) != lfa_; }
@@ -152,12 +157,8 @@ std::optional<std::pair<const Object*, std::uint64_t>> Module::page_to_object(st
 }
 
 std::vector<PageEntry> Module::page_map() const {
-    std::vector<PageEntry> out;
-    for (std::uint32_t i = 0; i < header_.pages; ++i) {
-        const ByteView rec = slice(*data_, pagemap_ + 4 * std::uint64_t{i}, 4, kReader);
-        out.push_back({detail::be24(rec, 0), rec[3]});
-    }
-    return out;
+    if (pages_.size() < header_.pages) throw TruncatedError(kReader, pagemap_ + 4 * std::uint64_t{pages_.size()}, 4, 0);
+    return pages_;
 }
 
 // A page's bytes as stored (empty for an invalid, zero-filled or unnumbered page); the file may end early, in which
@@ -207,39 +208,39 @@ std::optional<std::uint64_t> Module::file_offset(std::uint32_t object, std::int6
 
 std::string Module::resident_name() const {
     const ByteView d = *data_;
-    const std::uint8_t n = get<std::uint8_t>(d, resnames_, kReader);
-    return text::from_latin1(clamped(d, resnames_ + 1, n));
+    if (resnames_ >= d.size()) throw TruncatedError(kReader, resnames_, 1, 0);
+    const std::vector<NameOrdinal> names = names_at(d, resnames_);
+    return names.empty() ? std::string() : names.front().name;
 }
 
 std::string Module::description() const {
     const ByteView d = *data_;
-    const std::uint64_t off = lfa_ + 0x8c <= d.size() ? get<std::uint32_t>(d, lfa_ + 0x88, kReader) : 0;
+    const std::uint64_t off = header_.nonresident_names;
     if (!(0 < off && off < d.size())) return {};
     return text::from_latin1(clamped(d, off + 1, d[off]));
 }
 
 std::vector<std::string> Module::import_modules() const {
-    const ByteView d = *data_;
-    const std::uint64_t off = lfa_ + get<std::uint32_t>(d, lfa_ + 0x70, kReader);
-    const std::uint32_t count = get<std::uint32_t>(d, lfa_ + 0x74, kReader);
-    std::vector<std::string> names;
-    std::uint64_t p = off;
-    for (std::uint32_t k = 0; k < count; ++k) {
-        const std::uint8_t n = get<std::uint8_t>(d, p, kReader);
-        names.push_back(text::from_latin1(clamped(d, p + 1, n)));
-        p += 1 + std::uint64_t{n};
-    }
-    return names;
+    const eng::Tree tree = read_le(*data_, lfa_, "imports");
+    const eng::Node* names = tree.root.find("import_module_names");
+    const std::size_t have = names ? names->children.size() : 0;
+    if (have < header_.import_module_count) throw TruncatedError(kReader, lfa_ + header_.import_modules, 1, 0);
+    std::vector<std::string> out;
+    for (std::uint32_t k = 0; k < header_.import_module_count; ++k) out.push_back(latin1_of(names->children[k].child("text")));
+    return out;
 }
 
 std::vector<NameOrdinal> names_at(ByteView d, std::uint64_t p, std::optional<std::uint64_t> end) {
     std::vector<NameOrdinal> out;
-    while (0 < p && p < d.size() && d[p] && (!end || p < *end)) {
-        const std::uint8_t n = d[p];
-        if (p + n + 3 > d.size()) break;
-        out.push_back({text::from_latin1(d.subspan(p + 1, n)), get<std::uint16_t>(d, p + 1 + n, kReader)});
-        p += n + 3u;
-    }
+    if (!(0 < p && p < d.size()) || (end && *end == 0)) return out;
+    eng::ReadOptions options;
+    options.root = "NameTable";
+    options.at = p;
+    options.keep_source = false;
+    options.vars["limit"] = static_cast<std::int64_t>(end.value_or(0));
+    const eng::Tree tree = eng::builtin().read("le", d, options);
+    for (const eng::Node& e : tree.root.get("names").children)
+        if (e.u("length") != 0) out.push_back({latin1_of(e.child("name")), static_cast<std::uint16_t>(e.u("ordinal"))});
     return out;
 }
 
@@ -252,42 +253,31 @@ std::pair<std::vector<NameOrdinal>, std::vector<NameOrdinal>> Module::names() co
 
 std::vector<EntryPoint> Module::entries() const {
     std::vector<EntryPoint> out;
-    const ByteView d = *data_;
-    std::uint64_t p = entrytab_;
+    const eng::Tree tree = read_le(*data_, lfa_, "entries");
+    const eng::Node* table = tree.root.find("entries");
+    if (!table) return out;
     std::uint32_t ordinal = 1;
-    while (p + 2 <= d.size() && d[p]) {
-        const int count = d[p], kind = d[p + 1] & 0x7F;
-        p += 2;
+    for (const eng::Node& bundle : table->children) {
+        const std::uint64_t count = bundle.u("count");
+        if (count == 0) break;
+        const std::uint64_t kind = bundle.u("kind");
         if (kind == 0) {  // a run of unused ordinals
-            ordinal += count;
+            ordinal += static_cast<std::uint32_t>(count);
             continue;
         }
-        const std::size_t size = entry_size(kind);
-        if (size == 0 || p + 2 + std::uint64_t{static_cast<unsigned>(count)} * size > d.size()) break;
-        const std::uint16_t obj = get<std::uint16_t>(d, p, kReader);
-        p += 2;
-        for (int k = 0; k < count; ++k, p += size) {
-            const std::uint64_t at = p + (kind == 4 ? 3 : 1);
-            const std::uint32_t off = (kind == 3 || kind == 4) ? get<std::uint32_t>(d, at, kReader) : get<std::uint16_t>(d, at, kReader);
-            out.push_back({ordinal++, kind != 4 ? obj : 0u, off, d[p]});
-        }
+        const std::uint32_t object = kind != 4 ? static_cast<std::uint32_t>(bundle.u("object")) : 0u;
+        for (const eng::Node& e : bundle.get("entries").children)
+            out.push_back({ordinal++, object, static_cast<std::uint32_t>(e.u("offset")), static_cast<std::uint8_t>(e.u("flags"))});
     }
     return out;
 }
 
 std::size_t Module::entry_table_size() const {
-    const ByteView d = *data_;
-    std::uint64_t p = entrytab_;
-    while (p + 2 <= d.size() && d[p]) {
-        const int count = d[p], kind = d[p + 1] & 0x7F;
-        std::size_t size = 0;
-        if (kind != 0) {
-            size = entry_size(kind);
-            if (size == 0) break;
-        }
-        p += 2 + (kind == 0 ? 0 : 2 + static_cast<std::uint64_t>(count) * size);
-    }
-    return p + 1 - entrytab_;
+    const eng::Tree tree = read_le(*data_, lfa_, "entries");
+    const eng::Node* table = tree.root.find("entries");
+    if (!table) return 1;
+    const bool ended = !table->children.empty() && table->children.back().u("count") == 0;   // the zero count that ends the table
+    return table->size + (ended ? 0 : 1);
 }
 
 std::vector<Export> Module::exports() const {
@@ -311,77 +301,41 @@ std::vector<Export> Module::exports() const {
 
 std::vector<std::pair<Place, Fixup>> Module::fixups() const {
     std::vector<std::pair<Place, Fixup>> out;
-    const ByteView d = *data_;
+    const eng::Tree tree = read_le(*data_, lfa_, "fixups");
+    const eng::Node* offsets = tree.root.find("fixup_offsets");   // the fix-up page table
+    if (!offsets || offsets->children.size() < std::size_t{header_.pages} + 1) throw TruncatedError(kReader, fixup_page_, 4 * (std::uint64_t{header_.pages} + 1), 0);
+    const eng::Node* pages = tree.root.find("fixup_page_records");
     std::map<Place, std::size_t> where;
-    std::vector<std::uint32_t> page_offsets;
-    for (std::uint64_t i = 0; i <= header_.pages; ++i) page_offsets.push_back(get<std::uint32_t>(d, fixup_page_ + i * 4, kReader));
-    for (std::uint32_t pg = 0; pg < header_.pages; ++pg) {
+    for (std::uint32_t pg = 0; pages && pg < pages->children.size(); ++pg) {
         const auto owner = page_to_object(pg + 1);
-        std::uint64_t p = fixup_rec_ + page_offsets[pg];
-        const std::uint64_t end = fixup_rec_ + page_offsets[pg + 1];
-        while (p < end) {
-            const std::uint8_t src = get<std::uint8_t>(d, p, kReader), flags = get<std::uint8_t>(d, p + 1, kReader);
-            p += 2;
-            const bool source_list = (src & 0x20) != 0;  // several sources, one target
-            std::uint8_t count = 0;
-            std::int16_t first_source = 0;
-            if (source_list) {
-                count = get<std::uint8_t>(d, p++, kReader);
-            } else {
-                first_source = get<std::int16_t>(d, p, kReader);
-                p += 2;
-            }
+        const eng::Node* records = pages->children[pg].child("records");
+        for (std::size_t i = 0; records && i < records->children.size(); ++i) {
+            const eng::Node& r = records->children[i];
+            const std::uint64_t source = r.u("source"), flags = r.u("flags");
+            if ((flags & 0x03) > 1) break;  // import by name / entry: the rest of this page's records is not read
             Fixup fx;
-            const int target_kind = flags & 0x03;
-            if (target_kind == 0 || target_kind == 1) {
-                const bool wide_object = (flags & 0x40) != 0;
-                const std::uint32_t obj_or_module = wide_object ? get<std::uint16_t>(d, p, kReader) : get<std::uint8_t>(d, p, kReader);
-                p += wide_object ? 2 : 1;
-                if (target_kind == 0) {  // an internal reference
-                    InternalFixup in;
-                    in.object = obj_or_module;
-                    in.source_type = src & 0x0f;
-                    if ((src & 0x0f) == 0x02) {  // a 16-bit selector: no offset
-                    } else if (flags & 0x10) {
-                        in.target = get<std::uint32_t>(d, p, kReader);
-                        p += 4;
-                    } else {
-                        in.target = get<std::uint16_t>(d, p, kReader);
-                        p += 2;
-                    }
-                    fx = in;
-                } else {  // an import by ordinal
-                    ImportFixup im;
-                    im.module = obj_or_module;
-                    if (flags & 0x80) {
-                        im.ordinal = get<std::uint8_t>(d, p++, kReader);
-                    } else if (flags & 0x10) {
-                        im.ordinal = get<std::uint32_t>(d, p, kReader);
-                        p += 4;
-                    } else {
-                        im.ordinal = get<std::uint16_t>(d, p, kReader);
-                        p += 2;
-                    }
-                    fx = im;
-                }
-            } else {
-                break;  // import by name / entry: the rest of this page's records is not read
+            if ((flags & 0x03) == 0) {  // an internal reference
+                InternalFixup in;
+                in.object = static_cast<std::uint32_t>(r.u("object"));
+                in.source_type = static_cast<std::uint8_t>(source & 0x0f);
+                if ((source & 0x0f) != 0x02) in.target = static_cast<std::uint32_t>(r.u("target"));  // (a 16-bit selector has no offset)
+                fx = in;
+            } else {  // an import by ordinal
+                fx = ImportFixup{static_cast<std::uint32_t>(r.u("object")), static_cast<std::uint32_t>(r.u("ordinal"))};
             }
-            if (flags & 0x04) p += (flags & 0x20) ? 4 : 2;  // an additive value follows the target
-            std::vector<std::int16_t> offsets;
-            if (source_list) {
-                for (std::uint8_t j = 0; j < count; ++j) offsets.push_back(get<std::int16_t>(d, p + std::uint64_t{j} * 2, kReader));
-                p += std::uint64_t{count} * 2;
+            std::vector<std::int16_t> places;
+            if (source & 0x20) {
+                if (const eng::Node* list = r.child("sources"))
+                    for (const eng::Node& s : list->children) places.push_back(static_cast<std::int16_t>(s.as_signed()));
             } else {
-                offsets.push_back(first_source);
+                places.push_back(static_cast<std::int16_t>(r.i("first_source")));
             }
-            if (owner) {
-                for (std::int16_t o : offsets) {
-                    const Place key{owner->first->index, static_cast<std::int64_t>(owner->second) + o};
-                    auto [it, fresh] = where.try_emplace(key, out.size());
-                    if (fresh) out.emplace_back(key, fx);
-                    else out[it->second].second = fx;
-                }
+            if (!owner) continue;
+            for (std::int16_t o : places) {
+                const Place key{owner->first->index, static_cast<std::int64_t>(owner->second) + o};
+                auto [it, fresh] = where.try_emplace(key, out.size());
+                if (fresh) out.emplace_back(key, fx);
+                else out[it->second].second = fx;
             }
         }
     }
@@ -391,70 +345,44 @@ std::vector<std::pair<Place, Fixup>> Module::fixups() const {
 std::vector<FixupRecord> Module::fixup_records() const {
     std::vector<FixupRecord> out;
     const ByteView d = *data_;
-    std::vector<std::uint32_t> offs;
-    for (std::uint64_t i = 0; i <= header_.pages; ++i) offs.push_back(get<std::uint32_t>(d, fixup_page_ + 4 * i, kReader));
-    // A fix-up value of 2 or 4 bytes, strict.
-    auto value = [&](std::uint64_t at, int n) -> std::uint32_t {
-        return n == 4 ? get<std::uint32_t>(d, at, kReader) : n == 2 ? get<std::uint16_t>(d, at, kReader) : get<std::uint8_t>(d, at, kReader);
-    };
-    for (std::uint32_t pg = 0; pg < header_.pages; ++pg) {
-        std::uint64_t p = fixup_rec_ + offs[pg];
-        const std::uint64_t end = fixup_rec_ + offs[pg + 1];
-        while (p + 4 <= end) {
+    const eng::Tree tree = read_le(d, lfa_, "fixups");
+    const eng::Node* offsets = tree.root.find("fixup_offsets");
+    if (!offsets || offsets->children.size() < std::size_t{header_.pages} + 1) throw TruncatedError(kReader, fixup_page_, 4 * (std::uint64_t{header_.pages} + 1), 0);
+    const eng::Node* pages = tree.root.find("fixup_page_records");
+    for (std::uint32_t pg = 0; pages && pg < pages->children.size(); ++pg) {
+        const eng::Node* records = pages->children[pg].child("records");
+        for (std::size_t i = 0; records && i < records->children.size(); ++i) {
+            const eng::Node& n = records->children[i];
             FixupRecord r;
-            const std::uint64_t p0 = p;
-            const std::uint8_t src = get<std::uint8_t>(d, p, kReader), fl = get<std::uint8_t>(d, p + 1, kReader);
-            p += 2;
-            std::optional<std::uint8_t> count;
-            if (src & 0x20) {
-                count = get<std::uint8_t>(d, p, kReader);
-                p += 1;
-            } else {
-                r.sources.push_back(get<std::int16_t>(d, p, kReader));
-                p += 2;
-            }
-            const int wide = (fl & 0x40) ? 2 : 1;
-            r.first = value(p, wide);
-            p += wide;
+            const std::uint64_t source = n.u("source"), flags = n.u("flags");
             r.page = pg + 1;
-            r.source = src & 0x0F;
-            r.source_flags = src & 0xF0;
-            r.flags = fl;
-            switch (fl & 3) {
+            r.source = static_cast<std::uint8_t>(source & 0x0F);
+            r.source_flags = static_cast<std::uint8_t>(source & 0xF0);
+            r.flags = static_cast<std::uint8_t>(flags);
+            r.first = static_cast<std::uint32_t>(n.u("object"));
+            switch (flags & 3) {
                 case 0:
                     r.kind = FixupRecord::Kind::Internal;
-                    if ((src & 0x0F) != 2) {
-                        const int n = (fl & 0x10) ? 4 : 2;
-                        r.target = value(p, n);
-                        p += n;
-                    }
+                    if (const eng::Node* t = n.child("target")) r.target = static_cast<std::uint32_t>(t->value);
                     break;
-                case 1: {
-                    const int n = (fl & 0x80) ? 1 : ((fl & 0x10) ? 4 : 2);
+                case 1:
                     r.kind = FixupRecord::Kind::Import;
-                    r.ordinal = value(p, n);
-                    p += n;
+                    r.ordinal = static_cast<std::uint32_t>(n.u("ordinal"));
                     break;
-                }
-                case 2: {
-                    const int n = (fl & 0x10) ? 4 : 2;
+                case 2:
                     r.kind = FixupRecord::Kind::ImportName;
-                    r.name = value(p, n);
-                    p += n;
+                    r.name = static_cast<std::uint32_t>(n.u("name_offset"));
                     break;
-                }
                 default: r.kind = FixupRecord::Kind::Entry; break;
             }
-            if (fl & 0x04) {
-                const int n = (fl & 0x20) ? 4 : 2;
-                r.addend = value(p, n);
-                p += n;
+            if (const eng::Node* a = n.child("addend")) r.addend = static_cast<std::uint32_t>(a->value);
+            if (source & 0x20) {
+                if (const eng::Node* list = n.child("sources"))
+                    for (const eng::Node& s : list->children) r.sources.push_back(static_cast<std::int16_t>(s.as_signed()));
+            } else {
+                r.sources.push_back(static_cast<std::int16_t>(n.i("first_source")));
             }
-            if (count) {
-                for (std::uint8_t j = 0; j < *count; ++j) r.sources.push_back(get<std::int16_t>(d, p + 2 * std::uint64_t{j}, kReader));
-                p += 2 * std::uint64_t{*count};
-            }
-            const ByteView raw = slice(d, p0, p - p0, kReader);
+            const ByteView raw = d.subspan(n.offset, n.size);   // the record's bytes as stored
             r.raw.assign(raw.begin(), raw.end());
             out.push_back(std::move(r));
         }

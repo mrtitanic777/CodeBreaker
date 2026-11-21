@@ -7,6 +7,7 @@
 #include "core/error.hpp"
 #include "core/text.hpp"
 #include "formats/dos.hpp"
+#include "formats/le.hpp"
 #include "formats/format_compare_kit.hpp"
 #include "formats/ne.hpp"
 #include "formats/nes.hpp"
@@ -260,6 +261,13 @@ Comparison compare(const Registry& registry, std::string_view format, ByteView d
     if (format == "mz") c.reader_accepts = dos::mz_header(data, true).has_value();
     else if (format == "pe") c.reader_accepts = pe::Image::try_parse(data).has_value();
     else if (format == "ne") c.reader_accepts = ne::Module::try_open(data).has_value();
+    else if (format == "le") {
+        try {
+            (void)le::Module::from_buffer(Bytes(data.begin(), data.end()));
+            c.reader_accepts = true;
+        } catch (const FormatError&) {
+        }
+    }
     else if (format == "ines") {
         try {
             rom = nes::parse(data);
@@ -272,7 +280,9 @@ Comparison compare(const Registry& registry, std::string_view format, ByteView d
 
     std::optional<Tree> tree;
     try {
-        tree = registry.read(format, data);
+        ReadOptions every_part;   // the tables behind the headers too
+        every_part.all_parts = true;
+        tree = registry.read(format, data, every_part);
         c.engine_accepts = true;
     } catch (const FormatError& e) {
         c.engine_error = e.what();
@@ -287,8 +297,9 @@ Comparison compare(const Registry& registry, std::string_view format, ByteView d
     }
     try {
         if (format == "mz") check_mz(k, c, *tree, data);
-        else if (format == "pe") check_pe(k, *tree, data);
-        else if (format == "ne") check_ne(k, *tree, data);
+        else if (format == "pe") check_pe(k, *tree, data), compare_pe_tables(k, *tree, data);
+        else if (format == "ne") check_ne(k, *tree, data), compare_ne_tables(k, *tree, data);
+        else if (format == "le") compare_le_tables(k, *tree, data);
         else check_ines(k, *tree, data, *rom);
     } catch (const Error& e) {   // a path the description should have given: a mismatch
         k.add("(reading the tree)", e.what(), "");

@@ -40,6 +40,11 @@ private:
 // The bytes the tree names, written onto zeros, equal the file's bytes at those places.
 bool covered_equal(const Tree& tree);
 
+// The tables behind the headers, from the tree read with every part of the description (format_compare_tables.cpp).
+void compare_pe_tables(Checker& k, const Tree& tree, ByteView data);
+void compare_ne_tables(Checker& k, const Tree& tree, ByteView data);
+void compare_le_tables(Checker& k, const Tree& tree, ByteView data);
+
 // The console formats (gb, gba, ...): the engine's tree of `data` against the reader of the same name. Returns false when
 // `format` is not one of them.
 bool compare_console(Comparison& c, const Registry& registry, std::string_view format, ByteView data);

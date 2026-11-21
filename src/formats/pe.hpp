@@ -7,6 +7,9 @@
 //   * the inspector's (export_table, import_table, resource_tree, reloc_blocks, tls, debug_entries,
 //     certificates, clr, rich) check every offset and give a shorter answer on a damaged image, never throw.
 // Text from the image (names) is decoded from latin1 to UTF-8 once, here.
+//
+// The headers and every table above are read through the format engine (config/formats/pe.fmt: the structures, where
+// they sit, how long they are); this file decides what a damaged one means (an answer, or an error).
 #pragma once
 
 #include <cstdint>
@@ -211,15 +214,14 @@ public:
 
 private:
     Image() = default;
-    std::uint64_t u8_at(std::uint64_t off) const;
     std::uint64_t u16_at(std::uint64_t off) const;
     std::uint64_t u32_at(std::uint64_t off) const;
     std::uint64_t word_at(std::uint64_t off) const;  // pointer-sized: 4 bytes in PE32, 8 in PE32+
-    std::string text_at(std::optional<std::uint64_t> off, std::uint64_t limit = 512) const;
     std::optional<std::uint64_t> directory_offset(std::size_t index) const;
 
     Bytes data_;
     Header header_;
+    OptionalHeader optional_;
     std::vector<DataDirectory> datadirs_;
     std::vector<Section> sections_;
 };

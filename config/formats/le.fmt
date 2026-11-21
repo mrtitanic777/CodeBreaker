@@ -1,0 +1,227 @@
+# le.fmt -- a Linear Executable ("LE" / "LX": Windows 3.x/9x VxDs and OS/2 32-bit programs): the header, the object table,
+# the page map and, as parts (read when a caller asks), the name tables, the entry table, the fix-up tables and the
+# import-module names.
+#
+# The header sits at e_lfanew (File), or at any offset of a larger file (the root struct `Le` read at that offset: the
+# members of a W3 container). Offsets in the header are from the start of the header, except where a field says it is
+# from the top of the file (data_pages, nonresident_names, debug_info, ...). The fields past the page-map pointers are
+# optional: a header cut short leaves them out.
+
+format le
+endian le
+use mz
+
+struct File {
+    dos : MzHeader
+    lfanew @ 0x3C : u32
+    assert peek16(lfanew) == 0x454C || peek16(lfanew) == 0x584C : "not an LE/LX image"
+    le @ lfanew : Le
+}
+
+struct Le {
+    signature            : str(2)
+    byte_order           : u8 try
+    word_order           : u8 try
+    level                : u32 try
+    cpu                  : u16
+    os                   : u16
+    version              : u32 try
+    module_flags         : u32 try
+    pages                : u32
+    eip_object           : u32
+    eip                  : u32
+    esp_object           : u32 try
+    esp                  : u32 try
+    page_size            : u32
+    last_page_bytes      : u32
+    fixup_size           : u32 try
+    fixup_checksum       : u32 try
+    loader_size          : u32 try
+    loader_checksum      : u32 try
+    object_table         : u32
+    objects              : u32
+    page_map             : u32
+    iterated_pages       : u32 try
+    resources            : u32 try
+    resource_count       : u32 try
+    resident_names       : u32
+    entry_table          : u32
+    module_directives    : u32 try
+    module_directive_count : u32 try
+    fixup_pages          : u32
+    fixup_records        : u32
+    import_modules       : u32 try
+    import_module_count  : u32 try
+    import_names         : u32 try
+    page_checksums       : u32 try
+    data_pages           : u32                 # from the top of the file
+    preload_pages        : u32 try
+    nonresident_names    : u32 try             # from the top of the file
+    nonresident_size     : u32 try
+    nonresident_checksum : u32 try
+    auto_data_object     : u32 try
+    debug_info           : u32 try
+    debug_size           : u32 try
+    instance_preload     : u32 try
+    instance_demand      : u32 try
+    heap_size            : u32 try
+    stack_size           : u32 try
+    reserved             : bytes(8) try
+    resource_data        : u32 try             # (VxD) from the top of the file
+    resource_size        : u32 try
+    device_id            : u16 try
+    kit_version          : u16 try
+
+    let lfa = $start
+
+    object_entries @ $start + object_table : ObjectEntry[objects]
+
+    # parts
+    page_entries      @ $start + page_map : PageEntry[pages] try part pages
+    resident          @ $start + resident_names : NameEntry[until _.length == 0] try part names
+    if nonresident_names != 0 && nonresident_size != 0 {
+        nonresident   @ nonresident_names : NameEntry[while $pos < nonresident_names + nonresident_size until _.length == 0] try part names
+    }
+    entries           @ $start + entry_table : EntryBundle[until _.count == 0] try part entries
+    fixup_offsets     @ $start + fixup_pages : u32[pages + 1] try part fixups
+    fixup_page_records : FixupPage[pages] try part fixups
+    import_module_names @ $start + import_modules : PString[import_module_count] try part imports
+}
+
+struct ObjectEntry {
+    vsize      : u32
+    base       : u32
+    flags      : u32
+    first_page : u32
+    page_count : u32
+    reserved   : bytes(4)
+}
+
+# A page-map entry: the page's number in the file (3 bytes, big-endian), then its kind (0 present, 1 iterated, 2 invalid,
+# 3 zero-filled).
+struct PageEntry {
+    number : u24be
+    kind   : u8
+}
+
+# The names at any offset of the file (a root struct: read with ReadOptions::root and ::at); $limit, when not 0, is the
+# offset the table must start before.
+struct NameTable {
+    names : NameEntry[while ($limit == 0 || $pos < $limit) until _.length == 0] try
+}
+
+# Names with their ordinals (the first entry is the module name or the description); a zero length ends the table.
+struct NameEntry {
+    length : u8
+    if length != 0 {
+        name    : str(length)
+        ordinal : u16
+    }
+}
+
+struct PString {
+    length : u8
+    text   : str(length)
+}
+
+# The entry table: bundles of `count` entries sharing an object; the kind (low 7 bits): 0 = that many unused ordinals,
+# 1 = 16-bit entries, 2 = 16-bit entries with a call gate, 3 = 32-bit entries, 4 = forwarders. A count of 0 ends it.
+struct EntryBundle {
+    count : u8
+    if count != 0 {
+        kind_byte : u8
+        let kind = kind_byte & 0x7F
+        assert kind <= 4 : "an entry bundle of an unknown kind"
+        if kind != 0 {
+            object : u16
+            if kind == 1 {
+                entries : Entry16[count]
+            } else if kind == 2 {
+                entries : Entry16Gate[count]
+            } else if kind == 3 {
+                entries : Entry32[count]
+            } else {
+                entries : Forwarder[count]
+            }
+        }
+    }
+}
+
+struct Entry16 {
+    flags  : u8
+    offset : u16
+}
+
+struct Entry16Gate {
+    flags    : u8
+    offset   : u16
+    callgate : u16
+}
+
+struct Entry32 {
+    flags  : u8
+    offset : u32
+}
+
+struct Forwarder {
+    flags  : u8
+    module : u16
+    offset : u32                  # the ordinal or the offset of the name in the import-procedure table
+}
+
+# The fix-up records of one page: those between its entry of the fix-up page table and the next one.
+struct FixupPage {
+    records @ lfa + fixup_records + fixup_offsets[_index] : FixupRecord[while $pos + 4 <= lfa + fixup_records + fixup_offsets[_index + 1]] try
+}
+
+# source: low nibble the kind of the patched place (2 = a 16-bit selector, 7 = a 32-bit offset ...); bit 5 a list of
+# sources. flags: low 2 bits the target (0 internal, 1 import by ordinal, 2 import by name, 3 entry), 0x04 additive,
+# 0x10 a 32-bit target offset, 0x20 a 32-bit addend, 0x40 a 16-bit object or module, 0x80 an 8-bit ordinal.
+struct FixupRecord {
+    source : u8
+    flags  : u8
+    if (source & 0x20) != 0 {
+        count : u8
+    } else {
+        first_source : i16
+    }
+    if (flags & 0x40) != 0 {
+        object : u16
+    } else {
+        object : u8
+    }
+    let target_kind = flags & 3
+    if target_kind == 0 {
+        if (source & 0x0F) != 2 {
+            if (flags & 0x10) != 0 {
+                target : u32
+            } else {
+                target : u16
+            }
+        }
+    } else if target_kind == 1 {
+        if (flags & 0x80) != 0 {
+            ordinal : u8
+        } else if (flags & 0x10) != 0 {
+            ordinal : u32
+        } else {
+            ordinal : u16
+        }
+    } else if target_kind == 2 {
+        if (flags & 0x10) != 0 {
+            name_offset : u32
+        } else {
+            name_offset : u16
+        }
+    }
+    if (flags & 4) != 0 {
+        if (flags & 0x20) != 0 {
+            addend : u32
+        } else {
+            addend : u16
+        }
+    }
+    if (source & 0x20) != 0 {
+        sources : i16[count]
+    }
+}

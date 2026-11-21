@@ -1,5 +1,9 @@
 # pe.fmt -- a Windows PE image: the DOS header, the COFF header, the optional header (PE32 and PE32+) with its data
-# directories, and the section table.
+# directories, and the section table; and, as parts (read when a caller asks for them), the tables the data directories
+# point at: exports, imports (and delay-load imports), the resource directory tree and the base relocations.
+#
+# Every table is read tolerantly (`try`): what runs past the file, or sits at an RVA no section maps, is not in the tree,
+# and an array keeps the elements read before the damage. The caller decides what a missing table means.
 
 format pe
 endian le
@@ -9,7 +13,25 @@ struct File {
     dos        : MzHeader
     lfanew @ 0x3C : u32
     nt @ lfanew : NtHeaders
+
+    let res_base = dir_off(2)       # the resource directory's file offset (its trees are relative to it), -1 when there is none
+
+    exports       @ dir_off(0)  : ExportDir                  try part exports
+    imports       @ dir_off(1)  : ImportDescriptor[until _.is_end] try part imports
+    resources     @ res_base    : ResDir                     try part resources
+    relocs        @ dir_off(5)  : RelocBlock[while $pos + 8 <= dir_off(5) + dir_size(5) until _.block_size < 8] try part relocs
+    delay_imports @ dir_off(13) : DelayDescriptor[until _.is_end] try part delay_imports
 }
+
+# ---- addressing: an RVA through the section table ----
+
+fn dir_rva(i)  = i < nt.optional.n_directories ? nt.optional.directories[i].rva : 0
+fn dir_size(i) = i < nt.optional.n_directories ? nt.optional.directories[i].size : 0
+fn rva_off(rva) = xlat(nt.sections, rva, virtual_address, span, raw_ptr)    # -1 when no section holds it
+fn clip(x) = (x >= 0 && x < $size) ? x : -1
+# an RVA below SizeOfHeaders (before any section) is its own offset; -1 outside the file
+fn file_off(rva) = clip(rva_off(rva) >= 0 ? rva_off(rva) : (rva < nt.optional.headers_size ? rva : -1))
+fn dir_off(i) = dir_rva(i) ? file_off(dir_rva(i)) : -1
 
 struct NtHeaders {
     signature : bytes(4) == "PE\0\0"
@@ -112,4 +134,194 @@ struct Section {
     n_relocs         : u16
     n_line_numbers   : u16
     characteristics  : u32 as SectionFlags
+
+    let span = max(virtual_size, raw_size)       # what the loader maps of the section
+}
+
+# ---- exports ----
+
+struct ExportDir {
+    characteristics : u32
+    timestamp       : u32
+    version_major   : u16
+    version_minor   : u16
+    name_rva        : u32
+    ordinal_base    : u32
+    n_functions     : u32
+    n_names         : u32
+    functions_rva   : u32
+    names_rva       : u32
+    ordinals_rva    : u32
+    name      @ file_off(name_rva)      : cstr(512) try
+    functions @ file_off(functions_rva) : ExportFunction[n_functions] try
+    names     @ file_off(names_rva)     : ExportName[n_names] try
+    ordinals  @ file_off(ordinals_rva)  : u16[n_names] try
+}
+
+# An address inside the export directory is a forwarder string ("OTHER.Function"), not code.
+struct ExportFunction {
+    rva : u32
+    if rva >= dir_rva(0) && rva < dir_rva(0) + dir_size(0) {
+        forward @ file_off(rva) : cstr(512) try
+    }
+}
+
+struct ExportName {
+    rva : u32
+    name @ file_off(rva) : cstr(512) try
+}
+
+# ---- imports ----
+
+struct ImportDescriptor {
+    lookup    : u32            # the import lookup table (the original first thunk)
+    timestamp : u32
+    forwarder : u32
+    name_rva  : u32
+    iat       : u32            # the import address table
+    let is_end   = lookup == 0 && name_rva == 0 && iat == 0
+    let table_rv = lookup ? lookup : iat
+    if !is_end {                  # the all-zero descriptor ends the table
+        name @ file_off(name_rva) : cstr(512) try
+        if nt.optional.magic == 0x20B {
+            thunks @ file_off(table_rv) : Thunk64[until _.value == 0] try
+        } else {
+            thunks @ file_off(table_rv) : Thunk32[until _.value == 0] try
+        }
+    }
+}
+
+# A thunk is an ordinal (the top bit set; the low 16 bits) or the RVA of a hint and a name.
+struct Thunk32 {
+    value : u32
+    let by_ordinal = (value >> 31) & 1
+    let ordinal    = value & 0xFFFF
+    if value != 0 && by_ordinal == 0 {
+        hint_name @ file_off(value & 0x7FFFFFFF) : HintName try
+    }
+}
+
+struct Thunk64 {
+    value : u64
+    let by_ordinal = (value >> 63) & 1
+    let ordinal    = value & 0xFFFF
+    if value != 0 && by_ordinal == 0 {
+        hint_name @ file_off(value & 0x7FFFFFFF) : HintName try
+    }
+}
+
+struct HintName {
+    hint : u16
+    name : cstr(512)
+}
+
+# The delay-load directory: when bit 0 of the attributes is clear the old layout holds addresses, not RVAs.
+fn undelay(attributes, v) = (attributes & 1) ? v : (v > nt.optional.image_base ? v - nt.optional.image_base : 0)
+
+struct DelayDescriptor {
+    attributes : u32
+    name_va    : u32
+    module     : u32
+    iat_va     : u32
+    int_va     : u32
+    bound_va   : u32
+    unload_va  : u32
+    timestamp  : u32
+    let dll_rva  = undelay(attributes, name_va)
+    let iat_rva  = undelay(attributes, iat_va)
+    let int_rva  = undelay(attributes, int_va)
+    let is_end   = dll_rva == 0 && iat_rva == 0 && int_rva == 0
+    let table_rv = int_rva ? int_rva : iat_rva
+    if !is_end {
+        name @ file_off(dll_rva) : cstr(512) try
+        if nt.optional.magic == 0x20B {
+            thunks @ file_off(table_rv) : Thunk64[until _.value == 0] try
+        } else {
+            thunks @ file_off(table_rv) : Thunk32[until _.value == 0] try
+        }
+    }
+}
+
+# ---- resources: types, then names or ids, then languages; every offset is from the start of the directory ----
+
+struct ResDir {
+    characteristics : u32
+    timestamp       : u32
+    version_major   : u16
+    version_minor   : u16
+    n_named         : u16
+    n_id            : u16
+    entries : TypeEntry[min(n_named + n_id, 8192)] try
+}
+
+struct TypeEntry {
+    ident : u32                  # a name's offset (top bit set) or an id
+    to    : u32                  # a subdirectory's offset (top bit set) or the leaf's
+    if (ident >> 31) != 0 {
+        name @ res_base + (ident & 0x7FFFFFFF) : ResString try
+    }
+    if (to >> 31) != 0 {
+        names @ res_base + (to & 0x7FFFFFFF) : NameDir try
+    }
+}
+
+struct NameDir {
+    characteristics : u32
+    timestamp       : u32
+    version_major   : u16
+    version_minor   : u16
+    n_named         : u16
+    n_id            : u16
+    entries : NameEntry[min(n_named + n_id, 8192)] try
+}
+
+struct NameEntry {
+    ident : u32
+    to    : u32
+    if (ident >> 31) != 0 {
+        name @ res_base + (ident & 0x7FFFFFFF) : ResString try
+    }
+    if (to >> 31) != 0 {
+        languages @ res_base + (to & 0x7FFFFFFF) : LangDir try
+    }
+}
+
+struct LangDir {
+    characteristics : u32
+    timestamp       : u32
+    version_major   : u16
+    version_minor   : u16
+    n_named         : u16
+    n_id            : u16
+    entries : LangEntry[min(n_named + n_id, 8192)] try
+}
+
+struct LangEntry {
+    ident : u32                  # the language
+    to    : u32
+    if (to >> 31) == 0 {
+        data @ res_base + to : ResData try
+    }
+}
+
+struct ResString {
+    length : u16                 # in UTF-16 units
+    text   : str(length * 2)
+}
+
+struct ResData {
+    rva      : u32
+    size     : u32
+    codepage : u32
+    reserved : u32
+}
+
+# ---- base relocations: blocks of 12-bit offsets within a page, the top 4 bits the type (3 = HIGHLOW, 0 = padding) ----
+
+struct RelocBlock {
+    page_rva   : u32
+    block_size : u32
+    if block_size >= 8 {
+        entries : u16[size block_size - 8] size(block_size - 8) try
+    }
 }

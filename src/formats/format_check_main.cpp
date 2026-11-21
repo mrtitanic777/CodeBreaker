@@ -2,7 +2,9 @@
 // descriptions of config/formats, prints the generic tree (with --tree) and diffs it, field by field, against the
 // hand-written reader of the same format (mz: dos.cpp, pe: pe.cpp, ne: ne.cpp, ines: nes.cpp, the console headers: gb.cpp ...).
 //
-//   format_check [--formats DIR] [--tree] [--max N] [--quiet] FILE-OR-FOLDER...
+//   format_check [--formats DIR] [--tree] [--max N] [--quiet] [--readers] FILE-OR-FOLDER...
+//
+// --readers prints, per file, one digest of what the pe, ne and le readers answer (run it before and after a reader changes).
 //
 // A folder is searched recursively; a table of agreement per format ends the output. Exit code 0 when every file agrees.
 #include <cstdio>
@@ -42,7 +44,7 @@ struct Tally {
 
 int main(int argc, char** argv) {
     fsys::path formats_dir;
-    bool tree = false, quiet = false;
+    bool tree = false, quiet = false, readers = false;
     std::size_t max_elements = 6;
     std::vector<fsys::path> inputs;
     for (int i = 1; i < argc; ++i) {
@@ -50,6 +52,7 @@ int main(int argc, char** argv) {
         if (a == "--formats" && i + 1 < argc) formats_dir = argv[++i];
         else if (a == "--tree") tree = true;
         else if (a == "--quiet") quiet = true;
+        else if (a == "--readers") readers = true;
         else if (a == "--max" && i + 1 < argc) max_elements = static_cast<std::size_t>(std::stoul(argv[++i]));
         else inputs.emplace_back(a);
     }
@@ -86,6 +89,10 @@ int main(int argc, char** argv) {
                 data = fs::read_file(file);
             } catch (const Error& e) {
                 std::fprintf(stderr, "%s: %s\n", fs::to_text(file).c_str(), e.what());
+                continue;
+            }
+            if (readers) {   // the digest of what the readers answer: the same before and after they moved onto the engine
+                std::printf("%s %s\n", fs::to_text(file).c_str(), eng::reader_digest(data).c_str());
                 continue;
             }
             if (!quiet || tree) std::printf("%s (%zu bytes): ", fs::to_text(file).c_str(), data.size());
