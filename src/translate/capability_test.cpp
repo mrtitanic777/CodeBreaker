@@ -116,16 +116,42 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
     cb::fs::write_text(work / "Shapes.java", "public class Shapes {\n    interface Shape { double area(); }\n"
                                              "    static class Square implements Shape { final double width; Square(double w) { width = w; } public double area() { return width * width; } }\n"
                                              "    public static void main(String[] args) {\n        Shape s = new Square(1.5);\n        System.out.println(s.area());\n    }\n}\n");
-    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}};
+    cb::fs::write_text(work / "StreamKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/streamkit/StreamKit.java")));
+    cb::fs::write_text(work / "Recs.java",
+                       "import java.util.*;\n"
+                       "public class Recs {\n"
+                       "    record P(String name, int age, double w, long id, boolean on, char c) {}\n"
+                       "    public static void main(String[] args) {\n"
+                       "        P a = new P(\"Ada\", 36, 1.5, 5000000000L, true, 'x');\n"
+                       "        P b = new P(\"Ada\", 36, 1.5, 5000000000L, true, 'x');\n"
+                       "        P n = new P(null, -1, Double.NaN, -1L, false, 'y');\n"
+                       "        System.out.println(a + \" \" + a.hashCode() + \" \" + a.equals(b) + \" \" + a.equals(n) + \" \" + a.equals(null));\n"
+                       "        System.out.println(n + \" \" + n.hashCode() + \" \" + n.equals(new P(null, -1, Double.NaN, -1L, false, 'y')));\n"
+                       "        System.out.println(Optional.of(a.age()) + \" \" + Optional.empty() + \" \" + Optional.ofNullable(n.name()).isPresent());\n"
+                       "        List<P> ps = new ArrayList<>();\n        ps.add(a);\n        ps.add(n);\n"
+                       "        ps.sort(Comparator.comparingInt(P::age).reversed());\n"
+                       "        System.out.println(ps.get(0).age() + \" \" + ps.stream().mapToInt(P::age).max().getAsInt());\n"
+                       "    }\n"
+                       "}\n");
+    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}};
     for (const auto& [to, program] : cases) {
         const cap::Path* path = cap::find_path("java", to);
         CB_CHECK(path != nullptr);
         if (path == nullptr || !cap::missing_tool(*path).empty()) continue;   // (no JDK, C++ compiler or .NET SDK here)
         const std::string id = to;
-        const tf::Result r = capt_run("java", id, work / (std::string(program) + ".java"), work / ("out-" + id), work / ("scratch-" + id));
+        const std::string run = id + "-" + program;
+        const tf::Result r = capt_run("java", id, work / (std::string(program) + ".java"), work / ("out-" + run), work / ("scratch-" + run));
         if (r.verdict != tf::Verdict::Agrees) std::cerr << id << ": " << r.detail.substr(0, 1000) << std::endl;
         CB_CHECK(r.verdict == tf::Verdict::Agrees);
         CB_CHECK(!r.files.empty());
+    }
+    // Java throws on adding to Arrays.asList; a C# List would not, so the program is refused rather than changed
+    if (const cap::Path* path = cap::find_path("java", "csharp"); path != nullptr && cap::missing_tool(*path).empty()) {
+        cb::fs::write_text(work / "Fixed.java", "import java.util.*;\npublic class Fixed {\n    public static void main(String[] args) {\n"
+                                                "        List<Integer> l = Arrays.asList(1, 2);\n        l.add(3);\n        System.out.println(l);\n    }\n}\n");
+        const tf::Result fixed = capt_run("java", "csharp", work / "Fixed.java", work / "out-fixed", work / "scratch-fixed");
+        CB_CHECK(fixed.verdict == tf::Verdict::Refused);
+        CB_CHECK(fixed.detail.find("Arrays.asList") != std::string::npos);
     }
     std::error_code ec;
     stdfs::remove_all(work, ec);

@@ -5,6 +5,7 @@
 #include <cctype>
 
 #include "core/text.hpp"
+#include "translate/backends/jmodel.hpp"
 
 namespace cb::translate::backends::csharp_java {
 
@@ -86,6 +87,7 @@ const std::unordered_map<std::string_view, Delegate>& cj_functions() {
         {"java.util.function.IntUnaryOperator", {"Func", [](Args) { return Args{"int", "int"}; }}},
         {"java.util.function.IntPredicate", {"Func", [](Args) { return Args{"int", "bool"}; }}},
         {"java.util.function.IntFunction", {"Func", [](Args a) { a.insert(a.begin(), "int"); return a; }}},
+        {"java.util.function.IntConsumer", {"Action", [](Args) { return Args{"int"}; }}},
         {"java.util.function.ToIntFunction", {"Func", [](Args a) { a.push_back("int"); return a; }}},
         {"java.util.function.IntSupplier", {"Func", [](Args) { return Args{"int"}; }}},
         {"java.util.function.DoubleUnaryOperator", {"Func", [](Args) { return Args{"double", "double"}; }}},
@@ -295,6 +297,18 @@ std::optional<std::string> JavaLibrary::type_name(cs::Context& w, const ir::Type
         for (const ir::TypeP& a : type_args) out.push_back(w.ctype(a));
         return out;
     };
+    if (q == "java.util.stream.Stream" || q == "java.util.stream.IntStream" || q == "java.util.Optional" || q == "java.util.OptionalInt" ||
+        q == "java.util.OptionalDouble" || q == "java.util.stream.Collector") {
+        w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaStreams");
+        if (q == "java.util.stream.IntStream") return "JIntStream";
+        if (q == "java.util.OptionalInt") return "JOptionalInt";
+        if (q == "java.util.OptionalDouble") return "JOptionalDouble";
+        if (q == "java.util.stream.Stream" && type_args.size() == 1) return "JStream<" + w.ctype(type_args[0]) + ">";
+        if (q == "java.util.Optional" && type_args.size() == 1) return "JOptional<" + w.ctype(type_args[0]) + ">";
+        if (q == "java.util.stream.Collector" && type_args.size() == 3) return "JCollector<" + w.ctype(type_args[0]) + ", " + w.ctype(type_args[2]) + ">";
+        throw Decline("type", "the raw type " + ir::to_text(*t));
+    }
     if (const auto f = cj_functions().find(q); f != cj_functions().end()) {
         const std::vector<std::string> args = f->second.arguments(ctypes());
         if (f->second.generic == "Action" && args.empty()) return "Action";
@@ -368,8 +382,18 @@ std::vector<std::string> JavaLibrary::class_mods(cs::Context&, ir::ClassDecl& c)
         if (m == "public" || m == "protected" || m == "private" || m == "abstract") out.push_back(m);
         else if (m == "final" && c.kind == "class") out.push_back("sealed");
     }
+    if (c.kind == "record") out.push_back("sealed");   // (a Java record is final)
     if (!c.outer && !cj_has(out, "public")) out.insert(out.begin(), "internal");
+    if (c.kind == "record" && c.outer && !cj_has(out, "public") && !cj_has(out, "protected")) {   // a nested record is named by the methods around it
+        std::erase(out, "private");
+        out.insert(out.begin(), "internal");
+    }
     return out;
+}
+
+std::optional<std::string> JavaLibrary::class_keyword(const ir::ClassDecl& c) {
+    if (c.kind == "record") return "class";
+    return std::nullopt;
 }
 
 std::vector<std::string> JavaLibrary::access(const std::vector<std::string>& mods, const ir::ClassDecl& c) const {
@@ -428,7 +452,7 @@ std::vector<std::string> JavaLibrary::method_mods(cs::Context& w, ir::MethodDecl
         if (cj_has(mods, "final")) out.push_back("sealed");
         return out;
     }
-    if (cj_has(mods, "private") || cj_has(mods, "final") || cj_has(c.mods, "final")) return out;
+    if (cj_has(mods, "private") || cj_has(mods, "final") || cj_has(c.mods, "final") || c.kind == "record") return out;
     out.push_back("virtual");
     return out;
 }
@@ -468,6 +492,15 @@ std::string JavaLibrary::member_name(cs::Context& w, const ir::Sym& s) {
             if (s.name == "close" && n == 0 && closeable(w, *c)) return "Dispose";
             if (c->name && s.name == *c->name) return cs::ident(s.name) + "_";
             if (s.name == "main" && s.is_static && n == 1) return "Main";
+        }
+    }
+    if (s.kind == ir::SymKind::Field && s.owner) {   // Java keeps fields and methods apart; C# forbids a field named as a method of its class
+        if (const ir::ClassDecl* c = w.program().class_named(*s.owner)) {
+            const bool method_too = std::any_of(c->members.begin(), c->members.end(), [&](Node* m) {
+                const ir::MethodDecl* md = ir::get<ir::MethodDecl>(m);
+                return md != nullptr && md->name == s.name;
+            });
+            if (method_too) return cs::ident(s.name) + "_";
         }
     }
     return cs::ident(s.name);
@@ -545,6 +578,7 @@ std::vector<Node*> JavaLibrary::arrange_members(cs::Context& w, ir::ClassDecl& c
 }
 
 bool JavaLibrary::ctor_needed(cs::Context&, ir::ClassDecl& c, ir::MethodDecl&) {
+    if (c.kind == "record") return true;   // (its canonical constructor assigns the components)
     const auto it = prologue_.find(c.qname.value_or(""));
     return it != prologue_.end() && !it->second.empty();
 }
@@ -605,6 +639,8 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
         return Ex{"Enum.Parse<" + tn + ">(" + w.expr(call.args.at(0)).text + ")", cs::kPrimary};
     }
     if (c != nullptr || owner.empty()) return std::nullopt;
+    check_list_change(call);
+    if (std::optional<Ex> got = stream_call(w, e)) return got;
     const Row row = lookup(call);
     if (!row.mapping) {
         if (cj_object_method(s->name, call.args.size()) && call.target != nullptr) {
@@ -643,6 +679,135 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
         else if (*row.raw->prec == "unary") prec = cs::kUnary;
     }
     return Ex{std::move(text), prec};
+}
+
+std::string_view JavaLibrary::list_limit(Node* e) const {
+    if (e == nullptr) return {};
+    Node* x = cs::strip(e);
+    if (const ir::Call* made = ir::get<ir::Call>(x); made != nullptr && made->sym != nullptr) {
+        if (made->sym->owner == "java.util.Arrays" && made->sym->name == "asList") return "fixed";
+        if (made->sym->owner == "java.util.stream.Stream" && made->sym->name == "toList") return "immutable";
+    }
+    const std::optional<std::string> held = concrete(x);
+    if (held == "java.util.Arrays.asList") return "fixed";
+    if (held == "java.util.stream.Stream.toList") return "immutable";
+    return {};
+}
+
+void JavaLibrary::check_list_change(const ir::Call& call) const {
+    const ir::Sym& s = *call.sym;
+    const bool utility = s.owner == "java.util.Collections" && (s.name == "sort" || s.name == "reverse" || s.name == "shuffle");
+    Node* list = utility ? (call.args.empty() ? nullptr : call.args[0]) : call.target;
+    const std::string_view limit = list_limit(list);
+    if (limit.empty()) return;
+    const bool resizes = !utility && (s.name == "add" || s.name == "addAll" || s.name == "remove" || s.name == "removeAll" || s.name == "removeIf" ||
+                                      s.name == "retainAll" || s.name == "clear");
+    const bool writes = utility || s.name == "set" || s.name == "sort" || s.name == "replaceAll";
+    if (resizes || (limit == "immutable" && writes)) {
+        throw Decline("fixed-list", "changing a list Java refuses to change (" + s.name + " on " +
+                                        (limit == "fixed" ? "Arrays.asList" : "Stream.toList") + "): Java throws, a C# List would not");
+    }
+}
+
+std::optional<Ex> JavaLibrary::stream_call(cs::Context& w, Node* e) {
+    const ir::Call& call = *ir::get<ir::Call>(e);
+    const ir::Sym& s = *call.sym;
+    const std::string owner = s.owner.value_or("");
+    const auto arguments = [&] {
+        std::vector<std::string> parts;
+        for (Node* a : call.args) parts.push_back(w.expr(a).text);
+        return text::join(parts, ", ");
+    };
+    const auto uses = [&] {
+        w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaStreams");
+        w.add_using("System");
+    };
+    // the type argument javac inferred for the call's result: what C# cannot infer for an untyped lambda
+    const auto result_arg = [&](std::size_t i) {
+        const auto* c = e->type ? std::get_if<ir::ClassType>(&e->type->body) : nullptr;
+        if (c == nullptr || i >= c->args.size()) throw Decline("library", owner + "." + s.name + " with no inferred type");
+        return w.ctype(c->args[i]);
+    };
+    const auto on_target = [&] {
+        uses();
+        return Ex{w.wrap(call.target, cs::kPrimary) + "." + s.name + "(" + arguments() + ")", cs::kPrimary};
+    };
+    const bool is_static = s.is_static || ir::is<ir::TypeName>(call.target);
+
+    if (owner == "java.util.stream.Stream") {
+        if (!is_static) return on_target();
+        uses();
+        return Ex{"JStream<" + result_arg(0) + ">." + s.name + "(" + arguments() + ")", cs::kPrimary};
+    }
+    if (owner == "java.util.stream.IntStream") {
+        if (!is_static) return on_target();
+        uses();
+        return Ex{"JIntStream." + s.name + "(" + arguments() + ")", cs::kPrimary};
+    }
+    if (owner == "java.util.Optional" || owner == "java.util.OptionalInt" || owner == "java.util.OptionalDouble") {
+        if (!is_static) return on_target();
+        uses();
+        const std::string type = owner == "java.util.Optional" ? "JOptional<" + result_arg(0) + ">" : owner == "java.util.OptionalInt" ? "JOptionalInt" : "JOptionalDouble";
+        return Ex{type + "." + s.name + "(" + arguments() + ")", cs::kPrimary};
+    }
+    if (owner == "java.util.stream.Collectors") {
+        uses();
+        return Ex{"JCollectors<" + result_arg(0) + ">." + s.name + "(" + arguments() + ")", cs::kPrimary};
+    }
+    if (owner == "java.util.Comparator" && s.name != "compare") {
+        uses();
+        const std::string args = arguments();
+        std::string all = is_static ? args : w.expr(call.target).text;
+        if (!is_static && !args.empty()) all += ", " + args;
+        return Ex{"JCompare<" + result_arg(0) + ">." + s.name + "(" + all + ")", cs::kPrimary};
+    }
+    if (owner == "java.util.Arrays" && s.name == "stream" && call.args.size() == 1) {
+        uses();
+        const auto* array = call.args[0]->type ? std::get_if<ir::ArrayType>(&call.args[0]->type->body) : nullptr;
+        if (array != nullptr && array->elem && array->elem->kind() == "i32") return Ex{"JIntStream.of(" + arguments() + ")", cs::kPrimary};
+        if (array == nullptr || array->elem->is_prim()) throw Decline("library", "Arrays.stream of this array");
+        return Ex{"JStream<" + w.ctype(array->elem) + ">.of(" + arguments() + ")", cs::kPrimary};
+    }
+    if (owner == "java.util.Arrays" && s.name == "asList") {
+        if (call.args.size() == 1 && call.args[0]->type && call.args[0]->type->kind() == "array") {
+            throw Decline("library", "Arrays.asList over an existing array: Java's list writes through to it");
+        }
+        w.add_using("System.Collections.Generic");
+        const std::string type = result_arg(0);
+        if (call.args.empty()) return Ex{"new List<" + type + ">()", cs::kPrimary};
+        return Ex{"new List<" + type + "> { " + arguments() + " }", cs::kPrimary};
+    }
+    if (s.name == "stream" && call.args.empty() && call.target != nullptr) {
+        const auto fam = cj_family().find(owner);
+        if (fam != cj_family().end() && (fam->second == "List" || fam->second == "Set")) {
+            if (const std::string* held = cj_qual(call.target->type); held != nullptr && cj_family().contains(*held) && cj_family().at(*held) == "Set") {
+                const std::optional<std::string> made = concrete(call.target);
+                if (!made || !cj_ordered(*made)) throw Decline("hash-order", "streaming a " + made.value_or("?") + ": Java visits it in hash order, .NET in another");
+            }
+            uses();
+            return Ex{"JLib.stream(" + w.expr(call.target).text + ")", cs::kPrimary};
+        }
+    }
+    // the statics javac's members for a record call, and the ones a method reference names
+    const bool boxed = owner == "java.lang.Integer" || owner == "java.lang.Long" || owner == "java.lang.Short" || owner == "java.lang.Byte" ||
+                       owner == "java.lang.Character" || owner == "java.lang.Boolean" || owner == "java.lang.Float" || owner == "java.lang.Double";
+    if (s.is_static && ((boxed && s.name == "hashCode") || (owner == "java.util.Objects" && s.name == "hashCode")) && call.args.size() == 1) {
+        uses();
+        return Ex{"JLib.Hash(" + arguments() + ")", cs::kPrimary};
+    }
+    if (s.is_static && owner == "java.util.Objects" && s.name == "equals" && call.args.size() == 2) {
+        uses();
+        return Ex{"JLib.Equal(" + arguments() + ")", cs::kPrimary};
+    }
+    if (s.is_static && owner == "java.lang.Float" && s.name == "compare" && call.args.size() == 2) {
+        w.program().use_runtime("JavaRt");
+        return Ex{"JavaRt.CompareDouble(" + arguments() + ")", cs::kPrimary};
+    }
+    if (s.is_static && (owner == "java.lang.Integer" || owner == "java.lang.Long" || owner == "java.lang.Double") && s.name == "sum" && call.args.size() == 2) {
+        return Ex{w.wrap(call.args[0], cs::kAdd) + " + " + w.wrap(call.args[1], cs::kAdd, true), cs::kAdd};
+    }
+    return std::nullopt;
 }
 
 std::optional<std::string> JavaLibrary::stmt_call(cs::Context& w, Node* e) {
@@ -775,6 +940,11 @@ void JavaLibrary::record(cs::Context&, const ir::SymP& sym, Node* init) {
     Node* x = init != nullptr ? cs::strip(init) : nullptr;
     const std::string* q = x != nullptr && ir::is<ir::New>(x) ? cj_qual(x->type) : nullptr;
     if (sym != nullptr && q != nullptr) concrete_[{sym->owner.value_or(""), sym->name}] = *q;
+    if (sym != nullptr && x != nullptr) {   // a list Java will not let the program change
+        const std::string_view limit = list_limit(x);
+        if (limit == "fixed") concrete_[{sym->owner.value_or(""), sym->name}] = "java.util.Arrays.asList";
+        if (limit == "immutable") concrete_[{sym->owner.value_or(""), sym->name}] = "java.util.stream.Stream.toList";
+    }
 }
 
 std::optional<std::string> JavaLibrary::concrete(Node* e) const {
@@ -817,6 +987,41 @@ void JavaLibrary::check_lambda(cs::Context& w, ir::Lambda&, const ir::TypeP& typ
     if (!cj_functions().contains(*q) && *q != "java.lang.Runnable") {
         throw Decline("lambda", "a lambda of the interface " + *q + " (no C# delegate for it)");
     }
+}
+
+Node* JavaLibrary::method_ref(cs::Context& w, Node* e) {
+    const ir::MethodRef& x = *ir::get<ir::MethodRef>(e);
+    const ir::SymP& s = x.sym;
+    if (s == nullptr || x.mode == "new" || !s->owner) return nullptr;
+    const bool in_library = w.program().class_named(*s->owner) == nullptr;
+    const bool unbound = ir::is<ir::TypeName>(x.target) && !s->is_static;
+    if (!in_library && !unbound) return nullptr;   // (a method of the program: C#'s method group)
+    const std::string* interface_name = cj_qual(e->type);
+    const jmodel::Signature* single = interface_name != nullptr ? jmodel::library_functional(*interface_name) : nullptr;
+    if (single == nullptr) return nullptr;
+    if (!s->is_static && !unbound) {   // `out::println`: Java evaluates the receiver once, when the reference is made
+        const ir::Select* held = ir::get<ir::Select>(x.target);
+        if (held == nullptr || held->sym == nullptr || held->sym->owner != "java.lang.System") {
+            throw Decline("method-ref", "a reference to a method of a library object");
+        }
+    }
+    Arena& arena = w.program().arena();
+    const std::size_t count = single->params.size();
+    const std::size_t receivers = unbound ? 1 : 0;
+    std::vector<Node*> params, names;
+    for (std::size_t i = 0; i < count; ++i) {
+        ir::TypeP type = ir::class_type("java.lang.Object");
+        if (unbound && i == 0) type = ir::class_type(*s->owner);
+        else if (i >= receivers && i - receivers < s->params.size()) type = s->params[i - receivers];
+        const ir::SymP sym = ir::make_sym(ir::SymKind::Param, "a" + std::to_string(i), std::nullopt, false, type);
+        params.push_back(ir::make(arena, ir::Param{.sym = sym, .type = type}));
+        names.push_back(ir::make(arena, ir::Name{.sym = sym}, type));
+    }
+    if (count < receivers) return nullptr;
+    Node* target = unbound ? names[0] : s->is_static ? ir::make(arena, ir::TypeName{}, ir::class_type(*s->owner)) : x.target;
+    std::vector<Node*> args(names.begin() + static_cast<std::ptrdiff_t>(receivers), names.end());
+    Node* body = ir::make(arena, ir::Call{.target = target, .sym = s, .args = std::move(args)}, s->ret);
+    return ir::make(arena, ir::Lambda{.params = std::move(params), .body = body}, e->type);
 }
 
 cs::LibraryFactory factory(const cb::java::apimap::Registry& registry) {
