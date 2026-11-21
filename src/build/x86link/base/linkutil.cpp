@@ -558,12 +558,12 @@ f_handle FindPath(Link& link,  const char *name, char *fullname )
     std::array<char, PATH_MAX>  fullpath;
 
     strcpy( fullpath.data(), name );
-    file = QObjOpen( fullpath.data() );
+    file = QObjOpen( link, fullpath.data() );
     if( file == NIL_FHANDLE
       && link.ExePath != nullptr ) {
         for( path_list = link.ExePath; *path_list != '\0'; ) {
             strcpy( MakePath( fullpath.data(), &path_list ), name );
-            file = QObjOpen( fullpath.data() );
+            file = QObjOpen( link, fullpath.data() );
             if( file != NIL_FHANDLE ) {
                 break;
             }
@@ -630,10 +630,9 @@ file_list *AllocNewFile(Link& link,  member_list *member )
     return( file );
 }
 
-char *FileName( const char *buff, size_t len, file_defext etype, bool force )
+char *FileName( Link& link, const char *buff, size_t len, file_defext etype, bool force )
 /***************************************************************************/
 {
-    Link& link = wlink();
     const char  *namptr;
     const char  *namstart;
     char        *ptr;

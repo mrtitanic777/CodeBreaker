@@ -32,7 +32,7 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void             InitCmdFile( void );
+extern void             InitCmdFile( Link& link );
 extern void             SetSegMask(Link& link);
 extern char             *GetNextLink( void );
 extern void             DoCmdFile(Link& link,  const char * );

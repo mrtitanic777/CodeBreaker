@@ -15,7 +15,10 @@ State& state() {
     return *the_state;
 }
 
-void begin_link() { the_state = std::make_unique<State>(); }
+void begin_link(Link& link) {
+    the_state = std::make_unique<State>();
+    the_state->reader.set_link(link);
+}
 void end_link() { the_state.reset(); }
 
 Reader& reader() { return state().reader; }

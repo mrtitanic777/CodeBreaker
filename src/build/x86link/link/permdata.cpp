@@ -192,7 +192,7 @@ static void BufWritePermFile(Link& link,  perm_write_info *info, void *data, uns
 
 static bool WriteLeaderName(Link& link,  void *_leader, void *info )
 /******************************************************/
-{
+{
     seg_leader *leader = static_cast<seg_leader *>(_leader);
 
     U32WritePermFile(link,  static_cast<perm_write_info *>(info), leader->class_->name.u.offs );
@@ -231,7 +231,7 @@ static bool CheckFree(Link& link,  bool isfree, perm_write_info *info )
 
 static void WriteDLLInfo(Link& link,  void *_dll, void *info )
 /************************************************/
-{
+{
     dll_sym_info *dll = static_cast<dll_sym_info *>(_dll);
 
     if( !CheckFree(link,  dll->isfree, static_cast<perm_write_info *>(info) ) ) {
@@ -245,7 +245,7 @@ static void WriteDLLInfo(Link& link,  void *_dll, void *info )
 
 static void WriteExportInfo(Link& link,  void *_exp, void *info )
 /***************************************************/
-{
+{
     entry_export *exp = static_cast<entry_export *>(_exp);
 
     if( !CheckFree(link,  exp->isfree, static_cast<perm_write_info *>(info) ) ) {
@@ -427,7 +427,7 @@ static void FlushPermBuf(Link& link,  perm_write_info *info )
 
 static void WriteStringBlock(Link& link,  void *info, const char *data, size_t size )
 /***********************************************************************/
-{
+{
     QWrite( static_cast<perm_write_info *>( info )->incfhdl, data, size, link.IncFileName );
 }
 
@@ -448,7 +448,7 @@ static void FiniStringBlock( stringtable *strtab, size_t *size, void *info,
 
 static void DumpBlock(Link& link,  carve_t carver, void *block, void *_info )
 /***************************************************************/
-{
+{
     perm_write_info *info = static_cast<perm_write_info *>(_info);
     size_t          size;
 
@@ -682,7 +682,7 @@ static void RebuildDLLInfo( void *_dll, perm_read_info *info )
 
 static void RebuildExportInfo(Link& link,  void *_exp, perm_read_info *info )
 /***************************************************************/
-{
+{
     entry_export *exp = static_cast<entry_export *>(_exp);
 
     BufRead( info, exp, offsetof( entry_export, sym ) );
@@ -695,7 +695,7 @@ static void RebuildExportInfo(Link& link,  void *_exp, perm_read_info *info )
 
 static void RebuildModEntry(Link& link,  void *_mod, void *info )
 /***************************************************/
-{
+{
     mod_entry *mod = static_cast<mod_entry *>(_mod);
 
     /* unused parameters */ (void)info;
@@ -713,7 +713,7 @@ static void RebuildModEntry(Link& link,  void *_mod, void *info )
 
 static void RebuildSegData(Link& link,  void *_sdata, void *info )
 /****************************************************/
-{
+{
     segdata *sdata = static_cast<segdata *>(_sdata);
 
     /* unused parameters */ (void)info;
@@ -730,7 +730,7 @@ static void RebuildSegData(Link& link,  void *_sdata, void *info )
 
 static void RebuildSymbol(Link& link,  void *_sym, void *info )
 /*************************************************/
-{
+{
     symbol *sym = static_cast<symbol *>(_sym);
 
     /* unused parameters */ (void)info;
@@ -767,7 +767,7 @@ static void RebuildSymbol(Link& link,  void *_sym, void *info )
 
 static void ReadBlockInfo(Link& link,  carve_t carver, void *blk, void *info )
 /****************************************************************/
-{
+{
     QRead( static_cast<perm_read_info *>( info )->incfhdl, CarveBlockData( blk ), CarveBlockSize( carver ), link.IncFileName );
 }
 
@@ -827,7 +827,7 @@ static void PurgeRead(Link& link,  perm_read_info *info )
     }
 }
 
-static void ReadBinary( char **buf, unsigned_32 nameidx, time_t modtime )
+static void ReadBinary( Link& link, char **buf, unsigned_32 nameidx, time_t modtime )
 /***********************************************************************/
 {
     char                *fname;
@@ -835,7 +835,7 @@ static void ReadBinary( char **buf, unsigned_32 nameidx, time_t modtime )
     size_t              size;
 
     fname = MapString( nameidx );
-    hdl = QObjOpen( fname );
+    hdl = QObjOpen( link, fname );
     if( hdl == NIL_FHANDLE ) {
         return;
     }
@@ -874,7 +874,7 @@ void ReadPermData(Link& link)
     perm_read_info      info;
     inc_file_header     *hdr;
 
-    info.incfhdl = QObjOpen( link.IncFileName );
+    info.incfhdl = QObjOpen( link, link.IncFileName );
     if( info.incfhdl == NIL_FHANDLE )
         return;
     info.buffer = static_cast<char *>( MemAllocSafe( SECTOR_SIZE ) );
@@ -915,13 +915,13 @@ void ReadPermData(Link& link)
         QRead( info.incfhdl, st.ReadRelocs, hdr->relocsize, link.IncFileName );
     }
     QClose( info.incfhdl, link.IncFileName );
-    ReadBinary( &st.OldExe, hdr->exename, hdr->exemodtime );
+    ReadBinary( link, &st.OldExe, hdr->exename, hdr->exemodtime );
     if( st.OldExe == nullptr ) {
         PurgeRead(link,  &info );
         return;
     }
     if( hdr->symname != 0 ) {
-        ReadBinary( &st.OldSymFile, hdr->symname, hdr->symmodtime );
+        ReadBinary( link, &st.OldSymFile, hdr->symname, hdr->symmodtime );
         if( st.OldSymFile == nullptr ) {
             PurgeRead(link,  &info );
             return;

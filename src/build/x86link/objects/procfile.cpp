@@ -616,7 +616,7 @@ char *IdentifyObject(Link& link,  const file_list *file, unsigned long *loc, uns
         *size = GetARValue( ar_hdr->size, AR_SIZE_LEN );
         *loc = ar_loc;
     }
-    switch( FileTypeORL( file, *loc ) ) {
+    switch( FileTypeORL( link, file, *loc ) ) {
     case ORL_ELF:
         link.ObjFileFormat = FILE_FMT_ELF;
         break;

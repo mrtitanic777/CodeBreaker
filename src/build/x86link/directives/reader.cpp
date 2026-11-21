@@ -244,9 +244,10 @@ void Reader::new_line() {
 }
 
 void Reader::start_file() {
+    Link& link = *link_;
     const std::string_view t = text();
-    char* fname = FileName(t.data(), t.size(), E_NONE, false);
-    const f_handle file = QObjOpen(fname);
+    char* fname = FileName(link, t.data(), t.size(), E_NONE, false);
+    const f_handle file = QObjOpen( link, fname);
     if (file == NIL_FHANDLE) {
         MemFree(fname);
         const std::string name = str();   // not a file: an environment variable of that name, if there is one

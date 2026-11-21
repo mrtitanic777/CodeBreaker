@@ -225,7 +225,7 @@ bool ProcSharelib(Link& link) {
     Reader& r = reader();
     if (!r.get(Sep::equals, Want::file_name)) return false;
     const std::string_view t = r.text();
-    link.FmtData.u.nov.sharednlm = FileName(t.data(), t.size(), E_NLM, false);
+    link.FmtData.u.nov.sharednlm = FileName(link, t.data(), t.size(), E_NLM, false);
     return true;
 }
 

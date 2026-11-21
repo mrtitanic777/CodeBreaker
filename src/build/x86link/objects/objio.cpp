@@ -165,7 +165,7 @@ bool MakeFileNameFromList( const char **path_list, char *name, char *fullname )
     return( false );
 }
 
-static f_handle PathObjOpen( const char *path_ptr, char *name, char *new_name, infilelist *infile )
+static f_handle PathObjOpen( Link& link, const char *path_ptr, char *name, char *new_name, infilelist *infile )
 /*************************************************************************************************/
 {
     f_handle    fp;
@@ -177,7 +177,7 @@ static f_handle PathObjOpen( const char *path_ptr, char *name, char *new_name, i
             infile->prefix = nullptr;
             break;
         }
-        fp = QObjOpen( new_name );
+        fp = QObjOpen( link, new_name );
         if( fp != NIL_FHANDLE ) {
             break;
         }
@@ -200,20 +200,20 @@ bool DoObjOpen(Link& link,  infilelist *infile )
     infile->currpos = 0;
     if( HAS_PATH( name ) ) {   // has path defined
         infile->path_list = nullptr;
-        fp = QObjOpen( name );
+        fp = QObjOpen( link, name );
     } else if( infile->prefix != nullptr ) {     // already searched path
         MakeFileName( infile, new_name.data() );
-        fp = QObjOpen( new_name.data() );
+        fp = QObjOpen( link, new_name.data() );
     } else {                                // new, no searched path
         fp = NIL_FHANDLE;
         if( (infile->status & INSTAT_LIB_SEARCH)
           || infile->path_list == nullptr ) {
             /* try in current directory */
-            fp = QObjOpen( name );
+            fp = QObjOpen( link, name );
         }
         if( fp == NIL_FHANDLE ) {
             for( searchpath = infile->path_list; searchpath != nullptr; searchpath = searchpath->next ) {
-                fp = PathObjOpen( searchpath->name, name, new_name.data(), infile );
+                fp = PathObjOpen( link, searchpath->name, name, new_name.data(), infile );
                 if( fp != NIL_FHANDLE ) {
                     break;
                 }
@@ -221,7 +221,7 @@ bool DoObjOpen(Link& link,  infilelist *infile )
             if( fp == NIL_FHANDLE
               && (infile->status & INSTAT_USE_LIBPATH) ) {
                 if( link.LibPath != nullptr ) {
-                    fp = PathObjOpen( link.LibPath, name, new_name.data(), infile );
+                    fp = PathObjOpen( link, link.LibPath, name, new_name.data(), infile );
                 }
             }
         }

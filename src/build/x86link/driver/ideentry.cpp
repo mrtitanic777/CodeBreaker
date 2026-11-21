@@ -224,13 +224,6 @@ unsigned IDEAPI IDEGetVersion( void )
     return( IDE_CUR_DLL_VER );
 }
 
-void IDEAPI IDEStopRunning( void )
-/********************************/
-{
-    Link& link = wlink();
-    link.LinkState |= LS_STOP_WORKING | LS_LINK_ERROR;
-}
-
 void IDEAPI IDEFreeHeap( void )
 /*****************************/
 {
@@ -242,26 +235,24 @@ void IDEAPI IDEFreeHeap( void )
 IDEBool IDEAPI IDEInitDLL( IDECBHdl cbhdl, IDECallBacks *cb, IDEDllHdl *hdl )
 /***************************************************************************/
 {
-    /* unused parameters */ (void)hdl;
-
     /*
      * InitSubSystems begins the run, and what the run's state held is made
      * new: the host's callbacks are bound again after it (wlink kept them
      * in statics, bound before it)
      */
-    InitSubSystems();
+    Link&       link = InitSubSystems();
     IdeState    &st = ide();
 
     st.hdl = cbhdl;
     st.cbs = cb;
+    *hdl = &link;       // the handle the host gives back: this link
     return( false );
 }
 
 void IDEAPI IDEFiniDLL( IDEDllHdl hdl )
 /*************************************/
 {
-    Link& link = wlink();
-    /* unused parameters */ (void)hdl;
+    Link& link = *static_cast<Link *>( hdl );
 
     FiniSubSystems(link);
 }
@@ -269,8 +260,7 @@ void IDEAPI IDEFiniDLL( IDEDllHdl hdl )
 int IDEAPI IDERunYourSelf( IDEDllHdl hdl, const char * opts, IDEBool *fatalerr )
 /******************************************************************************/
 {
-    Link& link = wlink();
-    /* unused parameters */ (void)hdl;
+    Link& link = *static_cast<Link *>( hdl );
 
     LinkMainLine(link,  opts );
     *fatalerr = (link.LinkState & LS_LINK_ERROR) != 0;
@@ -280,8 +270,7 @@ int IDEAPI IDERunYourSelf( IDEDllHdl hdl, const char * opts, IDEBool *fatalerr )
 int IDEAPI IDERunYourSelfArgv( IDEDllHdl hdl, int argc, char **argv, IDEBool *fatalerr )
 /**************************************************************************************/
 {
-    Link& link = wlink();
-    /* unused parameters */ (void)hdl;
+    Link& link = *static_cast<Link *>( hdl );
 
 #if !defined( __WATCOMC__ )
     _argc = argc;

@@ -1215,7 +1215,8 @@ static void WriteMapSymArray(Link& link,  symbol **symarray, size_t num )
 /***********************************************************/
 {
     if( link.MapFlags & MAP_ALPHA ) {
-        qsort( symarray, num, sizeof( symbol * ), SymAlphaCompare );
+        qsort( symarray, num, sizeof( symbol * ),
+               (link.LinkFlags & LF_DONT_UNMANGLE) == 0 ? SymAlphaCompareUnmangled : SymAlphaCompare );
     } else {
         qsort( symarray, num, sizeof( symbol * ), SymAddrCompare );
     }

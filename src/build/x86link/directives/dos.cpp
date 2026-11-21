@@ -132,7 +132,7 @@ bool ProcInto(Link& link) {
     // Process the INTO keyword.
     if (reader().get(Sep::none, Want::file_name)) {
         const std::string_view text = reader().text();
-        link.CurrSect->outfile = NewOutFile(link, FileName(text.data(), text.size(), E_OVL, false));
+        link.CurrSect->outfile = NewOutFile(link, FileName(link, text.data(), text.size(), E_OVL, false));
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_DIRECTIVE_ERR, "s", "into");

@@ -72,6 +72,7 @@ private:
 class Reader {
 public:
     Reader() = default;
+    void set_link(Link& link) { link_ = &link; }   // the link whose directive files this reads
     Reader(const Reader&) = delete;
     Reader& operator=(const Reader&) = delete;
     ~Reader();
@@ -148,6 +149,7 @@ private:
     std::list<Source> sources_;         // bottom first
     std::list<Source>::iterator at_ = sources_.end();
     Source::Cursor cur_;
+    Link* link_ = nullptr;
 };
 
 // The reader of the link being run (directives/state.cpp).

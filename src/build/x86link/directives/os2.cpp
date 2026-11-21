@@ -95,7 +95,7 @@ bool GetWlibImports(Link& link) {
     // read in a wlib command file, get the import directives, and treat them as exports
     Reader& r = reader();
     const std::string_view name = r.text();
-    char* fname = FileName(name.data(), name.size(), E_LBC, false);
+    char* fname = FileName(link, name.data(), name.size(), E_LBC, false);
     f_handle handle = QOpenR(link, fname);
     r.push_file(handle, fname);
     MemFree(fname);
@@ -161,7 +161,7 @@ bool ProcNone(Link& link) {
 bool ProcOldLibrary(Link& link) {
     if (!have_equals(Want::file_name)) return false;
     const std::string_view t = reader().text();
-    link.FmtData.u.os2fam.old_lib_name = FileName(t.data(), t.size(), E_DLL, false);
+    link.FmtData.u.os2fam.old_lib_name = FileName(link, t.data(), t.size(), E_DLL, false);
     return true;
 }
 

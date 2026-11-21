@@ -154,7 +154,7 @@ bool ProcMaxErrors(Link& link) {
 bool ProcSymFile(Link& link) {
     if (reader().get(Sep::equals, Want::file_name)) {
         if (link.SymFileName != nullptr) MemFree(link.SymFileName);
-        link.SymFileName = FileName(reader().text().data(), reader().text().size(), E_SYM, false);
+        link.SymFileName = FileName(link, reader().text().data(), reader().text().size(), E_SYM, false);
     }
     return true;
 }
@@ -278,7 +278,7 @@ bool ProcFiles(Link& link) {
 bool ProcModFiles(Link& link) { return process_list(link, AddModFile, Want::file_name); }
 
 bool AddLib(Link& link) {
-    char* ptr = FileName(reader().text().data(), reader().text().size(), E_LIBRARY, false);
+    char* ptr = FileName(link, reader().text().data(), reader().text().size(), E_LIBRARY, false);
     file_list* file = AddObjLib(link, ptr, LIB_PRIORITY_MAX);
     file->flags_file |= STAT_USER_SPECD;
 #ifdef _EXE
@@ -333,7 +333,7 @@ bool ProcMap(Link& link) {
     link.MapFlags |= MAP_FLAG;
     if (reader().get(Sep::equals, Want::file_name)) {
         if (link.MapFName != nullptr) MemFree(link.MapFName);
-        link.MapFName = FileName(reader().text().data(), reader().text().size(), E_MAP, false);
+        link.MapFName = FileName(link, reader().text().data(), reader().text().size(), E_MAP, false);
         DEBUG((DBG_OLD, "produce map file"));
     }
     return true;
@@ -460,9 +460,9 @@ bool ProcIncremental(Link& link) {
     }
     link.LinkFlags |= LF_INC_LINK_FLAG;
     if (reader().get(Sep::equals, Want::file_name)) {
-        link.IncFileName = FileName(reader().text().data(), reader().text().size(), E_ILK, false);
+        link.IncFileName = FileName(link, reader().text().data(), reader().text().size(), E_ILK, false);
     } else if (exe_name() != nullptr) {
-        link.IncFileName = FileName(exe_name(), strlen(exe_name()), E_ILK, true);
+        link.IncFileName = FileName(link, exe_name(), strlen(exe_name()), E_ILK, true);
     } else {
         link.IncFileName = MemStrdupSafe(link, DEFAULT_INC_NAME);
     }
@@ -679,7 +679,7 @@ bool ProcStub(Link& link) {
     if (!have_equals(Want::file_name)) return false;
     char** nameptr = getStubNamePtr(link);
     if (nameptr == nullptr) return false;
-    char* name = FileName(reader().text().data(), reader().text().size(), E_LOAD, false);
+    char* name = FileName(link, reader().text().data(), reader().text().size(), E_LOAD, false);
     if (*nameptr == nullptr) {
         *nameptr = name;
     } else if (in_system_block()) {

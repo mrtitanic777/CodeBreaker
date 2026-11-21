@@ -69,7 +69,8 @@ extern void     LnkMsg( unsigned, const char *, ... );
 extern void     Locator( const char *, const char *, unsigned );
 extern void     WLPrtBanner(Link& link);
 extern bool     SkipSymbol(Link& link,  symbol * );
-extern int      SymAlphaCompare( const void *, const void * );
+extern int      SymAlphaCompare( const void *, const void * );        // by the names as written
+extern int      SymAlphaCompareUnmangled( const void *, const void * );   // by the names unmangled
 extern unsigned CalcMsgNum( unsigned );
 
 #define MAX_MSG_SIZE 512

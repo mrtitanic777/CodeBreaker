@@ -69,7 +69,7 @@ extern unsigned long    QFileSize( f_handle );
 extern void             QDelete( const char * );
 extern bool             QReadStr( f_handle, char *, size_t, const char * );
 extern bool             QIsDevice( f_handle );
-extern f_handle         QObjOpen( const char * );
+extern f_handle         QObjOpen( Link& link, const char * );
 extern f_handle         TempFileOpen(Link& link,  const char * );
 extern bool             QModTime( const char *, time_t * );
 extern time_t           QFModTime( int );

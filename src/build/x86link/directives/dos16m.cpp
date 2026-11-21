@@ -86,7 +86,7 @@ bool ProcExpName(Link& link) {
         MemFree(link.FmtData.u.d16m.exp_name);
     }
     const std::string_view text = reader().text();
-    link.FmtData.u.d16m.exp_name = FileName(text.data(), text.size(), E_PROTECT, true);   // just keep the name around for now.
+    link.FmtData.u.d16m.exp_name = FileName(link, text.data(), text.size(), E_PROTECT, true);   // just keep the name around for now.
     return true;
 }
 
@@ -247,7 +247,7 @@ void CmdD16MFini(Link& link) {
     if (link.FmtData.u.d16m.exp_name == nullptr && exe_name() != nullptr) {
         size_t base_name_len;
         const char* base_name = GetBaseName(exe_name(), strlen(exe_name()), &base_name_len);
-        link.FmtData.u.d16m.exp_name = FileName(base_name, base_name_len, E_PROTECT, true);
+        link.FmtData.u.d16m.exp_name = FileName(link, base_name, base_name_len, E_PROTECT, true);
     }
 }
 

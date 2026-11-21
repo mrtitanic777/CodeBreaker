@@ -61,11 +61,14 @@
 #include "i64.h"
 #include "build/x86link/link/run_state.hpp"
 
+#include <unordered_map>
+
 #include "clibext.h"
 
 
 struct orl_io_struct {
-    file_list   list;
+    const file_list *list;
+    Link        *link;
 };
 
 namespace {
@@ -73,6 +76,7 @@ namespace {
 // what objorl.cpp keeps for one run of the linker
 struct ORLState {
     orl_handle              handle = nullptr;
+    std::unordered_map<const file_list *, orl_io_struct> io;  // each file ORL reads: its handle (the address stays)
     long                    filePos = 0;
     long                    pos = 0;
     ORL_STRUCT( orl_reloc ) savedReloc{};
@@ -89,16 +93,16 @@ ORLState &orlState()
     return cb_wlink::RunState::part<ORLState>();
 }
 
-orl_io_struct *orlIo( const file_list *file )
+orl_io_struct *orlIo( Link& link, const file_list *file )
 {
-    return const_cast<orl_io_struct *>( reinterpret_cast<const orl_io_struct *>( file ) );
+    return &orlState().io.try_emplace( file, orl_io_struct{ file, &link } ).first->second;
 }
 
 void *ORLRead( orl_io_struct *orlio, size_t len )
 {
-    Link& link = wlink();
+    Link& link = *orlio->link;
     ORLState &st = orlState();
-    void *result = CachePermRead(link,  &orlio->list, st.filePos + st.pos, len );
+    void *result = CachePermRead(link,  orlio->list, st.filePos + st.pos, len );
 
     st.pos += static_cast<long>( len );
     st.readCache.push_back( result );
@@ -114,7 +118,7 @@ int ORLSeek( orl_io_struct *orlio, long pos, int where )
     } else if( where == SEEK_CUR ) {
         st.pos += pos;
     } else {
-        st.pos = orlio->list.infile->len - st.filePos - pos;
+        st.pos = orlio->list->infile->len - st.filePos - pos;
     }
     return 0;
 }
@@ -170,7 +174,7 @@ orl_file_handle InitFile(Link& link)
     } else {
         type = ORL_COFF;
     }
-    return ORLFileInit( st.handle, orlIo( link.CurrMod->u1.source ), type );
+    return ORLFileInit( st.handle, orlIo( link, link.CurrMod->u1.source ), type );
 }
 
 void ClearCachedData( const file_list *file )
@@ -187,7 +191,7 @@ void ClearCachedData( const file_list *file )
 
 }
 
-orl_file_format FileTypeORL( const file_list *file, unsigned long loc )
+orl_file_format FileTypeORL( Link& link, const file_list *file, unsigned long loc )
 /**********************************************************************
  * return true if this is can be handled by ORL
  */
@@ -195,7 +199,7 @@ orl_file_format FileTypeORL( const file_list *file, unsigned long loc )
     orl_file_format     type;
 
     ORLFileSeek( file, loc, SEEK_SET );
-    type = ORLFileIdentify( orlState().handle, orlIo( file ) );
+    type = ORLFileIdentify( orlState().handle, orlIo( link, file ) );
     ClearCachedData( file );
     return type;
 }
@@ -287,14 +291,14 @@ bool CheckFlags(Link& link,  orl_file_handle filehdl )
 }
 
 // section type is ignored
-orl_return NullFunc( orl_sec_handle )
+orl_return NullFunc( Link&, orl_sec_handle )
 {
     return ORL_OKAY;
 }
 
-orl_return ExportCallback( const char *name, void * )
+orl_return ExportCallback( const char *name, void *cookie )
 {
-    Link& link = wlink();
+    Link& link = *static_cast<Link *>( cookie );
     length_name lname;
 
     lname.name = name;
@@ -303,9 +307,9 @@ orl_return ExportCallback( const char *name, void * )
     return ORL_OKAY;
 }
 
-orl_return EntryCallback( const char *name, void * )
+orl_return EntryCallback( const char *name, void *cookie )
 {
-    Link& link = wlink();
+    Link& link = *static_cast<Link *>( cookie );
     if( !link.StartInfo.user_specd ) {
         if( link.ObjFileFormat == FILE_FMT_COFF
           && (link.LinkState & LS_HAVE_X86_CODE) ) {
@@ -324,15 +328,15 @@ orl_return EntryCallback( const char *name, void * )
     return ORL_OKAY;
 }
 
-orl_return DeflibCallback( const char *name, void * )
+orl_return DeflibCallback( const char *name, void *cookie )
 {
-    Link& link = wlink();
+    Link& link = *static_cast<Link *>( cookie );
     AddCommentLib(link,  name, strlen( name ), static_cast<lib_priority>( LIB_PRIORITY_MAX - 2 ) );
     return ORL_OKAY;
 }
 
 // handle extra object file information records
-orl_return P1Note( orl_sec_handle sec )
+orl_return P1Note( Link& link, orl_sec_handle sec )
 {
     orl_note_callbacks cb;
 
@@ -340,12 +344,12 @@ orl_return P1Note( orl_sec_handle sec )
     cb.deflib_fn = DeflibCallback;
     cb.entry_fn = EntryCallback;
     cb.scantab_fn = nullptr;
-    ORLNoteSecScan( sec, &cb, nullptr );
+    ORLNoteSecScan( sec, &cb, &link );
     return ORL_OKAY;
 }
 
 // NYI
-orl_return Unsupported( orl_sec_handle )
+orl_return Unsupported( Link&, orl_sec_handle )
 {
     return ORL_OKAY;
 }
@@ -446,9 +450,8 @@ void DefNosymComdats( void *_snode, void * )
 }
 
 // declare the "segment"
-orl_return DeclareSegment( orl_sec_handle sec )
+orl_return DeclareSegment( Link& link, orl_sec_handle sec )
 {
-    Link& link = wlink();
     ORLState                &st = orlState();
     segdata                 *sdata;
     segnode                 *snode;
@@ -594,9 +597,8 @@ void DefineComdatSym(Link& link,  segnode *snode, symbol *sym, unsigned_32 value
     DefineComdat(link,  sdata, sym, value, sym_type, snode->contents );
 }
 
-orl_return ProcSymbol( orl_symbol_handle symhdl )
+orl_return ProcSymbol( Link& link, orl_symbol_handle symhdl )
 {
-    Link& link = wlink();
     orl_symbol_type     type;
     const char          *name;
     unsigned_64         val64;
@@ -698,14 +700,13 @@ orl_return ProcSymbol( orl_symbol_handle symhdl )
     return ORL_OKAY;
 }
 
-orl_return SymTable( orl_sec_handle sec )
+orl_return SymTable( Link& link, orl_sec_handle sec )
 {
-    return ORLSymbolSecScan( sec, ProcSymbol );
+    return ORLSymbolSecScan( sec, bind_link( link, ProcSymbol ) );
 }
 
-orl_return DoReloc( orl_reloc reloc )
+orl_return DoReloc( Link& link, orl_reloc reloc )
 {
-    Link& link = wlink();
     fix_type    type;
     frame_spec  frame;
     target_spec target;
@@ -793,7 +794,7 @@ orl_return DoReloc( orl_reloc reloc )
             type = FIX_OFFSET_16 | FIX_SIGNED;
         } else {
             st.savedReloc.type = ORL_RELOC_TYPE_NONE;      /* flag recursion */
-            DoReloc( reloc );
+            DoReloc( link, reloc );
             reloc = &st.savedReloc;
             type = FIX_HIGH_OFFSET_16;
         }
@@ -840,9 +841,9 @@ orl_return DoReloc( orl_reloc reloc )
     return ORL_OKAY;
 }
 
-orl_return P1Relocs( orl_sec_handle sec )
+orl_return P1Relocs( Link& link, orl_sec_handle sec )
 {
-    return ORLRelocSecScan( sec, DoReloc );
+    return ORLRelocSecScan( sec, bind_link( link, DoReloc ) );
 }
 
 void HandleImportSymbol(Link& link,  const char *name )
@@ -854,7 +855,7 @@ void HandleImportSymbol(Link& link,  const char *name )
     intname.name = name;
     intname.len = strlen( name );
     if( st.impModName == nullptr ) {
-        st.impModName = FileName( link.CurrMod->name.u.ptr, strlen( link.CurrMod->name.u.ptr ), E_DLL, false );
+        st.impModName = FileName(link, link.CurrMod->name.u.ptr, strlen( link.CurrMod->name.u.ptr ), E_DLL, false );
     }
     modname.name = st.impModName;
     modname.len = strlen( st.impModName );
@@ -890,7 +891,9 @@ void ScanImported(Link& link)
     }
 }
 
-constexpr std::array<orl_sec_return_func, 12> SegmentJumpTable = {
+using SectionRoutine = orl_return (*)( Link&, orl_sec_handle );
+
+constexpr std::array<SectionRoutine, 12> SegmentJumpTable = {
     NullFunc,           /* ORL_SEC_TYPE_NONE */
     DeclareSegment,     /* ORL_SEC_TYPE_NO_BITS (bss) */
     DeclareSegment,     /* ORL_SEC_TYPE_PROG_BITS */
@@ -905,7 +908,7 @@ constexpr std::array<orl_sec_return_func, 12> SegmentJumpTable = {
     NullFunc,           /* ORL_SEC_TYPE_LINK_INFO */
 };
 
-constexpr std::array<orl_sec_return_func, 12> SymbolJumpTable = {
+constexpr std::array<SectionRoutine, 12> SymbolJumpTable = {
     NullFunc,           /* ORL_SEC_TYPE_NONE */
     NullFunc,           /* ORL_SEC_TYPE_NO_BITS (bss) */
     NullFunc,           /* ORL_SEC_TYPE_PROG_BITS */
@@ -920,7 +923,7 @@ constexpr std::array<orl_sec_return_func, 12> SymbolJumpTable = {
     NullFunc            /* ORL_SEC_TYPE_LINK_INFO */
 };
 
-constexpr std::array<orl_sec_return_func, 12> P1SpecificJumpTable = {
+constexpr std::array<SectionRoutine, 12> P1SpecificJumpTable = {
     NullFunc,           /* ORL_SEC_TYPE_NONE */
     NullFunc,           /* ORL_SEC_TYPE_NO_BITS (bss) */
     NullFunc,           /* ORL_SEC_TYPE_PROG_BITS */
@@ -935,19 +938,19 @@ constexpr std::array<orl_sec_return_func, 12> P1SpecificJumpTable = {
     NullFunc            /* ORL_SEC_TYPE_LINK_INFO */
 };
 
-orl_return ProcSegments( orl_sec_handle hdl )
+orl_return ProcSegments( Link& link, orl_sec_handle hdl )
 {
-    return SegmentJumpTable[ORLSecGetType( hdl )]( hdl );
+    return SegmentJumpTable[ORLSecGetType( hdl )]( link, hdl );
 }
 
-orl_return ProcSymbols( orl_sec_handle hdl )
+orl_return ProcSymbols( Link& link, orl_sec_handle hdl )
 {
-    return SymbolJumpTable[ORLSecGetType( hdl )]( hdl );
+    return SymbolJumpTable[ORLSecGetType( hdl )]( link, hdl );
 }
 
-orl_return ProcP1Specific( orl_sec_handle hdl )
+orl_return ProcP1Specific( Link& link, orl_sec_handle hdl )
 {
-    return P1SpecificJumpTable[ORLSecGetType( hdl )]( hdl );
+    return P1SpecificJumpTable[ORLSecGetType( hdl )]( link, hdl );
 }
 
 }
@@ -977,11 +980,11 @@ unsigned long ORLPass1(Link& link)
             link.CurrMod->flags_mod |= MOD_FLATTEN_DBI;
         }
         link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        ORLFileScan( filehdl, nullptr, ProcSegments );
+        ORLFileScan( filehdl, nullptr, bind_link( link, ProcSegments ) );
         IterateNodelist( link.SegNodes, bind_link( link, AllocSeg ), nullptr );
-        ORLFileScan( filehdl, nullptr, ProcSymbols );
+        ORLFileScan( filehdl, nullptr, bind_link( link, ProcSymbols ) );
         ScanImported(link);
-        ORLFileScan( filehdl, nullptr, ProcP1Specific );
+        ORLFileScan( filehdl, nullptr, bind_link( link, ProcP1Specific ) );
         IterateNodelist( link.SegNodes, DefNosymComdats, nullptr );
     }
     FiniFile( filehdl, link.CurrMod->u1.source );

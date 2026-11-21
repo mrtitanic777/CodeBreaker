@@ -366,7 +366,7 @@ static void WriteQNXResource(Link& link)
         rec.rec_type = LMF_RESOURCE_REC;
         resource = lmf_resource{};
         if( link.FmtData.res_name_only ) {
-            file = QObjOpen( link.FmtData.resource );
+            file = QObjOpen( link, link.FmtData.resource );
             if( file == NIL_FHANDLE ) {
                 PrintIOError( WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.resource );
                 return;

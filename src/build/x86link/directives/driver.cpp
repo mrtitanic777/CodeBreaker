@@ -131,7 +131,7 @@ void help(Link& link) {
     if (rest.empty() || rest[0] == '?' || rest[0] == '\0' || !DoHelp(link)) DisplayOptions(link);
 }
 
-void parse_command(Link& link) {
+void parse_command(Link& link) {
     Reader& r = reader();
     while (!r.get(Sep::end, Want::include_dot)) {
         if (!DoParseDirectiveSuicide(link)) Syntax();
@@ -189,7 +189,7 @@ namespace dx = cb::x86link::directives;
 
 // ---- what the rest of wlink calls (cmdline.h)
 
-void InitCmdFile() { dx::begin_link(); }   // (each run of the linker: nothing an earlier run read stays)
+void InitCmdFile(Link& link) { dx::begin_link(link); }   // (each run of the linker: nothing an earlier run read stays)
 
 void SetSegMask(Link& link) {
     link.FmtData.SegShift = 16 - link.FmtData.Hshift;
@@ -295,16 +295,16 @@ void DoCmdFile(Link& link, const char* fname) {
     }
     const size_t namelen = std::strlen(name);
     if (namelen > 0) {
-        if (link.MapFName == nullptr && (link.MapFlags & MAP_FLAG)) link.MapFName = FileName(name, namelen, E_MAP, true);
+        if (link.MapFName == nullptr && (link.MapFlags & MAP_FLAG)) link.MapFName = FileName(link, name, namelen, E_MAP, true);
         const bool separate_symbols = dx::any(dx::cmd_flags() & dx::Flag::separate_symbols);
         if (link.SymFileName == nullptr &&
             (separate_symbols || ((link.FmtData.type & MK_COM) && (link.LinkFlags & LF_ANY_DBI_FLAG)) ||
              ((link.FmtData.type & MK_ELF) && (link.LinkFlags & (LF_OLD_DBI_FLAG | LF_CV_DBI_FLAG))) ||
              ((link.FmtData.type & MK_RAW) && (link.LinkFlags & LF_ANY_DBI_FLAG)))) {
-            link.SymFileName = FileName(name, namelen, E_SYM, true);
+            link.SymFileName = FileName(link, name, namelen, E_SYM, true);
         }
         if (link.FmtData.make_implib && link.FmtData.implibname == nullptr) {
-            link.FmtData.implibname = FileName(name, namelen, link.FmtData.make_impfile ? E_LBC : E_LIBRARY, true);
+            link.FmtData.implibname = FileName(link, name, namelen, link.FmtData.make_impfile ? E_LBC : E_LIBRARY, true);
         }
     }
     if (link.MapFName == nullptr) link.MapFlags = static_cast<mapflag>(0);   // (no map: none of its options)
@@ -328,7 +328,7 @@ void SetFormat(Link& link) {
 #endif
     }
     char*& name = dx::exe_name();
-    char* fname = FileName(name, std::strlen(name), link.FmtData.def_ext, dx::any(dx::cmd_flags() & dx::Flag::unnamed));
+    char* fname = FileName(link, name, std::strlen(name), link.FmtData.def_ext, dx::any(dx::cmd_flags() & dx::Flag::unnamed));
     MemFree(name);
     link.Root->outfile = dx::NewOutFile(link, fname);
     name = nullptr;
@@ -389,7 +389,7 @@ void FreeFormatStuff(Link& link) {
 
 void AddCommentLib(Link& link, const char* comment, size_t len, lib_priority priority) {
     if (dx::any(dx::cmd_flags() & dx::Flag::no_default_libs)) return;
-    char* ptr = FileName(comment, len, E_LIBRARY, false);
+    char* ptr = FileName(link, comment, len, E_LIBRARY, false);
     file_list* file = AddObjLib(link, ptr, priority);
     CheckLibTrace(file);
     DEBUG((DBG_BASE, "library: %s", ptr));

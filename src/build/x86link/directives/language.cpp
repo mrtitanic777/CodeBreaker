@@ -263,10 +263,10 @@ char* file_name(Link& link, char** member) {
         size_t base_length = 0;
         const char* base = GetBaseName(m.data(), m.size(), &base_length);
         *member = MemToStringSafe(link, base, base_length);
-        return FileName(object.data(), object.size(), E_LIBRARY, false);
+        return FileName(link, object.data(), object.size(), E_LIBRARY, false);
     }
     *member = nullptr;
-    return FileName(object.data(), object.size(), E_OBJECT, false);
+    return FileName(link, object.data(), object.size(), E_OBJECT, false);
 }
 
 bool in_system_block() {

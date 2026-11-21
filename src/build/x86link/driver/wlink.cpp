@@ -288,7 +288,7 @@ static void ResetSubSystems(Link& link)
     link.Root = NewSection();
 }
 
-void InitSubSystems( void )
+Link& InitSubSystems( void )
 /**************************/
 {
 #if defined( DEVBUILD ) && defined( __WATCOMC__ )
@@ -303,7 +303,8 @@ void InitSubSystems( void )
     InitSpillFile();
     InitSym();
     InitORLObj();
-    InitCmdFile();
+    InitCmdFile( link );
+    return( link );
 }
 
 static void CleanSubSystems(Link& link)
@@ -423,7 +424,7 @@ static void DoLink(Link& link,  const char *cmdline )
 
 static void LinkMeBaby(Link& link)
 /****************************/
-{
+{
     ResetSubSystems(link);
     DoLink(link,  state().arg_save );
 }

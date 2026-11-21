@@ -38,7 +38,7 @@ struct State {
 };
 
 State& state();
-void begin_link();   // a new State for the link starting
+void begin_link(Link& link);   // a new State for the link starting
 void end_link();     // the link's State done
 
 }  // namespace cb::x86link::directives

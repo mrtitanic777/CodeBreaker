@@ -48,9 +48,9 @@ ORL_STRUCT( orl_reloc ) {
     orl_reloc_type                      type;
 };
 
-typedef orl_return (*orl_sec_return_func)( orl_sec_handle );
-typedef orl_return (*orl_reloc_return_func)( orl_reloc );
-typedef orl_return (*orl_symbol_return_func)( orl_symbol_handle );
+typedef FunctionRef<orl_return( orl_sec_handle )> orl_sec_return_func;
+typedef FunctionRef<orl_return( orl_reloc )> orl_reloc_return_func;
+typedef FunctionRef<orl_return( orl_symbol_handle )> orl_symbol_return_func;
 typedef orl_return (*orl_group_return_func)( orl_group_handle );
 
 typedef orl_return callback_export_fn( const char *, void * );

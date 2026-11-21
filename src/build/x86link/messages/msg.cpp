@@ -679,10 +679,9 @@ bool SkipSymbol(Link& link,  symbol * sym )
     return( (link.MapFlags & MAP_ARTIFICIAL) == 0 && art == __MANGLED_INTERNAL );
 }
 
-int SymAlphaCompare( const void *a, const void *b )
+static int SymAlphaOrder( const void *a, const void *b, bool unmangle )
 /********************************************************/
 {
-    Link& link = wlink();
     const symbol    *left = *static_cast<symbol *const *>( a );
     const symbol    *right = *static_cast<symbol *const *>( b );
     const char      *leftname;
@@ -691,7 +690,7 @@ int SymAlphaCompare( const void *a, const void *b )
     size_t          rightsize;
     int             result;
 
-    if( (link.LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
+    if( unmangle ) {
         __unmangled_name( left->name.u.ptr, 0, &leftname, &leftsize );
         __unmangled_name( right->name.u.ptr, 0, &rightname, &rightsize );
     } else {
@@ -714,4 +713,14 @@ int SymAlphaCompare( const void *a, const void *b )
         }
     }
     return( result );
+}
+
+int SymAlphaCompare( const void *a, const void *b )
+{
+    return( SymAlphaOrder( a, b, false ) );
+}
+
+int SymAlphaCompareUnmangled( const void *a, const void *b )
+{
+    return( SymAlphaOrder( a, b, true ) );
 }

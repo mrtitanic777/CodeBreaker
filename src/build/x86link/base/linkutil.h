@@ -67,5 +67,5 @@ extern void             VMemQSort( virt_mem, size_t, size_t,
 extern void             InitEnvVars(Link& link);
 extern void             FiniEnvVars(Link& link);
 extern file_list        *AllocNewFile(Link& link,  member_list *member );
-extern char             *FileName( const char *, size_t, file_defext, bool );
+extern char             *FileName( Link& link, const char *, size_t, file_defext, bool );
 extern section          *NewSection( void );

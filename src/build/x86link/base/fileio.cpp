@@ -406,10 +406,9 @@ static f_handle NSOpen(Link& link,  const char *name, unsigned mode )
     return( NIL_FHANDLE );
 }
 
-f_handle QObjOpen( const char *name )
+f_handle QObjOpen( Link& link, const char *name )
 /***********************************/
 {
-    Link& link = wlink();
     return( NSOpen(link,  name, O_RDONLY ) );
 }
 
