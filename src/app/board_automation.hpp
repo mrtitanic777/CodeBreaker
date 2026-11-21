@@ -50,8 +50,9 @@ std::vector<char> cards_named(const Board& board, const std::vector<std::string>
 
 // ---- a batch
 
-// The binaries among the cards shown that are worth converting (PE, NE, LE; not done, not known unconvertible, not on their way), most linked-to first.
-std::vector<std::uint32_t> batch_order(const Board& board, const Index& index, const Stacks& stacks);
+// The binaries among the cards shown that are worth converting (PE, NE, LE; not done, not known unconvertible, not on their way): the most active first when a
+// projection is given (with a trace, what really ran), then the most linked-to.
+std::vector<std::uint32_t> batch_order(const Board& board, const Index& index, const Stacks& stacks, const Projection* projection = nullptr);
 
 // ---- export
 

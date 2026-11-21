@@ -6,6 +6,8 @@
 //                                                      render the real window to a PNG instead of showing it (review, and the gate's UI test)
 //     codebreaker app --board IMAGE                    the window, on the Board page, with this disc image laid out as cards (board.hpp)
 //     codebreaker app --board-scan IMAGE [--board-out FOLDER]   the same board with no window: extract or reload it and print the real counts
+//     codebreaker app --board-batch N --board-out FOLDER    convert the next N binaries, what really ran first, keeping each real result
+//     codebreaker app --board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER   keep a measured run (Win95VM's calltrace) with the board
 //
 // The window is Windows 11 native: plain Win32 with Direct2D and DirectWrite, the DWM caption and Mica backdrop, the system accent colour and
 // theme (window_win.cpp and its parts). It runs the conversion pipeline of convert.hpp on a worker thread, one file after another when several are

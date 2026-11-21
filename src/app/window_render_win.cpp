@@ -631,11 +631,14 @@ void rd_ribbon(RdDraw& d, float x0, float y0, float h0, float x1, float y1, floa
 }
 
 // The dots of one channel, from `a` to `b` along its curve. More projected calls: more of them, faster; the channels near the busiest turn warm.
-void rd_flow_dots(RdDraw& d, D2D1_POINT_2F a, D2D1_POINT_2F b, double rate, const Model& m, std::uint32_t seed, float radius = 1.7f) {
+void rd_flow_dots(RdDraw& d, D2D1_POINT_2F a, D2D1_POINT_2F b, double rate, const Model& m, std::uint32_t seed, float radius = 1.7f, bool seen = true) {
     if (!m.board_projection || rate <= 0) return;
     const double busiest = m.board_projection->max_channel;
     const double intensity = board::flow_intensity(rate, busiest);
-    d.brush->SetColor(intensity >= 0.6 ? rd_mix(rd_color(0xFFE2A8), rd_color(0xFF7A29), static_cast<float>((intensity - 0.6) / 0.4)) : D2D1::ColorF(1, 1, 1, 0.55f + 0.45f * static_cast<float>(intensity)));
+    if (m.board_projection->has_measured && !seen) {   // a model beside a measurement: small and dim
+        radius *= 0.7f;
+        d.brush->SetColor(D2D1::ColorF(0.62f, 0.72f, 0.86f, 0.42f));
+    } else d.brush->SetColor(intensity >= 0.6 ? rd_mix(rd_color(0xFFE2A8), rd_color(0xFF7A29), static_cast<float>((intensity - 0.6) / 0.4)) : D2D1::ColorF(1, 1, 1, 0.55f + 0.45f * static_cast<float>(intensity)));
     const float mid = (a.x + b.x) / 2;
     for (const float t : board::flow_dots(rate, busiest, m.board_flow_time, seed)) {
         const float u = 1 - t;
@@ -666,11 +669,15 @@ void rd_board_flow(RdDraw& d, const BoardLayout& b, const Model& m) {
             else rd_ribbon(d, r.slice.right(), r.slice.y, r.slice.h, r.bar.x, r.bar.y, r.bar.h, rd_alpha(hue, hot ? 0.75f : 0.5f));
             if (m.board_projection) {   // the band's projected calls: everything of its kind that flows through it
                 double rate = 0;
-                for (const board::ModuleEdge& e : left ? focus.in : focus.out)
-                    if (m.board_graph->modules[e.module].pile == bands[i].pile) rate += left ? m.board_projection->channel(e.module, flow.focus) : m.board_projection->channel(flow.focus, e.module);
+                bool seen = false;
+                for (const board::ModuleEdge& e : left ? focus.in : focus.out) {
+                    if (m.board_graph->modules[e.module].pile != bands[i].pile) continue;
+                    rate += left ? m.board_projection->channel(e.module, flow.focus) : m.board_projection->channel(flow.focus, e.module);
+                    seen = seen || (left ? m.board_projection->channel_measured(e.module, flow.focus) : m.board_projection->channel_measured(flow.focus, e.module));
+                }
                 const D2D1_POINT_2F side_point = D2D1::Point2F(left ? r.bar.right() : r.bar.x, r.bar.y + r.bar.h / 2);
                 const D2D1_POINT_2F center_point = D2D1::Point2F(left ? r.slice.x : r.slice.right(), r.slice.y + r.slice.h / 2);
-                rd_flow_dots(d, left ? side_point : center_point, left ? center_point : side_point, rate, m, static_cast<std::uint32_t>(base) + static_cast<std::uint32_t>(i) + 1, 2.0f);
+                rd_flow_dots(d, left ? side_point : center_point, left ? center_point : side_point, rate, m, static_cast<std::uint32_t>(base) + static_cast<std::uint32_t>(i) + 1, 2.0f, seen);
             }
             d.fill(r.bar, 0, hue);
             const std::string words = std::string(board::pile_name(bands[i].pile)) + "  " + board::count_words(bands[i].weight);
@@ -719,7 +726,8 @@ void rd_board_trace(RdDraw& d, const BoardLayout& b, const Model& m) {
         for (const Live& one : live) {
             const Rect& from = t.nodes[one.link->column][one.link->from];
             const Rect& to = t.nodes[one.link->column + 1u][one.link->to];
-            rd_flow_dots(d, D2D1::Point2F(from.right(), from.y + from.h / 2), D2D1::Point2F(to.x, to.y + to.h / 2), one.rate, m, one.link->from * 31 + one.link->to * 7 + one.link->column);
+            rd_flow_dots(d, D2D1::Point2F(from.right(), from.y + from.h / 2), D2D1::Point2F(to.x, to.y + to.h / 2), one.rate, m, one.link->from * 31 + one.link->to * 7 + one.link->column, 1.7f,
+                         m.board_projection->channel_measured(trace.columns[one.link->column][one.link->from], trace.columns[one.link->column + 1u][one.link->to]));
         }
     }
     const std::unordered_set<std::uint32_t> on_path(trace.heaviest.begin(), trace.heaviest.end());
@@ -844,15 +852,17 @@ void rd_board_library(RdDraw& d, const BoardLayout& b, const Model& m) {
             const board::LibraryChannel& c = v.left[static_cast<std::size_t>(l.left_first) + i];
             const Rect& r = l.left_rows[i];
             const D2D1_POINT_2F row = D2D1::Point2F(r.right(), r.y + r.h / 2), slice = D2D1::Point2F(l.left_slices[i].x, l.left_slices[i].y + l.left_slices[i].h / 2);
-            if (on_function) rd_flow_dots(d, row, slice, m.board_projection->function_user(v.focus, v.function, static_cast<std::uint32_t>(c.module)), m, static_cast<std::uint32_t>(i) + 1);
-            else rd_flow_dots(d, slice, row, m.board_projection->channel(v.focus, static_cast<std::uint32_t>(c.module)), m, static_cast<std::uint32_t>(i) + 1);
+            if (on_function) rd_flow_dots(d, row, slice, m.board_projection->function_user(v.focus, v.function, static_cast<std::uint32_t>(c.module)), m, static_cast<std::uint32_t>(i) + 1, 1.7f,
+                                             m.board_projection->function_user_measured(v.focus, v.function, static_cast<std::uint32_t>(c.module)));
+            else rd_flow_dots(d, slice, row, m.board_projection->channel(v.focus, static_cast<std::uint32_t>(c.module)), m, static_cast<std::uint32_t>(i) + 1, 1.7f,
+                                  m.board_projection->channel_measured(v.focus, static_cast<std::uint32_t>(c.module)));
         }
         for (std::size_t i = 0; i < l.right_rows.size(); ++i) {
             const board::LibraryChannel& c = v.right[static_cast<std::size_t>(l.right_first) + i];
             const Rect& r = l.right_rows[i];
             const D2D1_POINT_2F row = D2D1::Point2F(r.x, r.y + r.h / 2), slice = D2D1::Point2F(l.right_slices[i].right(), l.right_slices[i].y + l.right_slices[i].h / 2);
-            if (on_function) rd_flow_dots(d, slice, row, m.board_projection->function(v.focus, v.function), m, 501);
-            else rd_flow_dots(d, row, slice, m.board_projection->function(v.focus, c.key), m, static_cast<std::uint32_t>(i) + 101);
+            if (on_function) rd_flow_dots(d, slice, row, m.board_projection->function(v.focus, v.function), m, 501, 1.7f, m.board_projection->function_measured(v.focus, v.function));
+            else rd_flow_dots(d, row, slice, m.board_projection->function(v.focus, c.key), m, static_cast<std::uint32_t>(i) + 101, 1.7f, m.board_projection->function_measured(v.focus, c.key));
         }
         if (!on_function && m.board_hover_export >= 0 && static_cast<std::size_t>(m.board_hover_export) < v.right.size()) {
             const auto position = static_cast<std::size_t>(m.board_hover_export);
@@ -861,7 +871,8 @@ void rd_board_library(RdDraw& d, const BoardLayout& b, const Model& m) {
                 const Rect& to = l.right_rows[position - static_cast<std::size_t>(l.right_first)];
                 for (std::size_t i = 0; i < l.user_rows.size(); ++i) {
                     const Rect& u = l.user_rows[i];
-                    rd_flow_dots(d, D2D1::Point2F(u.x, u.y + u.h / 2), D2D1::Point2F(to.right(), to.y + to.h / 2), m.board_projection->function_user(v.focus, c.key, c.users[i].module), m, static_cast<std::uint32_t>(i) + 201);
+                    rd_flow_dots(d, D2D1::Point2F(u.x, u.y + u.h / 2), D2D1::Point2F(to.right(), to.y + to.h / 2), m.board_projection->function_user(v.focus, c.key, c.users[i].module), m, static_cast<std::uint32_t>(i) + 201, 1.7f,
+                                 m.board_projection->function_user_measured(v.focus, c.key, c.users[i].module));
                 }
             }
         }
@@ -898,6 +909,11 @@ void rd_board_maps(RdDraw& d, const BoardLayout& b, const Model& m) {
     const wchar_t* const note = m.board_width == board::Width::Files ? L"Width: distinct files. Dots: projected calls per hour (a model, not measured)."
                                 : m.board_width == board::Width::Links ? L"Width: imported functions. Dots: projected calls per hour (a model, not measured)."
                                                                        : L"Width: static call sites. Dots: projected calls per hour (a model, not measured).";
+    if (m.board_projection && m.board_projection->has_measured) {
+        const std::string measured_note = std::string(m.board_width == board::Width::Files ? "Width: files. " : m.board_width == board::Width::Links ? "Width: functions. " : "Width: call sites. ") +
+                                          "Bright dots: measured, boot and idle, " + std::to_string(static_cast<int>(m.board_projection->measured_seconds)) + " s in a VM. Dim: scaled model.";
+        d.text(widen(measured_note), b.note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.warn);
+    } else
     d.text(note, b.note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.warn);
     const Rect mid{b.canvas.x, b.canvas.y + b.canvas.h / 2 - 12, b.canvas.w, 24};
     if (!m.board_index) d.text(L"The link index is not ready.", mid, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -908,7 +924,7 @@ void rd_board_maps(RdDraw& d, const BoardLayout& b, const Model& m) {
     if (m.board_graph) rd_board_crumbs(d, b, m);
     if (b.hot_path.w > 0 && m.board_projection) {
         const std::string words = board_hot_path_words(m);
-        if (!words.empty()) d.text(widen("Projected hot path: " + words), b.hot_path, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, rd_color(0xFF9A4D), DWRITE_TEXT_ALIGNMENT_TRAILING);
+        if (!words.empty()) d.text(widen(std::string(m.board_projection->has_measured ? "Measured hot path: " : "Projected hot path: ") + words), b.hot_path, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, rd_color(0xFF9A4D), DWRITE_TEXT_ALIGNMENT_TRAILING);
     }
 }
 

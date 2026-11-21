@@ -89,6 +89,49 @@ CB_TEST("app.board_projection.an_autostart_file_is_resident", [] {
     CB_CHECK(std::abs(p.residency[module_named(g, "app.exe")] - 1.0) < 1e-9);
 });
 
+CB_TEST("app.board_projection.a_trace_replaces_the_model_where_it_saw_and_calibrates_the_rest", [] {
+    Sample s;
+    // a second function nobody traced: its model is scaled by what the trace said of its kind
+    s.index.exports = {{3, 1, "GetMessageA"}, {3, 2, "PeekMessageA"}, {4, 1, "LoadLibraryA"}};
+    s.index.finish();
+    s.index.export_uses = {{0, 0, 10}, {1, 0, 4}, {2, 0, 5}, {2, 1, 2}, {3, 2, 7}};
+    s.index.finish();
+    const Graph g = build_graph(s.board, s.index, kLinkImports);
+    const std::uint32_t explorer = module_named(g, "explorer.exe"), user = module_named(g, "user.dll"), app = module_named(g, "app.exe");
+    Measured m;
+    m.seconds = 3600;
+    m.functions = {{"user.dll", "GetMessageA", "explorer.exe", 900}};
+    const Projection p = build_projection(s.board, s.index, nullptr, &m);
+    CB_CHECK(p.has_measured);
+    CB_CHECK(p.channel_measured(explorer, user));
+    CB_CHECK(!p.channel_measured(app, user));
+    CB_CHECK(p.function_user_measured(user, "getmessagea", explorer));
+    CB_CHECK(!p.function_user_measured(user, "peekmessagea", explorer));
+    CB_CHECK(std::abs(p.function_user(user, "getmessagea", explorer) - 900) < 1e-6);   // as measured
+    CB_CHECK(std::abs(p.channel(explorer, user) - 900) < 1e-6);                         // the channel is what the trace saw, no model added
+    const double scale = 900.0 / (5 * 3600);
+    CB_CHECK(std::abs(p.kind_scale[static_cast<std::size_t>(ApiKind::MessagePump)] - scale) < 1e-9);
+    CB_CHECK(std::abs(p.function_user(user, "peekmessagea", explorer) - 2 * 3600 * scale) < 1e-6);
+    CB_CHECK(std::abs(p.channel(app, user) - 10 * 3600 * kIdleResidency * scale) < 1e-6);   // a caller the trace did not see stays a scaled model
+    const std::vector<std::uint32_t> expected{explorer, user};
+    CB_CHECK(p.hot_path == expected);                                                   // the hot path is only what really ran
+});
+
+CB_TEST("app.board_projection.a_measured_hot_path_stops_at_a_trickle_and_activity_counts_what_ran", [] {
+    const Sample s;
+    const Graph g = build_graph(s.board, s.index, kLinkImports);
+    const std::uint32_t explorer = module_named(g, "explorer.exe"), user = module_named(g, "user.dll"), core = module_named(g, "core.dll"), app = module_named(g, "app.exe");
+    Measured m;
+    m.seconds = 3600;
+    m.functions = {{"user.dll", "GetMessageA", "explorer.exe", 1000}, {"core.dll", "LoadLibraryA", "user.dll", 50}};
+    const Projection p = build_projection(s.board, s.index, nullptr, &m);
+    const std::vector<std::uint32_t> expected{explorer, user};   // 50 of 1000 is under the share
+    CB_CHECK(p.hot_path == expected);
+    CB_CHECK(std::abs(p.activity[user] - 1050) < 1e-6);
+    CB_CHECK(std::abs(p.activity[core] - 50) < 1e-6);
+    CB_CHECK_EQ(p.activity[app], 0.0);                           // a modeled channel is no activity once there is a trace
+});
+
 CB_TEST("app.board_projection.more_calls_means_more_and_faster_dots_relative_to_the_busiest", [] {
     CB_CHECK(flow_dots(0, 100, 1, 0).empty());
     CB_CHECK_EQ(flow_dots(100, 100, 0, 3).size(), static_cast<std::size_t>(kMaxFlowDots));

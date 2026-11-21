@@ -371,7 +371,9 @@ void board_rebuild_stacks(Model& m) {
     if (m.board_orphans_only && m.board_orphans) only(m.board_orphans->card);
     if (!m.board_deck_names.empty()) only(board::cards_named(*m.board, m.board_deck_names));
     m.board_stacks = board::build_stacks(*m.board, m.board_query, options);
-    m.board_batch = m.board_index ? board::batch_order(*m.board, *m.board_index, m.board_stacks) : std::vector<std::uint32_t>{};
+    if (m.board_measured && m.board_index && !m.board_projection && m.board_index->nodes.size() == m.board->cards.size())
+        m.board_projection = std::make_shared<const board::Projection>(board::build_projection(*m.board, *m.board_index, m.board_signals.get(), m.board_measured.get()));
+    m.board_batch = m.board_index ? board::batch_order(*m.board, *m.board_index, m.board_stacks, m.board_measured ? m.board_projection.get() : nullptr) : std::vector<std::uint32_t>{};
     m.board_batch_armed = 0;
 }
 
@@ -390,6 +392,9 @@ void board_load_decks(Model& m) {
     m.board_deck_names.clear();
     if (!m.board) return;
     for (board::Deck& d : board::load_decks(m.board->root)) m.board_decks.push_back(std::move(d));
+    m.board_projection.reset();
+    std::optional<board::Measured> kept = board::load_measured(m.board->root);
+    m.board_measured = kept ? std::make_shared<const board::Measured>(std::move(*kept)) : nullptr;
 }
 
 void board_apply_deck(Model& m, int deck) {
@@ -456,7 +461,7 @@ void board_remove_deck(Model& m, int deck) {
 
 std::filesystem::path board_export(Model& m) {
     const board::Graph graph = board::build_graph(*m.board, *m.board_index, board::kLinkImports | board::kLinkInstalls | board::kLinkReferences);
-    if (!m.board_projection) m.board_projection = std::make_shared<const board::Projection>(board::build_projection(*m.board, *m.board_index, m.board_signals.get()));
+    if (!m.board_projection) m.board_projection = std::make_shared<const board::Projection>(board::build_projection(*m.board, *m.board_index, m.board_signals.get(), m.board_measured.get()));
     std::vector<std::uint32_t> modules;
     std::string slug = "board";
     if (m.board_view != 0 && m.board_trace) {
@@ -776,7 +781,7 @@ void board_refresh_maps(Model& m) {
     m.board_library.reset();
     if (!m.board || !m.board_index || m.board_index->nodes.size() != m.board->cards.size()) return;
     m.board_graph = std::make_shared<const board::Graph>(board::build_graph(*m.board, *m.board_index, m.board_links, m.board_width));
-    if (!m.board_projection) m.board_projection = std::make_shared<const board::Projection>(board::build_projection(*m.board, *m.board_index, m.board_signals.get()));
+    if (!m.board_projection) m.board_projection = std::make_shared<const board::Projection>(board::build_projection(*m.board, *m.board_index, m.board_signals.get(), m.board_measured.get()));
     int focus = m.board_focus;
     if (focus < 0 && m.board_selected >= 0 && static_cast<std::size_t>(m.board_selected) < m.board_graph->module_of_card.size())
         focus = static_cast<int>(m.board_graph->module_of_card[static_cast<std::size_t>(m.board_selected)]);

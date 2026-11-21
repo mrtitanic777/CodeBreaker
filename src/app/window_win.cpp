@@ -37,6 +37,7 @@
 #include "app/board.hpp"
 #include "app/board_index.hpp"
 #include "app/board_signals.hpp"
+#include "app/board_trace.hpp"
 #include "app/convert.hpp"
 #include "app/notify.hpp"
 #include "app/recent.hpp"
@@ -58,6 +59,7 @@
 #include "base/corpus.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
+#include "formats/media.hpp"
 #include "core/text.hpp"
 
 namespace cb::app::window {
@@ -3966,7 +3968,8 @@ int ww_board_scan(const stdfs::path& image, const std::string& out_folder) {
             out("imported functions {}  matched to a real export {}  static call sites {}\n", symbols, matched, calls);
             {
                 const std::optional<board::Signals> kept_signals = board::load_signals(*b);
-                const board::Projection projection = board::build_projection(*b, *index, kept_signals ? &*kept_signals : nullptr);
+                const std::optional<board::Measured> kept_trace = board::load_measured(b->root);
+                const board::Projection projection = board::build_projection(*b, *index, kept_signals ? &*kept_signals : nullptr, kept_trace ? &*kept_trace : nullptr);
                 const board::Graph graph = board::build_graph(*b, *index, board::kLinkImports);
                 std::string path;
                 for (const std::uint32_t m : projection.hot_path) path += (path.empty() ? "" : " > ") + graph.modules[m].name;
@@ -3979,7 +3982,7 @@ int ww_board_scan(const stdfs::path& image, const std::string& out_folder) {
                         if (named[c]) files.insert(index->nodes[c].group);
                     out("deck {}: {} distinct files\n", deck.name, files.size());
                 }
-                out("projected (a model, not measured): {} calls/hour in all, busiest channel {}/h, hot path {}\n", board::rate_words(projection.total), board::rate_words(projection.max_channel), path);
+                out("{}: {} calls/hour in all, busiest channel {}/h, hot path {}\n", projection.has_measured ? "measured where traced, else a scaled model" : "projected (a model, not measured)", board::rate_words(projection.total), board::rate_words(projection.max_channel), path);
                 std::vector<std::pair<double, std::uint64_t>> top;
                 for (const auto& [key, rate] : projection.channels) top.emplace_back(rate, key);
                 std::sort(top.begin(), top.end(), [](const auto& x, const auto& y) { return x.first != y.first ? x.first > y.first : x.second < y.second; });
@@ -4023,6 +4026,111 @@ int ww_board_scan(const stdfs::path& image, const std::string& out_folder) {
     }
 }
 
+// `app --board-batch N --board-out BOARD`: convert the next N binaries, what really ran first, each into BOARD/converted, keeping each real result as it ends.
+int ww_board_batch(std::size_t count, const std::string& board_folder) {
+    try {
+        std::optional<board::Board> b = board::load(fs::from_text(board_folder));
+        if (!b) {
+            err_text("codebreaker app --board-batch: no board there\n");
+            return 1;
+        }
+        const std::optional<board::Index> index = board::load_index(*b);
+        if (!index) {
+            err_text("codebreaker app --board-batch: the board has no index\n");
+            return 1;
+        }
+        const std::optional<board::Signals> signals = board::load_signals(*b);
+        const std::optional<board::Measured> measured = board::load_measured(b->root);
+        const board::Projection projection = board::build_projection(*b, *index, signals ? &*signals : nullptr, measured ? &*measured : nullptr);
+        board::StackOptions options;
+        std::vector<std::uint32_t> group(b->cards.size());
+        for (std::size_t i = 0; i < group.size(); ++i) group[i] = index->nodes[i].group;
+        options.group = &group;
+        const std::vector<std::uint32_t> order = board::batch_order(*b, *index, board::build_stacks(*b, {}, options), &projection);
+        const stdfs::path converted = b->root / "converted";
+        fs::make_dirs(converted);
+        const std::atomic<bool> go{false};
+        std::size_t done = 0, refused = 0, failed = 0;
+        const std::size_t total = std::min(count, order.size());
+        for (std::size_t i = 0; i < total; ++i) {
+            board::Card& card = b->cards[order[i]];
+            const auto started = std::chrono::steady_clock::now();
+            convert::Request request;
+            request.input = b->file_of(card);
+            request.converted_root = converted;
+            convert::Outcome outcome;
+            try {
+                outcome = convert::convert(request, convert::standard_planner("original"), [](const convert::Progress&) {}, go);
+            } catch (const std::exception& e) {
+                outcome.state = convert::State::Failed;
+                outcome.message = e.what();
+            }
+            const board::Conv conv = outcome.state == convert::State::Done ? board::Conv::Done : outcome.state == convert::State::Unsupported ? board::Conv::CannotConvert : board::Conv::Failed;
+            board::record(card, conv, conv == board::Conv::Done ? outcome.output : stdfs::path{}, outcome.message);
+            board::save_states(*b);
+            done += card.conv == board::Conv::Done ? 1 : 0;
+            refused += card.conv == board::Conv::CannotConvert ? 1 : 0;
+            failed += card.conv == board::Conv::Failed ? 1 : 0;
+            out("[{}/{}] {:<18} {:<14} {:>6.1f} s  {} files  {}/h\n", i + 1, total, card.name, board::conv_words(card.conv), std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count(), outcome.files,
+                board::rate_words(projection.activity[projection.module_of_card[order[i]]]));
+            if (card.conv != board::Conv::Done && !card.note.empty()) out("        {}\n", card.note.substr(0, 150));
+        }
+        out("converted {}  cannot convert {}  failed {}  of {} (with {} more waiting)\n", done, refused, failed, total, order.size() - total);
+        return 0;
+    } catch (const std::exception& e) {
+        err_text(std::string("codebreaker app --board-batch: ") + e.what() + "\n");
+        return 1;
+    }
+}
+
+// `app --board-trace TRACE --board-trace-disk IMAGE|FOLDER --board-out BOARD`: a measured run of the system, named with the files installed on that machine and kept with the board.
+int ww_board_trace(const std::string& trace, const std::string& disk, const std::string& board_folder) {
+    try {
+        if (board_folder.empty() || disk.empty()) {
+            err_text("codebreaker app --board-trace: needs --board-trace-disk and --board-out\n");
+            return 2;
+        }
+        const stdfs::path root = fs::from_text(board_folder), source = fs::from_text(disk);
+        stdfs::path installed = source;
+        if (std::error_code ec; !stdfs::is_directory(source, ec)) {
+            installed = root / "trace_installed";
+            if (!stdfs::is_directory(installed, ec)) {
+                const std::vector<std::string> kinds{"*.dll", "*.exe", "*.drv", "*.cpl", "*.ocx", "*.scr", "*.acm", "*.ax", "*.tlb", "*.ime"};
+                formats::media::extract(source, installed, kinds);
+            }
+        }
+        const std::vector<board::InstalledImage> images = board::read_installed(installed);
+        const std::optional<board::Measured> m = board::read_trace(fs::read_text(fs::from_text(trace)), images);
+        if (!m) {
+            err_text("codebreaker app --board-trace: that is not a calltrace file with a clock\n");
+            return 1;
+        }
+        board::save_measured(root, *m);
+        out("{} installed PE images; {:.1f} s of guest time; {} indirect transfers\n", images.size(), m->seconds, board::count_words(m->transfers));
+        out("  ring 0 (VxD) {}  not an export {}  source not an installed image {}  ambiguous {}  inside one module {}\n", board::count_words(m->ring0), board::count_words(m->not_export),
+            board::count_words(m->no_source), board::count_words(m->ambiguous), board::count_words(m->inside));
+        out("named import calls {} over {} channels, {} function paths\n", board::count_words(m->named), m->channels.size(), m->functions.size());
+        for (std::size_t i = 0; i < m->channels.size() && i < 8; ++i)
+            out("  {:>8}/h  {:>9}  {} > {}\n", board::rate_words(m->per_hour(m->channels[i].count)), m->channels[i].count, m->channels[i].from, m->channels[i].to);
+        if (const std::optional<board::Board> b = board::load(root)) {
+            if (const std::optional<board::Index> index = board::load_index(*b)) {
+                const std::optional<board::Signals> signals = board::load_signals(*b);
+                const board::Projection p = board::build_projection(*b, *index, signals ? &*signals : nullptr, &*m);
+                const board::Graph graph = board::build_graph(*b, *index, board::kLinkImports);
+                std::string path;
+                for (const std::uint32_t module : p.hot_path) path += (path.empty() ? "" : " > ") + graph.modules[module].name;
+                out("measured hot path: {}\n", path);
+                static constexpr const char* kKinds[] = {"message pump", "sync", "memory and strings", "paint", "window state", "file and registry", "lifecycle", "other"};
+                for (std::size_t k = 0; k < p.kind_scale.size(); ++k) out("  model scale, {}: {:.4f}\n", kKinds[k], p.kind_scale[k]);
+            }
+        }
+        return 0;
+    } catch (const std::exception& e) {
+        err_text(std::string("codebreaker app --board-trace: ") + e.what() + "\n");
+        return 1;
+    }
+}
+
 // ---- the entry --------------------------------------------------------------------------------------------------------------------------
 
 // A copy of this program that has no console, running the window.
@@ -4047,7 +4155,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
     (void)no_command_given;
     WwShot shot;
     bool screenshot = false, in_process = false;
-    std::string open_file, open_board_image, board_scan, board_out;
+    std::string open_file, open_board_image, board_scan, board_out, board_trace, board_trace_disk, board_batch;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
         const auto value = [&]() -> std::string { return i + 1 < args.size() ? args[++i] : std::string(); };
@@ -4080,15 +4188,23 @@ int run(std::span<const std::string> args, bool no_command_given) {
             board_scan = value();
         } else if (a == "--board-out") {
             board_out = value();
+        } else if (a == "--board-batch") {
+            board_batch = value();
+        } else if (a == "--board-trace") {
+            board_trace = value();
+        } else if (a == "--board-trace-disk") {
+            board_trace_disk = value();
         } else if (a == "--in-process") {
             in_process = true;
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
             return 2;
         }
     }
+    if (!board_batch.empty()) return ww_board_batch(static_cast<std::size_t>(std::atoi(board_batch.c_str())), board_out);
+    if (!board_trace.empty()) return ww_board_trace(board_trace, board_trace_disk, board_out);
     if (!board_scan.empty()) return ww_board_scan(fs::from_text(board_scan), board_out);
     if (screenshot) {
         if (shot.path.empty() || shot.width < 200 || shot.height < 200 || shot.scale < 0.5f || shot.scale > 4.0f) {

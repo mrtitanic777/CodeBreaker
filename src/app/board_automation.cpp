@@ -182,7 +182,7 @@ std::vector<char> cards_named(const Board& board, const std::vector<std::string>
     return out;
 }
 
-std::vector<std::uint32_t> batch_order(const Board& board, const Index& index, const Stacks& stacks) {
+std::vector<std::uint32_t> batch_order(const Board& board, const Index& index, const Stacks& stacks, const Projection* projection) {
     std::vector<std::uint32_t> cards;
     for (const Stack& stack : stacks) {
         for (const std::uint32_t i : stack.todo) {
@@ -192,7 +192,11 @@ std::vector<std::uint32_t> batch_order(const Board& board, const Index& index, c
     }
     std::vector<std::uint32_t> inbound(board.cards.size(), 0);
     for (const std::uint32_t i : cards) inbound[i] = static_cast<std::uint32_t>(index.into(i).size());
-    std::stable_sort(cards.begin(), cards.end(), [&](std::uint32_t a, std::uint32_t b) { return inbound[a] > inbound[b]; });
+    const auto active = [&](std::uint32_t card) { return projection != nullptr && card < projection->module_of_card.size() ? projection->activity[projection->module_of_card[card]] : 0.0; };
+    std::stable_sort(cards.begin(), cards.end(), [&](std::uint32_t a, std::uint32_t b) {
+        const double x = active(a), y = active(b);
+        return x != y ? x > y : inbound[a] > inbound[b];
+    });
     return cards;
 }
 

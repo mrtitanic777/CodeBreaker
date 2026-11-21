@@ -72,6 +72,18 @@ double api_rate(ApiKind kind) {
     }
 }
 
+bool Projection::channel_measured(std::uint32_t from, std::uint32_t to) const { return measured_channels.contains(pair_key(from, to)); }
+
+bool Projection::function_measured(std::uint32_t module, std::string_view key) const {
+    const auto id = function_ids.find(function_key(module, key));
+    return id != function_ids.end() && measured_functions.contains(id->second);
+}
+
+bool Projection::function_user_measured(std::uint32_t module, std::string_view key, std::uint32_t user) const {
+    const auto id = function_ids.find(function_key(module, key));
+    return id != function_ids.end() && measured_function_users.contains(pair_key(id->second, user));
+}
+
 double Projection::channel(std::uint32_t from, std::uint32_t to) const {
     const auto it = channels.find(pair_key(from, to));
     return it == channels.end() ? 0 : it->second;
@@ -89,7 +101,7 @@ double Projection::function_user(std::uint32_t module, std::string_view key, std
     return it == function_users.end() ? 0 : it->second;
 }
 
-Projection build_projection(const Board& board, const Index& index, const Signals* signals) {
+Projection build_projection(const Board& board, const Index& index, const Signals* signals, const Measured* measured) {
     Projection p;
     const Graph graph = build_graph(board, index, kLinkImports, Width::Files);
     const std::size_t modules = graph.modules.size();
@@ -120,6 +132,7 @@ Projection build_projection(const Board& board, const Index& index, const Signal
 
     // ---- each use of each function; identical copies of a calling file count once, at the larger count
     std::vector<std::uint32_t> function_module;
+    std::vector<ApiKind> function_kind;
     std::map<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>, double> uses;   // (function, user module, user's bytes)
     p.function_ids.reserve(index.exports.size());
     for (std::uint32_t s = 0; s < index.exports.size(); ++s) {
@@ -127,7 +140,10 @@ Projection build_projection(const Board& board, const Index& index, const Signal
         const std::uint32_t module = graph.module_of_card[symbol.card];
         const std::string key = symbol.name.empty() ? "#" + std::to_string(symbol.ordinal) : text::lower(symbol.name);
         const auto [id, fresh] = p.function_ids.try_emplace(function_key(module, key), static_cast<std::uint32_t>(function_module.size()));
-        if (fresh) function_module.push_back(module);
+        if (fresh) {
+            function_module.push_back(module);
+            function_kind.push_back(api_kind(key));
+        }
         const double per_site = api_rate(api_kind(key));
         for (const ExportUse& use : index.uses_of(s)) {
             const std::uint32_t user = graph.module_of_card[use.from];
@@ -137,33 +153,82 @@ Projection build_projection(const Board& board, const Index& index, const Signal
         }
     }
     p.functions.assign(function_module.size(), 0);
-    for (const auto& [key, rate] : uses) {
-        const auto [function, user, group] = key;
-        p.functions[function] += rate;
-        p.function_users[pair_key(function, user)] += rate;
-        p.channels[pair_key(user, function_module[function])] += rate;
-        p.total += rate;
+    std::map<std::pair<std::uint32_t, std::uint32_t>, double> modeled, observed;   // (function, user)
+    for (const auto& [key, rate] : uses) modeled[{std::get<0>(key), std::get<1>(key)}] += rate;
+    if (measured != nullptr && measured->seconds > 0) {
+        p.has_measured = true;
+        p.measured_seconds = measured->seconds;
+        std::unordered_map<std::string, std::uint32_t> module_id;
+        module_id.reserve(modules);
+        for (std::uint32_t m = 0; m < modules; ++m) module_id.emplace(graph.modules[m].name, m);
+        for (const MeasuredFunction& f : measured->functions) {
+            const auto target = module_id.find(f.module), user = module_id.find(f.user);
+            if (target == module_id.end() || user == module_id.end()) continue;
+            const double rate = measured->per_hour(f.count);
+            p.measured_channels.insert(pair_key(user->second, target->second));
+            const auto id = p.function_ids.find(function_key(target->second, text::lower(f.function)));
+            if (id != p.function_ids.end()) observed[{id->second, user->second}] += rate;
+            else p.channels[pair_key(user->second, target->second)] += rate;   // (a function of the installed copy that no card on the board exports)
+        }
+        // the model, scaled per kind of function so that it agrees with the trace where both have a number
+        std::array<double, 8> seen{}, thought{};
+        double all_seen = 0, all_thought = 0;
+        for (const auto& [key, rate] : observed) {
+            const auto it = modeled.find(key);
+            if (it == modeled.end() || it->second <= 0) continue;
+            const auto kind = static_cast<std::size_t>(function_kind[key.first]);
+            seen[kind] += rate;
+            thought[kind] += it->second;
+            all_seen += rate;
+            all_thought += it->second;
+        }
+        const double overall = all_thought > 0 ? all_seen / all_thought : 1;
+        for (std::size_t k = 0; k < p.kind_scale.size(); ++k) p.kind_scale[k] = thought[k] > 0 ? seen[k] / thought[k] : overall;
     }
+    for (const auto& [key, rate] : observed) {
+        p.functions[key.first] += rate;
+        p.function_users[pair_key(key.first, key.second)] += rate;
+        p.channels[pair_key(key.second, function_module[key.first])] += rate;
+        p.measured_functions.insert(key.first);
+        p.measured_function_users.insert(pair_key(key.first, key.second));
+    }
+    for (const auto& [key, model_rate] : modeled) {
+        if (observed.contains(key)) continue;
+        const double rate = model_rate * p.kind_scale[static_cast<std::size_t>(function_kind[key.first])];
+        p.functions[key.first] += rate;
+        p.function_users[pair_key(key.first, key.second)] += rate;
+        const std::uint64_t channel = pair_key(key.second, function_module[key.first]);
+        if (!p.measured_channels.contains(channel)) p.channels[channel] += rate;   // (a channel the trace saw is what it saw)
+    }
+    for (const auto& [key, rate] : p.channels) p.total += rate;
 
     // ---- the hot path: the busiest channel, on along the busiest channel out of each end
     std::vector<std::vector<std::pair<std::uint32_t, double>>> out(modules), in(modules);
     std::uint64_t busiest = 0;
+    double busiest_rate = 0;
+    p.module_of_card = graph.module_of_card;
+    p.activity.assign(modules, 0);
     for (const auto& [key, rate] : p.channels) {
+        p.max_channel = std::max(p.max_channel, rate);
+        if (p.has_measured && !p.measured_channels.contains(key)) continue;   // (with a trace, the hot path is what really ran)
         const auto from = static_cast<std::uint32_t>(key >> 32), to = static_cast<std::uint32_t>(key);
+        p.activity[from] += rate;
+        p.activity[to] += rate;
         out[from].emplace_back(to, rate);
         in[to].emplace_back(from, rate);
-        if (rate > p.max_channel || (rate == p.max_channel && key < busiest)) {
-            p.max_channel = rate;
+        if (rate > busiest_rate || (rate == busiest_rate && key < busiest)) {
+            busiest_rate = rate;
             busiest = key;
         }
     }
-    if (p.max_channel > 0) {
+    if (busiest_rate > 0) {
         std::deque<std::uint32_t> path{static_cast<std::uint32_t>(busiest >> 32), static_cast<std::uint32_t>(busiest)};
         std::unordered_set<std::uint32_t> seen(path.begin(), path.end());
         const auto best = [&](const std::vector<std::pair<std::uint32_t, double>>& edges) {
             std::optional<std::pair<std::uint32_t, double>> pick;
             for (const auto& e : edges)
                 if (!seen.contains(e.first) && (!pick || e.second > pick->second || (e.second == pick->second && e.first < pick->first))) pick = e;
+            if (pick && p.has_measured && pick->second < busiest_rate * kHotPathShare) pick.reset();   // (a trickle is not part of a hot path)
             return pick;
         };
         for (int hop = 0; hop < 2; ++hop) {

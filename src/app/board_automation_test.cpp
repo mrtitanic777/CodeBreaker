@@ -99,6 +99,18 @@ CB_TEST("app.board_automation.a_batch_takes_unconverted_binaries_most_linked_fir
     CB_CHECK(order == expected);
 });
 
+CB_TEST("app.board_automation.a_batch_takes_what_really_ran_first", [] {
+    const Sample s;
+    Projection p;
+    const Graph g = build_graph(s.board, s.index, kLinkImports);
+    p.module_of_card = g.module_of_card;
+    p.activity.assign(g.modules.size(), 0);
+    p.activity[g.module_of_card[5]] = 900;   // started.exe has no links in, but it ran
+    const std::vector<std::uint32_t> order = batch_order(s.board, s.index, build_stacks(s.board), &p);
+    CB_CHECK_EQ(order.front(), 5u);
+    CB_CHECK_EQ(order[1], 1u);                // then the most linked-to
+});
+
 CB_TEST("app.board_automation.a_cluster_keeps_only_links_among_its_modules", [] {
     const Sample s;
     const Graph g = build_graph(s.board, s.index, kLinkImports | kLinkInstalls | kLinkReferences);
