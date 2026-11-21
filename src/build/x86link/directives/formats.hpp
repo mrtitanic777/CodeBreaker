@@ -13,107 +13,107 @@ namespace cb::x86link::directives {
 #ifdef _EXE   // DOS (dos.cpp)
 void SetDosFmt();
 void FreeDosFmt();
-overlay_ref GetOvlRef();
-void CmdOvlFini();
-void MakeNewSection();
-bool ProcDosOptions();
-bool ProcOverlay();
-bool ProcBegin();
-bool ProcFixedLib();
-bool ProcNoVector();
-bool ProcVector();
-bool ProcForceVector();
-bool ProcDosFormat();
+overlay_ref GetOvlRef(Link& link);
+void CmdOvlFini(Link& link);
+void MakeNewSection(Link& link);
+bool ProcDosOptions(Link& link);
+bool ProcOverlay(Link& link);
+bool ProcBegin(Link& link);
+bool ProcFixedLib(Link& link);
+bool ProcNoVector(Link& link);
+bool ProcVector(Link& link);
+bool ProcForceVector(Link& link);
+bool ProcDosFormat(Link& link);
 #endif
 
 #ifdef _OS2   // OS/2, Windows, Windows NT, VxD (os2.cpp)
 void SetOS2Fmt();
 void FreeOS2Fmt();
-bool ProcOS2Options();
-bool ProcOS2Runtime();
-bool ProcCommit();
-bool ProcAnonExport();
-bool ProcResource();
-bool ProcOS2Import();
-bool ProcOS2Export();
-bool ProcOS2Segment();
-bool ProcOS2Alignment();
-bool ProcOS2HeapSize();
-bool ProcOS2NoRelocs();
-bool ProcOS2Format();
-bool ProcWindowsFormat();
+bool ProcOS2Options(Link& link);
+bool ProcOS2Runtime(Link& link);
+bool ProcCommit(Link& link);
+bool ProcAnonExport(Link& link);
+bool ProcResource(Link& link);
+bool ProcOS2Import(Link& link);
+bool ProcOS2Export(Link& link);
+bool ProcOS2Segment(Link& link);
+bool ProcOS2Alignment(Link& link);
+bool ProcOS2HeapSize(Link& link);
+bool ProcOS2NoRelocs(Link& link);
+bool ProcOS2Format(Link& link);
+bool ProcWindowsFormat(Link& link);
 #endif
 
 #ifdef _NOVELL   // Netware (novell.cpp)
 void SetNovFmt();
 void FreeNovFmt();
 void CmdNovFini();
-bool ProcNovOptions();
-bool ProcNovDBI();
-bool ProcNovExportsDBI();
-bool ProcNovModule();
-bool ProcNovImport();
-bool ProcNovExport();
-bool ProcNovFormat();
+bool ProcNovOptions(Link& link);
+bool ProcNovDBI(Link& link);
+bool ProcNovExportsDBI(Link& link);
+bool ProcNovModule(Link& link);
+bool ProcNovImport(Link& link);
+bool ProcNovExport(Link& link);
+bool ProcNovFormat(Link& link);
 #endif
 
 #ifdef _PHARLAP   // Phar Lap (phar.cpp)
 void SetPharFmt();
 void FreePharFmt();
-bool ProcPharOptions();
-bool ProcPharRuntime();
-bool ProcPharFormat();
+bool ProcPharOptions(Link& link);
+bool ProcPharRuntime(Link& link);
+bool ProcPharFormat(Link& link);
 #endif
 
 #ifdef _DOS16M   // DOS/16M (dos16m.cpp)
 void SetD16MFmt();
 void FreeD16MFmt();
-void CmdD16MFini();
-bool Proc16MOptions();
-bool Proc16MNoRelocs();
-bool Proc16MRuntime();
-bool Proc16MMemory();
-bool Proc16MTransparent();
-bool Proc16MFormat();
+void CmdD16MFini(Link& link);
+bool Proc16MOptions(Link& link);
+bool Proc16MNoRelocs(Link& link);
+bool Proc16MRuntime(Link& link);
+bool Proc16MMemory(Link& link);
+bool Proc16MTransparent(Link& link);
+bool Proc16MFormat(Link& link);
 #endif
 
 #ifdef _QNX   // QNX (qnx.cpp)
 void SetQNXFmt();
 void FreeQNXFmt();
-void CmdQNXFini();
-bool ProcQNXOptions();
-bool ProcQNXNoRelocs();
-bool ProcQNXSegment();
-bool ProcQNXHeapSize();
-bool ProcQNXFormat();
+void CmdQNXFini(Link& link);
+bool ProcQNXOptions(Link& link);
+bool ProcQNXNoRelocs(Link& link);
+bool ProcQNXSegment(Link& link);
+bool ProcQNXHeapSize(Link& link);
+bool ProcQNXFormat(Link& link);
 #endif
 
 #ifdef _ELF   // ELF (elf.cpp)
 void SetELFFmt();
 void FreeELFFmt();
-bool ProcELFOptions();
-bool ProcELFRuntime();
-bool ProcELFImport();
-bool ProcELFExport();
-bool ProcELFModule();
-bool ProcELFAlignment();
-bool ProcELFNoRelocs();
-bool ProcELFFormat();
+bool ProcELFOptions(Link& link);
+bool ProcELFRuntime(Link& link);
+bool ProcELFImport(Link& link);
+bool ProcELFExport(Link& link);
+bool ProcELFModule(Link& link);
+bool ProcELFAlignment(Link& link);
+bool ProcELFNoRelocs(Link& link);
+bool ProcELFFormat(Link& link);
 #endif
 
 #ifdef _RDOS   // RDOS (rdos.cpp)
 void SetRdosFmt();
 void FreeRdosFmt();
-bool ProcRdosOptions();
-bool ProcRdosFormat();
+bool ProcRdosOptions(Link& link);
+bool ProcRdosFormat(Link& link);
 #endif
 
 #ifdef _RAW   // raw binary and hex (raw.cpp)
-bool ProcRawFormat();
+bool ProcRawFormat(Link& link);
 #endif
 
 // help.cpp: `?` and the usage text
-bool DoHelp();
-void DisplayOptions();
+bool DoHelp(Link& link);
+void DisplayOptions(Link& link);
 
 }  // namespace cb::x86link::directives

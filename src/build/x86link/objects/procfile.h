@@ -33,12 +33,12 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void             ProcObjFiles( void );
+extern void             ProcObjFiles(Link& link);
 extern void             LoadObjFiles( section * );
-extern char             *IdentifyObject( const file_list *, unsigned long *, unsigned long * );
-extern void             ResolveUndefined( void );
-extern unsigned long    ObjPass1( void );
-extern void             SetupFakeModule( void );
-extern void             LinkFakeModule( void );
-extern void             ProcLocalImports( void );
+extern char             *IdentifyObject(Link& link,  const file_list *, unsigned long *, unsigned long * );
+extern void             ResolveUndefined(Link& link);
+extern unsigned long    ObjPass1(Link& link);
+extern void             SetupFakeModule(Link& link);
+extern void             LinkFakeModule(Link& link);
+extern void             ProcLocalImports(Link& link);
 extern void             FreeLocalImports( void );

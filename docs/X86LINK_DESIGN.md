@@ -179,3 +179,11 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    `ntio.c` `base/fileio.cpp`, `link.h` `link/flags.h`), every header of the linker included by its path under src/
    (`build/x86link/<module>/<file>`), the build in src/build/x86link/CMakeLists.txt (work/x86link5/folders.py moved
    them). Both corpora as before: the gate's 47 and the directive corpus's 1,930.
+   **5b done (2026-11-20): the Link passed.** Every function of the linker that reads or changes the link's state is
+   given it, `Link& link` first, and every call passes it on (1,177 functions; the directive handlers too: `Handler` is
+   `bool (*)(Link&)`); a run's `Link` is made by `InitSubSystems` (RunState::begin_run returns it). Found from clang's AST
+   of every file and rewritten by it (work/x86link5: astdump.py, analyze.py, rewrite.py). What still reaches it through
+   `wlink()` is one line, `Link& link = wlink();`, first in each of the 158 functions whose signature is fixed for now:
+   callbacks given to walkers by address (RingWalk, CarveWalkAll, WalkAllSects, OrderGroups ...), and the few the support
+   libraries call (LnkMsg, MemAlloc, the resource callbacks); next, the walkers take callables and those functions the
+   Link. Both corpora as before, at the same speed (CPU, the binaries alternated).

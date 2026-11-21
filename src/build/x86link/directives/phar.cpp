@@ -10,37 +10,39 @@
 namespace cb::x86link::directives {
 
 void SetPharFmt() {
-    wlink().LinkState &= ~LS_MAKE_RELOCS;   // do not generate relocations.
-    wlink().FmtData.def_ext = E_PROTECT;
-    wlink().FmtData.u.phar.mindata = 0;
-    wlink().FmtData.u.phar.maxdata = 0xFFFFFFFF;
-    wlink().FmtData.u.phar.breaksym = nullptr;
-    wlink().FmtData.u.phar.stub = nullptr;
-    wlink().FmtData.u.phar.minreal = 0;
-    wlink().FmtData.u.phar.maxreal = 0;
-    wlink().FmtData.u.phar.callbufs = 0;
-    wlink().FmtData.u.phar.realbreak = 0;
-    wlink().FmtData.u.phar.minibuf = 1;
-    wlink().FmtData.u.phar.maxibuf = 4;
-    wlink().FmtData.u.phar.nistack = 4;
-    wlink().FmtData.u.phar.istksize = 1;
-    wlink().FmtData.u.phar.extender_flags = 0;
-    wlink().FmtData.u.phar.unpriv = false;
-    ChkBase(_4K);
+    Link& link = wlink();
+    link.LinkState &= ~LS_MAKE_RELOCS;   // do not generate relocations.
+    link.FmtData.def_ext = E_PROTECT;
+    link.FmtData.u.phar.mindata = 0;
+    link.FmtData.u.phar.maxdata = 0xFFFFFFFF;
+    link.FmtData.u.phar.breaksym = nullptr;
+    link.FmtData.u.phar.stub = nullptr;
+    link.FmtData.u.phar.minreal = 0;
+    link.FmtData.u.phar.maxreal = 0;
+    link.FmtData.u.phar.callbufs = 0;
+    link.FmtData.u.phar.realbreak = 0;
+    link.FmtData.u.phar.minibuf = 1;
+    link.FmtData.u.phar.maxibuf = 4;
+    link.FmtData.u.phar.nistack = 4;
+    link.FmtData.u.phar.istksize = 1;
+    link.FmtData.u.phar.extender_flags = 0;
+    link.FmtData.u.phar.unpriv = false;
+    ChkBase(link, _4K);
 }
 
 void FreePharFmt() {
-    MemFree(wlink().FmtData.u.phar.breaksym);
-    MemFree(wlink().FmtData.u.phar.stub);
+    Link& link = wlink();
+    MemFree(link.FmtData.u.phar.breaksym);
+    MemFree(link.FmtData.u.phar.stub);
 }
 
 namespace {
 
 // ---- "OPtion" directive
 
-bool ProcMinData() { return get_number(wlink().FmtData.u.phar.mindata); }
+bool ProcMinData(Link& link) { return get_number(link.FmtData.u.phar.mindata); }
 
-bool ProcMaxData() { return get_number(wlink().FmtData.u.phar.maxdata); }
+bool ProcMaxData(Link& link) { return get_number(link.FmtData.u.phar.maxdata); }
 
 constexpr Entry MainOptions[] = {
     {"MINData", ProcMinData, MK_PHAR_LAP},
@@ -49,68 +51,68 @@ constexpr Entry MainOptions[] = {
 
 // ---- "RUntime" directive
 
-bool ProcUnpriv() {
-    wlink().FmtData.u.phar.unpriv = true;
+bool ProcUnpriv(Link& link) {
+    link.FmtData.u.phar.unpriv = true;
     return true;
 }
 
-bool ProcPriv() { return true; }
+bool ProcPriv(Link& link) { return true; }
 
-bool ProcFlags() {
+bool ProcFlags(Link& link) {
     std::uint32_t value = 0;
     bool ret = get_number(value);
-    wlink().FmtData.u.phar.extender_flags = value;
+    link.FmtData.u.phar.extender_flags = value;
     return ret;
 }
 
-bool ProcMinReal() {
+bool ProcMinReal(Link& link) {
     std::uint32_t value;
     bool ret = get_number(value);
     if (ret) {
-        value >>= wlink().FmtData.SegShift;   // value specified in paragraphs
+        value >>= link.FmtData.SegShift;   // value specified in paragraphs
         if (value > 0xffff) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "MINREAL");
         } else {
-            wlink().FmtData.u.phar.minreal = value;
+            link.FmtData.u.phar.minreal = value;
         }
     }
     return ret;
 }
 
-bool ProcMaxReal() {
+bool ProcMaxReal(Link& link) {
     std::uint32_t value;
     bool ret = get_number(value);
     if (ret) {
-        value >>= wlink().FmtData.SegShift;   // value specified in paragraphs
+        value >>= link.FmtData.SegShift;   // value specified in paragraphs
         if (value > 0xffff) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "MAXREAL");
         } else {
-            wlink().FmtData.u.phar.maxreal = value;
+            link.FmtData.u.phar.maxreal = value;
         }
     }
     return ret;
 }
 
-bool ProcRealBreak() {
+bool ProcRealBreak(Link& link) {
     std::uint32_t value;
     if (!have_equals(Want::include_dot))
         return false;
     Number ok = number(value);
-    if (wlink().FmtData.u.phar.breaksym != nullptr) {
+    if (link.FmtData.u.phar.breaksym != nullptr) {
         LnkMsg(WRN + LOC + LINE + MSG_MULT_REALBREAKS, nullptr);
-        MemFree(wlink().FmtData.u.phar.breaksym);
-        wlink().FmtData.u.phar.breaksym = nullptr;
+        MemFree(link.FmtData.u.phar.breaksym);
+        link.FmtData.u.phar.breaksym = nullptr;
     }
     if (ok != Number::ok) {   // must be a symbol name.
         std::string_view text = reader().text();
-        wlink().FmtData.u.phar.breaksym = MemToStringSafe(text.data(), text.size());
+        link.FmtData.u.phar.breaksym = MemToStringSafe(link, text.data(), text.size());
     } else {
-        wlink().FmtData.u.phar.realbreak = value;
+        link.FmtData.u.phar.realbreak = value;
     }
     return true;
 }
 
-bool ProcCallBufs() {
+bool ProcCallBufs(Link& link) {
     std::uint32_t value;
     bool ret = get_number(value);
     if (ret) {
@@ -118,13 +120,13 @@ bool ProcCallBufs() {
         if (value > 64) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "CALLBUFS");
         } else {
-            wlink().FmtData.u.phar.callbufs = value;
+            link.FmtData.u.phar.callbufs = value;
         }
     }
     return ret;
 }
 
-bool ProcMiniBuf() {
+bool ProcMiniBuf(Link& link) {
     std::uint32_t value;
     bool ret = get_number(value);
     if (ret) {
@@ -132,13 +134,13 @@ bool ProcMiniBuf() {
         if (value > 64 || value < 1) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "MINIBUF");
         } else {
-            wlink().FmtData.u.phar.minibuf = value;
+            link.FmtData.u.phar.minibuf = value;
         }
     }
     return ret;
 }
 
-bool ProcMaxiBuf() {
+bool ProcMaxiBuf(Link& link) {
     std::uint32_t value;
     bool ret = get_number(value);
     if (ret) {
@@ -146,26 +148,26 @@ bool ProcMaxiBuf() {
         if (value > 64 || value < 1) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "MAXIBUF");
         } else {
-            wlink().FmtData.u.phar.maxibuf = value;
+            link.FmtData.u.phar.maxibuf = value;
         }
     }
     return ret;
 }
 
-bool ProcNIStack() {
+bool ProcNIStack(Link& link) {
     std::uint32_t value;
     bool ret = get_number(value);
     if (ret) {
         if (value < 4 || value > 0xFFFF) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "NISTACK");
         } else {
-            wlink().FmtData.u.phar.nistack = value;
+            link.FmtData.u.phar.nistack = value;
         }
     }
     return ret;
 }
 
-bool ProcIStkSize() {
+bool ProcIStkSize(Link& link) {
     std::uint32_t value;
     bool ret = get_number(value);
     if (ret) {
@@ -173,7 +175,7 @@ bool ProcIStkSize() {
         if (value > 64 || value < 1) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "ISTKSIZE");
         } else {
-            wlink().FmtData.u.phar.istksize = value;
+            link.FmtData.u.phar.istksize = value;
         }
     }
     return ret;
@@ -196,16 +198,16 @@ constexpr Entry RunOptions[] = {
 
 // ---- "Format" directive
 
-bool ProcPharFlat() { return true; }
+bool ProcPharFlat(Link& link) { return true; }
 
-bool ProcRex() {
-    wlink().LinkState |= LS_MAKE_RELOCS;   // make relocations;
-    wlink().FmtData.def_ext = E_REX;
+bool ProcRex(Link& link) {
+    link.LinkState |= LS_MAKE_RELOCS;   // make relocations;
+    link.FmtData.def_ext = E_REX;
     return true;
 }
 
-bool ProcPharSegmented() {
-    wlink().LinkState |= LS_MAKE_RELOCS;   // make relocations;
+bool ProcPharSegmented(Link& link) {
+    link.LinkState |= LS_MAKE_RELOCS;   // make relocations;
     return true;
 }
 
@@ -217,12 +219,12 @@ constexpr Entry PharLapFormats[] = {
 
 }  // namespace
 
-bool ProcPharOptions() { return process_one(MainOptions, Sep::none); }
+bool ProcPharOptions(Link& link) { return process_one(link, MainOptions, Sep::none); }
 
-bool ProcPharRuntime() { return process_one(RunOptions, Sep::none); }
+bool ProcPharRuntime(Link& link) { return process_one(link, RunOptions, Sep::none); }
 
-bool ProcPharFormat() {
-    process_one(PharLapFormats, Sep::none);
+bool ProcPharFormat(Link& link) {
+    process_one(link, PharLapFormats, Sep::none);
     return true;
 }
 

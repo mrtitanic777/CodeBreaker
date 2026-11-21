@@ -9,15 +9,16 @@ namespace cb::x86link::directives {
 
 // set up the structures needed to be able to process something in RDOS mode.
 void SetRdosFmt() {
-    if (wlink().LinkState & LS_FMT_INITIALIZED)
+    Link& link = wlink();
+    if (link.LinkState & LS_FMT_INITIALIZED)
         return;
-    wlink().LinkState |= LS_FMT_INITIALIZED;
-    wlink().FmtData.u.rdos.code_seg = 0;
-    wlink().FmtData.u.rdos.data_seg = 0;
-    wlink().FmtData.u.rdos.code_sel = 0;
-    wlink().FmtData.u.rdos.data_sel = 0;
-    wlink().FmtData.u.rdos.driver = 0;
-    wlink().FmtData.u.rdos.mboot = 0;
+    link.LinkState |= LS_FMT_INITIALIZED;
+    link.FmtData.u.rdos.code_seg = 0;
+    link.FmtData.u.rdos.data_seg = 0;
+    link.FmtData.u.rdos.code_sel = 0;
+    link.FmtData.u.rdos.data_sel = 0;
+    link.FmtData.u.rdos.driver = 0;
+    link.FmtData.u.rdos.mboot = 0;
 }
 
 void FreeRdosFmt() {}
@@ -26,9 +27,9 @@ namespace {
 
 // ---- "OPtion" directive
 
-bool ProcRdosCodeSel() { return get_number(wlink().FmtData.u.rdos.code_sel); }
+bool ProcRdosCodeSel(Link& link) { return get_number(link.FmtData.u.rdos.code_sel); }
 
-bool ProcRdosDataSel() { return get_number(wlink().FmtData.u.rdos.data_sel); }
+bool ProcRdosDataSel(Link& link) { return get_number(link.FmtData.u.rdos.data_sel); }
 
 constexpr Entry MainOptions[] = {
     {"CODESelector", ProcRdosCodeSel, MK_RDOS},
@@ -37,36 +38,36 @@ constexpr Entry MainOptions[] = {
 
 // ---- "Format" directive
 
-bool ProcRdos16() { return true; }
+bool ProcRdos16(Link& link) { return true; }
 
 constexpr Entry RdosSubFormats[] = {
     {"16", ProcRdos16, MK_RDOS_16},
 };
 
-bool ProcRdosDev() {
-    if (!process_one(RdosSubFormats, Sep::none)) {
-        HintFormat(MK_RDOS_32);   // set to 32-bit RDOS mode
+bool ProcRdosDev(Link& link) {
+    if (!process_one(link, RdosSubFormats, Sep::none)) {
+        HintFormat(link, MK_RDOS_32);   // set to 32-bit RDOS mode
     }
-    wlink().FmtData.def_ext = E_RDV;
-    wlink().FmtData.u.rdos.driver = 1;
-    wlink().FmtData.u.rdos.mboot = 0;
+    link.FmtData.def_ext = E_RDV;
+    link.FmtData.u.rdos.driver = 1;
+    link.FmtData.u.rdos.mboot = 0;
     return true;
 }
 
-bool ProcRdosBin() {
-    if (!process_one(RdosSubFormats, Sep::none)) {
-        HintFormat(MK_RDOS_32);   // set to 32-bit RDOS mode
+bool ProcRdosBin(Link& link) {
+    if (!process_one(link, RdosSubFormats, Sep::none)) {
+        HintFormat(link, MK_RDOS_32);   // set to 32-bit RDOS mode
     }
-    wlink().FmtData.def_ext = E_BIN;
-    wlink().FmtData.u.rdos.driver = 0;
-    wlink().FmtData.u.rdos.mboot = 0;
+    link.FmtData.def_ext = E_BIN;
+    link.FmtData.u.rdos.driver = 0;
+    link.FmtData.u.rdos.mboot = 0;
     return true;
 }
 
-bool ProcRdosMboot() {
-    wlink().FmtData.def_ext = E_BIN;
-    wlink().FmtData.u.rdos.driver = 0;
-    wlink().FmtData.u.rdos.mboot = 1;
+bool ProcRdosMboot(Link& link) {
+    link.FmtData.def_ext = E_BIN;
+    link.FmtData.u.rdos.driver = 0;
+    link.FmtData.u.rdos.mboot = 1;
     return true;
 }
 
@@ -78,11 +79,11 @@ constexpr Entry RdosFormats[] = {
 
 }  // namespace
 
-bool ProcRdosOptions() { return process_one(MainOptions, Sep::none); }
+bool ProcRdosOptions(Link& link) { return process_one(link, MainOptions, Sep::none); }
 
-bool ProcRdosFormat() {
-    wlink().LinkState |= LS_MAKE_RELOCS | LS_FMT_DECIDED;   // make relocations;
-    process_one(RdosFormats, Sep::none);
+bool ProcRdosFormat(Link& link) {
+    link.LinkState |= LS_MAKE_RELOCS | LS_FMT_DECIDED;   // make relocations;
+    process_one(link, RdosFormats, Sep::none);
     return true;
 }
 

@@ -114,10 +114,10 @@ typedef struct nov_import {
 
 extern void     NovDBIAddGlobal( void * );
 extern void     NovDBIAddrStart( void );
-extern void     NovDBIGenGlobal( symbol * );
-extern void     FiniNovellLoadFile( void );
-extern void     AddNovImpReloc( symbol *, unsigned_32, bool, bool );
-extern void     FindExportedSyms( void );
+extern void     NovDBIGenGlobal(Link& link,  symbol * );
+extern void     FiniNovellLoadFile(Link& link);
+extern void     AddNovImpReloc(Link& link,  symbol *, unsigned_32, bool, bool );
+extern void     FindExportedSyms(Link& link);
 extern void     ResetLoadNov( void );
 
 #include "poppck.h"

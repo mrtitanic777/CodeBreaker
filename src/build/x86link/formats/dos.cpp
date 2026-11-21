@@ -50,21 +50,21 @@
 #ifdef _EXE
 
 
-static unsigned_32 WriteDOSRootRelocs( unsigned_32 mz_hdr_size )
+static unsigned_32 WriteDOSRootRelocs(Link& link,  unsigned_32 mz_hdr_size )
 /***************************************************************
  * write all relocs to the file
  */
 {
     unsigned long       header_size;
 
-    DumpRelocList( wlink().Root->reloclist );
-    NullAlign( 0x10 );
-    header_size = static_cast<unsigned long>( wlink().Root->relocs ) * sizeof( dos_addr )
+    DumpRelocList( link.Root->reloclist );
+    NullAlign(link,  0x10 );
+    header_size = static_cast<unsigned long>( link.Root->relocs ) * sizeof( dos_addr )
                     + mz_hdr_size;
     return( __ROUND_UP_SIZE_PARA( header_size ) );
 }
 
-static void WriteDOSSectRelocs( section *sect, bool repos )
+static void WriteDOSSectRelocs(Link& link,  section *sect, bool repos )
 /**********************************************************
  * write all relocs associated with sect to the file
  */
@@ -76,13 +76,13 @@ static void WriteDOSSectRelocs( section *sect, bool repos )
         file_loc = sect->u.file_loc + __ROUND_UP_SIZE_PARA( sect->size );
         out = sect->outfile;
         if( out->file_loc > file_loc ) {
-            SeekLoad( file_loc );
+            SeekLoad(link,  file_loc );
         } else {
             if( repos ) {
-                SeekLoad( out->file_loc );
+                SeekLoad(link,  out->file_loc );
             }
             if( out->file_loc < file_loc ) {
-                PadLoad( file_loc - out->file_loc );
+                PadLoad(link,  file_loc - out->file_loc );
                 out->file_loc = file_loc;
             }
         }
@@ -97,7 +97,8 @@ static void WriteDOSSectRelocs( section *sect, bool repos )
 static void AssignFileLocs( section *sect )
 /*****************************************/
 {
-    if( wlink().FmtData.u.dos.pad_sections ) {
+    Link& link = wlink();
+    if( link.FmtData.u.dos.pad_sections ) {
         sect->outfile->file_loc = __ROUND_UP_SIZE_SECTOR( sect->outfile->file_loc );
     }
     sect->u.file_loc = sect->outfile->file_loc;
@@ -107,7 +108,7 @@ static void AssignFileLocs( section *sect )
             sect->ovlref, sect->u.file_loc, sect->outfile->fname ));
 }
 
-static unsigned long WriteDOSData( unsigned_32 mz_hdr_size )
+static unsigned long WriteDOSData(Link& link,  unsigned_32 mz_hdr_size )
 /***********************************************************
  * copy code from extra memory to loadfile
  */
@@ -121,42 +122,42 @@ static unsigned long WriteDOSData( unsigned_32 mz_hdr_size )
     unsigned long       root_size;
 
     DEBUG(( DBG_BASE, "Writing data" ));
-    OrderGroups( CompareDosSegments );
-    wlink().CurrSect = wlink().Root;        // needed for WriteInfo.
-    header_size = WriteDOSRootRelocs( mz_hdr_size );
+    OrderGroups(link,  CompareDosSegments );
+    link.CurrSect = link.Root;        // needed for WriteInfo.
+    header_size = WriteDOSRootRelocs(link,  mz_hdr_size );
 
-    wlink().Root->u.file_loc = header_size;
-    if( wlink().Root->areas != nullptr ) {
-        wlink().Root->outfile->file_loc = header_size + wlink().Root->size;
-        WalkAreas( wlink().Root->areas, AssignFileLocs );
-        OvlEmitTable();
+    link.Root->u.file_loc = header_size;
+    if( link.Root->areas != nullptr ) {
+        link.Root->outfile->file_loc = header_size + link.Root->size;
+        WalkAreas( link.Root->areas, AssignFileLocs );
+        OvlEmitTable(link);
     }
 
     /* keep track of positions within the file. */
-    for( fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next ) {
+    for( fnode = link.OutFiles; fnode != nullptr; fnode = fnode->next ) {
         fnode->file_loc = 0;
     }
-    wlink().Root->outfile->file_loc = wlink().Root->u.file_loc;
-    wlink().Root->sect_addr = wlink().Groups->addr;
+    link.Root->outfile->file_loc = link.Root->u.file_loc;
+    link.Root->sect_addr = link.Groups->addr;
 
     /* write groups and relocations */
     root_size = 0;
-    for( group = wlink().Groups; group != nullptr; group = next ) {
+    for( group = link.Groups; group != nullptr; group = next ) {
         next = group->next;
         sect = group->section;
-        wlink().CurrSect = sect;
+        link.CurrSect = sect;
         fnode = sect->outfile;
-        repos = WriteGroup( group );
+        repos = WriteGroup(link,  group );
         if( ( next == nullptr )
           || ( sect != next->section ) ) {
-            if( sect == wlink().Root ) {
+            if( sect == link.Root ) {
                 root_size = fnode->file_loc;
             } else {
-                WriteDOSSectRelocs( sect, repos );
+                WriteDOSSectRelocs(link,  sect, repos );
             }
         }
         if( repos ) {
-            SeekLoad( fnode->file_loc );
+            SeekLoad(link,  fnode->file_loc );
         }
     }
     return( root_size );
@@ -186,6 +187,7 @@ struct COMLeader {
 static bool WriteSegData( void *_sdata, void *_leader )
 /*****************************************************/
 {
+    Link& link = wlink();
     segdata         *sdata = static_cast<segdata *>( _sdata );
     COMLeader       *leader = static_cast<COMLeader *>( _leader );
     soffset         &COMAmountWritten = leader->written;
@@ -198,7 +200,7 @@ static bool WriteSegData( void *_sdata, void *_leader )
         if( newpos + static_cast<soffset>( sdata->length ) > 0 ) {
             if( newpos > COMAmountWritten ) {
                 pad = newpos - COMAmountWritten;
-                PadLoad( pad );
+                PadLoad(link,  pad );
                 WriteInfoLoad( sdata->u1.vm_ptr, sdata->length );
                 COMAmountWritten += sdata->length + pad;
             } else {
@@ -216,6 +218,7 @@ static bool WriteSegData( void *_sdata, void *_leader )
 static bool DoCOMGroup( void *_seg, void *_write )
 /************************************************/
 {
+    Link& link = wlink();
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
     COMWrite    *write = static_cast<COMWrite *>( _write );
     COMLeader   leader = { write->chop + SEG_GROUP_DELTA( seg ), write->written };
@@ -224,7 +227,7 @@ static bool DoCOMGroup( void *_seg, void *_write )
     return( false );
 }
 
-static bool WriteCOMGroup( group_entry *group, soffset chop )
+static bool WriteCOMGroup(Link& link,  group_entry *group, soffset chop )
 /************************************************************
  * write the data for group to the loadfile
  * returns true if the file should be repositioned
@@ -237,13 +240,13 @@ static bool WriteCOMGroup( group_entry *group, soffset chop )
 
     repos = false;
     sect = group->section;
-    wlink().CurrSect = sect;
+    link.CurrSect = sect;
     finfo = sect->outfile;
     file_loc = GROUP_FILE_LOC( group );
     if( file_loc > finfo->file_loc ) {
-        PadLoad( file_loc - finfo->file_loc );
+        PadLoad(link,  file_loc - finfo->file_loc );
     } else if( file_loc < finfo->file_loc ) {
-        SeekLoad( file_loc );
+        SeekLoad(link,  file_loc );
         repos = true;
     }
     DEBUG((DBG_LOADDOS, "group %a section %d to %l in %s",
@@ -257,7 +260,7 @@ static bool WriteCOMGroup( group_entry *group, soffset chop )
     return( repos );
 }
 
-static void WriteCOMFile( void )
+static void WriteCOMFile(Link& link)
 /*******************************
  * generate a DOS .COM file.
  */
@@ -267,40 +270,40 @@ static void WriteCOMFile( void )
     bool                repos;
     soffset             chop;
 
-    if( wlink().StartInfo.addr.seg != 0 ) {
+    if( link.StartInfo.addr.seg != 0 ) {
         LnkMsg( ERR+MSG_INV_COM_START_ADDR, nullptr );
         return;
     }
-    if( ( wlink().StackAddr.seg != 0 )
-      || ( wlink().StackAddr.off != 0 ) ) {
+    if( ( link.StackAddr.seg != 0 )
+      || ( link.StackAddr.off != 0 ) ) {
         LnkMsg( WRN+MSG_STACK_SEG_IGNORED, nullptr );
     }
-    OrderGroups( CompareDosSegments );
-    wlink().CurrSect = wlink().Root;        // needed for WriteInfo.
-    fnode = wlink().Root->outfile;
-    fnode->file_loc = wlink().Root->u.file_loc = 0;
-    wlink().Root->sect_addr = wlink().Groups->addr;
+    OrderGroups(link,  CompareDosSegments );
+    link.CurrSect = link.Root;        // needed for WriteInfo.
+    fnode = link.Root->outfile;
+    fnode->file_loc = link.Root->u.file_loc = 0;
+    link.Root->sect_addr = link.Groups->addr;
 
     /* write groups */
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
-        chop = SUB_REAL_ADDR( group->addr, wlink().StartInfo.addr );
+    for( group = link.Groups; group != nullptr; group = group->next ) {
+        chop = SUB_REAL_ADDR( group->addr, link.StartInfo.addr );
         if( chop > 0 ) {
             chop = 0;
         }
         if( static_cast<soffset>( group->size ) + chop > 0 ) {
-            repos = WriteCOMGroup( group, chop );
+            repos = WriteCOMGroup(link,  group, chop );
             if( repos ) {
-                SeekLoad( fnode->file_loc );
+                SeekLoad(link,  fnode->file_loc );
             }
         }
     }
     if( fnode->file_loc > (_64K - 0x200) ) {
         LnkMsg( ERR+MSG_COM_TOO_LARGE, nullptr );
     }
-    DBIWrite();
+    DBIWrite(link);
 }
 
-void FiniDOSLoadFile( void )
+void FiniDOSLoadFile(Link& link)
 /***************************
  * terminate writing of load file
  */
@@ -312,47 +315,47 @@ void FiniDOSLoadFile( void )
     unsigned_32         root_size;
     dos_exe_header      exe_head;
 
-    if( wlink().FmtData.type & MK_COM ) {
-        WriteCOMFile();
+    if( link.FmtData.type & MK_COM ) {
+        WriteCOMFile(link);
         return;
     }
-    if( wlink().FmtData.u.dos.full_mz_hdr ) {
+    if( link.FmtData.u.dos.full_mz_hdr ) {
         mz_hdr_size = 0x40;
     } else {
         mz_hdr_size = sizeof( dos_exe_header ) + sizeof( unsigned_32 );
     }
-    SeekLoad( mz_hdr_size );
-    root_size = WriteDOSData( mz_hdr_size );
-    if( wlink().FmtData.type & MK_OVERLAYS ) {
-        OvlPadOvlFiles();
+    SeekLoad(link,  mz_hdr_size );
+    root_size = WriteDOSData(link,  mz_hdr_size );
+    if( link.FmtData.type & MK_OVERLAYS ) {
+        OvlPadOvlFiles(link);
     }
     /* output debug info into root main output file */
-    wlink().CurrSect = wlink().Root;
-    DBIWrite();
-    hdr_size = __ROUND_UP_SIZE_PARA( wlink().Root->relocs * sizeof( dos_addr ) + mz_hdr_size );
+    link.CurrSect = link.Root;
+    DBIWrite(link);
+    hdr_size = __ROUND_UP_SIZE_PARA( link.Root->relocs * sizeof( dos_addr ) + mz_hdr_size );
     DEBUG((DBG_LOADDOS, "root size %l, hdr size %l", root_size, hdr_size ));
-    SeekLoad( 0 );
+    SeekLoad(link,  0 );
     _HostU16toTarg( EXESIGN_DOS, exe_head.signature );
     temp = hdr_size / 16U;
     _HostU16toTarg( temp, exe_head.hdr_size );
     _HostU16toTarg( root_size % 512U, exe_head.mod_size );
     temp = ( root_size + 511U ) / 512U;
     _HostU16toTarg( temp, exe_head.file_size );
-    _HostU16toTarg( wlink().Root->relocs, exe_head.num_relocs );
+    _HostU16toTarg( link.Root->relocs, exe_head.num_relocs );
 
-    min_size = MemorySize() - ( root_size - hdr_size ) + wlink().FmtData.SegMask;
-    min_size >>= wlink().FmtData.SegShift;
+    min_size = MemorySize(link) - ( root_size - hdr_size ) + link.FmtData.SegMask;
+    min_size >>= link.FmtData.SegShift;
     _HostU16toTarg( min_size, exe_head.min_16 );
     _HostU16toTarg( 0xffff, exe_head.max_16 );
-    _HostU16toTarg( wlink().StartInfo.addr.off, exe_head.IP );
-    _HostU16toTarg( wlink().StartInfo.addr.seg, exe_head.CS_offset );
-    _HostU16toTarg( wlink().StackAddr.seg, exe_head.SS_offset );
-    _HostU16toTarg( wlink().StackAddr.off, exe_head.SP );
+    _HostU16toTarg( link.StartInfo.addr.off, exe_head.IP );
+    _HostU16toTarg( link.StartInfo.addr.seg, exe_head.CS_offset );
+    _HostU16toTarg( link.StackAddr.seg, exe_head.SS_offset );
+    _HostU16toTarg( link.StackAddr.off, exe_head.SP );
     _HostU16toTarg( 0, exe_head.chk_sum );
     _HostU16toTarg( mz_hdr_size, exe_head.reloc_offset );
     _HostU16toTarg( 0, exe_head.overlay_num );
-    WriteLoad( &exe_head, sizeof( dos_exe_header ) );
-    WriteLoadU32( wlink().OvlTabOffset );
+    WriteLoad(link,  &exe_head, sizeof( dos_exe_header ) );
+    WriteLoadU32(link,  link.OvlTabOffset );
 }
 
 #endif

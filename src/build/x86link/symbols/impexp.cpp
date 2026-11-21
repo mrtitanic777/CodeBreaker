@@ -90,30 +90,30 @@ static entry_export *FindPlace( entry_export *exp )
     return( ret );
 }
 
-static entry_export *FreeAnExport( entry_export *exp )
+static entry_export *FreeAnExport(Link& link,  entry_export *exp )
 /****************************************************/
 {
     entry_export    *next;
 
     MemFree( exp->impname );
     next = exp->next;
-    CarveFree( wlink().CarveExportInfo, exp );
+    CarveFree( link.CarveExportInfo, exp );
     return( next );
 }
 
-void FreeExportList( void )
+void FreeExportList(Link& link)
 /*************************/
 {
     entry_export    *exp;
 
-    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        for( exp = wlink().FmtData.u.os2fam.exports; exp != nullptr; ) {
-            exp = FreeAnExport( exp );
+    if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+        for( exp = link.FmtData.u.os2fam.exports; exp != nullptr; ) {
+            exp = FreeAnExport(link,  exp );
         }
     }
 }
 
-void AddToExportList( entry_export *exp )
+void AddToExportList(Link& link,  entry_export *exp )
 /***************************************/
 {
     entry_export        **owner;
@@ -124,14 +124,14 @@ void AddToExportList( entry_export *exp )
 
     place = nullptr;
     len = strlen( exp->name.u.ptr );
-    for( owner = &wlink().FmtData.u.os2fam.exports; (curr = *owner) != nullptr; owner = &curr->next ) {
+    for( owner = &link.FmtData.u.os2fam.exports; (curr = *owner) != nullptr; owner = &curr->next ) {
         currlen = strlen( curr->name.u.ptr );
         if( currlen == len && (*CmpNRtn)( curr->name.u.ptr, exp->name.u.ptr, len ) == 0 ) {
-            if( wlink().ObjFileFormat != FILE_FMT_INCREMENTAL ) {
+            if( link.ObjFileFormat != FILE_FMT_INCREMENTAL ) {
                 if( !IS_SYM_COMDAT( exp->sym ) ) {
                     LnkMsg( WRN+LOC+MSG_DUP_EXP_NAME, "s", curr->name.u.ptr );
                 }
-                FreeAnExport( exp );
+                FreeAnExport(link,  exp );
             }
             return;
         }
@@ -143,7 +143,7 @@ void AddToExportList( entry_export *exp )
             } else if( curr->ordinal == exp->ordinal ) {
                 LnkMsg( WRN+MSG_DUP_EXP_ORDINAL, nullptr );
                 exp->ordinal = 0;    // if duplicate, assign a new one later
-                place = &wlink().FmtData.u.os2fam.exports;
+                place = &link.FmtData.u.os2fam.exports;
             } else if( curr->ordinal > exp->ordinal ) {
                 place = owner;
             }
@@ -188,13 +188,13 @@ static size_t CheckStdCall( const char *name, size_t len )
     return( chop );
 }
 
-entry_export *AllocExport( const char *name, size_t len )
+entry_export *AllocExport(Link& link,  const char *name, size_t len )
 /*******************************************************/
 {
     entry_export    *exp;
     size_t          chop;
 
-    exp = static_cast<entry_export *>( CarveAlloc( wlink().CarveExportInfo ) );
+    exp = static_cast<entry_export *>( CarveAlloc( link.CarveExportInfo ) );
     exp->isresident = false;
     exp->isexported = true;
     exp->ismovable = false;
@@ -206,14 +206,14 @@ entry_export *AllocExport( const char *name, size_t len )
     if( name == nullptr ) {
         exp->name.u.ptr = nullptr;
     } else {
-        if( (wlink().FmtData.type & MK_PE) && wlink().FmtData.u.pe.no_stdcall ) {
+        if( (link.FmtData.type & MK_PE) && link.FmtData.u.pe.no_stdcall ) {
             chop = CheckStdCall( name, len );
             if( chop > 0 ) {
                 name++;
                 len -= chop;
             }
         }
-        exp->name.u.ptr = AddSymbolStringTable( &wlink().PermStrings, name, len );
+        exp->name.u.ptr = AddSymbolStringTable( &link.PermStrings, name, len );
     }
     exp->impname = nullptr;
     exp->iopl_words = 0;
@@ -225,64 +225,64 @@ static constexpr unsigned EXPDEF_ORDINAL  = 0x80;
 static constexpr unsigned EXPDEF_RESIDENT = 0x40;
 static constexpr unsigned EXPDEF_IOPLMASK = 0x1F;
 
-void MSExportKeyword( const length_name *expname, const length_name *intname, unsigned flags, ordinal_t ordinal )
+void MSExportKeyword(Link& link,  const length_name *expname, const length_name *intname, unsigned flags, ordinal_t ordinal )
 /***************************************************************************************************************/
 // Process the Microsoft Export keyword.
 {
     entry_export    *exp;
 
-    exp = AllocExport( expname->name, expname->len );
+    exp = AllocExport(link,  expname->name, expname->len );
     exp->iopl_words = flags & EXPDEF_IOPLMASK;
     if( flags & EXPDEF_RESIDENT )
         exp->isresident = true;
     if( intname->len != 0 ) {
-        exp->sym = SymOp( ST_CREATE_REFERENCE, intname->name, intname->len );
+        exp->sym = SymOp(link,  ST_CREATE_REFERENCE, intname->name, intname->len );
     } else {
-        exp->sym = SymOp( ST_CREATE_REFERENCE, expname->name, expname->len );
+        exp->sym = SymOp(link,  ST_CREATE_REFERENCE, expname->name, expname->len );
     }
-    if( wlink().LinkFlags & LF_STRIP_CODE ) {
-        DataRef( exp->sym );    // make sure it isn't removed.
+    if( link.LinkFlags & LF_STRIP_CODE ) {
+        DataRef(link,  exp->sym );    // make sure it isn't removed.
     }
     if( flags & EXPDEF_ORDINAL ) {
         exp->ordinal = ordinal;
     } else {
         exp->isresident = true; // no ordinal specd == isresident
     }
-    AddToExportList( exp );
+    AddToExportList(link,  exp );
 }
 
-dll_sym_info *AllocDLLInfo( void )
+dll_sym_info *AllocDLLInfo(Link& link)
 /********************************/
 {
     dll_sym_info    *dll;
 
-    dll = static_cast<dll_sym_info *>( CarveAlloc( wlink().CarveDLLInfo ) );
+    dll = static_cast<dll_sym_info *>( CarveAlloc( link.CarveDLLInfo ) );
     dll->isfree = false;
     return( dll );
 }
 
-void FreeImport( dll_sym_info *dll )
+void FreeImport(Link& link,  dll_sym_info *dll )
 /**********************************/
 {
-    CarveFree( wlink().CarveDLLInfo, dll );
+    CarveFree( link.CarveDLLInfo, dll );
 }
 
-static symbol *GetIATSym( symbol *sym )
+static symbol *GetIATSym(Link& link,  symbol *sym )
 /*************************************/
 {
     const char  *name;
 
     name = sym->name.u.ptr;
-    if( wlink().LinkState & LS_HAVE_PPC_CODE ) {
+    if( link.LinkState & LS_HAVE_PPC_CODE ) {
         DbgAssert(name[0] == '.' && name[1] == '.');
         name += 2;  // skip '..' at the beginning of the name
     }
     std::string iatname( ImportSymPrefix, sizeof( ImportSymPrefix ) - 1 );
     iatname += name;
-    return( SymOp( ST_CREATE, iatname.c_str(), iatname.size() ) );
+    return( SymOp(link,  ST_CREATE, iatname.c_str(), iatname.size() ) );
 }
 
-void MSImportKeyword( symbol *sym, const length_name *modname, const length_name *extname, ordinal_t ordinal )
+void MSImportKeyword(Link& link,  symbol *sym, const length_name *modname, const length_name *extname, ordinal_t ordinal )
 /************************************************************************************************************/
 /* process the MS import keyword definition */
 {
@@ -290,22 +290,22 @@ void MSImportKeyword( symbol *sym, const length_name *modname, const length_name
 
     if( (sym->info & SYM_DEFINED) == 0 ) {
         sym->info |= SYM_DEFINED | SYM_1_DCE_REF;
-        if( wlink().LinkFlags & LF_STRIP_CODE ) {
+        if( link.LinkFlags & LF_STRIP_CODE ) {
             DefStripImpSym( sym );
         }
         SET_SYM_TYPE( sym, SYM_IMPORTED );
-        dll = AllocDLLInfo();
+        dll = AllocDLLInfo(link);
         sym->p.import_dll = dll;
-        if( wlink().FmtData.type & MK_PE ) {
-            dll->iatsym = GetIATSym( sym );
+        if( link.FmtData.type & MK_PE ) {
+            dll->iatsym = GetIATSym(link,  sym );
             dll->iatsym->info |= SYM_DEFINED | SYM_1_DCE_REF;
             SET_SYM_TYPE( dll->iatsym, SYM_IMPORTED );
             dll->iatsym->p.import_dll = nullptr;
         }
-        dll->m.modnum = AddNameTable( modname->name, modname->len, true, &wlink().FmtData.u.os2fam.mod_ref_list );
+        dll->m.modnum = AddNameTable(link,  modname->name, modname->len, true, &link.FmtData.u.os2fam.mod_ref_list );
         if( ordinal == IMP_BY_NAME ) {
             dll->isordinal = false;
-            dll->u.entry = AddNameTable( extname->name, extname->len, false, &wlink().FmtData.u.os2fam.imp_tab_list );
+            dll->u.entry = AddNameTable(link,  extname->name, extname->len, false, &link.FmtData.u.os2fam.imp_tab_list );
         } else {
             dll->isordinal = true;
             dll->u.ordinal = ordinal;
@@ -313,16 +313,16 @@ void MSImportKeyword( symbol *sym, const length_name *modname, const length_name
     }
 }
 
-void KillDependantSyms( symbol *sym )
+void KillDependantSyms(Link& link,  symbol *sym )
 /******************************************/
 {
-    if( wlink().FmtData.type & MK_PE ) {
-        sym = GetIATSym( sym );
+    if( link.FmtData.type & MK_PE ) {
+        sym = GetIATSym(link,  sym );
         sym->info |= SYM_KILL;
     }
 }
 
-void CheckExport( const char *name, ordinal_t ordinal, bool cmpcase )
+void CheckExport(Link& link,  const char *name, ordinal_t ordinal, bool cmpcase )
 /*******************************************************************/
 /* check if the name is exported and hasn't been assigned a value, and if so,
  * give it the specified value */
@@ -334,14 +334,14 @@ void CheckExport( const char *name, ordinal_t ordinal, bool cmpcase )
     DEBUG(( DBG_OLD, "Oldlib export %s ordinal %l", name, ordinal ));
     rtn = ( cmpcase ) ? strcmp : stricmp;
     prev = nullptr;
-    for( place = wlink().FmtData.u.os2fam.exports; place != nullptr; place = place->next ) {
+    for( place = link.FmtData.u.os2fam.exports; place != nullptr; place = place->next ) {
         if( rtn( place->name.u.ptr, name ) == 0 ) {
             if( place->ordinal == 0 ) {
                 place->ordinal = ordinal;
                 place = FindPlace( place );
                 if( place != nullptr ) {
                     if( prev == nullptr ) {
-                        wlink().FmtData.u.os2fam.exports = place;
+                        link.FmtData.u.os2fam.exports = place;
                     } else {
                         prev->next = place;
                     }
@@ -353,7 +353,7 @@ void CheckExport( const char *name, ordinal_t ordinal, bool cmpcase )
     }
 }
 
-ordinal_t FindEntryOrdinal( addr_type addr, group_entry *group )
+ordinal_t FindEntryOrdinal(Link& link,  addr_type addr, group_entry *group )
 /**************************************************************/
 {
     ordinal_t       max_ord;
@@ -361,7 +361,7 @@ ordinal_t FindEntryOrdinal( addr_type addr, group_entry *group )
     entry_export    *exp;
 
     max_ord = 0;
-    for( owner = &wlink().FmtData.u.os2fam.exports; (exp = *owner) != nullptr; owner = &exp->next ) {
+    for( owner = &link.FmtData.u.os2fam.exports; (exp = *owner) != nullptr; owner = &exp->next ) {
         if( addr.seg == exp->addr.seg && addr.off == exp->addr.off ) {
             return( exp->ordinal );
         }
@@ -369,7 +369,7 @@ ordinal_t FindEntryOrdinal( addr_type addr, group_entry *group )
             max_ord = exp->ordinal;
         }
     }
-    exp = AllocExport( nullptr, 0 );
+    exp = AllocExport(link,  nullptr, 0 );
     exp->sym = nullptr;
     exp->isexported = false;
     exp->ordinal = max_ord + 1;
@@ -387,14 +387,14 @@ bool IsSymElfImported( symbol *sym )
     return( IS_SYM_IMPORTED( sym ) );
 }
 
-bool IsSymElfExported( symbol *sym )
+bool IsSymElfExported(Link& link,  symbol *sym )
 /**********************************/
 {
-    return( wlink().FmtData.u.elf.exportallsyms || (sym->info & SYM_EXPORTED) );
+    return( link.FmtData.u.elf.exportallsyms || (sym->info & SYM_EXPORTED) );
 }
 
-bool IsSymElfImpExp( symbol *sym )
+bool IsSymElfImpExp(Link& link,  symbol *sym )
 /********************************/
 {
-    return( IsSymElfImported( sym ) || IsSymElfExported( sym ) );
+    return( IsSymElfImported( sym ) || IsSymElfExported(link,  sym ) );
 }

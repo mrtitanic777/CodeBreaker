@@ -34,5 +34,5 @@
 
 extern void     ResetPermBlocks( void );
 extern void     BasicInitSym( symbol *sym );
-extern symbol   *AddSym( void );
+extern symbol   *AddSym(Link& link);
 extern void     ReleasePermBlocks( void );

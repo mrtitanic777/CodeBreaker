@@ -227,7 +227,8 @@ unsigned IDEAPI IDEGetVersion( void )
 void IDEAPI IDEStopRunning( void )
 /********************************/
 {
-    wlink().LinkState |= LS_STOP_WORKING | LS_LINK_ERROR;
+    Link& link = wlink();
+    link.LinkState |= LS_STOP_WORKING | LS_LINK_ERROR;
 }
 
 void IDEAPI IDEFreeHeap( void )
@@ -259,24 +260,27 @@ IDEBool IDEAPI IDEInitDLL( IDECBHdl cbhdl, IDECallBacks *cb, IDEDllHdl *hdl )
 void IDEAPI IDEFiniDLL( IDEDllHdl hdl )
 /*************************************/
 {
+    Link& link = wlink();
     /* unused parameters */ (void)hdl;
 
-    FiniSubSystems();
+    FiniSubSystems(link);
 }
 
 int IDEAPI IDERunYourSelf( IDEDllHdl hdl, const char * opts, IDEBool *fatalerr )
 /******************************************************************************/
 {
+    Link& link = wlink();
     /* unused parameters */ (void)hdl;
 
-    LinkMainLine( opts );
-    *fatalerr = (wlink().LinkState & LS_LINK_ERROR) != 0;
+    LinkMainLine(link,  opts );
+    *fatalerr = (link.LinkState & LS_LINK_ERROR) != 0;
     return( *fatalerr );
 }
 
 int IDEAPI IDERunYourSelfArgv( IDEDllHdl hdl, int argc, char **argv, IDEBool *fatalerr )
 /**************************************************************************************/
 {
+    Link& link = wlink();
     /* unused parameters */ (void)hdl;
 
 #if !defined( __WATCOMC__ )
@@ -286,7 +290,7 @@ int IDEAPI IDERunYourSelfArgv( IDEDllHdl hdl, int argc, char **argv, IDEBool *fa
     /* unused parameters */ (void)argc; (void)argv;
 #endif
 
-    LinkMainLine( nullptr );
-    *fatalerr = (wlink().LinkState & LS_LINK_ERROR) != 0;
+    LinkMainLine(link,  nullptr );
+    *fatalerr = (link.LinkState & LS_LINK_ERROR) != 0;
     return( *fatalerr );
 }

@@ -39,6 +39,7 @@
     #include <sys/seginfo.h>
 #endif
 #include "build/x86link/link/linkstd.h"
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/symbols/library.h"
 #include "build/x86link/base/virtmem.h"
 #include "build/x86link/fixups/reloc.h"
@@ -75,10 +76,10 @@ static void PrintAllMem( void )
 
 #endif  /* TRMEM */
 
-static bool CacheRelease( void )
+static bool CacheRelease(Link& link)
 /******************************/
 {
-    return( DumpObjCache() || DiscardDicts() );     /* .. discard dictionarys */
+    return( DumpObjCache(link) || DiscardDicts(link) );     /* .. discard dictionarys */
 }
 
 void LnkMemInit( void )
@@ -115,7 +116,7 @@ static void *check_nomem( void *ptr )
 #ifdef TRMEM
 static void *doAlloc( size_t size, _trmem_who who )
 #else
-static void *doAlloc( size_t size )
+static void *doAlloc(Link& link,  size_t size )
 #endif
 {
     void    *ptr;
@@ -127,7 +128,7 @@ static void *doAlloc( size_t size )
         ptr = malloc( size );
 #endif
         if( ptr != nullptr
-          || !FreeUpMemory( false ) ) {
+          || !FreeUpMemory(link,  false ) ) {
             break;
         }
     }
@@ -138,12 +139,13 @@ TRMEMAPI( MemAlloc )
 void *MemAlloc( size_t size )
 /***************************/
 {
+    Link& link = wlink();
     void    *ptr;
 
 #ifdef TRMEM
     ptr = doAlloc( size, _TRMEM_WHO( 1 ) );
 #else
-    ptr = doAlloc( size );
+    ptr = doAlloc(link,  size );
 #endif
     if( ptr != nullptr )
         memset( ptr, 0, size );
@@ -154,12 +156,13 @@ TRMEMAPI( MemAllocSafe )
 void *MemAllocSafe( size_t size )
 /*******************************/
 {
+    Link& link = wlink();
     void            *ptr;
 
 #ifdef TRMEM
     ptr = check_nomem( doAlloc( size, _TRMEM_WHO( 1 ) ) );
 #else
-    ptr = check_nomem( doAlloc( size ) );
+    ptr = check_nomem( doAlloc(link,  size ) );
 #endif
     return( memset( ptr, 0, size ) );
 }
@@ -167,7 +170,7 @@ void *MemAllocSafe( size_t size )
 #ifdef TRMEM
 static char *doStrdup( const char *str, _trmem_who who )
 #else
-static char *doStrdup( const char *str )
+static char *doStrdup(Link& link,  const char *str )
 #endif
 /**************************************/
 {
@@ -180,7 +183,7 @@ static char *doStrdup( const char *str )
         ptr = strdup( str );
 #endif
         if( ptr != nullptr
-          || !FreeUpMemory( false ) ) {
+          || !FreeUpMemory(link,  false ) ) {
             break;
         }
     }
@@ -188,20 +191,20 @@ static char *doStrdup( const char *str )
 }
 
 TRMEMAPI( MemStrdupSafe )
-char *MemStrdupSafe( const char *str )
+char *MemStrdupSafe(Link& link,  const char *str )
 /************************************/
 {
 #ifdef TRMEM
     return( static_cast<char *>( check_nomem( doStrdup( str, _TRMEM_WHO( 3 ) ) ) ) );
 #else
-    return( static_cast<char *>( check_nomem( doStrdup( str ) ) ) );
+    return( static_cast<char *>( check_nomem( doStrdup(link,  str ) ) ) );
 #endif
 }
 
 #ifdef TRMEM
 static void *doRealloc( void *src, size_t size, _trmem_who who )
 #else
-static void *doRealloc( void *src, size_t size )
+static void *doRealloc(Link& link,  void *src, size_t size )
 #endif
 /***********************************************
  * reallocate a block of memory.
@@ -219,7 +222,7 @@ static void *doRealloc( void *src, size_t size )
         ptr = realloc( src, size );
 #endif
         if( ptr != nullptr
-          || !FreeUpMemory( true ) ) {
+          || !FreeUpMemory(link,  true ) ) {
             break;
         }
     }
@@ -230,10 +233,11 @@ TRMEMAPI( MemRealloc )
 void *MemRealloc( void *src, size_t size )
 /****************************************/
 {
+    Link& link = wlink();
 #ifdef TRMEM
     return( doRealloc( src, size, _TRMEM_WHO( 4 ) ) );
 #else
-    return( doRealloc( src, size ) );
+    return( doRealloc(link,  src, size ) );
 #endif
 }
 
@@ -241,10 +245,11 @@ TRMEMAPI( MemReallocSafe )
 void *MemReallocSafe( void *src, size_t size )
 /********************************************/
 {
+    Link& link = wlink();
 #ifdef TRMEM
     return( check_nomem( doRealloc( src, size, _TRMEM_WHO( 4 ) ) ) );
 #else
-    return( check_nomem( doRealloc( src, size ) ) );
+    return( check_nomem( doRealloc(link,  src, size ) ) );
 #endif
 }
 
@@ -260,7 +265,7 @@ void MemFree( void *p )
 }
 
 TRMEMAPI( MemToStringSafe )
-char *MemToStringSafe( const void *mem, size_t size )
+char *MemToStringSafe(Link& link,  const void *mem, size_t size )
 /***************************************************/
 {
     char            *ptr;
@@ -268,7 +273,7 @@ char *MemToStringSafe( const void *mem, size_t size )
 #ifdef TRMEM
     ptr = static_cast<char *>( check_nomem( doAlloc( size + 1, _TRMEM_WHO( 1 ) ) ) );
 #else
-    ptr = static_cast<char *>( check_nomem( doAlloc( size + 1 ) ) );
+    ptr = static_cast<char *>( check_nomem( doAlloc(link,  size + 1 ) ) );
 #endif
     memcpy( ptr, mem, size );
     ptr[size] = '\0';
@@ -299,7 +304,7 @@ void DbgZapFreed( void *tgt, size_t size )
 }
 #endif
 
-bool FreeUpMemory( bool skip )
+bool FreeUpMemory(Link& link,  bool skip )
 /*****************************
  * The MemRealloc.. function uses skip = true to skip PermShrink, which
  * calls the MemRealloc function, which would cause "infinite" recursion.
@@ -322,7 +327,7 @@ bool FreeUpMemory( bool skip )
             return( true );
         }
     }
-    return( CacheRelease() || SwapOutVirt() || SwapOutRelocs() );
+    return( CacheRelease(link) || SwapOutVirt() || SwapOutRelocs(link) );
 }
 
 #if defined( __WATCOMC__ )

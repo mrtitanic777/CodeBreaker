@@ -35,31 +35,31 @@
 
 /* in autogrp.c */
 
-extern void             AutoGroup( void );
-extern group_entry      *AllocGroup( const char *, group_entry ** );
+extern void             AutoGroup(Link& link);
+extern group_entry      *AllocGroup(Link& link,  const char *, group_entry ** );
 
 /* in salloc.c */
 
-extern void     NormalizeAddr( void );
-extern void     AddSize( offset );
-extern offset   CAlign( offset, unsigned );
-extern void     Align( byte );
-extern void     MAlign( byte );
-extern void     StartMemMap( void );
-extern void     ChkLocated( addr_type *segadr, bool fixed);
-extern void     NewSegment( seg_leader * );
+extern void     NormalizeAddr(Link& link);
+extern void     AddSize(Link& link,  offset );
+extern offset   CAlign(Link& link,  offset, unsigned );
+extern void     Align(Link& link,  byte );
+extern void     MAlign(Link& link,  byte );
+extern void     StartMemMap(Link& link);
+extern void     ChkLocated(Link& link,  addr_type *segadr, bool fixed);
+extern void     NewSegment(Link& link,  seg_leader * );
 
 /* in objcalc.c */
 
-extern void     CheckClassOrder( void );
+extern void     CheckClassOrder(Link& link);
 extern bool     IsCodeClass( const char *, size_t );
 extern bool     IsConstClass( const char *, size_t );
 extern bool     IsStackClass( const char *, size_t );
-extern void     CalcAddresses( void );
-extern void     AllocClasses( section * );
+extern void     CalcAddresses(Link& link);
+extern void     AllocClasses(Link& link,  section * );
 extern void     CombineSeg( seg_leader *, signed_32 *, offset, byte, byte );
-extern void     ProcPubsSect( mod_entry *, section * );
-extern void     DoPubsSect( section * );
-extern void     SetSegFlags( seg_flags_struct * );
-extern void     CalcSegSizes( void );
-extern void     ConvertToFrame( addr_type *, segment, bool );
+extern void     ProcPubsSect(Link& link,  mod_entry *, section * );
+extern void     DoPubsSect(Link& link,  section * );
+extern void     SetSegFlags(Link& link,  seg_flags_struct * );
+extern void     CalcSegSizes(Link& link);
+extern void     ConvertToFrame(Link& link,  addr_type *, segment, bool );

@@ -59,7 +59,7 @@
 #ifdef _EXE
 
 
-static void         AllocAreas( AREASECT *area );
+static void         AllocAreas(Link& link,  AREASECT *area );
 
 namespace {
 
@@ -82,15 +82,15 @@ OvlState &ovl()
 
 }
 
-void ResetOverlaySupp( void )
+void ResetOverlaySupp(Link& link)
 /***************************/
 {
-    wlink().OvlAreaSize = 0xFFFF;
+    link.OvlAreaSize = 0xFFFF;
     ovl().vect.OvlVectors = nullptr;
     /* OvlSectNum value 0 is reserved for Root */
     /* Overlayed sections start at 1 */
-    wlink().OvlSectNum = 1;
-    wlink().OvlClasses = nullptr;
+    link.OvlSectNum = 1;
+    link.OvlClasses = nullptr;
     ovl().vecNum = 0;
     ResetDistribSupp();
 }
@@ -132,35 +132,36 @@ void WalkAreas( AREASECT *area, void (*rtn)( section * ) )
 static void DoSecPubs( section *sect )
 /************************************/
 {
-    if( wlink().MapFile != nullptr ) {
-        WriteMapOvlPubHead( sect );
+    Link& link = wlink();
+    if( link.MapFile != nullptr ) {
+        WriteMapOvlPubHead(link,  sect );
         WriteMapPubStart();
     }
-    ProcPubsSect( sect->mods, sect );
-    OvlProcPubsSect( sect );
-    if( wlink().MapFile != nullptr ) {
-        WriteMapPubEnd();
+    ProcPubsSect(link,  sect->mods, sect );
+    OvlProcPubsSect(link,  sect );
+    if( link.MapFile != nullptr ) {
+        WriteMapPubEnd(link);
     }
 }
 
-void OvlProcPubsSect( section *sect )
+void OvlProcPubsSect(Link& link,  section *sect )
 /***********************************/
 {
-    for( wlink().CurrMod = sect->u.dist_mods; wlink().CurrMod != nullptr; wlink().CurrMod = wlink().CurrMod->u2.next ) {
-        DoPubsSect( sect );
+    for( link.CurrMod = sect->u.dist_mods; link.CurrMod != nullptr; link.CurrMod = link.CurrMod->u2.next ) {
+        DoPubsSect(link,  sect );
     }
 }
 
-void OvlProcPubs( void )
+void OvlProcPubs(Link& link)
 /**********************/
 {
-    if( wlink().MapFile != nullptr ) {
-        WriteMapOvlVectHead( &ovl().vect );
+    if( link.MapFile != nullptr ) {
+        WriteMapOvlVectHead(link,  &ovl().vect );
     }
-    WalkAreas( wlink().Root->areas, DoSecPubs );
+    WalkAreas( link.Root->areas, DoSecPubs );
 }
 
-static void AllocSections( section *first_sect )
+static void AllocSections(Link& link,  section *first_sect )
 /**********************************************/
 /* Allocate parallel overlay sections */
 {
@@ -172,145 +173,145 @@ static void AllocSections( section *first_sect )
     unsigned            min_size;
     bool                area_specified;
 
-    wlink().CurrSect = first_sect;    /* NormalizeAddr() needs to know the section */
-    MAlign( wlink().FmtData.SegShift );     /* as do some DBI routines. */
-    NormalizeAddr();
-    if( first_sect == wlink().NonSect ) {
-        if( wlink().FmtData.u.dos.dynamic ) {
-            ovl_size = wlink().CurrLoc.seg - ovl().stashAddr.seg;
+    link.CurrSect = first_sect;    /* NormalizeAddr() needs to know the section */
+    MAlign(link,  link.FmtData.SegShift );     /* as do some DBI routines. */
+    NormalizeAddr(link);
+    if( first_sect == link.NonSect ) {
+        if( link.FmtData.u.dos.dynamic ) {
+            ovl_size = link.CurrLoc.seg - ovl().stashAddr.seg;
             /* OvlSectNum value 0 is reserved for Root */
-            min_size = ovl_size + wlink().OvlSectNum + 1;  // need at least 1 para per sect. + 1
+            min_size = ovl_size + link.OvlSectNum + 1;  // need at least 1 para per sect. + 1
             if( min_size < 64 ) {
                 min_size = 64;      // reserve 1 K for the stack
             }
             area_specified = true;
-            if( wlink().OvlAreaSize == 0xFFFF ) {   // default is twice the memory size
-                wlink().OvlAreaSize = ovl_size * 2;
+            if( link.OvlAreaSize == 0xFFFF ) {   // default is twice the memory size
+                link.OvlAreaSize = ovl_size * 2;
                 area_specified = false;
-            } else if( wlink().OvlAreaSize == 0 ) {
+            } else if( link.OvlAreaSize == 0 ) {
                 area_specified = false;
             }
-            if( wlink().OvlAreaSize < min_size ) {
-                wlink().OvlAreaSize = min_size;
+            if( link.OvlAreaSize < min_size ) {
+                link.OvlAreaSize = min_size;
                 if( area_specified ) {
-                    LnkMsg( WRN+MSG_AREA_TOO_SMALL, "l", static_cast<unsigned long>( min_size ) << wlink().FmtData.SegShift );
+                    LnkMsg( WRN+MSG_AREA_TOO_SMALL, "l", static_cast<unsigned long>( min_size ) << link.FmtData.SegShift );
                 }
             }
-            result = wlink().CurrLoc.seg + static_cast<unsigned long>( wlink().OvlAreaSize - ovl_size );
+            result = link.CurrLoc.seg + static_cast<unsigned long>( link.OvlAreaSize - ovl_size );
             if( result > 0xFFFF ) {
-                LnkMsg( WRN+MSG_CANT_RESERVE_SPACE, "l", static_cast<unsigned long>( wlink().OvlAreaSize ) << wlink().FmtData.SegShift );
+                LnkMsg( WRN+MSG_CANT_RESERVE_SPACE, "l", static_cast<unsigned long>( link.OvlAreaSize ) << link.FmtData.SegShift );
             } else {
-                wlink().CurrLoc.seg = static_cast<segment>( result );
+                link.CurrLoc.seg = static_cast<segment>( result );
             }
         }
-        wlink().OvlAreaSize = wlink().CurrLoc.seg - ovl().stashAddr.seg;
+        link.OvlAreaSize = link.CurrLoc.seg - ovl().stashAddr.seg;
     }
-    save_addr = wlink().CurrLoc;
+    save_addr = link.CurrLoc;
     max_addr.off = 0;
     max_addr.seg = 0;
     for( sect = first_sect; sect != nullptr; sect = sect->next ) {
-        wlink().CurrSect = sect;
+        link.CurrSect = sect;
         sect->sect_addr = save_addr;
-        AllocClasses( sect );
+        AllocClasses(link,  sect );
         if( sect->areas != nullptr ) {
-            AllocAreas( sect->areas );
+            AllocAreas(link,  sect->areas );
         }
-        NormalizeAddr();        /* avoid any overflow messages */
-        AddSize( 2 );   /* reserve some space for the overlay manager */
-        NormalizeAddr();        /*  get canonical form */
-        if( ( wlink().CurrLoc.seg > max_addr.seg )
-          || ( wlink().CurrLoc.seg == max_addr.seg )
-          && ( wlink().CurrLoc.off > max_addr.off ) ) {
-            max_addr = wlink().CurrLoc;
+        NormalizeAddr(link);        /* avoid any overflow messages */
+        AddSize(link,  2 );   /* reserve some space for the overlay manager */
+        NormalizeAddr(link);        /*  get canonical form */
+        if( ( link.CurrLoc.seg > max_addr.seg )
+          || ( link.CurrLoc.seg == max_addr.seg )
+          && ( link.CurrLoc.off > max_addr.off ) ) {
+            max_addr = link.CurrLoc;
         }
-        wlink().CurrLoc = save_addr;
+        link.CurrLoc = save_addr;
     }
-    wlink().CurrLoc = max_addr;
+    link.CurrLoc = max_addr;
 }
 
-static void AllocAreas( AREASECT *area )
+static void AllocAreas(Link& link,  AREASECT *area )
 /**************************************/
 {
     /* now CurrLoc is beginning of overlay area */
-    DEBUG(( DBG_OLD, "Overlay area start %a", &wlink().CurrLoc ));
+    DEBUG(( DBG_OLD, "Overlay area start %a", &link.CurrLoc ));
     for( ; area != nullptr; area = area->next ) {
-        AllocSections( area->sections );
+        AllocSections(link,  area->sections );
     }
 }
 
-void OvlCalc( void )
+void OvlCalc(Link& link)
 /******************/
 {
     unsigned        temp;
     outfilelist     *fnode;
 
-    wlink().CurrSect = wlink().Root;
+    link.CurrSect = link.Root;
     /* record starting address of overlay table */
-    Align( 2 ); // for overlay table speed.
-    SET_SYM_ADDR( ovl().vect.OverlayTable, wlink().CurrLoc.off, wlink().CurrLoc.seg );
-    DEBUG(( DBG_OLD, "Overlay table address %a", &wlink().CurrLoc ));
-    ovl().tabAddr = wlink().CurrLoc;
+    Align(link,  2 ); // for overlay table speed.
+    SET_SYM_ADDR( ovl().vect.OverlayTable, link.CurrLoc.off, link.CurrLoc.seg );
+    DEBUG(( DBG_OLD, "Overlay table address %a", &link.CurrLoc ));
+    ovl().tabAddr = link.CurrLoc;
     /* calculate size of overlay table proper */
     /* OvlSectNum value 0 is reserved for Root, Root entry is not emited */
-    temp = sizeof( ovltab_prolog ) + ( wlink().OvlSectNum - 1 ) * sizeof( ovltab_entry );
-    SET_SYM_ADDR( ovl().vect.OverlayTableEnd, wlink().CurrLoc.off + temp, wlink().CurrLoc.seg );
+    temp = sizeof( ovltab_prolog ) + ( link.OvlSectNum - 1 ) * sizeof( ovltab_entry );
+    SET_SYM_ADDR( ovl().vect.OverlayTableEnd, link.CurrLoc.off + temp, link.CurrLoc.seg );
     temp += sizeof( unsigned_16 );      /* add Overlays table terminator */
-    for( fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next ) {
+    for( fnode = link.OutFiles; fnode != nullptr; fnode = fnode->next ) {
         fnode->ovlfnoff = temp;
         temp += strlen( fnode->fname ) + 1;
     }
-    wlink().Root->outfile->ovlfnoff |= OVE_EXE_FILENAME;    // indicate the .exe file.
+    link.Root->outfile->ovlfnoff |= OVE_EXE_FILENAME;    // indicate the .exe file.
     /* calculate starting address of overlay vectors, record */
     ovl().tabSize = temp;   /*  incl. NULLCHAR */
-    wlink().CurrentSeg = nullptr;
-    AddSize( ovl().tabSize );
-    SET_SYM_ADDR( ovl().vect.OvlVecStart, wlink().CurrLoc.off, wlink().CurrLoc.seg );
-    DEBUG(( DBG_OLD, "Overlay vector start %a", &wlink().CurrLoc ));
-    ovl().vecAddr = wlink().CurrLoc;
+    link.CurrentSeg = nullptr;
+    AddSize(link,  ovl().tabSize );
+    SET_SYM_ADDR( ovl().vect.OvlVecStart, link.CurrLoc.off, link.CurrLoc.seg );
+    DEBUG(( DBG_OLD, "Overlay vector start %a", &link.CurrLoc ));
+    ovl().vecAddr = link.CurrLoc;
     /* calculate start of overlay area */
-    if( wlink().FmtData.u.dos.ovl_short ) {
+    if( link.FmtData.u.dos.ovl_short ) {
         temp = ovl().vecNum * sizeof( svector );
     } else {
         temp = ovl().vecNum * sizeof( lvector );
     }
-    AddSize( temp );
+    AddSize(link,  temp );
     ovl().tabSize += temp;
-    SET_SYM_ADDR( ovl().vect.OvlVecEnd, wlink().CurrLoc.off, wlink().CurrLoc.seg );
-    AddSize( 2 );       // reserve some space for the ovl. manager.
-    Align( 4 );
-    NormalizeAddr();
-    ovl().stashAddr = wlink().CurrLoc;
-    AllocAreas( wlink().Root->areas );
-    MAlign( 4 );          /*    don't add to section size */
-    NormalizeAddr();        /*  now CurrLoc.seg points to next free para */
+    SET_SYM_ADDR( ovl().vect.OvlVecEnd, link.CurrLoc.off, link.CurrLoc.seg );
+    AddSize(link,  2 );       // reserve some space for the ovl. manager.
+    Align(link,  4 );
+    NormalizeAddr(link);
+    ovl().stashAddr = link.CurrLoc;
+    AllocAreas(link,  link.Root->areas );
+    MAlign(link,  4 );          /*    don't add to section size */
+    NormalizeAddr(link);        /*  now CurrLoc.seg points to next free para */
 
-    ovl().group = AllocGroup( AutoGrpName, &wlink().Groups );
+    ovl().group = AllocGroup(link,  AutoGrpName, &link.Groups );
     ovl().group->addr = ovl().tabAddr;
-    ovl().group->section = wlink().Root;
+    ovl().group->section = link.Root;
     ovl().group->size = ovl().tabSize;
     ovl().group->totalsize = ovl().tabSize;
     ovl().group->num = 0;
     ovl().group->linear = 0;
-    Ring2Append( &ovl().group->leaders, wlink().OvlSeg );
+    Ring2Append( &ovl().group->leaders, link.OvlSeg );
 
-    wlink().OvlSeg->group = ovl().group;
-    wlink().OvlSeg->seg_addr = ovl().tabAddr;
-    wlink().OvlSeg->size = ovl().tabSize;
+    link.OvlSeg->group = ovl().group;
+    link.OvlSeg->seg_addr = ovl().tabAddr;
+    link.OvlSeg->size = ovl().tabSize;
 
     ovl().ovlSegData->u1.vm_ptr = AllocStg( ovl().tabSize );
     ovl().ovlSegData->length = ovl().tabSize;
     RingAppend( &ovl().ovlSegData->u.leader->pieces, ovl().ovlSegData );
 }
 
-void FreeOverlaySupp( void )
+void FreeOverlaySupp(Link& link)
 /**************************/
 {
-    wlink().OvlClasses = nullptr;
+    link.OvlClasses = nullptr;
     ovl().vect.OvlVectors = nullptr;
-    if( wlink().OvlSeg != nullptr ) {
-        FreeLeader( wlink().OvlSeg );
+    if( link.OvlSeg != nullptr ) {
+        FreeLeader( link.OvlSeg );
     }
-    FreeDistribSupp();
+    FreeDistribSupp(link);
 }
 
 static bool IsAncestor( overlay_ref elder_ovlref, section *ceorl )
@@ -374,7 +375,7 @@ void OvlVectorize( symbol *sym )
     DEBUG(( DBG_OLD, "Vectorize %d %S", ovl().vecNum, sym ));
 }
 
-static void OvlRefVector( symbol *sym )
+static void OvlRefVector(Link& link,  symbol *sym )
 /*************************************/
 {
     overlay_ref     ovlref;
@@ -385,10 +386,10 @@ static void OvlRefVector( symbol *sym )
         return;
     if( (sym->info & SYM_DEFINED) == 0 ) {
         if( (sym->u.d.ovlstate & OVL_REF) == 0 ) {
-            sym->u.d.ovlref = wlink().CurrSect->ovlref;
+            sym->u.d.ovlref = link.CurrSect->ovlref;
             sym->u.d.ovlstate |= OVL_REF;
-        } else if( wlink().FmtData.u.dos.distribute ) {
-            sym->u.d.ovlref = LowestAncestor( sym->u.d.ovlref, wlink().CurrSect );
+        } else if( link.FmtData.u.dos.distribute ) {
+            sym->u.d.ovlref = LowestAncestor( sym->u.d.ovlref, link.CurrSect );
         }
     } else {
         if( sym->p.seg == nullptr )
@@ -396,39 +397,39 @@ static void OvlRefVector( symbol *sym )
         /* at this point, we know it has already been defined, but does */
         /* not have an overlay vector, and is not data */
         ovlref = sym->p.seg->u.leader->class_->section->ovlref;
-        if( IsAncestor( ovlref, wlink().CurrSect ) )
+        if( IsAncestor( ovlref, link.CurrSect ) )
             return;
         /* overlay vector necessary */
         OvlVectorize( sym );
     }
 }
 
-void OvlTryRefVector( symbol *sym )
+void OvlTryRefVector(Link& link,  symbol *sym )
 /*********************************/
 {
-    if( wlink().FmtData.u.dos.distribute
-      && (wlink().LinkState & LS_SEARCHING_LIBRARIES) ) {
-        RefDistribSym( sym );
+    if( link.FmtData.u.dos.distribute
+      && (link.LinkState & LS_SEARCHING_LIBRARIES) ) {
+        RefDistribSym(link,  sym );
     } else {
-        OvlRefVector( sym );
+        OvlRefVector(link,  sym );
     }
 }
 
-void OvlUseVector( symbol *sym, extnode *newnode )
+void OvlUseVector(Link& link,  symbol *sym, extnode *newnode )
 /************************************************/
 {
     if( IS_SYM_COMMUNAL( sym ) )
         return;
     if( (sym->u.d.ovlstate & OVL_VEC_MASK) != OVL_MAKE_VECTOR )
         return;
-    if( IsAncestor( sym->p.seg->u.leader->class_->section->ovlref, wlink().CurrSect ) ) {
+    if( IsAncestor( sym->p.seg->u.leader->class_->section->ovlref, link.CurrSect ) ) {
         return;
     }
     /* use overlay vector for all calls */
     newnode->ovlref = sym->u.d.ovlref;
 }
 
-void OvlIndirectCall( symbol *sym )
+void OvlIndirectCall(Link& link,  symbol *sym )
 /*********************************/
 {
     overlay_ref ovlref;
@@ -437,7 +438,7 @@ void OvlIndirectCall( symbol *sym )
         return;
     if( sym->info & SYM_DEFINED ) {
         if( sym->info & SYM_1_DISTRIB ) {
-            DistribIndirectCall( sym );
+            DistribIndirectCall(link,  sym );
         } else if( sym->p.seg != nullptr ) {
             ovlref = sym->p.seg->u.leader->class_->section->ovlref;
             if( ( ovlref != 0 )
@@ -452,22 +453,22 @@ void OvlIndirectCall( symbol *sym )
     }
 }
 
-void OvlGetVecAddr( int vecnum, addr_type *addr )
+void OvlGetVecAddr(Link& link,  int vecnum, addr_type *addr )
 /************************************************
  * return address of overlay vector in canonical form
  */
 {
     *addr = ovl().vecAddr;
-    if( wlink().FmtData.u.dos.ovl_short ) {
+    if( link.FmtData.u.dos.ovl_short ) {
         /* short address -- fits into 16 bits */
-        addr->off += ( vecnum - 1 ) * sizeof( svector ) + ( addr->seg << wlink().FmtData.SegShift );
+        addr->off += ( vecnum - 1 ) * sizeof( svector ) + ( addr->seg << link.FmtData.SegShift );
         addr->seg = 0;
     } else {
         addr->off += ( vecnum - 1 ) * sizeof( lvector );
     }
 }
 
-bool OvlCheckOvlClass( const char *clname, bool *isovlclass )
+bool OvlCheckOvlClass(Link& link,  const char *clname, bool *isovlclass )
 /***********************************************************/
 /* check if among overlay classes, and return true if it is code. */
 {
@@ -475,7 +476,7 @@ bool OvlCheckOvlClass( const char *clname, bool *isovlclass )
     bool                retval;
 
     retval = IsCodeClass( clname, strlen( clname ) );
-    cnamelist = wlink().OvlClasses;
+    cnamelist = link.OvlClasses;
     if( cnamelist == nullptr ) {   /* check for anything ending in code */
         *isovlclass = retval;
         return( retval );
@@ -492,18 +493,18 @@ bool OvlCheckOvlClass( const char *clname, bool *isovlclass )
     return( false );
 }
 
-section *OvlCheckOvlSection( const char *clname )
+section *OvlCheckOvlSection(Link& link,  const char *clname )
 /***********************************************/
 {
     section     *sect;
     bool        dummy;
 
-    sect = DBIGetSect( clname );
+    sect = DBIGetSect(link,  clname );
     if( sect == nullptr ) {
-        if( OvlCheckOvlClass( clname, &dummy ) ) {
-            sect = wlink().CurrSect;
+        if( OvlCheckOvlClass(link,  clname, &dummy ) ) {
+            sect = link.CurrSect;
         } else {
-            sect = wlink().NonSect;
+            sect = link.NonSect;
         }
     }
     return( sect );
@@ -515,7 +516,7 @@ static void PutOvlInfo( unsigned off, void *src, unsigned len )
     PutInfo( ovl().ovlSegData->u1.vm_ptr + off - ovl().group->addr.off, src, len );
 }
 
-static void ShortVectors( symbol *loadsym )
+static void ShortVectors(Link& link,  symbol *loadsym )
 /*****************************************/
 {
     vecnode             *vectnode;
@@ -557,7 +558,7 @@ static void ShortVectors( symbol *loadsym )
     }
 }
 
-static void LongVectors( symbol *loadsym )
+static void LongVectors(Link& link,  symbol *loadsym )
 /****************************************/
 {
     vecnode             *vectnode;
@@ -587,12 +588,12 @@ static void LongVectors( symbol *loadsym )
         loadsym = vectnode->sym;
         _HostU16toTarg( loadsym->p.seg->u.leader->class_->section->ovlref, vectdata.u.v.sec_num );
         _HostU16toTarg( loadsym->addr.off, vectdata.target.off );
-        if( wlink().FmtData.u.dos.dynamic ) {
+        if( link.FmtData.u.dos.dynamic ) {
             _HostU16toTarg( loadsym->addr.seg - loadsym->p.seg->u.leader->group->addr.seg, vectdata.target.seg );
         } else {
             _HostU16toTarg( loadsym->addr.seg, vectdata.target.seg );
             addr.off = vectoff + offsetof( lvector, target.seg );
-            WriteReloc( ovl().group, addr.off, &addr, sizeof( dos_addr ) );
+            WriteReloc(link,  ovl().group, addr.off, &addr, sizeof( dos_addr ) );
         }
         PutOvlInfo( vectoff, &vectdata, sizeof( vectdata ) );
         vectoff += sizeof( vectdata );
@@ -600,7 +601,7 @@ static void LongVectors( symbol *loadsym )
     }
 }
 
-void OvlEmitVectors( void )
+void OvlEmitVectors(Link& link)
 /*************************/
 {
     symbol      *symptr;
@@ -611,70 +612,70 @@ void OvlEmitVectors( void )
     /* output relocation items for overlay table */
     addr.seg = ovl().group->addr.seg;
     addr.off = ovl().tabAddr.off + offsetof( ovltab_prolog, start.seg );
-    WriteReloc( ovl().group, addr.off, &addr, sizeof( dos_addr ) );
+    WriteReloc(link,  ovl().group, addr.off, &addr, sizeof( dos_addr ) );
     addr.off = ovl().tabAddr.off + offsetof( ovltab_prolog, delta );
-    WriteReloc( ovl().group, addr.off, &addr, sizeof( dos_addr ) );
+    WriteReloc(link,  ovl().group, addr.off, &addr, sizeof( dos_addr ) );
 
     isshort = false;
-    if( wlink().FmtData.u.dos.dynamic ) {
+    if( link.FmtData.u.dos.dynamic ) {
         loader_name = _DynamicOvlldr;
-    } else if( wlink().FmtData.u.dos.ovl_short ) {
+    } else if( link.FmtData.u.dos.ovl_short ) {
         loader_name = _ShortOvlldr;
         isshort = true;
     } else {
         loader_name = _LongOvlldr;
     }
-    symptr = RefISymbol( loader_name );
+    symptr = RefISymbol(link,  loader_name );
     if( (symptr->info & SYM_DEFINED) == 0 ) {
         LnkMsg( ERR+MSG_NO_OVERLAY_LOADER, nullptr );
     } else if( isshort ) {
-        ShortVectors( symptr );
+        ShortVectors(link,  symptr );
     } else {
-        LongVectors( symptr );
+        LongVectors(link,  symptr );
     }
 }
 
-void OvlSetStartAddr( void )
+void OvlSetStartAddr(Link& link)
 /**************************/
 {
     symbol      *sym;
 
     /* stuff overlay init routine address in header */
-    ovl().stashAddr = wlink().StartInfo.addr;
+    ovl().stashAddr = link.StartInfo.addr;
 
-    if( wlink().FmtData.u.dos.dynamic ) {
-        sym = FindISymbol( _DynamicInitRtn );
-    } else if( wlink().FmtData.u.dos.ovl_short ) {
-        sym = FindISymbol( _ShortOvlInitRtn );
+    if( link.FmtData.u.dos.dynamic ) {
+        sym = FindISymbol(link,  _DynamicInitRtn );
+    } else if( link.FmtData.u.dos.ovl_short ) {
+        sym = FindISymbol(link,  _ShortOvlInitRtn );
     } else {
-        sym = FindISymbol( _LongOvlInitRtn );
+        sym = FindISymbol(link,  _LongOvlInitRtn );
     }
     if( sym == nullptr )
         return;
     if( sym->info & SYM_DEFINED ) {
-        wlink().StartInfo.addr = sym->addr;
+        link.StartInfo.addr = sym->addr;
     }
 }
 
-void OvlPass1( void )
+void OvlPass1(Link& link)
 /*******************/
 {
     symbol      *sym;
 
-    WalkAreas( wlink().Root->areas, LoadObjFiles );
+    WalkAreas( link.Root->areas, LoadObjFiles );
 
     /* define symbols for overlay table */
-    ovl().vect.OverlayTable = DefISymbol( _OvltabName );
-    ovl().vect.OverlayTableEnd = DefISymbol( _OvltabEndName );
-    ovl().vect.OvlVecStart = DefISymbol( _OvlVecStartName );
-    ovl().vect.OvlVecEnd = DefISymbol( _OvlVecEndName );
+    ovl().vect.OverlayTable = DefISymbol(link,  _OvltabName );
+    ovl().vect.OverlayTableEnd = DefISymbol(link,  _OvltabEndName );
+    ovl().vect.OvlVecStart = DefISymbol(link,  _OvlVecStartName );
+    ovl().vect.OvlVecEnd = DefISymbol(link,  _OvlVecEndName );
 
-    wlink().OvlSeg = InitLeader( "" );
-    wlink().OvlSeg->class_ = FindClass( wlink().Root, OvlMgrClass, BITS_16, true );
-    wlink().OvlSeg->combine = COMBINE_INVALID;
-    ovl().ovlSegData = AllocSegData();
+    link.OvlSeg = InitLeader(link,  "" );
+    link.OvlSeg->class_ = FindClass(link,  link.Root, OvlMgrClass, BITS_16, true );
+    link.OvlSeg->combine = COMBINE_INVALID;
+    ovl().ovlSegData = AllocSegData(link);
     ovl().ovlSegData->bits = BITS_16;
-    ovl().ovlSegData->u.leader = wlink().OvlSeg;
+    ovl().ovlSegData->u.leader = link.OvlSeg;
 
     ovl().vect.OverlayTable->p.seg = ovl().ovlSegData;
     ovl().vect.OverlayTableEnd->p.seg = ovl().ovlSegData;
@@ -682,15 +683,15 @@ void OvlPass1( void )
     ovl().vect.OvlVecEnd->p.seg = ovl().ovlSegData;
 
     /* generate reference for overlay loader */
-    if( wlink().FmtData.u.dos.dynamic ) {
-        RefISymbol( _DynamicInitRtn );
-        sym = RefISymbol( _DynamicOvlldr );
-    } else if( wlink().FmtData.u.dos.ovl_short ) {
-        RefISymbol( _ShortOvlInitRtn );
-        sym = RefISymbol( _ShortOvlldr );
+    if( link.FmtData.u.dos.dynamic ) {
+        RefISymbol(link,  _DynamicInitRtn );
+        sym = RefISymbol(link,  _DynamicOvlldr );
+    } else if( link.FmtData.u.dos.ovl_short ) {
+        RefISymbol(link,  _ShortOvlInitRtn );
+        sym = RefISymbol(link,  _ShortOvlldr );
     } else {
-        RefISymbol( _LongOvlInitRtn );
-        sym = RefISymbol( _LongOvlldr );
+        RefISymbol(link,  _LongOvlInitRtn );
+        sym = RefISymbol(link,  _LongOvlldr );
     }
     sym->u.d.ovlref = 0;
     sym->u.d.ovlstate |= OVL_REF;
@@ -699,6 +700,7 @@ void OvlPass1( void )
 static void EmitOvlEntry( section *sect, void *_off )
 /***************************************************/
 {
+    Link& link = wlink();
     ovltab_entry        entry;
     offset              len;
     unsigned_16         flags_anc;
@@ -707,13 +709,13 @@ static void EmitOvlEntry( section *sect, void *_off )
 
     _HostU16toTarg( 0, entry.code_handle );
     flags_anc = sect->parent->ovlref;
-    if( sect == wlink().NonSect ) {
+    if( sect == link.NonSect ) {
         flags_anc |= OVE_FLAG_PRELOAD;/*  pre-load the data area */
     }
     _HostU16toTarg( sect->outfile->ovlfnoff, entry.fname );
     _HostU16toTarg( sect->relocs, entry.relocs );
     _HostU16toTarg( flags_anc, entry.flags_anc );
-    start_para = sect->sect_addr.seg + ( sect->sect_addr.off >> wlink().FmtData.SegShift );
+    start_para = sect->sect_addr.seg + ( sect->sect_addr.off >> link.FmtData.SegShift );
     _HostU16toTarg( start_para, entry.start_para );
     len = __ROUND_UP_SIZE_TO_PARA( sect->size );
     _HostU16toTarg( len, entry.num_paras );
@@ -722,7 +724,7 @@ static void EmitOvlEntry( section *sect, void *_off )
     *off += sizeof( ovltab_entry );
 }
 
-void OvlEmitTable( void )
+void OvlEmitTable(Link& link)
 /***********************/
 /* generate overlay table */
 {
@@ -749,14 +751,14 @@ void OvlEmitTable( void )
      *  reloc for this was emitted by OvlEmitVectors
      */
     _HostU16toTarg( 0, prolog.delta );
-    _HostU16toTarg( wlink().OvlAreaSize, prolog.ovl_size );
+    _HostU16toTarg( link.OvlAreaSize, prolog.ovl_size );
 
     PutOvlInfo( off, &prolog, sizeof( prolog ) );
     /*
      *  Generate entries :
      */
     off += sizeof( prolog );
-    ParmWalkAreas( wlink().Root->areas, EmitOvlEntry, &off );
+    ParmWalkAreas( link.Root->areas, EmitOvlEntry, &off );
     /*
      *  Generate epilog :
      */
@@ -764,14 +766,14 @@ void OvlEmitTable( void )
     PutOvlInfo( off, &u16, sizeof( unsigned_16 ) );
     off += sizeof( unsigned_16 );
     /* generate overlay filenames, including NULLCHARS */
-    for( fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next ) {
+    for( fnode = link.OutFiles; fnode != nullptr; fnode = fnode->next ) {
         len = strlen( fnode->fname ) + 1;
         PutOvlInfo( off, fnode->fname, len );
         off += len;
     }
 }
 
-void OvlPadOvlFiles( void )
+void OvlPadOvlFiles(Link& link)
 /*************************/
 // The overlay files must contain a complete paragraph at the end of the file
 // for the overlay loader to be able to correctly read it.
@@ -779,7 +781,7 @@ void OvlPadOvlFiles( void )
     outfilelist     *fnode;
     size_t          pad;
 
-    for( fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next ) {
+    for( fnode = link.OutFiles; fnode != nullptr; fnode = fnode->next ) {
         pad = __ROUND_UP_SIZE_PARA( fnode->file_loc ) - fnode->file_loc;
         if( pad ) {
             PadBuffFile( fnode, pad );
@@ -787,11 +789,11 @@ void OvlPadOvlFiles( void )
     }
 }
 
-void OvlSetTableLoc( group_entry *group, unsigned long loc )
+void OvlSetTableLoc(Link& link,  group_entry *group, unsigned long loc )
 /**********************************************************/
 {
     if( group == ovl().group ) {
-        wlink().OvlTabOffset = loc;
+        link.OvlTabOffset = loc;
     }
 }
 

@@ -85,13 +85,13 @@ nodearray_handle MakeArray( unsigned size )
 }
 
 // initialize the node array structures.
-void InitNodes( void )
+void InitNodes(Link& link)
 /***************************/
 {
-    wlink().GrpNodes = MakeArray( sizeof( grpnode ) );
-    wlink().SegNodes = MakeArray( sizeof( segnode ) );
-    wlink().ExtNodes = MakeArray( sizeof( extnode ) );
-    wlink().NameNodes = MakeArray( sizeof( list_of_names * ) );
+    link.GrpNodes = MakeArray( sizeof( grpnode ) );
+    link.SegNodes = MakeArray( sizeof( segnode ) );
+    link.ExtNodes = MakeArray( sizeof( extnode ) );
+    link.NameNodes = MakeArray( sizeof( list_of_names * ) );
 }
 
 namespace {
@@ -108,13 +108,13 @@ void BurnNodeArray( nodearray_handle list )
 
 }
 
-void BurnNodes( void )
+void BurnNodes(Link& link)
 /***************************/
 {
-    BurnNodeArray( wlink().GrpNodes );
-    BurnNodeArray( wlink().SegNodes );
-    BurnNodeArray( wlink().ExtNodes );
-    BurnNodeArray( wlink().NameNodes );
+    BurnNodeArray( link.GrpNodes );
+    BurnNodeArray( link.SegNodes );
+    BurnNodeArray( link.ExtNodes );
+    BurnNodeArray( link.NameNodes );
 }
 
 void *FindNode( nodearray_handle list, unsigned index )
@@ -161,24 +161,24 @@ void *AllocNodeIdx( nodearray_handle list, unsigned index )
 }
 
 // Allocate a new object file entry structure and initialize it
-mod_entry *NewModEntry( void )
+mod_entry *NewModEntry(Link& link)
 /****************************/
 {
     mod_entry           *entry;
 
-    entry = static_cast<mod_entry *>( CarveZeroAlloc( wlink().CarveModEntry ) );
+    entry = static_cast<mod_entry *>( CarveZeroAlloc( link.CarveModEntry ) );
 #ifdef _EXE
-    if( wlink().LinkFlags & LF_STRIP_CODE ) {
-        InitArcList( entry );
+    if( link.LinkFlags & LF_STRIP_CODE ) {
+        InitArcList(link,  entry );
     }
 #endif
     return entry;
 }
 
-void FreeModEntry( mod_entry *mod )
+void FreeModEntry(Link& link,  mod_entry *mod )
 /****************************************/
 {
-    CarveFree( wlink().CarveModEntry, mod );
+    CarveFree( link.CarveModEntry, mod );
 }
 
 void FreeNodes( nodearray_handle nodes )
@@ -229,36 +229,37 @@ void IterateNodelist( nodearray_handle list, void (*fn)(void *, void *),
 }
 
 // Free list of names.
-void ReleaseNames( void )
+void ReleaseNames(Link& link)
 /******************************/
 {
-    IterateNodelist( wlink().NameNodes, ReleaseNamelist, nullptr );
-    FreeNodes( wlink().NameNodes );
+    IterateNodelist( link.NameNodes, ReleaseNamelist, nullptr );
+    FreeNodes( link.NameNodes );
 }
 
 namespace {
 
 void CollapseLazy( void *node, void * )
 {
+    Link& link = wlink();
     extnode     *curr;
 
     curr = static_cast<extnode *>( node );
     if( IS_SYM_A_REF( curr->entry ) && !curr->isweak ) {
-        ClearSymUnion( curr->entry );
+        ClearSymUnion(link,  curr->entry );
         SET_SYM_TYPE( curr->entry, SYM_REGULAR );
-        if( wlink().LinkState & LS_SEARCHING_LIBRARIES ) {
+        if( link.LinkState & LS_SEARCHING_LIBRARIES ) {
             curr->entry->info &= ~SYM_CHECKED;
-            wlink().LinkState |= LS_LIBRARIES_ADDED;    // force another pass thru libs
+            link.LinkState |= LS_LIBRARIES_ADDED;    // force another pass thru libs
         }
     }
 }
 
 }
 
-void CollapseLazyExtdefs( void )
+void CollapseLazyExtdefs(Link& link)
 /*************************************/
 {
-    IterateNodelist( wlink().ExtNodes, CollapseLazy, nullptr );
+    IterateNodelist( link.ExtNodes, CollapseLazy, nullptr );
 }
 
 namespace {
@@ -298,21 +299,21 @@ void *IterateFindValue( nodearray_handle list, Match matches )
 
 }
 
-extnode *FindExtHandle( orl_symbol_handle sym_handle )
+extnode *FindExtHandle(Link& link,  orl_symbol_handle sym_handle )
 /****************************************************/
 {
-    return static_cast<extnode *>( IterateFindValue( wlink().ExtNodes, [sym_handle]( const char *curr ) {
+    return static_cast<extnode *>( IterateFindValue( link.ExtNodes, [sym_handle]( const char *curr ) {
         return reinterpret_cast<const extnode *>( curr )->handle == sym_handle;
     } ) );
 }
 
-segdata *AllocSegData( void )
+segdata *AllocSegData(Link& link)
 /***************************/
 {
     segdata *sdata;
 
-    sdata = static_cast<segdata *>( CarveZeroAlloc( wlink().CarveSegData ) );
-    sdata->o.mod = wlink().CurrMod;
+    sdata = static_cast<segdata *>( CarveZeroAlloc( link.CarveSegData ) );
+    sdata->o.mod = link.CurrMod;
     return sdata;
 }
 
@@ -320,7 +321,8 @@ segdata *AllocSegData( void )
 void FreeSegData( void *sdata )
 /*****************************/
 {
-    CarveFree( wlink().CarveSegData, sdata );
+    Link& link = wlink();
+    CarveFree( link.CarveSegData, sdata );
 }
 
 list_of_names *MakeListName( char *name, size_t len )
@@ -338,6 +340,7 @@ list_of_names *MakeListName( char *name, size_t len )
 unsigned long BadObjFormat( void )
 /***************************************/
 {
-    LnkMsg( FTL+MSG_BAD_OBJECT, "s", wlink().CurrMod->u1.source->infile->name );
+    Link& link = wlink();
+    LnkMsg( FTL+MSG_BAD_OBJECT, "s", link.CurrMod->u1.source->infile->name );
     return 0;
 }

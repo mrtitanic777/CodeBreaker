@@ -161,70 +161,70 @@ void ResetObj2Supp( void )
     st.LastOptimized = 0xFFFFFFFF;
 }
 
-static void DCERelocRef( symbol *sym, bool isdata )
+static void DCERelocRef(Link& link,  symbol *sym, bool isdata )
 /*************************************************/
 {
     if( isdata ) {
         if( (sym->info & SYM_1_VF_REFS_DONE) == 0 ) {
-            DataRef( sym );
+            DataRef(link,  sym );
         }
     } else {
-        if( wlink().CurrRec.seg->ispdata
-          || wlink().CurrRec.seg->isreldata ) {
+        if( link.CurrRec.seg->ispdata
+          || link.CurrRec.seg->isreldata ) {
             if( !IsTocSym( sym ) ) {       // make sure that if symbol goes,
-                AddSymSegEdge( sym, wlink().CurrRec.seg ); // .pdata and .reldata go too
+                AddSymSegEdge( sym, link.CurrRec.seg ); // .pdata and .reldata go too
             }
         } else {
-            AddEdge( wlink().CurrRec.seg, sym );
+            AddEdge( link.CurrRec.seg, sym );
         }
     }
 }
 
-static void TraceFixup( fix_type type, target_spec *target )
+static void TraceFixup(Link& link,  fix_type type, target_spec *target )
 /**********************************************************/
 {
 #ifdef _EXE
     bool        isovldata;          // true if data and overlaying.
     bool        overlay;            // true if doing overlays;
 
-    overlay = ( (wlink().FmtData.type & MK_OVERLAYS) && !wlink().FmtData.u.dos.noindirect );
-    if( (wlink().LinkFlags & LF_STRIP_CODE)
+    overlay = ( (link.FmtData.type & MK_OVERLAYS) && !link.FmtData.u.dos.noindirect );
+    if( (link.LinkFlags & LF_STRIP_CODE)
       || overlay ) {
-        isovldata = ( (wlink().CurrRec.seg->u.leader->info & SEGINF_OVERLAYED) == 0 );
-        if( wlink().ObjFormat & OBJ_FMT_UNSAFE_FIXUPP ) {
+        isovldata = ( (link.CurrRec.seg->u.leader->info & SEGINF_OVERLAYED) == 0 );
+        if( link.ObjFormat & OBJ_FMT_UNSAFE_FIXUPP ) {
             isovldata = true;
         }
 #else
     /* unused parameters */ (void)type;
 
-    if( wlink().LinkFlags & LF_STRIP_CODE ) {
+    if( link.LinkFlags & LF_STRIP_CODE ) {
 #endif
         if( target->type == FIX_TARGET_SEG ) {
-            if( wlink().LinkFlags & LF_STRIP_CODE ) {
+            if( link.LinkFlags & LF_STRIP_CODE ) {
                 if( target->u.sdata->iscode
-                  && target->u.sdata != wlink().CurrRec.seg ) {
+                  && target->u.sdata != link.CurrRec.seg ) {
                     RefSeg( target->u.sdata );
                 }
             }
         } else if( target->type == FIX_TARGET_EXT ) {
-            if( wlink().LinkFlags & LF_STRIP_CODE ) {
-                DCERelocRef( target->u.sym, !wlink().CurrRec.seg->iscode );
+            if( link.LinkFlags & LF_STRIP_CODE ) {
+                DCERelocRef(link,  target->u.sym, !link.CurrRec.seg->iscode );
             }
 #ifdef _EXE
             if( (type & FIX_REL) == 0
               && overlay ) {
                 switch( type & FIX_POINTER_MASK ) {
                 case FIX_OFFSET_16:
-                    if( wlink().FmtData.u.dos.ovl_short ) {
-                        OvlIndirectCall( target->u.sym );
+                    if( link.FmtData.u.dos.ovl_short ) {
+                        OvlIndirectCall(link,  target->u.sym );
                     }
                     break;
                 case FIX_BASE:
-                    OvlIndirectCall( target->u.sym );
+                    OvlIndirectCall(link,  target->u.sym );
                     break;
                 case FIX_BASE_OFFSET_16:
                     if( isovldata ) {
-                        OvlIndirectCall( target->u.sym );
+                        OvlIndirectCall(link,  target->u.sym );
                     }
                     break;
                 }
@@ -280,43 +280,43 @@ static unsigned CalcSavedFixSize( fix_type fixtype )
     return( __ROUND_UP_SIZE( retval, sizeof( void  * ) ) );
 }
 
-static void UpdateFramePtr( frame_spec *frame )
+static void UpdateFramePtr(Link& link,  frame_spec *frame )
 /*********************************************/
 /* do any necessary work to get frame pointing to the right place */
 {
     switch( frame->type ) {
     case FIX_FRAME_GRP:
-        if( wlink().CurrMod->flags_fmt == FILE_FMT_INCREMENTAL ) {
+        if( link.CurrMod->flags_fmt == FILE_FMT_INCREMENTAL ) {
             DbgAssert( frame->u.val != 0 );
-            frame->u.group = wlink().IncGroups[frame->u.val - 1];
+            frame->u.group = link.IncGroups[frame->u.val - 1];
         }
         break;
     case FIX_FRAME_EXT:
-        frame->u.sym = UnaliasSym( ST_FIND, frame->u.sym );
+        frame->u.sym = UnaliasSym(link,  ST_FIND, frame->u.sym );
         DbgAssert( frame->u.sym != NULL );
         break;
     }
 }
 
-static void UpdateTargetPtr( target_spec *target )
+static void UpdateTargetPtr(Link& link,  target_spec *target )
 /************************************************/
 /* do any necessary work to get target pointing to the right place */
 {
     switch( target->type ) {
     case FIX_TARGET_GRP:
-        if( wlink().CurrMod->flags_fmt == FILE_FMT_INCREMENTAL ) {
+        if( link.CurrMod->flags_fmt == FILE_FMT_INCREMENTAL ) {
             DbgAssert( target->u.val != 0 );
-            target->u.group = wlink().IncGroups[target->u.val - 1];
+            target->u.group = link.IncGroups[target->u.val - 1];
         }
         break;
     case FIX_TARGET_EXT:
-        target->u.sym = UnaliasSym( ST_FIND, target->u.sym );
+        target->u.sym = UnaliasSym(link,  ST_FIND, target->u.sym );
         DbgAssert( target->u.sym != NULL );
         break;
     }
 }
 
-static void GetFrameAddr( frame_spec *frame, addr_type *frame_addr,
+static void GetFrameAddr(Link& link,  frame_spec *frame, addr_type *frame_addr,
                           addr_type *target_addr, offset off )
 /*****************************************************************/
 {
@@ -339,7 +339,7 @@ static void GetFrameAddr( frame_spec *frame, addr_type *frame_addr,
         frame_addr->seg = frame->u.abs;
         break;
     case FIX_FRAME_LOC:
-        *frame_addr = wlink().CurrRec.addr;
+        *frame_addr = link.CurrRec.addr;
         frame_addr->off += off;
         break;
     case FIX_FRAME_TARG:
@@ -369,34 +369,34 @@ static void GetTargetAddr( target_spec *target, addr_type *target_addr )
     }
 }
 
-static void MapFramePtr( frame_spec *frame, void **targ )
+static void MapFramePtr(Link& link,  frame_spec *frame, void **targ )
 /*******************************************************/
 {
     switch( frame->type ) {
     case FIX_FRAME_SEG:
-        *targ = CarveGetIndex( wlink().CarveSegData, *targ );
+        *targ = CarveGetIndex( link.CarveSegData, *targ );
         break;
     case FIX_FRAME_GRP:
         *targ = reinterpret_cast<void *>(static_cast<pointer_uint>(frame->u.group->num));
         break;
     case FIX_FRAME_EXT:
-        *targ = CarveGetIndex( wlink().CarveSymbol, *targ );
+        *targ = CarveGetIndex( link.CarveSymbol, *targ );
         break;
     }
 }
 
-static void MapTargetPtr( target_spec *target, void **targ )
+static void MapTargetPtr(Link& link,  target_spec *target, void **targ )
 /**********************************************************/
 {
     switch( target->type ) {
     case FIX_TARGET_SEG:
-        *targ = CarveGetIndex( wlink().CarveSegData, *targ );
+        *targ = CarveGetIndex( link.CarveSegData, *targ );
         break;
     case FIX_TARGET_GRP:
         *targ = reinterpret_cast<void *>(static_cast<pointer_uint>(target->u.group->num));
         break;
     case FIX_TARGET_EXT:
-        *targ = CarveGetIndex( wlink().CarveSymbol, *targ );
+        *targ = CarveGetIndex( link.CarveSymbol, *targ );
         break;
     }
 }
@@ -433,17 +433,17 @@ static bool IsReadOnly( segdata *sdata )
         && (sdata->u.leader->group->segflags & SEG_READ_ONLY) );
 }
 
-static void CheckRWData( target_spec *target, addr_type *loc_addr )
+static void CheckRWData(Link& link,  target_spec *target, addr_type *loc_addr )
 /*****************************************************************/
 {
     symbol sym;
 
-    if( (wlink().FmtData.type & MK_WIN_NE)
-      && wlink().FmtData.u.os2fam.chk_seg_relocs
+    if( (link.FmtData.type & MK_WIN_NE)
+      && link.FmtData.u.os2fam.chk_seg_relocs
       && IsReadOnly( State().LastSegData ) ) {
         if( !IS_SYM_IMPORTED( target->u.sym )
           && !IsReadOnly( GetTargetSegData( target ) ) ) {
-            if( !IS_DBG_INFO( wlink().CurrRec.seg->u.leader ) ) {
+            if( !IS_DBG_INFO( link.CurrRec.seg->u.leader ) ) {
                 if( target->type == FIX_TARGET_SEG ) {
                     sym.name.u.ptr = target->u.sdata->u.leader->segname.u.ptr;
                     LnkMsg( WRN+LOC+MSG_RELOC_TO_RWDATA_SEG, "aS", loc_addr, &sym );
@@ -462,28 +462,28 @@ static bool IsTargAbsolute( target_spec *target )
         || ( target->type == FIX_TARGET_EXT ) && (target->u.sym->info & SYM_ABSOLUTE) );
 }
 
-static void FixFrameValue( frame_type type, void **targ )
+static void FixFrameValue(Link& link,  frame_type type, void **targ )
 /*******************************************************/
 {
     switch( type ) {
     case FIX_FRAME_SEG:
-        *targ = CarveMapIndex( wlink().CarveSegData, *targ );
+        *targ = CarveMapIndex( link.CarveSegData, *targ );
         break;
     case FIX_FRAME_EXT:
-        *targ = CarveMapIndex( wlink().CarveSymbol, *targ );
+        *targ = CarveMapIndex( link.CarveSymbol, *targ );
         break;
     }
 }
 
-static void FixTargetValue( target_type type, void **targ )
+static void FixTargetValue(Link& link,  target_type type, void **targ )
 /*********************************************************/
 {
     switch( type ) {
     case FIX_TARGET_SEG:
-        *targ = CarveMapIndex( wlink().CarveSegData, *targ );
+        *targ = CarveMapIndex( link.CarveSegData, *targ );
         break;
     case FIX_TARGET_EXT:
-        *targ = CarveMapIndex( wlink().CarveSymbol, *targ );
+        *targ = CarveMapIndex( link.CarveSymbol, *targ );
         break;
     }
 }
@@ -491,6 +491,7 @@ static void FixTargetValue( target_type type, void **targ )
 size_t RelocMarkSyms( void *_save )
 /********************************/
 {
+    Link& link = wlink();
     save_fixup  *save = static_cast<save_fixup *>(_save);
     frame_type  frame;
     target_type target;
@@ -498,18 +499,18 @@ size_t RelocMarkSyms( void *_save )
     fix_type    fixtype = save->u.sdata.flags;
 
     if( fixtype & FIX_CHANGE_SEG ) {
-        save->u.sdata.sdata = static_cast<segdata *>(CarveMapIndex( wlink().CarveSegData, save->u.sdata.sdata ));
+        save->u.sdata.sdata = static_cast<segdata *>(CarveMapIndex( link.CarveSegData, save->u.sdata.sdata ));
     } else {
         frame = static_cast<frame_type>(FIX_GET_FRAME( fixtype ));
         if( FRAME_HAS_DATA( frame ) ) {
-            FixFrameValue( frame, &save->u.fixupf.frame );
+            FixFrameValue(link,  frame, &save->u.fixupf.frame );
         }
         target = static_cast<target_type>(FIX_GET_TARGET( fixtype ));
-        FixTargetValue( target, &save->u.fixup.target );
+        FixTargetValue(link,  target, &save->u.fixup.target );
         if( target == FIX_TARGET_EXT ) {
             sym = static_cast<symbol *>(save->u.fixup.target);
             sym->info |= SYM_RELOC_REFD;
-            sym = UnaliasSym( ST_FIND, sym );
+            sym = UnaliasSym(link,  ST_FIND, sym );
             sym->info |= SYM_RELOC_REFD;
         }
     }
@@ -602,7 +603,7 @@ static void PatchOffset( fix_relo_data *fix, offset val, bool isdelta )
     }
 }
 
-void StoreFixup( offset off, fix_type type, frame_spec *frame, target_spec *target, offset addend )
+void StoreFixup(Link& link,  offset off, fix_type type, frame_spec *frame, target_spec *target, offset addend )
 /*************************************************************************************************/
 {
     save_fixup      save;
@@ -612,17 +613,17 @@ void StoreFixup( offset off, fix_type type, frame_spec *frame, target_spec *targ
     unsigned_8      *data;
     Obj2SuppState   &st = State();
 
-    if( st.LastSegData != wlink().CurrRec.seg ) {
-        DbgAssert( wlink().CurrRec.seg != NULL );
-        st.LastSegData = wlink().CurrRec.seg;
+    if( st.LastSegData != link.CurrRec.seg ) {
+        DbgAssert( link.CurrRec.seg != NULL );
+        st.LastSegData = link.CurrRec.seg;
         save.u.sdata.flags = FIX_CHANGE_SEG;
-        save.u.sdata.sdata = wlink().CurrRec.seg;
+        save.u.sdata.sdata = link.CurrRec.seg;
         PermSaveFixup( save.u.buff, __ROUND_UP_SIZE( sizeof( sdata_t ), sizeof( void * ) ) );
     }
     fixtype = static_cast<fix_type>(type | FIX_SET_TARGET( target->type ) | FIX_SET_FRAME( frame->type ));
-    save.u.fixup.off = off + wlink().CurrRec.obj_offset;
+    save.u.fixup.off = off + link.CurrRec.obj_offset;
     save.u.fixup.target = target->u.ptr;
-    if( wlink().ObjFormat & OBJ_FMT_UNSAFE_FIXUPP ) {
+    if( link.ObjFormat & OBJ_FMT_UNSAFE_FIXUPP ) {
         fixtype |= FIX_UNSAFE;
     }
     if( FRAME_HAS_DATA( frame->type ) ) {
@@ -632,10 +633,10 @@ void StoreFixup( offset off, fix_type type, frame_spec *frame, target_spec *targ
         data = save.u.fixup.data;
     }
     size = CalcFixupSize( type );
-    if( wlink().CurrRec.data != nullptr ) {
-        std::memcpy( data, wlink().CurrRec.data + off, size );
+    if( link.CurrRec.data != nullptr ) {
+        std::memcpy( data, link.CurrRec.data + off, size );
     } else {
-        ReadInfo( wlink().CurrRec.seg->u1.vm_ptr + save.u.fixup.off, data, size );
+        ReadInfo( link.CurrRec.seg->u1.vm_ptr + save.u.fixup.off, data, size );
     }
     fix.type = type;
     fix.data = data;
@@ -648,17 +649,18 @@ void StoreFixup( offset off, fix_type type, frame_spec *frame, target_spec *targ
     }
     save.u.fixup.flags = fixtype;
     PermSaveFixup( save.u.buff, CalcSavedFixSize( fixtype ) );
-    TraceFixup( fixtype, target );
-    if( wlink().CurrRec.data != nullptr ) {
-        std::memcpy( wlink().CurrRec.data + off, data, size );
+    TraceFixup(link,  fixtype, target );
+    if( link.CurrRec.data != nullptr ) {
+        std::memcpy( link.CurrRec.data + off, data, size );
     } else {
-        PutInfo( wlink().CurrRec.seg->u1.vm_ptr + save.u.fixup.off, data, size );
+        PutInfo( link.CurrRec.seg->u1.vm_ptr + save.u.fixup.off, data, size );
     }
 }
 
 size_t IncSaveRelocs( void *_save )
 /*********************************/
 {
+    Link& link = wlink();
     save_fixup  *save = static_cast<save_fixup *>(_save);
     segdata     *sdata;
     target_spec target;
@@ -690,44 +692,44 @@ size_t IncSaveRelocs( void *_save )
             }
             PutInfo( LastSegData->u1.vm_ptr + save->u.fixup.off, data, datasize );
         }
-        TraceFixup( fixtype, &target );
+        TraceFixup(link,  fixtype, &target );
     }
     PermSaveFixup( save, fixsize );
     return( fixsize );
 }
 
-static void DumpReloc( base_reloc *breloc )
+static void DumpReloc(Link& link,  base_reloc *breloc )
 /*****************************************/
 {
-    WriteReloc( wlink().CurrRec.seg->u.leader->group, breloc->fix_off, &breloc->item, breloc->rel_size );
+    WriteReloc(link,  link.CurrRec.seg->u.leader->group, breloc->fix_off, &breloc->item, breloc->rel_size );
 #ifdef _OS2
-    if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
+    if( link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
         if( ( OSF_PAGE_SIZE - (breloc->fix_off & OSF_PAGE_MASK) ) < breloc->fix_size ) {
             /*
              * stupid relocation has been split across two
              * pages, have to duplicate the entry
              */
             breloc->item.os2f.r32_soff -= OSF_PAGE_SIZE;
-            WriteReloc( wlink().CurrRec.seg->u.leader->group, breloc->fix_off + OSF_PAGE_SIZE, &breloc->item, breloc->rel_size );
+            WriteReloc(link,  link.CurrRec.seg->u.leader->group, breloc->fix_off + OSF_PAGE_SIZE, &breloc->item, breloc->rel_size );
         }
     }
 #endif
 }
 
-static void InitReloc( base_reloc *breloc )
+static void InitReloc(Link& link,  base_reloc *breloc )
 /*****************************************/
 {
-    breloc->rel_size = wlink().FmtRelocSize;
+    breloc->rel_size = link.FmtRelocSize;
 }
 
-static unsigned FindGroupIdx( segment seg )
+static unsigned FindGroupIdx(Link& link,  segment seg )
 /******************************************/
 {
     group_entry *group;
     unsigned    index;
 
     index = 1;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->addr.seg == seg ) {
             return( index );
         }
@@ -737,15 +739,15 @@ static unsigned FindGroupIdx( segment seg )
 }
 
 #ifdef _QNX
-static void MakeQNXFloatReloc( fix_relo_data *fix )
+static void MakeQNXFloatReloc(Link& link,  fix_relo_data *fix )
 /*************************************************/
 {
     qnx_reloc_item  qnx_reloc;
 
-    if( wlink().FmtData.u.qnx.gen_seg_relocs ) {
+    if( link.FmtData.u.qnx.gen_seg_relocs ) {
         qnx_reloc.reloc_offset = fix->loc_addr.off | ( static_cast<unsigned_32>(fix->fpp_type) << 28 );
         qnx_reloc.segment = ToQNXIndex( fix->loc_addr.seg );
-        WriteQNXFloatReloc( &qnx_reloc );
+        WriteQNXFloatReloc(link,  &qnx_reloc );
     }
 }
 #endif
@@ -783,20 +785,20 @@ static unsigned MapOS2FixType( fix_type type )
     return( OS2OffsetFixTypeMap[off] );
 }
 
-static void MakeWindowsFloatReloc( fix_relo_data *fix )
+static void MakeWindowsFloatReloc(Link& link,  fix_relo_data *fix )
 /*****************************************************/
 {
     base_reloc      breloc;
     os2_reloc_item  *os2item;
 
-    InitReloc( &breloc );
+    InitReloc(link,  &breloc );
     breloc.fix_off = 0;
     os2item = &breloc.item.os2;
     os2item->fixtype = MapOS2FixType( fix->type );
-    os2item->reloc_offset = fix->loc_addr.off - wlink().CurrRec.seg->u.leader->group->addr.off;
+    os2item->reloc_offset = fix->loc_addr.off - link.CurrRec.seg->u.leader->group->addr.off;
     os2item->reloc_type = OSFIXUP | ADDITIVE;
     os2item->put.fltpt = fix->fpp_type;
-    DumpReloc( &breloc );
+    DumpReloc(link,  &breloc );
 }
 #endif
 
@@ -829,7 +831,7 @@ static void CheckPartialRange( fix_relo_data *fix, offset off,
     }
 }
 
-static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
+static bool CheckSpecials(Link& link,  fix_relo_data *fix, target_spec *target )
 /******************************************************************/
 {
     offset      off;
@@ -840,7 +842,7 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
     fix_type    special;
 
 #ifdef _ELF
-    if( wlink().FmtData.type & MK_ELF ) {
+    if( link.FmtData.type & MK_ELF ) {
         if( (fix->type & FIX_REL) == 0 ) {
             return( false );
         }
@@ -855,17 +857,17 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
 #if defined( _QNX ) || defined( _OS2 )
     if( ( fix->fpp_type != FPP_NONE ) ) {
   #ifdef _QNX
-        if( wlink().FmtData.type & MK_QNX ) {
+        if( link.FmtData.type & MK_QNX ) {
             if( fix->fpp_type != FPP_IGNORE ) {
-                MakeQNXFloatReloc( fix );
+                MakeQNXFloatReloc(link,  fix );
             }
             return( true );
         }
   #endif
   #ifdef _OS2
-        if( wlink().FmtData.type & MK_WIN_NE ) {
+        if( link.FmtData.type & MK_WIN_NE ) {
             if( fix->fpp_type != FPP_IGNORE ) {
-                MakeWindowsFloatReloc( fix );
+                MakeWindowsFloatReloc(link,  fix );
             }
             return( true );
         }
@@ -879,15 +881,15 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
         if( special == FIX_TOCV ) {
             DbgAssert( target->type == FIX_TARGET_EXT );
 #ifdef _OS2
-            pos = FindSymPosInTocv( target->u.sym );
+            pos = FindSymPosInTocv(link,  target->u.sym );
 #endif
         } else {
             if( target->type  == FIX_TARGET_EXT ) {
-                pos = FindSymPosInToc( target->u.sym );
+                pos = FindSymPosInToc(link,  target->u.sym );
             } else {
                 sdata = GetTargetSegData( target );
                 off = fix->target_addr.off - GetSegOff( sdata );
-                pos = FindSdataOffPosInToc( sdata, off );
+                pos = FindSdataOffPosInToc(link,  sdata, off );
             }
         }
         DbgVerify( ( pos % 4 ) == 0, "symbol not in toc" );
@@ -907,7 +909,7 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
     if( (fix->type & FIX_REL) == 0 )
         return( false );
 #ifdef _OS2
-    if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
+    if( link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
         /*
          * OS/2 V2 relative fixups to imported items or other objects
          * require special handling
@@ -920,7 +922,7 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
     }
 #endif
     if( (fix->type & FIX_ABS)
-      && (wlink().FmtData.type & MK_QNX) == 0 ) {
+      && (link.FmtData.type & MK_QNX) == 0 ) {
         LnkMsg( ERR+LOC+MSG_BAD_ABS_FIXUP, "a", &fix->loc_addr );
         return( true );
     }
@@ -930,23 +932,23 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
     }
     if( fix->imported ) {
 #ifdef _OS2
-        if( wlink().FmtData.type & MK_NE ) {  // can not get at a DLL relatively
+        if( link.FmtData.type & MK_NE ) {  // can not get at a DLL relatively
             LnkMsg( ERR+LOC+MSG_DLL_IN_REL_RELOC, "a", &fix->loc_addr );
             return( true );
         }
 #endif
 #ifdef _ELF
-        if( wlink().FmtData.type & MK_ELF ) {
+        if( link.FmtData.type & MK_ELF ) {
             return( false );
         }
 #endif
 #ifdef _NOVELL
-        if( wlink().FmtData.type & MK_NOVELL ) {
+        if( link.FmtData.type & MK_NOVELL ) {
             if( ( (fix->type & FIX_OFFSET_MASK) != FIX_OFFSET_32 )
               || (fix->type & FIX_BASE) ) {
                 LnkMsg( ERR+LOC+MSG_BAD_IMP_REL_RELOC, "a", &fix->loc_addr );
             } else {                           // true == isrelative.
-                AddNovImpReloc( target->u.sym, fix->loc_addr.off, true,
+                AddNovImpReloc(link,  target->u.sym, fix->loc_addr.off, true,
                                 fix->loc_addr.seg == DATA_SEGMENT );
                 /*
                  * I don't know why the novell linker does this, but it does.
@@ -958,11 +960,11 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
         return( true );
     }
     /* XXX: MK_ELF must not be included for non-i386 */
-    if( wlink().FmtData.type & (MK_PROT_MODE & ~(MK_OS2_FLAT | MK_WIN_VXD | MK_PE | MK_ELF)) ) {
+    if( link.FmtData.type & (MK_PROT_MODE & ~(MK_OS2_FLAT | MK_WIN_VXD | MK_PE | MK_ELF)) ) {
         if( ( fix->loc_addr.seg != fix->target_addr.seg )
           && (fix->type & FIX_ABS) == 0 ) {
             //must have same file segment.
-            if( wlink().FmtData.type & MK_ID_SPLIT ) {
+            if( link.FmtData.type & MK_ID_SPLIT ) {
                 LnkMsg( ERR+LOC+MSG_NOV_NO_CODE_DATA_RELOC, "a", &fix->loc_addr );
             } else {
                 LnkMsg( ERR+LOC+MSG_REL_NOT_SAME_SEG, "a", &fix->loc_addr );
@@ -970,25 +972,25 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
             return( true );
         }
     }
-    if( wlink().FmtData.type & MK_LINEARIZE ) {
-        group = FindGroup( fix->target_addr.seg );
+    if( link.FmtData.type & MK_LINEARIZE ) {
+        group = FindGroup(link,  fix->target_addr.seg );
         if( group == nullptr ) {           // can happen for IAT symbols.
             off = 0;
         } else {
             off = group->linear;
         }
-        group = FindGroup( fix->loc_addr.seg );
+        group = FindGroup(link,  fix->loc_addr.seg );
         if( group != nullptr ) {
             off -= group->linear;
         }
         off += fix->target_addr.off - fix->loc_addr.off;
-    } else if( wlink().FmtData.type & (MK_32BIT | MK_QNX) ) {
+    } else if( link.FmtData.type & (MK_32BIT | MK_QNX) ) {
         off = fix->target_addr.off - fix->loc_addr.off;
         if( fix->type & FIX_ABS ) {
-            off -= FindGroup( fix->loc_addr.seg )->linear;
+            off -= FindGroup(link,  fix->loc_addr.seg )->linear;
         }
 #ifdef _DOS16M
-    } else if( wlink().FmtData.type & MK_DOS16M ) {
+    } else if( link.FmtData.type & MK_DOS16M ) {
         off = SUB_16M_ADDR( fix->target_addr, fix->loc_addr );
 #endif
     } else {
@@ -1008,11 +1010,11 @@ static bool CheckSpecials( fix_relo_data *fix, target_spec *target )
         CheckPartialRange( fix, off, 0x03FFFFFF, 0x02000000 );
     }
     PatchOffset( fix, off, true );
-    fix->os2_selfrel = (wlink().FmtData.type & MK_OS2_LX) && wlink().FmtData.u.os2fam.gen_rel_relocs;
+    fix->os2_selfrel = (link.FmtData.type & MK_OS2_LX) && link.FmtData.u.os2fam.gen_rel_relocs;
     return( !( fix->os2_selfrel || (fix->type & FIX_ABS) ) );
 }
 
-static offset FindRealAddr( fix_relo_data *fix )
+static offset FindRealAddr(Link& link,  fix_relo_data *fix )
 /**********************************************/
 {
     group_entry *group;
@@ -1020,18 +1022,18 @@ static offset FindRealAddr( fix_relo_data *fix )
     bool        dbiflat;
 
     off = fix->target_addr.off;
-    dbiflat = DBINoReloc( wlink().CurrRec.seg->u.leader );
-    if ( wlink().CurrRec.seg->u.leader->dbgtype == HLL_LINE ) { // FIXME! DBINoReloc() abuse here?
+    dbiflat = DBINoReloc( link.CurrRec.seg->u.leader );
+    if ( link.CurrRec.seg->u.leader->dbgtype == HLL_LINE ) { // FIXME! DBINoReloc() abuse here?
         dbiflat = false;
     }
     if( (fix->type & FIX_ABS)
       || dbiflat
-      && (wlink().CurrMod->flags_mod & MOD_FLATTEN_DBI) == 0 ) {
+      && (link.CurrMod->flags_mod & MOD_FLATTEN_DBI) == 0 ) {
         return( off );
     }
-    if( (wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_LINEARIZE | MK_QNX_FLAT))
+    if( (link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_LINEARIZE | MK_QNX_FLAT))
       && (fix->type & FIX_SEC_REL) == 0 ) {
-        if( (wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD))
+        if( (link.FmtData.type & (MK_OS2_LE | MK_WIN_VXD))
           && !dbiflat )
             return( off );
         /*
@@ -1039,32 +1041,32 @@ static offset FindRealAddr( fix_relo_data *fix )
          * don't have to be applied if everything loads in the
          * right spot.
         */
-        group = FindGroup( fix->target_addr.seg );
+        group = FindGroup(link,  fix->target_addr.seg );
         if( group == nullptr )                  // can happen with dbi relocs
             return( off );
         off += ( group->linear - group->addr.off );
-        if( wlink().FmtData.type & MK_LINEARIZE ) {
+        if( link.FmtData.type & MK_LINEARIZE ) {
             if( (fix->type & FIX_NO_BASE) == 0 ) {
-                off += wlink().FmtData.base;
+                off += link.FmtData.base;
             }
             /*
              * want dbi addresses relative to 0, but not for ELF
              * (perhaps absolute for others too, later)
              */
             if( dbiflat
-              && (wlink().FmtData.type & MK_ELF) == 0 ) {
-                off -= wlink().Groups->linear;
+              && (link.FmtData.type & MK_ELF) == 0 ) {
+                off -= link.Groups->linear;
             }
         }
         if( dbiflat
-          && (wlink().FmtData.type & MK_ELF) == 0 ) {
-            off -= wlink().FmtData.base;
+          && (link.FmtData.type & MK_ELF) == 0 ) {
+            off -= link.FmtData.base;
         }
     }
     return( off );
 }
 
-static void PatchData( fix_relo_data *fix )
+static void PatchData(Link& link,  fix_relo_data *fix )
 /*****************************************/
 {
     byte        *data;
@@ -1074,7 +1076,7 @@ static void PatchData( fix_relo_data *fix )
     data = fix->data;
     fix->additive = false;
     if( fix->imported
-      && (wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD)) ) {
+      && (link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD)) ) {
         fix->value = fix->target_addr.off;
     } else {
         fix->value = 0;
@@ -1096,7 +1098,7 @@ static void PatchData( fix_relo_data *fix )
      */
     if( (fix->type & FIX_NOADJ)
       && fix->imported
-      && (wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD)) ) {
+      && (link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD)) ) {
         fix->value += CalcFixupSize( fix->type );
         fix->type  &= FIX_NOADJ;    /* This flag isn't interesting anymore. */
     }
@@ -1104,7 +1106,7 @@ static void PatchData( fix_relo_data *fix )
         fix->additive = true;
     if( fix->type & FIX_REL )
         return;
-    isdbi = DBINoReloc( wlink().CurrRec.seg->u.leader );
+    isdbi = DBINoReloc( link.CurrRec.seg->u.leader );
     if( fix->imported ) {
         if( isdbi ) {
             fix->target_addr.off = 0;      // crazy person has imports in the dbi
@@ -1114,44 +1116,44 @@ static void PatchData( fix_relo_data *fix )
         }
     }
     if( (fix->type & FIX_ABS)
-      && (wlink().FmtData.type & (MK_QNX | MK_DOS16M)) == 0
+      && (link.FmtData.type & (MK_QNX | MK_DOS16M)) == 0
       || isdbi ) {
         fix->done = true;
     }
     if( (fix->type & FIX_BASE) == 0 ) {     // it's offset only
-        if( !( (wlink().FmtData.type & MK_WIN_NE)
+        if( !( (link.FmtData.type & MK_WIN_NE)
           && (fix->type & FIX_LOADER_RES) ) ) {
-            PatchOffset( fix, FindRealAddr( fix ), false );
-            if( (wlink().FmtData.type & (MK_ELF | MK_QNX | MK_PE | MK_OS2_FLAT | MK_WIN_VXD | MK_NOVELL | MK_PHAR_REX | MK_RAW)) == 0
-              || (wlink().FmtData.type & MK_OS2_LX)
-              && !wlink().FmtData.u.os2fam.gen_int_relocs ) {
+            PatchOffset( fix, FindRealAddr(link,  fix ), false );
+            if( (link.FmtData.type & (MK_ELF | MK_QNX | MK_PE | MK_OS2_FLAT | MK_WIN_VXD | MK_NOVELL | MK_PHAR_REX | MK_RAW)) == 0
+              || (link.FmtData.type & MK_OS2_LX)
+              && !link.FmtData.u.os2fam.gen_int_relocs ) {
                 fix->done = true;
             }
         }
     } else {    // its a seg reloc and maybe an offset as well.
         if( (fix->type & FIX_OFFSET_MASK) != FIX_NO_OFFSET ) {
             if( !fix->done
-              && (wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_WIN_VXD)) )
+              && (link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_WIN_VXD)) )
                 return;
-            PatchOffset( fix, FindRealAddr( fix ), false );
+            PatchOffset( fix, FindRealAddr(link,  fix ), false );
             data += OffsetSizes[FIX_GET_OFFSET( fix->type )];
         }
-        if( wlink().FmtData.type & MK_PROT_MODE ) {
+        if( link.FmtData.type & MK_PROT_MODE ) {
             MPUT_16_UN( data, 0 );
         }
 #if defined( _DOS16M ) || defined( _PHARLAP )
-        if( wlink().FmtData.type & (MK_DOS16M | MK_PHAR_MULTISEG) ) {
+        if( link.FmtData.type & (MK_DOS16M | MK_PHAR_MULTISEG) ) {
             MPUT_16_UN( data, fix->target_addr.seg );
             return;
         }
 #endif
 #ifdef _RDOS
-        if( wlink().FmtData.type & MK_RDOS ) {
+        if( link.FmtData.type & MK_RDOS ) {
             segval = fix->target_addr.seg;
-            if( segval == wlink().FmtData.u.rdos.code_seg ) {
-                segval = wlink().FmtData.u.rdos.code_sel;
-            } else if( segval == wlink().FmtData.u.rdos.data_seg ) {
-                segval = wlink().FmtData.u.rdos.data_sel;
+            if( segval == link.FmtData.u.rdos.code_seg ) {
+                segval = link.FmtData.u.rdos.code_sel;
+            } else if( segval == link.FmtData.u.rdos.data_seg ) {
+                segval = link.FmtData.u.rdos.data_sel;
             } else {
                 LnkMsg( ERR+LOC+MSG_BAD_RELOC_TYPE, nullptr );
             }
@@ -1163,10 +1165,10 @@ static void PatchData( fix_relo_data *fix )
         }
 #endif
         if( fix->done
-          || (wlink().FmtData.type & (MK_QNX | MK_DOS)) ) {
+          || (link.FmtData.type & (MK_QNX | MK_DOS)) ) {
             if( isdbi
-              && (wlink().LinkFlags & (LF_CV_DBI_FLAG | LF_HLL_DBI_FLAG)) ) {    // FIXME
-                segval = FindGroupIdx( fix->target_addr.seg );
+              && (link.LinkFlags & (LF_CV_DBI_FLAG | LF_HLL_DBI_FLAG)) ) {    // FIXME
+                segval = FindGroupIdx(link,  fix->target_addr.seg );
             } else if( fix->type & FIX_ABS ) {
                 /* MASM 5.1 stuffs abs seg length in displacement; ignore it like LINK. */
                 segval = fix->target_addr.seg;
@@ -1188,7 +1190,7 @@ static void PatchData( fix_relo_data *fix )
 #define NEAR_JMP_ID     0xE9
 #define MOV_AXAX_ID     0xC089
 
-static bool FarCallOpt( fix_relo_data *fix )
+static bool FarCallOpt(Link& link,  fix_relo_data *fix )
 /******************************************/
 {
     byte        *code;
@@ -1213,7 +1215,7 @@ static bool FarCallOpt( fix_relo_data *fix )
      */
 
     // optimization is valid only for Intel CPU
-    if( wlink().LinkState & (LS_HAVE_MACHTYPE_MASK & ~LS_HAVE_X86_CODE) )
+    if( link.LinkState & (LS_HAVE_MACHTYPE_MASK & ~LS_HAVE_X86_CODE) )
         return( false );
     if( fix->type & FIX_UNSAFE )
         return( false );
@@ -1228,12 +1230,12 @@ static bool FarCallOpt( fix_relo_data *fix )
     } else {
         return( false );
     }
-    if( fix->data == wlink().CurrRec.data )  // can we assume this?
+    if( fix->data == link.CurrRec.data )  // can we assume this?
         return( false );
     if( fix->loc_addr.seg != fix->target_addr.seg )
         return( false );
-    if( !(wlink().CurrRec.seg->canfarcall
-      || wlink().CurrRec.seg->iscode) )
+    if( !(link.CurrRec.seg->canfarcall
+      || link.CurrRec.seg->iscode) )
         return( false );
     code = fix->data - 1;
     instruction = MGET_U8( code );
@@ -1245,7 +1247,7 @@ static bool FarCallOpt( fix_relo_data *fix )
         } else {
             temp16 = MGET_U16_UN( code + 1 );
         }
-        if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_WIN_VXD) ) {
+        if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_WIN_VXD) ) {
             if( is32bit ) {
                 temp32 += fix->target_addr.off;     // haven't done this for OS/2
             } else {
@@ -1357,7 +1359,7 @@ static ordinal_t ChkOS2IntEntry( group_entry *group, segdata *seg,
 }
 #endif
 
-static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *seg, base_reloc *breloc )
+static bool formatBaseReloc(Link& link,  fix_relo_data *fix, target_spec *target, segdata *seg, base_reloc *breloc )
 /******************************************************************************************************/
 {
     addr_type       target_addr;
@@ -1369,7 +1371,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
     ftype = fix->type & (FIX_OFFSET_MASK | FIX_BASE);
     target_addr = fix->target_addr;
 #ifdef _OS2
-    if( wlink().FmtData.type & MK_PE ) {
+    if( link.FmtData.type & MK_PE ) {
         unsigned_32 reltype;
         bool        save;
         offset      off;
@@ -1380,11 +1382,11 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
             reltype = PE_FIX_HIGHADJ;   // NYI: can be high when objalign == 0x10000
             breloc->rel_size = sizeof( high_pe_reloc_item );
             breloc->item.hpe.low_off = static_cast<unsigned_16>(target_addr.off);
-        } else if( (wlink().LinkState & LS_HAVE_MACHTYPE_MASK) == LS_HAVE_MIPS_CODE
+        } else if( (link.LinkState & LS_HAVE_MACHTYPE_MASK) == LS_HAVE_MIPS_CODE
           && ftype == FIX_OFFSET_26 ) {
             reltype = PE_FIX_MIPSJMP;
         } else if( ftype == FIX_OFFSET_16 ) {
-            if( (wlink().FmtData.objalign & 0xFFFF) == 0 ) {
+            if( (link.FmtData.objalign & 0xFFFF) == 0 ) {
                 save = false;
             }
             reltype = PE_FIX_LOW;
@@ -1393,7 +1395,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
         }
         breloc->item.pe = ( off & OSF_PAGE_MASK ) | reltype;
         return( save );
-    } else if( wlink().FmtData.type & MK_NE ) {
+    } else if( link.FmtData.type & MK_NE ) {
         os2_reloc_item  *os2item;
         offset          off;
         byte            *fixptr;
@@ -1418,12 +1420,12 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
         } else {
             os2item->reloc_type = INTERNAL_REFERENCE;
             os2item->put.internal.rsrvd = 0;
-            for( group = wlink().Groups; group != nullptr; group = group->next ) {
+            for( group = link.Groups; group != nullptr; group = group->next ) {
                 if( group->addr.seg == target_addr.seg ) {
                     break;
                 }
             }
-            if( wlink().FmtData.u.os2fam.selector_fixups ) {
+            if( link.FmtData.u.os2fam.selector_fixups ) {
                 /* CodeBreaker: by the segment's number; a far pointer's offset written in */
                 os2item->put.internal.grp_num = target_addr.seg;
                 os2item->put.internal.off = 0;
@@ -1438,7 +1440,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
             } else if( ( group != nullptr )
               && (group->segflags & SEG_MOVABLE) ) {
                 os2item->put.internal.grp_num = MOVABLE_ENTRY_PNT;
-                os2item->put.internal.off = FindEntryOrdinal( target_addr, group );
+                os2item->put.internal.off = FindEntryOrdinal(link,  target_addr, group );
             } else {
                 os2item->put.internal.grp_num = target_addr.seg;
                 os2item->put.internal.off = target_addr.off;
@@ -1450,7 +1452,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
             MPUT_16_UN( fixptr, 0xffff );          // end of chain indicator
         }
         return( true );
-    } else if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) )  {
+    } else if( link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) )  {
         segdata         *targseg;
         byte            flags;
         byte            fixtype;
@@ -1467,7 +1469,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
             fixtype = OSF_SOURCE_OFF_32_REL;
             if( fix->os2_selfrel
               && (target->type & FIX_TARGET_EXT) ) {
-                freedll = FindOS2ExportSym( target->u.sym, &dll );
+                freedll = FindOS2ExportSym(link,  target->u.sym, &dll );
                 if( dll != nullptr ) {
                     fix->imported = true;
                 }
@@ -1493,7 +1495,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
                 fixtype |= OSF_SFLAG_FIXUP_TO_ALIAS;  // YET more fall through
                 /* fall through */
             case OSF_SOURCE_OFF_16:     // 16-bit offset
-                for( group = wlink().Groups; group != nullptr; group = group->next ) {
+                for( group = link.Groups; group != nullptr; group = group->next ) {
                     if( group->addr.seg == target_addr.seg ) {
                         break;
                     }
@@ -1598,7 +1600,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
                 MPUT_8( fixptr, target_addr.seg );
                 fixptr += 1;
             }
-            group = FindGroup( target_addr.seg );
+            group = FindGroup(link,  target_addr.seg );
             target_addr.off -= group->addr.off;
             if( ftype != FIX_BASE ) {
                 if( target_addr.off > 0xFFFF ) {
@@ -1619,7 +1621,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
     }
 #endif
 #ifdef _NOVELL
-    if( wlink().FmtData.type & MK_NOVELL ) {
+    if( link.FmtData.type & MK_NOVELL ) {
         bool        save;
         offset      off;
 
@@ -1627,7 +1629,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
         off = fix->loc_addr.off;
         if( fix->imported ) {
             save = false;
-            AddNovImpReloc( target->u.sym, off, (fix->type & FIX_REL) != 0, fix->loc_addr.seg == DATA_SEGMENT );
+            AddNovImpReloc(link,  target->u.sym, off, (fix->type & FIX_REL) != 0, fix->loc_addr.seg == DATA_SEGMENT );
         } else {
             if( fix->loc_addr.seg != DATA_SEGMENT ) {
                 off |= NOV_OFFSET_CODE_RELOC;
@@ -1641,10 +1643,10 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
     }
 #endif
 #ifdef _QNX
-    if( wlink().FmtData.type & MK_QNX ) {
+    if( link.FmtData.type & MK_QNX ) {
         if( ( ftype == FIX_OFFSET_32 )
           || ( ftype == FIX_BASE_OFFSET_32 ) ) {
-            if( wlink().FmtData.u.qnx.gen_linear_relocs ) {
+            if( link.FmtData.u.qnx.gen_linear_relocs ) {
                 qnx_linear_item qnxl_reloc;
 
                 qnxl_reloc.reloc_offset = fix->loc_addr.off;
@@ -1656,11 +1658,11 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
                   && (fix->type & FIX_REL) ) {
                     qnxl_reloc.reloc_offset |= 0x40000000;
                 }
-                WriteQNXLinearReloc( wlink().CurrRec.seg->u.leader->group, &qnxl_reloc );
+                WriteQNXLinearReloc( link.CurrRec.seg->u.leader->group, &qnxl_reloc );
                 if( fix->type != FIX_BASE_OFFSET_32 ) {
                     return( false );
                 }
-                InitReloc( breloc );
+                InitReloc(link,  breloc );
                 breloc->fix_size = CalcFixupSize( fix->type );
                 breloc->fix_off = fix->loc_addr.off;
             }
@@ -1672,14 +1674,14 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
     }
 #endif
 #ifdef _ELF
-    if( wlink().FmtData.type & MK_ELF ) {
+    if( link.FmtData.type & MK_ELF ) {
         symbol      *sym;
         bool        save;
         offset      off;
 
         save = true;
         off = fix->loc_addr.off;
-        switch( wlink().LinkState & LS_HAVE_MACHTYPE_MASK ) {
+        switch( link.LinkState & LS_HAVE_MACHTYPE_MASK ) {
         case LS_HAVE_ALPHA_CODE:
             break;
         case LS_HAVE_MIPS_CODE:
@@ -1688,7 +1690,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
                 breloc->item.elf.addend = static_cast<unsigned_16>(target_addr.off);
             } else if( ftype == FIX_OFFSET_16 ) {
                 breloc->item.elf.info = R_MIPS_LO16;
-                if( (wlink().FmtData.objalign & 0xFFFF) == 0 ) {
+                if( (link.FmtData.objalign & 0xFFFF) == 0 ) {
                     save = false;
                 }
             } else if( ftype == FIX_OFFSET_26 ) {
@@ -1706,7 +1708,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
                 breloc->item.elf.addend = static_cast<unsigned_16>(target_addr.off);
             } else if( ftype == FIX_OFFSET_16 ) {
                 breloc->item.elf.info = R_PPC_ADDR16_LO;
-                if( (wlink().FmtData.objalign & 0xFFFF) == 0 ) {
+                if( (link.FmtData.objalign & 0xFFFF) == 0 ) {
                     save = false;
                 }
             } else {
@@ -1732,7 +1734,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
           && (sym->info & SYM_WAS_LAZY) ) {
             save = false;
         } else if( (target->type & FIX_TARGET_EXT)
-          && IsSymElfImpExp( sym ) ) {
+          && IsSymElfImpExp(link,  sym ) ) {
             breloc->item.elf.addend = 0;
         } else {
             seg = GetTargetSegData( target );
@@ -1752,7 +1754,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
     }
 #endif
 #ifdef _PHARLAP
-    if( wlink().FmtData.type & MK_PHAR_REX ) {
+    if( link.FmtData.type & MK_PHAR_REX ) {
         offset      off;
 
         off = fix->loc_addr.off;
@@ -1762,7 +1764,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
         breloc->item.rex.reloc_offset = off;
         return( true );
     }
-    if( wlink().FmtData.type & MK_PHAR_MULTISEG ) {
+    if( link.FmtData.type & MK_PHAR_MULTISEG ) {
         MakeBase( fix );
         breloc->item.pms.offset = fix->loc_addr.off;
         group = seg->u.leader->group;
@@ -1771,7 +1773,7 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
     }
 #endif
 #ifdef _EXE
-    if( wlink().FmtData.type & MK_COM ) {
+    if( link.FmtData.type & MK_COM ) {
         LnkMsg( WRN+LOC+MSG_SEG_RELOC_OUT, "a", &fix->loc_addr );
         return( false );
     }
@@ -1780,13 +1782,13 @@ static bool formatBaseReloc( fix_relo_data *fix, target_spec *target, segdata *s
     breloc->item.dos.addr.off = fix->loc_addr.off;
     group = seg->u.leader->group;
     breloc->item.dos.addr.seg = group->addr.seg;
-    if( group->section != wlink().Root ) {
+    if( group->section != link.Root ) {
         breloc->item.dos.addr.seg -= group->section->sect_addr.seg;
     }
     return( true );
 }
 
-static void FmtReloc( fix_relo_data *fix, target_spec *target )
+static void FmtReloc(Link& link,  fix_relo_data *fix, target_spec *target )
 /*************************************************************/
 {
     base_reloc          breloc;
@@ -1796,36 +1798,36 @@ static void FmtReloc( fix_relo_data *fix, target_spec *target )
     if( fix->done )
         return;
     if( (fix->type & FIX_ABS)
-      && (wlink().FmtData.type & (MK_QNX | MK_DOS16M)) == 0
+      && (link.FmtData.type & (MK_QNX | MK_DOS16M)) == 0
       && !fix->imported )
         return;
     ftype = fix->type & (FIX_OFFSET_MASK | FIX_BASE);
-    if( (wlink().FmtData.type & (MK_PHAR_SIMPLE | MK_PHAR_FLAT))
-      || (wlink().FmtData.type & (MK_NOVELL | MK_ELF))
-      && (wlink().LinkState & LS_HAVE_X86_CODE)
+    if( (link.FmtData.type & (MK_PHAR_SIMPLE | MK_PHAR_FLAT))
+      || (link.FmtData.type & (MK_NOVELL | MK_ELF))
+      && (link.LinkState & LS_HAVE_X86_CODE)
       && (ftype != FIX_OFFSET_32)
-      || (wlink().FmtData.type & MK_ELF)
-      && (wlink().LinkState & LS_HAVE_X86_CODE) == 0
+      || (link.FmtData.type & MK_ELF)
+      && (link.LinkState & LS_HAVE_X86_CODE) == 0
       && (ftype & (FIX_BASE | FIX_OFFSET_8))
-      || (wlink().FmtData.type & MK_PE)
+      || (link.FmtData.type & MK_PE)
       && (ftype & (FIX_BASE | FIX_OFFSET_8))
-      || ((wlink().FmtData.type & (MK_PHAR_REX | MK_RAW))
+      || ((link.FmtData.type & (MK_PHAR_REX | MK_RAW))
       && (ftype != FIX_OFFSET_16)
       && (ftype != FIX_OFFSET_32)) ) {
         LnkMsg( ERR+LOC+MSG_INVALID_FLAT_RELOC, "a", &fix->loc_addr );
         return;
     }
-    if( (wlink().LinkState & LS_MAKE_RELOCS) == 0 )
+    if( (link.LinkState & LS_MAKE_RELOCS) == 0 )
         return;
 #ifdef _QNX
-    if( wlink().FmtData.type & MK_QNX ) {
+    if( link.FmtData.type & MK_QNX ) {
         if( ftype == FIX_OFFSET_32 ) {
-            if( !wlink().FmtData.u.qnx.gen_linear_relocs ) {
+            if( !link.FmtData.u.qnx.gen_linear_relocs ) {
                 return;
             }
         } else if( ( ftype == FIX_BASE )
           || ( ftype == FIX_BASE_OFFSET_16 ) ) {
-            if( !wlink().FmtData.u.qnx.gen_seg_relocs ) {
+            if( !link.FmtData.u.qnx.gen_seg_relocs ) {
                 return;
             }
         } else if( ftype != FIX_BASE_OFFSET_32 ) {
@@ -1834,22 +1836,22 @@ static void FmtReloc( fix_relo_data *fix, target_spec *target )
     }
 #endif
     if( (fix->type & FIX_HIGH)
-      && (wlink().FmtData.type & MK_PE) == 0
-      && (wlink().FmtData.type & MK_ELF) == 0 ) {
+      && (link.FmtData.type & MK_PE) == 0
+      && (link.FmtData.type & MK_ELF) == 0 ) {
         LnkMsg( ERR+LOC+MSG_BAD_RELOC_TYPE, nullptr );
         return;
     }
     DEBUG(( DBG_OLD, "relocation record being output" ));
-    InitReloc( &breloc );
+    InitReloc(link,  &breloc );
     breloc.fix_size = CalcFixupSize( fix->type );
     breloc.fix_off = fix->loc_addr.off;
-    save = formatBaseReloc( fix, target, wlink().CurrRec.seg, &breloc );
+    save = formatBaseReloc(link,  fix, target, link.CurrRec.seg, &breloc );
     if( save ) {
-        DumpReloc( &breloc );
+        DumpReloc(link,  &breloc );
     }
 }
 
-static void Relocate( offset off, fix_relo_data *fix, target_spec *target )
+static void Relocate(Link& link,  offset off, fix_relo_data *fix, target_spec *target )
 /*************************************************************************/
 {
     unsigned    shift;
@@ -1863,8 +1865,8 @@ static void Relocate( offset off, fix_relo_data *fix, target_spec *target )
     fix->os2_selfrel = false;
     fix->data = addbuf.data();
 
-    if( (wlink().LinkFlags & LF_FAR_CALLS_FLAG)
-      && (wlink().LinkState & LS_HAVE_X86_CODE) ) {
+    if( (link.LinkFlags & LF_FAR_CALLS_FLAG)
+      && (link.LinkState & LS_HAVE_X86_CODE) ) {
 
         /*
          * it is necessary to copy also two bytes before reloc position to addbuf
@@ -1877,19 +1879,19 @@ static void Relocate( offset off, fix_relo_data *fix, target_spec *target )
         datasize += shift;
         fix->data += 2;
     }
-    ReadInfo( wlink().CurrRec.seg->u1.vm_ptr + off - shift, fix->data - shift, datasize );
+    ReadInfo( link.CurrRec.seg->u1.vm_ptr + off - shift, fix->data - shift, datasize );
 
-    if( !CheckSpecials( fix, target ) ) {
-        PatchData( fix );
-        if( (wlink().LinkFlags & LF_FAR_CALLS_FLAG)
-          && (wlink().LinkState & LS_HAVE_X86_CODE) )
-            FarCallOpt( fix );
-        FmtReloc( fix, target );
+    if( !CheckSpecials(link,  fix, target ) ) {
+        PatchData(link,  fix );
+        if( (link.LinkFlags & LF_FAR_CALLS_FLAG)
+          && (link.LinkState & LS_HAVE_X86_CODE) )
+            FarCallOpt(link,  fix );
+        FmtReloc(link,  fix, target );
     }
-    PutInfo( wlink().CurrRec.seg->u1.vm_ptr + off - shift, fix->data - shift, datasize );
+    PutInfo( link.CurrRec.seg->u1.vm_ptr + off - shift, fix->data - shift, datasize );
 }
 
-static void BuildReloc( save_fixup *save, target_spec *target, frame_spec *frame )
+static void BuildReloc(Link& link,  save_fixup *save, target_spec *target, frame_spec *frame )
 /********************************************************************************/
 {
     fix_relo_data   fix;
@@ -1902,27 +1904,27 @@ static void BuildReloc( save_fixup *save, target_spec *target, frame_spec *frame
     frame_addr.seg = 0;
     std::memset( &fix, 0, sizeof( fix_relo_data ) );        // to get all bitfields 0
     GetTargetAddr( target, &fix.target_addr );
-    GetFrameAddr( frame, &frame_addr, &fix.target_addr, off );
+    GetFrameAddr(link,  frame, &frame_addr, &fix.target_addr, off );
     fix.type = fixtype;
-    fix.loc_addr = wlink().CurrRec.addr;
+    fix.loc_addr = link.CurrRec.addr;
     fix.loc_addr.off += off;
     fix.fpp_type = FPP_NONE;
 
     if( target->type == FIX_TARGET_EXT ) {
-        if( wlink().MapFile != nullptr ) {
+        if( link.MapFile != nullptr ) {
             if( target->u.sym->info & SYM_TRACE ) {
-                WriteMapTracedSymRecord( target->u.sym );
+                WriteMapTracedSymRecord(link,  target->u.sym );
             }
         }
         if( (target->u.sym->info & SYM_DEFINED) == 0 ) {
-            RecordUndefinedSym( target->u.sym );
+            RecordUndefinedSym(link,  target->u.sym );
             return;
         }
         fix.fpp_type = static_cast<fix_fpp_type>(GET_SYM_2_FPP( target->u.sym ));
         if( IS_SYM_IMPORTED( target->u.sym ) ) {
             if( FRAME_HAS_DATA( frame->type )
               && ( target->u.sym != frame->u.sym ) ) {
-                if( wlink().FmtData.type & (MK_NOVELL | MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
+                if( link.FmtData.type & (MK_NOVELL | MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
                     fix.target_addr.seg = frame_addr.seg;
                     fix.target_addr.off = 0;
                 } else {
@@ -1933,9 +1935,9 @@ static void BuildReloc( save_fixup *save, target_spec *target, frame_spec *frame
         }
     }
     if( fixtype & FIX_BASE ) {
-        if( wlink().FmtData.type & (MK_PROT_MODE & ~(MK_OS2_FLAT | MK_WIN_VXD | MK_PE)) ) {
+        if( link.FmtData.type & (MK_PROT_MODE & ~(MK_OS2_FLAT | MK_WIN_VXD | MK_PE)) ) {
             if( frame_addr.seg != fix.target_addr.seg ) {
-                if( wlink().FmtData.type & MK_ID_SPLIT ) {
+                if( link.FmtData.type & MK_ID_SPLIT ) {
                     LnkMsg( ERR+LOC+MSG_NOV_NO_CODE_DATA_RELOC, "a", &fix.loc_addr );
                 } else {
                     LnkMsg( ERR+LOC+MSG_FRAME_EQ_TARGET, "a", &fix.loc_addr );
@@ -1943,12 +1945,12 @@ static void BuildReloc( save_fixup *save, target_spec *target, frame_spec *frame
             }
         }
         if( !fix.imported ) {
-            CheckRWData( target, &fix.loc_addr );
+            CheckRWData(link,  target, &fix.loc_addr );
         }
     }
     if( !fix.imported ) {
         if( fix.fpp_type == FPP_NONE ) {
-            ConvertToFrame( &fix.target_addr, frame_addr.seg, ( (fixtype & (FIX_OFFSET_8 | FIX_OFFSET_16)) != 0 ) );
+            ConvertToFrame(link,  &fix.target_addr, frame_addr.seg, ( (fixtype & (FIX_OFFSET_8 | FIX_OFFSET_16)) != 0 ) );
         } else {
             fix.target_addr.seg = frame_addr.seg;
         }
@@ -1960,19 +1962,19 @@ static void BuildReloc( save_fixup *save, target_spec *target, frame_spec *frame
         fix.type |= FIX_ABS;
     }
 #ifdef _EXE
-    if( wlink().FmtData.type & MK_OVERLAYS ) {
+    if( link.FmtData.type & MK_OVERLAYS ) {
         if( ( target->type == FIX_TARGET_EXT )
           && ( (fix.type & FIX_REL) == 0
-          || wlink().FmtData.u.dos.ovl_short )
+          || link.FmtData.u.dos.ovl_short )
           && target->u.sym->u.d.ovlref
           && ( (target->u.sym->u.d.ovlstate & OVL_VEC_MASK) == OVL_MAKE_VECTOR ) ) {
             // redirect target to appropriate vector entry
-            OvlGetVecAddr( target->u.sym->u.d.ovlref, &fix.target_addr );
+            OvlGetVecAddr(link,  target->u.sym->u.d.ovlref, &fix.target_addr );
         }
     }
 #endif
 #ifdef _OS2
-    if( wlink().FmtData.type & MK_PE ) {
+    if( link.FmtData.type & MK_PE ) {
         if( fix.imported ) {
             /*
                 Under PE, the imported symbol address is set to the
@@ -1983,12 +1985,13 @@ static void BuildReloc( save_fixup *save, target_spec *target, frame_spec *frame
         }
     }
 #endif
-    Relocate( off, &fix, target );
+    Relocate(link,  off, &fix, target );
 }
 
 size_t IncExecRelocs( void *_save )
 /*********************************/
 {
+    Link& link = wlink();
     save_fixup  *save = static_cast<save_fixup *>(_save);
     segdata     *sdata;
     target_spec target;
@@ -1998,11 +2001,11 @@ size_t IncExecRelocs( void *_save )
 
     if( fixtype & FIX_CHANGE_SEG ) {
         sdata = save->u.sdata.sdata;
-        if( wlink().LinkFlags & LF_INC_LINK_FLAG ) {
-            save->u.sdata.sdata = static_cast<segdata *>(CarveGetIndex( wlink().CarveSegData, sdata ));
+        if( link.LinkFlags & LF_INC_LINK_FLAG ) {
+            save->u.sdata.sdata = static_cast<segdata *>(CarveGetIndex( link.CarveSegData, sdata ));
         }
         if( !sdata->isdead ) {
-            LoadObj( sdata );
+            LoadObj(link,  sdata );
             LastSegData = sdata;
         } else {
             LastSegData = nullptr;
@@ -2014,15 +2017,15 @@ size_t IncExecRelocs( void *_save )
         if( FRAME_HAS_DATA( frame.type ) ) {
             frame.u.ptr = save->u.fixupf.frame;
         }
-        UpdateTargetPtr( &target );
-        UpdateFramePtr( &frame );
+        UpdateTargetPtr(link,  &target );
+        UpdateFramePtr(link,  &frame );
         if( LastSegData != nullptr ) {
-            BuildReloc( save, &target, &frame );
+            BuildReloc(link,  save, &target, &frame );
         }
-        if( wlink().LinkFlags & LF_INC_LINK_FLAG ) {
-            MapTargetPtr( &target, &save->u.fixup.target );
+        if( link.LinkFlags & LF_INC_LINK_FLAG ) {
+            MapTargetPtr(link,  &target, &save->u.fixup.target );
             if( FRAME_HAS_DATA( frame.type ) ) {
-                MapFramePtr( &frame, &save->u.fixupf.frame );
+                MapFramePtr(link,  &frame, &save->u.fixupf.frame );
             }
         }
     }

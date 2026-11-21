@@ -174,18 +174,18 @@ typedef union {
 #include "poppck.h"
 
 
-extern void             WriteReloc( group_entry *group, offset, void *, size_t );
+extern void             WriteReloc(Link& link,  group_entry *group, offset, void *, size_t );
 #ifdef _QNX
-extern void             WriteQNXFloatReloc( qnx_reloc_item * item );
+extern void             WriteQNXFloatReloc(Link& link,  qnx_reloc_item * item );
 extern void             WriteQNXLinearReloc( group_entry *group, qnx_linear_item * );
 #endif
-extern bool             TraverseOS2RelocList( group_entry *group, bool (*fn)(reloc_info));
-extern void             FreeRelocInfo( void );
+extern bool             TraverseOS2RelocList(Link& link,  group_entry *group, bool (*fn)(reloc_info));
+extern void             FreeRelocInfo(Link& link);
 extern unsigned         RelocSize( reloc_info reloclist );
-extern unsigned         DumpMaxRelocList( reloc_info *reloclist_head, unsigned );
+extern unsigned         DumpMaxRelocList(Link& link,  reloc_info *reloclist_head, unsigned );
 extern bool             DumpRelocList( reloc_info reloclist );
 extern void            CopyRelocList( reloc_info, void * );
-extern void             SetRelocSize( void );
-extern bool             SwapOutRelocs( void );
-extern void             ResetReloc( void );
-extern unsigned         WalkRelocList( reloc_info *reloclist_head, bool (*fn)( void *data, size_t size, void *ctx ), void *ctx );
+extern void             SetRelocSize(Link& link);
+extern bool             SwapOutRelocs(Link& link);
+extern void             ResetReloc(Link& link);
+extern unsigned         WalkRelocList(Link& link,  reloc_info *reloclist_head, bool (*fn)( void *data, size_t size, void *ctx ), void *ctx );

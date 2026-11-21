@@ -71,14 +71,14 @@ inline ObjOMFState &st() { return cb_wlink::RunState::part<ObjOMFState>(); }
 
 extern const byte OMFAlignTab[] = {0,0,1,4,8,2,12};   // (a constant)
 
-void ResetObjOMF( void )
+void ResetObjOMF(Link& link)
 /**********************/
 {
-    wlink().ObjBuff = nullptr;
-    wlink().EOObjRec = nullptr;
+    link.ObjBuff = nullptr;
+    link.EOObjRec = nullptr;
 }
 
-static unsigned long ProcObj( const file_list *file, unsigned long loc, void (*procrtn)( byte ) )
+static unsigned long ProcObj(Link& link,  const file_list *file, unsigned long loc, void (*procrtn)( byte ) )
 /************************************************************************************************
  * Process an object file.
  */
@@ -87,28 +87,28 @@ static unsigned long ProcObj( const file_list *file, unsigned long loc, void (*p
     byte                cmd;
     unsigned            len;
 
-    wlink().RecNum = 0;
+    link.RecNum = 0;
     do {
-        wlink().ObjFormat &= ~OBJ_FMT_MS_386;   /* assume not a Microsoft 386 .obj file */
-        rec = static_cast<omf_record *>( CacheRead( file, loc, sizeof( omf_record ) ) );
+        link.ObjFormat &= ~OBJ_FMT_MS_386;   /* assume not a Microsoft 386 .obj file */
+        rec = static_cast<omf_record *>( CacheRead(link,  file, loc, sizeof( omf_record ) ) );
         if( rec == nullptr ) {
-            EarlyEOF();
+            EarlyEOF(link);
             break;
         }
         loc += sizeof( omf_record );
         len = rec->length;
         cmd = rec->command;
         if( procrtn != nullptr ) {
-            wlink().RecNum++;
-            wlink().ObjBuff = static_cast<byte *>( CacheRead( file, loc, len ) );
-            if( wlink().ObjBuff == nullptr ) {
-                EarlyEOF();
+            link.RecNum++;
+            link.ObjBuff = static_cast<byte *>( CacheRead(link,  file, loc, len ) );
+            if( link.ObjBuff == nullptr ) {
+                EarlyEOF(link);
                 break;
             }
-            wlink().EOObjRec = wlink().ObjBuff + len - 1;       /* 1 for the checksum. */
+            link.EOObjRec = link.ObjBuff + len - 1;       /* 1 for the checksum. */
             (*procrtn)( cmd );
-            if( wlink().ObjBuff > wlink().EOObjRec ) {
-                BadObject();
+            if( link.ObjBuff > link.EOObjRec ) {
+                BadObject(link);
                 break;
             }
         }
@@ -133,51 +133,52 @@ static void CheckUninit( void *_seg, void *dummy )
     }
 }
 
-bool IsOMF( const file_list *file, unsigned long loc )
+bool IsOMF(Link& link,  const file_list *file, unsigned long loc )
 /****************************************************/
 {
     byte        *rec;
 
-    rec = static_cast<byte *>( CacheRead( file, loc, sizeof( unsigned_8 ) ) );
+    rec = static_cast<byte *>( CacheRead(link,  file, loc, sizeof( unsigned_8 ) ) );
     return( rec != nullptr && ( *rec == CMD_THEADR || *rec == CMD_LHEADR ) );
 }
 
-char *GetOMFName( const file_list *file, unsigned long *loc )
+char *GetOMFName(Link& link,  const file_list *file, unsigned long *loc )
 /***********************************************************/
 {
     omf_record  *rec;
     char        *name;
     unsigned    len;
 
-    rec = static_cast<omf_record *>( CacheRead( file, *loc, sizeof( omf_record ) ) );
+    rec = static_cast<omf_record *>( CacheRead(link,  file, *loc, sizeof( omf_record ) ) );
     if( rec == nullptr )
         return( nullptr );
     *loc += sizeof( omf_record );
     len = rec->length;
-    name = static_cast<char *>( CacheRead( file, *loc, rec->length ) );
+    name = static_cast<char *>( CacheRead(link,  file, *loc, rec->length ) );
     *loc += len;
     if( name == nullptr )
         return( nullptr );
     len = *(unsigned char *)name;        /* get actual name length */
-    return( MemToStringSafe( name + 1, len ) );
+    return( MemToStringSafe(link,  name + 1, len ) );
 }
 
 void OMFSkipObj( const file_list *file, unsigned long *loc )
 /**********************************************************/
 {
-    *loc = ProcObj( file, *loc, nullptr );
+    Link& link = wlink();
+    *loc = ProcObj(link,  file, *loc, nullptr );
 }
 
-static void ProcTHEADR( void )
+static void ProcTHEADR(Link& link)
 /****************************/
 {
     int     sym_len;
 
-    switch( wlink().CurrMod->omfdbg ) {
+    switch( link.CurrMod->omfdbg ) {
     case OMF_DBG_CODEVIEW:
-        sym_len = *wlink().ObjBuff++;
+        sym_len = *link.ObjBuff++;
         if( sym_len == 0 ) {
-            BadObject();
+            BadObject(link);
         }
 //        CurrMod->name.u.ptr = MemToStringSafe( ObjBuff, sym_len );
 // need to fix to handle separated module name and
@@ -188,7 +189,7 @@ static void ProcTHEADR( void )
     }
 }
 
-static void ProcExportKeyword( void )
+static void ProcExportKeyword(Link& link)
 /***********************************/
 {
     unsigned_8  flags;
@@ -196,88 +197,88 @@ static void ProcExportKeyword( void )
     length_name expname;
     ordinal_t   ordinal;
 
-    flags = *wlink().ObjBuff++;
-    expname.len = *wlink().ObjBuff++;
-    expname.name = reinterpret_cast<char *>( wlink().ObjBuff );
-    wlink().ObjBuff += expname.len;
-    intname.len = *wlink().ObjBuff++;
-    intname.name = reinterpret_cast<char *>( wlink().ObjBuff );
-    wlink().ObjBuff += intname.len;
+    flags = *link.ObjBuff++;
+    expname.len = *link.ObjBuff++;
+    expname.name = reinterpret_cast<char *>( link.ObjBuff );
+    link.ObjBuff += expname.len;
+    intname.len = *link.ObjBuff++;
+    intname.name = reinterpret_cast<char *>( link.ObjBuff );
+    link.ObjBuff += intname.len;
     ordinal = 0;
     if( flags & EXPDEF_ORDINAL ) {
-        ordinal = MGET_LE_U16_UN( wlink().ObjBuff );
+        ordinal = MGET_LE_U16_UN( link.ObjBuff );
     }
-    HandleExport( &expname, &intname, flags, ordinal );
+    HandleExport(link,  &expname, &intname, flags, ordinal );
 }
 
-static void ProcImportKeyword( void )
+static void ProcImportKeyword(Link& link)
 /***********************************/
 {
     length_name intname;
     length_name modname;
     unsigned_8  info;
 
-    info = *wlink().ObjBuff++;
-    intname.len = *wlink().ObjBuff++;
-    intname.name = reinterpret_cast<char *>( wlink().ObjBuff );
-    wlink().ObjBuff += intname.len;
-    modname.len = *wlink().ObjBuff++;
-    modname.name = reinterpret_cast<char *>( wlink().ObjBuff );
-    wlink().ObjBuff += modname.len;
+    info = *link.ObjBuff++;
+    intname.len = *link.ObjBuff++;
+    intname.name = reinterpret_cast<char *>( link.ObjBuff );
+    link.ObjBuff += intname.len;
+    modname.len = *link.ObjBuff++;
+    modname.name = reinterpret_cast<char *>( link.ObjBuff );
+    link.ObjBuff += modname.len;
     if( info == DLL_RELOC_NAME ) {
-        if( *wlink().ObjBuff == 0 ) {   /* use internal name */
-            HandleImport( &intname, &modname, &intname, IMP_BY_NAME );
+        if( *link.ObjBuff == 0 ) {   /* use internal name */
+            HandleImport(link,  &intname, &modname, &intname, IMP_BY_NAME );
         } else {
             length_name     extname;
 
-            extname.len = *wlink().ObjBuff++;
-            extname.name = reinterpret_cast<char *>( wlink().ObjBuff );
-            wlink().ObjBuff += extname.len;
-            HandleImport( &intname, &modname, &extname, IMP_BY_NAME );
+            extname.len = *link.ObjBuff++;
+            extname.name = reinterpret_cast<char *>( link.ObjBuff );
+            link.ObjBuff += extname.len;
+            HandleImport(link,  &intname, &modname, &extname, IMP_BY_NAME );
         }
     } else {
-        HandleImport(&intname, &modname, nullptr, MGET_LE_U16_UN( wlink().ObjBuff ) );
+        HandleImport(link, &intname, &modname, nullptr, MGET_LE_U16_UN( link.ObjBuff ) );
     }
 }
 
 
-static void DoMSOMF( void )
+static void DoMSOMF(Link& link)
 /**************************
  * Figure out debug info type and handle it accordingly later.
  */
 {
-    if( wlink().ObjBuff == wlink().EOObjRec ) {
-        wlink().CurrMod->omfdbg = OMF_DBG_CODEVIEW;    /* Assume MS style */
+    if( link.ObjBuff == link.EOObjRec ) {
+        link.CurrMod->omfdbg = OMF_DBG_CODEVIEW;    /* Assume MS style */
     } else {
         unsigned_8 version;
 
-        version = *wlink().ObjBuff++;
-        if( wlink().ObjBuff[0] == 'C'
-          && wlink().ObjBuff[1] == 'V' ) {
-            wlink().CurrMod->omfdbg = OMF_DBG_CODEVIEW;
-        } else if( wlink().ObjBuff[0] == 'H'
-          && wlink().ObjBuff[1] == 'L' ) {
+        version = *link.ObjBuff++;
+        if( link.ObjBuff[0] == 'C'
+          && link.ObjBuff[1] == 'V' ) {
+            link.CurrMod->omfdbg = OMF_DBG_CODEVIEW;
+        } else if( link.ObjBuff[0] == 'H'
+          && link.ObjBuff[1] == 'L' ) {
             switch( version ) {
             case 3:
-                wlink().CurrMod->omfdbg = OMF_DBG_HLL_03;
+                link.CurrMod->omfdbg = OMF_DBG_HLL_03;
                 break;
             case 4:
-                wlink().CurrMod->omfdbg = OMF_DBG_HLL_04;
+                link.CurrMod->omfdbg = OMF_DBG_HLL_04;
                 break;
             case 6:
-                wlink().CurrMod->omfdbg = OMF_DBG_HLL_06;
+                link.CurrMod->omfdbg = OMF_DBG_HLL_06;
                 break;
             default:
-                wlink().CurrMod->omfdbg = OMF_DBG_UNKNOWN;
+                link.CurrMod->omfdbg = OMF_DBG_UNKNOWN;
                 break;
             }
         } else {
-            wlink().CurrMod->omfdbg = OMF_DBG_UNKNOWN;
+            link.CurrMod->omfdbg = OMF_DBG_UNKNOWN;
         }
     }
 }
 
-static void ProcAlias( void )
+static void ProcAlias(Link& link)
 /****************************
  * process a symbol alias directive
  */
@@ -287,20 +288,20 @@ static void ProcAlias( void )
     size_t      targetlen;
     symbol      *sym;
 
-    for( ; wlink().ObjBuff < wlink().EOObjRec; wlink().ObjBuff += targetlen ) {
-        aliaslen = *wlink().ObjBuff++;
-        alias = reinterpret_cast<char *>( wlink().ObjBuff );
-        wlink().ObjBuff += aliaslen;
-        targetlen = *wlink().ObjBuff++;
-        sym = SymOp( ST_FIND | ST_NOALIAS, alias, aliaslen );
+    for( ; link.ObjBuff < link.EOObjRec; link.ObjBuff += targetlen ) {
+        aliaslen = *link.ObjBuff++;
+        alias = reinterpret_cast<char *>( link.ObjBuff );
+        link.ObjBuff += aliaslen;
+        targetlen = *link.ObjBuff++;
+        sym = SymOp(link,  ST_FIND | ST_NOALIAS, alias, aliaslen );
         if( sym == nullptr
           || (sym->info & SYM_DEFINED) == 0 ) {
-            MakeSymAlias( alias, aliaslen, reinterpret_cast<const char *>( wlink().ObjBuff ), targetlen );
+            MakeSymAlias(link,  alias, aliaslen, reinterpret_cast<const char *>( link.ObjBuff ), targetlen );
         }
     }
 }
 
-static void ProcModuleEnd( void )
+static void ProcModuleEnd(Link& link)
 /*******************************/
 {
     byte        frame;
@@ -310,55 +311,55 @@ static void ProcModuleEnd( void )
     extnode     *ext;
     bool        hasdisp;
 
-    if( wlink().StartInfo.user_specd )
+    if( link.StartInfo.user_specd )
         return;
-    target = *wlink().ObjBuff++;
+    target = *link.ObjBuff++;
     if( target & 0x40 ) {
-        if( wlink().ObjBuff >= wlink().EOObjRec )
+        if( link.ObjBuff >= link.EOObjRec )
             return;
-        target = *wlink().ObjBuff++;
+        target = *link.ObjBuff++;
         frame = (target >> 4) & 0x7;
         hasdisp = ( (target & 0x4) == 0 );
         target &= 0x3;
         if( frame <= 2 ) {              /* frame requires an index */
-            SkipIdx();
+            SkipIdx(link);
         }
-        targetidx = GetIdx();
+        targetidx = GetIdx(link);
         switch( target ) {
         case TARGET_SEG:
-            if( wlink().StartInfo.type != START_UNDEFED ) {
-                LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", wlink().StartInfo.mod->u1.source->infile->name, wlink().StartInfo.mod->name );
+            if( link.StartInfo.type != START_UNDEFED ) {
+                LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", link.StartInfo.mod->u1.source->infile->name, link.StartInfo.mod->name );
                 return;                 /* <-------- NOTE: premature return */
             }
-            snode = static_cast<segnode *>( FindNode( wlink().SegNodes, targetidx ) );
-            wlink().StartInfo.type = START_IS_SDATA;
-            wlink().StartInfo.targ.sdata= snode->entry;
+            snode = static_cast<segnode *>( FindNode( link.SegNodes, targetidx ) );
+            link.StartInfo.type = START_IS_SDATA;
+            link.StartInfo.targ.sdata= snode->entry;
             if( (snode->info & SEGINF_CODE)
-              && (wlink().LinkFlags & LF_STRIP_CODE) ) {
+              && (link.LinkFlags & LF_STRIP_CODE) ) {
                 RefSeg( snode->entry );
             }
-            wlink().StartInfo.mod = wlink().CurrMod;
+            link.StartInfo.mod = link.CurrMod;
             break;
         case TARGET_EXT:
-            ext = static_cast<extnode *>( FindNode( wlink().ExtNodes, targetidx ) );
-            SetStartSym( ext->entry->name.u.ptr );
+            ext = static_cast<extnode *>( FindNode( link.ExtNodes, targetidx ) );
+            SetStartSym(link,  ext->entry->name.u.ptr );
             break;
         case TARGET_ABS:
         case TARGET_GRP:
-            BadObject();        /* no one does these, right??? */
+            BadObject(link);        /* no one does these, right??? */
             break;
         }
         if( hasdisp ) {
-            if( wlink().ObjFormat & OBJ_FMT_32BIT_REC ) {
-                wlink().StartInfo.off = MGET_LE_U32_UN( wlink().ObjBuff );
+            if( link.ObjFormat & OBJ_FMT_32BIT_REC ) {
+                link.StartInfo.off = MGET_LE_U32_UN( link.ObjBuff );
             } else {
-                wlink().StartInfo.off = MGET_LE_U16_UN( wlink().ObjBuff );
+                link.StartInfo.off = MGET_LE_U16_UN( link.ObjBuff );
             }
         }
     }
 }
 
-static void AddNames( void )
+static void AddNames(Link& link)
 /***************************
  * Process NAMES record
  */
@@ -367,14 +368,14 @@ static void AddNames( void )
     list_of_names       **entry;
 
     DEBUG(( DBG_OLD, "AddNames()" ));
-    for( ; wlink().ObjBuff < wlink().EOObjRec; wlink().ObjBuff += name_len ) {
-        name_len = *wlink().ObjBuff++;
-        entry = static_cast<list_of_names **>( AllocNode( wlink().NameNodes ) );
-        *entry = MakeListName( reinterpret_cast<char *>( wlink().ObjBuff ), name_len );
+    for( ; link.ObjBuff < link.EOObjRec; link.ObjBuff += name_len ) {
+        name_len = *link.ObjBuff++;
+        entry = static_cast<list_of_names **>( AllocNode( link.NameNodes ) );
+        *entry = MakeListName( reinterpret_cast<char *>( link.ObjBuff ), name_len );
     }
 }
 
-static void ProcSegDef( void )
+static void ProcSegDef(Link& link)
 /*****************************
  * process a segdef record
  */
@@ -386,8 +387,8 @@ static void ProcSegDef( void )
     byte                acbp;
 
     DEBUG(( DBG_OLD, "ProcSegDef()" ));
-    sdata = AllocSegData();
-    acbp = *wlink().ObjBuff++;
+    sdata = AllocSegData(link);
+    acbp = *link.ObjBuff++;
     switch( (acbp >> 2) & 7 ) {
     case COMB_INVALID:
     case COMB_BAD:
@@ -407,46 +408,46 @@ static void ProcSegDef( void )
     switch( acbp >> 5 ) {
     case ALIGN_ABS:
         sdata->isabs = true;
-        sdata->frame = MGET_LE_U16_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_16 ) + 1;
+        sdata->frame = MGET_LE_U16_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_16 ) + 1;
         break;
     case ALIGN_LTRELOC:
         /*
          * in 32 bit object files, ALIGN_LTRELOC is actually ALIGN_4KPAGE
          */
-        if( (wlink().ObjFormat & OBJ_FMT_32BIT_REC) == 0
-          && (wlink().FmtData.type & MK_RAW) == 0 ) {
+        if( (link.ObjFormat & OBJ_FMT_32BIT_REC) == 0
+          && (link.FmtData.type & MK_RAW) == 0 ) {
             sdata->align = OMFAlignTab[ALIGN_PARA];
             /*
              * step over ltldat, max_seg_len, grp_offs fields
              */
-            wlink().ObjBuff += 5;
+            link.ObjBuff += 5;
         }
         break;
     }
-    if( wlink().ObjFormat & OBJ_FMT_32BIT_REC ) {
+    if( link.ObjFormat & OBJ_FMT_32BIT_REC ) {
         if( acbp & 2 ) {
-            BadObject();            /* we can't handle 4 GB segments properly */
+            BadObject(link);            /* we can't handle 4 GB segments properly */
             return;
         }
-        sdata->length = MGET_LE_U32_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_32 );
+        sdata->length = MGET_LE_U32_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_32 );
     } else {
         if( acbp & 2 ) {
             sdata->length = 65536;  /* 64k segment */
         } else {
-            sdata->length = MGET_LE_U16_UN( wlink().ObjBuff );
+            sdata->length = MGET_LE_U16_UN( link.ObjBuff );
         }
-        wlink().ObjBuff += sizeof( unsigned_16 );
+        link.ObjBuff += sizeof( unsigned_16 );
     }
-    name = FindName( GetIdx() );
+    name = FindName(link,  GetIdx(link) );
     sdata->u.name.u.ptr = name->name;
-    clname = FindName( GetIdx() );
-    if( wlink().ObjFormat & OBJ_FMT_EASY_OMF ) {
-        SkipIdx();                          /* skip overlay name index */
+    clname = FindName(link,  GetIdx(link) );
+    if( link.ObjFormat & OBJ_FMT_EASY_OMF ) {
+        SkipIdx(link);                          /* skip overlay name index */
         sdata->bits = BITS_32;
-        if( wlink().ObjBuff < wlink().EOObjRec ) {          /* the optional attribute field present */
-            if( (*wlink().ObjBuff & 0x4) == 0 ) {   /* if USE32 bit not set */
+        if( link.ObjBuff < link.EOObjRec ) {          /* the optional attribute field present */
+            if( (*link.ObjBuff & 0x4) == 0 ) {   /* if USE32 bit not set */
                 sdata->bits = BITS_16;
             }
         }
@@ -456,12 +457,12 @@ static void ProcSegDef( void )
         sdata->bits = BITS_16;
     }
     sdata->iscode = IsCodeClass( clname->name, strlen( clname->name ) );
-    snode = static_cast<segnode *>( AllocNode( wlink().SegNodes ) );
+    snode = static_cast<segnode *>( AllocNode( link.SegNodes ) );
     snode->entry = sdata;
-    AllocateSegment( snode, clname->name );
+    AllocateSegment(link,  snode, clname->name );
 }
 
-static void DefineGroup( void )
+static void DefineGroup(Link& link)
 /******************************
  * Define a group.
  */
@@ -473,37 +474,37 @@ static void DefineGroup( void )
     grpnode             *newnode;
     group_entry         *group;
 
-    grp_name = FindName( GetIdx() );
+    grp_name = FindName(link,  GetIdx(link) );
     DEBUG(( DBG_OLD, "DefineGroup() - %s", grp_name->name ));
-    anchor = wlink().ObjBuff;
+    anchor = link.ObjBuff;
     num_segs = 0;
-    while( wlink().ObjBuff < wlink().EOObjRec ) {
-        if( *wlink().ObjBuff++ != GRP_SEGIDX ) {
-            BadObject();
+    while( link.ObjBuff < link.EOObjRec ) {
+        if( *link.ObjBuff++ != GRP_SEGIDX ) {
+            BadObject(link);
             return;
         }
-        SkipIdx();  /* skip segment index */
+        SkipIdx(link);  /* skip segment index */
         ++num_segs;
     }
-    newnode = static_cast<grpnode *>( AllocNode( wlink().GrpNodes ) );
-    group = SearchGroups( grp_name->name );
+    newnode = static_cast<grpnode *>( AllocNode( link.GrpNodes ) );
+    group = SearchGroups(link,  grp_name->name );
     if( group == nullptr ) {
         if( num_segs == 0 ) {
             newnode->entry = nullptr;
             return;                     /* NOTE: premature return! */
         }
-        group = AllocGroup( grp_name->name, &wlink().Groups );
+        group = AllocGroup(link,  grp_name->name, &link.Groups );
     }
     newnode->entry = group;
-    wlink().ObjBuff = anchor;
-    while( wlink().ObjBuff < wlink().EOObjRec ) {
-        wlink().ObjBuff++;
-        snode = static_cast<segnode *>( FindNode( wlink().SegNodes, GetIdx() ) );
-        AddToGroup( group, snode->entry->u.leader );
+    link.ObjBuff = anchor;
+    while( link.ObjBuff < link.EOObjRec ) {
+        link.ObjBuff++;
+        snode = static_cast<segnode *>( FindNode( link.SegNodes, GetIdx(link) ) );
+        AddToGroup(link,  group, snode->entry->u.leader );
     }
 }
 
-static void ProcPubdef( bool static_sym )
+static void ProcPubdef(Link& link,  bool static_sym )
 /****************************************
  * Define symbols.
  */
@@ -518,42 +519,42 @@ static void ProcPubdef( bool static_sym )
     sym_flags       symop;
 
     DEBUG(( DBG_OLD, "ProcPubdef" ));
-    SkipIdx();
-    segidx = GetIdx();
+    SkipIdx(link);
+    segidx = GetIdx(link);
     if( segidx != 0 ) {
-        snode = static_cast<segnode *>( FindNode( wlink().SegNodes, segidx ) );
+        snode = static_cast<segnode *>( FindNode( link.SegNodes, segidx ) );
         frame = 0;
     } else {
         snode = nullptr;
-        frame = MGET_LE_U16_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_16 );
+        frame = MGET_LE_U16_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_16 );
     }
     DEBUG(( DBG_OLD, "segidx = %d", segidx ));
     symop = ST_CREATE_DEFINE_NOALIAS;
     if( static_sym ) {
         symop |= ST_STATIC;
     }
-    while( wlink().ObjBuff < wlink().EOObjRec ) {
-        sym_len = *wlink().ObjBuff++;
+    while( link.ObjBuff < link.EOObjRec ) {
+        sym_len = *link.ObjBuff++;
         if( sym_len == 0 ) {
-            BadObject();
+            BadObject(link);
         }
-        sym_name = reinterpret_cast<char *>( wlink().ObjBuff );
-        wlink().ObjBuff += sym_len;
-        if( wlink().ObjFormat & OBJ_FMT_32BIT_REC ) {
-            off = MGET_LE_U32_UN( wlink().ObjBuff );
-            wlink().ObjBuff += sizeof( unsigned_32 );
+        sym_name = reinterpret_cast<char *>( link.ObjBuff );
+        link.ObjBuff += sym_len;
+        if( link.ObjFormat & OBJ_FMT_32BIT_REC ) {
+            off = MGET_LE_U32_UN( link.ObjBuff );
+            link.ObjBuff += sizeof( unsigned_32 );
         } else {
-            off = MGET_LE_U16_UN( wlink().ObjBuff );
-            wlink().ObjBuff += sizeof( unsigned_16 );
+            off = MGET_LE_U16_UN( link.ObjBuff );
+            link.ObjBuff += sizeof( unsigned_16 );
         }
-        sym = SymOp( symop, sym_name, sym_len );
-        DefineSymbol( sym, snode, off, frame );
-        SkipIdx();   /* skip type index */
+        sym = SymOp(link,  symop, sym_name, sym_len );
+        DefineSymbol(link,  sym, snode, off, frame );
+        SkipIdx(link);   /* skip type index */
     }
 }
 
-static void DoLazyExtdef( bool isweak )
+static void DoLazyExtdef(Link& link,  bool isweak )
 /**************************************
  * handle the lazy and weak extdef comments
  */
@@ -562,44 +563,48 @@ static void DoLazyExtdef( bool isweak )
     symbol      *sym;
     unsigned    idx;
 
-    while( wlink().ObjBuff < wlink().EOObjRec ) {
-        ext = static_cast<extnode *>( FindNode( wlink().ExtNodes, GetIdx() ) );
+    while( link.ObjBuff < link.EOObjRec ) {
+        ext = static_cast<extnode *>( FindNode( link.ExtNodes, GetIdx(link) ) );
         sym = ext->entry;
         ext->isweak = true;
-        idx = GetIdx();
-        ext = static_cast<extnode *>( FindNode( wlink().ExtNodes, idx ) );
-        DefineLazyExtdef( sym, ext->entry, isweak );
+        idx = GetIdx(link);
+        ext = static_cast<extnode *>( FindNode( link.ExtNodes, idx ) );
+        DefineLazyExtdef(link,  sym, ext->entry, isweak );
     }
 }
 
 static void *GetVFListStart( void )
 /*********************************/
 {
-    return( wlink().ObjBuff );
+    Link& link = wlink();
+    return( link.ObjBuff );
 }
 
 static void SetVFListStart( void *start )
 /***************************************/
 {
-    wlink().ObjBuff = static_cast<byte *>( start );
+    Link& link = wlink();
+    link.ObjBuff = static_cast<byte *>( start );
 }
 
 static bool EndOfVFList( void )
 /*****************************/
 {
-    return( wlink().ObjBuff >= wlink().EOObjRec );
+    Link& link = wlink();
+    return( link.ObjBuff >= link.EOObjRec );
 }
 
 static char *GetVFListName( void )
 /*********************************/
 {
+    Link& link = wlink();
     list_of_names       *lname;
 
-    lname = FindName( GetIdx() );
+    lname = FindName(link,  GetIdx(link) );
     return( lname->name );
 }
 
-static void ProcVFTableRecord( bool ispure )
+static void ProcVFTableRecord(Link& link,  bool ispure )
 /*******************************************
  * process the watcom virtual function table information extension
  */
@@ -608,20 +613,20 @@ static void ProcVFTableRecord( bool ispure )
     symbol      *sym;
     vflistrtns  rtns;
 
-    if( (wlink().LinkFlags & LF_VF_REMOVAL) == 0 )
+    if( (link.LinkFlags & LF_VF_REMOVAL) == 0 )
         return;
-    ext = static_cast<extnode *>( FindNode( wlink().ExtNodes, GetIdx() ) );
+    ext = static_cast<extnode *>( FindNode( link.ExtNodes, GetIdx(link) ) );
     sym = ext->entry;
     ext->isweak = true;
-    ext = static_cast<extnode *>( FindNode( wlink().ExtNodes, GetIdx() ) );
+    ext = static_cast<extnode *>( FindNode( link.ExtNodes, GetIdx(link) ) );
     rtns.getstart = GetVFListStart;
     rtns.setstart = SetVFListStart;
     rtns.isend = EndOfVFList;
     rtns.getname = GetVFListName;
-    DefineVFTableRecord( sym, ext->entry, ispure, &rtns );
+    DefineVFTableRecord(link,  sym, ext->entry, ispure, &rtns );
 }
 
-static void ProcVFReference( void )
+static void ProcVFReference(Link& link)
 /**********************************
  * process a vftable reference record
  */
@@ -632,25 +637,25 @@ static void ProcVFReference( void )
     list_of_names       *lname;
     unsigned            index;
 
-    if( (wlink().LinkFlags & LF_VF_REMOVAL) == 0 )
+    if( (link.LinkFlags & LF_VF_REMOVAL) == 0 )
         return;
-    index = GetIdx();
+    index = GetIdx(link);
     if( index == 0 ) {
         LnkMsg( WRN+LOC+MSG_NOT_COMPILED_VF_ELIM, nullptr );
         return;
     }
-    ext = static_cast<extnode *>( FindNode( wlink().ExtNodes, index ) );
-    if( wlink().LinkFlags & LF_STRIP_CODE ) {
-        if( *wlink().ObjBuff == 0 ) {   /* it is a comdat index */
-            wlink().ObjBuff++;
-            lname = FindName( GetIdx() );
-            sym = FindISymbol( lname->name );
+    ext = static_cast<extnode *>( FindNode( link.ExtNodes, index ) );
+    if( link.LinkFlags & LF_STRIP_CODE ) {
+        if( *link.ObjBuff == 0 ) {   /* it is a comdat index */
+            link.ObjBuff++;
+            lname = FindName(link,  GetIdx(link) );
+            sym = FindISymbol(link,  lname->name );
             if( sym == nullptr ) {
-                sym = MakeWeakExtdef( lname->name, nullptr );
+                sym = MakeWeakExtdef(link,  lname->name, nullptr );
             }
             DefineVFReference( sym, ext->entry, true );
         } else {                /* it's a seg idx */
-            snode = static_cast<segnode *>( FindNode( wlink().SegNodes, GetIdx() ) );
+            snode = static_cast<segnode *>( FindNode( link.SegNodes, GetIdx(link) ) );
             DefineVFReference( snode, ext->entry, false );
         }
     }
@@ -659,7 +664,7 @@ static void ProcVFReference( void )
     }
 }
 
-static void UseSymbols( bool static_sym, bool iscextdef )
+static void UseSymbols(Link& link,  bool static_sym, bool iscextdef )
 /********************************************************
  * Define all external references.
  */
@@ -675,59 +680,59 @@ static void UseSymbols( bool static_sym, bool iscextdef )
     if( static_sym ) {
         symop |= ST_STATIC;
     }
-    while( wlink().ObjBuff < wlink().EOObjRec ) {
+    while( link.ObjBuff < link.EOObjRec ) {
         if( iscextdef ) {
-            lnptr = FindName( GetIdx() );
-            sym = RefISymbol( lnptr->name );
+            lnptr = FindName(link,  GetIdx(link) );
+            sym = RefISymbol(link,  lnptr->name );
         } else {
-            sym_len = *wlink().ObjBuff++;
+            sym_len = *link.ObjBuff++;
             if( sym_len == 0 ) {
-                BadObject();
+                BadObject(link);
             }
-            sym = SymOp( symop, reinterpret_cast<char *>( wlink().ObjBuff ), sym_len );
-            wlink().ObjBuff += sym_len;
+            sym = SymOp(link,  symop, reinterpret_cast<char *>( link.ObjBuff ), sym_len );
+            link.ObjBuff += sym_len;
         }
-        newnode = static_cast<extnode *>( AllocNode( wlink().ExtNodes ) );
+        newnode = static_cast<extnode *>( AllocNode( link.ExtNodes ) );
         newnode->entry = sym;
         newnode->isweak = false;
-        DefineReference( sym );
-        SkipIdx();/*  skip type index */
+        DefineReference(link,  sym );
+        SkipIdx(link);/*  skip type index */
     }
 }
 
-void SkipIdx( void )
+void SkipIdx(Link& link)
 /*******************
  * skip the index
  */
 {
-    if( *wlink().ObjBuff++ & IS_2_BYTES ) {
-        wlink().ObjBuff++;
+    if( *link.ObjBuff++ & IS_2_BYTES ) {
+        link.ObjBuff++;
     }
 }
 
-unsigned_16 GetIdx( void )
+unsigned_16 GetIdx(Link& link)
 /*************************
  * Get an index.
  */
 {
     unsigned_16 index;
 
-    index = *wlink().ObjBuff++;
+    index = *link.ObjBuff++;
     if( index & IS_2_BYTES ) {
-        index = (index & 0x7f) * 256 + *wlink().ObjBuff++;
+        index = (index & 0x7f) * 256 + *link.ObjBuff++;
     }
     return( index );
 }
 
-list_of_names *FindName( unsigned_16 index )
+list_of_names *FindName(Link& link,  unsigned_16 index )
 /*******************************************
  * Find name of specified index.
  */
 {
-    return( *static_cast<list_of_names **>( FindNode( wlink().NameNodes, index ) ) );
+    return( *static_cast<list_of_names **>( FindNode( link.NameNodes, index ) ) );
 }
 
-static void ProcLinnum( void )
+static void ProcLinnum(Link& link)
 /*****************************
  * do some processing for the linnum record
  */
@@ -735,12 +740,12 @@ static void ProcLinnum( void )
     segnode     *snode;
     bool        is32bit;
 
-    SkipIdx();          /* don't need the group idx */
-    snode = static_cast<segnode *>( FindNode( wlink().SegNodes, GetIdx() ) );
+    SkipIdx(link);          /* don't need the group idx */
+    snode = static_cast<segnode *>( FindNode( link.SegNodes, GetIdx(link) ) );
     if( snode->info & SEGINF_DEAD )   /* ignore dead segments */
         return;
-    is32bit = ( (wlink().ObjFormat & OBJ_FMT_32BIT_REC) != 0 );
-    DBIAddLines( snode->entry, wlink().ObjBuff, wlink().EOObjRec - wlink().ObjBuff, is32bit );
+    is32bit = ( (link.ObjFormat & OBJ_FMT_32BIT_REC) != 0 );
+    DBIAddLines(link,  snode->entry, link.ObjBuff, link.EOObjRec - link.ObjBuff, is32bit );
 }
 
 static void EnumFindLinesSeg( void *_seg, void *_result_seg )
@@ -758,7 +763,7 @@ static void EnumFindLinesSeg( void *_seg, void *_result_seg )
     }
 }
 
-static byte *ProcIDBlock( virt_mem *dest, byte *buffer, unsigned iterate )
+static byte *ProcIDBlock(Link& link,  virt_mem *dest, byte *buffer, unsigned iterate )
 /*************************************************************************
  * Process logically iterated data blocks.
  */
@@ -770,7 +775,7 @@ static byte *ProcIDBlock( virt_mem *dest, byte *buffer, unsigned iterate )
     unsigned        rep;
 
     if( iterate == 0 ) {  /* no iterations, so abort. */
-        return( wlink().EOObjRec );
+        return( link.EOObjRec );
     }
     count = MGET_LE_U16_UN( buffer );
     buffer += sizeof( unsigned_16 );
@@ -784,14 +789,14 @@ static byte *ProcIDBlock( virt_mem *dest, byte *buffer, unsigned iterate )
         buffer += len;
     } else {
         anchor = buffer;
-        if( wlink().ObjFormat & OBJ_FMT_MS_386 ) {
+        if( link.ObjFormat & OBJ_FMT_MS_386 ) {
             do {
                 buffer = anchor;
                 inner = count;
                 do {
                     rep = MGET_LE_U32_UN( buffer );
                     buffer += sizeof( unsigned_32 );
-                    buffer = ProcIDBlock( dest, buffer, rep );
+                    buffer = ProcIDBlock(link,  dest, buffer, rep );
                 } while( --inner != 0 );
             } while( --iterate != 0 );
         } else {
@@ -801,7 +806,7 @@ static byte *ProcIDBlock( virt_mem *dest, byte *buffer, unsigned iterate )
                 do {
                     rep = MGET_LE_U16_UN( buffer );
                     buffer += sizeof( unsigned_16 );
-                    buffer = ProcIDBlock( dest, buffer, rep );
+                    buffer = ProcIDBlock(link,  dest, buffer, rep );
                 } while( --inner != 0 );
             } while( --iterate != 0 );
         }
@@ -809,7 +814,7 @@ static byte *ProcIDBlock( virt_mem *dest, byte *buffer, unsigned iterate )
     return( buffer );
 }
 
-static void DoLIData( virt_mem start, byte *data, size_t size )
+static void DoLIData(Link& link,  virt_mem start, byte *data, size_t size )
 /**************************************************************
  * Expand logically iterated data.
  */
@@ -819,18 +824,18 @@ static void DoLIData( virt_mem start, byte *data, size_t size )
 
     end_data = data + size;
     while( data < end_data ) {
-        if( wlink().ObjFormat & OBJ_FMT_MS_386 ) {
+        if( link.ObjFormat & OBJ_FMT_MS_386 ) {
             rep = MGET_LE_U32_UN( data );
             data += sizeof( unsigned_32 );
         } else {
             rep = MGET_LE_U16_UN( data );
             data += sizeof( unsigned_16 );
         }
-        data = ProcIDBlock( &start, data, rep );
+        data = ProcIDBlock(link,  &start, data, rep );
     }
 }
 
-static void GetObject( segdata *snode, unsigned obj_offset, bool lidata )
+static void GetObject(Link& link,  segdata *snode, unsigned obj_offset, bool lidata )
 /************************************************************************
  * Load object code.
  */
@@ -840,29 +845,29 @@ static void GetObject( segdata *snode, unsigned obj_offset, bool lidata )
 
     if( snode->isdead
       || snode->isabs ) {   /* ignore dead or abs segments */
-        wlink().ObjFormat |= OBJ_FMT_IGNORE_FIXUPP; /* and any corresponding fixupps */
+        link.ObjFormat |= OBJ_FMT_IGNORE_FIXUPP; /* and any corresponding fixupps */
         return;
     }
-    wlink().ObjFormat &= ~(OBJ_FMT_IGNORE_FIXUPP | OBJ_FMT_IS_LIDATA);
+    link.ObjFormat &= ~(OBJ_FMT_IGNORE_FIXUPP | OBJ_FMT_IS_LIDATA);
     if( lidata ) {
-        wlink().ObjFormat |= OBJ_FMT_IS_LIDATA;
+        link.ObjFormat |= OBJ_FMT_IS_LIDATA;
     }
-    if( wlink().ObjBuff != wlink().EOObjRec ) {
-        size = wlink().EOObjRec - wlink().ObjBuff;
+    if( link.ObjBuff != link.EOObjRec ) {
+        size = link.EOObjRec - link.ObjBuff;
         start = snode->u1.vm_ptr + obj_offset;
         if( lidata ) {
-            DoLIData( start, wlink().ObjBuff, size );
+            DoLIData(link,  start, link.ObjBuff, size );
         } else {
             if( size + obj_offset > snode->length ) {
                 LnkMsg( FTL+LOC_REC+MSG_OBJ_FILE_ATTR, nullptr );
             }
-            PutInfo( start, wlink().ObjBuff, size );
+            PutInfo( start, link.ObjBuff, size );
         }
     }
-    SetCurrSeg( snode, obj_offset, nullptr );
+    SetCurrSeg(link,  snode, obj_offset, nullptr );
 }
 
-static void ProcLxdata( bool islidata )
+static void ProcLxdata(Link& link,  bool islidata )
 /**************************************
  * process ledata and lidata records
  */
@@ -870,25 +875,25 @@ static void ProcLxdata( bool islidata )
     segnode     *snode;
     unsigned    obj_offset;
 
-    snode = static_cast<segnode *>( FindNode( wlink().SegNodes, GetIdx() ) );
+    snode = static_cast<segnode *>( FindNode( link.SegNodes, GetIdx(link) ) );
     snode->entry->u.leader->info |= SEGINF_LXDATA_SEEN;
     snode->info |= SEGINF_LXDATA_SEEN;
-    if( wlink().ObjFormat & OBJ_FMT_32BIT_REC ) {
-        obj_offset = MGET_LE_U32_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_32 );
+    if( link.ObjFormat & OBJ_FMT_32BIT_REC ) {
+        obj_offset = MGET_LE_U32_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_32 );
     } else {
-        obj_offset = MGET_LE_U16_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_16 );
+        obj_offset = MGET_LE_U16_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_16 );
     }
 #ifdef DEVBUILD
     if( stricmp( snode->entry->u.leader->segname.u.ptr, "_BSS" ) == 0 ) {
         LnkMsg( ERR+LOC_REC+MSG_INTERNAL, "s", "Initialized BSS found" );
     }
 #endif
-    GetObject( snode->entry, obj_offset, islidata );
+    GetObject(link,  snode->entry, obj_offset, islidata );
 }
 
-static void ProcHllLinnum( void )
+static void ProcHllLinnum(Link& link)
 /****************************/
 // Because HLL have FIXUPs to the LINNUM records we treat it as
 // a LEDATA record for a special $$LINES segment.
@@ -899,12 +904,12 @@ static void ProcHllLinnum( void )
     segnode         *snode;
     unsigned        obj_offset;
 
-    if( (wlink().LinkFlags & LF_HLL_DBI_FLAG) == 0 )
+    if( (link.LinkFlags & LF_HLL_DBI_FLAG) == 0 )
         return;
 
     /* find the $$LINES segment, create it if not found with this module. */
     snode = nullptr;
-    IterateNodelist( wlink().SegNodes, EnumFindLinesSeg, &snode );
+    IterateNodelist( link.SegNodes, EnumFindLinesSeg, &snode );
     if( snode == nullptr ) {
         segdata             *sdata;
         segnode             *snode1;
@@ -914,7 +919,7 @@ static void ProcHllLinnum( void )
         unsigned            len_1st_linnum;
         byte                *buf;
 
-        sdata = AllocSegData();
+        sdata = AllocSegData(link);
         sdata->u.name.u.ptr = const_cast<char *>( "$$LINES" );
         sdata->combine      = COMBINE_ADD;
         sdata->align        = 0;
@@ -931,10 +936,10 @@ static void ProcHllLinnum( void )
          */
         loc_1st_linnum = -1;
         len_1st_linnum = 0;
-        loc = wlink().CurrMod->location;
-        DEBUG(( DBG_HLL, "ProcHllLinnum: counting LINNUM data for %s", wlink().CurrMod->name ));
+        loc = link.CurrMod->location;
+        DEBUG(( DBG_HLL, "ProcHllLinnum: counting LINNUM data for %s", link.CurrMod->name ));
         do {
-            rec = static_cast<omf_record *>( CacheRead( wlink().CurrMod->u1.source, loc, sizeof( *rec ) ) );
+            rec = static_cast<omf_record *>( CacheRead(link,  link.CurrMod->u1.source, loc, sizeof( *rec ) ) );
             if (!rec) {
                 break;
             }
@@ -950,80 +955,80 @@ static void ProcHllLinnum( void )
         } while ( rec->command != CMD_MODEND && rec->command != CMD_MODE32 );
 
         /* get the current record from the cache */
-        buf = static_cast<byte *>( CacheRead( wlink().CurrMod->u1.source, loc_1st_linnum, len_1st_linnum ) );
-        if ( buf != wlink().ObjBuff ) {
-            wlink().EOObjRec = buf + len_1st_linnum - 1;
-            wlink().ObjBuff = buf;
+        buf = static_cast<byte *>( CacheRead(link,  link.CurrMod->u1.source, loc_1st_linnum, len_1st_linnum ) );
+        if ( buf != link.ObjBuff ) {
+            link.EOObjRec = buf + len_1st_linnum - 1;
+            link.ObjBuff = buf;
         }
 
-        snode1 = static_cast<segnode *>( AllocNode( wlink().SegNodes ) );
+        snode1 = static_cast<segnode *>( AllocNode( link.SegNodes ) );
         snode1->entry = sdata;
-        AllocateSegment( snode1, _HllLineClass );
+        AllocateSegment(link,  snode1, _HllLineClass );
 
         st().HllLineNumOffset = 0;
-        IterateNodelist( wlink().SegNodes, EnumFindLinesSeg, &snode );
+        IterateNodelist( link.SegNodes, EnumFindLinesSeg, &snode );
     }
 
-    SkipIdx(); // group idx (0)
-    SkipIdx(); // segment idx (ignored)
+    SkipIdx(link); // group idx (0)
+    SkipIdx(link); // segment idx (ignored)
 
     /* Do like ProcLxData */
     obj_offset = st().HllLineNumOffset;
-    DEBUG(( DBG_HLL, "ProcHllLinnum: HllLineNumOffset=%d length=%h", st().HllLineNumOffset, wlink().EOObjRec - wlink().ObjBuff ));
-    st().HllLineNumOffset += wlink().EOObjRec - wlink().ObjBuff;
+    DEBUG(( DBG_HLL, "ProcHllLinnum: HllLineNumOffset=%d length=%h", st().HllLineNumOffset, link.EOObjRec - link.ObjBuff ));
+    st().HllLineNumOffset += link.EOObjRec - link.ObjBuff;
     snode->entry->u.leader->info |= SEGINF_LXDATA_SEEN;
     snode->info |= SEGINF_LXDATA_SEEN;
-    GetObject( snode->entry, obj_offset, false );
+    GetObject(link,  snode->entry, obj_offset, false );
 }
 
-static void LinkDirective( void )
+static void LinkDirective(Link& link)
 /*******************************/
 {
     unsigned        directive;
     lib_priority    priority;
     segnode         *snode;
 
-    directive = *wlink().ObjBuff++;
+    directive = *link.ObjBuff++;
     switch( directive ) {
     case LDIR_DEFAULT_LIBRARY:
-        if( wlink().ObjBuff < wlink().EOObjRec ) {
-            priority = static_cast<lib_priority>( *wlink().ObjBuff++ - '0' );
-            AddCommentLib( reinterpret_cast<char *>( wlink().ObjBuff ), wlink().EOObjRec - wlink().ObjBuff, priority );
+        if( link.ObjBuff < link.EOObjRec ) {
+            priority = static_cast<lib_priority>( *link.ObjBuff++ - '0' );
+            AddCommentLib(link,  reinterpret_cast<char *>( link.ObjBuff ), link.EOObjRec - link.ObjBuff, priority );
         }
         break;
     case LDIR_SOURCE_LANGUAGE:
-        DBIP1Source( wlink().ObjBuff, wlink().EOObjRec );
+        DBIP1Source(link,  link.ObjBuff, link.EOObjRec );
         break;
     case LDIR_VF_PURE_DEF:
-        ProcVFTableRecord( true );
+        ProcVFTableRecord(link,  true );
         break;
     case LDIR_VF_TABLE_DEF:
-        ProcVFTableRecord( false );
+        ProcVFTableRecord(link,  false );
         break;
     case LDIR_VF_REFERENCE:
-        ProcVFReference();
+        ProcVFReference(link);
         break;
     case LDIR_PACKDATA:
-        if( (wlink().LinkFlags & LF_PACKDATA_FLAG) == 0 ) {
-            wlink().PackDataLimit = MGET_LE_U32_UN( wlink().ObjBuff );
-            wlink().LinkFlags |= LF_PACKDATA_FLAG;
+        if( (link.LinkFlags & LF_PACKDATA_FLAG) == 0 ) {
+            link.PackDataLimit = MGET_LE_U32_UN( link.ObjBuff );
+            link.LinkFlags |= LF_PACKDATA_FLAG;
         }
         break;
     case LDIR_OPT_FAR_CALLS:
-        snode = static_cast<segnode *>( FindNode( wlink().SegNodes, GetIdx() ) );
+        snode = static_cast<segnode *>( FindNode( link.SegNodes, GetIdx(link) ) );
         snode->entry->canfarcall = true;
         snode->entry->iscode = true;
         break;
     case LDIR_FLAT_ADDRS:
-        wlink().CurrMod->flags_mod |= MOD_FLATTEN_DBI;
+        link.CurrMod->flags_mod |= MOD_FLATTEN_DBI;
         break;
     case LDIR_OPT_UNSAFE:
-        wlink().ObjFormat |= OBJ_FMT_UNSAFE_FIXUPP;
+        link.ObjFormat |= OBJ_FMT_UNSAFE_FIXUPP;
         break;
     }
 }
 
-static void Comment( void )
+static void Comment(Link& link)
 /**************************
  * Process a comment record.
  */
@@ -1033,67 +1038,67 @@ static void Comment( void )
     int                 proc;
     unsigned char       which;
 
-    attribute = *wlink().ObjBuff++;
-    class_ = *wlink().ObjBuff++;
+    attribute = *link.ObjBuff++;
+    class_ = *link.ObjBuff++;
 
     switch( class_ ) {
     case CMT_DLL_ENTRY:
-        which = *wlink().ObjBuff++;
+        which = *link.ObjBuff++;
         switch( which ) {
         case MOMF_IMPDEF:
         case MOMF_EXPDEF:
-            if( SeenDLLRecord() ) {
+            if( SeenDLLRecord(link) ) {
                 if( which == MOMF_EXPDEF ) {
-                    ProcExportKeyword();
+                    ProcExportKeyword(link);
                 } else {
-                    ProcImportKeyword();
+                    ProcImportKeyword(link);
                 }
             }
             break;
         case MOMF_PROT_LIB:
-            if( wlink().FmtData.type & MK_WIN_NE ) {
-                wlink().FmtData.u.os2fam.is_private_dll = true;
+            if( link.FmtData.type & MK_WIN_NE ) {
+                link.FmtData.u.os2fam.is_private_dll = true;
             }
             break;
         }
         break;
     case CMT_WAT_PROC_MODEL:
     case CMT_MS_PROC_MODEL:
-        proc = *wlink().ObjBuff - '0';
-        if( proc > wlink().FmtData.cpu_type )
-            wlink().FmtData.cpu_type = proc;
+        proc = *link.ObjBuff - '0';
+        if( proc > link.FmtData.cpu_type )
+            link.FmtData.cpu_type = proc;
         break;
     case CMT_DOSSEG:
-        wlink().LinkState |= LS_DOSSEG_FLAG;
+        link.LinkState |= LS_DOSSEG_FLAG;
         break;
     case CMT_DEFAULT_LIBRARY:
-        AddCommentLib( reinterpret_cast<char *>( wlink().ObjBuff ), wlink().EOObjRec - wlink().ObjBuff, static_cast<lib_priority>( LIB_PRIORITY_MAX - 2 ) );
+        AddCommentLib(link,  reinterpret_cast<char *>( link.ObjBuff ), link.EOObjRec - link.ObjBuff, static_cast<lib_priority>( LIB_PRIORITY_MAX - 2 ) );
         break;
     case CMT_LINKER_DIRECTIVE:
-        LinkDirective();
+        LinkDirective(link);
         break;
     case CMT_WKEXT:
-        DoLazyExtdef( true );
+        DoLazyExtdef(link,  true );
         break;
     case CMT_LZEXT:
-        DoLazyExtdef( false );
+        DoLazyExtdef(link,  false );
         break;
     case CMT_EASY_OMF:
-        if( memcmp( wlink().ObjBuff, EASY_OMF_SIGNATURE, 5 ) == 0 ) {
-            wlink().ObjFormat |= OBJ_FMT_EASY_OMF;
+        if( memcmp( link.ObjBuff, EASY_OMF_SIGNATURE, 5 ) == 0 ) {
+            link.ObjFormat |= OBJ_FMT_EASY_OMF;
         }
         break;
     case CMT_SOURCE_NAME:
         DBIComment();
         break;
     case CMT_MS_OMF:
-        DoMSOMF();
+        DoMSOMF(link);
         break;
     case 0x80:      /* Code Gen used to put bytes out in wrong order */
         if( attribute == CMT_SOURCE_NAME ) {    /* no longer generated */
             DBIComment();
         } else if( attribute == CMT_LINKER_DIRECTIVE ) {  /* linker directive */
-            LinkDirective();
+            LinkDirective(link);
         }
         break;
     }
@@ -1104,117 +1109,118 @@ static void Pass1Cmd( byte cmd )
  * Process an object record for pass 1
  */
 {
+    Link& link = wlink();
     bool isstatic;
 
     isstatic = false;
     switch( cmd ) {
     case CMD_THEADR:
-        ProcTHEADR();
+        ProcTHEADR(link);
         break;
     case CMD_COMENT:
-        Comment();
+        Comment(link);
         break;
     case CMD_LLNAMES:
     case CMD_LNAMES:
-        AddNames();
+        AddNames(link);
         break;
     case CMD_SEGD32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_SEGDEF:
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        ProcSegDef();
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        ProcSegDef(link);
         break;
     case CMD_STATIC_PUBD32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_STATIC_PUBDEF:
-        ProcPubdef( true );
+        ProcPubdef(link,  true );
         break;
     case CMD_PUBD32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_PUBDEF:
-        ProcPubdef( false );
+        ProcPubdef(link,  false );
         break;
     case CMD_STATIC_EXTDEF:
     case CMD_STATIC_EXTD32:
         isstatic = true;
     case CMD_EXTDEF:
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        UseSymbols( isstatic, false );
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        UseSymbols(link,  isstatic, false );
         break;
     case CMD_CEXTDEF:
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        UseSymbols( false, true );
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        UseSymbols(link,  false, true );
         break;
     case CMD_GRPDEF:
-        DefineGroup();
+        DefineGroup(link);
         break;
     case CMD_LINN32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_LINNUM:
-        switch( wlink().CurrMod->omfdbg ) {
+        switch( link.CurrMod->omfdbg ) {
         case OMF_DBG_CODEVIEW:
-            ProcLinnum();
+            ProcLinnum(link);
             break;
         case OMF_DBG_HLL_03:
         case OMF_DBG_HLL_04:
         case OMF_DBG_HLL_06:
-            ProcHllLinnum();
+            ProcHllLinnum(link);
             break;
         }
         break;
     case CMD_LINS32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_LINSYM:
-        ProcLinsym();
+        ProcLinsym(link);
         break;
     case CMD_STATIC_COMDEF:
         isstatic = true;
     case CMD_COMDEF:
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        ProcComdef( isstatic );
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        ProcComdef(link,  isstatic );
         break;
     case CMD_COMD32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_COMDAT:
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        ProcComdat();
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        ProcComdat(link);
         break;
     case CMD_LEDA32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_LEDATA:
-        ProcLxdata( false );
+        ProcLxdata(link,  false );
         break;
     case CMD_LIDA32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_LIDATA:
-        ProcLxdata( true );
+        ProcLxdata(link,  true );
         break;
     case CMD_FIXU32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_FIXUPP:        /* count the fixups for each seg_leader */
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        DoRelocs();
-        wlink().ObjFormat &= ~OBJ_FMT_UNSAFE_FIXUPP;
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        DoRelocs(link);
+        link.ObjFormat &= ~OBJ_FMT_UNSAFE_FIXUPP;
         break;
     case CMD_MODE32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_MODEND:
-        ProcModuleEnd();
+        ProcModuleEnd(link);
         break;
     case CMD_ALIAS:
-        ProcAlias();
+        ProcAlias(link);
         break;
     case CMD_BAKP32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_BAKPAT:
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        ProcBakpat();
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        ProcBakpat(link);
         break;
     case CMD_NBKP32:
-        wlink().ObjFormat |= OBJ_FMT_MS_386;
+        link.ObjFormat |= OBJ_FMT_MS_386;
     case CMD_NBKPAT:
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
-        ProcNbkpat();
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        ProcNbkpat(link);
         break;
     case CMD_VERNUM:
     case CMD_VENDEXT:
@@ -1243,7 +1249,7 @@ static void Pass1Cmd( byte cmd )
         LnkMsg( WRN+LOC_REC+MSG_REC_NOT_DONE, "x", cmd );
         break;
     default:
-        wlink().CurrMod->u1.source->infile->status |= INSTAT_IOERR;
+        link.CurrMod->u1.source->infile->status |= INSTAT_IOERR;
         LnkMsg( ERR+LOC_REC+MSG_BAD_REC_TYPE, "x", cmd );
         break;
     }
@@ -1254,17 +1260,18 @@ unsigned long OMFPass1( void )
  * do pass 1 for OMF object files
  */
 {
+    Link& link = wlink();
     unsigned long retval;
 
-    PermStartMod( wlink().CurrMod );
-    if( wlink().LinkState & (LS_HAVE_MACHTYPE_MASK & ~LS_HAVE_X86_CODE) ) {
-        LnkMsg( WRN+MSG_MACHTYPE_DIFFERENT, "s", wlink().CurrMod->u1.source->infile->name);
+    PermStartMod( link.CurrMod );
+    if( link.LinkState & (LS_HAVE_MACHTYPE_MASK & ~LS_HAVE_X86_CODE) ) {
+        LnkMsg( WRN+MSG_MACHTYPE_DIFFERENT, "s", link.CurrMod->u1.source->infile->name);
     } else {
-        wlink().LinkState |= LS_HAVE_X86_CODE;
+        link.LinkState |= LS_HAVE_X86_CODE;
     }
-    wlink().CurrMod->omfdbg = OMF_DBG_CODEVIEW; /* Assume MS style LINNUM records */
-    retval = ProcObj( wlink().CurrMod->u1.source, wlink().CurrMod->location, &Pass1Cmd );
-    IterateNodelist( wlink().SegNodes, CheckUninit, nullptr );
+    link.CurrMod->omfdbg = OMF_DBG_CODEVIEW; /* Assume MS style LINNUM records */
+    retval = ProcObj(link,  link.CurrMod->u1.source, link.CurrMod->location, &Pass1Cmd );
+    IterateNodelist( link.SegNodes, CheckUninit, nullptr );
     ResolveComdats();
     return( retval );
 }

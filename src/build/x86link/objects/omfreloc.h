@@ -32,8 +32,8 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void     DoRelocs( void );
-extern void     ProcBakpat( void );
+extern void     DoRelocs(Link& link);
+extern void     ProcBakpat(Link& link);
 extern void     DoBakPats( void );
-extern void     ProcNbkpat( void );
+extern void     ProcNbkpat(Link& link);
 extern void     ResetOMFReloc( void );

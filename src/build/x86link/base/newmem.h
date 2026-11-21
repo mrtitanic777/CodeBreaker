@@ -32,15 +32,15 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern segment Find16MSeg( segment );
+extern segment Find16MSeg(Link& link,  segment );
 
-#define SUB_REAL_ADDR( l, r ) ((((offset)(l).seg-(offset)(r).seg) << wlink().FmtData.SegShift) + ((l).off-(r).off))
+#define SUB_REAL_ADDR( l, r ) ((((offset)(l).seg-(offset)(r).seg) << link.FmtData.SegShift) + ((l).off-(r).off))
 
-#define SUB_16M_ADDR( l, r ) (((offset)Find16MSeg((l).seg)-(offset)Find16MSeg((r).seg))*16+((l).off-(r).off))
+#define SUB_16M_ADDR( l, r ) (((offset)Find16MSeg(link, (l).seg)-(offset)Find16MSeg(link, (r).seg))*16+((l).off-(r).off))
 
 #define LESS_THAN_ADDR( l, r ) (MK_REAL_ADDR((l).seg,(l).off) < MK_REAL_ADDR((r).seg,(r).off))
 
-#define MK_REAL_ADDR( seg, off )  ( ((offset)(seg) << wlink().FmtData.SegShift) + (off) )
+#define MK_REAL_ADDR( seg, off )  ( ((offset)(seg) << link.FmtData.SegShift) + (off) )
 
 #define SEG_GROUP_DELTA(x)  SUB_REAL_ADDR( (x)->seg_addr, (x)->group->addr )
 

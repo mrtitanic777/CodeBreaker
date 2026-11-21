@@ -35,23 +35,23 @@
 
 #define WriteMapLnkMsg(m,...)   LnkMsg( MAP + m, __VA_ARGS__ )
 
-extern void     ResetWriteMapIO( void );
-extern void     MapInit( void );
-extern void     MapFini( void );
+extern void     ResetWriteMapIO(Link& link);
+extern void     MapInit(Link& link);
+extern void     MapFini(Link& link);
 extern void     StartTime( void );
 extern void     EndTime( void );
-extern void     RecordUndefinedSym( symbol * );
-extern void     PrintUndefinedSyms( void );
-extern void     WriteMapHead( section * );
-extern void     WriteMapOvlPubHead( section *sec );
-extern void     WriteMapOvlVectHead( vect_state *VectState );
-extern void     WriteMapModulesSegments( void );
-extern void     WriteMapLibsUsed( void );
-extern void     WriteMapLnkMsgCallback( unsigned msgnum, const char *str, size_t len );
-extern void     WriteMapTracedSymRecord( symbol * );
-extern void     WriteMapTracedSyms( void );
+extern void     RecordUndefinedSym(Link& link,  symbol * );
+extern void     PrintUndefinedSyms(Link& link);
+extern void     WriteMapHead(Link& link,  section * );
+extern void     WriteMapOvlPubHead(Link& link,  section *sec );
+extern void     WriteMapOvlVectHead(Link& link,  vect_state *VectState );
+extern void     WriteMapModulesSegments(Link& link);
+extern void     WriteMapLibsUsed(Link& link);
+extern void     WriteMapLnkMsgCallback(Link& link,  unsigned msgnum, const char *str, size_t len );
+extern void     WriteMapTracedSymRecord(Link& link,  symbol * );
+extern void     WriteMapTracedSyms(Link& link);
 extern void     WriteMapPubStart( void );
-extern void     WriteMapPubEnd( void );
-extern void     WriteMapPubSortStart( pubdefinfo *info );
-extern void     WriteMapPubSortEnd( pubdefinfo *info );
-extern void     WriteMapPubEntry( pubdefinfo *info, symbol *sym );
+extern void     WriteMapPubEnd(Link& link);
+extern void     WriteMapPubSortStart(Link& link,  pubdefinfo *info );
+extern void     WriteMapPubSortEnd(Link& link,  pubdefinfo *info );
+extern void     WriteMapPubEntry(Link& link,  pubdefinfo *info, symbol *sym );

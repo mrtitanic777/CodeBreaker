@@ -58,7 +58,7 @@ typedef struct {
     hex_segment     seg;
 } hex_addr;
 
-static bool WriteBinSegGroup( group_entry *group )
+static bool WriteBinSegGroup(Link& link,  group_entry *group )
 /*********************************************/
 /* write the data for group to the loadfile */
 /* returns true if the file should be repositioned */
@@ -72,20 +72,20 @@ static bool WriteBinSegGroup( group_entry *group )
     if( group->size != 0
       || (group->leaders->class_->flags & CLASS_COPY) ) {
         sect = group->section;
-        wlink().CurrSect = sect;
+        link.CurrSect = sect;
         finfo = sect->outfile;
         file_loc = GROUP_FILE_LOC( group );
         // Offset may make this go negative for NOEMIT classes or segments
         if( (long)file_loc >= 0 ) {
             if( file_loc > finfo->file_loc ) {
-                PadLoad( file_loc - finfo->file_loc );
+                PadLoad(link,  file_loc - finfo->file_loc );
             } else if( file_loc != finfo->file_loc ) {
-                SeekLoad( file_loc );
+                SeekLoad(link,  file_loc );
                 repos = true;
             }
             DEBUG((DBG_LOADDOS, "group %a section %d to %l in %s",
                 &group->addr, sect->ovlref, file_loc, finfo->fname ));
-            file_loc += WriteGroupLoad( group, repos );
+            file_loc += WriteGroupLoad(link,  group, repos );
             if( file_loc > finfo->file_loc ) {
                 finfo->file_loc = file_loc;
             }
@@ -95,7 +95,7 @@ static bool WriteBinSegGroup( group_entry *group )
 }
 
 
-void BinOutput( void )
+void BinOutput(Link& link)
 /********************/
 {
     outfilelist         *fnode;
@@ -107,48 +107,48 @@ void BinOutput( void )
 #endif
 
 #if defined( _OS2 ) || defined( _QNX ) || defined( _ELF )
-    if( wlink().FmtData.type & (MK_PE | MK_QNX_FLAT | MK_OS2_FLAT | MK_WIN_VXD | MK_ELF) ) {
-        wlink().CurrSect = wlink().Root;        // needed for WriteInfo.
-        wlink().Root->sect_addr = wlink().Groups->addr;
-        fnode = wlink().Root->outfile;
+    if( link.FmtData.type & (MK_PE | MK_QNX_FLAT | MK_OS2_FLAT | MK_WIN_VXD | MK_ELF) ) {
+        link.CurrSect = link.Root;        // needed for WriteInfo.
+        link.Root->sect_addr = link.Groups->addr;
+        fnode = link.Root->outfile;
         fnode->file_loc = 0;
-        wlink().Root->u.file_loc = wlink().Root->sect_addr.off - wlink().FmtData.output_offset;
+        link.Root->u.file_loc = link.Root->sect_addr.off - link.FmtData.output_offset;
         /* write groups */
-        for( group = wlink().Groups; group != nullptr; group = group->next ) {
+        for( group = link.Groups; group != nullptr; group = group->next ) {
             if( group->leaders->class_->flags & CLASS_COPY ) {
-                size = CalcGroupSize( group->leaders->class_->DupClass->segs->group );
+                size = CalcGroupSize(link,  group->leaders->class_->DupClass->segs->group );
             } else {
-                size = CalcGroupSize( group );
+                size = CalcGroupSize(link,  group );
             }
             if( size ) {
-                diff = ( wlink().FmtData.base + group->addr.off + group->linear - wlink().FmtData.output_offset ) - PosLoad();
+                diff = ( link.FmtData.base + group->addr.off + group->linear - link.FmtData.output_offset ) - PosLoad(link);
                 if( diff < 0 ) {
                     LnkMsg( ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &(group->addr));
                 } else if( diff > 0 ) {
-                    PadLoad( static_cast<size_t>( diff ) );
+                    PadLoad(link,  static_cast<size_t>( diff ) );
                 }
-                WriteGroupLoad( group, false );
+                WriteGroupLoad(link,  group, false );
             }
         }
     } else {
 #endif
-        OrderGroups( CompareDosSegments );
-        wlink().CurrSect = wlink().Root;        // needed for WriteInfo.
-        wlink().Root->sect_addr = wlink().Groups->addr;
-        fnode = wlink().Root->outfile;
+        OrderGroups(link,  CompareDosSegments );
+        link.CurrSect = link.Root;        // needed for WriteInfo.
+        link.Root->sect_addr = link.Groups->addr;
+        fnode = link.Root->outfile;
         fnode->file_loc = 0;
-        wlink().Root->u.file_loc = ( wlink().Root->sect_addr.seg << wlink().FmtData.SegShift ) + wlink().Root->sect_addr.off - wlink().FmtData.output_offset;
+        link.Root->u.file_loc = ( link.Root->sect_addr.seg << link.FmtData.SegShift ) + link.Root->sect_addr.off - link.FmtData.output_offset;
         /* write groups */
-        for( group = wlink().Groups; group != nullptr; group = group->next ) {
-            repos = WriteBinSegGroup( group );
+        for( group = link.Groups; group != nullptr; group = group->next ) {
+            repos = WriteBinSegGroup(link,  group );
             if( repos ) {
-                SeekLoad( fnode->file_loc );
+                SeekLoad(link,  fnode->file_loc );
             }
         }
 #if defined( _OS2 ) || defined( _QNX ) || defined( _ELF )
     }
 #endif
-    DBIWrite();
+    DBIWrite(link);
 }
 
 // The following routine generates Intel Hex records using data buffered in LineBuf.
@@ -185,7 +185,7 @@ HexState& hexState()
 
 }  // namespace
 
-static void WriteHexLine( void )
+static void WriteHexLine(Link& link)
 /******************************/
 {
     HexState         &hs = hexState();
@@ -196,10 +196,10 @@ static void WriteHexLine( void )
     unsigned_16      seg_shift;
     unsigned_16      curr_offs;
 
-    if( wlink().FmtData.output_hshift ) {
-        seg_shift = wlink().FmtData.HexSegShift;
+    if( link.FmtData.output_hshift ) {
+        seg_shift = link.FmtData.HexSegShift;
     } else {
-        seg_shift = wlink().FmtData.SegShift;
+        seg_shift = link.FmtData.SegShift;
     }
     if( ( hs.next_addr.off + hs.buf_offset >= ( 0x10000UL << seg_shift ) )
       && !hs.linear ) {
@@ -212,7 +212,7 @@ static void WriteHexLine( void )
             hs.next_addr.seg = static_cast<hex_segment>( hs.next_addr.off >> seg_shift );
             checksum = 4 + (( hs.next_addr.seg >> 8 ) & 0xFF) + (hs.next_addr.seg & 0xFF);
             sprintf( str_buf, ":02000002%04x%02x\r\n", hs.next_addr.seg, (-checksum) & 0xFF );
-            WriteLoad( str_buf, 17 );
+            WriteLoad(link,  str_buf, 17 );
         }
         curr_offs = static_cast<unsigned_16>( hs.next_addr.off - ( hs.next_addr.seg << seg_shift ) );
     } else {
@@ -220,7 +220,7 @@ static void WriteHexLine( void )
             hs.next_addr.seg = static_cast<hex_segment>( hs.next_addr.off >> 16 );               //   an extended linear record
             checksum = 6 + (( hs.next_addr.seg >> 8 ) & 0xFF) + (hs.next_addr.seg & 0xFF);
             sprintf( str_buf, ":02000004%04x%02x\r\n", hs.next_addr.seg, (-checksum) & 0xFF );
-            WriteLoad( str_buf, 17);
+            WriteLoad(link,  str_buf, 17);
         }
         curr_offs = static_cast<unsigned_16>( hs.next_addr.off - ( hs.next_addr.seg << 16 ) );
     }
@@ -234,12 +234,13 @@ static void WriteHexLine( void )
         checksum += hs.lineBuf[i++];
     }
     sprintf( str_buf + 9 + 2 * i, "%02x\r\n", (-checksum) & 0xFF );
-    WriteLoad( str_buf, 13 + 2 * i );
+    WriteLoad(link,  str_buf, 13 + 2 * i );
 }
 
 static bool WriteHexData( void *_sdata, void *_offs )
 /***************************************************/
 {
+    Link& link = wlink();
     HexState         &hs = hexState();
     segdata          *sdata = static_cast<segdata *>( _sdata );
     hex_offset       offs = *static_cast<hex_offset *>( _offs ) + sdata->a.delta;
@@ -259,7 +260,7 @@ static bool WriteHexData( void *_sdata, void *_offs )
                 LnkMsg( ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &addr );
             }
             if( hs.buf_offset > 0 ) {          // If partial record in buffer, flush
-                WriteHexLine();
+                WriteHexLine(link);
             }
             hs.next_addr.off = offs;
         }
@@ -272,7 +273,7 @@ static bool WriteHexData( void *_sdata, void *_offs )
             ReadInfo( sdata->u1.vm_ptr + src_offs, hs.lineBuf.data() + hs.buf_offset, piece );
             hs.buf_offset += piece;
             if( hs.buf_offset == HEXLEN ) {
-                WriteHexLine();             // Only write full buffers
+                WriteHexLine(link);             // Only write full buffers
                 hs.next_addr.off += HEXLEN;    // hs.next_addr.off reflects start of line
             }                               // Partial records will be written later
             src_offs += piece;              //   if address is not contiguous
@@ -284,6 +285,7 @@ static bool WriteHexData( void *_sdata, void *_offs )
 static bool DoHexLeader( void *_seg, void *_grp_offs )
 /***************************************************/
 {
+    Link& link = wlink();
     seg_leader      *seg = static_cast<seg_leader *>( _seg );
 
     if( EMIT_CLASS( seg->class_ )
@@ -297,26 +299,27 @@ static bool DoHexLeader( void *_seg, void *_grp_offs )
 static bool DoHexDupLeader( void *seg, void *_grp_offs )
 /******************************************************/
 {
+    Link& link = wlink();
     hex_offset offs = *static_cast<hex_offset *>( _grp_offs ) + SEG_GROUP_DELTA( static_cast<seg_leader *>( seg ) );
 
     RingLookup( static_cast<seg_leader *>( seg )->pieces, WriteHexData, &offs );
     return( false );
 }
 
-static void WriteStart( void )
+static void WriteStart(Link& link)
 /****************************/
 {
     char        str_buf[22];
     unsigned_16 checksum;
 
-    if( wlink().StartInfo.addr.off > 0xffff ) {
-        checksum = 9 + ((wlink().StartInfo.addr.off >> 24) & 0xFF) + ((wlink().StartInfo.addr.off >> 16) & 0xFF) + ((wlink().StartInfo.addr.off >> 8) & 0xFF) + (wlink().StartInfo.addr.off & 0xFF);
-        sprintf( str_buf, ":04000005%08lx%02x\r\n", (unsigned long)wlink().StartInfo.addr.off, (-checksum) & 0xFF );
+    if( link.StartInfo.addr.off > 0xffff ) {
+        checksum = 9 + ((link.StartInfo.addr.off >> 24) & 0xFF) + ((link.StartInfo.addr.off >> 16) & 0xFF) + ((link.StartInfo.addr.off >> 8) & 0xFF) + (link.StartInfo.addr.off & 0xFF);
+        sprintf( str_buf, ":04000005%08lx%02x\r\n", (unsigned long)link.StartInfo.addr.off, (-checksum) & 0xFF );
     } else {
-        checksum = 7 + ((wlink().StartInfo.addr.seg >> 8) & 0xFF) + (wlink().StartInfo.addr.seg & 0xFF) + ((wlink().StartInfo.addr.off >> 8) & 0xFF) + (wlink().StartInfo.addr.off & 0xFF);
-        sprintf( str_buf, ":04000003%04x%04x%02x\r\n", (unsigned)wlink().StartInfo.addr.seg, (unsigned)wlink().StartInfo.addr.off, (-checksum) & 0xFF );
+        checksum = 7 + ((link.StartInfo.addr.seg >> 8) & 0xFF) + (link.StartInfo.addr.seg & 0xFF) + ((link.StartInfo.addr.off >> 8) & 0xFF) + (link.StartInfo.addr.off & 0xFF);
+        sprintf( str_buf, ":04000003%04x%04x%02x\r\n", (unsigned)link.StartInfo.addr.seg, (unsigned)link.StartInfo.addr.off, (-checksum) & 0xFF );
     }
-    WriteLoad( str_buf, 21 );
+    WriteLoad(link,  str_buf, 21 );
 }
 
 typedef struct {
@@ -342,7 +345,7 @@ static bool WriteHexCopyGroups( void *_seg, void *_info )
 }
 
 
-void HexOutput( void )
+void HexOutput(Link& link)
 /********************/
 {
     HexState            &hs = hexState();
@@ -366,25 +369,25 @@ void HexOutput( void )
     hs.buf_offset    = 0;
 
 #if defined( _OS2 ) || defined( _QNX ) || defined( _ELF )
-    if( wlink().FmtData.type & (MK_PE | MK_QNX_FLAT | MK_OS2_FLAT | MK_WIN_VXD | MK_ELF) ) {
-        wlink().CurrSect = wlink().Root;    // needed for WriteInfo.
-        wlink().Root->sect_addr = wlink().Groups->addr;
-        fnode = wlink().Root->outfile;
+    if( link.FmtData.type & (MK_PE | MK_QNX_FLAT | MK_OS2_FLAT | MK_WIN_VXD | MK_ELF) ) {
+        link.CurrSect = link.Root;    // needed for WriteInfo.
+        link.Root->sect_addr = link.Groups->addr;
+        fnode = link.Root->outfile;
         fnode->file_loc = 0;
-        wlink().Root->u.file_loc = wlink().Root->sect_addr.off - wlink().FmtData.output_offset;
+        link.Root->u.file_loc = link.Root->sect_addr.off - link.FmtData.output_offset;
         /* write groups */
-        for( group = wlink().Groups; group != nullptr; group = group->next ) {
+        for( group = link.Groups; group != nullptr; group = group->next ) {
             class_ = group->leaders->class_;
             if( class_->flags & CLASS_COPY ) {
                 wrkgrp = class_->DupClass->segs->group;
             } else {
                 wrkgrp = group;
             }
-            size = CalcGroupSize( wrkgrp );
+            size = CalcGroupSize(link,  wrkgrp );
             if( size != 0 ) {
-                info.offs = (group->addr.off + group->linear - wlink().FmtData.output_offset);
+                info.offs = (group->addr.off + group->linear - link.FmtData.output_offset);
                 sect = wrkgrp->section;
-                wlink().CurrSect = sect;
+                link.CurrSect = sect;
     #ifdef DEVBUILD
                 finfo = sect->outfile;
                 DEBUG((DBG_LOADDOS, "group %a section %d to %l in %s",
@@ -399,18 +402,18 @@ void HexOutput( void )
         }
     } else {
 #endif
-        OrderGroups( CompareDosSegments );
-        wlink().CurrSect = wlink().Root;    // needed for WriteInfo.
-        wlink().Root->sect_addr = wlink().Groups->addr;
-        fnode = wlink().Root->outfile;
+        OrderGroups(link,  CompareDosSegments );
+        link.CurrSect = link.Root;    // needed for WriteInfo.
+        link.Root->sect_addr = link.Groups->addr;
+        fnode = link.Root->outfile;
         fnode->file_loc = 0;
-        wlink().Root->u.file_loc = (wlink().Root->sect_addr.seg << wlink().FmtData.SegShift) + wlink().Root->sect_addr.off - wlink().FmtData.output_offset;
+        link.Root->u.file_loc = (link.Root->sect_addr.seg << link.FmtData.SegShift) + link.Root->sect_addr.off - link.FmtData.output_offset;
         /* write groups */
-        for( group = wlink().Groups; group != nullptr; group = group->next ) {
+        for( group = link.Groups; group != nullptr; group = group->next ) {
             class_ = group->leaders->class_;
             if( class_->flags & CLASS_COPY ) {
                 sect = group->section;
-                wlink().CurrSect = sect;
+                link.CurrSect = sect;
                 info.offs = GROUP_SECTION_DELTA( group );
 #ifdef DEVBUILD
                 finfo = sect->outfile;
@@ -422,7 +425,7 @@ void HexOutput( void )
             } else {
                 if( group->size != 0 ) {
                     sect = group->section;
-                    wlink().CurrSect = sect;
+                    link.CurrSect = sect;
                     info.offs = GROUP_SECTION_DELTA( group );
 #ifdef DEVBUILD
                     finfo = sect->outfile;
@@ -437,23 +440,23 @@ void HexOutput( void )
     }
 #endif
     if( hs.buf_offset > 0 ) {          // If partial record in buffer, flush
-        WriteHexLine();
+        WriteHexLine(link);
     }
-    if( wlink().FmtData.output_start ) {
-        WriteStart();
+    if( link.FmtData.output_start ) {
+        WriteStart(link);
     }
-    WriteLoad( ":00000001ff\r\n", 13 );
-    DBIWrite();
+    WriteLoad(link,  ":00000001ff\r\n", 13 );
+    DBIWrite(link);
 }
 
-static unsigned long WriteGroupLoadHex( group_entry *group )
+static unsigned long WriteGroupLoadHex(Link& link,  group_entry *group )
 {
     grpwriteinfo    info;
     class_entry     *class_;
     unsigned long   file_loc;
 
     class_ = group->leaders->class_;
-    file_loc = PosLoad();
+    file_loc = PosLoad(link);
     info.offs = GROUP_SECTION_DELTA( group );
     // If group is a copy group, substitute source group(s) here
     if( class_->flags & CLASS_COPY ) {
@@ -462,10 +465,10 @@ static unsigned long WriteGroupLoadHex( group_entry *group )
     } else {
         Ring2Lookup( group->leaders, DoHexLeader, &info.offs );
     }
-    return( PosLoad() - file_loc );
+    return( PosLoad(link) - file_loc );
 }
 
-void FiniRawLoadFile( void )
+void FiniRawLoadFile(Link& link)
 /**************************/
 {
     HexState        &hs = hexState();
@@ -477,41 +480,41 @@ void FiniRawLoadFile( void )
     signed_32       diff;
 
     DEBUG(( DBG_BASE, "Writing data" ));
-    OrderGroups( CompareOffsets );
-    wlink().CurrSect = wlink().Root;    // needed for WriteInfo.
-    fnode = wlink().Root->outfile;
+    OrderGroups(link,  CompareOffsets );
+    link.CurrSect = link.Root;    // needed for WriteInfo.
+    fnode = link.Root->outfile;
     fnode->file_loc = 0;
-    wlink().Root->u.file_loc = 0;
-    wlink().Root->sect_addr = wlink().Groups->addr;
-    if( wlink().FmtData.raw_hex_output ) {
+    link.Root->u.file_loc = 0;
+    link.Root->sect_addr = link.Groups->addr;
+    if( link.FmtData.raw_hex_output ) {
         hs.next_addr.off = 0;      // Start at absolute linear address 0
         hs.next_addr.seg = 0;
         hs.linear        = true;   // Linear mode
         hs.buf_offset    = 0;
     }
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->size ) {
             sect = group->section;
-            wlink().CurrSect = sect;
+            link.CurrSect = sect;
             finfo = sect->outfile;
             file_loc = GROUP_FILE_LOC( group );
-            if( wlink().FmtData.raw_hex_output ) {
-                file_loc += WriteGroupLoadHex( group );
+            if( link.FmtData.raw_hex_output ) {
+                file_loc += WriteGroupLoadHex(link,  group );
             } else {
-                diff = file_loc - PosLoad();
+                diff = file_loc - PosLoad(link);
                 if( diff < 0 ) {
                     LnkMsg( ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", &(group->addr));
                 } else if( diff > 0 ) {
-                    PadLoad( static_cast<size_t>( diff ) );
+                    PadLoad(link,  static_cast<size_t>( diff ) );
                 }
-                file_loc += WriteGroupLoad( group, false );
+                file_loc += WriteGroupLoad(link,  group, false );
             }
             if( file_loc > finfo->file_loc ) {
                 finfo->file_loc = file_loc;
             }
         }
     }
-    DBIWrite();
+    DBIWrite(link);
 }
 
 #endif

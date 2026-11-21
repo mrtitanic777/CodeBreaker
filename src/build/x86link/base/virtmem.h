@@ -50,7 +50,7 @@ extern bool CompareInfo( virt_mem, const void *, virt_mem_size );
 #define ReadInfo( v, b, l ) memcpy( b, v, l )
 #define PutInfo( v, b, l ) memcpy( v, b, l )
 #define CopyInfo( v1, v2, l ) memcpy( v1, v2, l )
-#define WriteInfoLoad( v, l ) WriteLoad( v, l )
+#define WriteInfoLoad( v, l ) WriteLoad(link,  v, l )
 #define PutInfoNulls( v, l ) memset( v, 0, l )
 #define CompareInfo( v, b, l ) (memcmp( v, b, l ) == 0)
 

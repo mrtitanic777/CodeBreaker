@@ -48,7 +48,7 @@ extern "C" {
 extern void     *MemAlloc( NSSTD( size_t ) );
 extern void     *MemAllocSafe( NSSTD( size_t ) );
 extern char     *MemStrdup( const char * );
-extern char     *MemStrdupSafe( const char * );
+extern char     *MemStrdupSafe(Link& link,  const char * );
 extern void     *MemRealloc( void *, NSSTD( size_t ) );
 extern void     *MemReallocSafe( void *, NSSTD( size_t ) );
 extern void     MemFree( void * );

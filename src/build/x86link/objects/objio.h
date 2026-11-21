@@ -34,15 +34,15 @@
 
 
 
-extern infilelist       *AllocFileEntry( const char *, const path_entry * );
-extern infilelist       *AllocUniqueFileEntry( const char *, const path_entry * );
-extern bool             CleanCachedHandles( void );
-extern bool             DoObjOpen( infilelist *infile );
-extern void             InitTokBuff( void );
-extern void             FreeTokBuffs( void );
-extern void             BadObject( void );
-extern void             EarlyEOF( void );
-extern void             ResetObjIO( void );
+extern infilelist       *AllocFileEntry(Link& link,  const char *, const path_entry * );
+extern infilelist       *AllocUniqueFileEntry(Link& link,  const char *, const path_entry * );
+extern bool             CleanCachedHandles(Link& link);
+extern bool             DoObjOpen(Link& link,  infilelist *infile );
+extern void             InitTokBuff(Link& link);
+extern void             FreeTokBuffs(Link& link);
+extern void             BadObject(Link& link);
+extern void             EarlyEOF(Link& link);
+extern void             ResetObjIO(Link& link);
 extern char             *MakePath( char *fullname, const char **path_list );
 extern char             *MakeFileName( infilelist *infile, char *fullname );
 extern bool             MakeFileNameFromList( const char **path_list, char *name, char *fullname );

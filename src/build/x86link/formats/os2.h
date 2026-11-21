@@ -84,21 +84,21 @@
 
 /* in loadflat.c */
 
-extern void             FiniOS2FlatLoadFile( void );
-extern bool             FindOS2ExportSym( symbol *, dll_sym_info ** );
+extern void             FiniOS2FlatLoadFile(Link& link);
+extern bool             FindOS2ExportSym(Link& link,  symbol *, dll_sym_info ** );
 
 /* in loados2.c */
 
-extern unsigned long    ImportProcTable( unsigned long * );
-extern unsigned long    ImportModTable( unsigned long * );
-extern unsigned long    ResNonResNameTable( bool );
-extern void             SetOS2SegFlags( void );
-extern void             SetOS2GroupFlags( void );
-extern void             ChkOS2Exports( void );
-extern void             PhoneyStack( void );
-extern void             FiniOS2LoadFile( void );
-extern void             FreeImpNameTab( void );
-extern unsigned_32      WriteStubFile( unsigned_32 );
+extern unsigned long    ImportProcTable(Link& link,  unsigned long * );
+extern unsigned long    ImportModTable(Link& link,  unsigned long * );
+extern unsigned long    ResNonResNameTable(Link& link,  bool );
+extern void             SetOS2SegFlags(Link& link);
+extern void             SetOS2GroupFlags(Link& link);
+extern void             ChkOS2Exports(Link& link);
+extern void             PhoneyStack(Link& link);
+extern void             FiniOS2LoadFile(Link& link);
+extern void             FreeImpNameTab(Link& link);
+extern unsigned_32      WriteStubFile(Link& link,  unsigned_32 );
 
 #endif
 

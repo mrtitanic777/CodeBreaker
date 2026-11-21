@@ -50,16 +50,16 @@ typedef struct entry_export {
     addr_type           addr;
 } entry_export;
 
-extern ordinal_t        FindEntryOrdinal( addr_type, group_entry * );
-extern void             FreeExportList( void );
-extern void             AddToExportList( entry_export * );
-extern void             MSExportKeyword( const length_name *, const length_name *, unsigned, ordinal_t );
-extern void             MSImportKeyword( symbol *, const length_name *, const length_name *, ordinal_t );
-extern dll_sym_info     *AllocDLLInfo( void );
-extern void             FreeImport( dll_sym_info * );
-extern entry_export     *AllocExport( const char *, size_t );
+extern ordinal_t        FindEntryOrdinal(Link& link,  addr_type, group_entry * );
+extern void             FreeExportList(Link& link);
+extern void             AddToExportList(Link& link,  entry_export * );
+extern void             MSExportKeyword(Link& link,  const length_name *, const length_name *, unsigned, ordinal_t );
+extern void             MSImportKeyword(Link& link,  symbol *, const length_name *, const length_name *, ordinal_t );
+extern dll_sym_info     *AllocDLLInfo(Link& link);
+extern void             FreeImport(Link& link,  dll_sym_info * );
+extern entry_export     *AllocExport(Link& link,  const char *, size_t );
 extern bool             IsSymElfImported( symbol * );
-extern bool             IsSymElfExported( symbol * );
-extern bool             IsSymElfImpExp( symbol * );
-extern void             KillDependantSyms( symbol * );
-extern void             CheckExport( const char *, ordinal_t, bool );
+extern bool             IsSymElfExported(Link& link,  symbol * );
+extern bool             IsSymElfImpExp(Link& link,  symbol * );
+extern void             KillDependantSyms(Link& link,  symbol * );
+extern void             CheckExport(Link& link,  const char *, ordinal_t, bool );

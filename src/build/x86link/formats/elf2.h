@@ -73,7 +73,7 @@ typedef struct {
 extern ElfSymTable *    CreateElfSymTable( unsigned maxElems, stringtable *strtab );
 extern void             AddSymElfSymTable( ElfSymTable *tab, symbol *sym );
 extern unsigned         FindSymIdxElfSymTable( ElfSymTable *tab, symbol *sym );
-extern void             WriteElfSymTable( ElfSymTable *tab,
+extern void             WriteElfSymTable(Link& link,  ElfSymTable *tab,
                                           ElfHdr *hdr,
                                           unsigned hashidx,
                                           unsigned symtabidx,

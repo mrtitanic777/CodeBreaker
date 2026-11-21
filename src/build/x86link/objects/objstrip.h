@@ -33,7 +33,7 @@
 
 
 extern void     RefSeg( segdata * );
-extern void     DataRef( symbol * );
+extern void     DataRef(Link& link,  symbol * );
 extern void     AddEdge( segdata *, symbol * );
 extern void     AddSymEdge( symbol *, symbol * );
 extern void     AddSymSegEdge( symbol *srcsym, segdata *tarsgdata );

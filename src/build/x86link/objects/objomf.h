@@ -33,13 +33,13 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern list_of_names    *FindName( unsigned_16 );
-extern unsigned_16      GetIdx( void );
-extern void             SkipIdx( void );
+extern list_of_names    *FindName(Link& link,  unsigned_16 );
+extern unsigned_16      GetIdx(Link& link);
+extern void             SkipIdx(Link& link);
 extern unsigned long    OMFPass1( void );
-extern bool             IsOMF( const file_list *, unsigned long );
-extern char             *GetOMFName( const file_list *, unsigned long * );
+extern bool             IsOMF(Link& link,  const file_list *, unsigned long );
+extern char             *GetOMFName(Link& link,  const file_list *, unsigned long * );
 extern void             OMFSkipObj( const file_list *, unsigned long * );
-extern void             ResetObjOMF( void );
+extern void             ResetObjOMF(Link& link);
 
 extern const byte             OMFAlignTab[];

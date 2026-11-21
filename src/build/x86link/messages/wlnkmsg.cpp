@@ -59,9 +59,9 @@
 #include "clibext.h"
 
 
-bool InitMsg( void )
+bool InitMsg(Link& link)
 {
-    wlink().BannerPrinted = false;   /* CodeBreaker: each link in the process prints its banner, as wlink.exe does */
+    link.BannerPrinted = false;   /* CodeBreaker: each link in the process prints its banner, as wlink.exe does */
     return( true );
 }
 
@@ -214,32 +214,34 @@ size_t res_read( FILE *fp, void *buf, size_t len )
 size_t res_write( FILE *fp, const void *buf, size_t len )
 /*******************************************************/
 {
+    Link& link = wlink();
     /* unused parameters */ (void)fp;
 
-    WriteLoad( buf, len );
+    WriteLoad(link,  buf, len );
     return( len );
 }
 
 bool res_seek( FILE *fp, long amount, int where )
 /***********************************************/
 {
+    Link& link = wlink();
     DbgAssert( where != SEEK_END );
     DbgAssert( !( where == SEEK_CUR && amount < 0 ) );
 
-    if( FP2POSIX( fp ) == wlink().Root->outfile->handle ) {
+    if( FP2POSIX( fp ) == link.Root->outfile->handle ) {
         if( where == SEEK_CUR ) {
             unsigned long   old_pos;
             unsigned long   new_pos;
 
-            old_pos = PosLoad();
+            old_pos = PosLoad(link);
             new_pos = old_pos + amount;
             if( new_pos > old_pos ) {
-                PadLoad( static_cast<size_t>( amount ) );
+                PadLoad(link,  static_cast<size_t>( amount ) );
             } else {
-                SeekLoad( new_pos );
+                SeekLoad(link,  new_pos );
             }
         } else {
-            SeekLoad( amount );
+            SeekLoad(link,  amount );
         }
         return( false );
     } else {
@@ -250,8 +252,9 @@ bool res_seek( FILE *fp, long amount, int where )
 long res_tell( FILE *fp )
 /***********************/
 {
-    if( FP2POSIX( fp ) == wlink().Root->outfile->handle ) {
-        return( PosLoad() );
+    Link& link = wlink();
+    if( FP2POSIX( fp ) == link.Root->outfile->handle ) {
+        return( PosLoad(link) );
     }
     return( QPos( FP2POSIX( fp ) ) );
 }

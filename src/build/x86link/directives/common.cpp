@@ -37,138 +37,138 @@ namespace {
 
 CommonState& common_state() { return state().common; }
 
-bool ProcDosSeg() {
-    wlink().LinkState |= LS_DOSSEG_FLAG;
+bool ProcDosSeg(Link& link) {
+    link.LinkState |= LS_DOSSEG_FLAG;
     DEBUG((DBG_OLD, "dosseg"));
     return true;
 }
 
-bool ProcName() {
+bool ProcName(Link& link) {
     if (!reader().get(Sep::none, Want::file_name)) return false;
     cmd_flags() &= ~Flag::unnamed;
     if (exe_name() != nullptr) MemFree(exe_name());
-    exe_name() = MemToStringSafe(reader().text().data(), reader().text().size());   // (just keep the name around for now)
+    exe_name() = MemToStringSafe(link, reader().text().data(), reader().text().size());   // (just keep the name around for now)
     return true;
 }
 
-bool ProcDwarfDBI() {
-    if (wlink().LinkFlags & (LF_ANY_DBI_FLAG & ~LF_DWARF_DBI_FLAG)) {
+bool ProcDwarfDBI(Link& link) {
+    if (link.LinkFlags & (LF_ANY_DBI_FLAG & ~LF_DWARF_DBI_FLAG)) {
         LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
-    wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
+    link.LinkFlags |= LF_DWARF_DBI_FLAG;
     return true;
 }
 
-bool ProcWatcomDBI() {
-    if (wlink().LinkFlags & (LF_ANY_DBI_FLAG & ~LF_OLD_DBI_FLAG)) {
+bool ProcWatcomDBI(Link& link) {
+    if (link.LinkFlags & (LF_ANY_DBI_FLAG & ~LF_OLD_DBI_FLAG)) {
         LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
-    wlink().LinkFlags |= LF_OLD_DBI_FLAG;
+    link.LinkFlags |= LF_OLD_DBI_FLAG;
     return true;
 }
 
-bool ProcCodeviewDBI() {
-    if (wlink().LinkFlags & (LF_ANY_DBI_FLAG & ~LF_CV_DBI_FLAG)) {
+bool ProcCodeviewDBI(Link& link) {
+    if (link.LinkFlags & (LF_ANY_DBI_FLAG & ~LF_CV_DBI_FLAG)) {
         LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
-    wlink().LinkFlags |= LF_CV_DBI_FLAG;
+    link.LinkFlags |= LF_CV_DBI_FLAG;
     return true;
 }
 
-bool ProcHllDBI() {
-    if (wlink().LinkFlags & (LF_ANY_DBI_FLAG & ~LF_HLL_DBI_FLAG)) {
+bool ProcHllDBI(Link& link) {
+    if (link.LinkFlags & (LF_ANY_DBI_FLAG & ~LF_HLL_DBI_FLAG)) {
         LnkMsg(LOC + LINE + WRN + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
-    wlink().LinkFlags |= LF_HLL_DBI_FLAG;
+    link.LinkFlags |= LF_HLL_DBI_FLAG;
     return true;
 }
 
-bool ProcLine() {
-    if ((wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0) wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
-    wlink().DBIFlag |= DBI_LINE;
+bool ProcLine(Link& link) {
+    if ((link.LinkFlags & LF_ANY_DBI_FLAG) == 0) link.LinkFlags |= LF_DWARF_DBI_FLAG;
+    link.DBIFlag |= DBI_LINE;
     return true;
 }
 
-bool ProcType() {
-    if ((wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0) wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
-    wlink().DBIFlag |= DBI_TYPE;
+bool ProcType(Link& link) {
+    if ((link.LinkFlags & LF_ANY_DBI_FLAG) == 0) link.LinkFlags |= LF_DWARF_DBI_FLAG;
+    link.DBIFlag |= DBI_TYPE;
     return true;
 }
 
-bool ProcLocal() {
-    if ((wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0) wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
-    wlink().DBIFlag |= DBI_LOCAL;
+bool ProcLocal(Link& link) {
+    if ((link.LinkFlags & LF_ANY_DBI_FLAG) == 0) link.LinkFlags |= LF_DWARF_DBI_FLAG;
+    link.DBIFlag |= DBI_LOCAL;
     return true;
 }
 
-bool ProcAll() {
-    if ((wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0) wlink().LinkFlags |= LF_DWARF_DBI_FLAG;
-    wlink().DBIFlag |= DBI_ALL;
+bool ProcAll(Link& link) {
+    if ((link.LinkFlags & LF_ANY_DBI_FLAG) == 0) link.LinkFlags |= LF_DWARF_DBI_FLAG;
+    link.DBIFlag |= DBI_ALL;
     return true;
 }
 
 // an individual alias
-bool AddAlias() {
+bool AddAlias(Link& link) {
     Reader& r = reader();
     const std::string name = r.str();
     if (!r.get(Sep::equals, Want::include_dot)) return false;
-    MakeSymAlias(name.data(), name.size(), r.text().data(), r.text().size());
+    MakeSymAlias(link, name.data(), name.size(), r.text().data(), r.text().size());
     return true;
 }
 
-bool ProcAlias() { return process_list(AddAlias, Want::include_dot); }
+bool ProcAlias(Link& link) { return process_list(link, AddAlias, Want::include_dot); }
 
-bool AddReference() {
-    symbol* sym = SymOp(ST_CREATE_REFERENCE, reader().text().data(), reader().text().size());
+bool AddReference(Link& link) {
+    symbol* sym = SymOp(link, ST_CREATE_REFERENCE, reader().text().data(), reader().text().size());
     sym->info |= SYM_1_DCE_REF;   // make sure it stays around
     return true;
 }
 
-bool ProcReference() { return process_list(AddReference, Want::include_dot); }
+bool ProcReference(Link& link) { return process_list(link, AddReference, Want::include_dot); }
 
-bool ProcOSName() {
+bool ProcOSName(Link& link) {
     if (reader().get(Sep::equals, Want::include_dot)) {
-        if (wlink().FmtData.osname != nullptr) MemFree(wlink().FmtData.osname);
-        wlink().FmtData.osname = MemToStringSafe(reader().text().data(), reader().text().size());
+        if (link.FmtData.osname != nullptr) MemFree(link.FmtData.osname);
+        link.FmtData.osname = MemToStringSafe(link, reader().text().data(), reader().text().size());
         return true;
     }
     return false;
 }
 
 // dead code elimination
-bool ProcEliminate() {
-    wlink().LinkFlags |= LF_STRIP_CODE;
+bool ProcEliminate(Link& link) {
+    link.LinkFlags |= LF_STRIP_CODE;
     return true;
 }
 
-bool ProcMaxErrors() {
-    if (!get_number(wlink().MaxErrors)) return false;
-    wlink().LinkFlags |= LF_MAX_ERRORS_FLAG;
+bool ProcMaxErrors(Link& link) {
+    if (!get_number(link.MaxErrors)) return false;
+    link.LinkFlags |= LF_MAX_ERRORS_FLAG;
     return true;
 }
 
-bool ProcSymFile() {
+bool ProcSymFile(Link& link) {
     if (reader().get(Sep::equals, Want::file_name)) {
-        if (wlink().SymFileName != nullptr) MemFree(wlink().SymFileName);
-        wlink().SymFileName = FileName(reader().text().data(), reader().text().size(), E_SYM, false);
+        if (link.SymFileName != nullptr) MemFree(link.SymFileName);
+        link.SymFileName = FileName(reader().text().data(), reader().text().size(), E_SYM, false);
     }
     return true;
 }
 
-void* AddObjFile(const char* name, const char* membname, file_list** filelist) {
+void* AddObjFile(Link& link, const char* name, const char* membname, file_list** filelist) {
     file_list* file;
     member_list* member = nullptr;
     if (membname != nullptr) {
         member = (member_list*)(MemAllocSafe(sizeof(*member) - 1 + strlen(membname) + 1));
-        member->flags_dbi = wlink().DBIFlag;
+        member->flags_dbi = link.DBIFlag;
         member->flags_mod = (module_flags)(0);
         strcpy(member->name, membname);
         member->next = nullptr;
-        for (file = wlink().CurrSect->files; file != nullptr; file = file->next) {
+        for (file = link.CurrSect->files; file != nullptr; file = file->next) {
             if (FNAMECMPSTR(file->infile->name.u.ptr, name) == 0) {
                 cmd_flags() |= Flag::member_added;
                 if (file->u.member != nullptr) {
@@ -181,21 +181,21 @@ void* AddObjFile(const char* name, const char* membname, file_list** filelist) {
             }
         }
     }
-    file = AllocNewFile(member);
+    file = AllocNewFile(link, member);
     if (member != nullptr) {
-        file->infile = AllocUniqueFileEntry(name, wlink().UsrLibPath);
+        file->infile = AllocUniqueFileEntry(link, name, link.UsrLibPath);
         file->infile->status |= INSTAT_LIBRARY;
     } else {
-        file->infile = AllocFileEntry(name, wlink().ObjPath);
+        file->infile = AllocFileEntry(link, name, link.ObjPath);
     }
     *filelist = file;
     return file;
 }
 
-bool AddLibFile() {
+bool AddLibFile(Link& link) {
     char* membname;
     cmd_flags() &= ~Flag::member_added;
-    char* ptr = file_name(&membname);
+    char* ptr = file_name(link, &membname);
     if (membname != nullptr) {
         LnkMsg(WRN + LOC + LINE + MSG_NO_MEMB_IN_LIBFILE, nullptr);
         MemFree(membname);
@@ -203,8 +203,8 @@ bool AddLibFile() {
         return true;
     }
     CommonState& c = common_state();
-    file_list* file = AllocNewFile(nullptr);
-    file->infile = AllocFileEntry(ptr, wlink().UsrLibPath);
+    file_list* file = AllocNewFile(link, nullptr);
+    file->infile = AllocFileEntry(link, ptr, link.UsrLibPath);
     file->next = *c.last_lib_file;
     *c.last_lib_file = file;
     c.last_lib_file = &file->next;
@@ -216,25 +216,25 @@ bool AddLibFile() {
     return true;
 }
 
-bool ProcLibFile() {
-    if ((wlink().LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0) {
+bool ProcLibFile(Link& link) {
+    if ((link.LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0) {
         cmd_flags() |= Flag::files_before_debug;
     }
     CommonState& c = common_state();
-    if (c.last_lib_file == nullptr) c.last_lib_file = &wlink().Root->files;
-    return process_list(AddLibFile, Want::file_name);
+    if (c.last_lib_file == nullptr) c.last_lib_file = &link.Root->files;
+    return process_list(link, AddLibFile, Want::file_name);
 }
 
-bool AddModFile() {
+bool AddModFile(Link& link) {
     char* membname;
-    char* ptr = file_name(&membname);
-    AddHTableElem(wlink().Root->modFilesHashed, ptr);
-    wlink().LinkFlags |= LF_GOT_CHGD_FILES;
+    char* ptr = file_name(link, &membname);
+    AddHTableElem(link.Root->modFilesHashed, ptr);
+    link.LinkFlags |= LF_GOT_CHGD_FILES;
     if (membname != nullptr) MemFree(membname);
     return true;
 }
 
-bool AddFile() {
+bool AddFile(Link& link) {
     char* membname;
     file_list** file;
     CommonState& c = common_state();
@@ -246,17 +246,17 @@ bool AddFile() {
         if (any(cmd_flags() & Flag::section_there)) {   // is section there already?
             cmd_flags() &= ~Flag::section_there;
         } else {
-            MakeNewSection();
+            MakeNewSection(link);
         }
     }
 #endif
-    char* ptr = file_name(&membname);
+    char* ptr = file_name(link, &membname);
     if (membname == nullptr && exe_name() == nullptr) {
-        exe_name() = MemToStringSafe(reader().text().data(), reader().text().size());
+        exe_name() = MemToStringSafe(link, reader().text().data(), reader().text().size());
     }
     file = current;
     if (*current != nullptr) current = &(*current)->next;
-    c.last_file.u.file = (file_list*)(AddObjFile(ptr, membname, current));
+    c.last_file.u.file = (file_list*)(AddObjFile(link, ptr, membname, current));
     if (any(cmd_flags() & Flag::member_added)) {
         current = file;                 // go back to previous entry.
     } else if (membname != nullptr) {      // 1st member added
@@ -268,23 +268,23 @@ bool AddFile() {
     return true;
 }
 
-bool ProcFiles() {
-    if ((wlink().LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0) {
+bool ProcFiles(Link& link) {
+    if ((link.LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0) {
         cmd_flags() |= Flag::files_before_debug;
     }
-    return process_list(AddFile, Want::file_name);
+    return process_list(link, AddFile, Want::file_name);
 }
 
-bool ProcModFiles() { return process_list(AddModFile, Want::file_name); }
+bool ProcModFiles(Link& link) { return process_list(link, AddModFile, Want::file_name); }
 
-bool AddLib() {
+bool AddLib(Link& link) {
     char* ptr = FileName(reader().text().data(), reader().text().size(), E_LIBRARY, false);
-    file_list* file = AddObjLib(ptr, LIB_PRIORITY_MAX);
+    file_list* file = AddObjLib(link, ptr, LIB_PRIORITY_MAX);
     file->flags_file |= STAT_USER_SPECD;
 #ifdef _EXE
     if (any(cmd_flags() & Flag::set_section)) {
         file->flags_file |= STAT_LIB_FIXED;
-        file->ovlref = GetOvlRef();
+        file->ovlref = GetOvlRef(link);
     }
 #endif
     if (any(cmd_flags() & Flag::doing_optlib)) {
@@ -295,23 +295,23 @@ bool AddLib() {
     return true;
 }
 
-bool ProcOptLib() {
+bool ProcOptLib(Link& link) {
     cmd_flags() |= Flag::doing_optlib;
-    const bool retval = ProcLibrary();
+    const bool retval = ProcLibrary(link);
     cmd_flags() &= ~Flag::doing_optlib;
     return retval;
 }
 
-bool ProcLibPath() {
+bool ProcLibPath(Link& link) {
     if (!reader().get(Sep::none, Want::file_name)) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "LIBPATH");
         return true;
     }
-    AddLibPaths(reader().text().data(), reader().text().size(), true);   // true == add to front.
+    AddLibPaths(link, reader().text().data(), reader().text().size(), true);   // true == add to front.
     return true;
 }
 
-bool ProcPath() {
+bool ProcPath(Link& link) {
     if (!reader().get(Sep::none, Want::file_name)) return false;
     const std::string_view text = reader().text();
     path_entry* new_path = (path_entry*)(MemAllocSafe(sizeof(path_entry) + text.size()));
@@ -323,86 +323,86 @@ bool ProcPath() {
         p_in = GetPathElement(p_in, end, &p);
     }
     *p = '\0';
-    new_path->next = wlink().ObjPath;
-    wlink().ObjPath = new_path;
+    new_path->next = link.ObjPath;
+    link.ObjPath = new_path;
     DEBUG((DBG_BASE, "path: %s", new_path->name));
     return true;
 }
 
-bool ProcMap() {
-    wlink().MapFlags |= MAP_FLAG;
+bool ProcMap(Link& link) {
+    link.MapFlags |= MAP_FLAG;
     if (reader().get(Sep::equals, Want::file_name)) {
-        if (wlink().MapFName != nullptr) MemFree(wlink().MapFName);
-        wlink().MapFName = FileName(reader().text().data(), reader().text().size(), E_MAP, false);
+        if (link.MapFName != nullptr) MemFree(link.MapFName);
+        link.MapFName = FileName(reader().text().data(), reader().text().size(), E_MAP, false);
         DEBUG((DBG_OLD, "produce map file"));
     }
     return true;
 }
 
-bool ProcMapLines() {
-    wlink().MapFlags |= MAP_LINES;
+bool ProcMapLines(Link& link) {
+    link.MapFlags |= MAP_LINES;
     return true;
 }
 
-bool ProcStack() {
+bool ProcStack(Link& link) {
     unsigned_32 value;
-    wlink().LinkFlags |= LF_STK_SIZE_FLAG;
+    link.LinkFlags |= LF_STK_SIZE_FLAG;
     const bool ret = get_number(value);
-    if (ret) wlink().StackSize = value;
+    if (ret) link.StackSize = value;
     return ret;
 }
 
-bool ProcNameLen() {
+bool ProcNameLen(Link& link) {
     unsigned_32 value;
     const bool ret = get_number(value);
     if (ret) {
         if (value == 0) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "NAMELEN");
         } else {
-            wlink().NameLen = value;
+            link.NameLen = value;
         }
     }
     return ret;
 }
 
-bool ProcCase() {
-    wlink().LinkFlags |= LF_CASE_FLAG;
-    SetSymCase();
+bool ProcCase(Link& link) {
+    link.LinkFlags |= LF_CASE_FLAG;
+    SetSymCase(link);
     DEBUG((DBG_OLD, "case"));
     return true;
 }
 
-bool ProcNoCaseExact() {
-    wlink().LinkFlags &= ~LF_CASE_FLAG;
-    SetSymCase();
+bool ProcNoCaseExact(Link& link) {
+    link.LinkFlags &= ~LF_CASE_FLAG;
+    SetSymCase(link);
     DEBUG((DBG_OLD, "nocase"));
     return true;
 }
 
-bool ProcNoExtension() {
+bool ProcNoExtension(Link& link) {
     cmd_flags() |= Flag::no_extension;
     return true;
 }
 
-bool ProcNoCache() {
-    wlink().LinkFlags &= ~LF_CACHE_FLAG;
-    wlink().LinkFlags |= LF_NOCACHE_FLAG;
+bool ProcNoCache(Link& link) {
+    link.LinkFlags &= ~LF_CACHE_FLAG;
+    link.LinkFlags |= LF_NOCACHE_FLAG;
     return true;
 }
 
-bool ProcCache() {
-    wlink().LinkFlags &= ~LF_NOCACHE_FLAG;
-    wlink().LinkFlags |= LF_CACHE_FLAG;
+bool ProcCache(Link& link) {
+    link.LinkFlags &= ~LF_NOCACHE_FLAG;
+    link.LinkFlags |= LF_CACHE_FLAG;
     return true;
 }
 
 // disable an error message number
-bool AddDisable() {
+bool AddDisable(Link& link) {
     unsigned_16 value = 0;
     if (number16(value) == Number::ok) {
         value = value % 1000;
         if (value <= MSG_MAX_ERR_MSG_NUM) {
-            ClearBit(wlink().MsgFlags, value);
+            ClearBit(link.MsgFlags, value);
         } else {
             LnkMsg(WRN + LOC + LINE + MSG_INVALID_MSG_NUM, nullptr);
         }
@@ -412,138 +412,138 @@ bool AddDisable() {
     return true;
 }
 
-bool ProcDisable() { return process_list(AddDisable, Want::normal); }
+bool ProcDisable(Link& link) { return process_list(link, AddDisable, Want::normal); }
 
-bool ProcNoDefLibs() { return true; }
+bool ProcNoDefLibs(Link& link) { return true; }
 
-bool ProcVerbose() {
-    wlink().MapFlags |= MAP_VERBOSE;
+bool ProcVerbose(Link& link) {
+    link.MapFlags |= MAP_VERBOSE;
     DEBUG((DBG_OLD, "verbose map file"));
     return true;
 }
 
-bool ProcUndefsOK() {
-    wlink().LinkFlags |= LF_UNDEFS_ARE_OK;
+bool ProcUndefsOK(Link& link) {
+    link.LinkFlags |= LF_UNDEFS_ARE_OK;
     DEBUG((DBG_OLD, "undefined symbols are OK"));
     return true;
 }
 
-bool ProcNoUndefsOK() {
-    wlink().LinkFlags &= ~LF_UNDEFS_ARE_OK;
+bool ProcNoUndefsOK(Link& link) {
+    link.LinkFlags &= ~LF_UNDEFS_ARE_OK;
     return true;
 }
 
-bool ProcRedefsOK() {
-    wlink().LinkFlags |= LF_REDEFS_OK;
+bool ProcRedefsOK(Link& link) {
+    link.LinkFlags |= LF_REDEFS_OK;
     return true;
 }
 
-bool ProcNoRedefs() {
-    wlink().LinkFlags &= ~LF_REDEFS_OK;
+bool ProcNoRedefs(Link& link) {
+    link.LinkFlags &= ~LF_REDEFS_OK;
     return true;
 }
 
-bool ProcCVPack() {
-    wlink().LinkFlags |= LF_CVPACK_FLAG;
+bool ProcCVPack(Link& link) {
+    link.LinkFlags |= LF_CVPACK_FLAG;
     return true;
 }
 
-bool ProcHLLPack() {
-    wlink().LinkFlags |= LF_HLLPACK_FLAG;
+bool ProcHLLPack(Link& link) {
+    link.LinkFlags |= LF_HLLPACK_FLAG;
     return true;
 }
 
-bool ProcIncremental() {
+bool ProcIncremental(Link& link) {
 #if !defined(__DOS__)
     if (any(cmd_flags() & Flag::after_incremental)) {
         LnkMsg(ERR + LOC + LINE + MSG_INC_NEAR_START, nullptr);
     }
-    wlink().LinkFlags |= LF_INC_LINK_FLAG;
+    link.LinkFlags |= LF_INC_LINK_FLAG;
     if (reader().get(Sep::equals, Want::file_name)) {
-        wlink().IncFileName = FileName(reader().text().data(), reader().text().size(), E_ILK, false);
+        link.IncFileName = FileName(reader().text().data(), reader().text().size(), E_ILK, false);
     } else if (exe_name() != nullptr) {
-        wlink().IncFileName = FileName(exe_name(), strlen(exe_name()), E_ILK, true);
+        link.IncFileName = FileName(exe_name(), strlen(exe_name()), E_ILK, true);
     } else {
-        wlink().IncFileName = MemStrdupSafe(DEFAULT_INC_NAME);
+        link.IncFileName = MemStrdupSafe(link, DEFAULT_INC_NAME);
     }
-    ReadPermData();
+    ReadPermData(link);
 #endif
     return true;
 }
 
-bool ProcQuiet() {
-    wlink().LinkFlags |= LF_QUIET_FLAG;
+bool ProcQuiet(Link& link) {
+    link.LinkFlags |= LF_QUIET_FLAG;
     return true;
 }
 
-bool ProcMangledNames() {
-    wlink().LinkFlags |= LF_DONT_UNMANGLE;
+bool ProcMangledNames(Link& link) {
+    link.LinkFlags |= LF_DONT_UNMANGLE;
     return true;
 }
 
-bool ProcOpResource() {
+bool ProcOpResource(Link& link) {
     Reader& r = reader();
     if (r.get(Sep::equals, Want::file_name)) {
-        wlink().FmtData.res_name_only = true;
-        wlink().FmtData.resource = MemToStringSafe(r.text().data(), r.text().size());
+        link.FmtData.res_name_only = true;
+        link.FmtData.resource = MemToStringSafe(link, r.text().data(), r.text().size());
     } else if (r.get(Sep::none, Want::include_dot)) {
-        wlink().FmtData.resource = MemToStringSafe(r.text().data(), r.text().size());
+        link.FmtData.resource = MemToStringSafe(link, r.text().data(), r.text().size());
     } else {
         return false;
     }
     return true;
 }
 
-bool ProcStatics() {
-    wlink().MapFlags |= MAP_STATICS;
+bool ProcStatics(Link& link) {
+    link.MapFlags |= MAP_STATICS;
     return true;
 }
 
-bool ProcArtificial() {
-    wlink().MapFlags |= MAP_ARTIFICIAL;
+bool ProcArtificial(Link& link) {
+    link.MapFlags |= MAP_ARTIFICIAL;
     return true;
 }
 
-bool ProcAlphabetical() {
-    wlink().MapFlags |= MAP_ALPHA;
+bool ProcAlphabetical(Link& link) {
+    link.MapFlags |= MAP_ALPHA;
     return true;
 }
 
-bool ProcGlobal() {
-    wlink().MapFlags |= MAP_GLOBAL;
+bool ProcGlobal(Link& link) {
+    link.MapFlags |= MAP_GLOBAL;
     return true;
 }
 
-bool ProcJapanese() {
+bool ProcJapanese(Link& link) {
     cmd_flags() |= Flag::language_japanese;
     return true;
 }
 
-bool ProcChinese() {
+bool ProcChinese(Link& link) {
     cmd_flags() |= Flag::language_chinese;
     return true;
 }
 
-bool ProcKorean() {
+bool ProcKorean(Link& link) {
     cmd_flags() |= Flag::language_korean;
     return true;
 }
 
-bool ProcShowDead() {
-    wlink().LinkFlags |= LF_SHOW_DEAD;
+bool ProcShowDead(Link& link) {
+    link.LinkFlags |= LF_SHOW_DEAD;
     return true;
 }
 
-bool ProcVFRemoval() {
-    wlink().LinkFlags |= LF_VF_REMOVAL;
+bool ProcVFRemoval(Link& link) {
+    link.LinkFlags |= LF_VF_REMOVAL;
     return true;
 }
 
-bool ProcStart() {
+bool ProcStart(Link& link) {
     if (!reader().get(Sep::equals, Want::include_dot)) return false;
-    wlink().StartInfo.user_specd = true;
+    link.StartInfo.user_specd = true;
     const std::string name = reader().str();
-    SetStartSym(name.c_str());
+    SetStartSym(link, name.c_str());
     return true;
 }
 
@@ -557,21 +557,21 @@ bool GetPackValue(unsigned_32* value, const char* message) {
     return true;
 }
 
-bool ProcPackcode() {
+bool ProcPackcode(Link& link) {
     unsigned_32 value;
     if (GetPackValue(&value, "PACKCODE")) {
-        wlink().PackCodeLimit = value;
-        wlink().LinkFlags |= LF_PACKCODE_FLAG;
+        link.PackCodeLimit = value;
+        link.LinkFlags |= LF_PACKCODE_FLAG;
         return true;
     }
     return false;
 }
 
-bool ProcPackdata() {
+bool ProcPackdata(Link& link) {
     unsigned_32 value;
     if (GetPackValue(&value, "PACKDATA")) {
-        wlink().PackDataLimit = value;
-        wlink().LinkFlags |= LF_PACKDATA_FLAG;
+        link.PackDataLimit = value;
+        link.LinkFlags |= LF_PACKDATA_FLAG;
         return true;
     }
     return false;
@@ -579,7 +579,7 @@ bool ProcPackdata() {
 
 #if defined(_OS2) || defined(_EXE) || defined(_QNX)
 // force the start of a new auto-group after the previous object file.
-bool ProcNewSegment() {
+bool ProcNewSegment(Link& link) {
     CommonState& c = common_state();
     if (c.last_file.u.file == nullptr) {
         LnkMsg(WRN + LOC + LINE + MSG_NEWSEG_BEFORE_OBJ, nullptr);
@@ -611,7 +611,7 @@ sysblock* FindSystemBlock(const char* name) {
     return tmpblk;
 }
 
-bool ProcSysDelete() { return true; }
+bool ProcSysDelete(Link& link) { return true; }
 
 void CopyBlocks(void* copyp, const char* data, size_t size) {
     char** copyptr = (char**)(copyp);
@@ -619,9 +619,9 @@ void CopyBlocks(void* copyp, const char* data, size_t size) {
     *copyptr += size;
 }
 
-bool ProcSysEnd() { return true; }
+bool ProcSysEnd(Link& link) { return true; }
 
-bool ProcEndLink() { return true; }
+bool ProcEndLink(Link& link) { return true; }
 
 constexpr Entry SysEndOptions[] = {
     {"End", ProcSysEnd, MK_ALL},
@@ -632,11 +632,11 @@ constexpr Entry EndLinkOpt[] = {
 };
 
 // The text up to the table's keyword, token by token with a space after each (the quirk), kept as a system block.
-void GetCommandBlock(sysblock** hdr, const char* name, Table endtab) {
+void GetCommandBlock(Link& link, sysblock** hdr, const char* name, Table endtab) {
     stringtable strtab;
     InitStringTable(&strtab, false);
     AddBufferStringTable(&strtab, &strtab, offsetof(sysblock, commands));
-    while (!process_one(endtab, Sep::space)) {
+    while (!process_one(link, endtab, Sep::space)) {
         reader().forget_push_back();
         AddBufferStringTable(&strtab, reader().text().data(), reader().text().size());
         AddCharStringTable(&strtab, ' ');
@@ -648,36 +648,36 @@ void GetCommandBlock(sysblock** hdr, const char* name, Table endtab) {
     WriteStringTable(&strtab, CopyBlocks, &copyptr);
     FiniStringTable(&strtab);
     if (name != nullptr) {
-        sys->name = MemStrdupSafe(name);
+        sys->name = MemStrdupSafe(link, name);
     } else {
         sys->name = nullptr;
     }
     AppendList((void**)hdr, sys);
 }
 
-char** getStubNamePtr() {
+char** getStubNamePtr(Link& link) {
 #ifdef _OS2
-    if (HintFormat(MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD)) {
-        return &wlink().FmtData.u.os2fam.stub_file_name;
+    if (HintFormat(link, MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD)) {
+        return &link.FmtData.u.os2fam.stub_file_name;
     }
 #endif
 #ifdef _DOS16M
-    if (HintFormat(MK_DOS16M)) {
-        return &wlink().FmtData.u.d16m.stub;
+    if (HintFormat(link, MK_DOS16M)) {
+        return &link.FmtData.u.d16m.stub;
     }
 #endif
 #ifdef _PHARLAP
-    if (HintFormat(MK_PHAR_LAP)) {
-        wlink().FmtData.def_ext = E_LOAD;   // want .exe instead of .exp now
-        return &wlink().FmtData.u.phar.stub;
+    if (HintFormat(link, MK_PHAR_LAP)) {
+        link.FmtData.def_ext = E_LOAD;   // want .exe instead of .exp now
+        return &link.FmtData.u.phar.stub;
     }
 #endif
     return nullptr;
 }
 
-bool ProcStub() {
+bool ProcStub(Link& link) {
     if (!have_equals(Want::file_name)) return false;
-    char** nameptr = getStubNamePtr();
+    char** nameptr = getStubNamePtr(link);
     if (nameptr == nullptr) return false;
     char* name = FileName(reader().text().data(), reader().text().size(), E_LOAD, false);
     if (*nameptr == nullptr) {
@@ -692,7 +692,7 @@ bool ProcStub() {
     return true;
 }
 
-bool ProcVersion() {
+bool ProcVersion(Link& link) {
     Version vb;   // required limits, 0 = no limit
     vb.major = 100;
     vb.minor = 100;
@@ -700,105 +700,105 @@ bool ProcVersion() {
     vb.what = "VERSION";
     const VersionPart result = get_version(vb, VersionPart::major | VersionPart::minor | VersionPart::revision, true);
     if (result != VersionPart::none) {
-        wlink().FmtData.major = vb.major;
-        wlink().FmtData.minor = vb.minor;
-        wlink().FmtData.revision = vb.revision;
-        wlink().FmtData.ver_specified = true;
+        link.FmtData.major = vb.major;
+        link.FmtData.minor = vb.minor;
+        link.FmtData.revision = vb.revision;
+        link.FmtData.ver_specified = true;
         return true;
     }
     return false;
 }
 
-bool ProcImplib() {
-    wlink().FmtData.make_implib = true;
-    wlink().FmtData.make_impfile = false;
-    MemFree(wlink().FmtData.implibname);
+bool ProcImplib(Link& link) {
+    link.FmtData.make_implib = true;
+    link.FmtData.make_impfile = false;
+    MemFree(link.FmtData.implibname);
     if (reader().get(Sep::equals, Want::file_name)) {
-        wlink().FmtData.implibname = MemToStringSafe(reader().text().data(), reader().text().size());
+        link.FmtData.implibname = MemToStringSafe(link, reader().text().data(), reader().text().size());
     }
     return true;
 }
 
-bool ProcImpFile() {
-    wlink().FmtData.make_implib = true;
-    wlink().FmtData.make_impfile = true;
-    MemFree(wlink().FmtData.implibname);
+bool ProcImpFile(Link& link) {
+    link.FmtData.make_implib = true;
+    link.FmtData.make_impfile = true;
+    MemFree(link.FmtData.implibname);
     if (reader().get(Sep::equals, Want::file_name)) {
-        wlink().FmtData.implibname = MemToStringSafe(reader().text().data(), reader().text().size());
+        link.FmtData.implibname = MemToStringSafe(link, reader().text().data(), reader().text().size());
     }
     return true;
 }
 
-bool AddSymTrace() {
-    AddTraceListSym(MemToStringSafe(reader().text().data(), reader().text().size()));
+bool AddSymTrace(Link& link) {
+    AddTraceListSym(MemToStringSafe(link, reader().text().data(), reader().text().size()));
     return true;
 }
 
-bool ProcSymTrace() {
-    wlink().LinkFlags |= LF_TRACE_FLAG;
-    return process_list(AddSymTrace, Want::include_dot);
+bool ProcSymTrace(Link& link) {
+    link.LinkFlags |= LF_TRACE_FLAG;
+    return process_list(link, AddSymTrace, Want::include_dot);
 }
 
-bool AddModTrace() {
+bool AddModTrace(Link& link) {
     char* membname;
-    char* fname = file_name(&membname);
+    char* fname = file_name(link, &membname);
     // AddTraceListMod consumes membname: not freed here
     AddTraceListMod(fname, membname);
     return true;
 }
 
-bool ProcModTrace() {
-    wlink().LinkFlags |= LF_TRACE_FLAG;
-    return process_list(AddModTrace, Want::file_name);
+bool ProcModTrace(Link& link) {
+    link.LinkFlags |= LF_TRACE_FLAG;
+    return process_list(link, AddModTrace, Want::file_name);
 }
 
-bool ProcFarCalls() {
-    wlink().LinkFlags |= LF_FAR_CALLS_FLAG;
+bool ProcFarCalls(Link& link) {
+    link.LinkFlags |= LF_FAR_CALLS_FLAG;
     DEBUG((DBG_OLD, "Far Calls optimization"));
     return true;
 }
 
-bool ProcNoFarCalls() {
-    wlink().LinkFlags &= ~LF_FAR_CALLS_FLAG;
+bool ProcNoFarCalls(Link& link) {
+    link.LinkFlags &= ~LF_FAR_CALLS_FLAG;
     DEBUG((DBG_OLD, "No Far Calls optimization"));
     return true;
 }
 
 #ifdef _RAW
-bool ProcOutputRaw() {
-    wlink().FmtData.output_raw = true;
+bool ProcOutputRaw(Link& link) {
+    link.FmtData.output_raw = true;
     return true;
 }
 
-bool ProcOutputHex() {
-    wlink().FmtData.output_hex = true;
+bool ProcOutputHex(Link& link) {
+    link.FmtData.output_hex = true;
     return true;
 }
 
-bool ProcOutputStart() {
-    wlink().FmtData.output_start = true;
+bool ProcOutputStart(Link& link) {
+    link.FmtData.output_start = true;
     return true;
 }
 
-bool ProcOutputOffset() {
+bool ProcOutputOffset(Link& link) {
     unsigned_32 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number retval = number(value);
-    if (retval == Number::ok && (value <= (0xFFFFUL << wlink().FmtData.SegShift) || HintFormat(~MK_SEGMENTED))) {
-        wlink().FmtData.output_offset = value;
+    if (retval == Number::ok && (value <= (0xFFFFUL << link.FmtData.SegShift) || HintFormat(link, ~MK_SEGMENTED))) {
+        link.FmtData.output_offset = value;
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "OUTPUT OFFSET");
     return false;
 }
 
-bool ProcOutputHshift() {
+bool ProcOutputHshift(Link& link) {
     unsigned_16 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number ret = number16(value);
     if (ret == Number::ok && value < 16) {
-        wlink().FmtData.HexSegShift = 16 - value;
-        wlink().FmtData.output_hshift = true;
+        link.FmtData.HexSegShift = 16 - value;
+        link.FmtData.output_hshift = true;
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "OUTPUT HSHIFT");
@@ -806,32 +806,32 @@ bool ProcOutputHshift() {
 }
 #endif
 
-bool ProcHshift() {
+bool ProcHshift(Link& link) {
     unsigned_16 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number ret = number16(value);
     if (ret == Number::ok && value < 16) {
-        wlink().FmtData.Hshift = value;
-        SetSegMask();
+        link.FmtData.Hshift = value;
+        SetSegMask(link);
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "HSHIFT");
     return false;
 }
 
-bool ProcFillchar() {
+bool ProcFillchar(Link& link) {
     unsigned_16 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number ret = number16(value);
     if (ret == Number::ok && value < 256) {
-        wlink().FmtData.FillChar = value;
+        link.FmtData.FillChar = value;
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "FILLCHAR");
     return false;
 }
 
-bool ProcOrdSegAdr() {
+bool ProcOrdSegAdr(Link& link) {
     ORDER_CLASS* oc = common_state().current_order_class;
     unsigned_16 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
@@ -845,12 +845,12 @@ bool ProcOrdSegAdr() {
     return false;
 }
 
-bool ProcOrdOfsAdr() {
+bool ProcOrdOfsAdr(Link& link) {
     ORDER_CLASS* oc = common_state().current_order_class;
     unsigned_32 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number retval = number(value);
-    if (retval == Number::ok && (value <= 0xFFFFL || HintFormat(~MK_SEGMENTED))) {
+    if (retval == Number::ok && (value <= 0xFFFFL || HintFormat(link, ~MK_SEGMENTED))) {
         oc->Base.off = value;
         oc->FixedAddr = true;
         return true;
@@ -860,20 +860,20 @@ bool ProcOrdOfsAdr() {
     return false;
 }
 
-bool ProcOrdCopy() {
+bool ProcOrdCopy(Link& link) {
     if (!reader().get(Sep::none, Want::include_dot)) return false;
     ORDER_CLASS* oc = common_state().current_order_class;
-    oc->SrcName = MemToStringSafe(reader().text().data(), reader().text().size());
+    oc->SrcName = MemToStringSafe(link, reader().text().data(), reader().text().size());
     oc->Copy = true;
     return true;
 }
 
-bool ProcOrdNoEmit() {
+bool ProcOrdNoEmit(Link& link) {
     common_state().current_order_class->NoEmit = true;
     return true;
 }
 
-bool ProcOrdSegSegAdr() {
+bool ProcOrdSegSegAdr(Link& link) {
     ORDER_SEGMENT* os = common_state().current_order_segment;
     unsigned_16 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
@@ -887,12 +887,12 @@ bool ProcOrdSegSegAdr() {
     return false;
 }
 
-bool ProcOrdSegOfsAdr() {
+bool ProcOrdSegOfsAdr(Link& link) {
     ORDER_SEGMENT* os = common_state().current_order_segment;
     unsigned_32 value = 0;
     if (!reader().get(Sep::equals, Want::normal)) return false;
     const Number retval = number(value);
-    if (retval == Number::ok && (value <= 0xFFFFL || HintFormat(~MK_SEGMENTED))) {
+    if (retval == Number::ok && (value <= 0xFFFFL || HintFormat(link, ~MK_SEGMENTED))) {
         os->Base.off = value;
         os->FixedAddr = true;
         return true;
@@ -902,12 +902,12 @@ bool ProcOrdSegOfsAdr() {
     return false;
 }
 
-bool ProcOrdSegNoEmit() {
+bool ProcOrdSegNoEmit(Link& link) {
     common_state().current_order_segment->NoEmit = true;
     return true;
 }
 
-bool ProcObjAlign() {
+bool ProcObjAlign(Link& link) {
     unsigned_32 value = 0;
     if (!have_equals(Want::normal)) return false;
     const Number ret = number(value);
@@ -916,136 +916,136 @@ bool ProcObjAlign() {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "OBJALIGN");
         value = _64K;
     }
-    wlink().FmtData.objalign = value;
-    ChkBase(value);
+    link.FmtData.objalign = value;
+    ChkBase(link, value);
     return true;
 }
 
-bool ProcDescription() {
+bool ProcDescription(Link& link) {
     if (!reader().get(Sep::none, Want::include_dot)) return false;
-    if (wlink().FmtData.description != nullptr) MemFree(wlink().FmtData.description);
-    wlink().FmtData.description = MemToStringSafe(reader().text().data(), reader().text().size());
+    if (link.FmtData.description != nullptr) MemFree(link.FmtData.description);
+    link.FmtData.description = MemToStringSafe(link, reader().text().data(), reader().text().size());
     return true;
 }
 
 #if defined(_OS2) || defined(_NOVELL) || defined(_ELF)
-bool ProcImport() {
+bool ProcImport(Link& link) {
 #ifdef _OS2
-    if (HintFormat(MK_NE | MK_OS2_FLAT | MK_PE)) return ProcOS2Import();
+    if (HintFormat(link, MK_NE | MK_OS2_FLAT | MK_PE)) return ProcOS2Import(link);
 #endif
 #ifdef _ELF
-    if (HintFormat(MK_ELF)) return ProcELFImport();
+    if (HintFormat(link, MK_ELF)) return ProcELFImport(link);
 #endif
 #ifdef _NOVELL
-    if (HintFormat(MK_NOVELL)) return ProcNovImport();
+    if (HintFormat(link, MK_NOVELL)) return ProcNovImport(link);
 #endif
     return false;
 }
 
-bool ProcExport() {
+bool ProcExport(Link& link) {
 #ifdef _OS2
-    if (HintFormat(MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD)) return ProcOS2Export();
+    if (HintFormat(link, MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD)) return ProcOS2Export(link);
 #endif
 #ifdef _ELF
-    if (HintFormat(MK_ELF)) return ProcELFExport();
+    if (HintFormat(link, MK_ELF)) return ProcELFExport(link);
 #endif
 #ifdef _NOVELL
-    if (HintFormat(MK_NOVELL)) return ProcNovExport();
+    if (HintFormat(link, MK_NOVELL)) return ProcNovExport(link);
 #endif
     return false;
 }
 #endif
 
 #if defined(_DOS16M) || defined(_QNX) || defined(_OS2) || defined(_ELF)
-bool ProcNoRelocs() {
+bool ProcNoRelocs(Link& link) {
 #ifdef _QNX
-    if (HintFormat(MK_QNX)) return ProcQNXNoRelocs();
+    if (HintFormat(link, MK_QNX)) return ProcQNXNoRelocs(link);
 #endif
 #ifdef _OS2
-    if (HintFormat(MK_PE)) return ProcOS2NoRelocs();
+    if (HintFormat(link, MK_PE)) return ProcOS2NoRelocs(link);
 #endif
 #ifdef _DOS16M
-    if (HintFormat(MK_DOS16M)) return Proc16MNoRelocs();
+    if (HintFormat(link, MK_DOS16M)) return Proc16MNoRelocs(link);
 #endif
 #ifdef _ELF
-    if (HintFormat(MK_ELF)) return ProcELFNoRelocs();
+    if (HintFormat(link, MK_ELF)) return ProcELFNoRelocs(link);
 #endif
     return true;
 }
 #endif
 
 #if defined(_OS2) || defined(_QNX)
-bool ProcSegment() {
+bool ProcSegment(Link& link) {
 #ifdef _OS2
-    if (HintFormat(MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD)) return ProcOS2Segment();
+    if (HintFormat(link, MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD)) return ProcOS2Segment(link);
 #endif
 #ifdef _QNX
-    if (HintFormat(MK_QNX)) return ProcQNXSegment();
+    if (HintFormat(link, MK_QNX)) return ProcQNXSegment(link);
 #endif
     return true;
 }
 #endif
 
 #if defined(_OS2) || defined(_ELF)
-bool ProcAlignment() {
+bool ProcAlignment(Link& link) {
 #ifdef _OS2
-    if (HintFormat(MK_NE | MK_OS2_LX | MK_PE)) return ProcOS2Alignment();
+    if (HintFormat(link, MK_NE | MK_OS2_LX | MK_PE)) return ProcOS2Alignment(link);
 #endif
 #ifdef _ELF
-    if (HintFormat(MK_ELF)) return ProcELFAlignment();
+    if (HintFormat(link, MK_ELF)) return ProcELFAlignment(link);
 #endif
     return true;
 }
 #endif
 
 #if defined(_OS2) || defined(_QNX)
-bool ProcHeapSize() {
+bool ProcHeapSize(Link& link) {
 #if defined(_QNX) && defined(__QNX__)
     if (HintFormat(MK_QNX)) return ProcQNXHeapSize();
 #endif
 #ifdef _OS2
-    if (HintFormat(MK_NE | MK_OS2_FLAT | MK_PE)) return ProcOS2HeapSize();
+    if (HintFormat(link, MK_NE | MK_OS2_FLAT | MK_PE)) return ProcOS2HeapSize(link);
 #endif
 #if defined(_QNX) && !defined(__QNX__)
-    if (HintFormat(MK_QNX)) return ProcQNXHeapSize();
+    if (HintFormat(link, MK_QNX)) return ProcQNXHeapSize(link);
 #endif
     return true;
 }
 #endif
 
 #if defined(_PHARLAP) || defined(_QNX) || defined(_OS2) || defined(_ELF) || defined(_RAW)
-bool ProcOffset() {
-    if (!get_number(wlink().FmtData.base)) return false;
+bool ProcOffset(Link& link) {
+    if (!get_number(link.FmtData.base)) return false;
 #ifdef _PHARLAP
-    if (wlink().FmtData.type & MK_PHAR_LAP) {
-        ChkBase(_4K);
+    if (link.FmtData.type & MK_PHAR_LAP) {
+        ChkBase(link, _4K);
         return true;
     }
 #endif
 #ifdef _QNX
-    if (wlink().FmtData.type & MK_QNX_FLAT) {
-        ChkBase(_4K);
+    if (link.FmtData.type & MK_QNX_FLAT) {
+        ChkBase(link, _4K);
         return true;
     }
 #endif
 #ifdef _RAW
-    if (wlink().FmtData.type & MK_RAW) {
-        ChkBase(256);
+    if (link.FmtData.type & MK_RAW) {
+        ChkBase(link, 256);
         return true;
     }
 #endif
-    ChkBase(_64K);
+    ChkBase(link, _64K);
     return true;
 }
 #endif
 
 #if defined(_ELF) || defined(_NOVELL)
-bool ProcModule() {
+bool ProcModule(Link& link) {
 #ifdef _ELF
-    if (HintFormat(MK_ELF)) return ProcELFModule();
+    if (HintFormat(link, MK_ELF)) return ProcELFModule(link);
 #endif
 #ifdef _NOVELL
-    if (HintFormat(MK_NOVELL)) return ProcNovModule();
+    if (HintFormat(link, MK_NOVELL)) return ProcNovModule(link);
 #endif
     return false;
 }
@@ -1075,16 +1075,16 @@ constexpr Entry OrderSegOpts[] = {
     {"NOEmit", ProcOrdSegNoEmit, MK_ALL},
 };
 
-bool ProcOrdSeg() {
+bool ProcOrdSeg(Link& link) {
     if (!reader().get(Sep::none, Want::include_dot)) return false;
     CommonState& c = common_state();
     c.current_order_segment = (ORDER_SEGMENT*)(MemAllocSafe(sizeof(ORDER_SEGMENT)));
     c.current_order_segment->NextSeg = c.current_order_class->SegList;
     c.current_order_class->SegList = c.current_order_segment;
-    c.current_order_segment->Name = MemToStringSafe(reader().text().data(), reader().text().size());
+    c.current_order_segment->Name = MemToStringSafe(link, reader().text().data(), reader().text().size());
     c.current_order_segment->FixedAddr = false;
     c.current_order_segment->NoEmit = false;
-    while (process_one(OrderSegOpts, Sep::none)) {
+    while (process_one(link, OrderSegOpts, Sep::none)) {
     }
     return true;
 }
@@ -1097,19 +1097,19 @@ constexpr Entry OrderClassOpts[] = {
     {"SEGMent", ProcOrdSeg, MK_ALL},
 };
 
-bool ProcOrdClass() {
+bool ProcOrdClass(Link& link) {
     if (!reader().get(Sep::none, Want::include_dot)) return false;
     CommonState& c = common_state();
-    wlink().LinkState |= LS_SPEC_ORDER_FLAG;
+    link.LinkState |= LS_SPEC_ORDER_FLAG;
     ORDER_CLASS* last = c.current_order_class;
     c.current_order_class = (ORDER_CLASS*)(MemAllocSafe(sizeof(ORDER_CLASS)));
     ORDER_CLASS* cur = c.current_order_class;
     if (last == nullptr) {
-        wlink().CurrSect->orderlist = cur;
+        link.CurrSect->orderlist = cur;
     } else {
         last->NextClass = cur;
     }
-    cur->Name = MemToStringSafe(reader().text().data(), reader().text().size());
+    cur->Name = MemToStringSafe(link, reader().text().data(), reader().text().size());
     cur->NextClass = nullptr;
     cur->Ring = nullptr;
     cur->SegList = nullptr;
@@ -1117,7 +1117,7 @@ bool ProcOrdClass() {
     cur->FixedAddr = false;
     cur->Copy = false;
     cur->NoEmit = false;
-    while (process_one(OrderClassOpts, Sep::none)) {
+    while (process_one(link, OrderClassOpts, Sep::none)) {
     }
     return true;
 }
@@ -1126,13 +1126,13 @@ constexpr Entry OrderOpts[] = {
     {"CLName", ProcOrdClass, MK_ALL},
 };
 
-bool ProcOrder() {
+bool ProcOrder(Link& link) {
     bool ret = false;
-    common_state().current_order_class = wlink().CurrSect->orderlist;
+    common_state().current_order_class = link.CurrSect->orderlist;
     if (common_state().current_order_class != nullptr) {
         LnkMsg(WRN + LOC + LINE + MSG_DUP_DIRECTIVE, "s", "OPTION");
     }
-    while (process_one(OrderOpts, Sep::none)) ret = true;
+    while (process_one(link, OrderOpts, Sep::none)) ret = true;
     return ret;
 }
 
@@ -1145,59 +1145,59 @@ constexpr Entry OutputOpts[] = {
     {"STartrec", ProcOutputStart, MK_ALL},
 };
 
-bool ProcOutput() {
-    wlink().FmtData.output_offset = 0L;
-    wlink().FmtData.output_hshift = false;
-    wlink().FmtData.output_start = false;
+bool ProcOutput(Link& link) {
+    link.FmtData.output_offset = 0L;
+    link.FmtData.output_hshift = false;
+    link.FmtData.output_start = false;
     bool ret = false;
-    while (process_one(OutputOpts, Sep::none)) ret = true;
+    while (process_one(link, OutputOpts, Sep::none)) ret = true;
     return ret;
 }
 #endif
 
 #if defined(_PHARLAP) || defined(_DOS16M) || defined(_OS2) || defined(_ELF)
-bool AddRunTime() {
+bool AddRunTime(Link& link) {
     reader().push_back();   // reparse last token.
 #ifdef _DOS16M
-    if (Proc16MRuntime()) return true;
+    if (Proc16MRuntime(link)) return true;
 #endif
 #ifdef _PHARLAP
-    if (ProcPharRuntime()) return true;
+    if (ProcPharRuntime(link)) return true;
 #endif
 #ifdef _OS2
-    if (ProcOS2Runtime()) return true;
+    if (ProcOS2Runtime(link)) return true;
 #endif
 #ifdef _ELF
-    if (ProcELFRuntime()) return true;
+    if (ProcELFRuntime(link)) return true;
 #endif
     return false;
 }
 
-bool ProcRuntime() { return process_list(AddRunTime, Want::include_dot); }
+bool ProcRuntime(Link& link) { return process_list(link, AddRunTime, Want::include_dot); }
 #endif
 
 // save up list of commands to process later
-bool ProcStartLink() {
-    GetCommandBlock(&state().link_commands, nullptr, EndLinkOpt);
+bool ProcStartLink(Link& link) {
+    GetCommandBlock(link, &state().link_commands, nullptr, EndLinkOpt);
     return true;
 }
 
 // parse a system begin block and store it somewhere
-bool ProcSysBegin() {
+bool ProcSysBegin(Link& link) {
     if (!reader().get(Sep::none, Want::include_dot)) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "SYSTEM BEGIN");
         return true;
     }
-    char* sysname = MemToStringSafe(reader().text().data(), reader().text().size());
+    char* sysname = MemToStringSafe(link, reader().text().data(), reader().text().size());
     sysblock* sys = FindSysBlock(sysname);
     if (sys != nullptr) {
         LnkMsg(WRN + LOC + LINE + MSG_SYSTEM_ALREADY_DEFINED, "s", sys->name);
-        while (!process_one(SysEndOptions, Sep::space)) {
+        while (!process_one(link, SysEndOptions, Sep::space)) {
             reader().forget_push_back();
             reader().forward();
         }
     } else {
-        GetCommandBlock(&state().sys_blocks, sysname, SysEndOptions);
+        GetCommandBlock(link, &state().sys_blocks, sysname, SysEndOptions);
     }
     MemFree(sysname);
     return true;
@@ -1212,15 +1212,15 @@ constexpr Entry SysDeleteOptions[] = {
 };
 
 // the system directive
-bool ProcSystem() {
-    if (process_one(SysBeginOptions, Sep::none)) return true;
-    const bool dodelete = process_one(SysDeleteOptions, Sep::none);
+bool ProcSystem(Link& link) {
+    if (process_one(link, SysBeginOptions, Sep::none)) return true;
+    const bool dodelete = process_one(link, SysDeleteOptions, Sep::none);
     if (dodelete) {
         if (!reader().get(Sep::none, Want::include_dot)) return false;
     } else {
         reader().forget_push_back();
     }
-    char* sysname = MemToStringSafe(reader().text().data(), reader().text().size());
+    char* sysname = MemToStringSafe(link, reader().text().data(), reader().text().size());
     sysblock* sys = FindSystemBlock(sysname);
     if (sys == nullptr) {
         LnkMsg(WRN + LOC + LINE + MSG_SYSTEM_UNDEFINED, "s", sysname);
@@ -1246,9 +1246,9 @@ constexpr Entry Languages[] = {
     {"KOrean", ProcKorean, MK_ALL},
 };
 
-bool ProcLanguage() {
+bool ProcLanguage(Link& link) {
     cmd_flags() &= ~Flag::language_mask;
-    return process_one(Languages, Sep::none);
+    return process_one(link, Languages, Sep::none);
 }
 
 constexpr Entry SortOptions[] = {
@@ -1256,10 +1256,10 @@ constexpr Entry SortOptions[] = {
     {"GLobal", ProcGlobal, MK_ALL},
 };
 
-bool ProcSort() {
-    wlink().MapFlags |= MAP_SORT;
-    if (!process_one(SortOptions, Sep::none)) return true;
-    process_one(SortOptions, Sep::none);
+bool ProcSort(Link& link) {
+    link.MapFlags |= MAP_SORT;
+    if (!process_one(link, SortOptions, Sep::none)) return true;
+    process_one(link, SortOptions, Sep::none);
     return true;
 }
 
@@ -1283,17 +1283,17 @@ constexpr Entry DbgMods[] = {
 #endif
 };
 
-bool ProcDebug() {
+bool ProcDebug(Link& link) {
     if (any(cmd_flags() & Flag::files_before_debug)) {
         LnkMsg(WRN + LOC + LINE + MSG_DEBUG_AFTER_FILES, nullptr);
     }
-    const bool gotmod = process_one(DbgMods, Sep::none);
-    wlink().DBIFlag = (dbi_flags)(0);
-    if (process_one(PosDbgMods, Sep::none)) {
-        while (process_one(PosDbgMods, Sep::comma)) {
+    const bool gotmod = process_one(link, DbgMods, Sep::none);
+    link.DBIFlag = (dbi_flags)(0);
+    if (process_one(link, PosDbgMods, Sep::none)) {
+        while (process_one(link, PosDbgMods, Sep::comma)) {
         }
     } else {
-        wlink().DBIFlag |= DBI_ALL;
+        link.DBIFlag |= DBI_ALL;
         if (!gotmod) return false;
     }
     return true;
@@ -1365,37 +1365,37 @@ constexpr Entry MainOptions[] = {
     {"HSHIFT", ProcHshift, (MK_DOS | MK_ALLOW_16)},
 };
 
-bool AddOption() {
+bool AddOption(Link& link) {
     reader().push_back();
-    if (process_one(MainOptions, Sep::none)) return true;
+    if (process_one(link, MainOptions, Sep::none)) return true;
 #ifdef _EXE
-    if (ProcDosOptions()) return true;
+    if (ProcDosOptions(link)) return true;
 #endif
 #ifdef _ELF
-    if (ProcELFOptions()) return true;
+    if (ProcELFOptions(link)) return true;
 #endif
 #ifdef _DOS16M
-    if (Proc16MOptions()) return true;
+    if (Proc16MOptions(link)) return true;
 #endif
 #ifdef _NOVELL
-    if (ProcNovOptions()) return true;
+    if (ProcNovOptions(link)) return true;
 #endif
 #ifdef _PHARLAP
-    if (ProcPharOptions()) return true;
+    if (ProcPharOptions(link)) return true;
 #endif
 #ifdef _QNX
-    if (ProcQNXOptions()) return true;
+    if (ProcQNXOptions(link)) return true;
 #endif
 #ifdef _RDOS
-    if (ProcRdosOptions()) return true;
+    if (ProcRdosOptions(link)) return true;
 #endif
 #ifdef _OS2
-    if (ProcOS2Options()) return true;
+    if (ProcOS2Options(link)) return true;
 #endif
     return false;
 }
 
-bool ProcOptions() { return process_list(AddOption, Want::include_dot); }
+bool ProcOptions(Link& link) { return process_list(link, AddOption, Want::include_dot); }
 
 constexpr Entry Models[] = {
 #ifdef _EXE
@@ -1428,12 +1428,12 @@ constexpr Entry Models[] = {
 #endif
 };
 
-bool ProcFormat() {
-    if (wlink().LinkState & LS_FMT_SPECIFIED) {
+bool ProcFormat(Link& link) {
+    if (link.LinkState & LS_FMT_SPECIFIED) {
         LnkMsg(FTL + LOC + LINE + MSG_MULTIPLE_MODES_FOUND, nullptr);
     }
-    wlink().LinkState |= LS_FMT_SPECIFIED;
-    return process_one_or_fail(Models, Sep::none);
+    link.LinkState |= LS_FMT_SPECIFIED;
+    return process_one_or_fail(link, Models, Sep::none);
 }
 
 // directives with Flag::subset are the only ones that are harmless to run after the files have been processed in pass 1
@@ -1504,34 +1504,34 @@ constexpr Entry Directives[] = {
 }  // namespace
 
 // `library` (DOS's `fixedlib` runs it too)
-bool ProcLibrary() {
-    if ((wlink().LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0 && !in_system_block()) {
+bool ProcLibrary(Link& link) {
+    if ((link.LinkFlags & (LF_DWARF_DBI_FLAG | LF_OLD_DBI_FLAG | LF_NOVELL_DBI_FLAG)) == 0 && !in_system_block()) {
         cmd_flags() |= Flag::files_before_debug;
     }
-    return process_list(AddLib, Want::file_name);
+    return process_list(link, AddLib, Want::file_name);
 }
 
 // Note: align must be a power of 2
-void ChkBase(offset align) {
-    if (wlink().FmtData.objalign != NO_BASE_SPEC && wlink().FmtData.objalign > align) {
-        align = wlink().FmtData.objalign;
+void ChkBase(Link& link, offset align) {
+    if (link.FmtData.objalign != NO_BASE_SPEC && link.FmtData.objalign > align) {
+        align = link.FmtData.objalign;
     }
-    if (wlink().FmtData.base != NO_BASE_SPEC && (wlink().FmtData.base & (align - 1)) != 0) {
+    if (link.FmtData.base != NO_BASE_SPEC && (link.FmtData.base & (align - 1)) != 0) {
         LnkMsg(WRN + LOC + LINE + MSG_OFFSET_MUST_BE_ALIGNED, "l", align);
-        wlink().FmtData.base = __ROUND_UP_SIZE(wlink().FmtData.base, align);
+        link.FmtData.base = __ROUND_UP_SIZE(link.FmtData.base, align);
     }
 }
 
-bool DoParseDirectiveSubset() { return process_one_subset(Directives, Sep::none); }
+bool DoParseDirectiveSubset(Link& link) { return process_one_subset(link, Directives, Sep::none); }
 
-bool DoParseDirective() { return process_one(Directives, Sep::none); }
+bool DoParseDirective(Link& link) { return process_one(link, Directives, Sep::none); }
 
-bool DoParseDirectiveSuicide() { return process_one_or_fail(Directives, Sep::none); }
+bool DoParseDirectiveSuicide(Link& link) { return process_one_or_fail(link, Directives, Sep::none); }
 
 bool DoMatchDirective(std::string_view word) { return matches(Directives, word); }
 
-outfilelist* NewOutFile(char* filename) {
-    for (outfilelist* fnode = wlink().OutFiles; fnode != nullptr; fnode = fnode->next) {
+outfilelist* NewOutFile(Link& link, char* filename) {
+    for (outfilelist* fnode = link.OutFiles; fnode != nullptr; fnode = fnode->next) {
         if (FNAMECMPSTR(filename, fnode->fname) == 0) {
             MemFree(filename);   // don't need this now.
             return fnode;
@@ -1540,8 +1540,8 @@ outfilelist* NewOutFile(char* filename) {
     // file name not already in list, so add a list entry.
     outfilelist* fnode = (outfilelist*)(MemAllocSafe(sizeof(outfilelist)));
     InitBuffFile(fnode, filename, true);
-    fnode->next = wlink().OutFiles;
-    wlink().OutFiles = fnode;
+    fnode->next = link.OutFiles;
+    link.OutFiles = fnode;
     return fnode;
 }
 
@@ -1549,11 +1549,11 @@ outfilelist* NewOutFile(char* filename) {
 
 // ---- called from outside the directive layer (wlink.cpp, cmdline.cpp)
 
-void ResetCmdAll(void) {
+void ResetCmdAll(Link& link) {
     auto& c = cb::x86link::directives::common_state();
     c.last_file.u.file = nullptr;
     c.last_lib_file = nullptr;
-    wlink().UsrLibPath = nullptr;
+    link.UsrLibPath = nullptr;
 }
 
 sysblock* FindSysBlock(const char* name) {

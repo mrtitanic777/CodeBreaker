@@ -33,7 +33,7 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void CheckTraces( void );
+extern void CheckTraces(Link& link);
 extern void CheckLibTrace( file_list * );
 extern bool FindLibTrace( mod_entry * );
 extern void PrintBadTraces( void );

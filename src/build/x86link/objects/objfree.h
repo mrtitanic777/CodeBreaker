@@ -33,9 +33,9 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void     FiniLinkStruct( void );
-extern void     CleanLinkStruct( void );
-extern void     FreeObjInfo( void );
+extern void     FiniLinkStruct(Link& link);
+extern void     CleanLinkStruct(Link& link);
+extern void     FreeObjInfo(Link& link);
 extern void     FreeSegFlags( seg_flags_struct * );
-extern void     FreeAMod( mod_entry * );
-extern void     FreeGroups( group_entry * );
+extern void     FreeAMod(Link& link,  mod_entry * );
+extern void     FreeGroups(Link& link,  group_entry * );

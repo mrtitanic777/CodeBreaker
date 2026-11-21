@@ -89,7 +89,7 @@ D16MState &state()
 
 }   // namespace
 
-static void WriteGDT( unsigned_32 reloc_size )
+static void WriteGDT(Link& link,  unsigned_32 reloc_size )
 /********************************************/
 // write out the GDTs
 {
@@ -99,7 +99,7 @@ static void WriteGDT( unsigned_32 reloc_size )
 
 // write program gdt's.
     gdt.gdtaddr_hi = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->size > 0 ) {
             gdt.gdtlen = __ROUND_UP_SIZE_PARA( group->size ) - 1; // para align.
         } else {
@@ -111,19 +111,19 @@ static void WriteGDT( unsigned_32 reloc_size )
             gdt.gdtreserved |= 0x2000;
         if( group->segflags & SEG_DATA ) {
             gdt.gdtaccess = D16M_ACC_DATA;
-            if( group == wlink().DataGroup ) {
-                gdt.gdtreserved = wlink().FmtData.u.d16m.datasize;
-                if( wlink().FmtData.u.d16m.flags & TRANS_STACK ) {
+            if( group == link.DataGroup ) {
+                gdt.gdtreserved = link.FmtData.u.d16m.datasize;
+                if( link.FmtData.u.d16m.flags & TRANS_STACK ) {
                     gdt.gdtreserved |= TRANSPARENT;
                 }
             }
-            if( wlink().FmtData.u.d16m.flags & TRANS_DATA ) {
+            if( link.FmtData.u.d16m.flags & TRANS_DATA ) {
                 gdt.gdtreserved |= TRANSPARENT;
             }
         } else {
             gdt.gdtaccess = D16M_ACC_CODE;
         }
-        WriteLoad( &gdt, sizeof( gdt_info ) );
+        WriteLoad(link,  &gdt, sizeof( gdt_info ) );
     }
 // write out gdt for reloc info
     if( reloc_fmt == 1 ) {
@@ -133,31 +133,31 @@ static void WriteGDT( unsigned_32 reloc_size )
         gdt.gdtaccess = D16M_ACC_DATA;
         gdt.gdtlen = reloc_size - 1;
         gdt.gdtreserved = reloc_size >> 4;   // mem size in paras
-        WriteLoad( &gdt, sizeof( gdt_info ) );
-        WriteLoad( &gdt, sizeof( gdt_info ) );
+        WriteLoad(link,  &gdt, sizeof( gdt_info ) );
+        WriteLoad(link,  &gdt, sizeof( gdt_info ) );
     } else if( reloc_fmt == 2 ) {
         gdt.gdtreserved = 0;
         gdt.gdtaddr = 0;
         gdt.gdtaccess = D16M_ACC_DATA;
         gdt.gdtlen = reloc_size - 1;
         gdt.gdtreserved = reloc_size >> 4;   // mem size in paras
-        WriteLoad( &gdt, sizeof( gdt_info ) );
+        WriteLoad(link,  &gdt, sizeof( gdt_info ) );
     }
 }
 
-static unsigned Write16MData( unsigned hdr_size )
+static unsigned Write16MData(Link& link,  unsigned hdr_size )
 /***********************************************/
 {
     group_entry     *group;
 
     DEBUG(( DBG_BASE, "Writing DOS/16M data" ));
 
-    SeekLoad( hdr_size );
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
-        WriteGroupLoad( group, false );
-        NullAlign( 0x10 );          // paragraph alignment.
+    SeekLoad(link,  hdr_size );
+    for( group = link.Groups; group != nullptr; group = group->next ) {
+        WriteGroupLoad(link,  group, false );
+        NullAlign(link,  0x10 );          // paragraph alignment.
     }
-    return( PosLoad() );
+    return( PosLoad(link) );
 }
 
 static bool RelocWalkFn( void *data, size_t size, void *ctx )
@@ -170,17 +170,17 @@ static bool RelocWalkFn( void *data, size_t size, void *ctx )
     return( false );   /* don't stop walking */
 }
 
-static void write_sel_reloc( unsigned_16 sel, reloc_addr *block_start, reloc_addr *block_end )
+static void write_sel_reloc(Link& link,  unsigned_16 sel, reloc_addr *block_start, reloc_addr *block_end )
 /********************************************************************************************/
 {
     unsigned_16     block_cnt;
 
     if( sel != 0 ) {
-        WriteLoadU16( sel );
+        WriteLoadU16(link,  sel );
         block_cnt = static_cast<unsigned_16>( block_end - block_start );
-        WriteLoadU16( block_cnt );
+        WriteLoadU16(link,  block_cnt );
         for( ; block_start < block_end; ++block_start ) {
-            WriteLoadU16( block_start->off );
+            WriteLoadU16(link,  block_start->off );
         }
     }
 }
@@ -197,7 +197,7 @@ static bool reloc_entry_less( const reloc_addr &a, const reloc_addr &b )
     return( retval < 0 );
 }
 
-static unsigned GetRelocBlock( reloc_addr **reloc_data )
+static unsigned GetRelocBlock(Link& link,  reloc_addr **reloc_data )
 /******************************************************/
 {
     reloc_info      reloclist;
@@ -205,13 +205,13 @@ static unsigned GetRelocBlock( reloc_addr **reloc_data )
     context         info;
 
     *reloc_data = nullptr;
-    if( (wlink().LinkState & LS_MAKE_RELOCS) && wlink().Root->relocs ) {
-        reloclist = wlink().Root->reloclist;
-        num_relocs = wlink().Root->relocs;
+    if( (link.LinkState & LS_MAKE_RELOCS) && link.Root->relocs ) {
+        reloclist = link.Root->reloclist;
+        num_relocs = link.Root->relocs;
         *reloc_data = static_cast<reloc_addr *>( MemAllocSafe( sizeof( reloc_addr ) * num_relocs ) );
         if( *reloc_data != nullptr ) {
             info.reloc_data = *reloc_data;
-            WalkRelocList( &reloclist, RelocWalkFn, &info );
+            WalkRelocList(link,  &reloclist, RelocWalkFn, &info );
             if( state().reloc_fmt == 1 ) {
                 return( 2 );
             } else {
@@ -237,7 +237,7 @@ static unsigned GetRelocBlock( reloc_addr **reloc_data )
 // in the list has bit 1 set (selector numbers are multiples of 8 so the
 // low four bits are unused).
 
-static unsigned_32 Write16MRelocs( reloc_addr *reloc_data )
+static unsigned_32 Write16MRelocs(Link& link,  reloc_addr *reloc_data )
 /*********************************************************/
 {
     unsigned        num_relocs;
@@ -247,16 +247,16 @@ static unsigned_32 Write16MRelocs( reloc_addr *reloc_data )
     unsigned        block_start;
     const unsigned  reloc_fmt = state().reloc_fmt;
 
-    pos = PosLoad();
-    num_relocs = wlink().Root->relocs;
+    pos = PosLoad(link);
+    num_relocs = link.Root->relocs;
     if( reloc_fmt == 1 ) {
         // RSI-1 reloc format
         for( i = 0; i < num_relocs; ++ i ) {
-            WriteLoadU16( reloc_data[i].seg );
+            WriteLoadU16(link,  reloc_data[i].seg );
         }
-        NullAlign( 0x10 );
+        NullAlign(link,  0x10 );
         for( i = 0; i < num_relocs; ++ i ) {
-            WriteLoadU16( reloc_data[i].off );
+            WriteLoadU16(link,  reloc_data[i].off );
         }
     } else if( reloc_fmt == 2 ) {
         // RSI-2 reloc format
@@ -264,17 +264,17 @@ static unsigned_32 Write16MRelocs( reloc_addr *reloc_data )
         block_start = 0;
         for( i = 0; i < num_relocs; ++ i ) {
             if( sel != reloc_data[i].seg ) {
-                write_sel_reloc( sel, reloc_data + block_start, reloc_data + i );
+                write_sel_reloc(link,  sel, reloc_data + block_start, reloc_data + i );
                 block_start = i;
                 sel = reloc_data[i].seg;
             }
         }
-        write_sel_reloc( sel | 0x02, reloc_data + block_start, reloc_data + i );
+        write_sel_reloc(link,  sel | 0x02, reloc_data + block_start, reloc_data + i );
     }
-    return( NullAlign( 0x10 ) - pos );
+    return( NullAlign(link,  0x10 ) - pos );
 }
 
-static unsigned_32 WriteStubProg( void )
+static unsigned_32 WriteStubProg(Link& link)
 /**************************************/
 {
     unsigned_32 size;
@@ -282,22 +282,22 @@ static unsigned_32 WriteStubProg( void )
     std::array<char, PATH_MAX> fullname;
 
     size = 0;
-    if( wlink().FmtData.u.d16m.stub != nullptr ) {
-        fhandle = FindPath( wlink().FmtData.u.d16m.stub, fullname.data() );
+    if( link.FmtData.u.d16m.stub != nullptr ) {
+        fhandle = FindPath(link,  link.FmtData.u.d16m.stub, fullname.data() );
         if( fhandle == NIL_FHANDLE ) {
-            LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", wlink().FmtData.u.d16m.stub );
+            LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.u.d16m.stub );
         } else {
-            MemFree( wlink().FmtData.u.d16m.stub );
-            wlink().FmtData.u.d16m.stub = MemStrdupSafe( fullname.data() );
-            size = CopyToLoad( fhandle, wlink().FmtData.u.d16m.stub );
-            QClose( fhandle, wlink().FmtData.u.d16m.stub );
+            MemFree( link.FmtData.u.d16m.stub );
+            link.FmtData.u.d16m.stub = MemStrdupSafe(link,  fullname.data() );
+            size = CopyToLoad(link,  fhandle, link.FmtData.u.d16m.stub );
+            QClose( fhandle, link.FmtData.u.d16m.stub );
         }
     }
-    SetOriginLoad( size );
+    SetOriginLoad(link,  size );
     return( size );
 }
 
-void Fini16MLoadFile( void )
+void Fini16MLoadFile(Link& link)
 /**************************/
 {
     unsigned            hdr_size;
@@ -315,53 +315,53 @@ void Fini16MLoadFile( void )
     // TODO: add some parameter for reloc format switching
     // for now it is setup to RSI-2 reloc format
     st.reloc_fmt = 2;
-    extra_sels = GetRelocBlock( &reloc_data );
-    stub_size = WriteStubProg();
-    hdr_size = sizeof( exe_head ) + (wlink().NumGroups + extra_sels) * sizeof( gdt_info );
+    extra_sels = GetRelocBlock(link,  &reloc_data );
+    stub_size = WriteStubProg(link);
+    hdr_size = sizeof( exe_head ) + (link.NumGroups + extra_sels) * sizeof( gdt_info );
     hdr_size = __ROUND_UP_SIZE_PARA( hdr_size );
     reloc_size = 0;
-    exe_size = Write16MData( hdr_size );
+    exe_size = Write16MData(link,  hdr_size );
     if( extra_sels ) {
-        reloc_size = Write16MRelocs( reloc_data );
+        reloc_size = Write16MRelocs(link,  reloc_data );
         exe_size += reloc_size;
         MemFree( reloc_data );
     }
-    DBIWrite();
+    DBIWrite(link);
 
-    SeekLoad( 0 );
+    SeekLoad(link,  0 );
     _HostU16toTarg( EXESIGN_DOS16M, exe_head.signature );
     temp = hdr_size / 16U;
     _HostU16toTarg( exe_size % 512U, exe_head.last_page_bytes );
     temp = ( exe_size + 511U ) / 512U;
     _HostU16toTarg( temp, exe_head.pages_in_file );
-    _HostU16toTarg( wlink().FmtData.u.d16m.extended, exe_head.max_alloc );
+    _HostU16toTarg( link.FmtData.u.d16m.extended, exe_head.max_alloc );
     _HostU16toTarg( 0, exe_head.min_alloc );
-    _HostU16toTarg( wlink().StartInfo.addr.off, exe_head.init_ip );
-    _HostU16toTarg( wlink().StartInfo.addr.seg, exe_head.code_seg );
+    _HostU16toTarg( link.StartInfo.addr.off, exe_head.init_ip );
+    _HostU16toTarg( link.StartInfo.addr.seg, exe_head.code_seg );
     if( st.reloc_fmt == 2 ) {
-        temp = wlink().FmtData.u.d16m.selstart + wlink().NumGroups * sizeof( gdt_info );
+        temp = link.FmtData.u.d16m.selstart + link.NumGroups * sizeof( gdt_info );
     } else {
         temp = 0;
     }
     _HostU16toTarg( temp, exe_head.first_reloc_sel );
-    _HostU16toTarg( wlink().StackAddr.seg, exe_head.stack_seg );
-    _HostU16toTarg( wlink().StackAddr.off, exe_head.stack_ptr );
-    _HostU16toTarg( wlink().FmtData.u.d16m.gdtsize, exe_head.runtime_gdt_size );
+    _HostU16toTarg( link.StackAddr.seg, exe_head.stack_seg );
+    _HostU16toTarg( link.StackAddr.off, exe_head.stack_ptr );
+    _HostU16toTarg( link.FmtData.u.d16m.gdtsize, exe_head.runtime_gdt_size );
     _HostU16toTarg( 2000, exe_head.MAKEPM_version );   // pretend GLU version 2.0
     _HostU32toTarg( exe_size + stub_size, exe_head.next_header_pos );
     _HostU32toTarg( 0, exe_head.cv_info_offset );
     if( extra_sels ) {
         _HostU16toTarg( ef_auto, exe_head.exp_flags );
     } else {
-        wlink().FmtData.u.d16m.options &= ~OPT_AUTO;
+        link.FmtData.u.d16m.options &= ~OPT_AUTO;
     }
-    _HostU16toTarg( wlink().FmtData.u.d16m.options, exe_head.options );
-    temp = NUM_RESERVED_SELS + wlink().NumGroups + extra_sels;
+    _HostU16toTarg( link.FmtData.u.d16m.options, exe_head.options );
+    temp = NUM_RESERVED_SELS + link.NumGroups + extra_sels;
     _HostU16toTarg( __ROUND_UP_SIZE_PARA( temp * sizeof( gdt_info ) ) - 1, exe_head.gdtimage_size );
     exe_head.reserved5 = D16M_ACC_DATA;
-    _HostU16toTarg( wlink().FmtData.u.d16m.selstart, exe_head.first_selector );
-    _HostU16toTarg( wlink().FmtData.u.d16m.buffer, exe_head.transfer_buffer_size );
-    _HostU16toTarg( wlink().FmtData.u.d16m.strategy, exe_head.default_mem_strategy );
+    _HostU16toTarg( link.FmtData.u.d16m.selstart, exe_head.first_selector );
+    _HostU16toTarg( link.FmtData.u.d16m.buffer, exe_head.transfer_buffer_size );
+    _HostU16toTarg( link.FmtData.u.d16m.strategy, exe_head.default_mem_strategy );
     while( extra_sels-- ) {
         st.LastSel += sizeof( gdt_info );
         if( st.LastSel > 0xFFFF ) {
@@ -375,25 +375,25 @@ void Fini16MLoadFile( void )
     /*
      * add original EXP name
      */
-    temp = strlen( wlink().FmtData.u.d16m.exp_name );
+    temp = strlen( link.FmtData.u.d16m.exp_name );
     if( temp > sizeof( exe_head.EXP_path ) - 1 )
         temp = sizeof( exe_head.EXP_path ) - 1;
     for( i = 0; i < temp; i++ ) {
-        exe_head.EXP_path[i] = toupper( reinterpret_cast<unsigned char *>( wlink().FmtData.u.d16m.exp_name )[i] );
+        exe_head.EXP_path[i] = toupper( reinterpret_cast<unsigned char *>( link.FmtData.u.d16m.exp_name )[i] );
     }
     exe_head.EXP_path[temp] = '\0';
 
-    WriteLoad( &exe_head, sizeof( exe_head ) );
-    WriteGDT( reloc_size );
+    WriteLoad(link,  &exe_head, sizeof( exe_head ) );
+    WriteGDT(link,  reloc_size );
 }
 
-unsigned ToD16MSel( unsigned seg_num )
+unsigned ToD16MSel(Link& link,  unsigned seg_num )
 /************************************/
 {
     unsigned_32    x;
     unsigned_32    &LastSel = state().LastSel;
 
-    LastSel = wlink().FmtData.u.d16m.selstart + ( seg_num - 1 ) * sizeof( gdt_info );
+    LastSel = link.FmtData.u.d16m.selstart + ( seg_num - 1 ) * sizeof( gdt_info );
     for( x = 0xA000; LastSel >= x; x += 0x200 ) {   // check for reserved selector
         LastSel += sizeof( gdt_info );
         if( LastSel > 0xFFFF ) {
@@ -403,7 +403,7 @@ unsigned ToD16MSel( unsigned seg_num )
     return( LastSel );
 }
 
-segment Find16MSeg( segment selector )
+segment Find16MSeg(Link& link,  segment selector )
 /************************************/
 // this finds the dos_segment value which corresponds to the given selector.
 {
@@ -411,7 +411,7 @@ segment Find16MSeg( segment selector )
     segment         result;
 
     result = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->addr.seg == selector ) {
             result = group->u.dos_segment;
             break;
@@ -420,7 +420,7 @@ segment Find16MSeg( segment selector )
     return( result );
 }
 
-void CalcGrpSegs( void )
+void CalcGrpSegs(Link& link)
 /**********************/
 // go through group list & calculate what the segment would be if we were
 // running under DOS.
@@ -429,7 +429,7 @@ void CalcGrpSegs( void )
     offset          addr;
 
     addr = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         addr = __ROUND_UP_SIZE_PARA( addr );       // addr is paragraph aligned.
         group->u.dos_segment = addr >> 4;
         addr += group->totalsize;
@@ -451,12 +451,13 @@ static void SetSegDataAbs( void *_sdata )
 static void RemapAliasSels( void *_leader )
 /*****************************************/
 {
+    Link& link = wlink();
     seg_leader  *leader = static_cast<seg_leader *>( _leader );
     seg_leader  *seg;
     section     *sect;
 
     if( leader->info & SEGINF_ABSOLUTE ) {
-        sect = wlink().Root;
+        sect = link.Root;
         while( (seg = FindSegment( sect, leader->segname.u.ptr )) != nullptr ) {
             sect = nullptr;
             if( (seg->info & SEGINF_ABSOLUTE) == 0 ) {
@@ -469,7 +470,7 @@ static void RemapAliasSels( void *_leader )
     }
 }
 
-void MakeDos16PM( void )
+void MakeDos16PM(Link& link)
 /**********************/
 {
     class_entry *class_;
@@ -477,7 +478,7 @@ void MakeDos16PM( void )
     /*
      * remap dos16m kernel selectors reference
      */
-    for( class_ = wlink().Root->classes; class_ != nullptr; class_ = class_->next ) {
+    for( class_ = link.Root->classes; class_ != nullptr; class_ = class_->next ) {
         if( (class_->flags & CLASS_DEBUG_INFO) == 0 ) {
             RingWalk( class_->segs, RemapAliasSels );
         }
@@ -485,9 +486,9 @@ void MakeDos16PM( void )
     /*
      * change startup point
      */
-    if( FindISymbol( "_cstart_" ) != nullptr ) {
-        wlink().StartInfo.type = START_UNDEFED;
-        SetStartSym( "_cstart_" );
+    if( FindISymbol(link,  "_cstart_" ) != nullptr ) {
+        link.StartInfo.type = START_UNDEFED;
+        SetStartSym(link,  "_cstart_" );
     }
 }
 

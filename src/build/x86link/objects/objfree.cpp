@@ -52,18 +52,18 @@
 #include "build/x86link/objects/objfree.h"
 
 
-void FiniLinkStruct( void )
+void FiniLinkStruct(Link& link)
 /********************************/
 /* Free object processing data structures. */
 {
     DEBUG(( DBG_OLD, "FiniLinkStruct()" ));
-    BurnNodes();
-    FreeTokBuffs();
+    BurnNodes(link);
+    FreeTokBuffs(link);
     CacheFini();
     FiniORLObj();
 }
 
-static void FreeClasses( class_entry *class_ )
+static void FreeClasses(Link& link,  class_entry *class_ )
 /*******************************************/
 {
     class_entry     *next;
@@ -71,25 +71,25 @@ static void FreeClasses( class_entry *class_ )
     for( ; class_ != nullptr; class_ = next ) {
         next = class_->next;
         RingWalk( class_->segs, FreeLeader );
-        CarveFree( wlink().CarveClass, class_ );
+        CarveFree( link.CarveClass, class_ );
     }
 }
 
-void FreeAMod( mod_entry *mod )
+void FreeAMod(Link& link,  mod_entry *mod )
 /************************************/
 {
     FreeObjCache( mod->u1.source );
-    FreeModEntry( mod );
+    FreeModEntry(link,  mod );
 }
 
-static void FreeMods( mod_entry *head )
+static void FreeMods(Link& link,  mod_entry *head )
 /*************************************/
 {
     void        *next;
 
     for( ; head != nullptr; head = static_cast<mod_entry *>( next ) ) {
         next = head->u.next;
-        FreeAMod( head );
+        FreeAMod(link,  head );
     }
 }
 
@@ -108,9 +108,9 @@ static void FreeFiles( file_list *file )
     }
 }
 
-static void FreeAreas( AREASECT *area );
+static void FreeAreas(Link& link,  AREASECT *area );
 
-static void FreeSections( section *sect )
+static void FreeSections(Link& link,  section *sect )
 /****************************************
  * Free sections & classes.
  */
@@ -124,12 +124,12 @@ static void FreeSections( section *sect )
     for( ; sect != nullptr; sect = next ) {
         next = sect->next;
         FreeFiles( sect->files );
-        if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-            FreeMods( sect->mods );
-            FreeClasses( sect->classes );
+        if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+            FreeMods(link,  sect->mods );
+            FreeClasses(link,  sect->classes );
         }
-        DBISectCleanup( sect );
-        FreeAreas( sect->areas );
+        DBISectCleanup(link,  sect );
+        FreeAreas(link,  sect->areas );
         ZapHTable( sect->modFilesHashed, MemFree );
         // Free up any Order Class entries
         for( Class = sect->orderlist; Class != nullptr; Class = NextClass ) {
@@ -154,52 +154,52 @@ static void FreeSections( section *sect )
     }
 }
 
-static void FreeAreas( AREASECT *area )
+static void FreeAreas(Link& link,  AREASECT *area )
 /*************************************/
 {
     AREASECT    *next;
 
     for( ; area != nullptr; area = next ) {
         next = area->next;
-        FreeSections( area->sections );
+        FreeSections(link,  area->sections );
     }
 }
 
 
-void CleanLinkStruct( void )
+void CleanLinkStruct(Link& link)
 /*********************************/
 /* free all structures */
 {
-    if( wlink().Root == nullptr )
+    if( link.Root == nullptr )
         return;  /* haven't finished initializing */
-    BurnLibs();
-    FreeFiles( wlink().ObjLibFiles );
-    FreeFiles( wlink().Root->files );
-    wlink().ObjLibFiles = nullptr;
-    wlink().Root->files = nullptr;
-    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        FreeMods( wlink().LibModules );
+    BurnLibs(link);
+    FreeFiles( link.ObjLibFiles );
+    FreeFiles( link.Root->files );
+    link.ObjLibFiles = nullptr;
+    link.Root->files = nullptr;
+    if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+        FreeMods(link,  link.LibModules );
     }
-    if( wlink().SymFileName != nullptr ) {
-        MemFree( wlink().SymFileName );
+    if( link.SymFileName != nullptr ) {
+        MemFree( link.SymFileName );
     }
-    if( wlink().FmtData.osname != nullptr ) {
-        MemFree( wlink().FmtData.osname );
+    if( link.FmtData.osname != nullptr ) {
+        MemFree( link.FmtData.osname );
     }
-    if( wlink().FmtData.resource != nullptr ) {
-        MemFree( wlink().FmtData.resource );
+    if( link.FmtData.resource != nullptr ) {
+        MemFree( link.FmtData.resource );
     }
-    FreeRelocInfo();
-    FreeGroups( wlink().Groups );
-    FreeGroups( wlink().AbsGroups );
-    wlink().Groups = nullptr;
-    wlink().AbsGroups = nullptr;
-    FreeSections( wlink().Root );
-    DBICleanup();
-    wlink().Root = nullptr;
+    FreeRelocInfo(link);
+    FreeGroups(link,  link.Groups );
+    FreeGroups(link,  link.AbsGroups );
+    link.Groups = nullptr;
+    link.AbsGroups = nullptr;
+    FreeSections(link,  link.Root );
+    DBICleanup(link);
+    link.Root = nullptr;
 #ifdef _EXE
-    if( wlink().FmtData.type & MK_DOS ) {
-        FreeOverlaySupp();
+    if( link.FmtData.type & MK_DOS ) {
+        FreeOverlaySupp(link);
     }
 #endif
 }
@@ -218,28 +218,28 @@ void FreeSegFlags( seg_flags_struct *curr )
 }
 #endif
 
-void FreeObjInfo( void )
+void FreeObjInfo(Link& link)
 /*****************************/
 {
-    FreeNodes( wlink().ExtNodes );
-    FreeNodes( wlink().SegNodes );
-    FreeNodes( wlink().GrpNodes );
+    FreeNodes( link.ExtNodes );
+    FreeNodes( link.SegNodes );
+    FreeNodes( link.GrpNodes );
 }
 
-static void FreeAGroup( group_entry *group )
+static void FreeAGroup(Link& link,  group_entry *group )
 /******************************************/
 /* free all memory associated with group */
 {
-    CarveFree( wlink().CarveGroup, group );
+    CarveFree( link.CarveGroup, group );
 }
 
-void FreeGroups( group_entry *group )
+void FreeGroups(Link& link,  group_entry *group )
 /***********************************/
 {
     group_entry *next;
 
     for( ; group != nullptr; group = next ) {
         next = group->next;
-        FreeAGroup( group );
+        FreeAGroup(link,  group );
     }
 }

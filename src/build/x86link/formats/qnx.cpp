@@ -74,7 +74,7 @@ using VerifyWriter = void (*)( char *, virt_mem, unsigned long );
 
 }
 
-static void WriteLoadRec( void )
+static void WriteLoadRec(Link& link)
 /******************************/
 {
     QnxState        &st = state();
@@ -88,27 +88,29 @@ static void WriteLoadRec( void )
     } else {
         record.data_nbytes = st.CurrGroup->size - st.AmountWritten + sizeof( lmf_data );
     }
-    WriteLoad( &record, sizeof( lmf_record ) );
+    WriteLoad(link,  &record, sizeof( lmf_record ) );
     data.segment = QNX_SEL_NUM( st.CurrGroup->addr.seg );
     data.offset = st.AmountWritten;
-    WriteLoad( &data, sizeof( lmf_data ) );
+    WriteLoad(link,  &data, sizeof( lmf_data ) );
 }
 
 static void ZeroLoad( virt_mem dummy, unsigned long length )
 /**********************************************************/
 {
+    Link& link = wlink();
     /* unused parameters */ (void)dummy;
 
-    PadLoad( length );
+    PadLoad(link,  length );
 }
 
 static void CopyLoad( virt_mem data, unsigned long length )
 /*********************************************************/
 {
+    Link& link = wlink();
     WriteInfoLoad( data, length );
 }
 
-static void WriteQNXInfo( LoadWriter wrfn, virt_mem data, unsigned long length )
+static void WriteQNXInfo(Link& link,  LoadWriter wrfn, virt_mem data, unsigned long length )
 /*****************************************************************************/
 {
     QnxState    &st = state();
@@ -123,7 +125,7 @@ static void WriteQNXInfo( LoadWriter wrfn, virt_mem data, unsigned long length )
         length -= adjust;
         data += adjust;
         bufmod = 0;
-        WriteLoadRec();
+        WriteLoadRec(link);
     }
     if( length > 0 ) {
         wrfn( data, length );
@@ -175,6 +177,7 @@ static void SetVerifyInfo( VerifyWriter wrfn, virt_mem data, unsigned long lengt
 static bool WriteSegData( void *_sdata, void *_start )
 /****************************************************/
 {
+    Link& link = wlink();
     QnxState &st = state();
     segdata *sdata = static_cast<segdata *>( _sdata );
     unsigned long *start = static_cast<unsigned long *>( _start );
@@ -189,12 +192,12 @@ static bool WriteSegData( void *_sdata, void *_start )
             if( st.InVerifySegment ) {
                 SetVerifyInfo( ZeroVerify, 0, pad );
             }
-            WriteQNXInfo( ZeroLoad, 0, pad );
+            WriteQNXInfo(link,  ZeroLoad, 0, pad );
         }
         if( st.InVerifySegment ) {
             SetVerifyInfo( CopyVerify, sdata->u1.vm_ptr, sdata->length );
         }
-        WriteQNXInfo( CopyLoad, sdata->u1.vm_ptr, sdata->length );
+        WriteQNXInfo(link,  CopyLoad, sdata->u1.vm_ptr, sdata->length );
     }
     return( false );
 }
@@ -202,6 +205,7 @@ static bool WriteSegData( void *_sdata, void *_start )
 static void DoGroupLeader( void *_seg )
 /*************************************/
 {
+    Link& link = wlink();
     offset      start;
     seg_leader *seg = static_cast<seg_leader *>( _seg );
 
@@ -209,7 +213,7 @@ static void DoGroupLeader( void *_seg )
     RingLookup( seg->pieces, WriteSegData, &start );
 }
 
-static void WriteQNXGroup( group_entry *group, std::span<unsigned_32> segments )
+static void WriteQNXGroup(Link& link,  group_entry *group, std::span<unsigned_32> segments )
 /*****************************************************************************/
 {
     QnxState    &st = state();
@@ -217,18 +221,18 @@ static void WriteQNXGroup( group_entry *group, std::span<unsigned_32> segments )
 
     seg = QNX_SEL_NUM( group->addr.seg );
     segments[seg] = group->totalsize | ( static_cast<unsigned_32>( group->u.qnxflags ) << 28 );
-    if( wlink().StackSegPtr != nullptr && group == wlink().StackSegPtr->group ) {
-        segments[seg] -= wlink().StackSize;      // stack size gets
+    if( link.StackSegPtr != nullptr && group == link.StackSegPtr->group ) {
+        segments[seg] -= link.StackSize;      // stack size gets
     }                                    // added on by QNX loader.
     if( group->size == 0 )
         return;
     st.AmountWritten = 0;
     st.CurrGroup = group;
-    WriteLoadRec();
+    WriteLoadRec(link);
     Ring2Walk( group->leaders, DoGroupLeader );
 }
 
-static void WriteQNXRelocs( reloc_info reloclist, unsigned lmf_type, unsigned_16 seg )
+static void WriteQNXRelocs(Link& link,  reloc_info reloclist, unsigned lmf_type, unsigned_16 seg )
 /************************************************************************************/
 {
     lmf_record          record;
@@ -244,22 +248,22 @@ static void WriteQNXRelocs( reloc_info reloclist, unsigned lmf_type, unsigned_16
     if( islinear ) {
         adjust = 2;
     }
-    pos = PosLoad();    /* get current position */
+    pos = PosLoad(link);    /* get current position */
     while( reloclist != nullptr ) {
-        SeekLoad( pos + sizeof( lmf_record ) );
+        SeekLoad(link,  pos + sizeof( lmf_record ) );
         if( islinear ) {
-            WriteLoad( &seg, sizeof( unsigned_16 ) );
+            WriteLoad(link,  &seg, sizeof( unsigned_16 ) );
         }
-        size = DumpMaxRelocList( &reloclist, QNX_MAX_FIXUPS - adjust ) + adjust;
-        SeekLoad( pos );
+        size = DumpMaxRelocList(link,  &reloclist, QNX_MAX_FIXUPS - adjust ) + adjust;
+        SeekLoad(link,  pos );
         record.data_nbytes = size;
-        WriteLoad( &record, sizeof( lmf_record ) );
+        WriteLoad(link,  &record, sizeof( lmf_record ) );
         pos += size + sizeof( lmf_record );
     }
-    SeekLoad( pos );
+    SeekLoad(link,  pos );
 }
 
-static void WriteQNXData( std::span<unsigned_32> segments )
+static void WriteQNXData(Link& link,  std::span<unsigned_32> segments )
 /*********************************************************/
 {
     QnxState &      st = state();
@@ -271,13 +275,13 @@ static void WriteQNXData( std::span<unsigned_32> segments )
     st.InVerifySegment = false;
     /* write all read/write segment data */
     st.RWEndRec.signature = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ){
+    for( group = link.Groups; group != nullptr; group = group->next ){
         if( group->u.qnxflags == QNX_READ_WRITE && group->totalsize != 0 ) {
             if( first && group->size >= VERIFY_END ) {
                 st.InVerifySegment = true;
                 first = false;
             }
-            WriteQNXGroup( group, segments );
+            WriteQNXGroup(link,  group, segments );
         }
         st.RWEndRec.signature += group->totalsize;
         st.RWEndRec.signature <<= 3;
@@ -286,15 +290,15 @@ static void WriteQNXData( std::span<unsigned_32> segments )
     record.reserved = record.spare = 0;
     record.rec_type = LMF_RW_END_REC;
     record.data_nbytes = sizeof( st.RWEndRec );
-    WriteLoad( &record, sizeof( lmf_record ) );
+    WriteLoad(link,  &record, sizeof( lmf_record ) );
     st.RWEndRec.verify ^= static_cast<unsigned_16>( ~0 );
-    WriteLoad( &st.RWEndRec, sizeof( st.RWEndRec ) );
+    WriteLoad(link,  &st.RWEndRec, sizeof( st.RWEndRec ) );
     /* write all read only segment data */
-    for( group = wlink().Groups; group != nullptr; group = group->next ){
+    for( group = link.Groups; group != nullptr; group = group->next ){
         if( group->u.qnxflags != QNX_READ_WRITE && group->totalsize != 0 ) {
-            WriteQNXGroup( group, segments );
+            WriteQNXGroup(link,  group, segments );
         }
-        WriteQNXRelocs( group->g.reloclist, LMF_LINEAR_FIXUP_REC, QNX_SEL_NUM( group->addr.seg ) );
+        WriteQNXRelocs(link,  group->g.reloclist, LMF_LINEAR_FIXUP_REC, QNX_SEL_NUM( group->addr.seg ) );
     }
 }
 
@@ -328,14 +332,14 @@ static bool checkGroupFlags( void *_seg, void *_group )
     return( false );
 }
 
-void SetQNXGroupFlags( void )
+void SetQNXGroupFlags(Link& link)
 /***************************/
 // This goes through the groups, setting the flag word to be compatible with
 // the flag words that are specified in the segments.
 {
     group_entry *   group;
 
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->segflags & SEG_DATA ) {
             group->u.qnxflags = QNX_READ_ONLY;      // 1
         } else {
@@ -345,14 +349,14 @@ void SetQNXGroupFlags( void )
     }
 }
 
-void SetQNXSegFlags( void )
+void SetQNXSegFlags(Link& link)
 /*************************/
 {
-    SetSegFlags( wlink().FmtData.u.qnx.seg_flags );
-    wlink().FmtData.u.qnx.seg_flags = nullptr;         // segsegflags frees the list.
+    SetSegFlags(link,  link.FmtData.u.qnx.seg_flags );
+    link.FmtData.u.qnx.seg_flags = nullptr;         // segsegflags frees the list.
 }
 
-static void WriteQNXResource( void )
+static void WriteQNXResource(Link& link)
 /**********************************/
 {
     unsigned long   len;
@@ -360,42 +364,42 @@ static void WriteQNXResource( void )
     f_handle        file;
     lmf_resource    resource;
 
-    if( wlink().FmtData.resource != nullptr ) {
+    if( link.FmtData.resource != nullptr ) {
         rec.reserved = 0;
         rec.spare = 0;
         rec.rec_type = LMF_RESOURCE_REC;
         resource = lmf_resource{};
-        if( wlink().FmtData.res_name_only ) {
-            file = QObjOpen( wlink().FmtData.resource );
+        if( link.FmtData.res_name_only ) {
+            file = QObjOpen( link.FmtData.resource );
             if( file == NIL_FHANDLE ) {
-                PrintIOError( WRN+MSG_CANT_OPEN_NO_REASON, "s", wlink().FmtData.resource );
+                PrintIOError( WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.resource );
                 return;
             }
             len = QFileSize( file );
             if( len + sizeof( lmf_resource ) > QNX_MAX_REC_SIZE ) {
-                LnkMsg( WRN+MSG_RESOURCE_TOO_BIG, "s", wlink().FmtData.resource );
+                LnkMsg( WRN+MSG_RESOURCE_TOO_BIG, "s", link.FmtData.resource );
                 return;
             }
             std::vector<char> buf( len );
             rec.data_nbytes = len + sizeof( lmf_resource );
-            WriteLoad( &rec, sizeof( lmf_record ) );
-            WriteLoad( &resource, sizeof( lmf_resource ) );
-            QRead( file, buf.data(), len, wlink().FmtData.resource );
-            WriteLoad( buf.data(), len );
-            QClose( file, wlink().FmtData.resource );
+            WriteLoad(link,  &rec, sizeof( lmf_record ) );
+            WriteLoad(link,  &resource, sizeof( lmf_resource ) );
+            QRead( file, buf.data(), len, link.FmtData.resource );
+            WriteLoad(link,  buf.data(), len );
+            QClose( file, link.FmtData.resource );
         } else {
-            len = std::strlen( wlink().FmtData.resource );
-            wlink().FmtData.resource[len] = '\n';
+            len = std::strlen( link.FmtData.resource );
+            link.FmtData.resource[len] = '\n';
             len++;
             rec.data_nbytes = len + sizeof( lmf_resource );
-            WriteLoad( &rec, sizeof( lmf_record ) );
-            WriteLoad( &resource, sizeof( lmf_resource ) );
-            WriteLoad( wlink().FmtData.resource, len );
+            WriteLoad(link,  &rec, sizeof( lmf_record ) );
+            WriteLoad(link,  &resource, sizeof( lmf_resource ) );
+            WriteLoad(link,  link.FmtData.resource, len );
         }
     }
 }
 
-void FiniQNXLoadFile( void )
+void FiniQNXLoadFile(Link& link)
 /*********************************/
 {
     unsigned_16     nbytes;
@@ -404,67 +408,67 @@ void FiniQNXLoadFile( void )
     lmf_eof         trailer;
     unsigned        adseg;
 
-    wlink().CurrSect = wlink().Root;
-    if( wlink().FmtData.type & MK_QNX_FLAT ) {
-        if( wlink().FmtData.base < wlink().StackSize ) {
+    link.CurrSect = link.Root;
+    if( link.FmtData.type & MK_QNX_FLAT ) {
+        if( link.FmtData.base < link.StackSize ) {
             LnkMsg( WRN+MSG_QNX_BASE_LT_STACK, nullptr );
         }
     }
-    nbytes = wlink().NumGroups * sizeof( unsigned_32 );
-    std::vector<unsigned_32> segments( wlink().NumGroups );
-    SeekLoad( sizeof( lmf_header ) + nbytes + sizeof( lmf_record ) );
-    WriteQNXResource();
-    WriteQNXData( segments );
-    WriteQNXRelocs( wlink().Root->reloclist, LMF_FIXUP_REC, 0 );
-    WriteQNXRelocs( wlink().FloatFixups, LMF_8087_FIXUP_REC, 0 );
+    nbytes = link.NumGroups * sizeof( unsigned_32 );
+    std::vector<unsigned_32> segments( link.NumGroups );
+    SeekLoad(link,  sizeof( lmf_header ) + nbytes + sizeof( lmf_record ) );
+    WriteQNXResource(link);
+    WriteQNXData(link,  segments );
+    WriteQNXRelocs(link,  link.Root->reloclist, LMF_FIXUP_REC, 0 );
+    WriteQNXRelocs(link,  link.FloatFixups, LMF_8087_FIXUP_REC, 0 );
     record.reserved = record.spare = 0;
     record.rec_type = LMF_IMAGE_END_REC;
     record.data_nbytes = sizeof( trailer );
-    WriteLoad( &record, sizeof( lmf_record ) );
+    WriteLoad(link,  &record, sizeof( lmf_record ) );
     trailer = lmf_eof{};
-    WriteLoad( &trailer, sizeof( trailer ) );
-    DBIWrite();
+    WriteLoad(link,  &trailer, sizeof( trailer ) );
+    DBIWrite(link);
 
-    SeekLoad( 0 );
+    SeekLoad(link,  0 );
     record.rec_type = LMF_HEADER_REC;
     record.data_nbytes = sizeof( lmf_header ) + nbytes;
-    WriteLoad( &record, sizeof( lmf_record ) );
+    WriteLoad(link,  &record, sizeof( lmf_record ) );
     header = lmf_header{};
     header.version = QNX_VERSION;
-    header.cflags = (wlink().FmtData.u.qnx.flags | (wlink().FmtData.u.qnx.priv_level << QNX_PRIV_SHIFT)) & QNX_FLAG_MASK;
-    if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
+    header.cflags = (link.FmtData.u.qnx.flags | (link.FmtData.u.qnx.priv_level << QNX_PRIV_SHIFT)) & QNX_FLAG_MASK;
+    if( link.LinkState & LS_FMT_SEEN_32BIT ) {
         header.cflags |= _TCF_32BIT;
     }
-    if( wlink().FmtData.type & MK_QNX_FLAT ) {
+    if( link.FmtData.type & MK_QNX_FLAT ) {
         header.cflags |= _TCF_FLAT;
     }
     header.fpu = 0;     //NYI: need to set 87, 287, 387
-    if( wlink().FmtData.cpu_type == 0 ) {        // no model specified, so assume...
-        if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
+    if( link.FmtData.cpu_type == 0 ) {        // no model specified, so assume...
+        if( link.LinkState & LS_FMT_SEEN_32BIT ) {
             header.cpu = 386;
         } else {
             header.cpu = 86;
         }
     } else {
-        header.cpu = (wlink().FmtData.cpu_type * 100) + 86;
+        header.cpu = (link.FmtData.cpu_type * 100) + 86;
     }
-    header.code_index = QNX_SEL_NUM( wlink().StartInfo.addr.seg );
-    header.stack_index = QNX_SEL_NUM( wlink().StackAddr.seg );
+    header.code_index = QNX_SEL_NUM( link.StartInfo.addr.seg );
+    header.stack_index = QNX_SEL_NUM( link.StackAddr.seg );
     adseg = header.stack_index;
-    if( wlink().DataGroup != nullptr ) {
-        adseg = QNX_SEL_NUM( wlink().DataGroup->addr.seg );
+    if( link.DataGroup != nullptr ) {
+        adseg = QNX_SEL_NUM( link.DataGroup->addr.seg );
     }
     header.heap_index = adseg;  // all in DGROUP.
     header.argv_index = adseg;
-    header.code_offset = wlink().StartInfo.addr.off;
-    header.stack_nbytes = wlink().StackSize;
-    header.heap_nbytes = wlink().FmtData.u.qnx.heapsize;
-    header.image_base = wlink().FmtData.base;
-    WriteLoad( &header, sizeof( lmf_header ) );
-    WriteLoad( segments.data(), nbytes );
+    header.code_offset = link.StartInfo.addr.off;
+    header.stack_nbytes = link.StackSize;
+    header.heap_nbytes = link.FmtData.u.qnx.heapsize;
+    header.image_base = link.FmtData.base;
+    WriteLoad(link,  &header, sizeof( lmf_header ) );
+    WriteLoad(link,  segments.data(), nbytes );
 }
 
-unsigned_16 ToQNXSel( unsigned_16 seg )
+unsigned_16 ToQNXSel(Link& link,  unsigned_16 seg )
 /********************************************/
 {
     return( QNX_SELECTOR( seg - 1 ) );

@@ -35,14 +35,14 @@
 
 extern void             DistribInitMods( void );
 extern void             DistribAddMod( mod_entry *, overlay_ref );
-extern void             InitArcList( mod_entry * );
-extern void             DistribSetSegments( void );
-extern void             FreeDistribSupp( void );
-extern void             DistribProcMods( void );
+extern void             InitArcList(Link& link,  mod_entry * );
+extern void             DistribSetSegments(Link& link);
+extern void             FreeDistribSupp(Link& link);
+extern void             DistribProcMods(Link& link);
 extern overlay_ref      LowestAncestor( overlay_ref, section * );
-extern void             DefDistribSym( symbol * );
-extern void             RefDistribSym( symbol * );
-extern void             DistribFinishMod( mod_entry * );
-extern void             DistribIndirectCall( symbol * );
+extern void             DefDistribSym(Link& link,  symbol * );
+extern void             RefDistribSym(Link& link,  symbol * );
+extern void             DistribFinishMod(Link& link,  mod_entry * );
+extern void             DistribIndirectCall(Link& link,  symbol * );
 extern void             ResetDistribSupp( void );
-extern void             DistribNumberSections( void );
+extern void             DistribNumberSections(Link& link);

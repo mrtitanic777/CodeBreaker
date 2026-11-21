@@ -48,76 +48,79 @@
 static void OvlNumASect( section *sect )
 /**************************************/
 {
-    sect->ovlref = wlink().OvlSectNum++;
+    Link& link = wlink();
+    sect->ovlref = link.OvlSectNum++;
 }
 
-void OvlNumberSections( void )
+void OvlNumberSections(Link& link)
 /****************************/
 {
-    if( wlink().FmtData.u.dos.distribute ) {
-        DistribNumberSections();
+    if( link.FmtData.u.dos.distribute ) {
+        DistribNumberSections(link);
     }
     /* OvlSectNum value 0 is reserved for Root */
     /* Overlayed sections start at 1 */
-    wlink().OvlSectNum = 1;
-    WalkAreas( wlink().Root->areas, OvlNumASect );
+    link.OvlSectNum = 1;
+    WalkAreas( link.Root->areas, OvlNumASect );
 }
 
-void OvlSetSegments( void )
+void OvlSetSegments(Link& link)
 /*************************/
 {
-    DistribSetSegments();
+    DistribSetSegments(link);
 }
 
 static void FillOutPtr( section *sect )
 /*************************************/
 {
+    Link& link = wlink();
     if( sect->outfile == nullptr ) {
         if( sect->parent != nullptr ) {
             sect->outfile = sect->parent->outfile;  //same file as ancestor.
         } else {
-            sect->outfile = wlink().Root->outfile;
+            sect->outfile = link.Root->outfile;
         }
     }
 }
 
-void OvlFillOutFilePtrs( void )
+void OvlFillOutFilePtrs(Link& link)
 /*****************************/
 {
-    WalkAreas( wlink().Root->areas, FillOutPtr );
+    WalkAreas( link.Root->areas, FillOutPtr );
 }
 
-void OvlTryDefVector( symbol *sym )
+void OvlTryDefVector(Link& link,  symbol *sym )
 /*********************************/
 {
     if( sym->info & SYM_1_DISTRIB ) {
-        DefDistribSym( sym );
+        DefDistribSym(link,  sym );
     } else {
         OvlDefVector( sym );
     }
 }
 
-void OvlTryUseVector( symbol *sym, extnode *newnode )
+void OvlTryUseVector(Link& link,  symbol *sym, extnode *newnode )
 /***************************************************/
 {
     if( newnode != nullptr ) {
         newnode->ovlref = 0;
-        OvlUseVector( sym, newnode );
+        OvlUseVector(link,  sym, newnode );
     }
 }
 
 static void PSection( section *sect )
 /***********************************/
 {
-    wlink().CurrSect = sect;
-    PModList( sect->mods );
+    Link& link = wlink();
+    link.CurrSect = sect;
+    PModList(link,  sect->mods );
 }
 
-void OvlPass2( void )
+void OvlPass2(Link& link)
 /*******************/
 {
-    OvlEmitVectors();
-    WalkAreas( wlink().Root->areas, PSection );
+    OvlEmitVectors(link);
+    WalkAreas( link.Root->areas, PSection );
 }
 
 #endif

@@ -23,7 +23,7 @@ public:
         return *static_cast<T*>(p.get());
     }
     // A run starts (wlink.cpp: InitSubSystems): what an earlier run kept is gone.
-    static void begin_run();
+    static Link& begin_run();
 
 private:
     static std::size_t next_slot();

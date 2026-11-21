@@ -34,8 +34,8 @@
 
 #ifdef _RAW
 
-extern void FiniRawLoadFile( void );
-extern void HexOutput( void );
-extern void BinOutput( void );
+extern void FiniRawLoadFile(Link& link);
+extern void HexOutput(Link& link);
+extern void BinOutput(Link& link);
 
 #endif

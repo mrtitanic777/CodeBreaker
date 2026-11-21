@@ -40,33 +40,33 @@
 
 extern void             WalkAreas( AREASECT *area, walksecs_fn * );
 extern void             ParmWalkAreas( AREASECT *area, parmwalksecs_fn *, void * );
-extern void             OvlProcPubsSect( section * );
-extern void             OvlProcPubs( void );
-extern void             OvlCalc( void );
-extern void             FreeOverlaySupp( void );
+extern void             OvlProcPubsSect(Link& link,  section * );
+extern void             OvlProcPubs(Link& link);
+extern void             OvlCalc(Link& link);
+extern void             FreeOverlaySupp(Link& link);
 extern void             OvlDefVector( symbol * );
 extern void             OvlVectorize( symbol * );
-extern void             OvlTryRefVector( symbol * );
-extern void             OvlUseVector( symbol *, extnode * );
-extern void             OvlIndirectCall( symbol * );
-extern void             OvlGetVecAddr( int, addr_type * );
-extern bool             OvlCheckOvlClass( const char *, bool * );
-extern section          *OvlCheckOvlSection( const char * );
-extern void             OvlEmitVectors( void );
-extern void             OvlSetStartAddr( void );
-extern void             OvlPass1( void );
-extern void             OvlEmitTable( void );
-extern void             OvlPadOvlFiles( void );
-extern void             ResetOverlaySupp( void );
-extern void             OvlSetTableLoc( group_entry *, unsigned long );
+extern void             OvlTryRefVector(Link& link,  symbol * );
+extern void             OvlUseVector(Link& link,  symbol *, extnode * );
+extern void             OvlIndirectCall(Link& link,  symbol * );
+extern void             OvlGetVecAddr(Link& link,  int, addr_type * );
+extern bool             OvlCheckOvlClass(Link& link,  const char *, bool * );
+extern section          *OvlCheckOvlSection(Link& link,  const char * );
+extern void             OvlEmitVectors(Link& link);
+extern void             OvlSetStartAddr(Link& link);
+extern void             OvlPass1(Link& link);
+extern void             OvlEmitTable(Link& link);
+extern void             OvlPadOvlFiles(Link& link);
+extern void             ResetOverlaySupp(Link& link);
+extern void             OvlSetTableLoc(Link& link,  group_entry *, unsigned long );
 
 /* in overlays.c */
 
-extern void             OvlNumberSections( void );
-extern void             OvlSetSegments( void );
-extern void             OvlFillOutFilePtrs( void );
-extern void             OvlTryDefVector( symbol * );
-extern void             OvlTryUseVector( symbol *, extnode * );
-extern void             OvlPass2( void );
+extern void             OvlNumberSections(Link& link);
+extern void             OvlSetSegments(Link& link);
+extern void             OvlFillOutFilePtrs(Link& link);
+extern void             OvlTryDefVector(Link& link,  symbol * );
+extern void             OvlTryUseVector(Link& link,  symbol *, extnode * );
+extern void             OvlPass2(Link& link);
 
 #endif

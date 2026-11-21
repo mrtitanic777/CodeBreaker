@@ -39,7 +39,7 @@
 #define QNX_RES_FILE    0x0080
 #define QNX_FLAG_MASK   0x007F
 
-#define QNX_SELECTOR( num ) (((num) << 3) | 4 | wlink().FmtData.u.qnx.priv_level)
+#define QNX_SELECTOR( num ) (((num) << 3) | 4 | link.FmtData.u.qnx.priv_level)
 
 #define QNX_SEL_NUM(selector) ((selector) >> 3)
 
@@ -47,10 +47,10 @@
 
 #define QNX_GROUP_ALIGN _4K
 
-extern void             SetQNXSegFlags( void );
-extern void             SetQNXGroupFlags( void );
-extern void             FiniQNXLoadFile( void );
-extern unsigned_16      ToQNXSel( unsigned_16 );
+extern void             SetQNXSegFlags(Link& link);
+extern void             SetQNXGroupFlags(Link& link);
+extern void             FiniQNXLoadFile(Link& link);
+extern unsigned_16      ToQNXSel(Link& link,  unsigned_16 );
 extern unsigned_16      ToQNXIndex( unsigned_16 );
 
 #endif

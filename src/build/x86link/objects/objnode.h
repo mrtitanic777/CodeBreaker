@@ -35,21 +35,21 @@
 
 typedef struct nodearray        *nodearray_handle;
 
-extern void             InitNodes( void );
+extern void             InitNodes(Link& link);
 extern void             *FindNode( nodearray_handle , unsigned );
 extern unsigned         GetNumNodes( nodearray_handle );
 extern void             *AllocNode( nodearray_handle );
 extern void             *AllocNodeIdx( nodearray_handle, unsigned );
-extern mod_entry        *NewModEntry( void );
-extern void             FreeModEntry( mod_entry * );
+extern mod_entry        *NewModEntry(Link& link);
+extern void             FreeModEntry(Link& link,  mod_entry * );
 extern void             FreeNodes( nodearray_handle );
 extern void             IterateNodelist( nodearray_handle, void (*)(void *,void *), void *);
-extern void             BurnNodes( void );
-extern void             ReleaseNames( void );
-extern void             CollapseLazyExtdefs( void );
+extern void             BurnNodes(Link& link);
+extern void             ReleaseNames(Link& link);
+extern void             CollapseLazyExtdefs(Link& link);
 extern segnode          *FindSegdata( seg_leader * );
-extern extnode          *FindExtHandle( orl_symbol_handle );
-extern segdata          *AllocSegData( void );
+extern extnode          *FindExtHandle(Link& link,  orl_symbol_handle );
+extern segdata          *AllocSegData(Link& link);
 extern void             FreeSegData( void * );
 extern list_of_names    *MakeListName( char *, size_t );
 extern unsigned long    BadObjFormat( void );

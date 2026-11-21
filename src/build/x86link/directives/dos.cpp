@@ -23,82 +23,82 @@ constexpr int SECT_ALREADY_MADE = 1;
 
 byte& ovl_level() { return state().ovl_level; }   // (wlink's file-static OvlLevel)
 
-void SetOvlClasses() {
+void SetOvlClasses(Link& link) {
     // make sure the overlay loader is always "overlayed".
-    if (wlink().OvlClasses != nullptr) {
+    if (link.OvlClasses != nullptr) {
         auto* ovlmgr = static_cast<list_of_names*>(_PermAlloc(sizeof(list_of_names) + OVL_MGR_CL_LEN));
         std::memcpy(ovlmgr->name, OvlMgrClass, OVL_MGR_CL_LEN + 1);
-        ovlmgr->next = wlink().OvlClasses;
-        wlink().OvlClasses = ovlmgr;
+        ovlmgr->next = link.OvlClasses;
+        link.OvlClasses = ovlmgr;
     }
 }
 
-section* OvlNewSection() {
-    wlink().OvlSectNum++;
+section* OvlNewSection(Link& link) {
+    link.OvlSectNum++;
     return NewSection();
 }
 
-void NewArea(section* sect) {
+void NewArea(Link& link, section* sect) {
     // allocate a new area including this section
     auto* area = static_cast<areasect*>(_PermAlloc(sizeof(areasect)));
     area->next = nullptr;
     area->sections = sect;
-    sect->parent = wlink().CurrSect;
+    sect->parent = link.CurrSect;
     areasect** owner;
-    for (owner = &wlink().CurrSect->areas; *owner != nullptr; owner = &(*owner)->next) {
+    for (owner = &link.CurrSect->areas; *owner != nullptr; owner = &(*owner)->next) {
     }
     *owner = area;
 }
 
-void MakeNonArea() {
+void MakeNonArea(Link& link) {
     // make a new overlay area for non-overlay classes
-    wlink().NonSect = OvlNewSection();   // No debug info in nonsect.
-    NewArea(wlink().NonSect);
+    link.NonSect = OvlNewSection(link);   // No debug info in nonsect.
+    NewArea(link, link.NonSect);
 }
 
 // ---- "OPtion" Directive
 
-bool ProcDistribute() {
-    wlink().FmtData.u.dos.distribute = true;
+bool ProcDistribute(Link& link) {
+    link.FmtData.u.dos.distribute = true;
     return true;
 }
 
-bool ProcPadSections() {
-    wlink().FmtData.u.dos.pad_sections = true;
+bool ProcPadSections(Link& link) {
+    link.FmtData.u.dos.pad_sections = true;
     return true;
 }
 
-bool ProcSmall() {
-    wlink().FmtData.u.dos.ovl_short = true;
+bool ProcSmall(Link& link) {
+    link.FmtData.u.dos.ovl_short = true;
     return true;
 }
 
-bool ProcDynamic() {
-    wlink().FmtData.u.dos.dynamic = true;
+bool ProcDynamic(Link& link) {
+    link.FmtData.u.dos.dynamic = true;
     return true;
 }
 
-bool ProcNoIndirect() {
-    wlink().FmtData.u.dos.noindirect = true;
+bool ProcNoIndirect(Link& link) {
+    link.FmtData.u.dos.noindirect = true;
     return true;
 }
 
-bool ProcFullHeader() {
-    wlink().FmtData.u.dos.full_mz_hdr = true;
+bool ProcFullHeader(Link& link) {
+    link.FmtData.u.dos.full_mz_hdr = true;
     return true;
 }
 
-bool ProcStandard() {
-    wlink().FmtData.u.dos.dynamic = false;
+bool ProcStandard(Link& link) {
+    link.FmtData.u.dos.dynamic = false;
     return true;
 }
 
-bool ProcArea() {
+bool ProcArea(Link& link) {
     // process the area size directive.
     unsigned_32 value;
     const bool ret = get_number(value);
     if (ret) {
-        wlink().OvlAreaSize = (value + wlink().FmtData.SegMask) >> wlink().FmtData.SegShift;
+        link.OvlAreaSize = (value + link.FmtData.SegMask) >> link.FmtData.SegShift;
     }
     return ret;
 }
@@ -116,23 +116,23 @@ constexpr Entry MainOptions[] = {
 
 // ---- "OVerlay" Directive
 
-bool AddClass() {
+bool AddClass(Link& link) {
     const std::string_view text = reader().text();
     auto* ovlclass = static_cast<list_of_names*>(_PermAlloc(sizeof(list_of_names) + text.size()));
     std::memcpy(ovlclass->name, text.data(), text.size());
     ovlclass->name[text.size()] = '\0';
-    ovlclass->next = wlink().OvlClasses;
-    wlink().OvlClasses = ovlclass;
+    ovlclass->next = link.OvlClasses;
+    link.OvlClasses = ovlclass;
     return true;
 }
 
 // ---- "Begin" Directive
 
-bool ProcInto() {
+bool ProcInto(Link& link) {
     // Process the INTO keyword.
     if (reader().get(Sep::none, Want::file_name)) {
         const std::string_view text = reader().text();
-        wlink().CurrSect->outfile = NewOutFile(FileName(text.data(), text.size(), E_OVL, false));
+        link.CurrSect->outfile = NewOutFile(link, FileName(text.data(), text.size(), E_OVL, false));
         return true;
     }
     LnkMsg(WRN + LOC + LINE + MSG_DIRECTIVE_ERR, "s", "into");
@@ -143,41 +143,41 @@ constexpr Entry SectOptions[] = {
     {"INto", ProcInto, MK_OVERLAYS},
 };
 
-bool ProcSection() {
+bool ProcSection(Link& link) {
     // process SECTION command
     if (ovl_level() == 0) {
         LnkMsg(WRN + LOC + LINE + MSG_NO_SECTION_IN_ROOT, nullptr);
     } else {
-        MakeNewSection();
-        process_one(SectOptions, Sep::none);   // check for INTO
-        while (DoParseDirective()) {
+        MakeNewSection(link);
+        process_one(link, SectOptions, Sep::none);   // check for INTO
+        while (DoParseDirective(link)) {
             reader().forward();
         }
     }
     return true;
 }
 
-bool ProcAutoSection() {
+bool ProcAutoSection(Link& link) {
     if (ovl_level() == 0) {
         LnkMsg(WRN + LOC + LINE + MSG_NO_SECTION_IN_ROOT, nullptr);
     } else {
-        MakeNewSection();
-        process_one(SectOptions, Sep::none);   // check for INTO
+        MakeNewSection(link);
+        process_one(link, SectOptions, Sep::none);   // check for INTO
         cmd_flags() |= Flag::auto_section | Flag::section_there;
-        while (DoParseDirective()) {
+        while (DoParseDirective(link)) {
         }
         cmd_flags() &= ~Flag::auto_section;
     }
     return true;
 }
 
-bool ProcEnd() {
+bool ProcEnd(Link& link) {
     // process the end of an overlay area
     if (ovl_level() > 0) {   // OvlLevel should always be > 0, but just in case..
         ovl_level()--;
     }
-    if (wlink().CurrSect->relocs != 0) {   // this only happens if the user specifies
-        wlink().CurrSect->relocs = 0;      // an overlay area with no files in it.
+    if (link.CurrSect->relocs != 0) {   // this only happens if the user specifies
+        link.CurrSect->relocs = 0;      // an overlay area with no files in it.
     }
     return false;   // cause loop to be exited in ProcBegin
 }
@@ -190,22 +190,22 @@ constexpr Entry Sections[] = {
 
 // ---- "NOVector", "VECtor", "FORCEVector" Directives
 
-bool AddNoVector() {
+bool AddNoVector(Link& link) {
     const std::string_view text = reader().text();
-    symbol* sym = SymOp(ST_CREATE_REFERENCE, text.data(), text.size());
+    symbol* sym = SymOp(link, ST_CREATE_REFERENCE, text.data(), text.size());
     sym->u.d.ovlstate |= (OVL_FORCE | OVL_NO_VECTOR);
     return true;
 }
 
-bool AddVector() {
+bool AddVector(Link& link) {
     const std::string_view text = reader().text();
-    OvlVectorize(SymOp(ST_CREATE_REFERENCE, text.data(), text.size()));
+    OvlVectorize(SymOp(link, ST_CREATE_REFERENCE, text.data(), text.size()));
     return true;
 }
 
-bool AddForceVector() {
+bool AddForceVector(Link& link) {
     const std::string_view text = reader().text();
-    symbol* sym = SymOp(ST_CREATE_REFERENCE, text.data(), text.size());
+    symbol* sym = SymOp(link, ST_CREATE_REFERENCE, text.data(), text.size());
     OvlVectorize(sym);
     sym->u.d.ovlstate |= OVL_ALWAYS;
     return true;
@@ -213,8 +213,8 @@ bool AddForceVector() {
 
 // ---- "FORMat" Directive
 
-bool ProcCom() {
-    wlink().FmtData.def_ext = E_COM;
+bool ProcCom(Link& link) {
+    link.FmtData.def_ext = E_COM;
     return true;
 }
 
@@ -225,110 +225,111 @@ constexpr Entry DosFormats[] = {
 }  // namespace
 
 void SetDosFmt() {
-    wlink().FmtData.def_ext = E_LOAD;
+    Link& link = wlink();
+    link.FmtData.def_ext = E_LOAD;
 }
 
 void FreeDosFmt() {
 }
 
-overlay_ref GetOvlRef() {
+overlay_ref GetOvlRef(Link& link) {
     // OvlSectNum value 0 is reserved for Root
-    return (ovl_level() == 0) ? 0 : wlink().OvlSectNum - 1;
+    return (ovl_level() == 0) ? 0 : link.OvlSectNum - 1;
 }
 
-void CmdOvlFini() {
+void CmdOvlFini(Link& link) {
     if (ovl_level() != 0) {
-        Ignite();
+        Ignite(link);
         LnkMsg(FTL + LOC + LINE + MSG_EXPECTING_END, nullptr);
     }
-    if (wlink().FmtData.u.dos.dynamic && ((wlink().Root->areas == nullptr) || (wlink().Root->areas->next != nullptr))) {
-        Ignite();
+    if (link.FmtData.u.dos.dynamic && ((link.Root->areas == nullptr) || (link.Root->areas->next != nullptr))) {
+        Ignite(link);
         LnkMsg(FTL + LOC + LINE + MSG_INCORRECT_NUM_AREAS, nullptr);
     }
-    SetOvlClasses();
-    MakeNonArea();
+    SetOvlClasses(link);
+    MakeNonArea(link);
 }
 
-void MakeNewSection() {
-    if (wlink().CurrSect->relocs != SECT_ALREADY_MADE) {
-        section* sect = OvlNewSection();
-        if (wlink().LinkFlags & LF_ANY_DBI_FLAG) {
-            DBISectInit(sect);
+void MakeNewSection(Link& link) {
+    if (link.CurrSect->relocs != SECT_ALREADY_MADE) {
+        section* sect = OvlNewSection(link);
+        if (link.LinkFlags & LF_ANY_DBI_FLAG) {
+            DBISectInit(link, sect);
         }
         if (any(cmd_flags() & Flag::auto_section)) {
-            sect->outfile = wlink().CurrSect->outfile;
+            sect->outfile = link.CurrSect->outfile;
         }
-        sect->parent = wlink().CurrSect->parent;
-        wlink().CurrSect->next = sect;
-        wlink().CurrSect = sect;
+        sect->parent = link.CurrSect->parent;
+        link.CurrSect->next = sect;
+        link.CurrSect = sect;
         state().current_file_list = &sect->files;
     } else {
-        wlink().CurrSect->relocs = 0;
+        link.CurrSect->relocs = 0;
     }
 }
 
-bool ProcDosOptions() {
-    return process_one(MainOptions, Sep::none);
+bool ProcDosOptions(Link& link) {
+    return process_one(link, MainOptions, Sep::none);
 }
 
-bool ProcOverlay() {
-    return process_list(AddClass, Want::include_dot);
+bool ProcOverlay(Link& link) {
+    return process_list(link, AddClass, Want::include_dot);
 }
 
-bool ProcFixedLib() {
+bool ProcFixedLib(Link& link) {
     cmd_flags() |= Flag::set_section;
-    const bool ret = ProcLibrary();
+    const bool ret = ProcLibrary(link);
     cmd_flags() &= ~Flag::set_section;
     return ret;
 }
 
-bool ProcBegin() {
+bool ProcBegin(Link& link) {
     // process a new overlay area
     section* oldsect;
     file_list** oldflist;
 
-    wlink().LinkState |= LS_FMT_SPECIFIED;   // she must want DOS mode.
-    if ((ovl_level() > 0) && wlink().FmtData.u.dos.dynamic) {
+    link.LinkState |= LS_FMT_SPECIFIED;   // she must want DOS mode.
+    if ((ovl_level() > 0) && link.FmtData.u.dos.dynamic) {
         oldsect = nullptr;
         oldflist = nullptr;
         cmd_flags() &= ~Flag::auto_section;   // merge old area with this.
     } else {
-        oldsect = wlink().CurrSect;
+        oldsect = link.CurrSect;
         oldflist = state().current_file_list;
-        section* sect = OvlNewSection();
-        if (wlink().LinkFlags & LF_ANY_DBI_FLAG) {
-            DBISectInit(sect);
+        section* sect = OvlNewSection(link);
+        if (link.LinkFlags & LF_ANY_DBI_FLAG) {
+            DBISectInit(link, sect);
         }
-        NewArea(sect);
+        NewArea(link, sect);
         sect->relocs = SECT_ALREADY_MADE;
-        wlink().CurrSect = sect;
+        link.CurrSect = sect;
         state().current_file_list = &sect->files;
     }
     ovl_level()++;
-    while (process_one(Sections, Sep::none)) {
+    while (process_one(link, Sections, Sep::none)) {
     }
-    if ((ovl_level() == 0) || !wlink().FmtData.u.dos.dynamic) {
+    if ((ovl_level() == 0) || !link.FmtData.u.dos.dynamic) {
         state().current_file_list = oldflist;
-        wlink().CurrSect = oldsect;
+        link.CurrSect = oldsect;
     }
     return true;
 }
 
-bool ProcNoVector() {
-    return process_list(AddNoVector, Want::include_dot);
+bool ProcNoVector(Link& link) {
+    return process_list(link, AddNoVector, Want::include_dot);
 }
 
-bool ProcVector() {
-    return process_list(AddVector, Want::include_dot);
+bool ProcVector(Link& link) {
+    return process_list(link, AddVector, Want::include_dot);
 }
 
-bool ProcForceVector() {
-    return process_list(AddForceVector, Want::include_dot);
+bool ProcForceVector(Link& link) {
+    return process_list(link, AddForceVector, Want::include_dot);
 }
 
-bool ProcDosFormat() {
+bool ProcDosFormat(Link& link) {
     ovl_level() = 0;
-    process_one(DosFormats, Sep::none);
+    process_one(link, DosFormats, Sep::none);
     return true;
 }
 

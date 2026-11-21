@@ -26,8 +26,8 @@ namespace {
 #define _RAW_HELP       MSG_RAW_HELP_0,     MSG_RAW_HELP_15
 
 #define HELP_ARGS(x)            _ ## x ## _HELP
-#define WRITE_HELP_ONE(x)       WriteHelp( HELP_ARGS(x), false, previous_null )
-#define WRITE_HELP_FULL(x)      WriteHelp( HELP_ARGS(x), true, previous_null )
+#define WRITE_HELP_ONE(x)       WriteHelp(link,  HELP_ARGS(x), false, previous_null )
+#define WRITE_HELP_FULL(x)      WriteHelp(link,  HELP_ARGS(x), true, previous_null )
 
 // `previous_null`: the last message of the help being written was empty (a second empty one ends the range). wlink kept
 // it in a static, so it went from one help to the next; here it is the help being written's own.
@@ -50,9 +50,9 @@ void doWriteHelp(int first_msg, int last_msg, bool& previous_null) {
     }
 }
 
-void WriteHelp(int first_msg, int last_msg, bool genhelp, bool& previous_null) {
+void WriteHelp(Link& link, int first_msg, int last_msg, bool genhelp, bool& previous_null) {
     if (genhelp || (first_msg == MSG_GENERAL_HELP_0 && last_msg == MSG_GENERAL_HELP_51)) {
-        WLPrtBanner();
+        WLPrtBanner(link);
         if (genhelp) {
             doWriteHelp(_GENERAL_HELP, previous_null);
         }
@@ -61,60 +61,60 @@ void WriteHelp(int first_msg, int last_msg, bool genhelp, bool& previous_null) {
 }
 
 #ifdef _EXE
-bool ProcDosHelp() {
+bool ProcDosHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(DOS);
     return true;
 }
 #endif
 #ifdef _OS2
-bool ProcOS2Help() {
+bool ProcOS2Help(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(OS2);
     return true;
 }
 
-bool ProcWindowsHelp() {
+bool ProcWindowsHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(WINDOWS);
     return true;
 }
 
-bool ProcWinVxdHelp() {
+bool ProcWinVxdHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(WINVXD);
     return true;
 }
 
-bool ProcNTHelp() {
+bool ProcNTHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(NT);
     return true;
 }
 #endif
 #ifdef _PHARLAP
-bool ProcPharHelp() {
+bool ProcPharHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(PHARLAP);
     return true;
 }
 #endif
 #ifdef _NOVELL
-bool ProcNovellHelp() {
+bool ProcNovellHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(NOVELL);
     return true;
 }
 #endif
 #ifdef _DOS16M
-bool Proc16MHelp() {
+bool Proc16MHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(DOS16M);
     return true;
 }
 #endif
 #ifdef _QNX
-bool ProcQNXHelp() {
+bool ProcQNXHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(QNX);
     return true;
@@ -122,7 +122,7 @@ bool ProcQNXHelp() {
 #endif
 
 #ifdef _ELF
-bool ProcELFHelp() {
+bool ProcELFHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(ELF);
     return true;
@@ -130,7 +130,7 @@ bool ProcELFHelp() {
 #endif
 
 #ifdef _RDOS
-bool ProcRdosHelp() {
+bool ProcRdosHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(RDOS);
     return true;
@@ -138,7 +138,7 @@ bool ProcRdosHelp() {
 #endif
 
 #ifdef _RAW
-bool ProcRawHelp() {
+bool ProcRawHelp(Link& link) {
     bool previous_null = false;
     WRITE_HELP_FULL(RAW);
     return true;
@@ -180,7 +180,7 @@ constexpr Entry FormatHelp[] = {
 
 }  // namespace
 
-void DisplayOptions() {
+void DisplayOptions(Link& link) {
     bool previous_null = false;
     WRITE_HELP_ONE(GENERAL);
 #if defined(_QNX) && defined(__QNX__)
@@ -219,6 +219,6 @@ void DisplayOptions() {
 }
 
 // display help, optionally allowing the user to specify the format he/she wants the help for.
-bool DoHelp() { return process_one(FormatHelp, Sep::none); }
+bool DoHelp(Link& link) { return process_one(link, FormatHelp, Sep::none); }
 
 }  // namespace cb::x86link::directives

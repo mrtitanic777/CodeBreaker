@@ -22,38 +22,40 @@
 namespace cb::x86link::directives {
 
 void SetOS2Fmt() {
+    Link& link = wlink();
     // set up the structures needed to be able to process something in OS/2 mode.
-    if (wlink().LinkState & LS_FMT_INITIALIZED) return;
-    wlink().LinkState |= LS_FMT_INITIALIZED;
-    wlink().FmtData.def_ext = E_LOAD;
-    wlink().FmtData.u.os2fam.flags = (seg_flags_type)(MULTIPLE_AUTO_DATA);
-    wlink().FmtData.u.os2fam.heapsize = 0;
-    wlink().FmtData.u.os2fam.segment_shift = 0;
-    wlink().FmtData.u.os2fam.module_name = nullptr;
-    wlink().FmtData.u.os2fam.stub_file_name = nullptr;
-    wlink().FmtData.u.os2fam.seg_flags = nullptr;
-    wlink().FmtData.description = nullptr;
-    wlink().FmtData.u.os2fam.exports = nullptr;
-    wlink().FmtData.u.os2fam.old_lib_name = nullptr;
-    if (wlink().FmtData.type & MK_WIN_NE) {
-        wlink().FmtData.def_seg_flags |= SEG_PRELOAD;
+    if (link.LinkState & LS_FMT_INITIALIZED) return;
+    link.LinkState |= LS_FMT_INITIALIZED;
+    link.FmtData.def_ext = E_LOAD;
+    link.FmtData.u.os2fam.flags = (seg_flags_type)(MULTIPLE_AUTO_DATA);
+    link.FmtData.u.os2fam.heapsize = 0;
+    link.FmtData.u.os2fam.segment_shift = 0;
+    link.FmtData.u.os2fam.module_name = nullptr;
+    link.FmtData.u.os2fam.stub_file_name = nullptr;
+    link.FmtData.u.os2fam.seg_flags = nullptr;
+    link.FmtData.description = nullptr;
+    link.FmtData.u.os2fam.exports = nullptr;
+    link.FmtData.u.os2fam.old_lib_name = nullptr;
+    if (link.FmtData.type & MK_WIN_NE) {
+        link.FmtData.def_seg_flags |= SEG_PRELOAD;
     }
-    ChkBase(_64K);
+    ChkBase(link, _64K);
 }
 
 void FreeOS2Fmt() {
-    MemFree(wlink().FmtData.u.os2fam.stub_file_name);
-    MemFree(wlink().FmtData.u.os2fam.module_name);
-    MemFree(wlink().FmtData.u.os2fam.old_lib_name);
-    MemFree(wlink().FmtData.description);
-    FreeImpNameTab();
-    FreeExportList();
-    FreeSegFlags(wlink().FmtData.u.os2fam.seg_flags);
+    Link& link = wlink();
+    MemFree(link.FmtData.u.os2fam.stub_file_name);
+    MemFree(link.FmtData.u.os2fam.module_name);
+    MemFree(link.FmtData.u.os2fam.old_lib_name);
+    MemFree(link.FmtData.description);
+    FreeImpNameTab(link);
+    FreeExportList(link);
+    FreeSegFlags(link.FmtData.u.os2fam.seg_flags);
 }
 
 namespace {
 
-entry_export* ProcWlibDLLImportEntry() {
+entry_export* ProcWlibDLLImportEntry(Link& link) {
     Reader& r = reader();
     std::string symname = r.str();
     std::string internal;
@@ -76,12 +78,12 @@ entry_export* ProcWlibDLLImportEntry() {
             }
         }
     }
-    entry_export* exp = AllocExport(symname.c_str(), symname.size());
+    entry_export* exp = AllocExport(link, symname.c_str(), symname.size());
     if (any(cmd_flags() & Flag::anonymous_export)) exp->isanonymous = true;
     if (have_internal) {
-        exp->sym = SymOp(ST_CREATE_REFERENCE, internal.c_str(), internal.size());
+        exp->sym = SymOp(link, ST_CREATE_REFERENCE, internal.c_str(), internal.size());
     } else {
-        exp->sym = SymOp(ST_CREATE_REFERENCE, symname.c_str(), symname.size());
+        exp->sym = SymOp(link, ST_CREATE_REFERENCE, symname.c_str(), symname.size());
     }
     exp->sym->info |= SYM_1_DCE_REF;    // make sure it isn't removed
     exp->ordinal = ordinal;
@@ -91,12 +93,12 @@ entry_export* ProcWlibDLLImportEntry() {
     return exp;
 }
 
-bool GetWlibImports() {
+bool GetWlibImports(Link& link) {
     // read in a wlib command file, get the import directives, and treat them as exports
     Reader& r = reader();
     const std::string_view name = r.text();
     char* fname = FileName(name.data(), name.size(), E_LBC, false);
-    f_handle handle = QOpenR(fname);
+    f_handle handle = QOpenR(link, fname);
     r.push_file(handle, fname);
     MemFree(fname);
     r.lock(true);       // make sure only this file parsed
@@ -112,13 +114,13 @@ bool GetWlibImports() {
                     return true;
                 }
             }
-            entry_export* exp = ProcWlibDLLImportEntry();
+            entry_export* exp = ProcWlibDLLImportEntry(link);
             if (exp == nullptr) {
                 LnkMsg(ERR + LOC + LINE + MSG_BAD_WLIB_IMPORT, nullptr);
                 r.pop();        // get rid of this file
                 return true;
             }
-            AddToExportList(exp);
+            AddToExportList(link, exp);
         }
     }
     r.lock(false);
@@ -127,45 +129,45 @@ bool GetWlibImports() {
 
 // ---- "OPtion" directive
 
-bool ProcNoStub() {
-    wlink().FmtData.u.os2fam.no_stub = true;
+bool ProcNoStub(Link& link) {
+    link.FmtData.u.os2fam.no_stub = true;
     return true;
 }
 
-bool ProcSingle() {
+bool ProcSingle(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
         LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
-    wlink().FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
+    link.FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
+    link.FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
     return true;
 }
 
-bool ProcMultiple() {
+bool ProcMultiple(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
         LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.flags &= ~SINGLE_AUTO_DATA;
-    wlink().FmtData.u.os2fam.flags |= MULTIPLE_AUTO_DATA;
+    link.FmtData.u.os2fam.flags &= ~SINGLE_AUTO_DATA;
+    link.FmtData.u.os2fam.flags |= MULTIPLE_AUTO_DATA;
     return true;
 }
 
-bool ProcNone() {
+bool ProcNone(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
         LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.flags &= ~(SINGLE_AUTO_DATA | MULTIPLE_AUTO_DATA);
+    link.FmtData.u.os2fam.flags &= ~(SINGLE_AUTO_DATA | MULTIPLE_AUTO_DATA);
     return true;
 }
 
-bool ProcOldLibrary() {
+bool ProcOldLibrary(Link& link) {
     if (!have_equals(Want::file_name)) return false;
     const std::string_view t = reader().text();
-    wlink().FmtData.u.os2fam.old_lib_name = FileName(t.data(), t.size(), E_DLL, false);
+    link.FmtData.u.os2fam.old_lib_name = FileName(t.data(), t.size(), E_DLL, false);
     return true;
 }
 
-bool ProcModName() {
+bool ProcModName(Link& link) {
     Reader& r = reader();
     if (!have_equals(Want::include_dot)) return false;
     r.push_back();
@@ -173,70 +175,70 @@ bool ProcModName() {
         r.get(Sep::none, Want::include_dot);
     }
     const std::string_view t = r.text();
-    wlink().FmtData.u.os2fam.module_name = MemToStringSafe(t.data(), t.size());
+    link.FmtData.u.os2fam.module_name = MemToStringSafe(link, t.data(), t.size());
     return true;
 }
 
-bool ProcNewFiles() {
-    wlink().FmtData.u.os2fam.flags |= LONG_FILENAMES;
+bool ProcNewFiles(Link& link) {
+    link.FmtData.u.os2fam.flags |= LONG_FILENAMES;
     return true;
 }
 
-bool ProcProtMode() {
-    wlink().FmtData.u.os2fam.flags |= PROTMODE_ONLY;
+bool ProcProtMode(Link& link) {
+    link.FmtData.u.os2fam.flags |= PROTMODE_ONLY;
     return true;
 }
 
 // CodeBreaker: the header says no application type (as KERNEL's does)
-bool ProcNoAppType() {
-    wlink().FmtData.u.os2fam.flags |= NO_APP_TYPE;
+bool ProcNoAppType(Link& link) {
+    link.FmtData.u.os2fam.flags |= NO_APP_TYPE;
     return true;
 }
 
 // CodeBreaker: the stub as it is, its header too (KRNL386's real-mode start steps back over a header of exactly 20h
 // paragraphs) -- only its NE offset (3Ch) is filled in
-bool ProcStubVerbatim() {
-    wlink().FmtData.u.os2fam.stub_verbatim = true;
+bool ProcStubVerbatim(Link& link) {
+    link.FmtData.u.os2fam.stub_verbatim = true;
     return true;
 }
 
 // CodeBreaker: a reference to a place in the module itself as the segment's number -- never through the entry table,
 // movable segment or not -- and a far pointer to one as its offset, written in, with only its selector left to the
 // loader (as KRNL386 has them: it relocates itself before there is an entry table to go through)
-bool ProcSelectorFixups() {
-    wlink().FmtData.u.os2fam.selector_fixups = true;
+bool ProcSelectorFixups(Link& link) {
+    link.FmtData.u.os2fam.selector_fixups = true;
     return true;
 }
 
-bool ProcNoStdCall() {
-    wlink().FmtData.u.pe.no_stdcall = true;
+bool ProcNoStdCall(Link& link) {
+    link.FmtData.u.pe.no_stdcall = true;
     return true;
 }
 
-bool ProcRWRelocCheck() {
+bool ProcRWRelocCheck(Link& link) {
     // check for segment relocations pointing to read/write data segments
-    wlink().FmtData.u.os2fam.chk_seg_relocs = true;
+    link.FmtData.u.os2fam.chk_seg_relocs = true;
     return true;
 }
 
-bool ProcSelfRelative() {
-    wlink().FmtData.u.os2fam.gen_rel_relocs = true;
+bool ProcSelfRelative(Link& link) {
+    link.FmtData.u.os2fam.gen_rel_relocs = true;
     return true;
 }
 
-bool ProcInternalRelocs() {
+bool ProcInternalRelocs(Link& link) {
     // in case someone wants internal relocs generated.
-    wlink().FmtData.u.os2fam.gen_int_relocs = true;
+    link.FmtData.u.os2fam.gen_int_relocs = true;
     return true;
 }
 
-bool ProcToggleRelocsFlag() {
+bool ProcToggleRelocsFlag(Link& link) {
     // Rational wants internal relocs generated, but wants the "no internal relocs" flag set
-    wlink().FmtData.u.os2fam.toggle_relocs = true;
+    link.FmtData.u.os2fam.toggle_relocs = true;
     return true;
 }
 
-bool ProcLinkVersion() {
+bool ProcLinkVersion(Link& link) {
     Version vb;
     // set required limits, 0 = no limit
     vb.major = 255;
@@ -244,15 +246,15 @@ bool ProcLinkVersion() {
     vb.revision = 0;
     vb.what = "LINKVERSION";
     if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
-        wlink().FmtData.u.pe.lnk_specd = true;
-        wlink().FmtData.u.pe.linkmajor = vb.major;
-        wlink().FmtData.u.pe.linkminor = vb.minor;
+        link.FmtData.u.pe.lnk_specd = true;
+        link.FmtData.u.pe.linkmajor = vb.major;
+        link.FmtData.u.pe.linkminor = vb.minor;
         return true;
     }
     return false;
 }
 
-bool ProcOsVersion() {
+bool ProcOsVersion(Link& link) {
     Version vb;
     // set required limits, 0 = no limit
     vb.major = 0;
@@ -260,35 +262,35 @@ bool ProcOsVersion() {
     vb.revision = 0;
     vb.what = "OSVERSION";
     if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
-        wlink().FmtData.u.pe.osv_specd = true;
-        wlink().FmtData.u.pe.osmajor = vb.major;
-        wlink().FmtData.u.pe.osminor = vb.minor;
+        link.FmtData.u.pe.osv_specd = true;
+        link.FmtData.u.pe.osmajor = vb.major;
+        link.FmtData.u.pe.osminor = vb.minor;
         return true;
     }
     return false;       // error has occurred
 }
 
-bool ProcChecksum() {
-    wlink().FmtData.u.pe.checksumfile = true;
+bool ProcChecksum(Link& link) {
+    link.FmtData.u.pe.checksumfile = true;
     return true;
 }
 
-bool ProcLargeAddressAware() {
-    wlink().FmtData.u.pe.largeaddressaware = true;
-    wlink().FmtData.u.pe.nolargeaddressaware = false;
+bool ProcLargeAddressAware(Link& link) {
+    link.FmtData.u.pe.largeaddressaware = true;
+    link.FmtData.u.pe.nolargeaddressaware = false;
     return true;
 }
 
-bool ProcNoLargeAddressAware() {
-    wlink().FmtData.u.pe.nolargeaddressaware = true;
-    wlink().FmtData.u.pe.largeaddressaware = false;
+bool ProcNoLargeAddressAware(Link& link) {
+    link.FmtData.u.pe.nolargeaddressaware = true;
+    link.FmtData.u.pe.largeaddressaware = false;
     return true;
 }
 
-bool ProcMixed1632() {
+bool ProcMixed1632(Link& link) {
     // Sometimes it's useful to mix 16-bit and 32-bit code/data into one segment, specially for OS/2 Device Drivers
-    wlink().LinkFlags &= ~LF_FAR_CALLS_FLAG;    // must be turned off for mixed code
-    wlink().FmtData.u.os2fam.mixed1632 = true;
+    link.LinkFlags &= ~LF_FAR_CALLS_FLAG;    // must be turned off for mixed code
+    link.FmtData.u.os2fam.mixed1632 = true;
     return true;
 }
 
@@ -319,17 +321,17 @@ constexpr Entry MainOptions[] = {
 
 // ---- "RESource" directive
 
-bool AddResource() {
+bool AddResource(Link& link) {
     const std::string_view t = reader().text();
-    char* str = MemToStringSafe(t.data(), t.size());
-    DoAddResource(str);
+    char* str = MemToStringSafe(link, t.data(), t.size());
+    DoAddResource(link, str);
     MemFree(str);
     return true;
 }
 
 // ---- "IMPort" directive
 
-bool getimport() {
+bool getimport(Link& link) {
     Reader& r = reader();
     const std::string intname = r.str();
     if (!r.get(Sep::none, Want::normal)) {
@@ -344,33 +346,33 @@ bool getimport() {
         if (state == Number::too_big) {
             LnkMsg(LOC + LINE + MSG_IMPORT_ORD_INVALID + ERR, nullptr);
         } else if (state == Number::ok) {
-            HandleImport(&intn, &modn, nullptr, ordinal);
+            HandleImport(link, &intn, &modn, nullptr, ordinal);
         } else if (state == Number::not_a_number) {
             const std::string_view t = r.text();
             length_name extname = {t.size(), t.data()};
-            HandleImport(&intn, &modn, &extname, IMP_BY_NAME);
+            HandleImport(link, &intn, &modn, &extname, IMP_BY_NAME);
         }
     } else {
-        HandleImport(&intn, &modn, &intn, IMP_BY_NAME);
+        HandleImport(link, &intn, &modn, &intn, IMP_BY_NAME);
     }
     return true;
 }
 
 // ---- "EXPort" directive
 
-bool ProcExpResident() {
-    wlink().FmtData.u.os2fam.exports->isresident = true;
+bool ProcExpResident(Link& link) {
+    link.FmtData.u.os2fam.exports->isresident = true;
     return true;
 }
 
-bool ProcPrivate() {
-    wlink().FmtData.u.os2fam.exports->isprivate = true;
+bool ProcPrivate(Link& link) {
+    link.FmtData.u.os2fam.exports->isprivate = true;
     return true;
 }
 
 // CodeBreaker: NODATA, as in a .def file -- the export keeps its caller's data segment
-bool ProcExpNoData() {
-    wlink().FmtData.u.os2fam.exports->isnodata = true;
+bool ProcExpNoData(Link& link) {
+    link.FmtData.u.os2fam.exports->isnodata = true;
     return true;
 }
 
@@ -380,13 +382,13 @@ constexpr Entry Exp_Keywords[] = {
     {"PRIVATE",     ProcPrivate,        MK_NE | MK_OS2_FLAT | MK_PE},
 };
 
-bool getexport() {
+bool getexport(Link& link) {
     Reader& r = reader();
     std::uint16_t val16;
     std::uint32_t val32;
 
     const std::string_view name = r.text();
-    entry_export* exp = AllocExport(name.data(), name.size());
+    entry_export* exp = AllocExport(link, name.data(), name.size());
     if (any(cmd_flags() & Flag::anonymous_export)) exp->isanonymous = true;
     if (r.get(Sep::period, Want::include_dot)) {
         if (number(val32) != Number::ok) {
@@ -399,26 +401,26 @@ bool getexport() {
     }
     if (r.get(Sep::equals, Want::include_dot)) {
         const std::string_view s = r.text();
-        exp->sym = SymOp(ST_CREATE_REFERENCE, s.data(), s.size());
+        exp->sym = SymOp(link, ST_CREATE_REFERENCE, s.data(), s.size());
         if (r.get(Sep::equals, Want::include_dot)) {
             const std::string_view i = r.text();
-            exp->impname = MemToStringSafe(i.data(), i.size());
+            exp->impname = MemToStringSafe(link, i.data(), i.size());
         }
     } else {
-        exp->sym = RefISymbol(exp->name.u.ptr);
+        exp->sym = RefISymbol(link, exp->name.u.ptr);
     }
     exp->sym->info |= SYM_1_DCE_REF;        // make sure it is not removed
     if (exp->ordinal == 0) {
         exp->isresident = true;             // no ordinal spec'd so must be kept resident
     }
-    exp->next = wlink().FmtData.u.os2fam.exports;   // put in the front of the list for
-    wlink().FmtData.u.os2fam.exports = exp;         // now so ProcResidant can get to it.
-    while (process_one(Exp_Keywords, Sep::none)) {
+    exp->next = link.FmtData.u.os2fam.exports;   // put in the front of the list for
+    link.FmtData.u.os2fam.exports = exp;         // now so ProcResidant can get to it.
+    while (process_one(link, Exp_Keywords, Sep::none)) {
         /* nothing */
     }
-    wlink().FmtData.u.os2fam.exports = exp->next;   // take it off the list
+    link.FmtData.u.os2fam.exports = exp->next;   // take it off the list
     exp->iopl_words = 0;
-    if ((wlink().FmtData.type & (MK_WIN_NE | MK_PE)) == 0 && r.get(Sep::none, Want::include_dot)) {
+    if ((link.FmtData.type & (MK_WIN_NE | MK_PE)) == 0 && r.get(Sep::none, Want::include_dot)) {
         if (number16(val16) == Number::ok) {
             if (val16 > 63) {
                 LnkMsg(LOC + LINE + MSG_TOO_MANY_IOPL_WORDS + ERR, nullptr);
@@ -433,24 +435,24 @@ bool getexport() {
             r.push_back();      // reprocess the token.
         }
     }
-    AddToExportList(exp);
+    AddToExportList(link, exp);
     return true;
 }
 
 // ---- "SEGment" directive
 
-bool ProcOS2Class() {
-    wlink().FmtData.u.os2fam.seg_flags->type = SEGFLAG_CLASS;
+bool ProcOS2Class(Link& link) {
+    link.FmtData.u.os2fam.seg_flags->type = SEGFLAG_CLASS;
     return true;
 }
 
-bool ProcSegCode() {
-    wlink().FmtData.u.os2fam.seg_flags->type = SEGFLAG_CODE;
+bool ProcSegCode(Link& link) {
+    link.FmtData.u.os2fam.seg_flags->type = SEGFLAG_CODE;
     return true;
 }
 
-bool ProcSegData() {
-    wlink().FmtData.u.os2fam.seg_flags->type = SEGFLAG_DATA;
+bool ProcSegData(Link& link) {
+    link.FmtData.u.os2fam.seg_flags->type = SEGFLAG_DATA;
     return true;
 }
 
@@ -459,196 +461,196 @@ constexpr Entry SegTypeDesc[] = {
     {"DATA", ProcSegData, MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD},
 };
 
-bool ProcSegType() {
-    if (!process_one(SegTypeDesc, Sep::none)) {
+bool ProcSegType(Link& link) {
+    if (!process_one(link, SegTypeDesc, Sep::none)) {
         LnkMsg(WRN + LOC + LINE + MSG_INVALID_TYPE_DESC, nullptr);
     }
     return true;
 }
 
-bool ProcPreload() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_PRELOAD) {
+bool ProcPreload(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_PRELOAD) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_PRELOAD;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_PRELOAD;
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_PRELOAD;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_PRELOAD;
     return true;
 }
 
-bool ProcLoadoncall() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_PRELOAD) {
+bool ProcLoadoncall(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_PRELOAD) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_PRELOAD;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_PRELOAD;
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_PRELOAD;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_PRELOAD;
     return true;
 }
 
-bool ProcIopl() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_IOPL_SPECD) {
+bool ProcIopl(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_IOPL_SPECD) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    SET_SEG_PMODE_DPL(wlink().FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_2);
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
+    SET_SEG_PMODE_DPL(link.FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_2);
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
     return true;
 }
 
-bool ProcNoIopl() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_IOPL_SPECD) {
+bool ProcNoIopl(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_IOPL_SPECD) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    SET_SEG_PMODE_DPL(wlink().FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_3);
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
+    SET_SEG_PMODE_DPL(link.FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_3);
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
     return true;
 }
 
-bool ProcExecuteonly() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
+bool ProcExecuteonly(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_READ_ONLY;
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_ONLY;
     return true;
 }
 
-bool ProcExecuteread() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
+bool ProcExecuteread(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_READ_ONLY;
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_ONLY;
     return true;
 }
 
-bool ProcShared() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_PURE) {
+bool ProcShared(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_PURE) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_PURE;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_PURE;
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_PURE;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_PURE;
     return true;
 }
 
-bool ProcNonShared() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_PURE) {
+bool ProcNonShared(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_PURE) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_PURE;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_PURE;
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_PURE;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_PURE;
     return true;
 }
 
-bool ProcReadOnly() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
+bool ProcReadOnly(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
     return true;
 }
 
-bool ProcReadWrite() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
+bool ProcReadWrite(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
     return true;
 }
 
-bool ProcConforming() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_CONFORMING) {
+bool ProcConforming(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_CONFORMING) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_CONFORMING;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_CONFORMING;
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_CONFORMING;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_CONFORMING;
     return true;
 }
 
-bool ProcNonConforming() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_CONFORMING) {
+bool ProcNonConforming(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_CONFORMING) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_CONFORMING;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_CONFORMING;
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_CONFORMING;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_CONFORMING;
     return true;
 }
 
-bool ProcMovable() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_MOVABLE) {
+bool ProcMovable(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_MOVABLE) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_MOVABLE;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_MOVABLE;
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_MOVABLE;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_MOVABLE;
     return true;
 }
 
-bool ProcFixed() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_MOVABLE) {
+bool ProcFixed(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_MOVABLE) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_MOVABLE;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_MOVABLE;
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_MOVABLE;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_MOVABLE;
     return true;
 }
 
-bool ProcDiscardable() {
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_DISCARD;
+bool ProcDiscardable(Link& link) {
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_DISCARD;
     return true;
 }
 
-bool ProcNonDiscardable() {
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_DISCARD;
+bool ProcNonDiscardable(Link& link) {
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_DISCARD;
     return true;
 }
 
-bool ProcInvalid() {
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_INVALID;
+bool ProcInvalid(Link& link) {
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_INVALID;
     return true;
 }
 
-bool ProcContiguous() {
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_CONTIGUOUS;
+bool ProcContiguous(Link& link) {
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_CONTIGUOUS;
     return true;
 }
 
-bool ProcOS2Dynamic() {
+bool ProcOS2Dynamic(Link& link) {
     return true;
 }
 
-bool ProcPermanent() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
+bool ProcPermanent(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_RESIDENT;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_RESIDENT;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
     return true;
 }
 
-bool ProcNonPermanent() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
+bool ProcNonPermanent(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_RESIDENT;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_RESIDENT;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
     return true;
 }
 
-bool ProcPageable() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
+bool ProcPageable(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags &= ~SEG_NOPAGE;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
+    link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_NOPAGE;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
     return true;
 }
 
-bool ProcNonPageable() {
-    if (wlink().FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
+bool ProcNonPageable(Link& link) {
+    if (link.FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
         LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
-    wlink().FmtData.u.os2fam.seg_flags->flags |= SEG_NOPAGE;
-    wlink().FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
+    link.FmtData.u.os2fam.seg_flags->flags |= SEG_NOPAGE;
+    link.FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
     return true;
 }
 
@@ -684,27 +686,27 @@ constexpr Entry SegModel[] = {
     {"NONPageable",     ProcNonPageable,    MK_PE},
 };
 
-bool getsegflags() {
+bool getsegflags(Link& link) {
     Reader& r = reader();
     r.push_back();
     seg_flags_struct* seg_flags = (seg_flags_struct*)(MemAllocSafe(sizeof(seg_flags_struct)));
     seg_flags->specified = (seg_flags_type)(0);
-    seg_flags->flags = wlink().FmtData.def_seg_flags;   // default value.
+    seg_flags->flags = link.FmtData.def_seg_flags;   // default value.
     seg_flags->name = nullptr;
     seg_flags->type = SEGFLAG_SEGMENT;
-    seg_flags->next = wlink().FmtData.u.os2fam.seg_flags;
-    wlink().FmtData.u.os2fam.seg_flags = seg_flags;
-    process_one(SegDesc, Sep::none);            // look for an optional segdesc
+    seg_flags->next = link.FmtData.u.os2fam.seg_flags;
+    link.FmtData.u.os2fam.seg_flags = seg_flags;
+    process_one(link, SegDesc, Sep::none);            // look for an optional segdesc
     if (seg_flags->type != SEGFLAG_CODE && seg_flags->type != SEGFLAG_DATA) {
         if (!r.get(Sep::none, Want::include_dot)) {
-            wlink().FmtData.u.os2fam.seg_flags = seg_flags->next;
+            link.FmtData.u.os2fam.seg_flags = seg_flags->next;
             MemFree(seg_flags);
             return false;
         }
         const std::string_view t = r.text();
-        seg_flags->name = MemToStringSafe(t.data(), t.size());
+        seg_flags->name = MemToStringSafe(link, t.data(), t.size());
     }
-    while (process_one(SegModel, Sep::none)) {
+    while (process_one(link, SegModel, Sep::none)) {
         /* nothing */
     }
     return true;
@@ -712,12 +714,12 @@ bool getsegflags() {
 
 // ---- "COMmit" directive
 
-bool ProcCommitStack() {
-    return get_number(wlink().FmtData.u.pe.stackcommit);
+bool ProcCommitStack(Link& link) {
+    return get_number(link.FmtData.u.pe.stackcommit);
 }
 
-bool ProcCommitHeap() {
-    return get_number(wlink().FmtData.u.pe.heapcommit);
+bool ProcCommitHeap(Link& link) {
+    return get_number(link.FmtData.u.pe.heapcommit);
 }
 
 constexpr Entry CommitKeywords[] = {
@@ -725,14 +727,14 @@ constexpr Entry CommitKeywords[] = {
     {"Heap",    ProcCommitHeap,     MK_PE},
 };
 
-bool AddCommit() {
+bool AddCommit(Link& link) {
     reader().push_back();
-    return process_one(CommitKeywords, Sep::none);
+    return process_one(link, CommitKeywords, Sep::none);
 }
 
 // ---- "RUntime" directive
 
-void GetSubsystemVersion() {
+void GetSubsystemVersion(Link& link) {
     Version vb;
     // set required limits, 0 = no limit
     vb.major = 0;
@@ -740,58 +742,58 @@ void GetSubsystemVersion() {
     vb.revision = 0;
     vb.what = "SUBSYSTEM";
     if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
-        wlink().FmtData.u.pe.sub_specd = true;
-        wlink().FmtData.u.pe.submajor = vb.major;
-        wlink().FmtData.u.pe.subminor = vb.minor;
+        link.FmtData.u.pe.sub_specd = true;
+        link.FmtData.u.pe.submajor = vb.major;
+        link.FmtData.u.pe.subminor = vb.minor;
     }
 }
 
-bool ProcRunNative() {
-    wlink().FmtData.u.pe.subsystem = PE_SS_NATIVE;
-    GetSubsystemVersion();
+bool ProcRunNative(Link& link) {
+    link.FmtData.u.pe.subsystem = PE_SS_NATIVE;
+    GetSubsystemVersion(link);
     return true;
 }
 
-bool ProcRunWindows() {
-    wlink().FmtData.u.pe.subsystem = PE_SS_WINDOWS_GUI;
-    GetSubsystemVersion();
+bool ProcRunWindows(Link& link) {
+    link.FmtData.u.pe.subsystem = PE_SS_WINDOWS_GUI;
+    GetSubsystemVersion(link);
     return true;
 }
 
-bool ProcRunConsole() {
-    wlink().FmtData.u.pe.subsystem = PE_SS_WINDOWS_CHAR;
-    GetSubsystemVersion();
+bool ProcRunConsole(Link& link) {
+    link.FmtData.u.pe.subsystem = PE_SS_WINDOWS_CHAR;
+    GetSubsystemVersion(link);
     return true;
 }
 
-bool ProcRunPosix() {
-    wlink().FmtData.u.pe.subsystem = PE_SS_POSIX_CHAR;
-    GetSubsystemVersion();
+bool ProcRunPosix(Link& link) {
+    link.FmtData.u.pe.subsystem = PE_SS_POSIX_CHAR;
+    GetSubsystemVersion(link);
     return true;
 }
 
-bool ProcRunOS2() {
-    wlink().FmtData.u.pe.subsystem = PE_SS_OS2_CHAR;
-    GetSubsystemVersion();
+bool ProcRunOS2(Link& link) {
+    link.FmtData.u.pe.subsystem = PE_SS_OS2_CHAR;
+    GetSubsystemVersion(link);
     return true;
 }
 
-bool ProcRunDosstyle() {
-    wlink().FmtData.u.pe.subsystem = PE_SS_PL_DOSSTYLE;
-    GetSubsystemVersion();
+bool ProcRunDosstyle(Link& link) {
+    link.FmtData.u.pe.subsystem = PE_SS_PL_DOSSTYLE;
+    GetSubsystemVersion(link);
     return true;
 }
 
-bool ProcRunRDOS() {
-    wlink().FmtData.u.pe.subsystem = PE_SS_RDOS;
-    GetSubsystemVersion();
+bool ProcRunRDOS(Link& link) {
+    link.FmtData.u.pe.subsystem = PE_SS_RDOS;
+    GetSubsystemVersion(link);
     return true;
 }
 
-bool ProcRunEFIBoot() {
-    wlink().FmtData.def_ext = E_EFI;
-    wlink().FmtData.u.pe.subsystem = PE_SS_EFI_BOOT;
-    GetSubsystemVersion();
+bool ProcRunEFIBoot(Link& link) {
+    link.FmtData.def_ext = E_EFI;
+    link.FmtData.u.pe.subsystem = PE_SS_EFI_BOOT;
+    GetSubsystemVersion(link);
     return true;
 }
 
@@ -808,33 +810,33 @@ constexpr Entry RunOptions[] = {
 
 // ---- "Format" directive
 
-bool ProcInitGlobal() {
-    wlink().FmtData.u.os2fam.flags &= ~INIT_INSTANCE_FLAG;
+bool ProcInitGlobal(Link& link) {
+    link.FmtData.u.os2fam.flags &= ~INIT_INSTANCE_FLAG;
     return true;
 }
 
-bool ProcInitInstance() {
-    wlink().FmtData.u.os2fam.flags |= INIT_INSTANCE_FLAG;
+bool ProcInitInstance(Link& link) {
+    link.FmtData.u.os2fam.flags |= INIT_INSTANCE_FLAG;
     return true;
 }
 
-bool ProcInitThread() {
-    wlink().FmtData.u.os2fam.flags |= INIT_THREAD_FLAG;
+bool ProcInitThread(Link& link) {
+    link.FmtData.u.os2fam.flags |= INIT_THREAD_FLAG;
     return true;
 }
 
-bool ProcTermGlobal() {
-    wlink().FmtData.u.os2fam.flags &= ~TERM_INSTANCE_FLAG;
+bool ProcTermGlobal(Link& link) {
+    link.FmtData.u.os2fam.flags &= ~TERM_INSTANCE_FLAG;
     return true;
 }
 
-bool ProcTermInstance() {
-    wlink().FmtData.u.os2fam.flags |= TERM_INSTANCE_FLAG;
+bool ProcTermInstance(Link& link) {
+    link.FmtData.u.os2fam.flags |= TERM_INSTANCE_FLAG;
     return true;
 }
 
-bool ProcTermThread() {
-    wlink().FmtData.u.os2fam.flags |= TERM_THREAD_FLAG;
+bool ProcTermThread(Link& link) {
+    link.FmtData.u.os2fam.flags |= TERM_THREAD_FLAG;
     return true;
 }
 
@@ -850,34 +852,34 @@ constexpr Entry Term_Keywords[] = {
     {"TERMThread",   ProcTermThread,    MK_PE},
 };
 
-bool ProcOS2DLL() {
-    wlink().FmtData.def_ext = E_DLL;
-    wlink().FmtData.dll = true;
-    if (wlink().FmtData.type & MK_WIN_NE) {
-        wlink().FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
-        wlink().FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
-        wlink().FmtData.def_seg_flags |= SEG_PURE | SEG_MOVABLE;
+bool ProcOS2DLL(Link& link) {
+    link.FmtData.def_ext = E_DLL;
+    link.FmtData.dll = true;
+    if (link.FmtData.type & MK_WIN_NE) {
+        link.FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
+        link.FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
+        link.FmtData.def_seg_flags |= SEG_PURE | SEG_MOVABLE;
     }
-    if (process_one(Init_Keywords, Sep::none)) {
-        if (!process_one(Term_Keywords, Sep::none)) {
-            if (wlink().FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG) {
-                wlink().FmtData.u.os2fam.flags |= TERM_INSTANCE_FLAG;
+    if (process_one(link, Init_Keywords, Sep::none)) {
+        if (!process_one(link, Term_Keywords, Sep::none)) {
+            if (link.FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG) {
+                link.FmtData.u.os2fam.flags |= TERM_INSTANCE_FLAG;
             }
         }
     }
     return true;
 }
 
-bool ProcLX() {
+bool ProcLX(Link& link) {
     return true;
 }
 
-bool ProcLE() {
+bool ProcLE(Link& link) {
     return true;
 }
 
-bool ProcTNT() {
-    wlink().FmtData.u.pe.tnt = true;
+bool ProcTNT(Link& link) {
+    link.FmtData.u.pe.tnt = true;
     return true;
 }
 
@@ -885,22 +887,22 @@ constexpr Entry PESubFormats[] = {
     {"TNT", ProcTNT, MK_PE},
 };
 
-bool ProcPE() {
-    process_one(PESubFormats, Sep::none);
-    wlink().FmtData.u.os2fam.heapsize = DEF_VALUE;      // another arbitrary non-zero default
-    wlink().FmtData.u.os2fam.segment_shift = 9;         // 512 byte arbitrary rounding
-    wlink().FmtData.u.pe.heapcommit = DEF_VALUE;        // arbitrary non-zero default.
-    wlink().FmtData.u.pe.stackcommit = DEF_VALUE;
+bool ProcPE(Link& link) {
+    process_one(link, PESubFormats, Sep::none);
+    link.FmtData.u.os2fam.heapsize = DEF_VALUE;      // another arbitrary non-zero default
+    link.FmtData.u.os2fam.segment_shift = 9;         // 512 byte arbitrary rounding
+    link.FmtData.u.pe.heapcommit = DEF_VALUE;        // arbitrary non-zero default.
+    link.FmtData.u.pe.stackcommit = DEF_VALUE;
     return true;
 }
 
-bool ProcDynamicDriver() {
-    wlink().FmtData.u.os2fam.flags |= VIRT_DEVICE;
+bool ProcDynamicDriver(Link& link) {
+    link.FmtData.u.os2fam.flags |= VIRT_DEVICE;
     return true;
 }
 
-bool ProcStaticDriver() {
-    wlink().FmtData.u.os2fam.flags |= PHYS_DEVICE;
+bool ProcStaticDriver(Link& link) {
+    link.FmtData.u.os2fam.flags |= PHYS_DEVICE;
     return true;
 }
 
@@ -909,48 +911,48 @@ constexpr Entry VXDSubFormats[] = {
     {"STATic",  ProcStaticDriver,   MK_WIN_VXD},
 };
 
-bool ProcVXD() {
-    process_one(VXDSubFormats, Sep::none);
-    wlink().FmtData.dll = true;
+bool ProcVXD(Link& link) {
+    process_one(link, VXDSubFormats, Sep::none);
+    link.FmtData.dll = true;
     return true;
 }
 
-bool ProcMemory() {
-    wlink().FmtData.u.os2fam.flags |= CLEAN_MEMORY;
+bool ProcMemory(Link& link) {
+    link.FmtData.u.os2fam.flags |= CLEAN_MEMORY;
     return true;
 }
 
-bool ProcFont() {
-    wlink().FmtData.u.os2fam.flags |= PROPORTIONAL_FONT;
+bool ProcFont(Link& link) {
+    link.FmtData.u.os2fam.flags |= PROPORTIONAL_FONT;
     return true;
 }
 
-bool ProcPM() {
-    wlink().FmtData.u.os2fam.flags |= PM_APPLICATION;
+bool ProcPM(Link& link) {
+    link.FmtData.u.os2fam.flags |= PM_APPLICATION;
     return true;
 }
 
-bool ProcPMCompatible() {
-    wlink().FmtData.u.os2fam.flags |= PM_COMPATIBLE;
+bool ProcPMCompatible(Link& link) {
+    link.FmtData.u.os2fam.flags |= PM_COMPATIBLE;
     return true;
 }
 
-bool ProcPMFullscreen() {
-    wlink().FmtData.u.os2fam.flags |= PM_NOT_COMPATIBLE;
+bool ProcPMFullscreen(Link& link) {
+    link.FmtData.u.os2fam.flags |= PM_NOT_COMPATIBLE;
     return true;
 }
 
-bool ProcPhysDevice() {
-    wlink().FmtData.def_ext = E_DLL;
-    wlink().FmtData.dll = true;
-    wlink().FmtData.u.os2fam.flags |= PHYS_DEVICE;
+bool ProcPhysDevice(Link& link) {
+    link.FmtData.def_ext = E_DLL;
+    link.FmtData.dll = true;
+    link.FmtData.u.os2fam.flags |= PHYS_DEVICE;
     return true;
 }
 
-bool ProcVirtDevice() {
-    wlink().FmtData.def_ext = E_DLL;
-    wlink().FmtData.dll = true;
-    wlink().FmtData.u.os2fam.flags |= VIRT_DEVICE;
+bool ProcVirtDevice(Link& link) {
+    link.FmtData.def_ext = E_DLL;
+    link.FmtData.dll = true;
+    link.FmtData.u.os2fam.flags |= VIRT_DEVICE;
     return true;
 }
 
@@ -991,16 +993,16 @@ constexpr Entry OS2Formats[] = {
 
 }  // namespace
 
-bool ProcOS2Options() {
-    return process_one(MainOptions, Sep::none);
+bool ProcOS2Options(Link& link) {
+    return process_one(link, MainOptions, Sep::none);
 }
 
-bool ProcOS2NoRelocs() {
-    wlink().LinkState &= ~LS_MAKE_RELOCS;
+bool ProcOS2NoRelocs(Link& link) {
+    link.LinkState &= ~LS_MAKE_RELOCS;
     return true;
 }
 
-bool ProcOS2Alignment() {
+bool ProcOS2Alignment(Link& link) {
     // process Alignment option
     std::uint32_t value;
     if (!have_equals(Want::normal)) return false;
@@ -1008,87 +1010,87 @@ bool ProcOS2Alignment() {
     if (ret != Number::ok || value == 0) {
         return false;
     }
-    wlink().FmtData.u.os2fam.segment_shift = log2_32(value - 1) + 1;     // round up.
+    link.FmtData.u.os2fam.segment_shift = log2_32(value - 1) + 1;     // round up.
     return true;
 }
 
-bool ProcOS2HeapSize() {
+bool ProcOS2HeapSize(Link& link) {
     std::uint32_t value;
     if (!have_equals(Want::normal)) return false;
     const Number ret = number(value);
     if (ret != Number::ok || value == 0) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "HEAPSIZE");
     } else {
-        wlink().FmtData.u.os2fam.heapsize = value;
+        link.FmtData.u.os2fam.heapsize = value;
     }
     return true;
 }
 
-bool ProcResource() {
-    return process_list(AddResource, Want::file_name);
+bool ProcResource(Link& link) {
+    return process_list(link, AddResource, Want::file_name);
 }
 
-bool ProcOS2Import() {
-    return process_list(getimport, Want::normal);
+bool ProcOS2Import(Link& link) {
+    return process_list(link, getimport, Want::normal);
 }
 
-bool ProcOS2Export() {
+bool ProcOS2Export(Link& link) {
     bool retval;
     if (reader().get(Sep::equals, Want::include_dot)) {
-        retval = GetWlibImports();
+        retval = GetWlibImports(link);
     } else {
-        retval = process_list(getexport, Want::normal);
+        retval = process_list(link, getexport, Want::normal);
     }
     return retval;
 }
 
-bool ProcAnonExport() {
+bool ProcAnonExport(Link& link) {
     cmd_flags() |= Flag::anonymous_export;
-    const bool retval = ProcOS2Export();
+    const bool retval = ProcOS2Export(link);
     cmd_flags() &= ~Flag::anonymous_export;
     return retval;
 }
 
-bool ProcOS2Segment() {
-    return process_list(getsegflags, Want::include_dot);
+bool ProcOS2Segment(Link& link) {
+    return process_list(link, getsegflags, Want::include_dot);
 }
 
-bool ProcCommit() {
+bool ProcCommit(Link& link) {
     // set NT stack and heap commit sizes.
-    return process_list(AddCommit, Want::include_dot);
+    return process_list(link, AddCommit, Want::include_dot);
 }
 
-bool ProcOS2Runtime() {
-    return process_one(RunOptions, Sep::none);
+bool ProcOS2Runtime(Link& link) {
+    return process_one(link, RunOptions, Sep::none);
 }
 
-bool ProcOS2Format() {
+bool ProcOS2Format(Link& link) {
     // process the format os2 or format windows directives
-    wlink().FmtData.def_ext = E_LOAD;
-    process_one(OS2Formats, Sep::none);
-    process_one(OS2SubFormats, Sep::none);
-    if (wlink().FmtData.type & MK_OS2_LX) {
-        if (wlink().FmtData.dll) {
-            wlink().FmtData.u.os2fam.gen_int_relocs = true;
+    link.FmtData.def_ext = E_LOAD;
+    process_one(link, OS2Formats, Sep::none);
+    process_one(link, OS2SubFormats, Sep::none);
+    if (link.FmtData.type & MK_OS2_LX) {
+        if (link.FmtData.dll) {
+            link.FmtData.u.os2fam.gen_int_relocs = true;
         }
     }
-    if (wlink().FmtData.type & MK_OS2_NE) {     // if no 32-bit thing specd
-        HintFormat(MK_OS2_NE);          // make sure 16-bit is what we get
-        if (wlink().FmtData.dll) {
-            wlink().FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
-            wlink().FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
+    if (link.FmtData.type & MK_OS2_NE) {     // if no 32-bit thing specd
+        HintFormat(link, MK_OS2_NE);          // make sure 16-bit is what we get
+        if (link.FmtData.dll) {
+            link.FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
+            link.FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
         }
     }
     return true;
 }
 
-bool ProcWindowsFormat() {
+bool ProcWindowsFormat(Link& link) {
     // process the format windows directives
-    wlink().FmtData.def_ext = E_LOAD;
-    process_one(WindowsFormats, Sep::none);
-    process_one(WindowsSubFormats, Sep::none);
-    if (wlink().FmtData.type & (MK_WIN_NE | MK_WIN_VXD)) {
-        while (process_one(WindowsFormatOptions, Sep::none)) {
+    link.FmtData.def_ext = E_LOAD;
+    process_one(link, WindowsFormats, Sep::none);
+    process_one(link, WindowsSubFormats, Sep::none);
+    if (link.FmtData.type & (MK_WIN_NE | MK_WIN_VXD)) {
+        while (process_one(link, WindowsFormatOptions, Sep::none)) {
             /* nothing */
         }
     }

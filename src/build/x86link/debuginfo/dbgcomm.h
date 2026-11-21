@@ -67,7 +67,7 @@ typedef void line_walk_fn( lineinfo * );
 
 extern virt_mem DBIAlloc( virt_mem_size );
 extern void     DBIModGlobal( void * );
-extern void     DBIAddrInfoScan( seg_leader *,
+extern void     DBIAddrInfoScan(Link& link,  seg_leader *,
                       void (*)(segdata *, void *),
                       void (*)(segdata *, offset, offset, void *, bool),
                       void * );

@@ -63,24 +63,24 @@ AutoGrpState &state()
 
 }  // namespace
 
-static offset GetSegGroupPackLimit( seg_leader *seg )
+static offset GetSegGroupPackLimit(Link& link,  seg_leader *seg )
 /***************************************************/
 // set packlimit if necessary.
 {
     offset      limit;
 
     if( seg->info & SEGINF_CODE ) {
-        if( wlink().LinkFlags & LF_PACKCODE_FLAG ) {
-            return( wlink().PackCodeLimit );
+        if( link.LinkFlags & LF_PACKCODE_FLAG ) {
+            return( link.PackCodeLimit );
         }
     } else {
-        if( wlink().LinkFlags & LF_PACKDATA_FLAG ) {
-            return( wlink().PackDataLimit );
+        if( link.LinkFlags & LF_PACKDATA_FLAG ) {
+            return( link.PackDataLimit );
         }
     }
     if( seg->info & SEGINF_USE_32 ) {
         limit = 0xFFFFFFFF;
-    } else if( wlink().FmtData.type & MK_WIN_NE ) { /* windows doesn't like */
+    } else if( link.FmtData.type & MK_WIN_NE ) { /* windows doesn't like */
         limit = 0xFFF0;                     /* large code segments */
     } else {
         limit = 0xFFFF;
@@ -130,10 +130,10 @@ static seg_leader *GetNextSeg( section *sect, seg_leader *seg )
     return( seg );
 }
 
-static bool CanPack( seg_leader *seg1, seg_leader *seg2 )
+static bool CanPack(Link& link,  seg_leader *seg1, seg_leader *seg2 )
 /*******************************************************/
 {
-    if( wlink().FmtData.type & MK_WIN_VXD ) {
+    if( link.FmtData.type & MK_WIN_VXD ) {
         // A VxD's LE objects are grouped BY CLASS, exactly as MS LINK does: the
         // DDK gives every locked segment (_LTEXT/_LDATA/_TEXT/_DATA/_BSS/CONST)
         // the class 'LCODE', so they merge into one locked object (obj1, holding
@@ -167,25 +167,25 @@ static bool CanPack( seg_leader *seg1, seg_leader *seg2 )
     return( true );
 }
 
-static group_entry *GetAutoGroup( bool abs_seg )
+static group_entry *GetAutoGroup(Link& link,  bool abs_seg )
 /***********************************************/
 {
     group_entry      *group;
     group_entry **   grp_list;
 
     if( abs_seg ) {
-        grp_list = &wlink().AbsGroups;
+        grp_list = &link.AbsGroups;
     } else {
-        grp_list = &wlink().Groups;
+        grp_list = &link.Groups;
     }
-    group = AllocGroup( AutoGrpName, grp_list );
+    group = AllocGroup(link,  AutoGrpName, grp_list );
     if( !abs_seg ) {
         state().curr_group = group;
     }
     return( group );
 }
 
-static void PackSegs( seg_leader *seg, unsigned num_segs )
+static void PackSegs(Link& link,  seg_leader *seg, unsigned num_segs )
 /********************************************************/
 {
     group_entry         *group;
@@ -196,7 +196,7 @@ static void PackSegs( seg_leader *seg, unsigned num_segs )
     if( seg->group != nullptr ) {
         group = seg->group;
     } else {
-        group = GetAutoGroup( seg->info & SEGINF_ABSOLUTE );
+        group = GetAutoGroup(link,  seg->info & SEGINF_ABSOLUTE );
     }
     group->section = seg->class_->section;
     while( num_segs != 0 ) {
@@ -224,6 +224,7 @@ static void PackSegs( seg_leader *seg, unsigned num_segs )
 static void AutoGroupSect( section *sect )
 /****************************************/
 {
+    Link& link = wlink();
     seg_leader      *seg;
     seg_leader      *packstart;
     offset          size;
@@ -233,34 +234,34 @@ static void AutoGroupSect( section *sect )
     bool            lastseg = false;    // true iff this should be last seg in group.
     offset          limit = 0;
 
-    wlink().CurrentSeg = nullptr;
+    link.CurrentSeg = nullptr;
     size = 0;
     num_segs = 0;
     packstart = nullptr;
     for( seg = nullptr; (seg = GetNextSeg( sect, seg )) != nullptr; ) {
         if( seg->info & SEGINF_ABSOLUTE ) {
-            PackSegs( seg, 1 );
+            PackSegs(link,  seg, 1 );
         } else {
             if( packstart == nullptr ) {
-                limit = GetSegGroupPackLimit( seg );
+                limit = GetSegGroupPackLimit(link,  seg );
                 packstart = seg;
             }
-            align_size = CAlign( size, seg->align );
+            align_size = CAlign(link,  size, seg->align );
             new_size = align_size + seg->size;
             if( ( new_size >= limit )      // group overflow 16/32-bit
               || ( new_size < size )     // group overflow 32-bit
               || lastseg
-              || !CanPack( packstart, seg ) ) {
-                PackSegs( packstart, num_segs );
+              || !CanPack(link,  packstart, seg ) ) {
+                PackSegs(link,  packstart, num_segs );
                 packstart = seg;
                 num_segs = 1;
-                if( wlink().FmtData.type & MK_REAL_MODE ) {
+                if( link.FmtData.type & MK_REAL_MODE ) {
                     size = ( align_size & 0xF ) + seg->size;
                 } else {
                     size = seg->size;
                 }
                 lastseg = false;
-                limit = GetSegGroupPackLimit( seg );
+                limit = GetSegGroupPackLimit(link,  seg );
             } else {
                 size = new_size;
                 ++num_segs;
@@ -270,7 +271,7 @@ static void AutoGroupSect( section *sect )
             }
         }
     }
-    PackSegs( packstart, num_segs );
+    PackSegs(link,  packstart, num_segs );
 }
 
 static void InitGroup( group_entry *group )
@@ -287,18 +288,18 @@ static void InitGroup( group_entry *group )
     group->g.reloclist = nullptr;
 }
 
-group_entry *AllocGroup( const char *name, group_entry **grp_list )
+group_entry *AllocGroup(Link& link,  const char *name, group_entry **grp_list )
 /*****************************************************************/
 {
     group_entry *group;
     symbol      *sym;
 
-    group = static_cast<group_entry *>( CarveAlloc( wlink().CarveGroup ) );
+    group = static_cast<group_entry *>( CarveAlloc( link.CarveGroup ) );
     group->leaders = nullptr;
     sym = static_cast<symbol *>( _PermAlloc( sizeof( *sym ) ) ); // second class slave citizen
     BasicInitSym( sym );
     sym->namelen_cmp = strlen( name );
-    sym->name.u.ptr = AddBufferStringTable( &wlink().PermStrings, name, sym->namelen_cmp + 1 );
+    sym->name.u.ptr = AddBufferStringTable( &link.PermStrings, name, sym->namelen_cmp + 1 );
     SET_SYM_TYPE( sym, SYM_GROUP );
     sym->info |= SYM_STATIC;
     group->next = nullptr;
@@ -306,7 +307,7 @@ group_entry *AllocGroup( const char *name, group_entry **grp_list )
     group->sym = sym;
     AppendList( reinterpret_cast<void **>( grp_list ), group );
     if( stricmp( name, DataGrpName ) == 0 ) {
-        wlink().DataGroup = group;
+        link.DataGroup = group;
     } else if( name == AutoGrpName ) {
         group->isautogrp = true;
     }
@@ -317,6 +318,7 @@ static void SortGroup( seg_leader *seg )
 /**************************************/
 // Go through the classes & segments, and rebuild the group list in sorted form
 {
+    Link& link = wlink();
     if( seg->group == nullptr )
         return;
     if( seg->info & SEGINF_ABSOLUTE )
@@ -325,42 +327,42 @@ static void SortGroup( seg_leader *seg )
     if( seg->group->next == nullptr ) { // not in the list yet
         group_entry *&curr = state().curr_group;
         if( curr == nullptr ) {
-            wlink().Groups = curr = seg->group;
+            link.Groups = curr = seg->group;
         } else {
             curr->next = seg->group;
             curr = curr->next;
         }
         // Make the list circular so we have an easy way of telling if a node
         // is in the list.
-        curr->next = wlink().Groups;
-        wlink().NumGroups--;
-        DbgAssert( wlink().NumGroups >= 0 );
+        curr->next = link.Groups;
+        link.NumGroups--;
+        DbgAssert( link.NumGroups >= 0 );
     }
 }
 
-static void SortGroupList( void )
+static void SortGroupList(Link& link)
 /*******************************/
 // Sort the group list by segments within classes.
 {
     group_entry     *group;
     unsigned        number;
 
-    wlink().NumGroups = 0;
-    if( wlink().Groups == nullptr )
+    link.NumGroups = 0;
+    if( link.Groups == nullptr )
         return;
 
     // first, set all of the links in the group list to nullptr
-    while( (group = wlink().Groups) != nullptr ) {
-        wlink().Groups = wlink().Groups->next;  // Take group out of original ring
+    while( (group = link.Groups) != nullptr ) {
+        link.Groups = link.Groups->next;  // Take group out of original ring
         group->next = nullptr;
         group->leaders = nullptr;
-        wlink().NumGroups++;
+        link.NumGroups++;
     }
-    number = wlink().NumGroups;
+    number = link.NumGroups;
     state().curr_group = nullptr;
-    WalkLeaders( SortGroup );
+    WalkLeaders(link,  SortGroup );
     state().curr_group->next = nullptr;  // break the circular list.
-    wlink().NumGroups = number;            // save # of groups.
+    link.NumGroups = number;            // save # of groups.
 }
 
 #ifdef _EXE
@@ -370,7 +372,7 @@ static bool CheckGroupSplit( void *leader, void *sect )
     return( static_cast<seg_leader *>( leader )->class_->section != static_cast<section *>( sect ) );
 }
 
-static void FindSplitGroups( void )
+static void FindSplitGroups(Link& link)
 /*********************************/
 // a group can be split by accidentally putting parts of it into different
 // overlays. This causes all hell to break loose, so this checks to make sure
@@ -378,8 +380,8 @@ static void FindSplitGroups( void )
 {
     group_entry     *group;
 
-    if( wlink().FmtData.type & MK_OVERLAYS ) {
-        for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    if( link.FmtData.type & MK_OVERLAYS ) {
+        for( group = link.Groups; group != nullptr; group = group->next ) {
             if( Ring2Lookup( group->leaders, CheckGroupSplit, group->section ) ) {
                 LnkMsg( ERR+MSG_OVL_GROUP_SPLIT, "s", group->sym->name );
             }
@@ -388,14 +390,14 @@ static void FindSplitGroups( void )
 }
 #endif
 
-static void NumberNonAutos( void )
+static void NumberNonAutos(Link& link)
 /********************************/
 {
     group_entry         *group;
     unsigned            num;
 
     num = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->isautogrp ) {
             group->num = 0;
         } else {
@@ -405,16 +407,16 @@ static void NumberNonAutos( void )
     }
 }
 
-void AutoGroup( void )
+void AutoGroup(Link& link)
 /********************/
 {
-    WalkAllSects( &AutoGroupSect );
-    SortGroupList();
+    WalkAllSects(link,  &AutoGroupSect );
+    SortGroupList(link);
 #ifdef _EXE
-    FindSplitGroups();
+    FindSplitGroups(link);
 #endif
-    if( wlink().NumGroups == 0 ) {
+    if( link.NumGroups == 0 ) {
         LnkMsg( FTL+MSG_NO_CODE_OR_DATA, nullptr );
     }
-    NumberNonAutos();
+    NumberNonAutos(link);
 }

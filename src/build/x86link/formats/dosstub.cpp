@@ -56,40 +56,40 @@ constexpr std::array<unsigned_8, 78> DOSDefStub = {
 };
 
 /* make up the "program is %f" string, and put it in tokbuff.*/
-unsigned_32 doExeTypeString()
+unsigned_32 doExeTypeString(Link& link)
 {
     std::array<char, RESOURCE_MAX_SIZE> rc_buff;
     unsigned_32 msgsize;
 
     Msg_Get( MSG_IS_A_EXE, rc_buff.data() );
-    msgsize = static_cast<unsigned_32>( FmtStr( wlink().TokBuff, wlink().TokSize, rc_buff.data() ) );
-    wlink().TokBuff[msgsize++] = '\r';
-    wlink().TokBuff[msgsize++] = '\n';
-    wlink().TokBuff[msgsize] = '$';     /* end of string for int 21 fn. 9 */
+    msgsize = static_cast<unsigned_32>( FmtStr(link,  link.TokBuff, link.TokSize, rc_buff.data() ) );
+    link.TokBuff[msgsize++] = '\r';
+    link.TokBuff[msgsize++] = '\n';
+    link.TokBuff[msgsize] = '$';     /* end of string for int 21 fn. 9 */
     return msgsize + 1;
 }
 
 }  // namespace
 
-unsigned_32 GetDOSDefStubSize( void )
+unsigned_32 GetDOSDefStubSize(Link& link)
 /***********************************/
 {
-    return static_cast<unsigned_32>( DOSDefStub.size() ) + doExeTypeString();
+    return static_cast<unsigned_32>( DOSDefStub.size() ) + doExeTypeString(link);
 }
 
-unsigned_32 WriteDOSDefStub( unsigned_32 stub_align )
+unsigned_32 WriteDOSDefStub(Link& link,  unsigned_32 stub_align )
 /****************************************************
  * write the default stub to the executable file
  */
 {
     const unsigned_32   stubsize = static_cast<unsigned_32>( DOSDefStub.size() );
-    const unsigned_32   msgsize = doExeTypeString();
+    const unsigned_32   msgsize = doExeTypeString(link);
     const unsigned_32   fullsize = __ROUND_UP_SIZE( msgsize + stubsize, stub_align );
     std::array<unsigned_8, DOSDefStub.size()>   stub = DOSDefStub;
 
     std::memcpy( stub.data() + NE_HEADER_OFFSET, &fullsize, sizeof( fullsize ) );
-    WriteLoad( stub.data(), stub.size() );
-    WriteLoad( wlink().TokBuff, msgsize );
-    PadLoad( fullsize - msgsize - stubsize );
+    WriteLoad(link,  stub.data(), stub.size() );
+    WriteLoad(link,  link.TokBuff, msgsize );
+    PadLoad(link,  fullsize - msgsize - stubsize );
     return fullsize;
 }

@@ -140,7 +140,7 @@ static void hllDumpInfo( HllSect sect, const void *data, unsigned len )
     offset_of_sect += len;
 }
 
-static segment hllGetSegment( seg_leader *seg )
+static segment hllGetSegment(Link& link,  seg_leader *seg )
 /*********************************************/
 {
     segment         segm_index;
@@ -148,9 +148,9 @@ static segment hllGetSegment( seg_leader *seg )
 
     if( ( seg != nullptr )
       && ( seg->group != nullptr ) ) {
-        if( wlink().FmtData.type & (MK_REAL_MODE | MK_FLAT_OFFS | MK_ID_SPLIT) ) {
+        if( link.FmtData.type & (MK_REAL_MODE | MK_FLAT_OFFS | MK_ID_SPLIT) ) {
             segm_index = 1;
-            for( group = wlink().Groups; group != nullptr; group = group->next ) {
+            for( group = link.Groups; group != nullptr; group = group->next ) {
                 if( group == seg->group )
                     return( segm_index );
                 segm_index++;
@@ -169,7 +169,7 @@ static void hllAddSubSection( void )
     state().sect_sizes[index_of( HllSect::directory )] += sizeof( hll_dir_entry );
 }
 
-static void hllGenSubSection( hll_sst sect, unsigned size )
+static void hllGenSubSection(Link& link,  hll_sst sect, unsigned size )
 /*********************************************************/
 // generate a subsection entry
 {
@@ -177,7 +177,7 @@ static void hllGenSubSection( hll_sst sect, unsigned size )
     hll_dir_entry   entry;
 
     entry.subsection = sect;
-    entry.iMod = wlink().CurrMod ? wlink().CurrMod->u3.hll->modidx : 0;
+    entry.iMod = link.CurrMod ? link.CurrMod->u3.hll->modidx : 0;
     entry.cb = size;
     switch( sect ) {
     case hll_sstModules:
@@ -203,12 +203,13 @@ void HllP1ModuleFinished( mod_entry *obj )
  * calculate size of the sstModule
  */
 {
+    Link& link = wlink();
     HllState    &st = state();
     byte        namelen;
 
     if( MOD_NOT_DEBUGGABLE( obj ) )
         return;
-    wlink().CurrMod = obj;
+    link.CurrMod = obj;
 
     /* assign module index */
     obj->u3.hll->modidx = ++st.mod_index;
@@ -229,7 +230,7 @@ void HllP1ModuleFinished( mod_entry *obj )
     // FIXME: Implement support for non-HLL linenumbers (the old-style linenumber subsection).
 }
 
-void HllAddModule( mod_entry *obj, section *sect )
+void HllAddModule(Link& link,  mod_entry *obj, section *sect )
 /************************************************/
 // called just before publics have been assigned addresses between p1 & p2
 // We generate the module entry and some other bits now.
@@ -243,7 +244,7 @@ void HllAddModule( mod_entry *obj, section *sect )
             obj, obj->name.u.ptr, sect, obj->modinfo & MOD_IMPORT_LIB,
             obj->u3.hll->pubsize ));
 
-    wlink().CurrMod = obj; // paranoia
+    link.CurrMod = obj; // paranoia
 
     /* generate the module entry */
     namelen = static_cast<byte>( std::string_view( obj->name.u.ptr ).size() );
@@ -251,7 +252,7 @@ void HllAddModule( mod_entry *obj, section *sect )
     if( obj->u3.hll->numsegs ) {
         size += ( obj->u3.hll->numsegs - 1 ) * sizeof( hll_seginfo );
     }
-    hllGenSubSection( hll_sstModules, size );
+    hllGenSubSection(link,  hll_sstModules, size );
 
     obj->u3.hll->segloc = st.sect_offsets[index_of( HllSect::module )];
     mod.SegInfo.Seg     = 0;        /* corrected later if any code */
@@ -290,7 +291,7 @@ void HllAddModule( mod_entry *obj, section *sect )
 
     /* publics (the callers caller will define public afterwards). */
     if( obj->u3.hll->pubsize > 0 ) {
-        hllGenSubSection( hll_sstPublics, obj->u3.hll->pubsize );
+        hllGenSubSection(link,  hll_sstPublics, obj->u3.hll->pubsize );
     }
     (void)sect; // komh: make compiler happy
 }
@@ -319,7 +320,7 @@ void HllAddLocal( seg_leader *seg, offset length )
     (void)length; // komh: make compiler happy
 }
 
-void HllAddGlobal( symbol *sym )
+void HllAddGlobal(Link& link,  symbol *sym )
 /******************************/
 // called during pass 1 symbol definition
 {
@@ -327,14 +328,14 @@ void HllAddGlobal( symbol *sym )
         unsigned size;
 
         size = static_cast<byte>( std::string_view( sym->name.u.ptr ).size() ) + sizeof( hll_public );
-        wlink().CurrMod->u3.hll->pubsize += size;
+        link.CurrMod->u3.hll->pubsize += size;
         state().sect_sizes[index_of( HllSect::misc )] += size;
         DEBUG(( DBG_HLL, "HllAddGlobal: size=%h sym=%p %s",
                 size, sym, sym->name ));
     }
 }
 
-void HllGenGlobal( symbol *sym, section *sect )
+void HllGenGlobal(Link& link,  symbol *sym, section *sect )
 /*********************************************/
 // called during symbol address calculation (between pass 1 & pass 2)
 // also called by loadpe between passes
@@ -346,7 +347,7 @@ void HllGenGlobal( symbol *sym, section *sect )
                 state().sect_offsets[index_of( HllSect::misc )] - state().hll_base, sym, sym->name, sect ));
 
         pub.offset  = sym->addr.off;
-        pub.seg     = hllGetSegment( sym->p.seg->u.leader );
+        pub.seg     = hllGetSegment(link,  sym->p.seg->u.leader );
         pub.type    = 0; /** @todo fix the public type index! */
         pub.name_len = static_cast<unsigned_8>( std::string_view( sym->name.u.ptr ).size() );
         hllDumpInfo( HllSect::misc, &pub, sizeof( pub ) );
@@ -403,17 +404,19 @@ void HllAddAddrInfo( seg_leader *seg )
 /************************************/
 // We take this opportunity to count seginfo structures.
 {
+    Link& link = wlink();
     if( (seg->info & SEGINF_CODE) == 0 )
         return;
     DEBUG(( DBG_HLL, "HllAddAddrInfo: seg=%p %s", seg, seg->segname ));
-    DBIAddrInfoScan( seg, hllAddAddrInit, hllAddAddrAdd, nullptr );
+    DBIAddrInfoScan(link,  seg, hllAddAddrInit, hllAddAddrAdd, nullptr );
 }
 
 static void hllGenAddrInit( segdata *sdata, void *_info )
 /*******************************************************/
 {
+    Link& link = wlink();
     hll_seginfo *info = static_cast<hll_seginfo *>( _info );
-    info->Seg = hllGetSegment( sdata->u.leader );
+    info->Seg = hllGetSegment(link,  sdata->u.leader );
     info->offset = sdata->u.leader->seg_addr.off + sdata->a.delta;
 }
 
@@ -436,15 +439,16 @@ void HllGenAddrInfo( seg_leader *seg )
 // called for each section just before pass 2 starts
 // Fill in seginfo.
 {
+    Link& link = wlink();
     hll_seginfo info;
 
     if( (seg->info & SEGINF_CODE) == 0 )
         return;
     DEBUG(( DBG_HLL, "HllGenAddrInfo: seg=%p %s", seg, seg->segname ));
-    DBIAddrInfoScan( seg, hllGenAddrInit, hllGenAddrAdd, &info );
+    DBIAddrInfoScan(link,  seg, hllGenAddrInit, hllGenAddrAdd, &info );
 }
 
-void HllDefClass( class_entry *class_, unsigned size )
+void HllDefClass(Link& link,  class_entry *class_, unsigned size )
 /*****************************************************
  * called during address calculation for the purpose of catching
  * debug info segment classes.
@@ -458,7 +462,7 @@ void HllDefClass( class_entry *class_, unsigned size )
     case CLASS_MS_LOCAL:
     case CLASS_HLL_LINE:
         /* add the class to the DBI groups (we'll traverse them later) */
-        group = AllocGroup( AutoGrpName, &wlink().DBIGroups );
+        group = AllocGroup(link,  AutoGrpName, &link.DBIGroups );
         group->g.class_ = class_;
         group->addr.seg = 0;
 
@@ -475,6 +479,7 @@ static void hllDefSegData( void *_sdata )
 // Creates a Type or Symbol subsection for a module and copies the data into it.
 /* NOTE: this assumes that codeview segments are byte aligned! */
 {
+    Link& link = wlink();
     segdata    *sdata = static_cast<segdata *>( _sdata );
     seg_leader *leader = sdata->u.leader;
 
@@ -492,12 +497,12 @@ static void hllDefSegData( void *_sdata )
         default:
             return;
         }
-        wlink().CurrMod = sdata->o.mod;
+        link.CurrMod = sdata->o.mod;
         DEBUG(( DBG_HLL, "hllDefSegData: %h: iMod=%d sect=%d length=%h align=2**%d %s",
-                misc - state().hll_base, wlink().CurrMod->u3.hll->modidx, sect, sdata->length,
-                sdata->align, wlink().CurrMod->name ));
+                misc - state().hll_base, link.CurrMod->u3.hll->modidx, sect, sdata->length,
+                sdata->align, link.CurrMod->name ));
 
-        hllGenSubSection( sect, sdata->length );
+        hllGenSubSection(link,  sect, sdata->length );
         CopyInfo( misc, sdata->u1.vm_ptr, sdata->length );
         sdata->u1.vm_ptr = misc;   // FIXME: inefficient
         misc += sdata->length;
@@ -515,7 +520,7 @@ static bool hllDefLeader( void *_leader, void *group )
     return( false );
 }
 
-void HllAddrStart( void )
+void HllAddrStart(Link& link)
 /***********************/
 // called after address calculation is done.
 {
@@ -564,7 +569,7 @@ void HllAddrStart( void )
     hllDumpInfo( HllSect::directory, &dirhdr, sizeof( dirhdr ) );
 
     /* Walk the debug info groups and dump the data in those segments. */
-    for( group = wlink().DBIGroups; group != nullptr; group = group->next ) {
+    for( group = link.DBIGroups; group != nullptr; group = group->next ) {
         RingLookup( group->g.class_->segs, hllDefLeader, group );
         group->g.class_ = nullptr;
     }
@@ -578,7 +583,7 @@ void HllFini( section *sect )
     (void)sect; // komh: make compiler happy
 }
 
-void HllWrite( void )
+void HllWrite(Link& link)
 /*******************/
 // called during load file generation.  It is assumed that the loadfile is
 // positioned to the right spot.

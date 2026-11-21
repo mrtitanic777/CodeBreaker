@@ -107,21 +107,21 @@ void WriteNulls( f_handle file, size_t len, const char *name )
     }
 }
 
-void CheckErr( void )
+void CheckErr(Link& link)
 /**************************/
 {
-    if( wlink().LinkState & ( LS_LINK_ERROR | LS_STOP_WORKING ) ) {
-        if( wlink().MapFile != nullptr ) {
-            WriteMapLibsUsed();
+    if( link.LinkState & ( LS_LINK_ERROR | LS_STOP_WORKING ) ) {
+        if( link.MapFile != nullptr ) {
+            WriteMapLibsUsed(link);
         }
         Suicide();
     }
 }
 
-void CheckStop( void )
+void CheckStop(Link& link)
 /***************************/
 {
-    if( wlink().LinkState & LS_STOP_WORKING ) {
+    if( link.LinkState & LS_STOP_WORKING ) {
         Suicide();
     }
 }
@@ -161,40 +161,41 @@ static void WalkModsList( mod_entry *list, mods_walk_fn *cbfn )
 static void WalkSectModsList( section *sect, void *mods_walk_cb )
 /***************************************************************/
 {
-    wlink().CurrSect = sect;
+    Link& link = wlink();
+    link.CurrSect = sect;
     WalkModsList( sect->mods, static_cast<mods_walk_data *>( mods_walk_cb )->cbfn );
 }
 
-void WalkAllSects( void (*rtn)( section * ) )
+void WalkAllSects(Link& link,  void (*rtn)( section * ) )
 /*******************************************/
 {
-    rtn( wlink().Root );
+    rtn( link.Root );
 #ifdef _EXE
-    if( wlink().FmtData.type & MK_OVERLAYS ) {
-        WalkAreas( wlink().Root->areas, rtn );
+    if( link.FmtData.type & MK_OVERLAYS ) {
+        WalkAreas( link.Root->areas, rtn );
     }
 #endif
 }
 
-void ParmWalkAllSects( void (*rtn)( section *, void * ), void *parm )
+void ParmWalkAllSects(Link& link,  void (*rtn)( section *, void * ), void *parm )
 /*******************************************************************/
 {
-    rtn( wlink().Root, parm );
+    rtn( link.Root, parm );
 #ifdef _EXE
-    if( wlink().FmtData.type & MK_OVERLAYS ) {
-        ParmWalkAreas( wlink().Root->areas, rtn, parm );
+    if( link.FmtData.type & MK_OVERLAYS ) {
+        ParmWalkAreas( link.Root->areas, rtn, parm );
     }
 #endif
 }
 
-void WalkMods( mods_walk_fn *cbfn )
+void WalkMods(Link& link,  mods_walk_fn *cbfn )
 /*********************************/
 {
     mods_walk_data      mods_walk_cb{ cbfn };
 
-    ParmWalkAllSects( WalkSectModsList, &mods_walk_cb );
-    wlink().CurrSect = wlink().Root;
-    WalkModsList( wlink().LibModules, cbfn );
+    ParmWalkAllSects(link,  WalkSectModsList, &mods_walk_cb );
+    link.CurrSect = link.Root;
+    WalkModsList( link.LibModules, cbfn );
 }
 
 static void WalkClass( class_entry *class_, class_walk_fn *cbfn )
@@ -204,10 +205,10 @@ static void WalkClass( class_entry *class_, class_walk_fn *cbfn )
     RingWalk( class_->segs, reinterpret_cast<ringwalk_fn *>( cbfn ) );
 }
 
-void SectWalkClass( section *sect, class_walk_fn *cbfn )
+void SectWalkClass(Link& link,  section *sect, class_walk_fn *cbfn )
 /******************************************************/
 {
-    wlink().CurrSect = sect;
+    link.CurrSect = sect;
     for( class_entry *class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         WalkClass( class_, cbfn );
     }
@@ -216,18 +217,19 @@ void SectWalkClass( section *sect, class_walk_fn *cbfn )
 static void _SectWalkClass( section *sect, void *class_walk_cb )
 /**************************************************************/
 {
-    wlink().CurrSect = sect;
+    Link& link = wlink();
+    link.CurrSect = sect;
     for( class_entry *class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         WalkClass( class_, static_cast<class_walk_data *>( class_walk_cb )->cbfn );
     }
 }
 
-void WalkLeaders( class_walk_fn *cbfn )
+void WalkLeaders(Link& link,  class_walk_fn *cbfn )
 /*************************************/
 {
     class_walk_data     class_walk_cb{ cbfn };
 
-    ParmWalkAllSects( _SectWalkClass, &class_walk_cb );
+    ParmWalkAllSects(link,  _SectWalkClass, &class_walk_cb );
 }
 
 seg_leader *FindSegment( section *sect, const char *name )
@@ -280,7 +282,7 @@ void FreeList( void *_curr )
     }
 }
 
-obj_name_list *AddNameTable( const char *name, size_t len, bool is_mod, obj_name_list **owner )
+obj_name_list *AddNameTable(Link& link,  const char *name, size_t len, bool is_mod, obj_name_list **owner )
 /*********************************************************************************************/
 {
     obj_name_list   *imp;
@@ -301,7 +303,7 @@ obj_name_list *AddNameTable( const char *name, size_t len, bool is_mod, obj_name
         imp = static_cast<obj_name_list *>( _PermAlloc( sizeof( obj_name_list ) ) );
         imp->next = nullptr;
         imp->len = len;
-        imp->name.u.ptr = AddSymbolStringTable( &wlink().PermStrings, name, len );
+        imp->name.u.ptr = AddSymbolStringTable( &link.PermStrings, name, len );
         imp->num = is_mod ? index : off;
         *owner = imp;
     }
@@ -521,36 +523,36 @@ static char *CopyPathList( const char *path_list )
     return( list );
 }
 
-void InitEnvVars( void )
+void InitEnvVars(Link& link)
 /**********************/
 {
-    if( wlink().ExePath == nullptr ) {
+    if( link.ExePath == nullptr ) {
 #if defined( __QNX__ )
         const char  *path_list = "/usr/watcom";
 #else
         const char  *path_list = GetEnvString( "PATH" );
 #endif
-        wlink().ExePath = CopyPathList( path_list );
+        link.ExePath = CopyPathList( path_list );
     }
-    if( wlink().LibPath == nullptr ) {
-        wlink().LibPath = CopyPathList( GetEnvString( "LIB" ) );
+    if( link.LibPath == nullptr ) {
+        link.LibPath = CopyPathList( GetEnvString( "LIB" ) );
     }
 }
 
-void FiniEnvVars( void )
+void FiniEnvVars(Link& link)
 /**********************/
 {
-    if( wlink().ExePath != nullptr ) {
-        MemFree( wlink().ExePath );
-        wlink().ExePath = nullptr;
+    if( link.ExePath != nullptr ) {
+        MemFree( link.ExePath );
+        link.ExePath = nullptr;
     }
-    if( wlink().LibPath != nullptr ) {
-        MemFree( wlink().LibPath );
-        wlink().LibPath = nullptr;
+    if( link.LibPath != nullptr ) {
+        MemFree( link.LibPath );
+        link.LibPath = nullptr;
     }
 }
 
-f_handle FindPath( const char *name, char *fullname )
+f_handle FindPath(Link& link,  const char *name, char *fullname )
 /***************************************************/
 {
     const char                  *path_list;
@@ -560,8 +562,8 @@ f_handle FindPath( const char *name, char *fullname )
     strcpy( fullpath.data(), name );
     file = QObjOpen( fullpath.data() );
     if( file == NIL_FHANDLE
-      && wlink().ExePath != nullptr ) {
-        for( path_list = wlink().ExePath; *path_list != '\0'; ) {
+      && link.ExePath != nullptr ) {
+        for( path_list = link.ExePath; *path_list != '\0'; ) {
             strcpy( MakePath( fullpath.data(), &path_list ), name );
             file = QObjOpen( fullpath.data() );
             if( file != NIL_FHANDLE ) {
@@ -576,12 +578,12 @@ f_handle FindPath( const char *name, char *fullname )
     return( file );
 }
 
-group_entry *FindGroup( segment seg )
+group_entry *FindGroup(Link& link,  segment seg )
 /***********************************/
 {
     group_entry *group;
 
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->addr.seg == seg ) {
             break;
         }
@@ -589,38 +591,38 @@ group_entry *FindGroup( segment seg )
     return( group );
 }
 
-offset FindLinearAddr( addr_type *addr )
+offset FindLinearAddr(Link& link,  addr_type *addr )
 /**************************************/
 {
     group_entry *group;
 
-    group = FindGroup( addr->seg );
+    group = FindGroup(link,  addr->seg );
     if( group != nullptr ) {
         return( addr->off + ( group->linear - group->addr.off ) );
     }
     return( addr->off );
 }
 
-offset FindLinearAddr2( addr_type *addr )
+offset FindLinearAddr2(Link& link,  addr_type *addr )
 /***************************************/
 {
     group_entry *group;
 
-    group = FindGroup( addr->seg );
+    group = FindGroup(link,  addr->seg );
     if( group != nullptr ) {
-        return( addr->off + group->linear + wlink().FmtData.base );
+        return( addr->off + group->linear + link.FmtData.base );
     }
     return( addr->off );
 }
 
-file_list *AllocNewFile( member_list *member )
+file_list *AllocNewFile(Link& link,  member_list *member )
 /********************************************/
 {
     file_list       *file;
 
     file = static_cast<file_list *>( _PermAlloc( sizeof( file_list ) ) );
     file->next = nullptr;
-    file->flags_dbi = wlink().DBIFlag;
+    file->flags_dbi = link.DBIFlag;
     file->flags_file = static_cast<file_flags>( 0 );
     file->strtab = nullptr;
     file->u.member = member;
@@ -633,6 +635,7 @@ file_list *AllocNewFile( member_list *member )
 char *FileName( const char *buff, size_t len, file_defext etype, bool force )
 /***************************************************************************/
 {
+    Link& link = wlink();
     const char  *namptr;
     const char  *namstart;
     char        *ptr;
@@ -662,7 +665,7 @@ char *FileName( const char *buff, size_t len, file_defext etype, bool force )
         /*
          * duplicate name if no extension change is necessary
          */
-        ptr = MemToStringSafe( buff, len );
+        ptr = MemToStringSafe(link,  buff, len );
     } else {
         if( force
           && etype == E_MAP ) {         // op map goes in current dir.
@@ -679,7 +682,7 @@ char *FileName( const char *buff, size_t len, file_defext etype, bool force )
          * if some extension is required then add it
          */
         if( etype == E_NONE ) {
-            ptr = MemToStringSafe( buff, len );
+            ptr = MemToStringSafe(link,  buff, len );
         } else {
             const std::string_view  ext = DefExt[etype];
 

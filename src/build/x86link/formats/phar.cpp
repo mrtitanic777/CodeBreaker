@@ -78,7 +78,7 @@ constexpr bool has( DescFlags flags, DescFlags f )
 }
 
 
-static unsigned_32 WritePharData( unsigned file_pos )
+static unsigned_32 WritePharData(Link& link,  unsigned file_pos )
 /***************************************************/
 {
     group_entry         *group;
@@ -86,32 +86,32 @@ static unsigned_32 WritePharData( unsigned file_pos )
     bool                repos;
 
     DEBUG(( DBG_BASE, "Writing data" ));
-    OrderGroups( CompareOffsets );
-    wlink().CurrSect = wlink().Root;        // needed for WriteInfo.
-    fnode = wlink().Root->outfile;
+    OrderGroups(link,  CompareOffsets );
+    link.CurrSect = link.Root;        // needed for WriteInfo.
+    fnode = link.Root->outfile;
     fnode->file_loc = file_pos;
-    wlink().Root->u.file_loc = file_pos;
-    wlink().Root->sect_addr = wlink().Groups->addr;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
-        repos = WriteGroup( group );
+    link.Root->u.file_loc = file_pos;
+    link.Root->sect_addr = link.Groups->addr;
+    for( group = link.Groups; group != nullptr; group = group->next ) {
+        repos = WriteGroup(link,  group );
         if( repos ) {
-            SeekLoad( fnode->file_loc );
+            SeekLoad(link,  fnode->file_loc );
         }
     }
     return( fnode->file_loc - file_pos );
 }
 
-static unsigned_32 WritePharRelocs( void )
+static unsigned_32 WritePharRelocs(Link& link)
 /****************************************/
 // write the relocations.
 {
     reloc_info  reloclist;
 
-    reloclist = wlink().Root->reloclist;             // don't want to modify original
-    return( DumpMaxRelocList( &reloclist, 0 ) );
+    reloclist = link.Root->reloclist;             // don't want to modify original
+    return( DumpMaxRelocList(link,  &reloclist, 0 ) );
 }
 
-static void WritePharSimple( unsigned_32 start )
+static void WritePharSimple(Link& link,  unsigned_32 start )
 /**********************************************/
 {
     simple_header   header;
@@ -120,50 +120,50 @@ static void WritePharSimple( unsigned_32 start )
     unsigned_32     extra;
     unsigned_32     temp;
 
-    if( wlink().FmtData.type & MK_PHAR_REX ) {
-        SeekLoad( start + sizeof( simple_header ) );
-        extra = start + sizeof( simple_header ) + WritePharRelocs();
+    if( link.FmtData.type & MK_PHAR_REX ) {
+        SeekLoad(link,  start + sizeof( simple_header ) );
+        extra = start + sizeof( simple_header ) + WritePharRelocs(link);
         header_size = __ROUND_UP_SIZE_PARA( extra );
-        PadLoad( header_size - extra );
+        PadLoad(link,  header_size - extra );
     } else {
-        SeekLoad( start + __ROUND_UP_SIZE_PARA( sizeof( simple_header ) ) );
+        SeekLoad(link,  start + __ROUND_UP_SIZE_PARA( sizeof( simple_header ) ) );
         header_size = __ROUND_UP_SIZE_PARA( sizeof( simple_header ) );    // para align.
     }
-    file_size = header_size + WritePharData( start + header_size );
-    DBIWrite();
-    if( wlink().FmtData.type & MK_PHAR_SIMPLE ) {
+    file_size = header_size + WritePharData(link,  start + header_size );
+    DBIWrite(link);
+    if( link.FmtData.type & MK_PHAR_SIMPLE ) {
         _HostU16toTarg( SIMPLE_SIGNATURE, header.signature );
     } else {
         _HostU16toTarg( EXESIGN_REX, header.signature );
     }
     _HostU16toTarg( file_size % 512U, header.mod_size );
     _HostU16toTarg( (file_size + 511U) / 512U, header.file_size );
-    _HostU16toTarg( wlink().Root->relocs, header.num_relocs );
+    _HostU16toTarg( link.Root->relocs, header.num_relocs );
     _HostU16toTarg( header_size / 16, header.hdr_size );
-    extra = MemorySize() - file_size + header_size + 0xfff;
-    temp = wlink().FmtData.u.phar.mindata + extra;
-    if( temp < wlink().FmtData.u.phar.mindata )
+    extra = MemorySize(link) - file_size + header_size + 0xfff;
+    temp = link.FmtData.u.phar.mindata + extra;
+    if( temp < link.FmtData.u.phar.mindata )
         temp = 0xffffffff;
     _HostU16toTarg( temp >> 12, header.min_data );
-    temp = wlink().FmtData.u.phar.maxdata + extra;
-    if( temp < wlink().FmtData.u.phar.maxdata )
+    temp = link.FmtData.u.phar.maxdata + extra;
+    if( temp < link.FmtData.u.phar.maxdata )
         temp = 0xffffffff;
     _HostU16toTarg( temp >> 12, header.max_data );
-    _HostU32toTarg( wlink().StackAddr.off, header.ESP );
+    _HostU32toTarg( link.StackAddr.off, header.ESP );
     _HostU16toTarg( 0, header.checksum );
-    _HostU32toTarg( wlink().StartInfo.addr.off, header.EIP );
+    _HostU32toTarg( link.StartInfo.addr.off, header.EIP );
     _HostU16toTarg( 0x1E, header.reloc_offset );
     _HostU16toTarg( 0, header.overlay_num );
     /* allow header size to exceed 1M */
     _HostU16toTarg( (header_size / _1M) + 1, header.always_one );
-    SeekLoad( start );
-    WriteLoad( &header, sizeof( simple_header ) );
-    if( wlink().FmtData.type & MK_PHAR_SIMPLE ) {
-        PadLoad( 2 );                   // header occupies a full paragraph.
+    SeekLoad(link,  start );
+    WriteLoad(link,  &header, sizeof( simple_header ) );
+    if( link.FmtData.type & MK_PHAR_SIMPLE ) {
+        PadLoad(link,  2 );                   // header occupies a full paragraph.
     }
 }
 
-static void WriteDescriptor( unsigned_32 base, unsigned_32 limit,
+static void WriteDescriptor(Link& link,  unsigned_32 base, unsigned_32 limit,
                              DescFlags flags )
 /****************************************************************/
 {
@@ -198,10 +198,10 @@ static void WriteDescriptor( unsigned_32 base, unsigned_32 limit,
         desc.u2.flags.page_granular = 1;
     }
     SET_DESC_LIMIT( desc, limit );
-    WriteLoad( &desc, sizeof( descriptor ) );
+    WriteLoad(link,  &desc, sizeof( descriptor ) );
 }
 
-static unsigned_32 WritePharSegData( void )
+static unsigned_32 WritePharSegData(Link& link)
 /*****************************************/
 {
     TSS                 tss;
@@ -211,83 +211,83 @@ static unsigned_32 WritePharSegData( void )
     DescFlags           flags;
 
     DEBUG(( DBG_BASE, "Writing data" ));
-    OrderGroups( CompareProtSegments );
+    OrderGroups(link,  CompareProtSegments );
     tss = TSS{};
-    tss.eip = wlink().StartInfo.addr.off;       // NYI: what about backlink ss0-2 & esp0-2 ?
-    tss.esp = wlink().StackAddr.off;
-    tss.cs = wlink().StartInfo.addr.seg;
-    tss.ss = wlink().StackAddr.seg;
-    tss.ds = wlink().DataGroup->addr.seg;
+    tss.eip = link.StartInfo.addr.off;       // NYI: what about backlink ss0-2 & esp0-2 ?
+    tss.esp = link.StackAddr.off;
+    tss.cs = link.StartInfo.addr.seg;
+    tss.ss = link.StackAddr.seg;
+    tss.ds = link.DataGroup->addr.seg;
     tss.ldt = 0x28;
-    WriteLoad( &tss, sizeof( TSS ) );
-    WriteDescriptor( 0, 0, DescFlags::none );                                // nullptr GDT entry;
-    WriteDescriptor( 0, sizeof( TSS ), DescFlags::TSS );  // TSS
-    WriteDescriptor( 0, sizeof( TSS ), DescFlags::BASE | DescFlags::IS_APP ); // TSS alias
+    WriteLoad(link,  &tss, sizeof( TSS ) );
+    WriteDescriptor(link,  0, 0, DescFlags::none );                                // nullptr GDT entry;
+    WriteDescriptor(link,  0, sizeof( TSS ), DescFlags::TSS );  // TSS
+    WriteDescriptor(link,  0, sizeof( TSS ), DescFlags::BASE | DescFlags::IS_APP ); // TSS alias
     pos = sizeof( TSS );
     size = NUM_GDT_DESCRIPTORS * sizeof( descriptor );
-    WriteDescriptor( pos, size, DescFlags::BASE | DescFlags::IS_APP );      // GDT
+    WriteDescriptor(link,  pos, size, DescFlags::BASE | DescFlags::IS_APP );      // GDT
     pos += size;
     size = NUM_IDT_DESCRIPTORS * sizeof( descriptor );
-    WriteDescriptor( pos, size, DescFlags::BASE | DescFlags::IS_APP );      // IDT
+    WriteDescriptor(link,  pos, size, DescFlags::BASE | DescFlags::IS_APP );      // IDT
     pos += size;
-    size = ( wlink().NumGroups + 1 ) * sizeof( descriptor );
-    WriteDescriptor( pos, size, DescFlags::BASE );                  // LDT
-    WriteDescriptor( pos, size, DescFlags::BASE | DescFlags::IS_APP );      // LDT alias
-    WriteDescriptor( 0, 0, DescFlags::none );                                // nullptr IDT entry;
-    WriteDescriptor( 0, 0, DescFlags::none );                                // nullptr LDT entry;
+    size = ( link.NumGroups + 1 ) * sizeof( descriptor );
+    WriteDescriptor(link,  pos, size, DescFlags::BASE );                  // LDT
+    WriteDescriptor(link,  pos, size, DescFlags::BASE | DescFlags::IS_APP );      // LDT alias
+    WriteDescriptor(link,  0, 0, DescFlags::none );                                // nullptr IDT entry;
+    WriteDescriptor(link,  0, 0, DescFlags::none );                                // nullptr LDT entry;
     pos += size;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         flags = DescFlags::BASE | DescFlags::IS_APP | DescFlags::IS_USER;
         if( (group->segflags & SEG_DATA) == 0 ) {
             flags |= DescFlags::IS_CODE;
         }
-        WriteDescriptor( pos, group->totalsize, flags );
+        WriteDescriptor(link,  pos, group->totalsize, flags );
         pos += group->totalsize;
     }
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
-        WriteGroupLoad( group, false );
+    for( group = link.Groups; group != nullptr; group = group->next ) {
+        WriteGroupLoad(link,  group, false );
         if( group->totalsize > group->size ) {  // phar lap is stupid
-            PadLoad( group->totalsize - group->size );
+            PadLoad(link,  group->totalsize - group->size );
         }
     }
     return( pos );
 }
 
-static unsigned_32  WriteRTPBlock( void )
+static unsigned_32  WriteRTPBlock(Link& link)
 /***************************************/
 {
     symbol          *sym;
     rtpblock        rtpblk;
     unsigned_32     offset;
 
-    if( wlink().FmtData.u.phar.breaksym != nullptr ) {
-        sym = FindISymbol( wlink().FmtData.u.phar.breaksym );
+    if( link.FmtData.u.phar.breaksym != nullptr ) {
+        sym = FindISymbol(link,  link.FmtData.u.phar.breaksym );
         if( sym == nullptr ) {
-            LnkMsg( WRN+MSG_BREAKSYM_NOT_FOUND, "s", wlink().FmtData.u.phar.breaksym );
+            LnkMsg( WRN+MSG_BREAKSYM_NOT_FOUND, "s", link.FmtData.u.phar.breaksym );
             offset = 0;
         } else {
             offset = sym->addr.off;
         }
     } else {
-        offset = wlink().FmtData.u.phar.realbreak;
+        offset = link.FmtData.u.phar.realbreak;
     }
     _HostU16toTarg( RTP_SIGNATURE, rtpblk.signature );
-    _HostU16toTarg( wlink().FmtData.u.phar.minreal, rtpblk.minreal );
-    _HostU16toTarg( wlink().FmtData.u.phar.maxreal, rtpblk.maxreal );
-    _HostU16toTarg( wlink().FmtData.u.phar.minibuf, rtpblk.minibuf );
-    _HostU16toTarg( wlink().FmtData.u.phar.maxibuf, rtpblk.maxibuf );
-    _HostU16toTarg( wlink().FmtData.u.phar.nistack, rtpblk.nistack );
-    _HostU16toTarg( wlink().FmtData.u.phar.istksize, rtpblk.istksize );
-    _HostU16toTarg( wlink().FmtData.u.phar.callbufs, rtpblk.callbufs );
+    _HostU16toTarg( link.FmtData.u.phar.minreal, rtpblk.minreal );
+    _HostU16toTarg( link.FmtData.u.phar.maxreal, rtpblk.maxreal );
+    _HostU16toTarg( link.FmtData.u.phar.minibuf, rtpblk.minibuf );
+    _HostU16toTarg( link.FmtData.u.phar.maxibuf, rtpblk.maxibuf );
+    _HostU16toTarg( link.FmtData.u.phar.nistack, rtpblk.nistack );
+    _HostU16toTarg( link.FmtData.u.phar.istksize, rtpblk.istksize );
+    _HostU16toTarg( link.FmtData.u.phar.callbufs, rtpblk.callbufs );
     _HostU32toTarg( offset, rtpblk.realbreak );
-    _HostU16toTarg( wlink().FmtData.u.phar.extender_flags, rtpblk.extender_flags );  /* for undocumented "runtime flags" */
-    _HostU16toTarg( wlink().FmtData.u.phar.unpriv, rtpblk.unpriv );
-    WriteLoad( &rtpblk, sizeof( rtpblk ) );
-    PadLoad( RTP_SIZE - sizeof( rtpblk ) );
+    _HostU16toTarg( link.FmtData.u.phar.extender_flags, rtpblk.extender_flags );  /* for undocumented "runtime flags" */
+    _HostU16toTarg( link.FmtData.u.phar.unpriv, rtpblk.unpriv );
+    WriteLoad(link,  &rtpblk, sizeof( rtpblk ) );
+    PadLoad(link,  RTP_SIZE - sizeof( rtpblk ) );
     return( RTP_SIZE );
 }
 
-static unsigned_32 WriteSIT( void )
+static unsigned_32 WriteSIT(Link& link)
 /*********************************/
 {
     group_entry *       group;
@@ -298,17 +298,17 @@ static unsigned_32 WriteSIT( void )
     sit.flags = 0;
     sit.base = 0;
     sit.extra = 0;
-    sit.base = wlink().FmtData.base;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    sit.base = link.FmtData.base;
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         sit.selector = group->addr.seg;
         sit.extra = group->totalsize - group->size;
-        WriteLoad( &sit, sizeof( seg_info_table ) );
+        WriteLoad(link,  &sit, sizeof( seg_info_table ) );
         size += sizeof( seg_info_table );
     }
     return( size );
 }
 
-static void WritePharExtended( unsigned_32 start )
+static void WritePharExtended(Link& link,  unsigned_32 start )
 /************************************************/
 {
     extended_header header;
@@ -317,14 +317,14 @@ static void WritePharExtended( unsigned_32 start )
     unsigned_32     temp;
     unsigned_32     extra;
 
-    SeekLoad( start + HEAD_SIZE );
+    SeekLoad(link,  start + HEAD_SIZE );
     file_size = HEAD_SIZE;
-    if( wlink().FmtData.type & MK_PHAR_MULTISEG ) {
+    if( link.FmtData.type & MK_PHAR_MULTISEG ) {
         /*
          * write sit info
          */
         _HostU32toTarg( file_size, header.sit_offset );
-        temp = WriteSIT();
+        temp = WriteSIT(link);
         _HostU32toTarg( temp, header.sit_size );
         file_size += temp;
         _HostU16toTarg( sizeof( seg_info_table ), header.sit_entry_size );
@@ -332,14 +332,14 @@ static void WritePharExtended( unsigned_32 start )
          * write reloc info
          */
         _HostU32toTarg( file_size, header.reloc_offset );
-        temp = WritePharRelocs();
+        temp = WritePharRelocs(link);
         _HostU32toTarg( temp, header.reloc_size );
         file_size += temp;
         /*
          * write rtp block
          */
         _HostU32toTarg( file_size, header.rtp_offset );
-        temp = WriteRTPBlock();
+        temp = WriteRTPBlock(link);
         _HostU32toTarg( temp, header.rtp_size );
         file_size += temp;
     } else {
@@ -353,7 +353,7 @@ static void WritePharExtended( unsigned_32 start )
          * write rtp block
          */
         _HostU32toTarg( file_size, header.rtp_offset );
-        temp = WriteRTPBlock();
+        temp = WriteRTPBlock(link);
         _HostU32toTarg( temp, header.rtp_size );
         file_size += temp;
         /*
@@ -367,14 +367,14 @@ static void WritePharExtended( unsigned_32 start )
      * write image data
      */
     image_offset = file_size;
-    if( wlink().FmtData.type & MK_PHAR_MULTISEG ) {
-        file_size += WritePharSegData();
+    if( link.FmtData.type & MK_PHAR_MULTISEG ) {
+        file_size += WritePharSegData(link);
     } else {
-        file_size += WritePharData( start + image_offset );
+        file_size += WritePharData(link,  start + image_offset );
     }
-    DBIWrite();
+    DBIWrite(link);
     _HostU16toTarg( EXTENDED_SIGNATURE, header.signature );
-    if( wlink().FmtData.type & MK_PHAR_MULTISEG ) {
+    if( link.FmtData.type & MK_PHAR_MULTISEG ) {
         _HostU16toTarg( PHAR_FORMAT_SEGMENTED, header.format_level );
     } else {
         _HostU16toTarg( PHAR_FORMAT_FLAT, header.format_level );
@@ -386,7 +386,7 @@ static void WritePharExtended( unsigned_32 start )
     _HostU32toTarg( file_size - image_offset, header.load_size );
     _HostU32toTarg( 0, header.sym_offset );
     _HostU32toTarg( 0, header.sym_size );
-    if( wlink().FmtData.type & MK_PHAR_MULTISEG ) {
+    if( link.FmtData.type & MK_PHAR_MULTISEG ) {
         temp = sizeof( TSS );
         _HostU32toTarg( temp, header.gdt_offset );
         extra = NUM_GDT_DESCRIPTORS * sizeof( descriptor );
@@ -396,15 +396,15 @@ static void WritePharExtended( unsigned_32 start )
         _HostU32toTarg( temp, header.idt_offset );
         _HostU32toTarg( extra, header.idt_size );
         temp += extra;
-        extra = (wlink().NumGroups + 1) * sizeof( descriptor );
+        extra = (link.NumGroups + 1) * sizeof( descriptor );
         _HostU32toTarg( temp, header.ldt_offset );
         _HostU32toTarg( extra, header.ldt_size );
         _HostU32toTarg( 0, header.tss_offset );
         _HostU32toTarg( sizeof( TSS ), header.tss_size );
         _HostU32toTarg( 0, header.min_extra );
         _HostU32toTarg( 0, header.max_extra );
-        _HostU16toTarg( wlink().StackAddr.seg, header.SS );
-        _HostU16toTarg( wlink().StartInfo.addr.seg, header.CS );
+        _HostU16toTarg( link.StackAddr.seg, header.SS );
+        _HostU16toTarg( link.StartInfo.addr.seg, header.CS );
         _HostU16toTarg( 0x28, header.LDT );
         _HostU16toTarg( 0x8, header.TSS );
     } else {
@@ -416,13 +416,13 @@ static void WritePharExtended( unsigned_32 start )
         _HostU32toTarg( 0, header.ldt_size );
         _HostU32toTarg( 0, header.tss_offset );
         _HostU32toTarg( 0, header.tss_size );
-        extra = MemorySize() - file_size + image_offset;
-        temp = wlink().FmtData.u.phar.mindata + extra;
-        if( temp < wlink().FmtData.u.phar.mindata )
+        extra = MemorySize(link) - file_size + image_offset;
+        temp = link.FmtData.u.phar.mindata + extra;
+        if( temp < link.FmtData.u.phar.mindata )
             temp = 0xffffffff;
         _HostU32toTarg( temp, header.min_extra );
-        temp = wlink().FmtData.u.phar.maxdata + extra;
-        if( temp < wlink().FmtData.u.phar.maxdata )
+        temp = link.FmtData.u.phar.maxdata + extra;
+        if( temp < link.FmtData.u.phar.maxdata )
             temp = 0xffffffff;
         _HostU32toTarg( temp, header.max_extra );
         _HostU16toTarg( 0, header.SS );
@@ -430,35 +430,35 @@ static void WritePharExtended( unsigned_32 start )
         _HostU16toTarg( 0, header.LDT );
         _HostU16toTarg( 0, header.TSS );
     }
-    _HostU32toTarg( wlink().FmtData.base, header.offset );
-    _HostU32toTarg( wlink().StackAddr.off, header.ESP );
-    _HostU32toTarg( wlink().StartInfo.addr.off, header.EIP );
+    _HostU32toTarg( link.FmtData.base, header.offset );
+    _HostU32toTarg( link.StackAddr.off, header.ESP );
+    _HostU32toTarg( link.StartInfo.addr.off, header.EIP );
     _HostU16toTarg( 0, header.flags );    // packing not yet implemented.
     _HostU32toTarg( 0, header.reserved1 );
-    _HostU32toTarg( wlink().StackSize, header.stack_size );
+    _HostU32toTarg( link.StackSize, header.stack_size );
     header.mem_req = header.load_size;
-    SeekLoad( start );
-    WriteLoad( &header, sizeof( extended_header ) );
-    PadLoad( HEAD_SIZE - sizeof( extended_header ) );
+    SeekLoad(link,  start );
+    WriteLoad(link,  &header, sizeof( extended_header ) );
+    PadLoad(link,  HEAD_SIZE - sizeof( extended_header ) );
 }
 
-void FiniPharLapLoadFile( void )
+void FiniPharLapLoadFile(Link& link)
 /*************************************/
 {
     unsigned_32 start;
 
-    start = AppendToLoadFile( wlink().FmtData.u.phar.stub );
-    if( wlink().FmtData.type & (MK_PHAR_FLAT | MK_PHAR_MULTISEG) ) {
-        WritePharExtended( start );
+    start = AppendToLoadFile(link,  link.FmtData.u.phar.stub );
+    if( link.FmtData.type & (MK_PHAR_FLAT | MK_PHAR_MULTISEG) ) {
+        WritePharExtended(link,  start );
     } else {
-        WritePharSimple( start );
+        WritePharSimple(link,  start );
     }
 }
 
-void CheckPharLapData( void )
+void CheckPharLapData(Link& link)
 /***************************/
 {
-    if( (wlink().FmtData.type & MK_PHAR_FLAT) && (wlink().LinkState & LS_HAVE_16BIT_CODE) && !DirectivesHaveRealBreak() ) {
+    if( (link.FmtData.type & MK_PHAR_FLAT) && (link.LinkState & LS_HAVE_16BIT_CODE) && !DirectivesHaveRealBreak() ) {
         LnkMsg( WRN+MSG_NO_REALBREAK_WITH_16BIT, nullptr );
     }
 }

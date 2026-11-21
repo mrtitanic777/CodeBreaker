@@ -58,7 +58,7 @@ static constexpr auto PAGE_COUNT( unsigned long size )
 static constexpr unsigned long PAGEMAP_BUF_SIZE = MAX_HEADROOM / sizeof( map_entry ) * static_cast<unsigned long>( OSF_DEF_PAGE_SIZE );
 
 
-static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
+static unsigned NumberBuf(Link& link,  unsigned *start, unsigned limit, map_entry *buf )
 /***************************************************************************
  * fill a buffer with consecutive numbers
  */
@@ -68,7 +68,7 @@ static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
     unsigned        shift;
 
     numpages = PAGE_COUNT( limit );
-    if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+    if( link.FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
         size = numpages * sizeof( le_map_entry );
         while( numpages-- > 0 ) {
             *start += 1;
@@ -79,7 +79,7 @@ static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
             buf = reinterpret_cast<map_entry *>( reinterpret_cast<char *>( buf ) + sizeof( le_map_entry ) );
         }
     } else { /* FmtData.type & MK_OS2_LX */
-        shift = wlink().FmtData.u.os2fam.segment_shift;
+        shift = link.FmtData.u.os2fam.segment_shift;
         size = numpages * sizeof( lx_map_entry );
         while( limit > 0 ) {
             buf->lx.page_offset = *start >> shift;
@@ -98,7 +98,7 @@ static unsigned NumberBuf( unsigned *start, unsigned limit, map_entry *buf )
     return( size );
 }
 
-static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
+static unsigned WriteObjectTables(Link& link,  os2_flat_header *header, unsigned long loc )
 /******************************************************************************
  * write the object table and the object page map
  */
@@ -117,25 +117,25 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
     numpages = 0;
     numobjects = 0;
     objrec.reserved = 0;
-    if( wlink().DataGroup != nullptr ) {
-        header->autodata_obj = wlink().DataGroup->addr.seg;
+    if( link.DataGroup != nullptr ) {
+        header->autodata_obj = link.DataGroup->addr.seg;
     } else {
         header->autodata_obj = 0;
     }
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
-        if( group->addr.seg == wlink().StackAddr.seg ) {
-            header->stack_obj = wlink().StackAddr.seg;
-            header->esp = wlink().StackAddr.off - group->addr.off;
+        if( group->addr.seg == link.StackAddr.seg ) {
+            header->stack_obj = link.StackAddr.seg;
+            header->esp = link.StackAddr.off - group->addr.off;
         }
-        if( group->addr.seg == wlink().StartInfo.addr.seg ) {
-            header->start_obj = wlink().StartInfo.addr.seg;
-            header->eip = wlink().StartInfo.addr.off - group->addr.off;
+        if( group->addr.seg == link.StartInfo.addr.seg ) {
+            header->start_obj = link.StartInfo.addr.seg;
+            header->eip = link.StartInfo.addr.off - group->addr.off;
         }
         objrec.size = group->totalsize;
         objrec.addr = group->linear;
-        if( wlink().FmtData.type & MK_WIN_VXD ) {
+        if( link.FmtData.type & MK_WIN_VXD ) {
             // A VxD's objects are relocated independently by VMM and referenced
             // through (object,offset) fixups, so each object's LE base address
             // must be 0 (as in every retail VxD). Emitting group->linear here
@@ -173,7 +173,7 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
             objrec.flags |= OBJ_DISCARDABLE;
         }
         if( (group->segflags & SEG_PURE)
-          || (group == wlink().DataGroup && (wlink().FmtData.u.os2fam.flags & SINGLE_AUTO_DATA)) ) {
+          || (group == link.DataGroup && (link.FmtData.u.os2fam.flags & SINGLE_AUTO_DATA)) ) {
             objrec.flags |= OBJ_SHARABLE;
         }
         if( group->segflags & SEG_PRELOAD ) {
@@ -188,7 +188,7 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
         objrec.flags |= (group->segflags & SEG_RESIDENT_MASK) << SEG_RESIDENT_SHIFT;
         objrec.mapidx = numpages + 1;
         objrec.mapsize = PAGE_COUNT( group->size );
-        WriteLoad( &objrec, sizeof( object_record ) );
+        WriteLoad(link,  &objrec, sizeof( object_record ) );
         numpages += objrec.mapsize;
         numobjects++;
     }
@@ -198,17 +198,17 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
     loc += size;
     header->objmap_off = loc;
     start = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         for( sizeleft = group->size; sizeleft > PAGEMAP_BUF_SIZE; sizeleft -= PAGEMAP_BUF_SIZE ) {
-            map_size = NumberBuf( &start, PAGEMAP_BUF_SIZE, reinterpret_cast<map_entry *>( wlink().TokBuff ) );
+            map_size = NumberBuf(link,  &start, PAGEMAP_BUF_SIZE, reinterpret_cast<map_entry *>( link.TokBuff ) );
             size += map_size;
-            WriteLoad( wlink().TokBuff, map_size );
+            WriteLoad(link,  link.TokBuff, map_size );
         }
-        map_size = NumberBuf( &start, sizeleft, reinterpret_cast<map_entry *>( wlink().TokBuff ) );
+        map_size = NumberBuf(link,  &start, sizeleft, reinterpret_cast<map_entry *>( link.TokBuff ) );
         size += map_size;
-        WriteLoad( wlink().TokBuff, map_size );
+        WriteLoad(link,  link.TokBuff, map_size );
     }
     return( size );
 }
@@ -220,7 +220,7 @@ static unsigned WriteObjectTables( os2_flat_header *header, unsigned long loc )
  *       occur in this routine will likely have to be fixed in the other
  *       one as well.
  */
-static unsigned long WriteFlatEntryTable( void )
+static unsigned long WriteFlatEntryTable(Link& link)
 /***********************************************
  * Write the entry table to the file
  */
@@ -248,7 +248,7 @@ static unsigned long WriteFlatEntryTable( void )
      * space, but that should not be required.
      */
     size = 0;
-    start = wlink().FmtData.u.os2fam.exports;
+    start = link.FmtData.u.os2fam.exports;
     if( start != nullptr ) {
         prevord = 0;
         for( place = start; place != nullptr; ) {
@@ -258,11 +258,11 @@ static unsigned long WriteFlatEntryTable( void )
                 prefix.null.b32_cnt = 0xFF;
                 prefix.null.b32_type = FLT_BNDL_EMPTY;   // Null bundles.
                 for( ; gap > 0xFF; gap -= 0xFF ) {
-                    WriteLoad( &prefix.null, sizeof( prefix.null ) );
+                    WriteLoad(link,  &prefix.null, sizeof( prefix.null ) );
                     size += sizeof( prefix.null );
                 }
                 prefix.null.b32_cnt = static_cast<unsigned_8>( gap );
-                WriteLoad( &prefix.null, sizeof( prefix.null ) );
+                WriteLoad(link,  &prefix.null, sizeof( prefix.null ) );
                 size += sizeof( prefix.null );
             }
             // now get a bundle of ordinals.
@@ -297,7 +297,7 @@ static unsigned long WriteFlatEntryTable( void )
                 size += entries * sizeof( flat_bundle_entry32 );
             }
             prevord = prev->ordinal;
-            WriteLoad( &prefix.real, sizeof( prefix.real ) );
+            WriteLoad(link,  &prefix.real, sizeof( prefix.real ) );
             size += sizeof( prefix.real );
             for( ; entries > 0; --entries, start = start->next ) {
                 if( start->addr.seg == 0xFFFF ) {
@@ -313,7 +313,7 @@ static unsigned long WriteFlatEntryTable( void )
                     } else {
                         bundle_fwd.value = dll->u.entry->num;
                     }
-                    WriteLoad( &bundle_fwd, sizeof( flat_bundle_entryfwd ) );
+                    WriteLoad(link,  &bundle_fwd, sizeof( flat_bundle_entryfwd ) );
                 } else if( start->isiopl ) {
                     // Call gate entry
                     bundle_gate.e32_flags = (start->iopl_words << IOPL_WORD_SHIFT);
@@ -321,23 +321,23 @@ static unsigned long WriteFlatEntryTable( void )
                         bundle_gate.e32_flags |= ENTRY_EXPORTED | ENTRY_SHARED;
                     bundle_gate.offset   = start->addr.off;
                     bundle_gate.callgate = 0;
-                    WriteLoad( &bundle_gate, sizeof( bundle_gate ) );
+                    WriteLoad(link,  &bundle_gate, sizeof( bundle_gate ) );
                 } else {
                     // 32-bit entry
                     bundle_item.e32_flags = (start->iopl_words << IOPL_WORD_SHIFT);
                     if( start->isexported )
                         bundle_item.e32_flags |= ENTRY_EXPORTED;
                     bundle_item.e32_offset = start->addr.off;
-                    WriteLoad( &bundle_item, sizeof( flat_bundle_entry32 ) );
+                    WriteLoad(link,  &bundle_item, sizeof( flat_bundle_entry32 ) );
                 }
             }
         }
     }
-    PadLoad( 1 );   // A bundle with zero count terminates the entry table
+    PadLoad(link,  1 );   // A bundle with zero count terminates the entry table
     return( size + 1 );
 }
 
-static unsigned WriteFixupTables( os2_flat_header *header, unsigned long loc)
+static unsigned WriteFixupTables(Link& link,  os2_flat_header *header, unsigned long loc)
 /****************************************************************************
  * write the fixup page table and the fixup record table
  */
@@ -351,12 +351,12 @@ static unsigned WriteFixupTables( os2_flat_header *header, unsigned long loc)
     header->fixpage_off = loc;
     numentries = 0;
     size = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         pagelist_array = group->g.pagelist_array;
         numpages = PAGE_COUNT( group->size );
         numentries += numpages;
         while( numpages-- > 0 ) {
-            WriteLoadU32( size );
+            WriteLoadU32(link,  size );
             if( pagelist_array != nullptr ) {
                 size += RelocSize( pagelist_array->externals );
                 size += RelocSize( pagelist_array->internals );
@@ -364,18 +364,18 @@ static unsigned WriteFixupTables( os2_flat_header *header, unsigned long loc)
             }
         }
     }
-    WriteLoadU32( size );
+    WriteLoadU32(link,  size );
     ++numentries;
     /* now that the page table is written out, do the fixups. */
     header->fixrec_off = loc + numentries * sizeof( unsigned_32 );
     size += numentries * sizeof( unsigned_32 );
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
-        TraverseOS2RelocList( group, DumpRelocList );
+    for( group = link.Groups; group != nullptr; group = group->next ) {
+        TraverseOS2RelocList(link,  group, DumpRelocList );
     }
     return( size );
 }
 
-static unsigned WriteDataPages( unsigned long loc )
+static unsigned WriteDataPages(Link& link,  unsigned long loc )
 /**************************************************
  * write the enumerated data pages
  */
@@ -385,28 +385,28 @@ static unsigned WriteDataPages( unsigned long loc )
     size_t      size;
 
     last_page = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next) {
+    for( group = link.Groups; group != nullptr; group = group->next) {
         if( group->size != 0 ) {
             if( last_page != 0 ) {
-                if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+                if( link.FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
                     size = OSF_DEF_PAGE_SIZE - last_page;
                 } else { /* FmtData.type & MK_OS2_LX */
-                    size = __ROUND_UP_SIZE_PWROF2( last_page, wlink().FmtData.u.os2fam.segment_shift ) - last_page;
+                    size = __ROUND_UP_SIZE_PWROF2( last_page, link.FmtData.u.os2fam.segment_shift ) - last_page;
                 }
-                PadLoad( size );
+                PadLoad(link,  size );
                 loc += size;
             }
-            WriteGroupLoad( group, false );
+            WriteGroupLoad(link,  group, false );
             loc += group->size;
             last_page = group->size & (OSF_DEF_PAGE_SIZE - 1);
         }
     }
     if( last_page == 0 ) {
         last_page = OSF_DEF_PAGE_SIZE;
-    } else if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+    } else if( link.FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
         /* nothing */
     } else { /* FmtData.type & MK_OS2_LX */
-        PadLoad( __ROUND_UP_SIZE_PWROF2( last_page, wlink().FmtData.u.os2fam.segment_shift ) - last_page );
+        PadLoad(link,  __ROUND_UP_SIZE_PWROF2( last_page, link.FmtData.u.os2fam.segment_shift ) - last_page );
     }
     return( last_page );
 }
@@ -435,7 +435,7 @@ FlatState &flatState()
 
 }
 
-static void SetHeaderVxDInfo( os2_flat_header *exe_head )
+static void SetHeaderVxDInfo(Link& link,  os2_flat_header *exe_head )
 /********************************************************
  * setup VxD specific info in the header
  */
@@ -445,7 +445,7 @@ static void SetHeaderVxDInfo( os2_flat_header *exe_head )
     unsigned     adjust;
     unsigned     vm_off;
 
-    exp = wlink().FmtData.u.os2fam.exports;
+    exp = link.FmtData.u.os2fam.exports;
     if( ( exp != nullptr ) && ( exp->sym != nullptr ) ) {
         adjust = exp->sym->p.seg->u.leader->seg_addr.off + exp->sym->p.seg->a.delta;
         vm_off = exp->sym->addr.off - adjust;
@@ -457,7 +457,7 @@ static void SetHeaderVxDInfo( os2_flat_header *exe_head )
 
 }
 
-void FiniOS2FlatLoadFile( void )
+void FiniOS2FlatLoadFile(Link& link)
 /*******************************
  * make an OS/2 flat model executable file
  */
@@ -470,26 +470,26 @@ void FiniOS2FlatLoadFile( void )
     unsigned            last_page;
 
     memset( &exe_head, 0, sizeof( exe_head ) ); /* zero all header fields */
-    stub_len = WriteStubFile( STUB_ALIGN );
+    stub_len = WriteStubFile(link,  STUB_ALIGN );
     curr_loc  = sizeof( os2_flat_header );
-    SeekLoad( stub_len + sizeof( os2_flat_header ) );
-    curr_loc += WriteObjectTables( &exe_head, curr_loc );
+    SeekLoad(link,  stub_len + sizeof( os2_flat_header ) );
+    curr_loc += WriteObjectTables(link,  &exe_head, curr_loc );
     exe_head.resname_off = curr_loc;
     /*
      * do resident names table (true value)
      */
-    curr_loc += ResNonResNameTable( true );
+    curr_loc += ResNonResNameTable(link,  true );
     exe_head.rsrc_off = exe_head.resname_off;
     exe_head.num_rsrcs = 0;
     exe_head.entry_off = curr_loc;
-    curr_loc += WriteFlatEntryTable();
+    curr_loc += WriteFlatEntryTable(link);
     exe_head.loader_size = curr_loc - exe_head.objtab_off;
     exe_head.moddir_off = 0;
-    curr_loc += WriteFixupTables( &exe_head, curr_loc );
+    curr_loc += WriteFixupTables(link,  &exe_head, curr_loc );
     exe_head.impmod_off = curr_loc;
-    curr_loc += ImportModTable( &count );
+    curr_loc += ImportModTable(link,  &count );
     exe_head.num_impmods = count;
-    PadLoad( 1 );
+    PadLoad(link,  1 );
     curr_loc += 1;
     /*
      * The minus one following is to allow for the fact that all OS/2 V2 import
@@ -497,39 +497,39 @@ void FiniOS2FlatLoadFile( void )
      * V1.x -- yuck.
      */
     exe_head.impproc_off = curr_loc - 1;
-    curr_loc += ImportProcTable( &count );
+    curr_loc += ImportProcTable(link,  &count );
     exe_head.fixup_size = curr_loc - exe_head.fixpage_off;
-    curr_loc = NullAlign( 4 );    /* align to dword boundary */
+    curr_loc = NullAlign(link,  4 );    /* align to dword boundary */
     exe_head.page_off = curr_loc;
-    if( wlink().FmtData.type & MK_WIN_VXD ) {
-        SetHeaderVxDInfo(&exe_head);
+    if( link.FmtData.type & MK_WIN_VXD ) {
+        SetHeaderVxDInfo(link, &exe_head);
     }
-    last_page = WriteDataPages( curr_loc );
-    if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+    last_page = WriteDataPages(link,  curr_loc );
+    if( link.FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
         exe_head.l.last_page = last_page;
     } else { /* FmtData.type & MK_OS2_LX */
-        exe_head.l.page_shift = wlink().FmtData.u.os2fam.segment_shift;
+        exe_head.l.page_shift = link.FmtData.u.os2fam.segment_shift;
     }
-    exe_head.nonres_off = PosLoad();
+    exe_head.nonres_off = PosLoad(link);
     /*
      * do non-resident names table (false value)
      */
-    exe_head.nonres_size = ResNonResNameTable( false );
+    exe_head.nonres_size = ResNonResNameTable(link,  false );
     if( exe_head.nonres_size == 0 )
         exe_head.nonres_off = 0;
-    curr_loc = PosLoad();
-    DBIWrite();
+    curr_loc = PosLoad(link);
+    DBIWrite(link);
     /*
      * If debug info was written, we want to mark it in the header so that
      * RC doesn't throw it away!
      */
-    SeekEndLoad( 0 );
-    debug_size =  PosLoad() - curr_loc;
+    SeekEndLoad(link,  0 );
+    debug_size =  PosLoad(link) - curr_loc;
     if( debug_size ) {
         exe_head.debug_off = curr_loc;
         exe_head.debug_len = debug_size;
     }
-    if( wlink().FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
+    if( link.FmtData.type & (MK_OS2_LE | MK_WIN_VXD) ) {
         exe_head.signature = EXESIGN_LE;
     } else { /* FmtData.type & MK_OS2_LX */
         exe_head.signature = EXESIGN_LX;
@@ -537,29 +537,29 @@ void FiniOS2FlatLoadFile( void )
     exe_head.byte_order = OSF_386_BYTE_ORDER;
     exe_head.word_order = OSF_386_WORD_ORDER;
     exe_head.level = OSF_EXE_LEVEL;
-    if( wlink().FmtData.cpu_type <= 3 ) {
+    if( link.FmtData.cpu_type <= 3 ) {
         exe_head.cpu_type = OSF_CPU_386;
     } else {
         exe_head.cpu_type = OSF_CPU_486;
     }
-    if( wlink().FmtData.type & MK_WIN_VXD ) {
+    if( link.FmtData.type & MK_WIN_VXD ) {
         exe_head.os_type = OSF_WIN386_LEVEL;
     } else {
         exe_head.os_type = OSF_OS_LEVEL;
     }
-    if( wlink().FmtData.ver_specified ) {
-        if( wlink().FmtData.minor < 10 ) {
-            exe_head.version = wlink().FmtData.major * 100 + wlink().FmtData.minor * 10;
+    if( link.FmtData.ver_specified ) {
+        if( link.FmtData.minor < 10 ) {
+            exe_head.version = link.FmtData.major * 100 + link.FmtData.minor * 10;
         } else {
-            exe_head.version = wlink().FmtData.major * 100 + wlink().FmtData.minor;
+            exe_head.version = link.FmtData.major * 100 + link.FmtData.minor;
         }
     } else {
         exe_head.version = 0;
     }
-    if( wlink().FmtData.type & MK_WIN_VXD ) { // VxD flags settings
-        if( wlink().FmtData.u.os2fam.flags & VIRT_DEVICE ) {
+    if( link.FmtData.type & MK_WIN_VXD ) { // VxD flags settings
+        if( link.FmtData.u.os2fam.flags & VIRT_DEVICE ) {
             exe_head.flags |= VXD_DEVICE_DRIVER_DYNAMIC;
-        } else if( wlink().FmtData.u.os2fam.flags & PHYS_DEVICE ) {
+        } else if( link.FmtData.u.os2fam.flags & PHYS_DEVICE ) {
             exe_head.flags |= VXD_DEVICE_DRIVER_STATIC;
         } else if( flatState().vxdIsDynamic ) {
             /* DDB has DDB_DYNAMIC_VXD set -> dynamically loadable (VXDLDR) */
@@ -570,21 +570,21 @@ void FiniOS2FlatLoadFile( void )
         }
 //        exe_head.heapsize  = FmtData.u.os2fam.heapsize;
     } else { // OS/2 flags settings
-        if( wlink().FmtData.u.os2fam.flags & PHYS_DEVICE ) {
+        if( link.FmtData.u.os2fam.flags & PHYS_DEVICE ) {
             exe_head.flags |= OSF_PHYS_DEVICE;
-        } else if( wlink().FmtData.u.os2fam.flags & VIRT_DEVICE ) {
+        } else if( link.FmtData.u.os2fam.flags & VIRT_DEVICE ) {
             exe_head.flags |= OSF_VIRT_DEVICE;
-        } else if( wlink().FmtData.dll ) {
+        } else if( link.FmtData.dll ) {
             exe_head.flags |= OSF_IS_DLL;
             /*
              * The OS/2 loader REALLY doesn't like to have these flags set if there
              * is no entrypoint!
              */
             if( exe_head.start_obj != 0 ) {
-                if( wlink().FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG ) {
+                if( link.FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG ) {
                     exe_head.flags |= OSF_INIT_INSTANCE;
                 }
-                if( wlink().FmtData.u.os2fam.flags & TERM_INSTANCE_FLAG ) {
+                if( link.FmtData.u.os2fam.flags & TERM_INSTANCE_FLAG ) {
                     exe_head.flags |= OSF_TERM_INSTANCE;
                 }
             }
@@ -592,39 +592,39 @@ void FiniOS2FlatLoadFile( void )
             /*
              * These are only relevant for EXEs
              */
-            exe_head.stacksize = wlink().StackSize;
-            if( wlink().FmtData.u.os2fam.flags & PM_NOT_COMPATIBLE ) {
+            exe_head.stacksize = link.StackSize;
+            if( link.FmtData.u.os2fam.flags & PM_NOT_COMPATIBLE ) {
                 exe_head.flags |= OSF_NOT_PM_COMPATIBLE;
-            } else if( wlink().FmtData.u.os2fam.flags & PM_APPLICATION ) {
+            } else if( link.FmtData.u.os2fam.flags & PM_APPLICATION ) {
                 exe_head.flags |= OSF_PM_APP;
             } else {
                 exe_head.flags |= OSF_PM_COMPATIBLE;
             }
         }
-        if( wlink().LinkState & LS_LINK_ERROR ) {
+        if( link.LinkState & LS_LINK_ERROR ) {
             exe_head.flags |= OSF_LINK_ERROR;
         }
-        if( (wlink().FmtData.type & MK_OS2_LX)
-          && (wlink().FmtData.u.os2fam.toggle_relocs ^ wlink().FmtData.u.os2fam.gen_int_relocs) ) {
+        if( (link.FmtData.type & MK_OS2_LX)
+          && (link.FmtData.u.os2fam.toggle_relocs ^ link.FmtData.u.os2fam.gen_int_relocs) ) {
             exe_head.flags |= OSF_INTERNAL_FIXUPS_DONE;
         }
-        exe_head.heapsize  = wlink().FmtData.u.os2fam.heapsize;
+        exe_head.heapsize  = link.FmtData.u.os2fam.heapsize;
     }
     exe_head.page_size = OSF_DEF_PAGE_SIZE;
     exe_head.num_preload = 0;       /* NYI: we should fill in this one correctly */
     exe_head.num_inst_preload = 0;  /* NYI: should fill in correctly */
     exe_head.num_inst_demand = 0;   /* NYI: should fill in correctly */
-    SeekLoad( stub_len );
-    WriteLoad( &exe_head, sizeof( os2_flat_header ) );
+    SeekLoad(link,  stub_len );
+    WriteLoad(link,  &exe_head, sizeof( os2_flat_header ) );
 }
 
-bool FindOS2ExportSym( symbol *sym, dll_sym_info **pdll )
+bool FindOS2ExportSym(Link& link,  symbol *sym, dll_sym_info **pdll )
 /*******************************************************/
 {
     dll_sym_info    *dll;
 
     if( sym->info & SYM_EXPORTED ) {
-        dll = AllocDLLInfo();
+        dll = AllocDLLInfo(link);
         dll->isordinal = true;
         dll->m.modnum = nullptr;
         dll->u.ordinal = static_cast<entry_export *>( sym->e.export_ )->ordinal;

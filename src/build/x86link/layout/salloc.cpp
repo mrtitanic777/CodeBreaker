@@ -56,55 +56,55 @@ AllocState &alloc_state()
 
 } // namespace
 
-void ResetAddr( void )
+void ResetAddr(Link& link)
 /***************************/
 {
-    wlink().CurrLoc.seg = 0;
-    wlink().CurrLoc.off = 0;
-    wlink().CurrentSeg = nullptr;
+    link.CurrLoc.seg = 0;
+    link.CurrLoc.off = 0;
+    link.CurrentSeg = nullptr;
 }
 
-void NormalizeAddr( void )
+void NormalizeAddr(Link& link)
 /*******************************/
 {
     unsigned_32     new_seg;
 
-    DbgAssert( (wlink().FmtData.type & MK_PROT_MODE) == 0 );
+    DbgAssert( (link.FmtData.type & MK_PROT_MODE) == 0 );
 
-    if( wlink().CurrSect == wlink().NonSect
-      || !wlink().FmtData.u.dos.ovl_short ) {
-        new_seg = ( wlink().CurrLoc.off >> wlink().FmtData.SegShift ) + wlink().CurrLoc.seg;
+    if( link.CurrSect == link.NonSect
+      || !link.FmtData.u.dos.ovl_short ) {
+        new_seg = ( link.CurrLoc.off >> link.FmtData.SegShift ) + link.CurrLoc.seg;
         if( new_seg > 0xFFFF ) {
             LnkMsg( ERR+MSG_APP_TOO_BIG_FOR_DOS, nullptr );
         }
-        wlink().CurrLoc.seg = static_cast<segment>( new_seg );
-        wlink().CurrLoc.off &= wlink().FmtData.SegMask;
+        link.CurrLoc.seg = static_cast<segment>( new_seg );
+        link.CurrLoc.off &= link.FmtData.SegMask;
     }
 }
 
 
-static offset BumpUp( offset ptr, offset size )
+static offset BumpUp(Link& link,  offset ptr, offset size )
 /*********************************************/
 {
     ptr += size;
-    if( wlink().CurrentSeg != nullptr
-      && (wlink().CurrentSeg->info & SEGINF_USE_32) == 0
-      && (wlink().FmtData.type & MK_RAW) == 0
+    if( link.CurrentSeg != nullptr
+      && (link.CurrentSeg->info & SEGINF_USE_32) == 0
+      && (link.FmtData.type & MK_RAW) == 0
       && ptr > 0x10000 ) {
-        LnkMsg( ERR+MSG_SEG_TOO_BIG, "sl", wlink().CurrentSeg->segname, static_cast<unsigned long>( ptr - 0x10000 ) );
+        LnkMsg( ERR+MSG_SEG_TOO_BIG, "sl", link.CurrentSeg->segname, static_cast<unsigned long>( ptr - 0x10000 ) );
     }
     return( ptr );
 }
 
 
-void AddSize( offset size )
+void AddSize(Link& link,  offset size )
 /********************************/
 {
-    wlink().CurrSect->size += size;
-    wlink().CurrLoc.off = BumpUp( wlink().CurrLoc.off, size );
+    link.CurrSect->size += size;
+    link.CurrLoc.off = BumpUp(link,  link.CurrLoc.off, size );
 }
 
-offset CAlign( offset off, unsigned align )
+offset CAlign(Link& link,  offset off, unsigned align )
 /************************************************/
 /* this aligns to 2^align */
 {
@@ -114,31 +114,31 @@ offset CAlign( offset off, unsigned align )
         align = 1U << align;
         part = off & ( align - 1 );
         if( part != 0 ) {
-            off = BumpUp( off, align - part );
+            off = BumpUp(link,  off, align - part );
         }
     }
     return( off );
 }
 
-void Align( byte align )
+void Align(Link& link,  byte align )
 /*****************************/
 {
     offset          off;
 
-    off = CAlign( wlink().CurrLoc.off, align );
-    AddSize( off - wlink().CurrLoc.off );
+    off = CAlign(link,  link.CurrLoc.off, align );
+    AddSize(link,  off - link.CurrLoc.off );
 }
 
-void MAlign( byte align )
+void MAlign(Link& link,  byte align )
 /******************************/
 {
-    wlink().CurrLoc.off = CAlign( wlink().CurrLoc.off, align );
+    link.CurrLoc.off = CAlign(link,  link.CurrLoc.off, align );
 }
 
-void StartMemMap( void )
+void StartMemMap(Link& link)
 /*****************************/
 {
-    if( wlink().FmtData.type & MK_ID_SPLIT ) {
+    if( link.FmtData.type & MK_ID_SPLIT ) {
         AllocState &st = alloc_state();
 
         st.CodeLoc.seg = CODE_SEGMENT;
@@ -146,8 +146,8 @@ void StartMemMap( void )
         st.DataLoc.seg = DATA_SEGMENT;
         st.DataLoc.off = 0;
     } else {
-        wlink().CurrLoc.seg = ( wlink().FmtData.type & MK_PROT_MODE ) ? 1 : 0;
-        wlink().CurrLoc.off = ( wlink().FmtData.type & MK_FLAT_OFFS ) ? wlink().FmtData.base : 0;
+        link.CurrLoc.seg = ( link.FmtData.type & MK_PROT_MODE ) ? 1 : 0;
+        link.CurrLoc.off = ( link.FmtData.type & MK_FLAT_OFFS ) ? link.FmtData.base : 0;
     }
 }
 
@@ -164,7 +164,7 @@ static addr_type *GetIDLoc( group_entry *group )
     return( &st.CodeLoc );
 }
 
-void ChkLocated( addr_type *seg_addr, bool fixed )
+void ChkLocated(Link& link,  addr_type *seg_addr, bool fixed )
 /***********************************************
  * If segment has been given a fixed address, use it
  * unless location counter is already past it
@@ -172,17 +172,17 @@ void ChkLocated( addr_type *seg_addr, bool fixed )
  */
 {
     if( fixed ) {
-        if( ( wlink().CurrLoc.seg << wlink().FmtData.SegShift ) + wlink().CurrLoc.off > ( seg_addr->seg << wlink().FmtData.SegShift ) + seg_addr->off ) {
+        if( ( link.CurrLoc.seg << link.FmtData.SegShift ) + link.CurrLoc.off > ( seg_addr->seg << link.FmtData.SegShift ) + seg_addr->off ) {
             LnkMsg( ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", seg_addr );
         } else {
-            wlink().CurrLoc = *seg_addr;
+            link.CurrLoc = *seg_addr;
         }
     } else {
-        *seg_addr = wlink().CurrLoc;
+        *seg_addr = link.CurrLoc;
     }
 }
 
-void NewSegment( seg_leader *seg )
+void NewSegment(Link& link,  seg_leader *seg )
 /********************************/
 {
     group_entry     *group;
@@ -192,11 +192,11 @@ void NewSegment( seg_leader *seg )
 
     group = seg->group;
     if( IS_DBG_INFO( seg ) ) {
-        wlink().CurrentSeg = nullptr;
-        Align( seg->align );
-        ChkLocated( &seg->seg_addr, ( (seg->info & SEGINF_FIXED) != 0 ) );
-        AddSize( seg->size );
-    } else if( wlink().FmtData.type & MK_REAL_MODE ) {
+        link.CurrentSeg = nullptr;
+        Align(link,  seg->align );
+        ChkLocated(link,  &seg->seg_addr, ( (seg->info & SEGINF_FIXED) != 0 ) );
+        AddSize(link,  seg->size );
+    } else if( link.FmtData.type & MK_REAL_MODE ) {
         if( group->isautogrp
           && Ring2First( group->leaders ) != seg ) {
             auto_group = true; /* auto-group segment, but not first one */
@@ -204,46 +204,46 @@ void NewSegment( seg_leader *seg )
             auto_group = false;
         }
         if( !auto_group ) {
-            NormalizeAddr();    /*  to prevent overflows on the alignment */
+            NormalizeAddr(link);    /*  to prevent overflows on the alignment */
         }
-        off = CAlign( wlink().CurrLoc.off, seg->align );
-        group->totalsize += off - wlink().CurrLoc.off;
-        AddSize( off - wlink().CurrLoc.off );
+        off = CAlign(link,  link.CurrLoc.off, seg->align );
+        group->totalsize += off - link.CurrLoc.off;
+        AddSize(link,  off - link.CurrLoc.off );
         if( !auto_group ) {
-            NormalizeAddr();    /*  to normalize address of segment */
+            NormalizeAddr(link);    /*  to normalize address of segment */
         }
-        ChkLocated( &(seg->seg_addr), ( (seg->info & SEGINF_FIXED) != 0 ) );
-        AddSize( seg->size );
+        ChkLocated(link,  &(seg->seg_addr), ( (seg->info & SEGINF_FIXED) != 0 ) );
+        AddSize(link,  seg->size );
         group->totalsize += seg->size;
-    } else if( wlink().FmtData.type & (MK_FLAT_OFFS | MK_ID_SPLIT) ) {
-        if( wlink().FmtData.type & MK_ID_SPLIT ) {
+    } else if( link.FmtData.type & (MK_FLAT_OFFS | MK_ID_SPLIT) ) {
+        if( link.FmtData.type & MK_ID_SPLIT ) {
             loc_addr = GetIDLoc( group );
-            wlink().CurrLoc = *loc_addr;
+            link.CurrLoc = *loc_addr;
         }
-        off = CAlign( wlink().CurrLoc.off, seg->align );
-        group->totalsize += off - wlink().CurrLoc.off;
-        AddSize( off - wlink().CurrLoc.off );
-        seg->seg_addr = wlink().CurrLoc;
-        AddSize( seg->size );
+        off = CAlign(link,  link.CurrLoc.off, seg->align );
+        group->totalsize += off - link.CurrLoc.off;
+        AddSize(link,  off - link.CurrLoc.off );
+        seg->seg_addr = link.CurrLoc;
+        AddSize(link,  seg->size );
         group->totalsize += seg->size;
-        if( wlink().FmtData.type & MK_ID_SPLIT ) {
+        if( link.FmtData.type & MK_ID_SPLIT ) {
             loc_addr = GetIDLoc( group );
-            *loc_addr = wlink().CurrLoc;
+            *loc_addr = link.CurrLoc;
         }
     } else {
-        wlink().CurrLoc.seg = group->addr.seg;
-        seg->seg_addr.seg = wlink().CurrLoc.seg;
-        wlink().CurrLoc.off = group->totalsize;
-        if( seg == wlink().FmtData.dgroupsplitseg ) {
-            wlink().FmtData.bsspad = __ROUND_UP_SIZE( wlink().CurrLoc.off, wlink().FmtData.objalign ) - wlink().CurrLoc.off;
-            AddSize( wlink().FmtData.bsspad );
+        link.CurrLoc.seg = group->addr.seg;
+        seg->seg_addr.seg = link.CurrLoc.seg;
+        link.CurrLoc.off = group->totalsize;
+        if( seg == link.FmtData.dgroupsplitseg ) {
+            link.FmtData.bsspad = __ROUND_UP_SIZE( link.CurrLoc.off, link.FmtData.objalign ) - link.CurrLoc.off;
+            AddSize(link,  link.FmtData.bsspad );
         }
-        Align( seg->align );
-        seg->seg_addr.off = wlink().CurrLoc.off;
+        Align(link,  seg->align );
+        seg->seg_addr.off = link.CurrLoc.off;
         if( seg->size != 0
           || !group->isautogrp ) {
-            AddSize( seg->size );
-            group->totalsize = wlink().CurrLoc.off;
+            AddSize(link,  seg->size );
+            group->totalsize = link.CurrLoc.off;
         }
     }
 }

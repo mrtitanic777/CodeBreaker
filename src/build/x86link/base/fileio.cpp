@@ -105,7 +105,7 @@ void PrintIOError( unsigned msg, const char *types, const char *name )
     LnkMsg( msg, types, name, strerror( errno ) );
 }
 
-static int DoOpen( const char *name, unsigned mode, bool isexe )
+static int DoOpen(Link& link,  const char *name, unsigned mode, bool isexe )
 /**************************************************************/
 {
     NtIoState &st = state();
@@ -119,7 +119,7 @@ static int DoOpen( const char *name, unsigned mode, bool isexe )
         perm = PMODE_RWX;
     for( ;; ) {
         if( st.open_files >= MAX_OPEN_FILES )
-            CleanCachedHandles();
+            CleanCachedHandles(link);
         h = open( name, mode, perm );
         if( h != -1 ) {
             st.open_files++;
@@ -127,55 +127,55 @@ static int DoOpen( const char *name, unsigned mode, bool isexe )
         }
         if( errno != TOOMANY )
             break;
-        if( !CleanCachedHandles() ) {
+        if( !CleanCachedHandles(link) ) {
             break;
         }
     }
     return( h );
 }
 
-f_handle QOpenR( const char *name )
+f_handle QOpenR(Link& link,  const char *name )
 /*********************************/
 {
     int     h;
 
-    h = DoOpen( name, O_RDONLY, false );
+    h = DoOpen(link,  name, O_RDONLY, false );
     if( h != -1 )
         return( h );
     LnkMsg( FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
     return( NIL_FHANDLE );
 }
 
-f_handle QOpenRW( const char *name )
+f_handle QOpenRW(Link& link,  const char *name )
 /**********************************/
 {
     int     h;
 
-    h = DoOpen( name, O_RDWR | O_CREAT | O_TRUNC, false );
+    h = DoOpen(link,  name, O_RDWR | O_CREAT | O_TRUNC, false );
     if( h != -1 )
         return( h );
     LnkMsg( FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
     return( NIL_FHANDLE );
 }
 
-f_handle ExeCreate( const char *name )
+f_handle ExeCreate(Link& link,  const char *name )
 /************************************/
 {
     int     h;
 
-    h = DoOpen( name, O_RDWR | O_CREAT | O_TRUNC, true );
+    h = DoOpen(link,  name, O_RDWR | O_CREAT | O_TRUNC, true );
     if( h != -1 )
         return( h );
     LnkMsg( FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
     return( NIL_FHANDLE );
 }
 
-f_handle ExeOpen( const char *name )
+f_handle ExeOpen(Link& link,  const char *name )
 /**********************************/
 {
     int     h;
 
-    h = DoOpen( name, O_RDWR, true );
+    h = DoOpen(link,  name, O_RDWR, true );
     if( h != -1 )
         return( h );
     LnkMsg( FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
@@ -394,12 +394,12 @@ bool QIsDevice( f_handle file )
     return( isatty( file ) != 0 );
 }
 
-static f_handle NSOpen( const char *name, unsigned mode )
+static f_handle NSOpen(Link& link,  const char *name, unsigned mode )
 /*******************************************************/
 {
     int         h;
 
-    h = DoOpen( name, mode, false );
+    h = DoOpen(link,  name, mode, false );
     state().last_result = static_cast<unsigned>( h );
     if( h != -1 )
         return( h );
@@ -409,13 +409,14 @@ static f_handle NSOpen( const char *name, unsigned mode )
 f_handle QObjOpen( const char *name )
 /***********************************/
 {
-    return( NSOpen( name, O_RDONLY ) );
+    Link& link = wlink();
+    return( NSOpen(link,  name, O_RDONLY ) );
 }
 
-f_handle TempFileOpen( const char *name )
+f_handle TempFileOpen(Link& link,  const char *name )
 /***************************************/
 {
-    return( NSOpen( name, O_RDWR ) );
+    return( NSOpen(link,  name, O_RDWR ) );
 }
 
 bool QModTime( const char *name, time_t *time )

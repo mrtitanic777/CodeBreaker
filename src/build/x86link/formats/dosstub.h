@@ -32,5 +32,5 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern unsigned_32      GetDOSDefStubSize( void );
-extern unsigned_32      WriteDOSDefStub( unsigned_32 stub_align );
+extern unsigned_32      GetDOSDefStubSize(Link& link);
+extern unsigned_32      WriteDOSDefStub(Link& link,  unsigned_32 stub_align );

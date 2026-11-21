@@ -32,8 +32,8 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void     ProcComdef( bool );
-extern void     ProcLinsym( void );
+extern void     ProcComdef(Link& link,  bool );
+extern void     ProcLinsym(Link& link);
 extern void     ResolveComdats( void );
-extern void     ProcComdat( void );
+extern void     ProcComdat(Link& link);
 extern void     ResetComdef( void );

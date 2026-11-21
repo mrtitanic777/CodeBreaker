@@ -176,7 +176,7 @@ static void DumpInfoU32( CvSect sect, unsigned_32 data )
     DumpInfo( sect, &data, sizeof( data ) );
 }
 
-static unsigned_16 GetCVSegment( seg_leader *seg )
+static unsigned_16 GetCVSegment(Link& link,  seg_leader *seg )
 /************************************************/
 {
     unsigned_16     index;
@@ -186,8 +186,8 @@ static unsigned_16 GetCVSegment( seg_leader *seg )
       || ( seg->group == nullptr ) ) {
         return( 0 );
     }
-    if( wlink().FmtData.type & (MK_REAL_MODE | MK_FLAT_OFFS | MK_ID_SPLIT) ) {
-        for( index = 1, group = wlink().Groups; group != nullptr; group = group->next, ++index ) {
+    if( link.FmtData.type & (MK_REAL_MODE | MK_FLAT_OFFS | MK_ID_SPLIT) ) {
+        for( index = 1, group = link.Groups; group != nullptr; group = group->next, ++index ) {
             if( group == seg->group ) {
                 return( index );
             }
@@ -195,7 +195,7 @@ static unsigned_16 GetCVSegment( seg_leader *seg )
         return( 0 );
     }
 #ifdef _QNX
-    if( wlink().FmtData.type & MK_QNX ) {
+    if( link.FmtData.type & MK_QNX ) {
         return( ToQNXIndex( seg->seg_addr.seg ) );
     }
 #endif
@@ -215,7 +215,7 @@ static void AddSubSection( bool ismodule )
     state().at( sect ).vm_offs += sizeof( cv_directory_entry );
 }
 
-static void GenSubSection( sst sect, unsigned_32 size )
+static void GenSubSection(Link& link,  sst sect, unsigned_32 size )
 /*****************************************************/
 // generate a subsection entry
 {
@@ -223,10 +223,10 @@ static void GenSubSection( sst sect, unsigned_32 size )
     cv_directory_entry  entry;
 
     entry.subsection = sect;
-    if( wlink().CurrMod == nullptr ) {
+    if( link.CurrMod == nullptr ) {
         entry.iMod = 0xFFFF;
     } else {
-        entry.iMod = wlink().CurrMod->u3.cv->modidx;
+        entry.iMod = link.CurrMod->u3.cv->modidx;
     }
     entry.cb = size;
     if( sect == sstModule ) {
@@ -247,13 +247,15 @@ static void CVAddLines( lineinfo *info )
 /**************************************/
 // called during pass 1 linnum processing
 {
-    wlink().CurrMod->u3.cv->numlines += DBICalcLineQty( info );
+    Link& link = wlink();
+    link.CurrMod->u3.cv->numlines += DBICalcLineQty( info );
 }
 
 void CVP1ModuleFinished( mod_entry *obj )
 /***************************************/
 // calculate size of the sstModule
 {
+    Link& link = wlink();
     CvState     &st = state();
     size_t      namelen;
     unsigned_32 temp;
@@ -262,9 +264,9 @@ void CVP1ModuleFinished( mod_entry *obj )
     if( MOD_NOT_DEBUGGABLE( obj ) )
         return;
     st.temp_index++;
-    wlink().CurrMod = obj;
+    link.CurrMod = obj;
     obj->u3.cv->modidx = st.temp_index;
-    if( wlink().CurrMod->flags_dbi & DBI_LINE ) {
+    if( link.CurrMod->flags_dbi & DBI_LINE ) {
         DBILineWalk( reinterpret_cast<lineinfo *>( obj->lines ), CVAddLines );
     }
     Ring2Walk( obj->publist, DBIModGlobal );
@@ -290,7 +292,7 @@ void CVP1ModuleFinished( mod_entry *obj )
     }
 }
 
-void CVAddModule( mod_entry *obj, section *sect )
+void CVAddModule(Link& link,  mod_entry *obj, section *sect )
 /***********************************************/
 // called just before publics have been assigned addresses between p1 & p2
 {
@@ -302,7 +304,7 @@ void CVAddModule( mod_entry *obj, section *sect )
     /* unused parameters */ (void)sect;
 
     if( obj->u3.cv->pubsize > 0 ) {
-        GenSubSection( sstPublicSym, obj->u3.cv->pubsize );
+        GenSubSection(link,  sstPublicSym, obj->u3.cv->pubsize );
         DumpInfoU32( CvSect::misc, 1 );
     }
     namelen = std::string_view( obj->name.u.ptr ).size();
@@ -310,7 +312,7 @@ void CVAddModule( mod_entry *obj, section *sect )
     //  begin padding required ???
     size = __ROUND_UP_SIZE_DWORD( size );
     //  end padding required ???
-    GenSubSection( sstModule, size );
+    GenSubSection(link,  sstModule, size );
     mod.ovlNumber = 0;
     mod.iLib = 0;
     mod.cSeg = obj->u3.cv->numsegs;
@@ -356,17 +358,17 @@ static void SwapRelocs( virt_mem a, virt_mem b )
     PUT16INFO( diffb, a16 );
 }
 
-static void SortRelocs( void )
+static void SortRelocs(Link& link)
 /****************************/
 {
     cvlineinfo &line_info = state().line_info;
 
-    line_info.offbase -= wlink().CurrMod->u3.cv->numlines * sizeof( unsigned_32 );
-    line_info.numbase -= wlink().CurrMod->u3.cv->numlines * sizeof( unsigned_16 );
-    VMemQSort( line_info.offbase, wlink().CurrMod->u3.cv->numlines, sizeof( unsigned_32 ), SwapRelocs, RelocCompare );
+    line_info.offbase -= link.CurrMod->u3.cv->numlines * sizeof( unsigned_32 );
+    line_info.numbase -= link.CurrMod->u3.cv->numlines * sizeof( unsigned_16 );
+    VMemQSort( line_info.offbase, link.CurrMod->u3.cv->numlines, sizeof( unsigned_32 ), SwapRelocs, RelocCompare );
 }
 
-static void GenSrcModHeader( void )
+static void GenSrcModHeader(Link& link)
 /*********************************/
 // emit header for line number information now that we know where everything
 // is.
@@ -391,11 +393,11 @@ static void GenSrcModHeader( void )
     file_tbl.cSeg = 1;
     file_tbl.pad = 0;
     file_tbl.range[0] = line_info.range;
-    file_tbl.name[0] = static_cast<unsigned_8>( std::string_view( wlink().CurrMod->name.u.ptr ).size() );
+    file_tbl.name[0] = static_cast<unsigned_8>( std::string_view( link.CurrMod->name.u.ptr ).size() );
     file_tbl.baseSrcLn[0] = sizeof( mod_hdr ) + __ROUND_UP_SIZE_DWORD( sizeof( file_tbl ) + file_tbl.name[0] );
     PutInfo( line_info.linestart, &file_tbl, sizeof( file_tbl ) );
     line_info.linestart += sizeof( file_tbl );
-    PutInfo( line_info.linestart, wlink().CurrMod->name.u.ptr, file_tbl.name[0] );
+    PutInfo( line_info.linestart, link.CurrMod->name.u.ptr, file_tbl.name[0] );
     line_info.linestart += file_tbl.name[0];
     adjust = file_tbl.baseSrcLn[0] - sizeof( mod_hdr ) - sizeof( file_tbl ) - file_tbl.name[0];
     if( adjust != 0 ) {
@@ -403,19 +405,19 @@ static void GenSrcModHeader( void )
         line_info.linestart += adjust;
     }
     map_tbl.Seg = mod_hdr.seg[0];
-    map_tbl.cPair = wlink().CurrMod->u3.cv->numlines;
+    map_tbl.cPair = link.CurrMod->u3.cv->numlines;
     PutInfo( line_info.linestart, &map_tbl, sizeof( map_tbl ) );
     line_info = cvlineinfo{};
 }
 
-void CVGenModule( void )
+void CVGenModule(Link& link)
 /**********************/
 // generate an sstSrcModule
 {
     if( state().line_info.needsort ) {
-        SortRelocs();
+        SortRelocs(link);
     }
-    GenSrcModHeader();
+    GenSrcModHeader(link);
 }
 
 void CVAddLocal( seg_leader *seg, offset length )
@@ -429,7 +431,7 @@ void CVAddLocal( seg_leader *seg, offset length )
     }
 }
 
-void CVAddGlobal( symbol *sym )
+void CVAddGlobal(Link& link,  symbol *sym )
 /*****************************/
 // called during pass 1 symbol definition
 {
@@ -444,12 +446,12 @@ void CVAddGlobal( symbol *sym )
             size = sizeof( s_pub16 );
         }
         size = __ROUND_UP_SIZE_DWORD( size + std::string_view( sym->name.u.ptr ).size() + 1 );
-        wlink().CurrMod->u3.cv->pubsize += size;
+        link.CurrMod->u3.cv->pubsize += size;
         state().at( CvSect::misc ).vm_offs += size;
     }
 }
 
-void CVGenGlobal( symbol *sym, section *sect )
+void CVGenGlobal(Link& link,  symbol *sym, section *sect )
 /********************************************/
 // called during symbol address calculation (between pass 1 & pass 2)
 // also called by loadpe between passes
@@ -477,7 +479,7 @@ void CVGenGlobal( symbol *sym, section *sect )
         pub32.common.length -= 2;
         pub32.common.code = S_PUB32;
         pub32.f.offset = sym->addr.off;
-        pub32.f.segment = GetCVSegment( sym->p.seg->u.leader );
+        pub32.f.segment = GetCVSegment(link,  sym->p.seg->u.leader );
         pub32.f.type = 0;
         DumpInfo( CvSect::misc, &pub32, sizeof( s_pub32 ) );
     } else {
@@ -487,7 +489,7 @@ void CVGenGlobal( symbol *sym, section *sect )
         pub16.common.length -= 2;
         pub16.common.code = S_PUB16;
         pub16.f.offset = sym->addr.off;
-        pub16.f.segment = GetCVSegment( sym->p.seg->u.leader );
+        pub16.f.segment = GetCVSegment(link,  sym->p.seg->u.leader );
         pub16.f.type = 0;
         DumpInfo( CvSect::misc, &pub16, sizeof( s_pub16 ) );
     }
@@ -503,6 +505,7 @@ void CVGenLines( lineinfo *info )
 /*******************************/
 // called during pass 2 linnum processing
 {
+    Link& link = wlink();
     CvState                     &st = state();
     cvlineinfo                  &line_info = st.line_info;
     ln_off_pair _WCUNALIGNED    *pair;
@@ -516,21 +519,21 @@ void CVGenLines( lineinfo *info )
 
     seg = info->seg;
 
-    if( (wlink().CurrMod->flags_dbi & DBI_LINE) == 0 )
+    if( (link.CurrMod->flags_dbi & DBI_LINE) == 0 )
         return;
     adjust = seg->a.delta + seg->u.leader->seg_addr.off;
     if( line_info.offbase == 0 ) { // this is our first time through.
         virt_mem_ptr &misc = st.at( CvSect::misc );
 
-        line_info.seg = GetCVSegment( seg->u.leader );
+        line_info.seg = GetCVSegment(link,  seg->u.leader );
         line_info.linestart = misc.vm_ptr;
         cvsize = sizeof( cheesy_module_header ) + sizeof( cheesy_mapping_table )
-            + __ROUND_UP_SIZE_DWORD( sizeof( cheesy_file_table ) + std::string_view( wlink().CurrMod->name.u.ptr ).size() );
+            + __ROUND_UP_SIZE_DWORD( sizeof( cheesy_file_table ) + std::string_view( link.CurrMod->name.u.ptr ).size() );
         line_info.offbase = misc.vm_ptr + cvsize;
-        line_info.numbase = line_info.offbase + wlink().CurrMod->u3.cv->numlines * sizeof( unsigned_32 );
-        cvsize += wlink().CurrMod->u3.cv->numlines * sizeof( unsigned_32 );
-        cvsize += __ROUND_UP_SIZE_DWORD( wlink().CurrMod->u3.cv->numlines * sizeof( unsigned_16 ) );
-        GenSubSection( sstSrcModule, cvsize );
+        line_info.numbase = line_info.offbase + link.CurrMod->u3.cv->numlines * sizeof( unsigned_32 );
+        cvsize += link.CurrMod->u3.cv->numlines * sizeof( unsigned_32 );
+        cvsize += __ROUND_UP_SIZE_DWORD( link.CurrMod->u3.cv->numlines * sizeof( unsigned_16 ) );
+        GenSubSection(link,  sstSrcModule, cvsize );
         misc.vm_ptr += cvsize;
         line_info.range.start = adjust;
         line_info.range.end = adjust + seg->length;
@@ -594,16 +597,18 @@ static void CVAddAddrAdd( segdata *sdata, offset delta, offset size, void *cooki
 void CVAddAddrInfo( seg_leader *seg )
 /***********************************/
 {
+    Link& link = wlink();
     if( seg->info & SEGINF_CODE ) {
-        DBIAddrInfoScan( seg, CVAddAddrInit, CVAddAddrAdd, nullptr );
+        DBIAddrInfoScan(link,  seg, CVAddAddrInit, CVAddAddrAdd, nullptr );
     }
 }
 
 static void CVGenAddrInit( segdata *sdata, void *_info )
 /******************************************************/
 {
+    Link& link = wlink();
     cv_seginfo *info = static_cast<cv_seginfo *>( _info );
-    info->Seg = GetCVSegment( sdata->u.leader );
+    info->Seg = GetCVSegment(link,  sdata->u.leader );
     info->pad = 0;
     info->offset = sdata->u.leader->seg_addr.off + sdata->a.delta;
 }
@@ -623,14 +628,15 @@ static void CVGenAddrAdd( segdata *sdata, offset delta, offset size, void *_info
 void CVGenAddrInfo( seg_leader *seg )
 /***********************************/
 {
+    Link& link = wlink();
     cv_seginfo          info;
 
     if( seg->info & SEGINF_CODE ) {
-        DBIAddrInfoScan( seg, CVGenAddrInit, CVGenAddrAdd, &info );
+        DBIAddrInfoScan(link,  seg, CVGenAddrInit, CVGenAddrAdd, &info );
     }
 }
 
-void CVDefClass( class_entry *class_, unsigned_32 size )
+void CVDefClass(Link& link,  class_entry *class_, unsigned_32 size )
 /*****************************************************/
 {
     group_entry *group;
@@ -638,7 +644,7 @@ void CVDefClass( class_entry *class_, unsigned_32 size )
     if( class_->flags & (CLASS_DWARF | CLASS_HLL_LINE) )
         return;
     state().at( CvSect::misc ).vm_offs += size;
-    group = AllocGroup( AutoGrpName, &wlink().DBIGroups );
+    group = AllocGroup(link,  AutoGrpName, &link.DBIGroups );
     group->g.class_ = class_;
     group->addr.seg = 0;
 }
@@ -647,6 +653,7 @@ static void DefLocal( void *_sdata )
 /**********************************/
 /* NOTE: this assumes that codeview segments are byte aligned! */
 {
+    Link& link = wlink();
     virt_mem_ptr &misc = state().at( CvSect::misc );
     segdata    *sdata = static_cast<segdata *>( _sdata );
     seg_leader *leader;
@@ -660,8 +667,8 @@ static void DefLocal( void *_sdata )
         } else {
             sect = sstSymbols;
         }
-        wlink().CurrMod = sdata->o.mod;
-        GenSubSection( sect, sdata->length );
+        link.CurrMod = sdata->o.mod;
+        GenSubSection(link,  sect, sdata->length );
         CopyInfo( misc.vm_ptr, sdata->u1.vm_ptr, sdata->length );
         sdata->u1.vm_ptr = misc.vm_ptr;   // FIXME: inefficient
         misc.vm_ptr += sdata->length;
@@ -678,7 +685,7 @@ static bool DefLeader( void *_leader, void *group )
     return( false );
 }
 
-void CVAddrStart( void )
+void CVAddrStart(Link& link)
 /**********************/
 {
     CvState                 &st = state();
@@ -691,17 +698,17 @@ void CVAddrStart( void )
 
     AddSubSection( false );     // for sstSegMap
     numentries = ( st.at( CvSect::moddir ).vm_offs + st.at( CvSect::directory ).vm_offs ) / sizeof( cv_directory_entry );
-    st.at( CvSect::misc ).vm_offs += sizeof( cv_sst_seg_map ) + ( wlink().NumGroups - 1 ) * sizeof( seg_desc );
+    st.at( CvSect::misc ).vm_offs += sizeof( cv_sst_seg_map ) + ( link.NumGroups - 1 ) * sizeof( seg_desc );
     st.at( CvSect::moddir ).vm_offs += sizeof( cv_subsection_directory );
-    wlink().CVSize = 2 * sizeof( cv_trailer );
+    link.CVSize = 2 * sizeof( cv_trailer );
     for( virt_mem_ptr &addr : st.sect_addrs ) {
-        wlink().CVSize += addr.vm_offs;
+        link.CVSize += addr.vm_offs;
     }
-    st.cv_base = DBIAlloc( wlink().CVSize );
+    st.cv_base = DBIAlloc( link.CVSize );
     // The block is not cleared by its allocator, and some of it is never written: the padding
     // that pass 1 reserves after each module name (dword rounding) and after an odd number of
     // line numbers (the 16-bit numbers rounded up to a dword). wlink.exe leaves it zero.
-    PutInfoNulls( st.cv_base, wlink().CVSize );
+    PutInfoNulls( st.cv_base, link.CVSize );
     currpos = st.cv_base + sizeof( cv_trailer );
     for( virt_mem_ptr &addr : st.sect_addrs ) {
         size = addr.vm_offs;
@@ -711,21 +718,21 @@ void CVAddrStart( void )
     std::memcpy( start.sig, CV4_NB05, CV_SIG_SIZE );
     start.offset = st.at( CvSect::moddir ).vm_ptr - st.cv_base;
     PutInfo( st.cv_base, &start, sizeof( cv_trailer ) );
-    start.offset = wlink().CVSize;
-    PutInfo( st.cv_base + wlink().CVSize - sizeof( cv_trailer ), &start, sizeof( cv_trailer ) );
+    start.offset = link.CVSize;
+    PutInfo( st.cv_base + link.CVSize - sizeof( cv_trailer ), &start, sizeof( cv_trailer ) );
     dir.cbDirHeader = sizeof( cv_subsection_directory );
     dir.cbDirEntry = sizeof( cv_directory_entry );
     dir.cDir = numentries;
     dir.lfoNextDir = 0;
     dir.flags = 0;
     DumpInfo( CvSect::moddir, &dir, sizeof( cv_subsection_directory ) );
-    for( group = wlink().DBIGroups; group != nullptr; group = group->next ) {
+    for( group = link.DBIGroups; group != nullptr; group = group->next ) {
         RingLookup( group->g.class_->segs, DefLeader, group );
         group->g.class_ = nullptr;
     }
 }
 
-void CVFini( section *sect )
+void CVFini(Link& link,  section *sect )
 /**************************/
 // called after pass 2 is finished, but before load file generation
 {
@@ -734,19 +741,19 @@ void CVFini( section *sect )
     group_entry         *group;
     seg_leader          *leader;
 
-    if( sect != wlink().Root )
+    if( sect != link.Root )
         return;
-    wlink().CurrMod = nullptr;
-    GenSubSection( sstSegMap, sizeof( cv_sst_seg_map ) + ( wlink().NumGroups - 1 ) * sizeof( seg_desc ) );
-    map.cSeg = wlink().NumGroups;
-    map.cSegLog = wlink().NumGroups;
+    link.CurrMod = nullptr;
+    GenSubSection(link,  sstSegMap, sizeof( cv_sst_seg_map ) + ( link.NumGroups - 1 ) * sizeof( seg_desc ) );
+    map.cSeg = link.NumGroups;
+    map.cSegLog = link.NumGroups;
     DumpInfo( CvSect::misc, &map, sizeof( cv_sst_seg_map ) - sizeof( seg_desc ) );
     std::memset( &desc, 0, sizeof( seg_desc ) );
     desc.u.b.fSel = true;
     desc.u.b.fRead = true;
     desc.iSegName = 0xFFFF;
     desc.iClassName = 0xFFFF;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         desc.frame = group->addr.seg;
         desc.offset = group->addr.off;
         desc.cbseg = group->totalsize;
@@ -769,7 +776,7 @@ void CVFini( section *sect )
     }
 }
 
-void CVWriteDebugTypeMisc( const char *filename )
+void CVWriteDebugTypeMisc(Link& link,  const char *filename )
 /***********************************************/
 // called during load file generation.  It is assumed that the loadfile is
 // positioned to the right spot.
@@ -792,15 +799,15 @@ void CVWriteDebugTypeMisc( const char *filename )
             LnkMsg( WRN+LOC+MSG_INTERNAL, "s", "filename too long in CVWriteDebugTypeMisc()" );
         }
     }
-    dbg_exename.special_purpose = wlink().CVDebugDirEntryPos;
-    WriteLoad( &dbg_exename, sizeof( dbg_exename ) );
+    dbg_exename.special_purpose = link.CVDebugDirEntryPos;
+    WriteLoad(link,  &dbg_exename, sizeof( dbg_exename ) );
 }
 
-void CVWrite( void )
+void CVWrite(Link& link)
 /******************/
 // called during load file generation.  It is assumed that the loadfile is
 // positioned to the right spot.
 {
     // write DEBUG_TYPE_CODEVIEW data: CodeView NB05 data
-    WriteInfoLoad( state().cv_base, wlink().CVSize );
+    WriteInfoLoad( state().cv_base, link.CVSize );
 }

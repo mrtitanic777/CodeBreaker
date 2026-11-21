@@ -9,15 +9,15 @@ namespace cb::x86link::directives {
 
 namespace {
 
-bool ProcRawBIN() {
-    wlink().FmtData.def_ext = E_BIN;
-    wlink().FmtData.raw_hex_output = false;
+bool ProcRawBIN(Link& link) {
+    link.FmtData.def_ext = E_BIN;
+    link.FmtData.raw_hex_output = false;
     return true;
 }
 
-bool ProcRawHEX() {
-    wlink().FmtData.def_ext = E_HEX;
-    wlink().FmtData.raw_hex_output = true;
+bool ProcRawHEX(Link& link) {
+    link.FmtData.def_ext = E_HEX;
+    link.FmtData.raw_hex_output = true;
     return true;
 }
 
@@ -28,10 +28,10 @@ constexpr Entry raw_formats[] = {
 
 }  // namespace
 
-bool ProcRawFormat() {
-    wlink().LinkState |= LS_MAKE_RELOCS | LS_FMT_DECIDED;   // (relocations made; the format is decided)
-    wlink().FmtData.base = 0;                               // (the default offset)
-    process_one_or_fail(raw_formats, Sep::none);
+bool ProcRawFormat(Link& link) {
+    link.LinkState |= LS_MAKE_RELOCS | LS_FMT_DECIDED;   // (relocations made; the format is decided)
+    link.FmtData.base = 0;                               // (the default offset)
+    process_one_or_fail(link, raw_formats, Sep::none);
     return true;
 }
 

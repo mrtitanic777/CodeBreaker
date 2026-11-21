@@ -54,8 +54,8 @@ typedef struct msg_arg_list {
 
 extern int      WLinkItself;
 
-extern bool     InitMsg( void );
-extern void     ResetMsg( void );
+extern bool     InitMsg(Link& link);
+extern void     ResetMsg(Link& link);
 extern bool     Msg_Get( int msgid, char *buffer );
 extern void     Msg_Do_Put_Args( char rc_buff[], MSG_ARG_LIST *, const char *, ... );
 extern void     Msg_Put_Args( char rc_buff[], MSG_ARG_LIST *, const char *, va_list );

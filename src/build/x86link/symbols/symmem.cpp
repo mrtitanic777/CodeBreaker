@@ -211,19 +211,19 @@ void BasicInitSym( symbol *sym )
     sym->prefix = nullptr;
 }
 
-symbol * AddSym( void )
+symbol * AddSym(Link& link)
 /****************************/
 /* allocate and initialize a new symbol */
 {
     symbol              *sym;
 
-    sym = static_cast<symbol *>( CarveAlloc( wlink().CarveSymbol ) );
+    sym = static_cast<symbol *>( CarveAlloc( link.CarveSymbol ) );
     BasicInitSym( sym );
-    if( wlink().LastSym != nullptr )
-        wlink().LastSym->next = sym;
-    wlink().LastSym = sym;
-    if( wlink().HeadSym == nullptr )
-        wlink().HeadSym = sym;
+    if( link.LastSym != nullptr )
+        link.LastSym->next = sym;
+    link.LastSym = sym;
+    if( link.HeadSym == nullptr )
+        link.HeadSym = sym;
     return( sym );
 }
 

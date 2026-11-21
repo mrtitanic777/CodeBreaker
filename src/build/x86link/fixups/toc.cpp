@@ -107,7 +107,7 @@ int TocEntryCmp( const void *_e1, const void *_e2 )
     return std::memcmp( &e1->e, &e2->e, sizeof( e1->e ) );
 }
 
-void AddToToc( const TocEntryId &e )
+void AddToToc(Link& link,  const TocEntryId &e )
 {
     TocState &st = state();
     TocEntry searchEntry{};
@@ -118,8 +118,8 @@ void AddToToc( const TocEntryId &e )
         TocEntry *entry = static_cast<TocEntry *>(MemAllocSafe( sizeof( *entry ) ));
         *entry = TocEntry{};
         entry->e = e;
-        entry->pos = static_cast<int>( wlink().TocSize );
-        wlink().TocSize += sizeof( offset );
+        entry->pos = static_cast<int>( link.TocSize );
+        link.TocSize += sizeof( offset );
         AddHTableElem( st.Toc, entry );
     }
 }
@@ -149,28 +149,29 @@ void ConvertTocEntry( void *e )
     ConvertTocEntryId( &static_cast<TocEntry *>(e)->e );
 }
 
-offset OffFromToc( offset off )
+offset OffFromToc(Link& link,  offset off )
 {
-    offset toff = off - wlink().TocShift;
+    offset toff = off - link.TocShift;
     if( static_cast<signed_16>( toff ) != static_cast<signed_32>( toff ) ) {
         LnkMsg( ERR+MSG_TOC_TOO_BIG, nullptr );
     }
     return toff;
 }
 
-offset FindEntryPosInToc( const TocEntryId &e )
+offset FindEntryPosInToc(Link& link,  const TocEntryId &e )
 {
     TocEntry searchEntry{};
     searchEntry.e = e;
     TocEntry *entry = static_cast<TocEntry *>(FindHTableElem( state().Toc, &searchEntry ));
     if( entry != nullptr ) {
-        return OffFromToc( static_cast<offset>( entry->pos ) );
+        return OffFromToc(link,  static_cast<offset>( entry->pos ) );
     }
     return kBogus; // return bogus position; likely to cause alignment exception
 }
 
 void WriteOutTokElem( void *_elem, void *buf )
 {
+    Link& link = wlink();
     TocEntry   *elem = static_cast<TocEntry *>(_elem);
     offset      addr;
 
@@ -178,9 +179,9 @@ void WriteOutTokElem( void *_elem, void *buf )
         segdata *sdata = elem->e.sdata;
         seg_leader *leader = sdata->u.leader;
         addr = elem->e.u.off + sdata->a.delta + leader->group->linear
-                        + leader->seg_addr.off +  wlink().FmtData.base;
+                        + leader->seg_addr.off +  link.FmtData.base;
     } else {
-        addr = SymbolAbsAddr( elem->e.u.sym );
+        addr = SymbolAbsAddr(link,  elem->e.u.sym );
     }
     DbgAssert( elem->pos >= 0 );
     PutInfo( (*static_cast<virt_mem *>(buf)) + elem->pos, &addr, sizeof( addr ) );
@@ -189,12 +190,12 @@ void WriteOutTokElem( void *_elem, void *buf )
 }  // namespace
 
 
-void ResetToc( void )
+void ResetToc(Link& link)
 /**************************/
 {
     TocState &st = state();
     st.Toc = nullptr;
-    wlink().TocSize = 0;
+    link.TocSize = 0;
     st.TocName = nullptr;
     st.TocSym = nullptr;
 }
@@ -205,19 +206,19 @@ void CleanToc( void )
     ZapHTable( state().Toc, MemFree );
 }
 
-void InitToc( void )
+void InitToc(Link& link)
 /***********************/
 {
     TocState &st = state();
     st.Toc = CreateHTable( 1024, TocEntryHashFunc, TocEntryCmp, MemAllocSafe, MemFree );
-    wlink().TocSize = 0;
-    if( (wlink().LinkState & LS_HAVE_PPC_CODE)
-      && (wlink().FmtData.type & MK_PE) ) {
+    link.TocSize = 0;
+    if( (link.LinkState & LS_HAVE_PPC_CODE)
+      && (link.FmtData.type & MK_PE) ) {
         st.TocName = TocSymName;
-        wlink().TocShift = 0x8000;
+        link.TocShift = 0x8000;
     } else {
         st.TocName = GotSymName;
-        wlink().TocShift = kBogus;
+        link.TocShift = kBogus;
         // It is an error to use TocShift until PrepareToc is called
     }
 }
@@ -240,20 +241,20 @@ bool IsTocSym( symbol *sym )
     return state().TocSym == sym;
 }
 
-void AddSymToToc( symbol *sym )
+void AddSymToToc(Link& link,  symbol *sym )
 /************************************/
 {
-    AddToToc( make_id( nullptr, sym ) );
+    AddToToc(link,  make_id( nullptr, sym ) );
 }
 
-void AddSdataOffToToc( segdata *sdata, offset off )
+void AddSdataOffToToc(Link& link,  segdata *sdata, offset off )
 /********************************************************/
 {
     DbgAssert( sdata != nullptr );
-    AddToToc( make_id( sdata, off ) );
+    AddToToc(link,  make_id( sdata, off ) );
 }
 
-void PrepareToc( void )
+void PrepareToc(Link& link)
 /****************************/
 {
     TocState &st = state();
@@ -264,36 +265,36 @@ void PrepareToc( void )
     // (OS/2 PPC's GOT adjustment, development on hold in the original, is not carried.)
     if( st.TocSym != nullptr )  {
         st.TocSym->info |= SYM_1_DCE_REF | SYM_DEFINED;
-        SetAddPubSym( st.TocSym, SYM_REGULAR, wlink().FakeModule, 0, 0 );
-        if( wlink().LinkFlags & LF_STRIP_CODE ) {
+        SetAddPubSym( st.TocSym, SYM_REGULAR, link.FakeModule, 0, 0 );
+        if( link.LinkFlags & LF_STRIP_CODE ) {
             CleanStripInfo( st.TocSym );
         }
     }
 }
 
-void SetTocAddr( offset off, group_entry *group )
+void SetTocAddr(Link& link,  offset off, group_entry *group )
 /******************************************************/
 {
     TocState &st = state();
     if( st.Toc != nullptr
       && st.TocSym != nullptr ) {
-        SET_SYM_ADDR( st.TocSym, off + wlink().TocShift, group->addr.seg );
+        SET_SYM_ADDR( st.TocSym, off + link.TocShift, group->addr.seg );
     }
 }
 
-offset FindSdataOffPosInToc( segdata *sdata, offset off )
+offset FindSdataOffPosInToc(Link& link,  segdata *sdata, offset off )
 /*****************************************************************/
 {
     DbgAssert( sdata != nullptr );
-    return FindEntryPosInToc( make_id( sdata, off ) );
+    return FindEntryPosInToc(link,  make_id( sdata, off ) );
 }
 
-offset FindSymPosInToc( symbol * sym )
+offset FindSymPosInToc(Link& link,  symbol * sym )
 /**********************************************/
 {
     TocEntryId e = make_id( nullptr, sym );
     ConvertTocEntryId( &e );
-    return FindEntryPosInToc( e );
+    return FindEntryPosInToc(link,  e );
 }
 
 void WriteToc( virt_mem buf )

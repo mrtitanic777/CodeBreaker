@@ -109,18 +109,18 @@ typedef struct {
 /* data and functions used for permanent data structure storage */
 
 
-extern void     ResetPermData( void );
-extern void     CleanPermData( void );
-extern void     ReadPermData( void );
-extern void     WritePermData( void );
+extern void     ResetPermData(Link& link);
+extern void     CleanPermData(Link& link);
+extern void     ReadPermData(Link& link);
+extern void     WritePermData(Link& link);
 
 extern void     IncP2Start( void );
 extern void     PermSaveFixup( void *, size_t );
 extern void     PermStartMod( mod_entry * );
 extern void     PermEndMod( mod_entry * );
-extern void     WritePermFile( perm_write_info *, const void *data, size_t len );
-extern void     ReadPermFile( perm_read_info *, void *, size_t );
+extern void     WritePermFile(Link& link,  perm_write_info *, const void *data, size_t len );
+extern void     ReadPermFile(Link& link,  perm_read_info *, void *, size_t );
 extern void     IterateModRelocs( size_t, size_t, size_t (*)(void *) );
 extern void     *GetSegContents( segdata *, virt_mem_size );
 extern void     *GetAltdefContents( segdata * );
-extern void     FreeSavedRelocs( void );
+extern void     FreeSavedRelocs(Link& link);

@@ -78,31 +78,31 @@ static constexpr size_t MOD_CARVE_SIZE   = _4K + _1K;
 static constexpr size_t SDATA_CARVE_SIZE = _16K;
 static constexpr size_t SYM_CARVE_SIZE   = _32K;
 
-void ResetPermData( void )
+void ResetPermData(Link& link)
 /************************/
 {
     PermState &st = perm_state();
 
-    wlink().IncFileName = nullptr;
+    link.IncFileName = nullptr;
     st.IncStrTab = nullptr;
     st.ReadRelocs = nullptr;
     st.OldExe = nullptr;
     st.AltDefData = nullptr;
     st.OldSymFile = nullptr;
-    wlink().IncGroupDefs = nullptr;
-    wlink().IncGroups = nullptr;
-    wlink().SavedUserLibs = nullptr;
-    wlink().SavedDefLibs = nullptr;
-    wlink().CarveClass = CarveCreate( sizeof( class_entry ), 20 * sizeof( class_entry ) );
-    wlink().CarveGroup = CarveCreate( sizeof( group_entry ), 20 * sizeof( group_entry ) );
-    wlink().CarveDLLInfo = CarveCreate( sizeof( dll_sym_info ), 100 * sizeof( dll_sym_info ) );
-    wlink().CarveExportInfo = CarveCreate( sizeof( entry_export ), 20 * sizeof( entry_export ) );
-    wlink().CarveLeader = CarveCreate( sizeof( seg_leader ), SEG_CARVE_SIZE );
-    wlink().CarveModEntry = CarveCreate( sizeof( mod_entry ), MOD_CARVE_SIZE );
-    wlink().CarveSegData = CarveCreate( sizeof( segdata ), SDATA_CARVE_SIZE );
-    wlink().CarveSymbol = CarveCreate( sizeof( symbol ), SYM_CARVE_SIZE );
-    InitStringTable( &wlink().PermStrings, true );
-    InitStringTable( &wlink().PrefixStrings, true );
+    link.IncGroupDefs = nullptr;
+    link.IncGroups = nullptr;
+    link.SavedUserLibs = nullptr;
+    link.SavedDefLibs = nullptr;
+    link.CarveClass = CarveCreate( sizeof( class_entry ), 20 * sizeof( class_entry ) );
+    link.CarveGroup = CarveCreate( sizeof( group_entry ), 20 * sizeof( group_entry ) );
+    link.CarveDLLInfo = CarveCreate( sizeof( dll_sym_info ), 100 * sizeof( dll_sym_info ) );
+    link.CarveExportInfo = CarveCreate( sizeof( entry_export ), 20 * sizeof( entry_export ) );
+    link.CarveLeader = CarveCreate( sizeof( seg_leader ), SEG_CARVE_SIZE );
+    link.CarveModEntry = CarveCreate( sizeof( mod_entry ), MOD_CARVE_SIZE );
+    link.CarveSegData = CarveCreate( sizeof( segdata ), SDATA_CARVE_SIZE );
+    link.CarveSymbol = CarveCreate( sizeof( symbol ), SYM_CARVE_SIZE );
+    InitStringTable( &link.PermStrings, true );
+    InitStringTable( &link.PrefixStrings, true );
     InitStringTable( &st.StoredRelocs, false );
 }
 
@@ -143,7 +143,7 @@ static size_t GetString( perm_write_info *info, const char *str )
     return( AddStringStringTableOffs( &info->strtab, str ) );
 }
 
-static void DoWritePermFile( perm_write_info *info, const char *data, unsigned len, bool isvmem )
+static void DoWritePermFile(Link& link,  perm_write_info *info, const char *data, unsigned len, bool isvmem )
 /***********************************************************************************************/
 {
     unsigned modpos;
@@ -154,77 +154,78 @@ static void DoWritePermFile( perm_write_info *info, const char *data, unsigned l
     while( modpos + len >= MAX_HEADROOM ) {
         adjust = MAX_HEADROOM - modpos;
         if( !isvmem ) {
-            memcpy( wlink().TokBuff + modpos, data, adjust );
+            memcpy( link.TokBuff + modpos, data, adjust );
         } else {
-            ReadInfo( reinterpret_cast<virt_mem>( const_cast<char *>( data ) ), wlink().TokBuff + modpos, adjust );
+            ReadInfo( reinterpret_cast<virt_mem>( const_cast<char *>( data ) ), link.TokBuff + modpos, adjust );
         }
-        QWrite( info->incfhdl, wlink().TokBuff, MAX_HEADROOM, wlink().IncFileName );
+        QWrite( info->incfhdl, link.TokBuff, MAX_HEADROOM, link.IncFileName );
         data += adjust;
         len -= adjust;
         modpos = 0;
     }
     if( len > 0 ) {
         if( !isvmem ) {
-            memcpy( wlink().TokBuff + modpos, data, len );
+            memcpy( link.TokBuff + modpos, data, len );
         } else {
-            ReadInfo( reinterpret_cast<virt_mem>( const_cast<char *>( data ) ), wlink().TokBuff + modpos, len );
+            ReadInfo( reinterpret_cast<virt_mem>( const_cast<char *>( data ) ), link.TokBuff + modpos, len );
         }
     }
 }
 
-static void VMemWritePermFile( perm_write_info *info, virt_mem data, unsigned len )
+static void VMemWritePermFile(Link& link,  perm_write_info *info, virt_mem data, unsigned len )
 /*********************************************************************************/
 {
-    DoWritePermFile( info, reinterpret_cast<const char *>( data ), len, true );
+    DoWritePermFile(link,  info, reinterpret_cast<const char *>( data ), len, true );
 }
 
-static void U32WritePermFile( perm_write_info *info, unsigned_32 data )
+static void U32WritePermFile(Link& link,  perm_write_info *info, unsigned_32 data )
 /*********************************************************************/
 {
-    DoWritePermFile( info, reinterpret_cast<const char *>( &data ), sizeof( data ), false );
+    DoWritePermFile(link,  info, reinterpret_cast<const char *>( &data ), sizeof( data ), false );
 }
 
-static void BufWritePermFile( perm_write_info *info, void *data, unsigned len )
+static void BufWritePermFile(Link& link,  perm_write_info *info, void *data, unsigned len )
 /*****************************************************************************/
 {
-    DoWritePermFile( info, static_cast<const char *>( data ), len, false );
+    DoWritePermFile(link,  info, static_cast<const char *>( data ), len, false );
 }
 
 static bool WriteLeaderName( void *_leader, void *info )
 /******************************************************/
 {
+    Link& link = wlink();
     seg_leader *leader = static_cast<seg_leader *>(_leader);
 
-    U32WritePermFile( static_cast<perm_write_info *>(info), leader->class_->name.u.offs );
-    U32WritePermFile( static_cast<perm_write_info *>(info), leader->segname.u.offs );
+    U32WritePermFile(link,  static_cast<perm_write_info *>(info), leader->class_->name.u.offs );
+    U32WritePermFile(link,  static_cast<perm_write_info *>(info), leader->segname.u.offs );
     return( false );
 }
 
-static unsigned WriteGroupsList( perm_write_info *info )
+static unsigned WriteGroupsList(Link& link,  perm_write_info *info )
 /******************************************************/
 {
     group_entry *group;
     unsigned    num;
 
     num = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( !group->isautogrp
           && group->leaders != nullptr ) {
             num++;
-            U32WritePermFile( info, static_cast<unsigned_32>( Ring2Count( group->leaders ) ) );
+            U32WritePermFile(link,  info, static_cast<unsigned_32>( Ring2Count( group->leaders ) ) );
             group->sym->name.u.offs = GetString( info, group->sym->name.u.ptr );
-            U32WritePermFile( info, group->sym->name.u.offs );
+            U32WritePermFile(link,  info, group->sym->name.u.offs );
             Ring2Lookup( group->leaders, WriteLeaderName, info );
         }
     }
     return( num );
 }
 
-static bool CheckFree( bool isfree, perm_write_info *info )
+static bool CheckFree(Link& link,  bool isfree, perm_write_info *info )
 /*********************************************************/
 {
     if( isfree ) {
-        U32WritePermFile( info, CARVE_INVALID_INDEX );
+        U32WritePermFile(link,  info, CARVE_INVALID_INDEX );
     }
     return( isfree );
 }
@@ -232,28 +233,30 @@ static bool CheckFree( bool isfree, perm_write_info *info )
 static void WriteDLLInfo( void *_dll, void *info )
 /************************************************/
 {
+    Link& link = wlink();
     dll_sym_info *dll = static_cast<dll_sym_info *>(_dll);
 
-    if( !CheckFree( dll->isfree, static_cast<perm_write_info *>(info) ) ) {
+    if( !CheckFree(link,  dll->isfree, static_cast<perm_write_info *>(info) ) ) {
         dll->m.modname.u.ptr = dll->m.modnum->name.u.ptr;
         if( !dll->isordinal ) {
             dll->u.entname.u.ptr = dll->u.entry->name.u.ptr;
         }
-        BufWritePermFile( static_cast<perm_write_info *>(info), dll, offsetof( dll_sym_info, iatsym ) );
+        BufWritePermFile(link,  static_cast<perm_write_info *>(info), dll, offsetof( dll_sym_info, iatsym ) );
     }
 }
 
 static void WriteExportInfo( void *_exp, void *info )
 /***************************************************/
 {
+    Link& link = wlink();
     entry_export *exp = static_cast<entry_export *>(_exp);
 
-    if( !CheckFree( exp->isfree, static_cast<perm_write_info *>(info) ) ) {
-        exp->next = static_cast<entry_export *>(CarveGetIndex( wlink().CarveExportInfo, exp->next ));
+    if( !CheckFree(link,  exp->isfree, static_cast<perm_write_info *>(info) ) ) {
+        exp->next = static_cast<entry_export *>(CarveGetIndex( link.CarveExportInfo, exp->next ));
         if( exp->name.u.ptr != nullptr ) {
             exp->name.u.offs = GetString( static_cast<perm_write_info *>(info), exp->name.u.ptr );
         }
-        BufWritePermFile( static_cast<perm_write_info *>(info), exp, offsetof( entry_export, sym ) );
+        BufWritePermFile(link,  static_cast<perm_write_info *>(info), exp, offsetof( entry_export, sym ) );
     }
 }
 
@@ -274,6 +277,7 @@ static void FixSymAddr( void *_sym )
 static void PrepModEntry( void *_mod, void *info )
 /************************************************/
 {
+    Link& link = wlink();
     mod_entry *mod = static_cast<mod_entry *>(_mod);
 
     if( mod->flags_mod & MOD_IS_FREE ) {
@@ -281,10 +285,10 @@ static void PrepModEntry( void *_mod, void *info )
         return;
     }
     Ring2Walk( mod->publist, FixSymAddr );
-    mod->u.next = static_cast<MOD_ENTRY *>(CarveGetIndex( wlink().CarveModEntry, mod->u.next ));
+    mod->u.next = static_cast<MOD_ENTRY *>(CarveGetIndex( link.CarveModEntry, mod->u.next ));
     mod->name.u.offs = GetString( static_cast<perm_write_info *>(info), mod->name.u.ptr );
-    mod->publist = static_cast<symbol *>(CarveGetIndex( wlink().CarveSymbol, mod->publist ));
-    mod->segs = static_cast<SEGDATA *>(CarveGetIndex( wlink().CarveSegData, mod->segs ));
+    mod->publist = static_cast<symbol *>(CarveGetIndex( link.CarveSymbol, mod->publist ));
+    mod->segs = static_cast<SEGDATA *>(CarveGetIndex( link.CarveSegData, mod->segs ));
     mod->flags_mod &= ~MOD_CLEAR_ON_INC;
     if( mod->u1.source != nullptr ) {
         mod->u1.fname = mod->u1.source->infile->name;
@@ -294,6 +298,7 @@ static void PrepModEntry( void *_mod, void *info )
 static void PrepSegData( void *_sdata, void *info )
 /*************************************************/
 {
+    Link& link = wlink();
     segdata *sdata = static_cast<segdata *>(_sdata);
 
     /* unused parameters */ (void)info;
@@ -302,8 +307,8 @@ static void PrepSegData( void *_sdata, void *info )
         *reinterpret_cast<unsigned_32 *>(sdata) = CARVE_INVALID_INDEX;
         return;
     }
-    sdata->next = static_cast<SEGDATA *>(CarveGetIndex( wlink().CarveSegData, sdata->next ));  // not used
-    sdata->next_by_mod = static_cast<SEGDATA *>(CarveGetIndex( wlink().CarveSegData, sdata->next_by_mod ));
+    sdata->next = static_cast<SEGDATA *>(CarveGetIndex( link.CarveSegData, sdata->next ));  // not used
+    sdata->next_by_mod = static_cast<SEGDATA *>(CarveGetIndex( link.CarveSegData, sdata->next_by_mod ));
     sdata->o.clname.u.ptr = sdata->u.leader->class_->name.u.ptr;
     sdata->u.name.u.ptr = sdata->u.leader->segname.u.ptr;
     sdata->vm_data = 0;
@@ -312,6 +317,7 @@ static void PrepSegData( void *_sdata, void *info )
 static void PrepSymbol( void *_sym, void *info )
 /**********************************************/
 {
+    Link& link = wlink();
     symbol      *sym = static_cast<symbol *>( _sym );
     char        *save;
     symbol      *mainsym;
@@ -320,9 +326,9 @@ static void PrepSymbol( void *_sym, void *info )
         *reinterpret_cast<unsigned_32 *>(sym) = CARVE_INVALID_INDEX;
         return;
     }
-    sym->hash = static_cast<symbol *>(CarveGetIndex( wlink().CarveSymbol, sym->hash ));
-    sym->next = static_cast<symbol *>(CarveGetIndex( wlink().CarveSymbol, sym->next ));
-    sym->next_by_publist = static_cast<symbol *>(CarveGetIndex( wlink().CarveSymbol, sym->next_by_publist ));
+    sym->hash = static_cast<symbol *>(CarveGetIndex( link.CarveSymbol, sym->hash ));
+    sym->next = static_cast<symbol *>(CarveGetIndex( link.CarveSymbol, sym->next ));
+    sym->next_by_publist = static_cast<symbol *>(CarveGetIndex( link.CarveSymbol, sym->next_by_publist ));
     if( sym->info & SYM_IS_ALTDEF ) {
         mainsym = sym->e.mainsym;
         if( (mainsym->info & SYM_NAME_XLATED) == 0 ) {
@@ -334,7 +340,7 @@ static void PrepSymbol( void *_sym, void *info )
         sym->name.u.offs = GetString( static_cast<perm_write_info *>(info), sym->name.u.ptr );
         sym->info |= SYM_NAME_XLATED;
     }
-    sym->mod = static_cast<mod_entry *>(CarveGetIndex( wlink().CarveModEntry, sym->mod ));
+    sym->mod = static_cast<mod_entry *>(CarveGetIndex( link.CarveModEntry, sym->mod ));
     if( IS_SYM_ALIAS( sym ) ) {
         if( sym->info & SYM_FREE_ALIAS ) {
             save = sym->p.alias.u.ptr;
@@ -344,20 +350,20 @@ static void PrepSymbol( void *_sym, void *info )
             sym->p.alias.u.offs = 0;
         }
     } else if( IS_SYM_IMPORTED( sym ) ) {
-        if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE) ) {
-            sym->p.import_dll = static_cast<dll_sym_info *>(CarveGetIndex( wlink().CarveDLLInfo, sym->p.import_dll ));
+        if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE) ) {
+            sym->p.import_dll = static_cast<dll_sym_info *>(CarveGetIndex( link.CarveDLLInfo, sym->p.import_dll ));
         }
     } else if( (sym->info & SYM_IS_ALTDEF) == 0
       || IS_SYM_COMDAT( sym ) ) {
-        sym->p.seg = static_cast<segdata *>(CarveGetIndex( wlink().CarveSegData, sym->p.seg ));
-        sym->u.altdefs = static_cast<symbol *>(CarveGetIndex( wlink().CarveSymbol, sym->u.altdefs ));
+        sym->p.seg = static_cast<segdata *>(CarveGetIndex( link.CarveSegData, sym->p.seg ));
+        sym->u.altdefs = static_cast<symbol *>(CarveGetIndex( link.CarveSymbol, sym->u.altdefs ));
     }
     if( sym->info & SYM_EXPORTED ) {
-        if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
-            sym->e.export_ = CarveGetIndex( wlink().CarveExportInfo, sym->e.export_ );
+        if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+            sym->e.export_ = CarveGetIndex( link.CarveExportInfo, sym->e.export_ );
         }
     } else if( sym->e.def != nullptr ) {
-        sym->e.def = static_cast<symbol *>(CarveGetIndex( wlink().CarveSymbol, sym->e.def ));
+        sym->e.def = static_cast<symbol *>(CarveGetIndex( link.CarveSymbol, sym->e.def ));
     }
 }
 
@@ -369,13 +375,13 @@ static void PrepNameTable( obj_name_list *list, perm_write_info *info )
     }
 }
 
-static void PrepFileList( perm_write_info *info )
+static void PrepFileList(Link& link,  perm_write_info *info )
 /***********************************************/
 {
     infilelist  *infile;
     std::array<char, PATH_MAX>  new_name;
 
-    for( infile = wlink().CachedFiles; infile != nullptr; infile = infile->next ) {
+    for( infile = link.CachedFiles; infile != nullptr; infile = infile->next ) {
         MakeFileName( infile, new_name.data() );
         infile->name.u.offs = GetString( info, new_name.data() );
     }
@@ -390,24 +396,24 @@ static bool PrepLeaders( void *_leader, void *info )
     return( false );
 }
 
-static void PrepClasses( perm_write_info *info )
+static void PrepClasses(Link& link,  perm_write_info *info )
 /**********************************************/
 {
     class_entry *class_;
 
-    for( class_ = wlink().Root->classes; class_ != nullptr; class_ = class_->next ) {
+    for( class_ = link.Root->classes; class_ != nullptr; class_ = class_->next ) {
         class_->name.u.offs = GetString( info, class_->name.u.ptr );
         RingLookup( class_->segs, PrepLeaders, info );
     }
 }
 
-void WritePermFile( perm_write_info *info, const void *data, size_t len )
+void WritePermFile(Link& link,  perm_write_info *info, const void *data, size_t len )
 /***********************************************************************/
 {
-    QWrite( info->incfhdl, data, len, wlink().IncFileName );
+    QWrite( info->incfhdl, data, len, link.IncFileName );
 }
 
-static void FlushPermBuf( perm_write_info *info )
+static void FlushPermBuf(Link& link,  perm_write_info *info )
 /***********************************************/
 {
     size_t      modpos;
@@ -418,17 +424,18 @@ static void FlushPermBuf( perm_write_info *info )
         return;
     adjust = SECTOR_SIZE - ( info->currpos % SECTOR_SIZE );
     if( adjust != SECTOR_SIZE ) {
-        memset( wlink().TokBuff + modpos, 0, adjust );
+        memset( link.TokBuff + modpos, 0, adjust );
         info->currpos += adjust;
         modpos += adjust;
     }
-    QWrite( info->incfhdl, wlink().TokBuff, modpos, wlink().IncFileName );
+    QWrite( info->incfhdl, link.TokBuff, modpos, link.IncFileName );
 }
 
 static void WriteStringBlock( void *info, const char *data, size_t size )
 /***********************************************************************/
 {
-    QWrite( static_cast<perm_write_info *>( info )->incfhdl, data, size, wlink().IncFileName );
+    Link& link = wlink();
+    QWrite( static_cast<perm_write_info *>( info )->incfhdl, data, size, link.IncFileName );
 }
 
 static void FiniStringBlock( stringtable *strtab, size_t *size, void *info,
@@ -449,12 +456,13 @@ static void FiniStringBlock( stringtable *strtab, size_t *size, void *info,
 static void DumpBlock( carve_t carver, void *block, void *_info )
 /***************************************************************/
 {
+    Link& link = wlink();
     perm_write_info *info = static_cast<perm_write_info *>(_info);
     size_t          size;
 
     size = CarveBlockSize( carver );
     CarveBlockScan( carver, block, info->prepfn, info );
-    QWrite( info->incfhdl, CarveBlockData( block ), size, wlink().IncFileName );
+    QWrite( info->incfhdl, CarveBlockData( block ), size, link.IncFileName );
 }
 
 static void DumpBlockStruct( carve_t carver, void (*markfn)(void *),
@@ -476,61 +484,61 @@ static unsigned WriteSmallCarve( carve_t carver, void (*markfn)(void *),
     return( CarveNumElements( carver ) );
 }
 
-static void PrepStartValue( inc_file_header *hdr )
+static void PrepStartValue(Link& link,  inc_file_header *hdr )
 /************************************************/
 {
-    if( wlink().StartInfo.mod != nullptr
-      && !wlink().StartInfo.user_specd ) {
-        hdr->startmodidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( wlink().CarveModEntry, wlink().StartInfo.mod ) ) );
-        if( wlink().StartInfo.type == START_IS_SDATA ) {
+    if( link.StartInfo.mod != nullptr
+      && !link.StartInfo.user_specd ) {
+        hdr->startmodidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( link.CarveModEntry, link.StartInfo.mod ) ) );
+        if( link.StartInfo.type == START_IS_SDATA ) {
             hdr->flags |= INC_FLAG_START_SEG;
-            hdr->startidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( wlink().CarveSegData, wlink().StartInfo.targ.sdata ) ) );
+            hdr->startidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( link.CarveSegData, link.StartInfo.targ.sdata ) ) );
         } else {
-            DbgAssert( wlink().StartInfo.type == START_IS_SYM );
-            hdr->startidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( wlink().CarveSymbol, wlink().StartInfo.targ.sym ) ) );
+            DbgAssert( link.StartInfo.type == START_IS_SYM );
+            hdr->startidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( link.CarveSymbol, link.StartInfo.targ.sym ) ) );
         }
-        hdr->startoff = wlink().StartInfo.off;
+        hdr->startoff = link.StartInfo.off;
     } else {
         hdr->startmodidx = 0;
     }
 }
 
-static void WriteAltData( perm_write_info *info )
+static void WriteAltData(Link& link,  perm_write_info *info )
 /***********************************************/
 {
     symbol      *sym;
     size_t      savepos;
 
     info->currpos = 0;
-    for( sym = wlink().HeadSym; sym != nullptr; sym = sym->next ) {
+    for( sym = link.HeadSym; sym != nullptr; sym = sym->next ) {
         if( (sym->info & SYM_IS_ALTDEF)
           && (sym->info & SYM_HAS_DATA) ) {
             savepos = info->currpos;
-            VMemWritePermFile( info, sym->p.seg->u1.vm_ptr, sym->p.seg->length );
+            VMemWritePermFile(link,  info, sym->p.seg->u1.vm_ptr, sym->p.seg->length );
             sym->p.seg->u1.vm_offs = savepos;
         }
     }
-    FlushPermBuf( info );
+    FlushPermBuf(link,  info );
 }
 
-static unsigned_32 WriteLibList( perm_write_info *info, bool douser )
+static unsigned_32 WriteLibList(Link& link,  perm_write_info *info, bool douser )
 /*******************************************************************/
 {
     unsigned_32 numlibs;
     file_list   *file;
 
     numlibs = 0;
-    for( file = wlink().ObjLibFiles; file != nullptr; file = file->next ) {
+    for( file = link.ObjLibFiles; file != nullptr; file = file->next ) {
         if( (((file->flags_file & STAT_USER_SPECD) != 0) ^ douser) == 0 ) {
-            U32WritePermFile( info, GetString( info, file->infile->name.u.ptr ) );
-            BufWritePermFile( info, &file->priority, sizeof( file->priority ) );
+            U32WritePermFile(link,  info, GetString( info, file->infile->name.u.ptr ) );
+            BufWritePermFile(link,  info, &file->priority, sizeof( file->priority ) );
             numlibs++;
         }
     }
     return( numlibs );
 }
 
-void WritePermData( void )
+void WritePermData(Link& link)
 /*******************************/
 {
     PermState &st = perm_state();
@@ -539,66 +547,66 @@ void WritePermData( void )
     perm_write_info     info;
     size_t              strsize;
 
-    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0
-      || (wlink().LinkState & LS_LINK_ERROR) )
+    if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0
+      || (link.LinkState & LS_LINK_ERROR) )
         return;
     InitStringTable( &info.strtab, false );
     AddCharStringTable( &info.strtab, '\0' );   // make 0 idx not valid
-    info.incfhdl = QOpenRW( wlink().IncFileName );
+    info.incfhdl = QOpenRW(link,  link.IncFileName );
     hdr.flags = 0;
-    hdr.exename = GetString( &info, wlink().Root->outfile->fname );
-    QModTime( wlink().Root->outfile->fname, &hdr.exemodtime );
-    if( wlink().SymFileName != nullptr ) {
-        hdr.symname = GetString( &info, wlink().SymFileName );
-        QModTime( wlink().SymFileName, &hdr.symmodtime );
+    hdr.exename = GetString( &info, link.Root->outfile->fname );
+    QModTime( link.Root->outfile->fname, &hdr.exemodtime );
+    if( link.SymFileName != nullptr ) {
+        hdr.symname = GetString( &info, link.SymFileName );
+        QModTime( link.SymFileName, &hdr.symmodtime );
     } else {
         hdr.symname = 0;
     }
     info.currpos = 0;
-    BufWritePermFile( &info, &hdr, sizeof( inc_file_header ) ); // reserve space
-    PrepClasses( &info );
-    hdr.numgroups = WriteGroupsList( &info );
-    hdr.numuserlibs = WriteLibList( &info, true );
-    hdr.numdeflibs = WriteLibList( &info, false );
-    if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
-        PrepNameTable( wlink().FmtData.u.os2fam.mod_ref_list, &info );
-        PrepNameTable( wlink().FmtData.u.os2fam.imp_tab_list, &info );
-        hdr.numdllsyms = WriteSmallCarve( wlink().CarveDLLInfo, MarkDLLInfo, WriteDLLInfo, &info );
-        hdr.numexports = WriteSmallCarve( wlink().CarveExportInfo, MarkExportInfo, WriteExportInfo, &info );
+    BufWritePermFile(link,  &info, &hdr, sizeof( inc_file_header ) ); // reserve space
+    PrepClasses(link,  &info );
+    hdr.numgroups = WriteGroupsList(link,  &info );
+    hdr.numuserlibs = WriteLibList(link,  &info, true );
+    hdr.numdeflibs = WriteLibList(link,  &info, false );
+    if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+        PrepNameTable( link.FmtData.u.os2fam.mod_ref_list, &info );
+        PrepNameTable( link.FmtData.u.os2fam.imp_tab_list, &info );
+        hdr.numdllsyms = WriteSmallCarve( link.CarveDLLInfo, MarkDLLInfo, WriteDLLInfo, &info );
+        hdr.numexports = WriteSmallCarve( link.CarveExportInfo, MarkExportInfo, WriteExportInfo, &info );
     }
-    FlushPermBuf( &info );
-    WriteHashPointers( &info );
+    FlushPermBuf(link,  &info );
+    WriteHashPointers(link,  &info );
     hdr.hdrsize = info.currpos;
-    WriteAltData( &info );
+    WriteAltData(link,  &info );
     hdr.altdefsize = info.currpos;
-    PrepFileList( &info );
+    PrepFileList(link,  &info );
     info.prepfn = PrepModEntry;
-    DumpBlockStruct( wlink().CarveModEntry, MarkModEntry, &hdr.mods, &info );
+    DumpBlockStruct( link.CarveModEntry, MarkModEntry, &hdr.mods, &info );
     info.prepfn = PrepSegData;
-    DumpBlockStruct( wlink().CarveSegData, MarkSegData, &hdr.segdatas, &info );
+    DumpBlockStruct( link.CarveSegData, MarkSegData, &hdr.segdatas, &info );
     info.prepfn = PrepSymbol;
-    DumpBlockStruct( wlink().CarveSymbol, MarkSymbol, &hdr.symbols, &info );
+    DumpBlockStruct( link.CarveSymbol, MarkSymbol, &hdr.symbols, &info );
     FiniStringBlock( &info.strtab, &strsize, &info, WriteStringBlock );
     hdr.strtabsize = strsize;
     if( st.SizeRelocs ) {
-        QWrite( info.incfhdl, st.ReadRelocs, st.SizeRelocs, wlink().IncFileName );
+        QWrite( info.incfhdl, st.ReadRelocs, st.SizeRelocs, link.IncFileName );
     }
     memcpy( hdr.signature, INC_FILE_SIG, INC_FILE_SIG_SIZE );
-    hdr.rootmodidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( wlink().CarveModEntry, wlink().Root->mods ) ) );
-    hdr.headsymidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( wlink().CarveSymbol, wlink().HeadSym ) ) );
-    hdr.libmodidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( wlink().CarveModEntry, wlink().LibModules ) ) );
-    hdr.linkstate = static_cast<unsigned_32>( wlink().LinkState & ~LS_CLEAR_ON_INC );
+    hdr.rootmodidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( link.CarveModEntry, link.Root->mods ) ) );
+    hdr.headsymidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( link.CarveSymbol, link.HeadSym ) ) );
+    hdr.libmodidx = static_cast<carve_index>( reinterpret_cast<pointer_uint>( CarveGetIndex( link.CarveModEntry, link.LibModules ) ) );
+    hdr.linkstate = static_cast<unsigned_32>( link.LinkState & ~LS_CLEAR_ON_INC );
     hdr.relocsize = st.SizeRelocs;
-    PrepStartValue( &hdr );
-    QSeek( info.incfhdl, 0, wlink().IncFileName );
-    QWrite( info.incfhdl, &hdr, sizeof( inc_file_header ), wlink().IncFileName );
-    QClose( info.incfhdl, wlink().IncFileName );
+    PrepStartValue(link,  &hdr );
+    QSeek( info.incfhdl, 0, link.IncFileName );
+    QWrite( info.incfhdl, &hdr, sizeof( inc_file_header ), link.IncFileName );
+    QClose( info.incfhdl, link.IncFileName );
 }
 
-void ReadPermFile( perm_read_info *info, void *data, size_t len )
+void ReadPermFile(Link& link,  perm_read_info *info, void *data, size_t len )
 /***************************************************************/
 {
-    QRead( info->incfhdl, data, len, wlink().IncFileName );
+    QRead( info->incfhdl, data, len, link.IncFileName );
 }
 
 static unsigned_32 BufPeekU32( perm_read_info *info )
@@ -634,7 +642,7 @@ static char *MapString( size_t off )
     return( st.IncStrTab + off );
 }
 
-static void ReadGroupsList( unsigned count, perm_read_info *info )
+static void ReadGroupsList(Link& link,  unsigned count, perm_read_info *info )
 /****************************************************************/
 {
     incgroupdef         *def;
@@ -644,7 +652,7 @@ static void ReadGroupsList( unsigned count, perm_read_info *info )
     while( count-- ) {
         size = BufReadU32( info );
         def = static_cast<incgroupdef *>( MemAllocSafe( sizeof( incgroupdef ) + ( size - 1 ) * 2 * sizeof( char * ) ) );
-        RingAppend( &wlink().IncGroupDefs, def );
+        RingAppend( &link.IncGroupDefs, def );
         def->numsegs = size;
         def->grpname = MapString( BufReadU32( info ) );
         p = def->names;
@@ -683,10 +691,11 @@ static void RebuildDLLInfo( void *_dll, perm_read_info *info )
 static void RebuildExportInfo( void *_exp, perm_read_info *info )
 /***************************************************************/
 {
+    Link& link = wlink();
     entry_export *exp = static_cast<entry_export *>(_exp);
 
     BufRead( info, exp, offsetof( entry_export, sym ) );
-    exp->next = static_cast<entry_export *>(CarveMapIndex( wlink().CarveExportInfo, exp->next ));
+    exp->next = static_cast<entry_export *>(CarveMapIndex( link.CarveExportInfo, exp->next ));
     if( exp->name.u.offs != 0 ) {
         exp->name.u.ptr = MapString( exp->name.u.offs );
     }
@@ -696,34 +705,36 @@ static void RebuildExportInfo( void *_exp, perm_read_info *info )
 static void RebuildModEntry( void *_mod, void *info )
 /***************************************************/
 {
+    Link& link = wlink();
     mod_entry *mod = static_cast<mod_entry *>(_mod);
 
     /* unused parameters */ (void)info;
 
     if( *reinterpret_cast<unsigned_32 *>(mod) == CARVE_INVALID_INDEX ) {
-        CarveInsertFree( wlink().CarveModEntry, mod );
+        CarveInsertFree( link.CarveModEntry, mod );
         return;
     }
-    mod->u.next = static_cast<MOD_ENTRY *>(CarveMapIndex( wlink().CarveModEntry, mod->u.next ));
+    mod->u.next = static_cast<MOD_ENTRY *>(CarveMapIndex( link.CarveModEntry, mod->u.next ));
     mod->name.u.ptr = MapString( mod->name.u.offs );
-    mod->publist = static_cast<symbol *>(CarveMapIndex( wlink().CarveSymbol, mod->publist ));
-    mod->segs = static_cast<SEGDATA *>(CarveMapIndex( wlink().CarveSegData, mod->segs ));
+    mod->publist = static_cast<symbol *>(CarveMapIndex( link.CarveSymbol, mod->publist ));
+    mod->segs = static_cast<SEGDATA *>(CarveMapIndex( link.CarveSegData, mod->segs ));
     mod->u1.fname.u.ptr = MapString( mod->u1.fname.u.offs );
 }
 
 static void RebuildSegData( void *_sdata, void *info )
 /****************************************************/
 {
+    Link& link = wlink();
     segdata *sdata = static_cast<segdata *>(_sdata);
 
     /* unused parameters */ (void)info;
 
     if( *reinterpret_cast<unsigned_32 *>(sdata) == CARVE_INVALID_INDEX ) {
-        CarveInsertFree( wlink().CarveSegData, sdata );
+        CarveInsertFree( link.CarveSegData, sdata );
         return;
     }
-    sdata->next = static_cast<SEGDATA *>(CarveMapIndex( wlink().CarveSegData, sdata->next ));  // dont use this?
-    sdata->next_by_mod = static_cast<SEGDATA *>(CarveMapIndex( wlink().CarveSegData, sdata->next_by_mod ));
+    sdata->next = static_cast<SEGDATA *>(CarveMapIndex( link.CarveSegData, sdata->next ));  // dont use this?
+    sdata->next_by_mod = static_cast<SEGDATA *>(CarveMapIndex( link.CarveSegData, sdata->next_by_mod ));
     sdata->u.name.u.ptr = MapString( sdata->u.name.u.offs );
     sdata->o.clname.u.ptr = MapString( sdata->o.clname.u.offs );
 }
@@ -731,44 +742,46 @@ static void RebuildSegData( void *_sdata, void *info )
 static void RebuildSymbol( void *_sym, void *info )
 /*************************************************/
 {
+    Link& link = wlink();
     symbol *sym = static_cast<symbol *>(_sym);
 
     /* unused parameters */ (void)info;
 
     if( *reinterpret_cast<unsigned_32 *>(sym) == CARVE_INVALID_INDEX ) {
-        CarveInsertFree( wlink().CarveSymbol, sym );
+        CarveInsertFree( link.CarveSymbol, sym );
         return;
     }
-    sym->hash = static_cast<symbol *>(CarveMapIndex( wlink().CarveSymbol, sym->hash ));
-    sym->next = static_cast<symbol *>(CarveMapIndex( wlink().CarveSymbol, sym->next ));
-    sym->next_by_publist = static_cast<symbol *>(CarveMapIndex( wlink().CarveSymbol, sym->next_by_publist ));
+    sym->hash = static_cast<symbol *>(CarveMapIndex( link.CarveSymbol, sym->hash ));
+    sym->next = static_cast<symbol *>(CarveMapIndex( link.CarveSymbol, sym->next ));
+    sym->next_by_publist = static_cast<symbol *>(CarveMapIndex( link.CarveSymbol, sym->next_by_publist ));
     sym->name.u.ptr = MapString( sym->name.u.offs );
     sym->info &= ~SYM_CLEAR_ON_INC;
-    sym->mod = static_cast<mod_entry *>(CarveMapIndex( wlink().CarveModEntry, sym->mod ));
+    sym->mod = static_cast<mod_entry *>(CarveMapIndex( link.CarveModEntry, sym->mod ));
     if( IS_SYM_ALIAS( sym ) ) {
         sym->p.alias.u.ptr = MapString( sym->p.alias.u.offs );
     } else if( IS_SYM_IMPORTED( sym ) ) {
-        if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE) ) {
-            sym->p.import_dll = static_cast<dll_sym_info *>(CarveMapIndex( wlink().CarveDLLInfo, sym->p.import_dll ));
+        if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE) ) {
+            sym->p.import_dll = static_cast<dll_sym_info *>(CarveMapIndex( link.CarveDLLInfo, sym->p.import_dll ));
         }
     } else if( (sym->info & SYM_IS_ALTDEF) == 0
       || IS_SYM_COMDAT( sym ) ) {
-        sym->p.seg = static_cast<segdata *>(CarveMapIndex( wlink().CarveSegData, sym->p.seg ));
-        sym->u.altdefs = static_cast<symbol *>(CarveMapIndex( wlink().CarveSymbol, sym->u.altdefs ));
+        sym->p.seg = static_cast<segdata *>(CarveMapIndex( link.CarveSegData, sym->p.seg ));
+        sym->u.altdefs = static_cast<symbol *>(CarveMapIndex( link.CarveSymbol, sym->u.altdefs ));
     }
     if( sym->info & SYM_EXPORTED ) {
-        if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
-            sym->e.export_ = CarveMapIndex( wlink().CarveExportInfo, sym->e.export_ );
+        if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+            sym->e.export_ = CarveMapIndex( link.CarveExportInfo, sym->e.export_ );
         }
     } else if( sym->e.def != nullptr ) {
-        sym->e.def = static_cast<symbol *>(CarveMapIndex( wlink().CarveSymbol, sym->e.def ));
+        sym->e.def = static_cast<symbol *>(CarveMapIndex( link.CarveSymbol, sym->e.def ));
     }
 }
 
 static void ReadBlockInfo( carve_t carver, void *blk, void *info )
 /****************************************************************/
 {
-    QRead( static_cast<perm_read_info *>( info )->incfhdl, CarveBlockData( blk ), CarveBlockSize( carver ), wlink().IncFileName );
+    Link& link = wlink();
+    QRead( static_cast<perm_read_info *>( info )->incfhdl, CarveBlockData( blk ), CarveBlockSize( carver ), link.IncFileName );
 }
 
 static void SmallFreeCheck( void *data, void *_info )
@@ -800,19 +813,19 @@ static void RebuildSmallCarve( carve_t carver, unsigned num,
     CarveWalkAll( carver, SmallFreeCheck, info );
 }
 
-static void PurgeRead( perm_read_info *info )
+static void PurgeRead(Link& link,  perm_read_info *info )
 /*******************************************/
 {
     PermState &st = perm_state();
 
     ClearHashPointers();
-    CarvePurge( wlink().CarveGroup );
-    CarvePurge( wlink().CarveModEntry );
-    CarvePurge( wlink().CarveSegData );
-    CarvePurge( wlink().CarveSymbol );
-    if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
-        CarvePurge( wlink().CarveDLLInfo );
-        CarvePurge( wlink().CarveExportInfo );
+    CarvePurge( link.CarveGroup );
+    CarvePurge( link.CarveModEntry );
+    CarvePurge( link.CarveSegData );
+    CarvePurge( link.CarveSymbol );
+    if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+        CarvePurge( link.CarveDLLInfo );
+        CarvePurge( link.CarveExportInfo );
     }
     MemFree( info->buffer );
     MemFree( st.IncStrTab );
@@ -849,24 +862,24 @@ static void ReadBinary( char **buf, unsigned_32 nameidx, time_t modtime )
     QClose( hdl, fname );
 }
 
-static void ReadStartInfo( inc_file_header *hdr )
+static void ReadStartInfo(Link& link,  inc_file_header *hdr )
 /***********************************************/
 {
     if( hdr->startmodidx != 0 ) {
-        wlink().StartInfo.from_inc = true;
-        wlink().StartInfo.mod = static_cast<mod_entry *>( CarveMapIndex( wlink().CarveModEntry, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->startmodidx ) ) ) );
+        link.StartInfo.from_inc = true;
+        link.StartInfo.mod = static_cast<mod_entry *>( CarveMapIndex( link.CarveModEntry, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->startmodidx ) ) ) );
         if( hdr->flags & INC_FLAG_START_SEG ) {
-            wlink().StartInfo.type = START_IS_SDATA;
-            wlink().StartInfo.targ.sdata = static_cast<segdata *>( CarveMapIndex( wlink().CarveSegData, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->startidx ) ) ) );
+            link.StartInfo.type = START_IS_SDATA;
+            link.StartInfo.targ.sdata = static_cast<segdata *>( CarveMapIndex( link.CarveSegData, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->startidx ) ) ) );
         } else {
-            wlink().StartInfo.type = START_IS_SYM;
-            wlink().StartInfo.targ.sym = static_cast<symbol *>( CarveMapIndex( wlink().CarveSymbol, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->startidx ) ) ) );
+            link.StartInfo.type = START_IS_SYM;
+            link.StartInfo.targ.sym = static_cast<symbol *>( CarveMapIndex( link.CarveSymbol, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->startidx ) ) ) );
         }
-        wlink().StartInfo.off = hdr->startoff;
+        link.StartInfo.off = hdr->startoff;
     }
 }
 
-void ReadPermData( void )
+void ReadPermData(Link& link)
 /******************************/
 {
     PermState &st = perm_state();
@@ -874,74 +887,74 @@ void ReadPermData( void )
     perm_read_info      info;
     inc_file_header     *hdr;
 
-    info.incfhdl = QObjOpen( wlink().IncFileName );
+    info.incfhdl = QObjOpen( link.IncFileName );
     if( info.incfhdl == NIL_FHANDLE )
         return;
     info.buffer = static_cast<char *>( MemAllocSafe( SECTOR_SIZE ) );
-    QRead( info.incfhdl, info.buffer, SECTOR_SIZE, wlink().IncFileName );
+    QRead( info.incfhdl, info.buffer, SECTOR_SIZE, link.IncFileName );
     hdr = reinterpret_cast<inc_file_header *>( info.buffer );
     if( memcmp( hdr->signature, INC_FILE_SIG, INC_FILE_SIG_SIZE ) != 0 ) {
         LnkMsg( WRN+MSG_INV_INC_FILE, nullptr );
         MemFree( info.buffer );
-        QClose( info.incfhdl, wlink().IncFileName );
+        QClose( info.incfhdl, link.IncFileName );
         return;
     }
     if( hdr->hdrsize > SECTOR_SIZE ) {
         info.buffer = static_cast<char *>( MemReallocSafe( info.buffer, hdr->hdrsize ) );
         hdr = reinterpret_cast<inc_file_header *>( info.buffer );   /* in case realloc moved it*/
-        QRead( info.incfhdl, info.buffer + SECTOR_SIZE, hdr->hdrsize - SECTOR_SIZE, wlink().IncFileName );
+        QRead( info.incfhdl, info.buffer + SECTOR_SIZE, hdr->hdrsize - SECTOR_SIZE, link.IncFileName );
     }
     info.currpos = sizeof( inc_file_header );
-    CarveRestart( wlink().CarveModEntry, hdr->mods.num );
-    CarveRestart( wlink().CarveSegData, hdr->segdatas.num );
-    CarveRestart( wlink().CarveSymbol, hdr->symbols.num );
-    if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
-        CarveRestart( wlink().CarveDLLInfo, hdr->numdllsyms );
-        CarveRestart( wlink().CarveExportInfo, hdr->numexports );
+    CarveRestart( link.CarveModEntry, hdr->mods.num );
+    CarveRestart( link.CarveSegData, hdr->segdatas.num );
+    CarveRestart( link.CarveSymbol, hdr->symbols.num );
+    if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+        CarveRestart( link.CarveDLLInfo, hdr->numdllsyms );
+        CarveRestart( link.CarveExportInfo, hdr->numexports );
     }
-    ReadHashPointers( &info );
+    ReadHashPointers(link,  &info );
     if( hdr->altdefsize > 0 ) {
         st.AltDefData = MemAllocSafe( hdr->altdefsize );
-        QRead( info.incfhdl, st.AltDefData, hdr->altdefsize, wlink().IncFileName );
+        QRead( info.incfhdl, st.AltDefData, hdr->altdefsize, link.IncFileName );
     }
-    CarveWalkBlocks( wlink().CarveModEntry, ReadBlockInfo, &info );
-    CarveWalkBlocks( wlink().CarveSegData, ReadBlockInfo, &info );
-    CarveWalkBlocks( wlink().CarveSymbol, ReadBlockInfo, &info );
+    CarveWalkBlocks( link.CarveModEntry, ReadBlockInfo, &info );
+    CarveWalkBlocks( link.CarveSegData, ReadBlockInfo, &info );
+    CarveWalkBlocks( link.CarveSymbol, ReadBlockInfo, &info );
     st.IncStrTab = static_cast<char *>( MemAllocSafe( hdr->strtabsize ) );
-    QRead( info.incfhdl, st.IncStrTab, hdr->strtabsize, wlink().IncFileName );
+    QRead( info.incfhdl, st.IncStrTab, hdr->strtabsize, link.IncFileName );
     st.ReadRelocs = nullptr;
     if( hdr->relocsize ) {
         st.ReadRelocs = static_cast<char *>( MemAllocSafe( hdr->relocsize ) );
-        QRead( info.incfhdl, st.ReadRelocs, hdr->relocsize, wlink().IncFileName );
+        QRead( info.incfhdl, st.ReadRelocs, hdr->relocsize, link.IncFileName );
     }
-    QClose( info.incfhdl, wlink().IncFileName );
+    QClose( info.incfhdl, link.IncFileName );
     ReadBinary( &st.OldExe, hdr->exename, hdr->exemodtime );
     if( st.OldExe == nullptr ) {
-        PurgeRead( &info );
+        PurgeRead(link,  &info );
         return;
     }
     if( hdr->symname != 0 ) {
         ReadBinary( &st.OldSymFile, hdr->symname, hdr->symmodtime );
         if( st.OldSymFile == nullptr ) {
-            PurgeRead( &info );
+            PurgeRead(link,  &info );
             return;
         }
     }
-    ReadGroupsList( hdr->numgroups, &info );
-    ReadLibList( hdr->numuserlibs, &wlink().SavedUserLibs, &info );
-    ReadLibList( hdr->numdeflibs, &wlink().SavedDefLibs, &info );
-    if( wlink().FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
-        RebuildSmallCarve( wlink().CarveDLLInfo, hdr->numdllsyms, RebuildDLLInfo, &info );
-        RebuildSmallCarve( wlink().CarveExportInfo, hdr->numexports, RebuildExportInfo, &info );
+    ReadGroupsList(link,  hdr->numgroups, &info );
+    ReadLibList( hdr->numuserlibs, &link.SavedUserLibs, &info );
+    ReadLibList( hdr->numdeflibs, &link.SavedDefLibs, &info );
+    if( link.FmtData.type & (MK_NE | MK_OS2_FLAT | MK_PE | MK_WIN_VXD) ) {
+        RebuildSmallCarve( link.CarveDLLInfo, hdr->numdllsyms, RebuildDLLInfo, &info );
+        RebuildSmallCarve( link.CarveExportInfo, hdr->numexports, RebuildExportInfo, &info );
     }
-    CarveWalkAll( wlink().CarveModEntry, RebuildModEntry, &info );
-    CarveWalkAll( wlink().CarveSegData, RebuildSegData, &info );
-    CarveWalkAll( wlink().CarveSymbol, RebuildSymbol, &info );
-    wlink().Root->mods = static_cast<MOD_ENTRY *>( CarveMapIndex( wlink().CarveModEntry, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->rootmodidx ) ) ) );
-    wlink().HeadSym = static_cast<symbol *>( CarveMapIndex( wlink().CarveSymbol, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->headsymidx ) ) ) );
-    wlink().LibModules = static_cast<mod_entry *>( CarveMapIndex( wlink().CarveModEntry, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->libmodidx ) ) ) );
-    wlink().LinkState = static_cast<stateflag>( hdr->linkstate ) | LS_GOT_PREV_STRUCTS | (wlink().LinkState & LS_CLEAR_ON_INC);
-    ReadStartInfo( hdr );
+    CarveWalkAll( link.CarveModEntry, RebuildModEntry, &info );
+    CarveWalkAll( link.CarveSegData, RebuildSegData, &info );
+    CarveWalkAll( link.CarveSymbol, RebuildSymbol, &info );
+    link.Root->mods = static_cast<MOD_ENTRY *>( CarveMapIndex( link.CarveModEntry, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->rootmodidx ) ) ) );
+    link.HeadSym = static_cast<symbol *>( CarveMapIndex( link.CarveSymbol, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->headsymidx ) ) ) );
+    link.LibModules = static_cast<mod_entry *>( CarveMapIndex( link.CarveModEntry, reinterpret_cast<void *>( static_cast<pointer_uint>( hdr->libmodidx ) ) ) );
+    link.LinkState = static_cast<stateflag>( hdr->linkstate ) | LS_GOT_PREV_STRUCTS | (link.LinkState & LS_CLEAR_ON_INC);
+    ReadStartInfo(link,  hdr );
     MemFree( info.buffer );
 }
 
@@ -1042,56 +1055,56 @@ void *GetAltdefContents( segdata *sdata )
     return( static_cast<char *>( st.AltDefData ) + sdata->u1.vm_offs );
 }
 
-void FreeSavedRelocs( void )
+void FreeSavedRelocs(Link& link)
 /*********************************/
 {
     PermState &st = perm_state();
 
-    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+    if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
         MemFree( st.ReadRelocs );
         st.ReadRelocs = nullptr;
     }
 }
 
-void CleanPermData( void )
+void CleanPermData(Link& link)
 /*******************************/
 {
     PermState &st = perm_state();
 
 #ifdef DEVBUILD
-    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        CarveVerifyAllGone( wlink().CarveLeader, "seg_leader" );
-        CarveVerifyAllGone( wlink().CarveModEntry, "mod_entry" );
-        CarveVerifyAllGone( wlink().CarveDLLInfo, "dll_sym_info" );
-        CarveVerifyAllGone( wlink().CarveExportInfo, "entry_export" );
-        CarveVerifyAllGone( wlink().CarveSymbol, "symbol" );
-        CarveVerifyAllGone( wlink().CarveSegData, "segdata" );
-        CarveVerifyAllGone( wlink().CarveClass, "class_entry" );
-        CarveVerifyAllGone( wlink().CarveGroup, "group_entry" );
+    if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+        CarveVerifyAllGone( link.CarveLeader, "seg_leader" );
+        CarveVerifyAllGone( link.CarveModEntry, "mod_entry" );
+        CarveVerifyAllGone( link.CarveDLLInfo, "dll_sym_info" );
+        CarveVerifyAllGone( link.CarveExportInfo, "entry_export" );
+        CarveVerifyAllGone( link.CarveSymbol, "symbol" );
+        CarveVerifyAllGone( link.CarveSegData, "segdata" );
+        CarveVerifyAllGone( link.CarveClass, "class_entry" );
+        CarveVerifyAllGone( link.CarveGroup, "group_entry" );
     }
 #endif
-    if( wlink().LinkState & LS_LINK_ERROR ) {
-        QDelete( wlink().IncFileName );
+    if( link.LinkState & LS_LINK_ERROR ) {
+        QDelete( link.IncFileName );
     }
-    CarveDestroy( wlink().CarveLeader );
-    CarveDestroy( wlink().CarveModEntry );
-    CarveDestroy( wlink().CarveDLLInfo );
-    CarveDestroy( wlink().CarveExportInfo );
-    CarveDestroy( wlink().CarveSymbol );
-    CarveDestroy( wlink().CarveSegData );
-    CarveDestroy( wlink().CarveClass );
-    CarveDestroy( wlink().CarveGroup );
-    FiniStringTable( &wlink().PrefixStrings);
-    FiniStringTable( &wlink().PermStrings );
+    CarveDestroy( link.CarveLeader );
+    CarveDestroy( link.CarveModEntry );
+    CarveDestroy( link.CarveDLLInfo );
+    CarveDestroy( link.CarveExportInfo );
+    CarveDestroy( link.CarveSymbol );
+    CarveDestroy( link.CarveSegData );
+    CarveDestroy( link.CarveClass );
+    CarveDestroy( link.CarveGroup );
+    FiniStringTable( &link.PrefixStrings);
+    FiniStringTable( &link.PermStrings );
     FiniStringTable( &st.StoredRelocs );
-    MemFree( wlink().IncFileName );
+    MemFree( link.IncFileName );
     MemFree( st.IncStrTab );
     MemFree( st.ReadRelocs );
     MemFree( st.OldExe );
     MemFree( st.OldSymFile );
     MemFree( st.AltDefData );
-    RingFree( &wlink().IncGroupDefs );
-    MemFree( wlink().IncGroups );
-    FreeList( wlink().SavedUserLibs );
-    FreeList( wlink().SavedDefLibs );
+    RingFree( &link.IncGroupDefs );
+    MemFree( link.IncGroups );
+    FreeList( link.SavedUserLibs );
+    FreeList( link.SavedDefLibs );
 }

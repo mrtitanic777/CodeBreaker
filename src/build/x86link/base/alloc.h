@@ -38,11 +38,11 @@
 extern void     *PermAlloc( size_t );
 extern void     *Pass1Alloc( size_t );
 
-extern char     *MemToStringSafe( const void *mem, size_t len );
+extern char     *MemToStringSafe(Link& link,  const void *mem, size_t len );
 
 extern void     LnkMemInit( void );
 extern void     LnkMemFini( void );
-extern bool     FreeUpMemory( bool skip );
+extern bool     FreeUpMemory(Link& link,  bool skip );
 extern void     ResetPass1Blocks( void );
 extern bool     PermShrink( void );
 extern void     ReleasePass1Blocks( void );

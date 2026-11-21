@@ -32,23 +32,23 @@
 
 
 extern void     ODBIInit( section * );
-extern void     ODBIInitModule( mod_entry * );
-extern void     ODBIP1Source( byte, byte, const char *, size_t );
-extern void     ODBIP1ModuleScanned( void );
+extern void     ODBIInitModule(Link& link,  mod_entry * );
+extern void     ODBIP1Source(Link& link,  byte, byte, const char *, size_t );
+extern void     ODBIP1ModuleScanned(Link& link);
 extern void     ODBIP1ModuleFinished( mod_entry * );
 extern void     ODBIAddModule( mod_entry *, section * );
-extern void     ODBIGenModule( void );
+extern void     ODBIGenModule(Link& link);
 extern void     ODBIAddFakeModule( unsigned );
 extern void     ODBIGenFakeModule( char * );
-extern void     ODBIDefClass( class_entry *, unsigned_32 );
-extern void     ODBIAddLocal( seg_leader *, offset );
-extern void     ODBIGenLocal( segdata * );
-extern void     ODBIAddGlobal( symbol * );
-extern void     ODBIGenGlobal( symbol *, section * );
+extern void     ODBIDefClass(Link& link,  class_entry *, unsigned_32 );
+extern void     ODBIAddLocal(Link& link,  seg_leader *, offset );
+extern void     ODBIGenLocal(Link& link,  segdata * );
+extern void     ODBIAddGlobal(Link& link,  symbol * );
+extern void     ODBIGenGlobal(Link& link,  symbol *, section * );
 extern void     ODBIGenLines( lineinfo * );
 extern void     ODBIAddAddrInfo( seg_leader * );
-extern void     ODBIAddrSectStart( section * );
-extern void     ODBIP2Start( section * );
+extern void     ODBIAddrSectStart(Link& link,  section * );
+extern void     ODBIP2Start(Link& link,  section * );
 extern void     ODBISectCleanup( section * );
-extern void     ODBIFini( section * );
-extern void     ODBIWrite( void );
+extern void     ODBIFini(Link& link,  section * );
+extern void     ODBIWrite(Link& link);

@@ -90,7 +90,7 @@ constexpr bool is_vowel( int c )
 
 }  // namespace
 
-void ResetMsg( void )
+void ResetMsg(Link& link)
 /**************************/
 {
     MsgState    &st = state();
@@ -99,10 +99,10 @@ void ResetMsg( void )
     st.loc_mem = nullptr;
     st.loc_rec = 0;
     st.arg_info.index = -1;
-    memset( wlink().MsgFlags, 0xFF, MSG_ARRAY_SIZE );
+    memset( link.MsgFlags, 0xFF, MSG_ARRAY_SIZE );
 }
 
-static size_t MakeExeTypeString( char *buff, size_t max )
+static size_t MakeExeTypeString(Link& link,  char *buff, size_t max )
 /*******************************************************/
 /* make up the "an OS/2 executable" string. */
 {
@@ -115,10 +115,10 @@ static size_t MakeExeTypeString( char *buff, size_t max )
         return( 0 );
     len = 1;
     *buff++ = 'a';
-    if( wlink().FmtData.osname != nullptr ) {
-        str = wlink().FmtData.osname;
+    if( link.FmtData.osname != nullptr ) {
+        str = link.FmtData.osname;
     } else {
-        unsigned    format = wlink().FmtData.type;
+        unsigned    format = link.FmtData.type;
 
         for( ;; ) {
             num = log2_32( format );
@@ -142,7 +142,7 @@ static size_t MakeExeTypeString( char *buff, size_t max )
     memcpy( buff, str, num );
     buff += num;
     *buff++ = ' ';
-    Msg_Get( wlink().FmtData.dll ? MSG_CREATE_TYPE_DLL : MSG_CREATE_TYPE_EXE, rc_buff.data() );
+    Msg_Get( link.FmtData.dll ? MSG_CREATE_TYPE_DLL : MSG_CREATE_TYPE_EXE, rc_buff.data() );
     str = rc_buff.data();
     num = strlen( str );
     len += num;
@@ -152,56 +152,56 @@ static size_t MakeExeTypeString( char *buff, size_t max )
     return( len );
 }
 
-size_t FmtStr( char *buff, size_t len, const char *fmt, ... )
+size_t FmtStr(Link& link,  char *buff, size_t len, const char *fmt, ... )
 /***********************************************************/
 {
     va_list args;
     size_t  size;
 
     va_start( args, fmt );
-    size = DoFmtStr( buff, len, fmt, args );
+    size = DoFmtStr(link,  buff, len, fmt, args );
     va_end( args );
     return( size );
 }
 
-static size_t fmtAddr( char *dest, size_t len, addr_type *addr, bool offs_32 )
+static size_t fmtAddr(Link& link,  char *dest, size_t len, addr_type *addr, bool offs_32 )
 /****************************************************************************/
 {
 #if defined( _PHARLAP ) || defined( _RAW )
     /* only flat offset */
-    if( wlink().FmtData.type & MK_FLAT_OFFS ) {
-        return( FmtStr( dest, len, "%h", addr->off ) );
+    if( link.FmtData.type & MK_FLAT_OFFS ) {
+        return( FmtStr(link,  dest, len, "%h", addr->off ) );
     }
 #endif
 #ifdef _QNX
-    if( wlink().FmtData.type & MK_QNX_FLAT) {
-        return( FmtStr( dest, len, "%h", FindLinearAddr( addr ) ) );
+    if( link.FmtData.type & MK_QNX_FLAT) {
+        return( FmtStr(link,  dest, len, "%h", FindLinearAddr(link,  addr ) ) );
     }
 #endif
 #if defined( _ELF ) || defined( _OS2 )
-    if( wlink().FmtData.type & (MK_ELF | MK_PE) ) {
-        return( FmtStr( dest, len, "%h", FindLinearAddr2( addr ) ) );
+    if( link.FmtData.type & (MK_ELF | MK_PE) ) {
+        return( FmtStr(link,  dest, len, "%h", FindLinearAddr2(link,  addr ) ) );
     }
 #endif
 #ifdef _NOVELL
-    if( wlink().FmtData.type & MK_ID_SPLIT ) {
+    if( link.FmtData.type & MK_ID_SPLIT ) {
         if( addr->seg == CODE_SEGMENT ) {
-            return( FmtStr( dest, len, "CODE:%h", addr->off ) );
+            return( FmtStr(link,  dest, len, "CODE:%h", addr->off ) );
         } else {
-            return( FmtStr( dest, len, "DATA:%h", addr->off ) );
+            return( FmtStr(link,  dest, len, "DATA:%h", addr->off ) );
         }
     }
 #endif
     /* segmented formats 16:16 or 16:32 */
     if( !offs_32
-      && (wlink().FmtData.type & (MK_DOS | MK_NE | MK_DOS16M | MK_QNX_16 | MK_RDOS_16)) ) {
-        return( FmtStr( dest, len, "%x:%x", addr->seg, static_cast<unsigned short>( addr->off ) ) );
+      && (link.FmtData.type & (MK_DOS | MK_NE | MK_DOS16M | MK_QNX_16 | MK_RDOS_16)) ) {
+        return( FmtStr(link,  dest, len, "%x:%x", addr->seg, static_cast<unsigned short>( addr->off ) ) );
     } else {
-        return( FmtStr( dest, len, "%x:%h", addr->seg, addr->off ) );
+        return( FmtStr(link,  dest, len, "%x:%h", addr->seg, addr->off ) );
     }
 }
 
-size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
+size_t DoFmtStr(Link& link,  char *buff, size_t len, const char *src, va_list args )
 /***********************************************************************
  * quick vsprintf routine
  * assumptions - format string does not end in '%'
@@ -248,7 +248,7 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
                 } else {
                     str = va_arg( args, symbol * )->name.u.ptr;
                 }
-                if( (wlink().LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
+                if( (link.LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
                     size = __demangle_l( str, 0, dest, len );
                     if( size > ( len - 1 ) )
                         size = len - 1;
@@ -362,13 +362,13 @@ size_t DoFmtStr( char *buff, size_t len, const char *src, va_list args )
                 }
                 temp = st.arg_info.index;
                 st.arg_info.index = -1;
-                size = fmtAddr( dest, len, addr, ( ch == 'A' ) );
+                size = fmtAddr(link,  dest, len, addr, ( ch == 'A' ) );
                 dest += size;
                 len -= size;
                 st.arg_info.index = temp;
                 break;
             case 'f':
-                size = MakeExeTypeString( dest, len );
+                size = MakeExeTypeString(link,  dest, len );
                 dest += size;
                 len -= size;
                 break;
@@ -390,21 +390,21 @@ void Locator( const char *filename, const char *mem, unsigned rec )
     st.loc_rec = rec;
 }
 
-static void LocateFile( unsigned num )
+static void LocateFile(Link& link,  unsigned num )
 /************************************/
 {
     unsigned    rec;
 
     if( num & LOC ) {
         if( num & (LOC_REC & ~LOC) ) {
-            rec = wlink().RecNum;
+            rec = link.RecNum;
         } else {
             rec = 0;
         }
-        if( wlink().CurrMod == nullptr ) {
+        if( link.CurrMod == nullptr ) {
             Locator( DirectiveSourceName(), nullptr, 0 );
          } else {
-            Locator( wlink().CurrMod->u1.source->infile->name.u.ptr, wlink().CurrMod->name.u.ptr, rec );
+            Locator( link.CurrMod->u1.source->infile->name.u.ptr, link.CurrMod->name.u.ptr, rec );
         }
     }
 }
@@ -420,7 +420,7 @@ unsigned CalcMsgNum( unsigned num )
     return( class_ * 1000 + (num & NUM_MSK) );
 }
 
-size_t GetMsgPrefix( unsigned num, char *buff, size_t max_len )
+size_t GetMsgPrefix(Link& link,  unsigned num, char *buff, size_t max_len )
 /*************************************************************/
 {
     size_t                              msgprefixlen;
@@ -436,12 +436,12 @@ size_t GetMsgPrefix( unsigned num, char *buff, size_t max_len )
         } else {
             Msg_Get( MSG_ERROR, rc_buff.data() );
         }
-        msgprefixlen = FmtStr( buff, max_len, rc_buff.data(), CalcMsgNum( num ) );
+        msgprefixlen = FmtStr(link,  buff, max_len, rc_buff.data(), CalcMsgNum( num ) );
     }
     return( msgprefixlen );
 }
 
-static void MessageFini( unsigned num, char *buff, size_t len )
+static void MessageFini(Link& link,  unsigned num, char *buff, size_t len )
 /*************************************************************/
 {
     unsigned    class_;
@@ -449,19 +449,19 @@ static void MessageFini( unsigned num, char *buff, size_t len )
 
     class_ = num & CLASS_MSK;
     if( class_ >= (ERR & CLASS_MSK) ) {
-        wlink().LinkState |= LS_LINK_ERROR;
+        link.LinkState |= LS_LINK_ERROR;
     }
     if( num & OUT_TERM ) {
-        if( (wlink().LinkFlags & LF_QUIET_FLAG) == 0 ) {
-            WLPrtBanner();
+        if( (link.LinkFlags & LF_QUIET_FLAG) == 0 ) {
+            WLPrtBanner(link);
             WriteStdOutInfo( buff, num, sym_name );
         } else if( class_ != (INF & CLASS_MSK) ) {
             WriteStdOutInfo( buff, num, sym_name );
         }
     }
     if( num & OUT_MAP ) {
-        if( wlink().MapFile != nullptr ) {
-            WriteMapLnkMsgCallback( num, buff, len );
+        if( link.MapFile != nullptr ) {
+            WriteMapLnkMsgCallback(link,  num, buff, len );
         }
     }
     if( class_ == (FTL & CLASS_MSK) ) {
@@ -470,9 +470,9 @@ static void MessageFini( unsigned num, char *buff, size_t len )
     /* yells are counted as errors for limits */
     if( ( class_ == (YELL & CLASS_MSK) )
       || ( class_ >= (MILD_ERR & CLASS_MSK) ) ) {
-        if( wlink().LinkFlags & LF_MAX_ERRORS_FLAG ) {
-            wlink().MaxErrors--;
-            if( wlink().MaxErrors == 0 ) {
+        if( link.LinkFlags & LF_MAX_ERRORS_FLAG ) {
+            link.MaxErrors--;
+            if( link.MaxErrors == 0 ) {
                 LnkMsg( FTL+MSG_TOO_MANY_ERRORS, nullptr );
             }
         }
@@ -520,6 +520,7 @@ void LnkMsg(
  * types is either NULL or the order of interpolated arguments.
  */
 {
+    Link& link = wlink();
     va_list                             args;
     int                                 which_file = 0;
     size_t                              len;
@@ -527,10 +528,10 @@ void LnkMsg(
     std::array<char, MAX_MSG_SIZE>      buff;
     MsgState                            &st = state();
 
-    if( !TestBit( wlink().MsgFlags, num & NUM_MSK ) )
+    if( !TestBit( link.MsgFlags, num & NUM_MSK ) )
         return;
     st.curr_sym_name = nullptr;
-    LocateFile( num );
+    LocateFile(link,  num );
     len = 0;
     if( st.loc_file != nullptr ) {
         which_file += 1;
@@ -552,12 +553,12 @@ void LnkMsg(
             Msg_Get( MSG_FILE_REC_NAME_0 + which_file - 1, rc_buff.data() );
         }
         FileOrder( rc_buff.data(), which_file );
-        len += FmtStr( buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
+        len += FmtStr(link,  buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
         if( num & LINE ) {
             if( DirectiveSourceKind() == DIRECTIVE_SOURCE_OTHER ) {
                 Msg_Get( MSG_LINE, rc_buff.data() );
                 Msg_Do_Put_Args( rc_buff.data(), &st.arg_info, "d", DirectiveLine() );
-                len += FmtStr( buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
+                len += FmtStr(link,  buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
             }
         }
         st.loc_file = nullptr;
@@ -569,12 +570,12 @@ void LnkMsg(
     va_start( args, types );
     Msg_Put_Args( rc_buff.data(), &st.arg_info, types, args );
     va_end( args );
-    len += FmtStr( buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
-    MessageFini( num, buff.data(), len );
+    len += FmtStr(link,  buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data() );
+    MessageFini(link,  num, buff.data(), len );
 }
 
 #ifdef _OS2
-static void HandleRcMsg( unsigned num, va_list args )
+static void HandleRcMsg(Link& link,  unsigned num, va_list args )
 /***************************************************/
 /* getting an error message from resource compiler code */
 {
@@ -586,27 +587,29 @@ static void HandleRcMsg( unsigned num, va_list args )
     len = 0;
     state().curr_sym_name = nullptr;
     Msg_Get( num & NUM_MSK, rc_buff.data() );
-    len += DoFmtStr( buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data(), args );
-    MessageFini( num, buff.data(), len );
+    len += DoFmtStr(link,  buff.data() + len, MAX_MSG_SIZE - len, rc_buff.data(), args );
+    MessageFini(link,  num, buff.data(), len );
 }
 
 void RcWarning( unsigned num, ... )
 /****************************************/
 {
+    Link& link = wlink();
     va_list args;
 
     va_start( args, num );
-    HandleRcMsg( num, args );
+    HandleRcMsg(link,  num, args );
     va_end( args );
 }
 
 void RcError( unsigned num, ... )
 /**************************************/
 {
+    Link& link = wlink();
     va_list args;
 
     va_start( args, num );
-    HandleRcMsg( num, args );
+    HandleRcMsg(link,  num, args );
     va_end( args );
 }
 
@@ -651,34 +654,35 @@ bool RcIOError( RcStatus ret, const char *srcname, const char *dstname, int err 
 }
 #endif
 
-void WLPrtBanner( void )
+void WLPrtBanner(Link& link)
 /***********************
  * print the banner, if it hasn't already been printed
  */
 {
-    if( !wlink().BannerPrinted ) {
-        wlink().BannerPrinted = true;
+    if( !link.BannerPrinted ) {
+        link.BannerPrinted = true;
         for( int id : { PRODUCT, COPYRIGHT, COPYRIGHT2, TRADEMARK, TRADEMARK2 } ) {
             WriteStdOutInfo( MsgStrings[id], BANNER, nullptr );
         }
     }
 }
 
-bool SkipSymbol( symbol * sym )
+bool SkipSymbol(Link& link,  symbol * sym )
 /************************************/
 {
     mangled_type art;
 
     if( (sym->info & SYM_STATIC)
-      && (wlink().MapFlags & MAP_STATICS) == 0 )
+      && (link.MapFlags & MAP_STATICS) == 0 )
         return( true );
     art = __is_mangled_internal( sym->name.u.ptr, strlen( sym->name.u.ptr ) );
-    return( (wlink().MapFlags & MAP_ARTIFICIAL) == 0 && art == __MANGLED_INTERNAL );
+    return( (link.MapFlags & MAP_ARTIFICIAL) == 0 && art == __MANGLED_INTERNAL );
 }
 
 int SymAlphaCompare( const void *a, const void *b )
 /********************************************************/
 {
+    Link& link = wlink();
     const symbol    *left = *static_cast<symbol *const *>( a );
     const symbol    *right = *static_cast<symbol *const *>( b );
     const char      *leftname;
@@ -687,7 +691,7 @@ int SymAlphaCompare( const void *a, const void *b )
     size_t          rightsize;
     int             result;
 
-    if( (wlink().LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
+    if( (link.LinkFlags & LF_DONT_UNMANGLE) == 0 ) {
         __unmangled_name( left->name.u.ptr, 0, &leftname, &leftsize );
         __unmangled_name( right->name.u.ptr, 0, &rightname, &rightsize );
     } else {

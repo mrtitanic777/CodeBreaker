@@ -39,5 +39,5 @@
 #define NUM_GDT_DESCRIPTORS     7
 #define NUM_IDT_DESCRIPTORS     1
 
-extern void     FiniPharLapLoadFile( void );
-extern void     CheckPharLapData( void );
+extern void     FiniPharLapLoadFile(Link& link);
+extern void     CheckPharLapData(Link& link);

@@ -60,56 +60,56 @@ typedef struct {
 } line_walk_data;
 
 
-void ResetDBI( void )
+void ResetDBI(Link& link)
 /*******************/
 {
-    wlink().SymFileName = nullptr;
-    wlink().DBIGroups = nullptr;
+    link.SymFileName = nullptr;
+    link.DBIGroups = nullptr;
     // wlink.exe starts each link with this 0 (only a PE link sets it): the DEBUG_TYPE_MISC block of any other format
     // ends with it (special_purpose), and a PE link earlier in the same process had left its file offset here
-    wlink().CVDebugDirEntryPos = 0;
+    link.CVDebugDirEntryPos = 0;
 }
 
-void DBIInit( void )
+void DBIInit(Link& link)
 /******************/
 // called just after command file parsing
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIInit( wlink().Root );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIInit( link.Root );
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
         CVInit();
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
         DwarfInit();
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
         HllInit();
     }
 }
 
-void DBISectInit( section *sect )
+void DBISectInit(Link& link,  section *sect )
 /*******************************/
 // called when a section created in command file parsing
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         ODBIInit( sect );
     }
 }
 
-void DBIInitModule( mod_entry *obj )
+void DBIInitModule(Link& link,  mod_entry *obj )
 /**********************************/
 // called before pass 1 is done on the module
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIInitModule( obj );
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIInitModule(link,  obj );
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
         DwarfInitModule( obj );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
         CVInitModule( obj );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
         HllInitModule( obj );
     }
 }
 
-void DBIP1Source( const byte *buff, const byte *endbuff )
+void DBIP1Source(Link& link,  const byte *buff, const byte *endbuff )
 /*******************************************************/
 {
     byte            major;
@@ -118,24 +118,24 @@ void DBIP1Source( const byte *buff, const byte *endbuff )
     major = *buff++;
     minor = *buff++;
     if( endbuff <= buff ) {
-        BadObject();
+        BadObject(link);
         return;
     }
-    wlink().ObjFormat |= OBJ_FMT_DEBUG_COMENT;
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIP1Source( major, minor, reinterpret_cast<const char *>( buff ), endbuff - buff );
+    link.ObjFormat |= OBJ_FMT_DEBUG_COMENT;
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIP1Source(link,  major, minor, reinterpret_cast<const char *>( buff ), endbuff - buff );
     }
 }
 
-section *DBIGetSect( const char *clname )
+section *DBIGetSect(Link& link,  const char *clname )
 /***************************************/
 {
     if( ( stricmp( clname, _MSTypeClass ) == 0 )
       || ( stricmp( clname, _MSLocalClass ) == 0 )
       || stricmp( clname, _HllLineClass ) == 0) {
-        return( wlink().CurrSect );
+        return( link.CurrSect );
     } else if( stricmp( clname, _DwarfClass ) == 0 ) {
-        return( wlink().Root );
+        return( link.Root );
     }
     return( nullptr );
 }
@@ -154,13 +154,13 @@ void DBIColClass( class_entry *class_ )
     }
 }
 
-unsigned_16 DBIColSeg( class_entry *class_ )
+unsigned_16 DBIColSeg(Link& link,  class_entry *class_ )
 /*****************************************/
 {
     switch( class_->flags & CLASS_DEBUG_INFO ) {
     case CLASS_DWARF:
-        if( wlink().CurrMod->flags_dbi & DBI_TYPE ) {
-            wlink().CurrMod->flags_mod |= MOD_DBI_SEEN;
+        if( link.CurrMod->flags_dbi & DBI_TYPE ) {
+            link.CurrMod->flags_mod |= MOD_DBI_SEEN;
         }
         return( DWARF_DEBUG_OTHER );       // assume other until later.
     case CLASS_MS_TYPE:
@@ -173,55 +173,55 @@ unsigned_16 DBIColSeg( class_entry *class_ )
     return( NOT_DEBUGGING_INFO );
 }
 
-void DBIP1ModuleScanned( void )
+void DBIP1ModuleScanned(Link& link)
 /*****************************/
 // called in pass 1 when finished looking at a module
 // if some segdefs have been delayed due to distributing libraries, this
 // will be called twice (once when regular pass 1 is done, once when all
 // segdefs processed
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIP1ModuleScanned();
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIP1ModuleScanned(link);
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
         DwarfP1ModuleScanned();
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
         CVP1ModuleScanned();
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
         HllP1ModuleScanned();
     }
 }
 
-static bool MSSkip( void )
+static bool MSSkip(Link& link)
 /************************/
 {
     bool            iscv;
     bool            seencmt;
 
-    if( wlink().ObjFileFormat != FILE_FMT_OMF ) {
-        return( wlink().LinkFlags & LF_DWARF_DBI_FLAG );
+    if( link.ObjFileFormat != FILE_FMT_OMF ) {
+        return( link.LinkFlags & LF_DWARF_DBI_FLAG );
     } else {
-        iscv = ( (wlink().LinkFlags & (LF_CV_DBI_FLAG | LF_HLL_DBI_FLAG) ) != 0 );
-        seencmt = ( (wlink().ObjFormat & OBJ_FMT_DEBUG_COMENT) != 0 );
-        return( (iscv ^ seencmt) == 0 || (wlink().LinkFlags & LF_DWARF_DBI_FLAG) );
+        iscv = ( (link.LinkFlags & (LF_CV_DBI_FLAG | LF_HLL_DBI_FLAG) ) != 0 );
+        seencmt = ( (link.ObjFormat & OBJ_FMT_DEBUG_COMENT) != 0 );
+        return( (iscv ^ seencmt) == 0 || (link.LinkFlags & LF_DWARF_DBI_FLAG) );
     }
 }
 
-bool DBISkip( seg_leader *seg )
+bool DBISkip(Link& link,  seg_leader *seg )
 /*****************************/
 // returns true we should skip processing this segment because we are
 // ignoring debugging information
 {
     switch( seg->dbgtype ) {
     case MS_TYPE:
-        return( (wlink().CurrMod->flags_dbi & DBI_TYPE) == 0 || MSSkip() );
+        return( (link.CurrMod->flags_dbi & DBI_TYPE) == 0 || MSSkip(link) );
     case MS_LOCAL:
-        return( (wlink().CurrMod->flags_dbi & DBI_LOCAL) == 0 || MSSkip() );
+        return( (link.CurrMod->flags_dbi & DBI_LOCAL) == 0 || MSSkip(link) );
     case HLL_LINE:
-        return( (wlink().CurrMod->flags_dbi & DBI_LINE) == 0 || MSSkip() );
+        return( (link.CurrMod->flags_dbi & DBI_LINE) == 0 || MSSkip(link) );
     case NOT_DEBUGGING_INFO:
         return( false );
     default:
-        return( (wlink().CurrMod->flags_dbi & DBI_TYPE) == 0 || (wlink().LinkFlags & LF_DWARF_DBI_FLAG) == 0 );
+        return( (link.CurrMod->flags_dbi & DBI_TYPE) == 0 || (link.LinkFlags & LF_DWARF_DBI_FLAG) == 0 );
     }
 }
 
@@ -242,38 +242,38 @@ static void AddNovGlobals( mod_entry *mod )
 #endif
 }
 
-void DBIPreAddrCalc( void )
+void DBIPreAddrCalc(Link& link)
 /*************************/
 {
     void (*modptr)( mod_entry * );
     void (*segptr)( seg_leader * );
 
-    if( wlink().LinkFlags & LF_NOVELL_DBI_FLAG ) {
-        WalkMods( AddNovGlobals );
+    if( link.LinkFlags & LF_NOVELL_DBI_FLAG ) {
+        WalkMods(link,  AddNovGlobals );
     }
-    if( (wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0 )
+    if( (link.LinkFlags & LF_ANY_DBI_FLAG) == 0 )
         return;
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         modptr = ODBIP1ModuleFinished;
         segptr = ODBIAddAddrInfo;
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
         modptr = DwarfP1ModuleFinished;
         segptr = DwarfAddAddrInfo;
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
         modptr = HllP1ModuleFinished;
         segptr = HllAddAddrInfo;
     } else {
         modptr = CVP1ModuleFinished;
         segptr = CVAddAddrInfo;
     }
-    WalkMods( modptr );
-    WalkLeaders( segptr );
-    if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-        WalkMods( DwarfStoreAddrInfo );
+    WalkMods(link,  modptr );
+    WalkLeaders(link,  segptr );
+    if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+        WalkMods(link,  DwarfStoreAddrInfo );
     }
 }
 
-void DBIAddrInfoScan( seg_leader *seg,
+void DBIAddrInfoScan(Link& link,  seg_leader *seg,
                          void (*initfn)( segdata *, void * ),
                          void (*addfn)( segdata *, offset, offset, void *, bool ),
                          void *cookie )
@@ -286,12 +286,12 @@ void DBIAddrInfoScan( seg_leader *seg,
 
     if( IS_DBG_INFO( seg ) )
         return;
-    if( wlink().FmtData.dll
-      || (wlink().FmtData.type & MK_PE) ) {
+    if( link.FmtData.dll
+      || (link.FmtData.type & MK_PE) ) {
         if( seg->class_->flags & (CLASS_STACK | CLASS_IDATA) )
             return;
         if( seg->combine == COMBINE_STACK ) {
-            if( (wlink().LinkState & LS_DOSSEG_FLAG) == 0 ) {
+            if( (link.LinkState & LS_DOSSEG_FLAG) == 0 ) {
                 return;
             }
         }
@@ -326,18 +326,18 @@ void DBIComment( void )
 {
 }
 
-void DBIAddModule( mod_entry *obj, section *sect )
+void DBIAddModule(Link& link,  mod_entry *obj, section *sect )
 /************************************************/
 // called just before publics have been assigned addresses between p1 & p2
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         ODBIAddModule( obj, sect );
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-        DwarfAddModule( obj, sect );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
-        CVAddModule( obj, sect );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
-        HllAddModule( obj, sect );
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+        DwarfAddModule(link,  obj, sect );
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
+        CVAddModule(link,  obj, sect );
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
+        HllAddModule(link,  obj, sect );
     }
 }
 
@@ -345,71 +345,72 @@ static void DBIGenLocal( void *sdata )
 /************************************/
 // called during pass 2 segment processing
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIGenLocal( static_cast<segdata *>( sdata ) );
+    Link& link = wlink();
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIGenLocal(link,  static_cast<segdata *>( sdata ) );
     }
 }
 
-static void DBIGenLines( mod_entry *mod )
+static void DBIGenLines(Link& link,  mod_entry *mod )
 /***************************************/
 // called during pass 2 linnum processing
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         DBILineWalk( static_cast<lineinfo *>( mod->lines ), ODBIGenLines );
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
         DBILineWalk( static_cast<lineinfo *>( mod->lines ), DwarfGenLines );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
         DBILineWalk( static_cast<lineinfo *>( mod->lines ), CVGenLines );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
         DBILineWalk( static_cast<lineinfo *>( mod->lines ), HllGenLines);
     }
 }
 
-void DBIGenModule( void )
+void DBIGenModule(Link& link)
 /***********************/
 // called at the end of pass2 for a module
 {
-    if( MOD_NOT_DEBUGGABLE( wlink().CurrMod ) )
+    if( MOD_NOT_DEBUGGABLE( link.CurrMod ) )
         return;
-    if( wlink().LinkFlags & LF_ANY_DBI_FLAG ) {
-        Ring2Walk( wlink().CurrMod->segs, DBIGenLocal );
-        DBIGenLines( wlink().CurrMod );
-        if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-            ODBIGenModule();
-        } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-            DwarfGenModule();
-        } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
+    if( link.LinkFlags & LF_ANY_DBI_FLAG ) {
+        Ring2Walk( link.CurrMod->segs, DBIGenLocal );
+        DBIGenLines(link,  link.CurrMod );
+        if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+            ODBIGenModule(link);
+        } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+            DwarfGenModule(link);
+        } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
             HllGenModule();
         } else {
-            CVGenModule();
+            CVGenModule(link);
         }
     }
 }
 
-void DBIDefClass( class_entry *class_, unsigned_32 size )
+void DBIDefClass(Link& link,  class_entry *class_, unsigned_32 size )
 /******************************************************/
 // called during address calculation
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIDefClass( class_, size );
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIDefClass(link,  class_, size );
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
         DwarfDefClass( class_, size );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
-        CVDefClass( class_, size );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
-        HllDefClass( class_, size );
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
+        CVDefClass(link,  class_, size );
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
+        HllDefClass(link,  class_, size );
     }
 }
 
-void DBIAddLocal( seg_leader *seg, offset length )
+void DBIAddLocal(Link& link,  seg_leader *seg, offset length )
 /************************************************/
 // called during pass 1 final segment processing.
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIAddLocal( seg, length );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIAddLocal(link,  seg, length );
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
         CVAddLocal( seg, length );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
         HllAddLocal( seg, length );
     }
 }
@@ -417,6 +418,7 @@ void DBIAddLocal( seg_leader *seg, offset length )
 void DBIModGlobal( void *_sym )
 /*****************************/
 {
+    Link& link = wlink();
     symbol          *sym = static_cast<symbol *>( _sym );
 
     if( !IS_SYM_ALIAS( sym )
@@ -425,49 +427,49 @@ void DBIModGlobal( void *_sym )
           || ( sym->p.seg != nullptr )
           && !IS_DBG_INFO( sym->p.seg->u.leader )
           && !sym->p.seg->isabs ) {
-            DBIAddGlobal( sym );
+            DBIAddGlobal(link,  sym );
         }
     }
 }
 
-void DBIAddGlobal( symbol *sym )
+void DBIAddGlobal(Link& link,  symbol *sym )
 /******************************/
 // called during pass 1 symbol definition
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIAddGlobal( sym );
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-        DwarfAddGlobal( sym );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
-        CVAddGlobal( sym );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
-        HllAddGlobal( sym );
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIAddGlobal(link,  sym );
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+        DwarfAddGlobal(link,  sym );
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
+        CVAddGlobal(link,  sym );
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
+        HllAddGlobal(link,  sym );
     }
 }
 
-void DBIGenGlobal( symbol *sym, section *sect )
+void DBIGenGlobal(Link& link,  symbol *sym, section *sect )
 /*********************************************/
 // called during symbol address calculation (between pass 1 & pass 2)
 // also called by loadpe between passes
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIGenGlobal( sym, sect );
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-        DwarfGenGlobal( sym, sect );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
-        CVGenGlobal( sym, sect );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
-        HllGenGlobal( sym, sect );
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIGenGlobal(link,  sym, sect );
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+        DwarfGenGlobal(link,  sym, sect );
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
+        CVGenGlobal(link,  sym, sect );
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
+        HllGenGlobal(link,  sym, sect );
     }
 #ifdef _NOVELL
     if( ( (sym->info & SYM_STATIC) == 0 )
-      && (wlink().LinkFlags & LF_NOVELL_DBI_FLAG) ) {
-        NovDBIGenGlobal( sym );
+      && (link.LinkFlags & LF_NOVELL_DBI_FLAG) ) {
+        NovDBIGenGlobal(link,  sym );
     }
 #endif
 }
 
-void DBIAddLines( segdata *seg, const void *line, size_t size, bool is32bit )
+void DBIAddLines(Link& link,  segdata *seg, const void *line, size_t size, bool is32bit )
 /***************************************************************************/
 // called during pass 1 linnum processing
 {
@@ -479,7 +481,7 @@ void DBIAddLines( segdata *seg, const void *line, size_t size, bool is32bit )
     if( is32bit )
         info->size |= LINE_IS_32BIT;
     memcpy( info->data, line, size );
-    RingAppend( &wlink().CurrMod->lines, info );
+    RingAppend( &link.CurrMod->lines, info );
 }
 
 unsigned DBICalcLineQty( lineinfo *info )
@@ -525,31 +527,32 @@ virt_mem DBIAlloc( virt_mem_size size )
     return( AllocStg( size ) );
 }
 
-void DBIAddrStart( void )
+void DBIAddrStart(Link& link)
 /***********************/
 // called after address calculation is done.
 {
 #ifdef _NOVELL
-    if( wlink().LinkFlags & LF_NOVELL_DBI_FLAG ) {
+    if( link.LinkFlags & LF_NOVELL_DBI_FLAG ) {
         NovDBIAddrStart();
     }
 #endif
-    if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
-        CVAddrStart();
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
-        HllAddrStart();
+    if( link.LinkFlags & LF_CV_DBI_FLAG ) {
+        CVAddrStart(link);
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
+        HllAddrStart(link);
     }
-    WalkAllSects( DBIAddrSectStart );
+    WalkAllSects(link,  DBIAddrSectStart );
 }
 
 void DBIAddrSectStart( section *sect )
 /************************************/
 // called for each section after address calculation is done.
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIAddrSectStart( sect );
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-        DwarfAddrSectStart( sect );
+    Link& link = wlink();
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIAddrSectStart(link,  sect );
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+        DwarfAddrSectStart(link,  sect );
     }
 }
 
@@ -557,14 +560,15 @@ void DBIP2Start( section *sect )
 /******************************/
 // called for each section just before pass 2 starts
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIP2Start( sect );
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-        SectWalkClass( sect, DwarfGenAddrInfo );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
-        SectWalkClass( sect, CVGenAddrInfo );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
-        SectWalkClass( sect, HllGenAddrInfo );
+    Link& link = wlink();
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIP2Start(link,  sect );
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+        SectWalkClass(link,  sect, DwarfGenAddrInfo );
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
+        SectWalkClass(link,  sect, CVGenAddrInfo );
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
+        SectWalkClass(link,  sect, HllGenAddrInfo );
     }
 }
 
@@ -572,46 +576,47 @@ void DBIFini( section *sect )
 /***************************/
 // called after pass 2 is finished, but before load file generation
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIFini( sect );
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
-        CVFini( sect );
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
+    Link& link = wlink();
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIFini(link,  sect );
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
+        CVFini(link,  sect );
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
         HllFini( sect );
     }
 }
 
-void DBISectCleanup( section *sect )
+void DBISectCleanup(Link& link,  section *sect )
 /**********************************/
 // called when burning down the house
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         ODBISectCleanup( sect );
     }
 }
 
-void DBICleanup( void )
+void DBICleanup(Link& link)
 /*********************/
 // called when burning down the house
 {
-    FreeGroups( wlink().DBIGroups );
+    FreeGroups(link,  link.DBIGroups );
 }
 
-static void do_DBIWrite( void )
+static void do_DBIWrite(Link& link)
 /*****************************/
 {
-    if( wlink().LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIWrite();
-    } else if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-        DwarfWrite();
-    } else if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
-        CVWrite();
-    } else if( wlink().LinkFlags & LF_HLL_DBI_FLAG ) {
-        HllWrite();
+    if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
+        ODBIWrite(link);
+    } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+        DwarfWrite(link);
+    } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
+        CVWrite(link);
+    } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
+        HllWrite(link);
     }
 }
 
-void DBIWrite( void )
+void DBIWrite(Link& link)
 /*******************/
 // called during load file generation.  It is assumed that the loadfile is
 // positioned to the right spot.
@@ -619,26 +624,26 @@ void DBIWrite( void )
     outfilelist     symfile;
     outfilelist     *save;
 
-    if( (wlink().LinkFlags & LF_ANY_DBI_FLAG) == 0 )
+    if( (link.LinkFlags & LF_ANY_DBI_FLAG) == 0 )
         return;
-    if( wlink().LinkFlags & LF_CV_DBI_FLAG ) {
+    if( link.LinkFlags & LF_CV_DBI_FLAG ) {
         // write DEBUG_TYPE_MISC: name of file containing the debug info
-        if( wlink().SymFileName != nullptr ) {
-            CVWriteDebugTypeMisc( wlink().SymFileName );
+        if( link.SymFileName != nullptr ) {
+            CVWriteDebugTypeMisc(link,  link.SymFileName );
         } else {
-            CVWriteDebugTypeMisc( wlink().Root->outfile->fname );
+            CVWriteDebugTypeMisc(link,  link.Root->outfile->fname );
         }
     }
-    if( wlink().SymFileName != nullptr ) {
+    if( link.SymFileName != nullptr ) {
         save = nullptr;
-        InitBuffFile( &symfile, wlink().SymFileName, false );
-        OpenBuffFile( &symfile );
-        save = wlink().Root->outfile;
-        wlink().Root->outfile = &symfile;
-        do_DBIWrite();
+        InitBuffFile( &symfile, link.SymFileName, false );
+        OpenBuffFile(link,  &symfile );
+        save = link.Root->outfile;
+        link.Root->outfile = &symfile;
+        do_DBIWrite(link);
         CloseBuffFile( &symfile );
-        wlink().Root->outfile = save;
+        link.Root->outfile = save;
     } else {
-        do_DBIWrite();
+        do_DBIWrite(link);
     }
 }

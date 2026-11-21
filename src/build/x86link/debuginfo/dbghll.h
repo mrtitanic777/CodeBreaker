@@ -35,17 +35,17 @@ extern void     HllInit( void );
 extern void     HllInitModule( mod_entry * );
 extern void     HllP1ModuleScanned( void );
 extern void     HllP1ModuleFinished( mod_entry * );
-extern void     HllAddModule( mod_entry *, section * );
+extern void     HllAddModule(Link& link,  mod_entry *, section * );
 extern void     HllGenModule( void );
 extern void     HllAddLocal( seg_leader *, offset );
-extern void     HllAddGlobal( symbol * );
-extern void     HllGenGlobal( symbol *, section * );
+extern void     HllAddGlobal(Link& link,  symbol * );
+extern void     HllGenGlobal(Link& link,  symbol *, section * );
 extern void     HllGenLines( lineinfo * );
 extern void     HllAddAddrInfo( seg_leader * );
 extern void     HllGenAddrInfo( seg_leader * );
-extern void     HllAddrStart( void );
-extern void     HllDefClass( class_entry *, unsigned_32 );
+extern void     HllAddrStart(Link& link);
+extern void     HllDefClass(Link& link,  class_entry *, unsigned_32 );
 extern void     HllFini( section * );
-extern void     HllWrite( void );
+extern void     HllWrite(Link& link);
 
 //extern unsigned_32      HllSize;- loadpe.c?

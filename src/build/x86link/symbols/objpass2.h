@@ -33,7 +33,7 @@
 
 
 
-extern void ObjPass2( void );
-extern void PModList( mod_entry * );
-extern void PModule( mod_entry * );
-extern bool LoadObj( segdata * );
+extern void ObjPass2(Link& link);
+extern void PModList(Link& link,  mod_entry * );
+extern void PModule(Link& link,  mod_entry * );
+extern bool LoadObj(Link& link,  segdata * );

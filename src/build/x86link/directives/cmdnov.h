@@ -38,7 +38,7 @@
 extern void     SetNovFmt( void );
 extern void     FreeNovFmt( void );
 extern void     CmdNovFini( void );
-extern void     SetNovImportSymbol( symbol * );
+extern void     SetNovImportSymbol(Link& link,  symbol * );
 
 extern bool     ProcNovOptions( void );
 extern bool     ProcNovDBI( void );

@@ -108,7 +108,7 @@ void AddTraceListMod( char *fname, char *membname )
     st().TraceList = info;
 }
 
-void CheckTraces( void )
+void CheckTraces(Link& link)
 /**********************/
 // first check for .obj files being traced, then check libraries
 {
@@ -122,14 +122,14 @@ void CheckTraces( void )
     for( info = s.TraceList; info != nullptr; info = next ) {
         next = info->next;
         if( info->membname == nullptr ) {
-            ParmWalkAllSects( CheckFileTrace, info );
+            ParmWalkAllSects(link,  CheckFileTrace, info );
             if( !info->found ) {
                 LnkMsg( WRN+MSG_TRACE_OBJ_NOT_FOUND, "s", info->u.name );
                 MemFree( info->u.name );
             }
             MemFree( info );
         } else {
-            for( file = wlink().ObjLibFiles; file != nullptr; file = file->next ) {
+            for( file = link.ObjLibFiles; file != nullptr; file = file->next ) {
                 if( FNAMECMPSTR( file->infile->name.u.ptr, info->u.name ) == 0 ) {
                     info->found = true;
                     MemFree( info->u.name );

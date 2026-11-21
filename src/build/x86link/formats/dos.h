@@ -36,6 +36,6 @@
 #ifdef _EXE
 
 
-extern void         FiniDOSLoadFile( void );
+extern void         FiniDOSLoadFile(Link& link);
 
 #endif

@@ -139,34 +139,34 @@ static void FreeCDatPiece( void *piec )
     st.FreedPieces = piece;
 }
 
-static unsigned_32 GetLeaf( void )
+static unsigned_32 GetLeaf(Link& link)
 /********************************/
 {
     unsigned char       leaf;
     unsigned_32         value;
 
     value = 0;
-    leaf = *wlink().ObjBuff++;
+    leaf = *link.ObjBuff++;
     if( leaf <= COMDEF_LEAF_SIZE ) {
         value = leaf;
     } else if( leaf == COMDEF_LEAF_2 ) {
-        value = MGET_LE_U16_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_16 );
+        value = MGET_LE_U16_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_16 );
     } else if( leaf == COMDEF_LEAF_3 ) {
-        value = MGET_LE_U16_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_16 );
-        value += static_cast<unsigned_32>( *wlink().ObjBuff++ ) << 16;
+        value = MGET_LE_U16_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_16 );
+        value += static_cast<unsigned_32>( *link.ObjBuff++ ) << 16;
     } else if( leaf == COMDEF_LEAF_4 ) {
-        value = MGET_LE_U32_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_32 );
+        value = MGET_LE_U32_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_32 );
     }
     return( value );
 }
 
-static byte COMDEF_bits( void )
+static byte COMDEF_bits(Link& link)
 /*****************************/
 {
-    SEGDATA *segs = wlink().CurrMod->segs;
+    SEGDATA *segs = link.CurrMod->segs;
     SEGDATA *seg = nullptr;
 
     for( ;; ) {
@@ -181,10 +181,10 @@ static byte COMDEF_bits( void )
             return( seg->bits );
         }
     }
-    return( (wlink().ObjFormat & OBJ_FMT_32BIT_REC) ? BITS_32 : BITS_16 );
+    return( (link.ObjFormat & OBJ_FMT_32BIT_REC) ? BITS_32 : BITS_16 );
 }
 
-void ProcComdef( bool isstatic )
+void ProcComdef(Link& link,  bool isstatic )
 /******************************/
 {
     byte                bits;
@@ -196,30 +196,30 @@ void ProcComdef( bool isstatic )
     extnode *           ext;
     sym_flags           symop;
 
-    bits = COMDEF_bits();
+    bits = COMDEF_bits(link);
     symop = ST_CREATE_REFERENCE;
     if( isstatic ) {
         symop |= ST_STATIC;
     }
-    while( wlink().ObjBuff < wlink().EOObjRec ) {
-        sym_len = *wlink().ObjBuff++;
-        sym_name = reinterpret_cast<char *>( wlink().ObjBuff );
-        wlink().ObjBuff += sym_len;
-        SkipIdx();
-        kind = *wlink().ObjBuff++;
-        size = GetLeaf();
+    while( link.ObjBuff < link.EOObjRec ) {
+        sym_len = *link.ObjBuff++;
+        sym_name = reinterpret_cast<char *>( link.ObjBuff );
+        link.ObjBuff += sym_len;
+        SkipIdx(link);
+        kind = *link.ObjBuff++;
+        size = GetLeaf(link);
         if( kind == COMDEF_FAR ) {
-            size *= GetLeaf();
+            size *= GetLeaf(link);
         }
-        sym = SymOp( symop, sym_name, sym_len );
-        sym = MakeCommunalSym( sym, size, kind == COMDEF_FAR, bits );
-        ext = static_cast<extnode *>( AllocNode( wlink().ExtNodes ) );
+        sym = SymOp(link,  symop, sym_name, sym_len );
+        sym = MakeCommunalSym(link,  sym, size, kind == COMDEF_FAR, bits );
+        ext = static_cast<extnode *>( AllocNode( link.ExtNodes ) );
         ext->entry = sym;
         ext->ovlref = 0;
     }
 }
 
-void ProcLinsym( void )
+void ProcLinsym(Link& link)
 /*********************/
 {
     list_of_names *     symname;
@@ -227,44 +227,45 @@ void ProcLinsym( void )
     bool                is32bit;
     size_t              sym_len;
 
-    wlink().ObjBuff++;          /* skip flags */
-    symname = FindName( GetIdx() );
+    link.ObjBuff++;          /* skip flags */
+    symname = FindName(link,  GetIdx(link) );
     sym_len = std::strlen( symname->name );
-    sym = SymOp( ST_FIND | ST_STATIC, symname->name, sym_len );
+    sym = SymOp(link,  ST_FIND | ST_STATIC, symname->name, sym_len );
     if( sym == nullptr )
-        sym = SymOp( ST_FIND, symname->name, sym_len );
+        sym = SymOp(link,  ST_FIND, symname->name, sym_len );
     if( sym == nullptr ) {
-        BadObject();
+        BadObject(link);
         return;
     }
     if( !IS_SYM_COMDAT( sym ) )
         return;
-    is32bit = ( (wlink().ObjFormat & OBJ_FMT_32BIT_REC) != 0 );
-    if( sym->mod == wlink().CurrMod
+    is32bit = ( (link.ObjFormat & OBJ_FMT_32BIT_REC) != 0 );
+    if( sym->mod == link.CurrMod
       && (sym->info & SYM_DEAD) == 0 ) {
-        DBIAddLines( sym->p.seg, wlink().ObjBuff, wlink().EOObjRec - wlink().ObjBuff, is32bit );
+        DBIAddLines(link,  sym->p.seg, link.ObjBuff, link.EOObjRec - link.ObjBuff, is32bit );
     }
 }
 
-static void DoAltDef( comdat_info *info )
+static void DoAltDef(Link& link,  comdat_info *info )
 /***************************************/
 {
-    if( (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+    if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
         FreeSegData( info->sdata );
     } else {
-        Ring2Append( &wlink().CurrMod->segs, info->sdata );
+        Ring2Append( &link.CurrMod->segs, info->sdata );
         info->sdata->isdead = true;
-        InfoCDatAltDef( info );
+        InfoCDatAltDef(link,  info );
     }
 }
 
 static void FinishComdat( void *inf )
 /***********************************/
 {
+    Link& link = wlink();
     comdat_info *info = static_cast<comdat_info *>( inf );
 
     if( info->flags & SYM_DEAD ) {      // is redefined
-        DoAltDef( info );
+        DoAltDef(link,  info );
     } else {
         StoreInfoData( info );
     }
@@ -279,7 +280,7 @@ void ResolveComdats( void )
     state().CDatList = nullptr;
 }
 
-static offset CountIDBlock( unsigned_8 **buffptr )
+static offset CountIDBlock(Link& link,  unsigned_8 **buffptr )
 /************************************************/
 /* this finds the length of an individual lidata block */
 {
@@ -289,7 +290,7 @@ static offset CountIDBlock( unsigned_8 **buffptr )
     unsigned_16 count;
 
     buff = *buffptr;
-    if( wlink().ObjFormat & OBJ_FMT_MS_386 ) {
+    if( link.ObjFormat & OBJ_FMT_MS_386 ) {
         repeat = MGET_LE_U32_UN( buff );
         buff += sizeof( unsigned_32 );
     } else {
@@ -304,7 +305,7 @@ static offset CountIDBlock( unsigned_8 **buffptr )
     } else {            // it is a series of id blocks
         size = 0;
         while( count-- > 0 ) {
-            size += CountIDBlock( &buff );
+            size += CountIDBlock(link,  &buff );
         }
         repeat *= size;
     }
@@ -312,7 +313,7 @@ static offset CountIDBlock( unsigned_8 **buffptr )
     return( repeat );
 }
 
-static offset CalcLIDataLength( void )
+static offset CalcLIDataLength(Link& link)
 /************************************/
 /* this finds the length of the equivalent of an lidata record */
 {
@@ -320,9 +321,9 @@ static offset CalcLIDataLength( void )
     unsigned_8  *buff;
 
     total = 0;
-    buff = wlink().ObjBuff;
-    while( buff < wlink().EOObjRec ) {
-        total += CountIDBlock( &buff );
+    buff = link.ObjBuff;
+    while( buff < link.EOObjRec ) {
+        total += CountIDBlock(link,  &buff );
     }
     return( total );
 }
@@ -347,7 +348,7 @@ static bool CheckSameComdat( void *info, void *sym )
 
 #define ST_COMDAT (ST_CREATE_REFERENCE | ST_NOALIAS)
 
-void ProcComdat( void )
+void ProcComdat(Link& link)
 /*********************/
 /* process a comdat record */
 {
@@ -367,59 +368,59 @@ void ProcComdat( void )
     bool                usealign;
     sym_flags           symop;
 
-    flags = *wlink().ObjBuff++;
-    attr = *wlink().ObjBuff++;
-    align = *wlink().ObjBuff++;
+    flags = *link.ObjBuff++;
+    attr = *link.ObjBuff++;
+    align = *link.ObjBuff++;
     if( align == 0 ) {
         usealign = true;
     } else {
         usealign = false;
         align = OMFAlignTab[align];
     }
-    if( wlink().ObjFormat & OBJ_FMT_32BIT_REC ) {
-        dataoff = MGET_LE_U32_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_32 );
+    if( link.ObjFormat & OBJ_FMT_32BIT_REC ) {
+        dataoff = MGET_LE_U32_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_32 );
     } else {
-        dataoff = MGET_LE_U16_UN( wlink().ObjBuff );
-        wlink().ObjBuff += sizeof( unsigned_16 );
+        dataoff = MGET_LE_U16_UN( link.ObjBuff );
+        link.ObjBuff += sizeof( unsigned_16 );
     }
-    SkipIdx();  /* not interested in the type index */
+    SkipIdx(link);  /* not interested in the type index */
     alloc = attr & CDAT_ALLOC_MASK;
     if( alloc == 0 ) {  /* if explicit allocation */
-        SkipIdx();                              /* get public base */
-        segidx = GetIdx();
+        SkipIdx(link);                              /* get public base */
+        segidx = GetIdx(link);
         if( segidx != 0 ) {
-            snode = static_cast<segnode *>( FindNode( wlink().SegNodes, segidx ) );
+            snode = static_cast<segnode *>( FindNode( link.SegNodes, segidx ) );
             if( usealign ) {
                 align = snode->entry->align;
             }
         } else {
-            BadObject();        // do not support absolute comdats
+            BadObject(link);        // do not support absolute comdats
             return;             // NOTE: premature return
         }
     } else {    // do not support linker defined comdats
-        BadObject();
+        BadObject(link);
         return;
     }
     piece = AllocCDatPiece();
-    symname = FindName( GetIdx() );
+    symname = FindName(link,  GetIdx(link) );
     namelen = std::strlen( symname->name );
     symop = ST_COMDAT;
     if( flags & CDAT_STATIC ) {
         symop |= ST_STATIC;
     }
-    sym = SymOp( symop, symname->name, namelen );
+    sym = SymOp(link,  symop, symname->name, namelen );
     if( flags & CDAT_ITERATED ) {
-        piece->length = CalcLIDataLength();
+        piece->length = CalcLIDataLength(link);
     } else {
-        piece->length = wlink().EOObjRec - wlink().ObjBuff;
+        piece->length = link.EOObjRec - link.ObjBuff;
     }
     if( !CacheIsPerm() ) {
         piece->data = static_cast<unsigned_8 *>( MemAllocSafe( piece->length ) );
-        std::memcpy( piece->data, wlink().ObjBuff, piece->length );
+        std::memcpy( piece->data, link.ObjBuff, piece->length );
         piece->free_data = true;
     } else {
-        piece->data = wlink().ObjBuff;
+        piece->data = link.ObjBuff;
     }
     comdat_info *&cdat_list = state().CDatList;
     if( flags & CDAT_CONTINUATION ) {
@@ -427,7 +428,7 @@ void ProcComdat( void )
         RingAppend( &info->pieces, piece );
         info->sdata->length += piece->length;
     } else {
-        sdata = AllocSegData();
+        sdata = AllocSegData(link);
         sdata->length = piece->length;
         sdata->combine = COMBINE_ADD;
         sdata->iscdat = true;
@@ -435,7 +436,7 @@ void ProcComdat( void )
         sdata->align = align;
         sdata->u.leader = snode->entry->u.leader;
         sdata->iscode = ( (snode->info & SEGINF_CODE) != 0 );
-        sdata->bits = ( wlink().ObjFormat & OBJ_FMT_32BIT_REC ) ? BITS_32 : BITS_16;
+        sdata->bits = ( link.ObjFormat & OBJ_FMT_32BIT_REC ) ? BITS_32 : BITS_16;
         info = AllocCDatInfo();
         info->sdata = sdata;
         info->sym = sym;
@@ -447,28 +448,28 @@ void ProcComdat( void )
 #endif
         RingAppend( &cdat_list, info );
         if( IS_SYM_COMDAT( sym ) ) {
-            CheckComdatSym( sym, info->flags & ~SYM_DEAD );
+            CheckComdatSym(link,  sym, info->flags & ~SYM_DEAD );
         } else if( !(IS_SYM_REGULAR( sym )
           && (sym->info & SYM_DEFINED)) ) {
             if( sym->info & SYM_DEFINED ) {
-                sym = HashReplace( sym );
+                sym = HashReplace(link,  sym );
             }
-            ClearSymUnion( sym );
+            ClearSymUnion(link,  sym );
             if( alloc == 0 ) {  /* explicit */
                 snode->entry->u.leader->info |= SEGINF_LXDATA_SEEN;
                 RingAppend( &sdata->u.leader->pieces, sdata );
-                Ring2Append( &wlink().CurrMod->segs, sdata );
+                Ring2Append( &link.CurrMod->segs, sdata );
             }
             sym->info |= (attr & CDAT_SELECT_MASK) << CDAT_SELECT_SHIFT;
-            SetComdatSym( sym, sdata );
+            SetComdatSym(link,  sym, sdata );
             info->flags &= ~SYM_DEAD;
         }
     }
     if( (info->flags & SYM_DEAD)
-      && (wlink().LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
-        wlink().ObjFormat |= OBJ_FMT_IGNORE_FIXUPP;
+      && (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
+        link.ObjFormat |= OBJ_FMT_IGNORE_FIXUPP;
     } else {
-        wlink().ObjFormat &= ~(OBJ_FMT_IGNORE_FIXUPP | OBJ_FMT_IS_LIDATA);
+        link.ObjFormat &= ~(OBJ_FMT_IGNORE_FIXUPP | OBJ_FMT_IS_LIDATA);
     }
-    SetCurrSeg( info->sdata, dataoff, piece->data );
+    SetCurrSeg(link,  info->sdata, dataoff, piece->data );
 }

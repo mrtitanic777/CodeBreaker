@@ -96,8 +96,9 @@ orl_io_struct *orlIo( const file_list *file )
 
 void *ORLRead( orl_io_struct *orlio, size_t len )
 {
+    Link& link = wlink();
     ORLState &st = orlState();
-    void *result = CachePermRead( &orlio->list, st.filePos + st.pos, len );
+    void *result = CachePermRead(link,  &orlio->list, st.filePos + st.pos, len );
 
     st.pos += static_cast<long>( len );
     st.readCache.push_back( result );
@@ -154,7 +155,7 @@ long ORLFileSeek( const file_list *file, long pos, int where )
     return st.filePos + st.pos;
 }
 
-orl_file_handle InitFile( void )
+orl_file_handle InitFile(Link& link)
 {
     ORLState &st = orlState();
     orl_file_format     type;
@@ -164,12 +165,12 @@ orl_file_handle InitFile( void )
     st.impOrdinal = 0;
     st.firstCodeSymName = nullptr;
     st.firstDataSymName = nullptr;
-    if( wlink().ObjFileFormat == FILE_FMT_ELF ) {
+    if( link.ObjFileFormat == FILE_FMT_ELF ) {
         type = ORL_ELF;
     } else {
         type = ORL_COFF;
     }
-    return ORLFileInit( st.handle, orlIo( wlink().CurrMod->u1.source ), type );
+    return ORLFileInit( st.handle, orlIo( link.CurrMod->u1.source ), type );
 }
 
 void ClearCachedData( const file_list *file )
@@ -221,17 +222,18 @@ void ORLSkipObj( const file_list *file, unsigned long *loc )
  * NYI: add an entry point in ORL for a more efficient way of doing this.
  */
 {
+    Link& link = wlink();
     orl_file_handle     filehdl;
 
     ORLFileSeek( file, *loc, SEEK_SET );
-    filehdl = InitFile();               /* assumes that entire file is read! */
+    filehdl = InitFile(link);               /* assumes that entire file is read! */
     *loc = ORLFileSeek( file, 0, SEEK_CUR );
     FiniFile( filehdl, file );
 }
 
 namespace {
 
-bool CheckFlags( orl_file_handle filehdl )
+bool CheckFlags(Link& link,  orl_file_handle filehdl )
 {
     orl_machine_type    machtype;
     stateflag           typemask;
@@ -263,24 +265,24 @@ bool CheckFlags( orl_file_handle filehdl )
         typemask = LS_HAVE_MACHTYPE_MASK;   /* trigger the error */
         break;
     }
-    test = (typemask | wlink().LinkState) & LS_HAVE_MACHTYPE_MASK;
+    test = (typemask | link.LinkState) & LS_HAVE_MACHTYPE_MASK;
     test &= test - 1;           /* turn off one bit */
     if( test != 0 ) {           /* multiple bits were turned on. */
-        LnkMsg( WRN+MSG_MACHTYPE_DIFFERENT, "s", wlink().CurrMod->u1.source->infile->name.u.ptr );
+        LnkMsg( WRN+MSG_MACHTYPE_DIFFERENT, "s", link.CurrMod->u1.source->infile->name.u.ptr );
     } else {
-        wlink().LinkState |= typemask;
+        link.LinkState |= typemask;
     }
     if( ORLFileGetType( filehdl ) != ORL_FILE_TYPE_OBJECT ) {
-        BadObject();
+        BadObject(link);
         return false;
     }
     flags = ORLFileGetFlags( filehdl );
     if( flags & ORL_FILE_FLAG_64BIT_MACHINE ) {
-        Set64BitMode();
+        Set64BitMode(link);
     } else if( flags & ORL_FILE_FLAG_16BIT_MACHINE ) {
-        Set16BitMode();
+        Set16BitMode(link);
     } else {
-        Set32BitMode();
+        Set32BitMode(link);
     }
     return true;
 }
@@ -293,19 +295,21 @@ orl_return NullFunc( orl_sec_handle )
 
 orl_return ExportCallback( const char *name, void * )
 {
+    Link& link = wlink();
     length_name lname;
 
     lname.name = name;
     lname.len = strlen( name );
-    HandleExport( &lname, &lname, 0, 0 );
+    HandleExport(link,  &lname, &lname, 0, 0 );
     return ORL_OKAY;
 }
 
 orl_return EntryCallback( const char *name, void * )
 {
-    if( !wlink().StartInfo.user_specd ) {
-        if( wlink().ObjFileFormat == FILE_FMT_COFF
-          && (wlink().LinkState & LS_HAVE_X86_CODE) ) {
+    Link& link = wlink();
+    if( !link.StartInfo.user_specd ) {
+        if( link.ObjFileFormat == FILE_FMT_COFF
+          && (link.LinkState & LS_HAVE_X86_CODE) ) {
             /*
              * simple hack for 32-bit MS COFF module to get real startup symbol name
              * entry directive contains unmangled symbol name
@@ -313,9 +317,9 @@ orl_return EntryCallback( const char *name, void * )
              */
             const std::string coff_symbol_name = std::string( "_" ) + name;
 
-            SetStartSym( coff_symbol_name.c_str() );
+            SetStartSym(link,  coff_symbol_name.c_str() );
         } else {
-            SetStartSym( name );
+            SetStartSym(link,  name );
         }
     }
     return ORL_OKAY;
@@ -323,7 +327,8 @@ orl_return EntryCallback( const char *name, void * )
 
 orl_return DeflibCallback( const char *name, void * )
 {
-    AddCommentLib( name, strlen( name ), static_cast<lib_priority>( LIB_PRIORITY_MAX - 2 ) );
+    Link& link = wlink();
+    AddCommentLib(link,  name, strlen( name ), static_cast<lib_priority>( LIB_PRIORITY_MAX - 2 ) );
     return ORL_OKAY;
 }
 
@@ -348,6 +353,7 @@ orl_return Unsupported( orl_sec_handle )
 
 void AllocSeg( void *_snode, void * )
 {
+    Link& link = wlink();
     segnode             *snode = static_cast<segnode *>( _snode );
     segdata             *sdata;
     const char          *clname;
@@ -359,7 +365,7 @@ void AllocSeg( void *_snode, void * )
     if( sdata == nullptr )
         return;
     sname = sdata->u.name.u.ptr;
-    if( wlink().CurrMod->flags_mod & MOD_IMPORT_LIB ) {
+    if( link.CurrMod->flags_mod & MOD_IMPORT_LIB ) {
         if( sdata->isidata
           || sdata->iscode ) {
             if( sdata->iscode ) {
@@ -373,7 +379,7 @@ void AllocSeg( void *_snode, void * )
     }
     isdbi = false;
     if( strnicmp( CoffDebugPrefix, sdata->u.name.u.ptr, sizeof( CoffDebugPrefix ) - 1 ) == 0 ) {
-        if( wlink().CurrMod->flags_mod & MOD_IMPORT_LIB ) {
+        if( link.CurrMod->flags_mod & MOD_IMPORT_LIB ) {
             snode->info |= SEGINF_DEAD;
             snode->entry = nullptr;
             FreeSegData( sdata );
@@ -401,14 +407,14 @@ void AllocSeg( void *_snode, void * )
             sdata->isreldata = true;
         }
     }
-    AllocateSegment( snode, clname );
+    AllocateSegment(link,  snode, clname );
     if( clname == TLSClassName ) {
-        group = GetGroup( TLSGrpName );
-        AddToGroup( group, snode->entry->u.leader );
+        group = GetGroup(link,  TLSGrpName );
+        AddToGroup(link,  group, snode->entry->u.leader );
     } else if( !sdata->iscode
       && !isdbi ) {
-        group = GetGroup( DataGrpName );
-        AddToGroup( group, snode->entry->u.leader );
+        group = GetGroup(link,  DataGrpName );
+        AddToGroup(link,  group, snode->entry->u.leader );
     }
     if( sdata->isuninit ) {
         snode->contents = nullptr;
@@ -444,6 +450,7 @@ void DefNosymComdats( void *_snode, void * )
 // declare the "segment"
 orl_return DeclareSegment( orl_sec_handle sec )
 {
+    Link& link = wlink();
     ORLState                &st = orlState();
     segdata                 *sdata;
     segnode                 *snode;
@@ -462,16 +469,16 @@ orl_return DeclareSegment( orl_sec_handle sec )
     }
     flags = ORLSecGetFlags( sec );
     name = ORLSecGetName( sec );
-    sdata = AllocSegData();
+    sdata = AllocSegData(link);
     segidx = ORLCvtSecHdlToIdx( sec );
-    snode = static_cast<segnode *>( AllocNodeIdx( wlink().SegNodes, segidx ) );
+    snode = static_cast<segnode *>( AllocNodeIdx( link.SegNodes, segidx ) );
     snode->entry = sdata;
     snode->handle = sec;
     sdata->iscdat = ( (flags & ORL_SEC_FLAG_COMDAT) != 0 );
     len = sizeof( CoffIDataSegName ) - 1;
     if( strnicmp( CoffIDataSegName, name, len ) == 0 ) {
-        SeenDLLRecord();
-        wlink().CurrMod->flags_mod |= MOD_IMPORT_LIB;
+        SeenDLLRecord(link);
+        link.CurrMod->flags_mod |= MOD_IMPORT_LIB;
         if( name[len] == '$'
           && name[len + 1] == '6' ) {
             /*
@@ -521,12 +528,12 @@ orl_return DeclareSegment( orl_sec_handle sec )
     }
     numlines = ORLSecGetNumLines( sec );
     if( numlines > 0 ) {
-        DBIAddLines( sdata, static_cast<const void *>( ORLSecGetLines( sec ) ), numlines * ORL_STRUCT_SIZEOF( orl_linnum ), true );
+        DBIAddLines(link,  sdata, static_cast<const void *>( ORLSecGetLines( sec ) ), numlines * ORL_STRUCT_SIZEOF( orl_linnum ), true );
     }
     return ORL_OKAY;
 }
 
-segnode *FindSegNode( orl_sec_handle sechdl )
+segnode *FindSegNode(Link& link,  orl_sec_handle sechdl )
 {
     orl_table_index     idx;
 
@@ -536,13 +543,13 @@ segnode *FindSegNode( orl_sec_handle sechdl )
     if( idx == 0 ) {
         return nullptr;
     } else {
-        return static_cast<segnode *>( FindNode( wlink().SegNodes, idx ) );
+        return static_cast<segnode *>( FindNode( link.SegNodes, idx ) );
     }
 }
 
 constexpr size_t PREFIX_LEN = sizeof( ImportSymPrefix ) - 1;
 
-void ImpProcSymbol( segnode *snode, orl_symbol_type type, const char *name, size_t namelen )
+void ImpProcSymbol(Link& link,  segnode *snode, orl_symbol_type type, const char *name, size_t namelen )
 {
     ORLState &st = orlState();
 
@@ -552,7 +559,7 @@ void ImpProcSymbol( segnode *snode, orl_symbol_type type, const char *name, size
             if( strnicmp( name + namelen, CoffImportRefName, sizeof( CoffImportRefName ) - 1 ) == 0 ) {
                 st.impModName = static_cast<char *>( MemAllocSafe( namelen + 5 ) );
                 memcpy( st.impModName, name, namelen );
-                if( strnicmp( wlink().CurrMod->name.u.ptr + strlen( wlink().CurrMod->name.u.ptr ) - 4, ".drv", 4 ) == 0 ) { /* KLUDGE!! */
+                if( strnicmp( link.CurrMod->name.u.ptr + strlen( link.CurrMod->name.u.ptr ) - 4, ".drv", 4 ) == 0 ) { /* KLUDGE!! */
                     memcpy( st.impModName + namelen, ".drv", 5 );
                 } else {
                     memcpy( st.impModName + namelen, ".dll", 5 );
@@ -572,7 +579,7 @@ void ImpProcSymbol( segnode *snode, orl_symbol_type type, const char *name, size
     }
 }
 
-void DefineComdatSym( segnode *snode, symbol *sym, unsigned_32 value )
+void DefineComdatSym(Link& link,  segnode *snode, symbol *sym, unsigned_32 value )
 {
     unsigned    select;
     sym_info    sym_type;
@@ -586,11 +593,12 @@ void DefineComdatSym( segnode *snode, symbol *sym, unsigned_32 value )
     } else {
         sym_type = static_cast<sym_info>( (select - 1) << SYM_CDAT_SEL_SHIFT );
     }
-    DefineComdat( sdata, sym, value, sym_type, snode->contents );
+    DefineComdat(link,  sdata, sym, value, sym_type, snode->contents );
 }
 
 orl_return ProcSymbol( orl_symbol_handle symhdl )
 {
+    Link& link = wlink();
     orl_symbol_type     type;
     const char          *name;
     unsigned_64         val64;
@@ -606,7 +614,7 @@ orl_return ProcSymbol( orl_symbol_handle symhdl )
     orl_symbol_binding  binding;
 
     sechdl = ORLSymbolGetSecHandle( symhdl );
-    snode = FindSegNode( sechdl );
+    snode = FindSegNode(link,  sechdl );
     type = ORLSymbolGetType( symhdl );
     name = ORLSymbolGetName( symhdl );
     if( type & ORL_SYM_TYPE_FILE ) {
@@ -619,13 +627,13 @@ orl_return ProcSymbol( orl_symbol_handle symhdl )
       && name != nullptr ) ) {
         namelen = strlen( name );
         if( namelen == 0 ) {
-            BadObject();
+            BadObject(link);
         }
-        if( wlink().CurrMod->flags_mod & MOD_IMPORT_LIB ) {
-            ImpProcSymbol( snode, type, name, namelen );
+        if( link.CurrMod->flags_mod & MOD_IMPORT_LIB ) {
+            ImpProcSymbol(link,  snode, type, name, namelen );
             return ORL_OKAY;
         }
-        newnode = static_cast<extnode *>( AllocNode( wlink().ExtNodes ) );
+        newnode = static_cast<extnode *>( AllocNode( link.ExtNodes ) );
         newnode->handle = symhdl;
         binding = ORLSymbolGetBinding( symhdl );
         symop = ST_CREATE;
@@ -638,13 +646,13 @@ orl_return ProcSymbol( orl_symbol_handle symhdl )
         } else {
             symop |= ST_NOALIAS;
         }
-        sym = SymOp( symop, name, namelen );
+        sym = SymOp(link,  symop, name, namelen );
         CheckIfTocSym( sym );
         if( type & ORL_SYM_TYPE_COMMON ) {
             ORLSymbolGetValue( symhdl, &val64 );
-            sym = MakeCommunalSym( sym, U64Low( val64 ), false, BITS_32 );
+            sym = MakeCommunalSym(link,  sym, U64Low( val64 ), false, BITS_32 );
         } else if( type & ORL_SYM_TYPE_UNDEFINED ) {
-            DefineReference( sym );
+            DefineReference(link,  sym );
             isweak = false;
             switch( binding ) {
             case ORL_SYM_BINDING_WEAK:
@@ -656,10 +664,10 @@ orl_return ProcSymbol( orl_symbol_handle symhdl )
                 name = ORLSymbolGetName( assocsymhdl );
                 namelen = strlen( name );
                 if( binding == ORL_SYM_BINDING_ALIAS ) {
-                    MakeSymAlias( sym->name.u.ptr, strlen( sym->name.u.ptr ), name, namelen );
+                    MakeSymAlias(link,  sym->name.u.ptr, strlen( sym->name.u.ptr ), name, namelen );
                 } else {
-                    assocsym = SymOp( ST_CREATE_REFERENCE, name, namelen );
-                    DefineLazyExtdef( sym, assocsym, isweak );
+                    assocsym = SymOp(link,  ST_CREATE_REFERENCE, name, namelen );
+                    DefineLazyExtdef(link,  sym, assocsym, isweak );
                     newnode->isweak = true;
                 }
                 break;
@@ -672,14 +680,14 @@ orl_return ProcSymbol( orl_symbol_handle symhdl )
             if( (type & ORL_SYM_TYPE_COMMON)
               && (type & ORL_SYM_TYPE_OBJECT)
               && sechdl == nullptr ) {
-                sym = MakeCommunalSym( sym, U64Low( val64 ), false, BITS_32 );
+                sym = MakeCommunalSym(link,  sym, U64Low( val64 ), false, BITS_32 );
             } else if( snode != nullptr
               && snode->entry != nullptr
               && snode->entry->iscdat ) {
-                DefineComdatSym( snode, sym, U64Low( val64 ) );
+                DefineComdatSym(link,  snode, sym, U64Low( val64 ) );
             } else {
                 sym->info |= SYM_DEFINED;
-                DefineSymbol( sym, snode, U64Low( val64 ), 0 );
+                DefineSymbol(link,  sym, snode, U64Low( val64 ), 0 );
             }
         }
         newnode->entry = sym;
@@ -699,6 +707,7 @@ orl_return SymTable( orl_sec_handle sec )
 
 orl_return DoReloc( orl_reloc reloc )
 {
+    Link& link = wlink();
     fix_type    type;
     frame_spec  frame;
     target_spec target;
@@ -797,17 +806,17 @@ orl_return DoReloc( orl_reloc reloc )
         LnkMsg( ERR+LOC+MSG_BAD_RELOC_TYPE, nullptr );
         break;
     }
-    snode = FindSegNode( reloc->section );
+    snode = FindSegNode(link,  reloc->section );
     if( snode != nullptr
       && (snode->info & SEGINF_DEAD) == 0
       && snode->entry != nullptr
       && !snode->entry->isdead ) {
         addend = 0;
-        SetCurrSeg( snode->entry, 0, snode->contents );
+        SetCurrSeg(link,  snode->entry, 0, snode->contents );
         frame.type = FIX_FRAME_TARG;
-        ext = FindExtHandle( reloc->symbol );
+        ext = FindExtHandle(link,  reloc->symbol );
         if( ext == nullptr ) {
-            sym_snode = FindSegNode( ORLSymbolGetSecHandle( reloc->symbol ) );
+            sym_snode = FindSegNode(link,  ORLSymbolGetSecHandle( reloc->symbol ) );
             if( sym_snode == nullptr ) {
                 return ORL_OKAY;
             } else {
@@ -818,17 +827,17 @@ orl_return DoReloc( orl_reloc reloc )
                 target.u.sdata = sym_snode->entry;
                 target.type = FIX_TARGET_SEG;
                 if( istoc ) {
-                    AddSdataOffToToc( sym_snode->entry, addend );
+                    AddSdataOffToToc(link,  sym_snode->entry, addend );
                 }
             }
         } else {
             target.u.sym = ext->entry;
             target.type = FIX_TARGET_EXT;
             if( istoc ) {
-                AddSymToToc( target.u.sym );
+                AddSymToToc(link,  target.u.sym );
             }
         }
-        StoreFixup( reloc->offset, type, &frame, &target, addend );
+        StoreFixup(link,  reloc->offset, type, &frame, &target, addend );
     }
     return ORL_OKAY;
 }
@@ -838,7 +847,7 @@ orl_return P1Relocs( orl_sec_handle sec )
     return ORLRelocSecScan( sec, DoReloc );
 }
 
-void HandleImportSymbol( const char *name )
+void HandleImportSymbol(Link& link,  const char *name )
 {
     ORLState &st = orlState();
     length_name intname;
@@ -847,38 +856,38 @@ void HandleImportSymbol( const char *name )
     intname.name = name;
     intname.len = strlen( name );
     if( st.impModName == nullptr ) {
-        st.impModName = FileName( wlink().CurrMod->name.u.ptr, strlen( wlink().CurrMod->name.u.ptr ), E_DLL, false );
+        st.impModName = FileName( link.CurrMod->name.u.ptr, strlen( link.CurrMod->name.u.ptr ), E_DLL, false );
     }
     modname.name = st.impModName;
     modname.len = strlen( st.impModName );
     if( st.impExternalName == nullptr ) {
         if( st.impOrdinal == 0 ) {
             st.impOrdinal = IMP_BY_NAME;
-            HandleImport( &intname, &modname, &intname, st.impOrdinal );
+            HandleImport(link,  &intname, &modname, &intname, st.impOrdinal );
         } else {
             st.impOrdinal &= 0x7FFFFFFF;           /* get rid of that high bit */
-            HandleImport( &intname, &modname, nullptr, st.impOrdinal );
+            HandleImport(link,  &intname, &modname, nullptr, st.impOrdinal );
         }
     } else {
         length_name     extname;
 
         extname.name = st.impExternalName;
         extname.len = strlen( st.impExternalName );
-        HandleImport( &intname, &modname, &extname, IMP_BY_NAME );
+        HandleImport(link,  &intname, &modname, &extname, IMP_BY_NAME );
     }
     MemFree( st.impModName );
     st.impModName = nullptr;
 }
 
-void ScanImported( void )
+void ScanImported(Link& link)
 {
     ORLState &st = orlState();
 
-    if( wlink().CurrMod->flags_mod & MOD_IMPORT_LIB ) {
+    if( link.CurrMod->flags_mod & MOD_IMPORT_LIB ) {
         if( st.firstCodeSymName != nullptr ) {
-            HandleImportSymbol( st.firstCodeSymName );
+            HandleImportSymbol(link,  st.firstCodeSymName );
         } else if( st.firstDataSymName != nullptr ) {
-            HandleImportSymbol( st.firstDataSymName );
+            HandleImportSymbol(link,  st.firstDataSymName );
         }
     }
 }
@@ -950,33 +959,34 @@ unsigned long ORLPass1( void )
  * do pass 1 for an object file handled by ORL.
  */
 {
+    Link& link = wlink();
     orl_file_handle     filehdl;
 
-    wlink().LinkState |= LS_DOSSEG_FLAG;
-    PermStartMod( wlink().CurrMod );
-    filehdl = InitFile();
+    link.LinkState |= LS_DOSSEG_FLAG;
+    PermStartMod( link.CurrMod );
+    filehdl = InitFile(link);
     if( filehdl == nullptr ) {
-        LnkMsg( FTL+MSG_BAD_OBJECT, "s", wlink().CurrMod->u1.source->infile->name.u.ptr );
-        wlink().CurrMod->u1.source->infile->status |= INSTAT_IOERR;
+        LnkMsg( FTL+MSG_BAD_OBJECT, "s", link.CurrMod->u1.source->infile->name.u.ptr );
+        link.CurrMod->u1.source->infile->status |= INSTAT_IOERR;
         return static_cast<unsigned long>( -1 );
     }
-    if( CheckFlags( filehdl ) ) {
-        if( (wlink().LinkState & LS_HAVE_PPC_CODE)
-          && !wlink().FmtData.toc_initialized ) {
-            InitToc();
-            wlink().FmtData.toc_initialized = true;
+    if( CheckFlags(link,  filehdl ) ) {
+        if( (link.LinkState & LS_HAVE_PPC_CODE)
+          && !link.FmtData.toc_initialized ) {
+            InitToc(link);
+            link.FmtData.toc_initialized = true;
         }
-        if( wlink().LinkFlags & LF_DWARF_DBI_FLAG ) {
-            wlink().CurrMod->flags_mod |= MOD_FLATTEN_DBI;
+        if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
+            link.CurrMod->flags_mod |= MOD_FLATTEN_DBI;
         }
-        wlink().CurrMod->flags_mod |= MOD_NEED_PASS_2;
+        link.CurrMod->flags_mod |= MOD_NEED_PASS_2;
         ORLFileScan( filehdl, nullptr, ProcSegments );
-        IterateNodelist( wlink().SegNodes, AllocSeg, nullptr );
+        IterateNodelist( link.SegNodes, AllocSeg, nullptr );
         ORLFileScan( filehdl, nullptr, ProcSymbols );
-        ScanImported();
+        ScanImported(link);
         ORLFileScan( filehdl, nullptr, ProcP1Specific );
-        IterateNodelist( wlink().SegNodes, DefNosymComdats, nullptr );
+        IterateNodelist( link.SegNodes, DefNosymComdats, nullptr );
     }
-    FiniFile( filehdl, wlink().CurrMod->u1.source );
-    return ORLFileSeek( wlink().CurrMod->u1.source, 0, SEEK_CUR );
+    FiniFile( filehdl, link.CurrMod->u1.source );
+    return ORLFileSeek( link.CurrMod->u1.source, 0, SEEK_CUR );
 }

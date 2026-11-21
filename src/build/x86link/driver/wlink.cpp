@@ -111,49 +111,49 @@ WlinkState &state()
 
 }  // namespace
 
-static void PreAddrCalcFormatSpec( void )
+static void PreAddrCalcFormatSpec(Link& link)
 /****************************************
  * format specific routines which need to be called before address calculation
  */
 {
 #ifdef _OS2
-    if( wlink().FmtData.type & (MK_PE | MK_WIN_VXD | MK_NE | MK_OS2_FLAT) ) {
+    if( link.FmtData.type & (MK_PE | MK_WIN_VXD | MK_NE | MK_OS2_FLAT) ) {
   #if 0
-        if( (wlink().FmtData.type & (MK_NE | MK_OS2_FLAT)) && (wlink().LinkState & LS_HAVE_PPC_CODE) ) {
+        if( (link.FmtData.type & (MK_NE | MK_OS2_FLAT)) && (link.LinkState & LS_HAVE_PPC_CODE) ) {
             // Development temporarly on hold:
             // ChkOS2ElfData();
         } else {
             SetOS2SegFlags();
         }
   #else
-        SetOS2SegFlags();
+        SetOS2SegFlags(link);
   #endif
     }
-    if( wlink().FmtData.type & MK_PE ) {
-        ChkPEData();
+    if( link.FmtData.type & MK_PE ) {
+        ChkPEData(link);
     }
 #endif
 #ifdef _NOVELL
-    if( wlink().FmtData.type & MK_NOVELL ) {
-        FindExportedSyms();
+    if( link.FmtData.type & MK_NOVELL ) {
+        FindExportedSyms(link);
     }
 #endif
 #ifdef _PHARLAP
-    if( wlink().FmtData.type & MK_PHAR_LAP ) {
-        CheckPharLapData();
+    if( link.FmtData.type & MK_PHAR_LAP ) {
+        CheckPharLapData(link);
     }
 #endif
 }
 
-static void PostAddrCalcFormatSpec( void )
+static void PostAddrCalcFormatSpec(Link& link)
 /*****************************************
  * format specific routines which need to be called after address calculation
  */
 {
 #ifdef _OS2
-    if( wlink().FmtData.type & (MK_PE | MK_WIN_VXD | MK_NE | MK_OS2_FLAT) ) {
+    if( link.FmtData.type & (MK_PE | MK_WIN_VXD | MK_NE | MK_OS2_FLAT) ) {
   #if 0
-        if( (wlink().FmtData.type & (MK_NE | MK_OS2_FLAT)) && (wlink().LinkState & LS_HAVE_PPC_CODE) ) {
+        if( (link.FmtData.type & (MK_NE | MK_OS2_FLAT)) && (link.LinkState & LS_HAVE_PPC_CODE) ) {
             // Development temporarly on hold:
             //PrepareOS2Elf();
         } else {
@@ -161,193 +161,193 @@ static void PostAddrCalcFormatSpec( void )
             ChkOS2Exports();
         }
   #else
-        SetOS2GroupFlags();
-        ChkOS2Exports();
+        SetOS2GroupFlags(link);
+        ChkOS2Exports(link);
   #endif
     }
-    if( wlink().FmtData.type & MK_PE ) {
-        AllocPETransferTable();
+    if( link.FmtData.type & MK_PE ) {
+        AllocPETransferTable(link);
     }
 #endif
 #ifdef _ELF
-    if( wlink().FmtData.type & MK_ELF ) {
-        ChkElfData();
+    if( link.FmtData.type & MK_ELF ) {
+        ChkElfData(link);
     }
 #endif
 #ifdef _QNX
-    if( wlink().FmtData.type & MK_QNX ) {
-        SetQNXSegFlags();
-        SetQNXGroupFlags();
+    if( link.FmtData.type & MK_QNX ) {
+        SetQNXSegFlags(link);
+        SetQNXGroupFlags(link);
     }
 #endif
 }
 
-static void ResetMisc( void )
+static void ResetMisc(Link& link)
 /****************************
  * Linker support initialization.
  */
 {
-    wlink().LinkFlags = LF_REDEFS_OK | LF_FAR_CALLS_FLAG;
-    wlink().LinkState = LS_MAKE_RELOCS;
-    wlink().AbsGroups = nullptr;
-    wlink().DataGroup = nullptr;
-    wlink().IDataGroup = nullptr;
-    wlink().OutFiles = nullptr;
-    wlink().ObjLibFiles = nullptr;
-    wlink().LibModules = nullptr;
-    wlink().Groups = nullptr;
-    SET_ADDR_UNDEFINED( wlink().CurrLoc );
-    wlink().CurrMod = nullptr;
-    wlink().StackSize = DEF_STACK_SIZE;
+    link.LinkFlags = LF_REDEFS_OK | LF_FAR_CALLS_FLAG;
+    link.LinkState = LS_MAKE_RELOCS;
+    link.AbsGroups = nullptr;
+    link.DataGroup = nullptr;
+    link.IDataGroup = nullptr;
+    link.OutFiles = nullptr;
+    link.ObjLibFiles = nullptr;
+    link.LibModules = nullptr;
+    link.Groups = nullptr;
+    SET_ADDR_UNDEFINED( link.CurrLoc );
+    link.CurrMod = nullptr;
+    link.StackSize = DEF_STACK_SIZE;
     /* CodeBreaker: the stack address of the link before stayed (a .COM link after an EXE then warned W1087) */
-    wlink().StackAddr.seg = 0;
-    wlink().StackAddr.off = 0;
-    ResetSym();
+    link.StackAddr.seg = 0;
+    link.StackAddr.off = 0;
+    ResetSym(link);
 }
 
-static void DoDefaultSystem( void )
+static void DoDefaultSystem(Link& link)
 /**********************************
  * first hint about format being 32-bit vs. 16-bit (might distinguish between
  * os/2 v1 & os/2 v2), and if that doesn't decide it, haul in the default
  * system block
  */
 {
-    if( (wlink().LinkState & LS_FMT_DECIDED) == 0 ) {
-        if( wlink().LinkState & LS_FMT_SEEN_64BIT ) {
-            HintFormat( MK_64BIT );
-        } else if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
-            HintFormat( MK_32BIT );
+    if( (link.LinkState & LS_FMT_DECIDED) == 0 ) {
+        if( link.LinkState & LS_FMT_SEEN_64BIT ) {
+            HintFormat(link,  MK_64BIT );
+        } else if( link.LinkState & LS_FMT_SEEN_32BIT ) {
+            HintFormat(link,  MK_32BIT );
         } else {
-            HintFormat( MK_16BIT | MK_QNX );
+            HintFormat(link,  MK_16BIT | MK_QNX );
         }
-        if( (wlink().LinkState & LS_FMT_DECIDED) == 0 ) {
-            if( wlink().LinkState & LS_FMT_SPECIFIED ) {
+        if( (link.LinkState & LS_FMT_DECIDED) == 0 ) {
+            if( link.LinkState & LS_FMT_SPECIFIED ) {
                 LnkMsg( FTL+MSG_AMBIG_FORMAT, nullptr );
             }
-            if( wlink().LinkState & LS_FMT_SEEN_64BIT ) {
-                ExecSystem( "64bit" );
-            } else if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
-                ExecSystem( "386" );
+            if( link.LinkState & LS_FMT_SEEN_64BIT ) {
+                ExecSystem(link,  "64bit" );
+            } else if( link.LinkState & LS_FMT_SEEN_32BIT ) {
+                ExecSystem(link,  "386" );
             } else {
-                ExecSystem( "286" ); /* no 386 obj's after this */
+                ExecSystem(link,  "286" ); /* no 386 obj's after this */
             }
         }
     }
 }
 
-static void FindLibPaths( void )
+static void FindLibPaths(Link& link)
 /******************************/
 {
-    AddFmtLibPaths();
-    if( wlink().LinkState & LS_FMT_SEEN_64BIT ) {
-        AddLibPathsToEnd( GetEnvString( "LIBX64" ) );
-    } else if( wlink().LinkState & LS_FMT_SEEN_32BIT ) {
-        AddLibPathsToEnd( GetEnvString( "LIB386" ) );
+    AddFmtLibPaths(link);
+    if( link.LinkState & LS_FMT_SEEN_64BIT ) {
+        AddLibPathsToEnd(link,  GetEnvString( "LIBX64" ) );
+    } else if( link.LinkState & LS_FMT_SEEN_32BIT ) {
+        AddLibPathsToEnd(link,  GetEnvString( "LIB386" ) );
     } else {
-        AddLibPathsToEnd( GetEnvString( "LIB286" ) );
+        AddLibPathsToEnd(link,  GetEnvString( "LIB286" ) );
         /*
          * If we haven't seen a 386 object file by this time, we're
          * not going to.
          */
-        HintFormat( MK_16BIT );
+        HintFormat(link,  MK_16BIT );
     }
-    AddLibPathsToEndList( wlink().LibPath );
+    AddLibPathsToEndList(link,  link.LibPath );
 }
 
-static void ResetSubSystems( void )
+static void ResetSubSystems(Link& link)
 /*********************************/
 {
-    ResetPermData();
-    ResetMsg();
+    ResetPermData(link);
+    ResetMsg(link);
     VirtMemInit();
-    ResetMisc();
-    ResetWriteMapIO();
-    ResetDBI();
-    ResetCmdAll();
+    ResetMisc(link);
+    ResetWriteMapIO(link);
+    ResetDBI(link);
+    ResetCmdAll(link);
 #ifdef _EXE
-    ResetOverlaySupp();
+    ResetOverlaySupp(link);
 #endif
     ResetComdef();
 #ifdef _NOVELL
     ResetLoadNov();
 #endif
 #ifdef _OS2
-    ResetLoadPE();
+    ResetLoadPE(link);
 #endif
     ResetObj2Supp();
-    ResetObjIO();
-    ResetObjOMF();
-    ResetObjPass1();
+    ResetObjIO(link);
+    ResetObjOMF(link);
+    ResetObjPass1(link);
     ResetObjStrip();
     ResetOMFReloc();
-    ResetReloc();
+    ResetReloc(link);
     ResetSymTrace();
-    ResetLoadFile();
-    ResetAddr();
-    ResetToc();
-    wlink().Root = NewSection();
+    ResetLoadFile(link);
+    ResetAddr(link);
+    ResetToc(link);
+    link.Root = NewSection();
 }
 
 void InitSubSystems( void )
-/********************************/
+/**************************/
 {
 #if defined( DEVBUILD ) && defined( __WATCOMC__ )
     memset( _edata, 0xA5, _end - _edata );      // don't rely on BSS == 0
 #endif
-    cb_wlink::RunState::begin_run();   /* CodeBreaker: nothing an earlier run in the process kept stays */
+    Link& link = cb_wlink::RunState::begin_run();   /* CodeBreaker: the link's state, new: nothing an earlier run in the process kept stays */
     LnkMemInit();
     LnkFilesInit();
-    InitMsg();
-    InitNodes();
-    InitTokBuff();
+    InitMsg(link);
+    InitNodes(link);
+    InitTokBuff(link);
     InitSpillFile();
     InitSym();
     InitORLObj();
     InitCmdFile();
 }
 
-static void CleanSubSystems( void )
+static void CleanSubSystems(Link& link)
 /*********************************/
 {
-    FreeOutFiles();
-    MapFini();
+    FreeOutFiles(link);
+    MapFini(link);
     BurnSystemList();
-    FreeList( wlink().UsrLibPath );
+    FreeList( link.UsrLibPath );
     CloseSpillFile();
     CleanTraces();
-    FreePaths();
+    FreePaths(link);
     FreeLocalImports();
     CleanLoadFile();
-    CleanLinkStruct();
-    FreeFormatStuff();
-    FreeObjInfo();
+    CleanLinkStruct(link);
+    FreeFormatStuff(link);
+    FreeObjInfo(link);
     FreeVirtMem();
     CleanToc();
-    CleanSym();
-    CleanPermData();
+    CleanSym(link);
+    CleanPermData(link);
 }
 
-void FiniSubSystems( void )
+void FiniSubSystems(Link& link)
 /********************************/
 {
-    FiniLinkStruct();
+    FiniLinkStruct(link);
     FiniMsg();
     FiniSym();
     LnkMemFini();
 }
 
-static void SetSegments( void )
+static void SetSegments(Link& link)
 /*****************************/
 // now that we know where everything is, do all the processing that has been
 // postponed until now.
 {
 #ifdef _DOS16M
-    if( wlink().FmtData.type & MK_DOS16M ) {
-        MakeDos16PM();
+    if( link.FmtData.type & MK_DOS16M ) {
+        MakeDos16PM(link);
     }
 #endif
 #ifdef _EXE
-    OvlSetSegments();
+    OvlSetSegments(link);
 #endif
 }
 
@@ -361,62 +361,62 @@ static void ignore_signal( void )
     signal( SIGINT, SIG_IGN );    /* we're going to clean up anyway */
 }
 
-static void DoLink( const char *cmdline )
+static void DoLink(Link& link,  const char *cmdline )
 /***************************************/
 // cmdline is only used when we are running under watfor.
 {
     set_signal();
 
     StartTime();
-    InitEnvVars();
-    DoCmdFile( cmdline );
-    CheckErr();
-    MapInit();
-    SetupFakeModule();
-    ProcObjFiles(); /* ObjPass1 */
-    CheckErr();
-    DoDefaultSystem();
-    if( wlink().LinkState & LS_LIBRARIES_ADDED ) {
-        FindLibPaths();
-        wlink().LinkState |= LS_SEARCHING_LIBRARIES;
-        ResolveUndefined();
-        wlink().LinkState &= ~LS_SEARCHING_LIBRARIES;
-        wlink().LinkState |= LS_GENERATE_LIB_LIST;
+    InitEnvVars(link);
+    DoCmdFile(link,  cmdline );
+    CheckErr(link);
+    MapInit(link);
+    SetupFakeModule(link);
+    ProcObjFiles(link); /* ObjPass1 */
+    CheckErr(link);
+    DoDefaultSystem(link);
+    if( link.LinkState & LS_LIBRARIES_ADDED ) {
+        FindLibPaths(link);
+        link.LinkState |= LS_SEARCHING_LIBRARIES;
+        ResolveUndefined(link);
+        link.LinkState &= ~LS_SEARCHING_LIBRARIES;
+        link.LinkState |= LS_GENERATE_LIB_LIST;
     }
-    ProcLocalImports();
-    DecideFormat();
-    SetFormat();
-    ConvertLazyRefs();
-    SetSegments();
-    CheckErr();
-    DefBSSSyms();
-    LinkFakeModule();
-    PreAddrCalcFormatSpec();
-    ReportUndefined();
-    CheckClassOrder();
-    CalcSegSizes();
-    SetStkSize();
-    AutoGroup();
-    CalcAddresses();
-    GetBSSSize();
-    GetStkAddr();
-    GetStartAddr();
-    PostAddrCalcFormatSpec();
+    ProcLocalImports(link);
+    DecideFormat(link);
+    SetFormat(link);
+    ConvertLazyRefs(link);
+    SetSegments(link);
+    CheckErr(link);
+    DefBSSSyms(link);
+    LinkFakeModule(link);
+    PreAddrCalcFormatSpec(link);
+    ReportUndefined(link);
+    CheckClassOrder(link);
+    CalcSegSizes(link);
+    SetStkSize(link);
+    AutoGroup(link);
+    CalcAddresses(link);
+    GetBSSSize(link);
+    GetStkAddr(link);
+    GetStartAddr(link);
+    PostAddrCalcFormatSpec(link);
 #ifdef _RDOS
-    if( wlink().FmtData.type & MK_RDOS ) {
-        GetRdosSegs();
+    if( link.FmtData.type & MK_RDOS ) {
+        GetRdosSegs(link);
     }
 #endif
-    CheckErr();
+    CheckErr(link);
     InitLoadFile();
-    ObjPass2();
-    CheckErr();
-    FiniLoadFile();
-    WritePermData();
-    BuildImpLib();
-    FiniEnvVars();
+    ObjPass2(link);
+    CheckErr(link);
+    FiniLoadFile(link);
+    WritePermData(link);
+    BuildImpLib(link);
+    FiniEnvVars(link);
     EndTime();
-    MapFini();
+    MapFini(link);
 
     ignore_signal();
 }
@@ -424,17 +424,18 @@ static void DoLink( const char *cmdline )
 static void LinkMeBaby( void )
 /****************************/
 {
-    ResetSubSystems();
-    DoLink( state().arg_save );
+    Link& link = wlink();
+    ResetSubSystems(link);
+    DoLink(link,  state().arg_save );
 }
 
-void LinkMainLine( const char *cmds )
+void LinkMainLine(Link& link,  const char *cmds )
 /***********************************/
 {
     for( ;; ) {
         state().arg_save = cmds;         // bogus way to pass args to spawn
         Spawn( &LinkMeBaby );
-        CleanSubSystems();
+        CleanSubSystems(link);
         cmds = GetNextLink();
         if( cmds == nullptr ) {
             break;

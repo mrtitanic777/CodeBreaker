@@ -62,13 +62,13 @@ enum msg_num {
     #undef pick
 };
 
-extern size_t   FmtStr( char *, size_t, const char *, ... );
-extern size_t   DoFmtStr( char *, size_t, const char *, va_list );
-extern size_t   GetMsgPrefix( unsigned num, char *buff, size_t max_len );
+extern size_t   FmtStr(Link& link,  char *, size_t, const char *, ... );
+extern size_t   DoFmtStr(Link& link,  char *, size_t, const char *, va_list );
+extern size_t   GetMsgPrefix(Link& link,  unsigned num, char *buff, size_t max_len );
 extern void     LnkMsg( unsigned, const char *, ... );
 extern void     Locator( const char *, const char *, unsigned );
-extern void     WLPrtBanner( void );
-extern bool     SkipSymbol( symbol * );
+extern void     WLPrtBanner(Link& link);
+extern bool     SkipSymbol(Link& link,  symbol * );
 extern int      SymAlphaCompare( const void *, const void * );
 extern unsigned CalcMsgNum( unsigned );
 

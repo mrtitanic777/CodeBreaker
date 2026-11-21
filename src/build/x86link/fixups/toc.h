@@ -32,19 +32,19 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void             InitToc( void );
+extern void             InitToc(Link& link);
 extern void             CleanToc( void );
-extern void             AddSymToToc( symbol * );
-extern void             AddSdataOffToToc( segdata *, offset );
-extern void             PrepareToc( void );
-extern offset           FindSdataOffPosInToc( segdata *, offset );
+extern void             AddSymToToc(Link& link,  symbol * );
+extern void             AddSdataOffToToc(Link& link,  segdata *, offset );
+extern void             PrepareToc(Link& link);
+extern offset           FindSdataOffPosInToc(Link& link,  segdata *, offset );
 extern offset           FindIATSymAbsOff( symbol * );
-extern offset           FindSymPosInToc( symbol * );
-extern offset           FindSymPosInTocv( symbol * );
+extern offset           FindSymPosInToc(Link& link,  symbol * );
+extern offset           FindSymPosInTocv(Link& link,  symbol * );
 extern unsigned long    GetTocSize( void );
 extern void             WriteToc( virt_mem );
-extern void             SetTocAddr( offset , group_entry * );
+extern void             SetTocAddr(Link& link,  offset , group_entry * );
 extern void             CheckIfTocSym( symbol * );
 extern bool             IsTocSym( symbol * );
-extern void             ResetToc( void );
+extern void             ResetToc(Link& link);
 

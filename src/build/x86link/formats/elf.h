@@ -35,11 +35,11 @@
 
 #ifdef _ELF
 
-extern void             FiniELFLoadFile( void );
+extern void             FiniELFLoadFile(Link& link);
 extern unsigned_32      AllocELFImport( symbol * );
 extern void             BuildOS2Imports( void );
-extern void             ChkElfData( void );
+extern void             ChkElfData(Link& link);
 extern int              FindElfSymIdx( symbol * );
-extern unsigned         GetElfHeaderSize( void );
+extern unsigned         GetElfHeaderSize(Link& link);
 
 #endif

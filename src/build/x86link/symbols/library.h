@@ -34,12 +34,12 @@
 
 #include "ar.h"
 
-extern int              CheckLibraryType( file_list *, unsigned long *, bool );
-extern mod_entry        *SearchLib( file_list *, const char * );
-extern bool             DiscardDicts( void );
-extern void             BurnLibs( void );
-extern char             *GetARName( const ar_header *, const file_list *, unsigned long * );
+extern int              CheckLibraryType(Link& link,  file_list *, unsigned long *, bool );
+extern mod_entry        *SearchLib(Link& link,  file_list *, const char * );
+extern bool             DiscardDicts(Link& link);
+extern void             BurnLibs(Link& link);
+extern char             *GetARName(Link& link,  const ar_header *, const file_list *, unsigned long * );
 extern unsigned long    GetARValue( const char *, size_t );
-extern bool             LibFind( const char *, bool );
+extern bool             LibFind(Link& link,  const char *, bool );
 extern bool             ModNameCompare( const char *, const char * );
-extern file_list        *AddObjLib( const char *, lib_priority );
+extern file_list        *AddObjLib(Link& link,  const char *, lib_priority );

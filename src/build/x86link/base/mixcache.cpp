@@ -104,7 +104,7 @@ bool DumpFileCache( infilelist *infile, bool nuke )
 
 }  // namespace
 
-bool CacheOpen( const file_list *file )
+bool CacheOpen(Link& link,  const file_list *file )
 /*************************************/
 {
     if( file == nullptr )
@@ -112,7 +112,7 @@ bool CacheOpen( const file_list *file )
     infilelist *infile = file->infile;
     if( infile->status & INSTAT_IOERR )
         return false;
-    if( DoObjOpen( infile ) ) {
+    if( DoObjOpen(link,  infile ) ) {
         infile->status |= INSTAT_IN_USE;
     } else {
         infile->status |= INSTAT_IOERR;
@@ -127,9 +127,9 @@ bool CacheOpen( const file_list *file )
         }
     }
     if( (infile->status & INSTAT_SET_CACHE) == 0 ) {
-        if( wlink().LinkFlags & LF_CACHE_FLAG ) {
+        if( link.LinkFlags & LF_CACHE_FLAG ) {
             infile->status |= INSTAT_FULL_CACHE;
-        } else if( wlink().LinkFlags & LF_NOCACHE_FLAG ) {
+        } else if( link.LinkFlags & LF_NOCACHE_FLAG ) {
             infile->status |= INSTAT_PAGE_CACHE;
         } else {
             if( infile->status & INSTAT_LIBRARY ) {
@@ -188,17 +188,17 @@ void CacheClose( const file_list *file, unsigned pass )
     }
 }
 
-void *CachePermRead( const file_list *file, unsigned long pos, size_t len )
+void *CachePermRead(Link& link,  const file_list *file, unsigned long pos, size_t len )
 /*************************************************************************/
 {
-    char *buf = static_cast<char *>( CacheRead( file, pos, len ) );
+    char *buf = static_cast<char *>( CacheRead(link,  file, pos, len ) );
     if( file->infile->status & INSTAT_FULL_CACHE )
         return buf;
     char *result;
     CacheState &st = state();
     if( st.Multipage ) {
         result = static_cast<char *>( MemReallocSafe( buf, len ) );
-        wlink().TokBuff = static_cast<char *>( MemAllocSafe( wlink().TokSize ) );
+        link.TokBuff = static_cast<char *>( MemAllocSafe( link.TokSize ) );
         st.Multipage = false;           // indicate that last read is permanent.
     } else {
         result = static_cast<char *>( MemAllocSafe( len ) );
@@ -207,7 +207,7 @@ void *CachePermRead( const file_list *file, unsigned long pos, size_t len )
     return result;
 }
 
-void *CacheRead( const file_list *file, unsigned long pos, size_t len )
+void *CacheRead(Link& link,  const file_list *file, unsigned long pos, size_t len )
 /**********************************************************************
  * read len bytes out of the cache.
  */
@@ -246,14 +246,14 @@ void *CacheRead( const file_list *file, unsigned long pos, size_t len )
     if( !st.Multipage ) {
         result = cache[startnum] + offset;
     } else {
-        if( wlink().TokSize < len ) {
-            wlink().TokSize = __ROUND_UP_SIZE_SECTOR( len );
-            wlink().TokBuff = static_cast<char *>( MemReallocSafe( wlink().TokBuff, wlink().TokSize ) );
+        if( link.TokSize < len ) {
+            link.TokSize = __ROUND_UP_SIZE_SECTOR( len );
+            link.TokBuff = static_cast<char *>( MemReallocSafe( link.TokBuff, link.TokSize ) );
         }
         amtread = kCachePageSize - offset;
-        std::memcpy( wlink().TokBuff, cache[startnum] + offset, amtread );
+        std::memcpy( link.TokBuff, cache[startnum] + offset, amtread );
         len -= amtread;
-        result = wlink().TokBuff + amtread;
+        result = link.TokBuff + amtread;
         for( ;; ) {
             startnum++;
             if( len <= kCachePageSize ) {
@@ -265,7 +265,7 @@ void *CacheRead( const file_list *file, unsigned long pos, size_t len )
                 result += kCachePageSize;
             }
         }
-        result = wlink().TokBuff;
+        result = link.TokBuff;
     }
     return result;
 }
@@ -310,15 +310,15 @@ void FreeObjCache( const file_list *file )
     file->infile->cache = nullptr;
 }
 
-bool DumpObjCache( void )
+bool DumpObjCache(Link& link)
 /******************************/
 // find and dump an object file cache.
 {
-    for( infilelist *infile = wlink().CachedFiles; infile != nullptr; infile = infile->next ) {
+    for( infilelist *infile = link.CachedFiles; infile != nullptr; infile = infile->next ) {
         if( infile->status & INSTAT_PAGE_CACHE ) {
-            if( wlink().CurrMod == nullptr
-              || wlink().CurrMod->u1.source == nullptr
-              || wlink().CurrMod->u1.source->infile != infile ) {
+            if( link.CurrMod == nullptr
+              || link.CurrMod->u1.source == nullptr
+              || link.CurrMod->u1.source->infile != infile ) {
                 if( DumpFileCache( infile, true ) ) {
                     return true;
                 }

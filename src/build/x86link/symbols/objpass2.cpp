@@ -50,86 +50,86 @@
 
 
 
-void ObjPass2( void )
+void ObjPass2(Link& link)
 /**************************/
 /* Pass 2 of 8086 linker. */
 {
     DEBUG(( DBG_BASE, "ObjPass2()" ));
     IncP2Start();
-    WalkAllSects( DBIP2Start );
-    wlink().CurrSect = wlink().Root;/*  TAI */
-    PModList( wlink().Root->mods );
+    WalkAllSects(link,  DBIP2Start );
+    link.CurrSect = link.Root;/*  TAI */
+    PModList(link,  link.Root->mods );
 #ifdef _EXE
-    if( wlink().FmtData.type & MK_OVERLAYS ) {
-        OvlPass2();
+    if( link.FmtData.type & MK_OVERLAYS ) {
+        OvlPass2(link);
     }
-    if( (wlink().FmtData.type & MK_OVERLAYS)
-      && wlink().FmtData.u.dos.distribute ) {
-        DistribProcMods();
+    if( (link.FmtData.type & MK_OVERLAYS)
+      && link.FmtData.u.dos.distribute ) {
+        DistribProcMods(link);
     } else {
 #endif
-        wlink().CurrSect = wlink().Root;
-        PModList( wlink().LibModules );
+        link.CurrSect = link.Root;
+        PModList(link,  link.LibModules );
 #ifdef _EXE
     }
 #endif
-    if( wlink().MapFile != nullptr ) {
-        WriteMapTracedSyms();
+    if( link.MapFile != nullptr ) {
+        WriteMapTracedSyms(link);
     }
-    PrintUndefinedSyms();
-    if( wlink().LinkState & LS_UNDEFED_SYM_ERROR ) {
-        wlink().LinkState |= LS_LINK_ERROR;
+    PrintUndefinedSyms(link);
+    if( link.LinkState & LS_UNDEFED_SYM_ERROR ) {
+        link.LinkState |= LS_LINK_ERROR;
     }
 #ifdef _EXE
-    if( wlink().FmtData.type & MK_OVERLAYS ) {
-        OvlSetStartAddr();
+    if( link.FmtData.type & MK_OVERLAYS ) {
+        OvlSetStartAddr(link);
     }
 #endif
-    WalkAllSects( DBIFini );
+    WalkAllSects(link,  DBIFini );
 }
 
-void PModList( mod_entry *head )
+void PModList(Link& link,  mod_entry *head )
 /*************************************/
 {
     mod_entry           *obj;
 
     for( obj = head; obj != nullptr; obj = obj->u.next ) {
-        PModule( obj );
+        PModule(link,  obj );
     }
 }
 
-void PModule( mod_entry *obj )
+void PModule(Link& link,  mod_entry *obj )
 /***********************************/
 {
     if( (obj->flags_mod & MOD_NEED_PASS_2) == 0 )
         return;
     DEBUG(( DBG_BASE, "2 : processing module %s", obj->name ));
-    wlink().CurrMod = obj;
-    IterateModRelocs( wlink().CurrMod->relocs, wlink().CurrMod->sizerelocs, IncExecRelocs );
+    link.CurrMod = obj;
+    IterateModRelocs( link.CurrMod->relocs, link.CurrMod->sizerelocs, IncExecRelocs );
     DoBakPats();
-    DBIGenModule();
-    CheckStop();
+    DBIGenModule(link);
+    CheckStop(link);
 }
 
-bool LoadObj( segdata *seg )
+bool LoadObj(Link& link,  segdata *seg )
 /*********************************/
 {
     seg_leader *leader;
 
     leader = seg->u.leader;
     if( ( leader == nullptr )
-      || DBISkip( leader ) )
+      || DBISkip(link,  leader ) )
         return( false );
-    wlink().CurrRec.seg = seg;
+    link.CurrRec.seg = seg;
     if( leader->group == nullptr ) {
-        wlink().CurrRec.addr = leader->seg_addr;
+        link.CurrRec.addr = leader->seg_addr;
 #ifdef DEVBUILD
         LnkMsg( WRN+MSG_INTERNAL, "s", "null leader group found" );
 #endif
     } else {
-        wlink().CurrRec.addr = leader->group->addr;
-        wlink().CurrRec.addr.off += SEG_GROUP_DELTA( leader );
+        link.CurrRec.addr = leader->group->addr;
+        link.CurrRec.addr.off += SEG_GROUP_DELTA( leader );
     }
-    wlink().CurrRec.addr.off += seg->a.delta;
+    link.CurrRec.addr.off += seg->a.delta;
     return( true );
 }

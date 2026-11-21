@@ -33,21 +33,21 @@
 
 
 extern void             InitCmdFile( void );
-extern void             SetSegMask(void);
+extern void             SetSegMask(Link& link);
 extern char             *GetNextLink( void );
-extern void             DoCmdFile( const char * );
-extern void             FreePaths( void );
-extern void             Burn( void );
-extern void             SetFormat( void );
-extern void             AddFmtLibPaths( void );
-extern bool             HintFormat( exe_format );
-extern void             DecideFormat( void );
-extern void             FreeFormatStuff( void );
-extern void             AddCommentLib( const char *, size_t, lib_priority );
-extern void             ExecSystem( const char * );
+extern void             DoCmdFile(Link& link,  const char * );
+extern void             FreePaths(Link& link);
+extern void             Burn(Link& link);
+extern void             SetFormat(Link& link);
+extern void             AddFmtLibPaths(Link& link);
+extern bool             HintFormat(Link& link,  exe_format );
+extern void             DecideFormat(Link& link);
+extern void             FreeFormatStuff(Link& link);
+extern void             AddCommentLib(Link& link,  const char *, size_t, lib_priority );
+extern void             ExecSystem(Link& link,  const char * );
 extern void             PruneSystemList( void );
 extern void             BurnSystemList( void );
-extern void             AddLibPaths( const char *, size_t, bool );
-extern void             AddLibPathsToEnd( const char * );
-extern void             AddLibPathsToEndList( const char *list );
+extern void             AddLibPaths(Link& link,  const char *, size_t, bool );
+extern void             AddLibPathsToEnd(Link& link,  const char * );
+extern void             AddLibPathsToEndList(Link& link,  const char *list );
 extern int              DoBuffCmdParse( const char *cmd );

@@ -133,5 +133,5 @@ extern size_t   IncExecRelocs( void * );
 extern size_t   IncSaveRelocs( void * );
 extern size_t   RelocMarkSyms( void * );
 extern void     RelocStartMod( void );
-extern void     StoreFixup( offset, fix_type, frame_spec *, target_spec *, offset );
+extern void     StoreFixup(Link& link,  offset, fix_type, frame_spec *, target_spec *, offset );
 extern void     ResetObj2Supp( void );

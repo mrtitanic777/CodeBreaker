@@ -23,16 +23,16 @@
 #include "build/x86link/messages/wlnkmsg.h"
 
 // (defined after the namespace: objpass1.cpp calls it)
-void SetNovImportSymbol(symbol* sym);
+void SetNovImportSymbol(Link& link, symbol* sym);
 
 namespace cb::x86link::directives {
 
 namespace {
 
 // The current token as wlink's memory (wlink's getstring).
-char* token_string() {
+char* token_string(Link& link) {
     const std::string_view t = reader().text();
-    return MemToStringSafe(t.data(), t.size());
+    return MemToStringSafe(link, t.data(), t.size());
 }
 
 bool is_space(char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; }
@@ -114,7 +114,7 @@ bool DoWeNeedToSkipASeparator(bool CheckDirectives) {
     return false;
 }
 
-bool GetNovSymbolImportExport(bool import) {
+bool GetNovSymbolImportExport(Link& link, bool import) {
     Reader& r = reader();
     // we need to trap import/export prefixes here. Unfortunately the prefix context is not followed by a valid separator
     // so the get in process_list at the end of the loop terminates the loop after we return from this call
@@ -131,15 +131,15 @@ bool GetNovSymbolImportExport(bool import) {
     const char* prefix_text = prefix.empty() ? nullptr : prefix.data();
     symbol* sym;
     if (import) {
-        sym = SymOpNWPfx(ST_CREATE_DEFINE_NOALIAS, name.data(), name.size(), prefix_text, prefix.size());
+        sym = SymOpNWPfx(link, ST_CREATE_DEFINE_NOALIAS, name.data(), name.size(), prefix_text, prefix.size());
         if (sym == nullptr || sym->p.import_nov != nullptr) return true;
         SET_SYM_TYPE(sym, SYM_IMPORTED);
         sym->info |= SYM_1_DCE_REF;   // make sure we don't try to get rid of these
-        SetNovImportSymbol(sym);
+        SetNovImportSymbol(link, sym);
     } else {
-        sym = SymOpNWPfx(ST_CREATE_REFERENCE, name.data(), name.size(), prefix_text, prefix.size());
+        sym = SymOpNWPfx(link, ST_CREATE_REFERENCE, name.data(), name.size(), prefix_text, prefix.size());
         sym->info |= SYM_1_DCE_REF | SYM_EXPORTED;
-        AddNameTable(name.data(), name.size(), true, &wlink().FmtData.u.nov.exp.export_);
+        AddNameTable(link, name.data(), name.size(), true, &link.FmtData.u.nov.exp.export_);
     }
     r.skip_next_separator(DoWeNeedToSkipASeparator(true));
     return true;
@@ -147,102 +147,102 @@ bool GetNovSymbolImportExport(bool import) {
 
 // ---- "OPtion" directive
 
-bool ProcScreenName() {
+bool ProcScreenName(Link& link) {
     Reader& r = reader();
     if (!r.get(Sep::none, Want::include_dot)) return false;
     if (r.text().size() > MAX_SCREEN_NAME_LENGTH) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "SCREENNAME");
     } else {
-        if (wlink().FmtData.u.nov.screenname != nullptr) MemFree(wlink().FmtData.u.nov.screenname);   // assume second is correct
-        wlink().FmtData.u.nov.screenname = token_string();
+        if (link.FmtData.u.nov.screenname != nullptr) MemFree(link.FmtData.u.nov.screenname);   // assume second is correct
+        link.FmtData.u.nov.screenname = token_string(link);
     }
     return true;
 }
 
-bool ProcCheck() {
+bool ProcCheck(Link& link) {
     if (!reader().get(Sep::equals, Want::include_dot)) return false;
-    wlink().FmtData.u.nov.checkfn = token_string();
+    link.FmtData.u.nov.checkfn = token_string(link);
     return true;
 }
 
-bool ProcMultiLoad() {
-    wlink().FmtData.u.nov.exeflags |= NOV_MULTIPLE;
+bool ProcMultiLoad(Link& link) {
+    link.FmtData.u.nov.exeflags |= NOV_MULTIPLE;
     return true;
 }
 
-bool ProcAutoUnload() {
-    wlink().FmtData.u.nov.exeflags |= NOV_AUTOUNLOAD;
+bool ProcAutoUnload(Link& link) {
+    link.FmtData.u.nov.exeflags |= NOV_AUTOUNLOAD;
     return true;
 }
 
-bool ProcReentrant() {
-    wlink().FmtData.u.nov.exeflags |= NOV_REENTRANT;
+bool ProcReentrant(Link& link) {
+    link.FmtData.u.nov.exeflags |= NOV_REENTRANT;
     return true;
 }
 
-bool ProcSynch() {
-    wlink().FmtData.u.nov.exeflags |= NOV_SYNCHRONIZE;
+bool ProcSynch(Link& link) {
+    link.FmtData.u.nov.exeflags |= NOV_SYNCHRONIZE;
     return true;
 }
 
-bool ProcPseudoPreemption() {
-    wlink().FmtData.u.nov.exeflags |= NOV_PSEUDOPREEMPTION;
+bool ProcPseudoPreemption(Link& link) {
+    link.FmtData.u.nov.exeflags |= NOV_PSEUDOPREEMPTION;
     return true;
 }
 
-bool ProcNLMFlags() {
+bool ProcNLMFlags(Link& link) {
     std::uint32_t value;
     if (!get_number(value)) return false;
-    wlink().FmtData.u.nov.exeflags |= value;
+    link.FmtData.u.nov.exeflags |= value;
     return true;
 }
 
-bool ProcCustom() {
+bool ProcCustom(Link& link) {
     if (!reader().get(Sep::equals, Want::file_name)) return false;
-    wlink().FmtData.u.nov.customdata = token_string();   // no default extension
+    link.FmtData.u.nov.customdata = token_string(link);   // no default extension
     return true;
 }
 
-bool ProcMessages() {
+bool ProcMessages(Link& link) {
     if (!reader().get(Sep::equals, Want::file_name)) return false;
-    wlink().FmtData.u.nov.messages = token_string();   // no default extension
+    link.FmtData.u.nov.messages = token_string(link);   // no default extension
     return true;
 }
 
-bool ProcHelp() {
+bool ProcHelp(Link& link) {
     if (!reader().get(Sep::equals, Want::file_name)) return false;
-    wlink().FmtData.u.nov.help = token_string();   // no default extension
+    link.FmtData.u.nov.help = token_string(link);   // no default extension
     return true;
 }
 
-bool ProcXDCData() {
+bool ProcXDCData(Link& link) {
     if (!reader().get(Sep::equals, Want::file_name)) return false;
-    wlink().FmtData.u.nov.rpcdata = token_string();   // no default extension
+    link.FmtData.u.nov.rpcdata = token_string(link);   // no default extension
     return true;
 }
 
-bool ProcSharelib() {
+bool ProcSharelib(Link& link) {
     Reader& r = reader();
     if (!r.get(Sep::equals, Want::file_name)) return false;
     const std::string_view t = r.text();
-    wlink().FmtData.u.nov.sharednlm = FileName(t.data(), t.size(), E_NLM, false);
+    link.FmtData.u.nov.sharednlm = FileName(t.data(), t.size(), E_NLM, false);
     return true;
 }
 
-bool ProcExit() {
+bool ProcExit(Link& link) {
     if (!reader().get(Sep::equals, Want::include_dot)) return false;
-    wlink().FmtData.u.nov.exitfn = token_string();
+    link.FmtData.u.nov.exitfn = token_string(link);
     return true;
 }
 
-bool ProcThreadName() {
+bool ProcThreadName(Link& link) {
     Reader& r = reader();
     if (!r.get(Sep::none, Want::include_dot)) {
         return false;
     } else if (r.text().size() > MAX_THREAD_NAME_LENGTH) {
         LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "THREADNAME");
     } else {
-        wlink().FmtData.u.nov.threadname = token_string();
+        link.FmtData.u.nov.threadname = token_string(link);
     }
     return true;
 }
@@ -252,14 +252,14 @@ constexpr char DEFAULT_COPYRIGHT[] = "Copyright 1991 Novell, Inc. All rights res
 constexpr std::size_t DEFAULT_COPYRIGHT_LENGTH = sizeof(DEFAULT_COPYRIGHT) - 1;
 constexpr std::size_t YEAR_OFFSET = sizeof(COPYRIGHT_START) - 1;
 
-bool ProcCopyright() {
+bool ProcCopyright(Link& link) {
     Reader& r = reader();
     if (!r.get(Sep::equals, Want::include_dot) && !r.get(Sep::none, Want::include_dot)) {
-        if (wlink().FmtData.u.nov.copyright != nullptr) MemFree(wlink().FmtData.u.nov.copyright);   // assume second is correct
-        wlink().FmtData.u.nov.copyright = static_cast<char*>(MemAllocSafe(DEFAULT_COPYRIGHT_LENGTH + 1));
-        std::memcpy(wlink().FmtData.u.nov.copyright, DEFAULT_COPYRIGHT, DEFAULT_COPYRIGHT_LENGTH + 1);
+        if (link.FmtData.u.nov.copyright != nullptr) MemFree(link.FmtData.u.nov.copyright);   // assume second is correct
+        link.FmtData.u.nov.copyright = static_cast<char*>(MemAllocSafe(DEFAULT_COPYRIGHT_LENGTH + 1));
+        std::memcpy(link.FmtData.u.nov.copyright, DEFAULT_COPYRIGHT, DEFAULT_COPYRIGHT_LENGTH + 1);
         // (the year is written backwards from YEAR_OFFSET, as wlink does)
-        char* copy_year = wlink().FmtData.u.nov.copyright + YEAR_OFFSET;
+        char* copy_year = link.FmtData.u.nov.copyright + YEAR_OFFSET;
         const std::time_t thetime = std::time(nullptr);
         const std::tm* currtime = std::localtime(&thetime);
         for (unsigned year = currtime->tm_year + 1900; year > 0; year /= 10) {
@@ -270,15 +270,15 @@ bool ProcCopyright() {
         if (r.text().size() > MAX_COPYRIGHT_LENGTH) {
             LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "COPYRIGHT");
         } else {
-            if (wlink().FmtData.u.nov.copyright != nullptr) MemFree(wlink().FmtData.u.nov.copyright);   // assume second is correct
-            wlink().FmtData.u.nov.copyright = token_string();
+            if (link.FmtData.u.nov.copyright != nullptr) MemFree(link.FmtData.u.nov.copyright);   // assume second is correct
+            link.FmtData.u.nov.copyright = token_string(link);
         }
     }
     return true;
 }
 
-bool ProcOSDomain() {
-    wlink().FmtData.u.nov.exeflags |= NOV_OS_DOMAIN;
+bool ProcOSDomain(Link& link) {
+    link.FmtData.u.nov.exeflags |= NOV_OS_DOMAIN;
     return true;
 }
 
@@ -304,25 +304,25 @@ constexpr Entry MainOptions[] = {
 
 // ---- "IMPort", "EXPort" and "MODule" directives
 
-bool GetNovImport() { return GetNovSymbolImportExport(true); }
+bool GetNovImport(Link& link) { return GetNovSymbolImportExport(link, true); }
 
-bool GetNovExport() { return GetNovSymbolImportExport(false); }
+bool GetNovExport(Link& link) { return GetNovSymbolImportExport(link, false); }
 
-bool GetNovModule() {
+bool GetNovModule(Link& link) {
     const std::string_view t = reader().text();
-    AddNameTable(t.data(), t.size(), false, &wlink().FmtData.u.nov.exp.module);
+    AddNameTable(link, t.data(), t.size(), false, &link.FmtData.u.nov.exp.module);
     return true;
 }
 
 // ---- "Debug" directive
 
-bool ProcNovDBIExports() {
-    wlink().FmtData.u.nov.flags |= DO_NOV_EXPORTS;
+bool ProcNovDBIExports(Link& link) {
+    link.FmtData.u.nov.flags |= DO_NOV_EXPORTS;
     return true;
 }
 
-bool ProcNovDBIReferenced() {
-    wlink().FmtData.u.nov.flags |= DO_NOV_REF_ONLY;
+bool ProcNovDBIReferenced(Link& link) {
+    link.FmtData.u.nov.flags |= DO_NOV_REF_ONLY;
     return true;
 }
 
@@ -333,69 +333,69 @@ constexpr Entry NovDBIOptions[] = {
 
 // ---- "Format" directive
 
-bool ProcModuleTypeN(int n) {
-    wlink().FmtData.def_ext = E_NLM;
-    wlink().FmtData.u.nov.moduletype = n;
+bool ProcModuleTypeN(Link& link, int n) {
+    link.FmtData.def_ext = E_NLM;
+    link.FmtData.u.nov.moduletype = n;
     return true;
 }
 
-bool ProcNLM() {
-    wlink().FmtData.def_ext = E_NLM;
-    wlink().FmtData.u.nov.moduletype = 0;
+bool ProcNLM(Link& link) {
+    link.FmtData.def_ext = E_NLM;
+    link.FmtData.u.nov.moduletype = 0;
     return true;
 }
 
-bool ProcLAN() {
-    wlink().FmtData.def_ext = E_LAN;
-    wlink().FmtData.u.nov.moduletype = 1;
+bool ProcLAN(Link& link) {
+    link.FmtData.def_ext = E_LAN;
+    link.FmtData.u.nov.moduletype = 1;
     return true;
 }
 
-bool ProcDSK() {
-    wlink().FmtData.def_ext = E_DSK;
-    wlink().FmtData.u.nov.moduletype = 2;
+bool ProcDSK(Link& link) {
+    link.FmtData.def_ext = E_DSK;
+    link.FmtData.u.nov.moduletype = 2;
     return true;
 }
 
-bool ProcNAM() {
-    wlink().FmtData.def_ext = E_NAM;
-    wlink().FmtData.u.nov.moduletype = 3;
+bool ProcNAM(Link& link) {
+    link.FmtData.def_ext = E_NAM;
+    link.FmtData.u.nov.moduletype = 3;
     return true;
 }
 
-bool ProcModuleType4() {
-    wlink().FmtData.def_ext = E_NLM;
-    wlink().FmtData.u.nov.moduletype = 4;
+bool ProcModuleType4(Link& link) {
+    link.FmtData.def_ext = E_NLM;
+    link.FmtData.u.nov.moduletype = 4;
     return true;
 }
 
-bool ProcModuleType5() {
-    wlink().FmtData.def_ext = E_NOV_MSL;
-    wlink().FmtData.u.nov.moduletype = 5;
+bool ProcModuleType5(Link& link) {
+    link.FmtData.def_ext = E_NOV_MSL;
+    link.FmtData.u.nov.moduletype = 5;
     return true;
 }
 
-bool ProcModuleType6() {
-    wlink().FmtData.def_ext = E_NLM;
-    wlink().FmtData.u.nov.moduletype = 6;
+bool ProcModuleType6(Link& link) {
+    link.FmtData.def_ext = E_NLM;
+    link.FmtData.u.nov.moduletype = 6;
     return true;
 }
 
-bool ProcModuleType7() {
-    wlink().FmtData.def_ext = E_NLM;
-    wlink().FmtData.u.nov.moduletype = 7;
+bool ProcModuleType7(Link& link) {
+    link.FmtData.def_ext = E_NLM;
+    link.FmtData.u.nov.moduletype = 7;
     return true;
 }
 
-bool ProcModuleType8() {
-    wlink().FmtData.def_ext = E_NOV_HAM;
-    wlink().FmtData.u.nov.moduletype = 8;
+bool ProcModuleType8(Link& link) {
+    link.FmtData.def_ext = E_NOV_HAM;
+    link.FmtData.u.nov.moduletype = 8;
     return true;
 }
 
-bool ProcModuleType9() {
-    wlink().FmtData.def_ext = E_NOV_CDM;
-    wlink().FmtData.u.nov.moduletype = 9;
+bool ProcModuleType9(Link& link) {
+    link.FmtData.def_ext = E_NOV_CDM;
+    link.FmtData.u.nov.moduletype = 9;
     return true;
 }
 
@@ -419,67 +419,69 @@ constexpr Entry NovFormats[] = {
 
 }  // namespace
 
-void SetNovFmt() { wlink().FmtData.def_ext = E_NLM; }
+void SetNovFmt() {
+    Link& link = wlink(); link.FmtData.def_ext = E_NLM; }
 
 void FreeNovFmt() {
-    MemFree(wlink().FmtData.description);
-    MemFree(wlink().FmtData.u.nov.screenname);
-    MemFree(wlink().FmtData.u.nov.checkfn);
-    MemFree(wlink().FmtData.u.nov.exitfn);
-    MemFree(wlink().FmtData.u.nov.customdata);
-    MemFree(wlink().FmtData.u.nov.threadname);
-    MemFree(wlink().FmtData.u.nov.copyright);
-    MemFree(wlink().FmtData.u.nov.messages);
-    MemFree(wlink().FmtData.u.nov.help);
-    MemFree(wlink().FmtData.u.nov.rpcdata);
-    MemFree(wlink().FmtData.u.nov.sharednlm);
+    Link& link = wlink();
+    MemFree(link.FmtData.description);
+    MemFree(link.FmtData.u.nov.screenname);
+    MemFree(link.FmtData.u.nov.checkfn);
+    MemFree(link.FmtData.u.nov.exitfn);
+    MemFree(link.FmtData.u.nov.customdata);
+    MemFree(link.FmtData.u.nov.threadname);
+    MemFree(link.FmtData.u.nov.copyright);
+    MemFree(link.FmtData.u.nov.messages);
+    MemFree(link.FmtData.u.nov.help);
+    MemFree(link.FmtData.u.nov.rpcdata);
+    MemFree(link.FmtData.u.nov.sharednlm);
     // (the export and module lists are permanent memory now)
 }
 
 void CmdNovFini() {}
 
-bool ProcNovOptions() { return process_one(MainOptions, Sep::none); }
+bool ProcNovOptions(Link& link) { return process_one(link, MainOptions, Sep::none); }
 
-bool ProcNovImport() {
+bool ProcNovImport(Link& link) {
     SetCurrentPrefix({});
-    return process_list(GetNovImport, Want::include_dot, reader().current());
+    return process_list(link, GetNovImport, Want::include_dot, reader().current());
 }
 
-bool ProcNovExport() {
+bool ProcNovExport(Link& link) {
     SetCurrentPrefix({});
-    return process_list(GetNovExport, Want::include_dot, reader().current());
+    return process_list(link, GetNovExport, Want::include_dot, reader().current());
 }
 
-bool ProcNovModule() { return process_list(GetNovModule, Want::include_dot); }
+bool ProcNovModule(Link& link) { return process_list(link, GetNovModule, Want::include_dot); }
 
-bool ProcNovExportsDBI() {
-    wlink().DBIFlag |= DBI_ONLY_EXPORTS;
-    wlink().FmtData.u.nov.flags |= DO_WATCOM_EXPORTS;
+bool ProcNovExportsDBI(Link& link) {
+    link.DBIFlag |= DBI_ONLY_EXPORTS;
+    link.FmtData.u.nov.flags |= DO_WATCOM_EXPORTS;
     return true;
 }
 
-bool ProcNovDBI() {
-    wlink().LinkFlags |= LF_NOVELL_DBI_FLAG;
-    if (process_one(NovDBIOptions, Sep::none)) {
-        while (process_one(NovDBIOptions, Sep::comma)) {
+bool ProcNovDBI(Link& link) {
+    link.LinkFlags |= LF_NOVELL_DBI_FLAG;
+    if (process_one(link, NovDBIOptions, Sep::none)) {
+        while (process_one(link, NovDBIOptions, Sep::comma)) {
         }
     }
     return true;
 }
 
-bool ProcNovFormat() {
+bool ProcNovFormat(Link& link) {
     Reader& r = reader();
-    if (!process_one(NovFormats, Sep::none)) {   // get file type
+    if (!process_one(link, NovFormats, Sep::none)) {   // get file type
         const int nType = std::atoi(r.str().c_str());
         if (nType > 0) {
             r.get(Sep::none, Want::include_dot);
-            ProcModuleTypeN(nType);
+            ProcModuleTypeN(link, nType);
         } else {
-            ProcNLM();
+            ProcNLM(link);
         }
     }
     if (r.get(Sep::quote, Want::include_dot)) {   // get description
-        wlink().FmtData.description = token_string();
+        link.FmtData.description = token_string(link);
     }
     return true;
 }
@@ -487,7 +489,7 @@ bool ProcNovFormat() {
 }  // namespace cb::x86link::directives
 
 // Called from objpass1.cpp.
-void SetNovImportSymbol(symbol* sym) {
+void SetNovImportSymbol(Link& link, symbol* sym) {
     sym->p.import_nov = static_cast<nov_import*>(DUMMY_IMPORT_PTR);
 }
 

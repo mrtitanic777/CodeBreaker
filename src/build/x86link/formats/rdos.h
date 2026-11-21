@@ -35,7 +35,7 @@
 
 #ifdef _RDOS
 
-extern void FiniRdosLoadFile( void );
-extern void GetRdosSegs( void );
+extern void FiniRdosLoadFile(Link& link);
+extern void GetRdosSegs(Link& link);
 
 #endif

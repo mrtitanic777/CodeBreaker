@@ -48,7 +48,7 @@ constexpr Flag& operator|=(Flag& a, Flag b) { return a = a | b; }
 constexpr Flag& operator&=(Flag& a, Flag b) { return a = a & b; }
 constexpr bool any(Flag f) { return f != Flag::none; }
 
-using Handler = bool (*)();
+using Handler = bool (*)(Link& link);
 
 // One keyword of a table: what it runs, the formats it is valid for, and the flags it sets.
 struct Entry {
@@ -66,14 +66,14 @@ Flag& cmd_flags();
 // pushed back when it is not there (it may be the next table's). A keyword not valid for the format decided is warned
 // of and taken. `process_one_subset` looks only at the entries flagged `subset`; `process_one_or_fail` stops the link
 // (a syntax error) when the token is not there.
-bool process_one(Table table, Sep required);
-bool process_one_subset(Table table, Sep required);
-bool process_one_or_fail(Table table, Sep required);
+bool process_one(Link& link, Table table, Sep required);
+bool process_one_subset(Link& link, Table table, Sep required);
+bool process_one_or_fail(Link& link, Table table, Sep required);
 bool matches(Table table, std::string_view word);   // the word is a keyword of the table
 
 // A list of arguments, `{a b c}` or `a, b, c`, the handler run for each (a wildcard in a file name: for each file it
 // matches). With a reset point, the list ends at the end of that source's file (export files).
-bool process_list(Handler handler, Want want, const Source* reset_point = nullptr);
+bool process_list(Link& link, Handler handler, Want want, const Source* reset_point = nullptr);
 
 // The current token as a number: decimal, 0x hexadecimal, and a k or m suffix (times 1024, 1024*1024).
 enum class Number : std::uint8_t { ok, not_a_number, too_big };
@@ -97,7 +97,7 @@ VersionPart get_version(Version& v, VersionPart wanted, bool novell_revision);
 // The current token as an object file's name, `lib(member)` a library's member: the file's name (wlink's FileName,
 // with its default extension: an object's, or a library's for a member) and the member, or null. Both are wlink's
 // memory (MemAlloc), as the object lists that keep them want.
-char* file_name(char** member);
+char* file_name(Link& link, char** member);
 
 // Directives are being read from a system block (the current source or one under it).
 bool in_system_block();

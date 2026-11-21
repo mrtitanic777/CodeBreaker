@@ -67,16 +67,16 @@
 #define PE_DLL_DEF_HEAP_SIZE        (2 * _4K)
 #define PE_DLL_DEF_HEAP_COMMIT      (_4K)
 
-extern void             DoAddResource( char * );
-extern void             FiniPELoadFile( void );
-extern void             ReadPEExportTable( f_handle, pe_dir_entry * );
-extern void             AllocPETransferTable( void );
+extern void             DoAddResource(Link& link,  char * );
+extern void             FiniPELoadFile(Link& link);
+extern void             ReadPEExportTable(Link& link,  f_handle, pe_dir_entry * );
+extern void             AllocPETransferTable(Link& link);
 extern void             GenPEToc( void );
-extern void             ChkPEData( void );
-extern unsigned long    GetPEHeaderSize( void );
-extern void             ResetLoadPE( void );
+extern void             ChkPEData(Link& link);
+extern unsigned long    GetPEHeaderSize(Link& link);
+extern void             ResetLoadPE(Link& link);
 extern void             AddPEImportLocalSym( symbol *, symbol * );
-extern bool             ImportPELocalSym( symbol * );
+extern bool             ImportPELocalSym(Link& link,  symbol * );
 extern void             FreePELocalImports( void );
 
 typedef struct import_name {
@@ -92,6 +92,6 @@ typedef struct module_import {
     unsigned                num_entries;
 } module_import;
 
-extern unsigned     DefStackSizePE( void );
+extern unsigned     DefStackSizePE(Link& link);
 
 #endif

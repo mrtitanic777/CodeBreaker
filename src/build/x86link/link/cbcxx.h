@@ -10,6 +10,9 @@
 
 #include <type_traits>
 
+namespace cb_wlink { struct Link; }
+using cb_wlink::Link;   // (the state of one link: every function of the linker that reads or changes it is given it, `Link& link`)
+
 namespace cb_wlink_cxx {
 template <class E>
 using if_enum = std::enable_if_t<std::is_enum_v<E>, int>;

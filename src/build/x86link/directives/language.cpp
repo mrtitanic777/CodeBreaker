@@ -31,18 +31,18 @@ bool keyword_matches(std::string_view keyword, std::string_view word) {
     }
 }
 
-bool process(Table table, Sep required, bool or_fail, bool subset) {
+bool process(Link& link, Table table, Sep required, bool or_fail, bool subset) {
     Reader& r = reader();
     if (!r.get(required, Want::include_dot)) return false;
     const std::string_view word = r.text();
     for (const Entry& e : table) {
         if (subset && !any(e.flags & Flag::subset)) continue;
         if (!keyword_matches(e.keyword, word)) continue;
-        if (!HintFormat(e.formats)) {
+        if (!HintFormat(link, e.formats)) {
             LnkMsg(WRN + LOC + LINE + MSG_FORMAT_BAD_OPTION, "s", e.keyword.data());
             return true;
         }
-        const bool ret = e.handler();
+        const bool ret = e.handler(link);
         cmd_flags() |= e.flags & ~Flag::subset;
         return ret;
     }
@@ -55,7 +55,7 @@ bool process(Table table, Sep required, bool or_fail, bool subset) {
 }
 
 // The handler, for each file a wildcard in the token names (hidden, system and folder entries left out), or once.
-bool wildcard(Handler handler, Want want) {
+bool wildcard(Link& link, Handler handler, Want want) {
     Reader& r = reader();
     bool wild = false;
     if (has(want, Want::file_name)) {
@@ -69,10 +69,10 @@ bool wildcard(Handler handler, Want want) {
             }
         }
     }
-    if (!wild) return handler();
+    if (!wild) return handler(link);
     const std::string pattern = r.str();
     DIR* dir = opendir(pattern.c_str());
-    if (dir == nullptr) return handler();
+    if (dir == nullptr) return handler(link);
     pgroup2 pg;
     _splitpath2(pattern.c_str(), pg.buffer, &pg.drive, &pg.dir, nullptr, nullptr);
     bool ret = true;
@@ -81,7 +81,7 @@ bool wildcard(Handler handler, Want want) {
         char path[_MAX_PATH];
         _makepath(path, pg.drive, pg.dir, entry->d_name, nullptr);
         r.give_text(path);
-        if (!handler()) {
+        if (!handler(link)) {
             r.clear_token();
             r.forget_push_back();
             ret = false;
@@ -134,9 +134,9 @@ Number to_number(std::string_view t, std::uint32_t& out) {
 
 }  // namespace
 
-bool process_one(Table table, Sep required) { return process(table, required, false, false); }
-bool process_one_subset(Table table, Sep required) { return process(table, required, false, true); }
-bool process_one_or_fail(Table table, Sep required) { return process(table, required, true, false); }
+bool process_one(Link& link, Table table, Sep required) { return process(link, table, required, false, false); }
+bool process_one_subset(Link& link, Table table, Sep required) { return process(link, table, required, false, true); }
+bool process_one_or_fail(Link& link, Table table, Sep required) { return process(link, table, required, true, false); }
 
 bool matches(Table table, std::string_view word) {
     for (const Entry& e : table) {
@@ -145,12 +145,12 @@ bool matches(Table table, std::string_view word) {
     return false;
 }
 
-bool process_list(Handler handler, Want want, const Source* reset_point) {
+bool process_list(Link& link, Handler handler, Want want, const Source* reset_point) {
     Reader& r = reader();
     bool reset = false;   // the reset point's file ended
     if (r.get(Sep::lcurly, want, reset_point, &reset)) {
         for (;;) {
-            if (!wildcard(handler, want)) return false;
+            if (!wildcard(link, handler, want)) return false;
             if (fence()) break;
             if (!r.get(Sep::none, want, reset_point, &reset)) {
                 LnkMsg(ERR + LOC + LINE + MSG_BAD_CURLY_LIST, nullptr);
@@ -163,7 +163,7 @@ bool process_list(Handler handler, Want want, const Source* reset_point) {
     if (!r.get(Sep::none, want, reset_point, &reset)) return false;
     do {
         if (reset_point != nullptr && reset) return true;
-        if (!wildcard(handler, want)) return false;
+        if (!wildcard(link, handler, want)) return false;
     } while (r.get(Sep::comma, want, reset_point, &reset));
     return true;
 }
@@ -255,14 +255,14 @@ VersionPart get_version(Version& v, VersionPart wanted, bool novell_revision) {
     return got;
 }
 
-char* file_name(char** member) {
+char* file_name(Link& link, char** member) {
     Reader& r = reader();
     const std::string object = r.str();
     if (r.get(Sep::paren, Want::include_dot)) {   // LIBRARY(MEMBER)
         const std::string_view m = r.text();
         size_t base_length = 0;
         const char* base = GetBaseName(m.data(), m.size(), &base_length);
-        *member = MemToStringSafe(base, base_length);
+        *member = MemToStringSafe(link, base, base_length);
         return FileName(object.data(), object.size(), E_LIBRARY, false);
     }
     *member = nullptr;

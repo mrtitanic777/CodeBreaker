@@ -112,7 +112,7 @@ struct ResTable {
 }   // namespace
 
 
-static void ReadNameTable( f_handle the_file )
+static void ReadNameTable(Link& link,  f_handle the_file )
 /*********************************************
  * Read a name table & set export ordinal value accordingly.
  */
@@ -122,22 +122,22 @@ static void ReadNameTable( f_handle the_file )
     bool                cmpcase;
     const char          *fname;
 
-    fname = wlink().FmtData.u.os2fam.old_lib_name;
-    cmpcase = ( (wlink().LinkFlags & LF_CASE_FLAG) != 0 );
+    fname = link.FmtData.u.os2fam.old_lib_name;
+    cmpcase = ( (link.LinkFlags & LF_CASE_FLAG) != 0 );
     for( ;; ) {
         QRead( the_file, &len_u8, sizeof( len_u8 ), fname );
         if( len_u8 == 0 )
             break;
-        QRead( the_file, wlink().TokBuff, len_u8, fname );
+        QRead( the_file, link.TokBuff, len_u8, fname );
         QRead( the_file, &ordinal, sizeof( ordinal ), fname );
         if( ordinal == 0 )
             continue;
-        wlink().TokBuff[len_u8] = '\0';
-        CheckExport( wlink().TokBuff, ordinal, cmpcase );
+        link.TokBuff[len_u8] = '\0';
+        CheckExport(link,  link.TokBuff, ordinal, cmpcase );
     }
 }
 
-static void ReadOldLib( void )
+static void ReadOldLib(Link& link)
 /*****************************
  * Read an old DLL & match ordinals of exports in it with exports in this.
  */
@@ -155,8 +155,8 @@ static void ReadOldLib( void )
     unsigned_32 ne_header_off;
     unsigned_16 signature;
 
-    fname = wlink().FmtData.u.os2fam.old_lib_name;
-    the_file = QOpenR( fname );
+    fname = link.FmtData.u.os2fam.old_lib_name;
+    the_file = QOpenR(link,  fname );
     QRead( the_file, &head, sizeof( dos_exe_header ), fname );
     if( head.dos.signature != EXESIGN_DOS
       || !NE_HEADER_FOLLOWS( head.dos.reloc_offset ) ) {
@@ -170,19 +170,19 @@ static void ReadOldLib( void )
         if( signature == EXESIGN_NE ) {
             QRead( the_file, &head.os2, sizeof( head.os2 ), fname );
             QSeek( the_file, ne_header_off + head.os2.resident_off, fname );
-            ReadNameTable( the_file );
+            ReadNameTable(link,  the_file );
             QSeek( the_file, head.os2.nonres_off, fname );
-            ReadNameTable( the_file );
+            ReadNameTable(link,  the_file );
         } else if( signature == EXESIGN_LE
           || signature == EXESIGN_LX ) {
             QRead( the_file, &head.os2f, sizeof( head.os2f ), fname );
             if( head.os2f.resname_off != 0 ) {
                 QSeek( the_file, ne_header_off + head.os2f.resname_off, fname );
-                ReadNameTable( the_file );
+                ReadNameTable(link,  the_file );
             }
             if( head.os2f.nonres_off != 0 ) {
                 QSeek( the_file, head.os2f.nonres_off, fname );
-                ReadNameTable( the_file );
+                ReadNameTable(link,  the_file );
             }
         } else if( signature == EXESIGN_PE ) {
             unsigned    num_objects;
@@ -197,7 +197,7 @@ static void ReadOldLib( void )
                 if( currobj->rva == PE_DIRECTORY( head.pe, PE_TBL_EXPORT ).rva ) {
                     QSeek( the_file, currobj->physical_offset, fname );
                     PE_DIRECTORY( head.pe, PE_TBL_EXPORT ).rva -= currobj->physical_offset;
-                    ReadPEExportTable( the_file, &PE_DIRECTORY( head.pe, PE_TBL_EXPORT ) );
+                    ReadPEExportTable(link,  the_file, &PE_DIRECTORY( head.pe, PE_TBL_EXPORT ) );
                     break;
                 }
                 currobj++;
@@ -211,10 +211,10 @@ static void ReadOldLib( void )
     }
     QClose( the_file, fname );
     MemFree( fname );
-    wlink().FmtData.u.os2fam.old_lib_name = nullptr;
+    link.FmtData.u.os2fam.old_lib_name = nullptr;
 }
 
-static void AssignOrdinals( void )
+static void AssignOrdinals(Link& link)
 /*********************************
  * assign ordinal values to entries in the export list
  */
@@ -224,14 +224,14 @@ static void AssignOrdinals( void )
     entry_export        *prev;
     bool                is_space;
 
-    if( wlink().FmtData.u.os2fam.exports != nullptr ) {
-        if( wlink().FmtData.u.os2fam.old_lib_name != nullptr ) {
-            ReadOldLib();
+    if( link.FmtData.u.os2fam.exports != nullptr ) {
+        if( link.FmtData.u.os2fam.old_lib_name != nullptr ) {
+            ReadOldLib(link);
         }
-        prev = wlink().FmtData.u.os2fam.exports;
+        prev = link.FmtData.u.os2fam.exports;
         place = prev->next;
         is_space = false;
-        for( exp = wlink().FmtData.u.os2fam.exports; exp->ordinal == 0; exp = wlink().FmtData.u.os2fam.exports ) {
+        for( exp = link.FmtData.u.os2fam.exports; exp->ordinal == 0; exp = link.FmtData.u.os2fam.exports ) {
             /*
              * while still unassigned values
              * search for an unassigned value
@@ -242,8 +242,8 @@ static void AssignOrdinals( void )
                 }
                 if( place == nullptr
                   || is_space ) {
-                    if( wlink().FmtData.u.os2fam.exports != prev ) {
-                        wlink().FmtData.u.os2fam.exports = exp->next;
+                    if( link.FmtData.u.os2fam.exports != prev ) {
+                        link.FmtData.u.os2fam.exports = exp->next;
                         prev->next = exp;
                         exp->next = place;
                     }
@@ -262,7 +262,7 @@ static void AssignOrdinals( void )
     }
 }
 
-static unsigned long WriteChainedRelocs( group_entry *group, unsigned long seg_start, unsigned long relocsize )
+static unsigned long WriteChainedRelocs(Link& link,  group_entry *group, unsigned long seg_start, unsigned long relocsize )
 /***********************************************************************************************************
  * CodeBreaker (OPTION SELECTORFIXUPS): a selector to a segment of the module, wherever it is
  * wanted, is one record and a chain through the places -- each holds where the next is, the
@@ -276,7 +276,7 @@ static unsigned long WriteChainedRelocs( group_entry *group, unsigned long seg_s
     std::vector<os2_reloc_item> items( n );
     CopyRelocList( group->g.reloclist, items.data() );
     kept = 0;
-    at = PosLoad();
+    at = PosLoad(link);
     for( i = 0; i < n; i++ ) {
         if( items[i].fixtype == 0xFF )      /* (taken into an earlier chain) */
             continue;
@@ -294,8 +294,8 @@ static unsigned long WriteChainedRelocs( group_entry *group, unsigned long seg_s
                     if( items[j].reloc_type == INTERNAL_REFERENCE && items[j].fixtype == OSF_SOURCE_SEG
                       && items[j].put.internal.grp_num == items[i].put.internal.grp_num ) {
                         next = items[j].reloc_offset;
-                        SeekLoad( seg_start + items[last].reloc_offset );
-                        WriteLoad( &next, 2 );
+                        SeekLoad(link,  seg_start + items[last].reloc_offset );
+                        WriteLoad(link,  &next, 2 );
                         items[j].fixtype = 0xFF;
                         last = j;
                     }
@@ -304,13 +304,13 @@ static unsigned long WriteChainedRelocs( group_entry *group, unsigned long seg_s
         }
         items[kept++] = items[i];
     }
-    SeekLoad( at );
-    WriteLoadU16( kept );
-    WriteLoad( items.data(), kept * sizeof( os2_reloc_item ) );
+    SeekLoad(link,  at );
+    WriteLoadU16(link,  kept );
+    WriteLoad(link,  items.data(), kept * sizeof( os2_reloc_item ) );
     return( kept * sizeof( os2_reloc_item ) );
 }
 
-static unsigned long WriteOS2Relocs( group_entry *group, unsigned long seg_start )
+static unsigned long WriteOS2Relocs(Link& link,  group_entry *group, unsigned long seg_start )
 /********************************************************
  * write all relocs associated with group to the file
  */
@@ -322,14 +322,14 @@ static unsigned long WriteOS2Relocs( group_entry *group, unsigned long seg_start
     relocnum = relocsize / sizeof( os2_reloc_item );
     if( relocnum == 0 )
         return( 0 );
-    if( wlink().FmtData.u.os2fam.selector_fixups )
-        return( WriteChainedRelocs( group, seg_start, relocsize ) );
-    WriteLoadU16( relocnum );
+    if( link.FmtData.u.os2fam.selector_fixups )
+        return( WriteChainedRelocs(link,  group, seg_start, relocsize ) );
+    WriteLoadU16(link,  relocnum );
     DumpRelocList( group->g.reloclist );
     return( relocsize );
 }
 
-static void WriteOS2Data( unsigned_32 stub_len, os2_exe_header *exe_head )
+static void WriteOS2Data(Link& link,  unsigned_32 stub_len, os2_exe_header *exe_head )
 /*************************************************************************
  * copy code from extra memory to loadfile.
  */
@@ -344,7 +344,7 @@ static void WriteOS2Data( unsigned_32 stub_len, os2_exe_header *exe_head )
     DEBUG(( DBG_BASE, "Writing data" ));
 
     group_num = 0;
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         segrec.info = group->segflags;
@@ -352,15 +352,15 @@ static void WriteOS2Data( unsigned_32 stub_len, os2_exe_header *exe_head )
         segrec.min = __ROUND_UP_SIZE_EVEN( group->totalsize );
         segrec.size = __ROUND_UP_SIZE_EVEN( group->size );
         if( segrec.size != 0 ) {
-            off = NullAlign( 1 << wlink().FmtData.u.os2fam.segment_shift );
-            seg_addr = off >> wlink().FmtData.u.os2fam.segment_shift;
+            off = NullAlign(link,  1 << link.FmtData.u.os2fam.segment_shift );
+            seg_addr = off >> link.FmtData.u.os2fam.segment_shift;
             if( seg_addr > 0xffff ) {
                 LnkMsg( ERR+MSG_ALIGN_TOO_SMALL, nullptr );
             }
             segrec.address = static_cast<unsigned_16>( seg_addr );
-            WriteGroupLoad( group, false );
-            NullAlign( 2 );         // segment must be even length
-            relocsize = WriteOS2Relocs( group, off );
+            WriteGroupLoad(link,  group, false );
+            NullAlign(link,  2 );         // segment must be even length
+            relocsize = WriteOS2Relocs(link,  group, off );
             if( relocsize != 0 ) {
                 segrec.info |= SEG_RELOC;
             }
@@ -369,10 +369,10 @@ static void WriteOS2Data( unsigned_32 stub_len, os2_exe_header *exe_head )
         }
 
         // write to segment table
-        off = PosLoad();
-        SeekLoad( exe_head->segment_off + stub_len + group_num * sizeof( segment_record ) );
-        WriteLoad( &segrec, sizeof( segment_record ) );
-        SeekLoad( off );
+        off = PosLoad(link);
+        SeekLoad(link,  exe_head->segment_off + stub_len + group_num * sizeof( segment_record ) );
+        WriteLoad(link,  &segrec, sizeof( segment_record ) );
+        SeekLoad(link,  off );
         group_num++;
     }
 }
@@ -499,40 +499,40 @@ static void FreeResTable( ResTable *restab )
     restab->Dir.Tail = nullptr;
 }
 
-static void WriteResTable( ResTable *restab )
+static void WriteResTable(Link& link,  ResTable *restab )
 /*******************************************/
 {
     FullTypeRecord      *exe_type;
     FullResourceRecord  *exe_res;
 
-    WriteLoadU16( wlink().FmtData.u.os2fam.segment_shift );
+    WriteLoadU16(link,  link.FmtData.u.os2fam.segment_shift );
     for( exe_type = restab->Dir.Head; exe_type != nullptr; exe_type = exe_type->Next ) {
-        WriteLoad( &(exe_type->Info), sizeof( resource_type_record ) );
+        WriteLoad(link,  &(exe_type->Info), sizeof( resource_type_record ) );
         for( exe_res = exe_type->Head; exe_res != nullptr; exe_res = exe_res->Next ) {
-            WriteLoad( &(exe_res->Info), sizeof( resource_record ) );
+            WriteLoad(link,  &(exe_res->Info), sizeof( resource_record ) );
         }
     }
-    WriteLoadU16( 0 );
-    WriteLoad( restab->Str.StringBlock, restab->Str.StringBlockSize );
+    WriteLoadU16(link,  0 );
+    WriteLoad(link,  restab->Str.StringBlock, restab->Str.StringBlockSize );
 }
 
-static void CopyResData( FILE *res_fp, size_t len )
+static void CopyResData(Link& link,  FILE *res_fp, size_t len )
 /*************************************************/
 {
     std::array<char, 512> buff;
 
     for( ; len > buff.size(); len -= buff.size() ) {
-        QRead( FP2POSIX( res_fp ), buff.data(), buff.size(), wlink().FmtData.resource );
-        WriteLoad( buff.data(), buff.size() );
+        QRead( FP2POSIX( res_fp ), buff.data(), buff.size(), link.FmtData.resource );
+        WriteLoad(link,  buff.data(), buff.size() );
     }
-    QRead( FP2POSIX( res_fp ), buff.data(), len, wlink().FmtData.resource );
-    WriteLoad( buff.data(), len );
+    QRead( FP2POSIX( res_fp ), buff.data(), len, link.FmtData.resource );
+    WriteLoad(link,  buff.data(), len );
 }
 
-static void WriteOS2Resources( FILE *res_fp, WResDir inRes, ResTable *outRes )
+static void WriteOS2Resources(Link& link,  FILE *res_fp, WResDir inRes, ResTable *outRes )
 /****************************************************************************/
 {
-    const int           shift_count = wlink().FmtData.u.os2fam.segment_shift;
+    const int           shift_count = link.FmtData.u.os2fam.segment_shift;
     const int           align = 1 << shift_count;
     int                 outRes_off;
     WResDirWindow       wind;
@@ -542,7 +542,7 @@ static void WriteOS2Resources( FILE *res_fp, WResDir inRes, ResTable *outRes )
 
     if( inRes == nullptr )
         return;
-    outRes_off = NullAlign( align ) >> shift_count;
+    outRes_off = NullAlign(link,  align ) >> shift_count;
     /* walk through the WRes directory */
     exe_type = nullptr;
     wind = WResFirstResource( inRes );
@@ -556,18 +556,18 @@ static void WriteOS2Resources( FILE *res_fp, WResDir inRes, ResTable *outRes )
         addExeResRecord( outRes, exe_type, &(res->ResName),
                         lang->MemoryFlags, outRes_off,
                         (lang->Length + align - 1) >> shift_count );
-        QSeek( FP2POSIX( res_fp ), lang->Offset, wlink().FmtData.resource );
-        CopyResData( res_fp, lang->Length );
-        NullAlign( align );
+        QSeek( FP2POSIX( res_fp ), lang->Offset, link.FmtData.resource );
+        CopyResData(link,  res_fp, lang->Length );
+        NullAlign(link,  align );
         outRes_off += (lang->Length + align - 1) >> shift_count;
 
         wind = WResNextResource( wind, inRes );
     }
-    NullAlign( align );
+    NullAlign(link,  align );
 }
 
 
-static unsigned long WriteTabList( obj_name_list *val, unsigned long *pcount, bool upper )
+static unsigned long WriteTabList(Link& link,  obj_name_list *val, unsigned long *pcount, bool upper )
 /****************************************************************************************/
 {
     obj_name_list       *node;
@@ -577,39 +577,39 @@ static unsigned long WriteTabList( obj_name_list *val, unsigned long *pcount, bo
     count = 0;
     off = 0;
     for( node = val; node != nullptr; node = node->next ) {
-        off += WriteLoadU8Name( node->name.u.ptr, node->len, upper );
+        off += WriteLoadU8Name(link,  node->name.u.ptr, node->len, upper );
         ++count;
     }
     *pcount = count;
     return( off );
 }
 
-unsigned long ImportProcTable( unsigned long *count )
+unsigned long ImportProcTable(Link& link,  unsigned long *count )
 /***************************************************/
 {
-    return( WriteTabList( wlink().FmtData.u.os2fam.imp_tab_list, count, (wlink().LinkFlags & LF_CASE_FLAG) == 0 ) );
+    return( WriteTabList(link,  link.FmtData.u.os2fam.imp_tab_list, count, (link.LinkFlags & LF_CASE_FLAG) == 0 ) );
 }
 
-unsigned long ImportModTable( unsigned long *count )
+unsigned long ImportModTable(Link& link,  unsigned long *count )
 /**************************************************/
 {
-    return( WriteTabList( wlink().FmtData.u.os2fam.mod_ref_list, count, false ) );
+    return( WriteTabList(link,  link.FmtData.u.os2fam.mod_ref_list, count, false ) );
 }
 
-static unsigned long ImportNameTable( void )
+static unsigned long ImportNameTable(Link& link)
 /******************************************/
 {
     unsigned long count;
     unsigned long size;
 
-    PadLoad( 1 );
+    PadLoad(link,  1 );
     size = 1;
-    size += ImportProcTable( &count );
-    size += ImportModTable( &count );
+    size += ImportProcTable(link,  &count );
+    size += ImportModTable(link,  &count );
     return( size );
 }
 
-static unsigned long ModRefTable( void )
+static unsigned long ModRefTable(Link& link)
 /***************************************
  * count total number of groups
  */
@@ -619,24 +619,24 @@ static unsigned long ModRefTable( void )
     unsigned long       nodenum;
     unsigned long       off;
 
-    if( wlink().FmtData.type & MK_NE ) {
+    if( link.FmtData.type & MK_NE ) {
         off = 1;
-        for( inode = wlink().FmtData.u.os2fam.imp_tab_list; inode != nullptr; inode = inode->next ) {
+        for( inode = link.FmtData.u.os2fam.imp_tab_list; inode != nullptr; inode = inode->next ) {
             off += inode->len + 1;
         }
     } else {
         off = 0;
     }
     nodenum = 0;
-    for( node = wlink().FmtData.u.os2fam.mod_ref_list; node != nullptr; node = node->next ) {
-        WriteLoadU16( off );
+    for( node = link.FmtData.u.os2fam.mod_ref_list; node != nullptr; node = node->next ) {
+        WriteLoadU16(link,  off );
         off += node->len + 1;
         nodenum++;
     }
     return( nodenum );
 }
 
-unsigned long ResNonResNameTable( bool dores )
+unsigned long ResNonResNameTable(Link& link,  bool dores )
 /*********************************************
  * NOTE: this routine assumes INTEL byte ordering (in the use of namelen)
  */
@@ -654,12 +654,12 @@ unsigned long ResNonResNameTable( bool dores )
          * resident names table
          * get first item - module name
          */
-        if( wlink().FmtData.u.os2fam.module_name != nullptr ) {
-            name = wlink().FmtData.u.os2fam.module_name;
+        if( link.FmtData.u.os2fam.module_name != nullptr ) {
+            name = link.FmtData.u.os2fam.module_name;
             len = strlen( name );
         } else {
-            name = GetBaseName( wlink().Root->outfile->fname, 0, &len );
-            if( wlink().FmtData.type & (MK_OS2_LE | MK_OS2_LX) ) {
+            name = GetBaseName( link.Root->outfile->fname, 0, &len );
+            if( link.FmtData.type & (MK_OS2_LE | MK_OS2_LX) ) {
                 /*
                  * use base name + extension
                  */
@@ -669,10 +669,10 @@ unsigned long ResNonResNameTable( bool dores )
         /*
          * for 16-bit NE and VxD format module name is truncated to 8 characters
          */
-        if( (wlink().FmtData.type & MK_NE )
+        if( (link.FmtData.type & MK_NE )
           && len > 8 ) {
             len = 8;
-        } else if( wlink().FmtData.type & MK_WIN_VXD ) {
+        } else if( link.FmtData.type & MK_WIN_VXD ) {
             /*
              * for VxD format module name is always 8 characters
              * if length > 8 then it is truncated to 8 characters
@@ -693,10 +693,10 @@ unsigned long ResNonResNameTable( bool dores )
          * non-resident names table
          * get first idem - module description
          */
-        if( wlink().FmtData.description != nullptr ) {
-            name = wlink().FmtData.description;
-        } else if( wlink().FmtData.type & MK_NE ) {
-            name = wlink().Root->outfile->fname;
+        if( link.FmtData.description != nullptr ) {
+            name = link.FmtData.description;
+        } else if( link.FmtData.type & MK_NE ) {
+            name = link.Root->outfile->fname;
         } else {
             name = "";
         }
@@ -708,11 +708,11 @@ unsigned long ResNonResNameTable( bool dores )
      */
     if( dores
       || len > 0 ) {
-        size += WriteLoadU8Name( name, len, dores );
-        WriteLoadU16( 0 );  /* first item in table - ordinal 0 */
+        size += WriteLoadU8Name(link,  name, len, dores );
+        WriteLoadU16(link,  0 );  /* first item in table - ordinal 0 */
         size += 2;
     }
-    for( exp = wlink().FmtData.u.os2fam.exports; exp != nullptr; exp = exp->next ) {
+    for( exp = link.FmtData.u.os2fam.exports; exp != nullptr; exp = exp->next ) {
         if( !exp->isexported )
             continue;
         if( exp->isanonymous )
@@ -729,7 +729,7 @@ unsigned long ResNonResNameTable( bool dores )
         if( len > 255 )
             len = 255;
         external_name.assign( name, len );
-        if( (wlink().LinkFlags & LF_CASE_FLAG) == 0 ) {
+        if( (link.LinkFlags & LF_CASE_FLAG) == 0 ) {
             for( i = 0; i < len; i++ ) {
                 external_name[i] = static_cast<char>( toupper( static_cast<unsigned char>( external_name[i] ) ) );
             }
@@ -737,19 +737,19 @@ unsigned long ResNonResNameTable( bool dores )
         /*
          * write external name to name table
          */
-        size += WriteLoadU8Name( external_name.c_str(), len, false );
-        WriteLoadU16( exp->ordinal );
+        size += WriteLoadU8Name(link,  external_name.c_str(), len, false );
+        WriteLoadU16(link,  exp->ordinal );
         size += 2;
         if( !exp->isprivate ) {
             if( exp->impname != nullptr ) {
-                AddImpLibEntry( exp->impname, external_name.c_str(), 0, true );
+                AddImpLibEntry(link,  exp->impname, external_name.c_str(), 0, true );
             } else {
-                AddImpLibEntry( exp->sym->name.u.ptr, nullptr, exp->ordinal, false );
+                AddImpLibEntry(link,  exp->sym->name.u.ptr, nullptr, exp->ordinal, false );
             }
         }
     }
     if( size > 0 ) {
-        WriteLoadU8( 0 ); /* name table terminating zero byte */
+        WriteLoadU8(link,  0 ); /* name table terminating zero byte */
         ++size;
     }
     return( size );
@@ -762,7 +762,7 @@ unsigned long ResNonResNameTable( bool dores )
  *       occur in this routine will likely have to be fixed in the other
  *       one as well.
  */
-static unsigned long WriteEntryTable( void )
+static unsigned long WriteEntryTable(Link& link)
 /*******************************************
  * Write the entry table to the file
  */
@@ -781,7 +781,7 @@ static unsigned long WriteEntryTable( void )
     }               bundle_item;
 
     size = 0;
-    start = wlink().FmtData.u.os2fam.exports;
+    start = link.FmtData.u.os2fam.exports;
     if( start != nullptr ) {
         prevord = 0;
         for( place = start; place != nullptr; ) {
@@ -791,11 +791,11 @@ static unsigned long WriteEntryTable( void )
                 prefix.number = 0xFF;
                 prefix.type = 0x00;   // Null bundles.
                 for( ; gap > 0xFF; gap -= 0xFF ) {
-                    WriteLoad( &prefix, sizeof( bundle_prefix ) );
+                    WriteLoad(link,  &prefix, sizeof( bundle_prefix ) );
                     size += sizeof( bundle_prefix );
                 }
                 prefix.number = static_cast<unsigned_8>( gap );
-                WriteLoad( &prefix, sizeof( bundle_prefix ) );
+                WriteLoad(link,  &prefix, sizeof( bundle_prefix ) );
                 size += sizeof( bundle_prefix );
             }
             // now get a bundle of ordinals.
@@ -829,14 +829,14 @@ static unsigned long WriteEntryTable( void )
             }
             prevord = prev->ordinal;
             prefix.number = static_cast<unsigned_8>( entries );
-            WriteLoad( &prefix, sizeof( bundle_prefix ) );
+            WriteLoad(link,  &prefix, sizeof( bundle_prefix ) );
             size += sizeof( bundle_prefix );
             for( ; entries > 0; --entries ) {
                 bundle_item.f.info = (start->iopl_words << IOPL_WORD_SHIFT);
                 if( start->isexported ) {
                     bundle_item.f.info |= ENTRY_EXPORTED;
                     // (a constant, segment 0xFE, uses no data segment: not marked shared)
-                    if( (wlink().FmtData.u.os2fam.flags & SHARABLE_DGROUP) && start->addr.seg != 0xFE && !start->isnodata ) {
+                    if( (link.FmtData.u.os2fam.flags & SHARABLE_DGROUP) && start->addr.seg != 0xFE && !start->isnodata ) {
                         bundle_item.f.info |= ENTRY_SHARED;
                     }
                 }
@@ -846,24 +846,24 @@ static unsigned long WriteEntryTable( void )
                     }
                     bundle_item.m.entrynum = start->addr.seg;
                     bundle_item.m.entry = start->addr.off;
-                    WriteLoad( &bundle_item, sizeof( movable_record ) );
+                    WriteLoad(link,  &bundle_item, sizeof( movable_record ) );
                 } else {
                     bundle_item.f.entry = start->addr.off;
-                    WriteLoad( &bundle_item, sizeof( fixed_record ) );
+                    WriteLoad(link,  &bundle_item, sizeof( fixed_record ) );
                 }
                 start = start->next;
             }
         }
     }
-    PadLoad( 2 );
+    PadLoad(link,  2 );
     return( size + 2 );
 }
 
-void SetOS2SegFlags( void )
+void SetOS2SegFlags(Link& link)
 /*************************/
 {
-    SetSegFlags( wlink().FmtData.u.os2fam.seg_flags );
-    wlink().FmtData.u.os2fam.seg_flags = nullptr;
+    SetSegFlags(link,  link.FmtData.u.os2fam.seg_flags );
+    link.FmtData.u.os2fam.seg_flags = nullptr;
 }
 
 constexpr auto DEF_SEG_ON = SEG_PURE|SEG_READ_ONLY|SEG_CONFORMING|SEG_MOVABLE|SEG_DISCARD|SEG_RESIDENT|SEG_CONTIGUOUS|SEG_NOPAGE;
@@ -886,7 +886,7 @@ static void CheckGrpFlags( void *_leader )
     }
 }
 
-void SetOS2GroupFlags( void )
+void SetOS2GroupFlags(Link& link)
 /****************************
  * This goes through the groups, setting the flag word to be compatible with
  * the flag words that are specified in the segments.
@@ -894,7 +894,7 @@ void SetOS2GroupFlags( void )
 {
     group_entry     *group;
 
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         group->segflags |= DEF_SEG_ON;
@@ -908,7 +908,7 @@ void SetOS2GroupFlags( void )
     }
 }
 
-void ChkOS2Exports( void )
+void ChkOS2Exports(Link& link)
 /*************************
  * NOTE: there is a continue in this loop!
  */
@@ -920,11 +920,11 @@ void ChkOS2Exports( void )
 
     num_entries = 0;
     // NOTE: there is a continue in this loop!
-    for( exp = wlink().FmtData.u.os2fam.exports; exp != nullptr; exp = exp->next ) {
+    for( exp = link.FmtData.u.os2fam.exports; exp != nullptr; exp = exp->next ) {
         num_entries++;
         sym = exp->sym;
         if( IS_SYM_ALIAS( sym ) ) {
-            sym = UnaliasSym( ST_FIND, sym );
+            sym = UnaliasSym(link,  ST_FIND, sym );
             if( sym == nullptr
               || (sym->info & SYM_DEFINED) == 0 ) {
                 LnkMsg( ERR+MSG_EXP_SYM_NOT_FOUND, "s", exp->sym->name.u.ptr );
@@ -935,7 +935,7 @@ void ChkOS2Exports( void )
             // Keep the import name. If an alias is exported, we want the
             // alias name in the import lib, not the substitute name
             if( exp->impname == nullptr ) {
-                exp->impname = MemStrdupSafe( exp->sym->name.u.ptr );
+                exp->impname = MemStrdupSafe(link,  exp->sym->name.u.ptr );
             }
 
             exp->sym = sym;
@@ -946,11 +946,11 @@ void ChkOS2Exports( void )
             exp->addr = sym->addr;
             if( sym->p.seg == nullptr
               || IS_SYM_IMPORTED( sym ) ) {
-                if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
+                if( link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
                     // MN: Create a forwarder - add a special flag?
                     // Currently WriteFlatEntryTable() in loadflat.c will
                     // recognize a forwarder by segment == 0xFFFF
-                } else if( (wlink().FmtData.type & MK_NE)
+                } else if( (link.FmtData.type & MK_NE)
                   && !IS_SYM_IMPORTED( sym ) ) {
                     // An absolute symbol (an EQU made public) is exported as a
                     // constant: the NE entry table's segment number 0xFE. This
@@ -962,7 +962,7 @@ void ChkOS2Exports( void )
                 }
             } else {
                 group = sym->p.seg->u.leader->group;
-                if( wlink().FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
+                if( link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD) ) {
                     exp->addr.off -= group->addr.off;
                     if( GET_SEG_PMODE_DPL( group->segflags ) == SEG_PMODE_DPL_2 ) {
                         exp->isiopl = true; // Conforming or not doesn't matter!
@@ -971,7 +971,7 @@ void ChkOS2Exports( void )
                             LnkMsg( ERR+LOC+MSG_BAD_TARG_OFF, "a", &exp->addr );
                         }
                     }
-                } else if( wlink().FmtData.type & MK_PE ) {
+                } else if( link.FmtData.type & MK_PE ) {
                     exp->addr.off += (group->linear - group->addr.off);
                 }
                 if( group->segflags & SEG_MOVABLE ) {
@@ -980,22 +980,22 @@ void ChkOS2Exports( void )
             }
         }
     }   // NOTE: there is a continue in this loop!
-    AssignOrdinals();    /* make sure all exports have ordinals */
-    if( (wlink().FmtData.type & MK_WIN_VXD)
+    AssignOrdinals(link);    /* make sure all exports have ordinals */
+    if( (link.FmtData.type & MK_WIN_VXD)
       && ( num_entries != 1 ) ) {
         LnkMsg( FTL+MSG_VXD_INCORRECT_EXPORT, nullptr );
     }
 }
 
-void PhoneyStack( void )
+void PhoneyStack(Link& link)
 /***********************
  * signal that we will be making a fake stack later on.
  */
 {
-    wlink().FmtData.u.os2fam.flags |= PHONEY_STACK_FLAG;
+    link.FmtData.u.os2fam.flags |= PHONEY_STACK_FLAG;
 }
 
-static FILE *InitNEResources( WResDir *inRes, ResTable *outRes )
+static FILE *InitNEResources(Link& link,  WResDir *inRes, ResTable *outRes )
 /**************************************************************/
 {
     WResDir     dir;
@@ -1004,8 +1004,8 @@ static FILE *InitNEResources( WResDir *inRes, ResTable *outRes )
 
     dir = nullptr;
     res_fp = nullptr;
-    if( wlink().FmtData.resource != nullptr ) {
-        res_fp = POSIX2FP( QOpenR( wlink().FmtData.resource ) );
+    if( link.FmtData.resource != nullptr ) {
+        res_fp = POSIX2FP( QOpenR(link,  link.FmtData.resource ) );
         if( res_fp != nullptr ) {
             if( WResReadDir( res_fp, &dir, &dup_discarded ) ) {
                 LnkMsg( WRN+MSG_PROBLEM_IN_RESOURCE, nullptr );
@@ -1026,7 +1026,7 @@ static FILE *InitNEResources( WResDir *inRes, ResTable *outRes )
     return( res_fp );
 }
 
-static void FiniNEResources( FILE *res_fp, WResDir inRes, ResTable *outRes )
+static void FiniNEResources(Link& link,  FILE *res_fp, WResDir inRes, ResTable *outRes )
 /**************************************************************************/
 {
     if( inRes != nullptr ) {
@@ -1041,7 +1041,7 @@ static void FiniNEResources( FILE *res_fp, WResDir inRes, ResTable *outRes )
         WResFreeDir( inRes );
     }
     if( res_fp != nullptr ) {
-        QClose( FP2POSIX( res_fp ), wlink().FmtData.resource );
+        QClose( FP2POSIX( res_fp ), link.FmtData.resource );
     }
 }
 
@@ -1068,7 +1068,7 @@ static unsigned_32 ComputeResourceSize( WResDir dir )
 
 constexpr auto MAX_DGROUP_SIZE = _64K;
 
-void FiniOS2LoadFile( void )
+void FiniOS2LoadFile(Link& link)
 /***************************
  * terminate writing of load file
  */
@@ -1088,37 +1088,37 @@ void FiniOS2LoadFile( void )
     FILE                *res_fp;        // Handle for resources file
     ResTable            outRes;         // Resources to go out
 
-    stub_len = WriteStubFile( STUB_ALIGN );
+    stub_len = WriteStubFile(link,  STUB_ALIGN );
     temp = sizeof( os2_exe_header );
     exe_head.segment_off = temp;
-    SeekLoad( stub_len + sizeof( os2_exe_header ) );
+    SeekLoad(link,  stub_len + sizeof( os2_exe_header ) );
     adseg = 0;
     exe_head.segments = 0;
     dgroup_size = 0;
     imageguess = 0;
-    if( wlink().DataGroup != nullptr ) {
-        adseg = wlink().DataGroup->addr.seg;
-        if( wlink().DataGroup->segflags & SEG_PURE ) {
-            wlink().FmtData.u.os2fam.flags |= SHARABLE_DGROUP;
+    if( link.DataGroup != nullptr ) {
+        adseg = link.DataGroup->addr.seg;
+        if( link.DataGroup->segflags & SEG_PURE ) {
+            link.FmtData.u.os2fam.flags |= SHARABLE_DGROUP;
         }
-        if( wlink().StackSegPtr != nullptr ) {
-            if( wlink().DataGroup->totalsize - wlink().DataGroup->size < wlink().StackSize ) {
-                wlink().StackSize = wlink().DataGroup->totalsize - wlink().DataGroup->size;
-                wlink().DataGroup->totalsize = wlink().DataGroup->size;
+        if( link.StackSegPtr != nullptr ) {
+            if( link.DataGroup->totalsize - link.DataGroup->size < link.StackSize ) {
+                link.StackSize = link.DataGroup->totalsize - link.DataGroup->size;
+                link.DataGroup->totalsize = link.DataGroup->size;
             } else {
-                wlink().DataGroup->totalsize -= wlink().StackSize;
+                link.DataGroup->totalsize -= link.StackSize;
             }
         }
-        dgroup_size = wlink().DataGroup->totalsize;
+        dgroup_size = link.DataGroup->totalsize;
     }
-    for( group = wlink().Groups; group != nullptr; group = group->next ) {
+    for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->totalsize == 0 )
             continue;   // DANGER DANGER DANGER <--!!!
         imageguess += group->size;
         exe_head.segments++;
     }
     temp += exe_head.segments * sizeof( segment_record );
-    res_fp = InitNEResources( &inRes, &outRes );
+    res_fp = InitNEResources(link,  &inRes, &outRes );
     exe_head.resource_off = temp;
     if( inRes != nullptr ) {
         exe_head.resource = outRes.Dir.NumResources;
@@ -1128,18 +1128,18 @@ void FiniOS2LoadFile( void )
         exe_head.resource = 0;
     }
     exe_head.resident_off = temp;
-    SeekLoad( stub_len + temp );
+    SeekLoad(link,  stub_len + temp );
     /*
      * do resident names table (true value)
      */
-    temp += ResNonResNameTable( true );
+    temp += ResNonResNameTable(link,  true );
     exe_head.module_off = temp;
-    exe_head.modrefs = ModRefTable();
+    exe_head.modrefs = ModRefTable(link);
     temp += exe_head.modrefs * sizeof( unsigned_16 );
     exe_head.import_off = temp;
-    temp += ImportNameTable();
+    temp += ImportNameTable(link);
     exe_head.entry_off = temp;
-    size = WriteEntryTable();
+    size = WriteEntryTable(link);
     exe_head.entry_size = size;
     temp += size;
     temp += stub_len;
@@ -1147,130 +1147,130 @@ void FiniOS2LoadFile( void )
     /*
      * do non-resident names table (false value)
      */
-    exe_head.nonres_size = ResNonResNameTable( false );
+    exe_head.nonres_size = ResNonResNameTable(link,  false );
     temp += exe_head.nonres_size;
     /*
      * if no segment shift specified, figure out the best one, assuming that
      * the maximum padding will happen every time.
      */
-    if( wlink().FmtData.u.os2fam.segment_shift == 0 ) {
-        imageguess += temp + static_cast<unsigned long>( wlink().Root->relocs ) * sizeof( os2_reloc_item )
+    if( link.FmtData.u.os2fam.segment_shift == 0 ) {
+        imageguess += temp + static_cast<unsigned long>( link.Root->relocs ) * sizeof( os2_reloc_item )
                      + stub_len + exe_head.segments * 3;
         pad_len = log2_16( (imageguess >> 16) << 1 );
         imageguess += ((1 << pad_len) - 1) * exe_head.segments;
         imageguess += ComputeResourceSize( inRes ); // inRes may be NULL
-        wlink().FmtData.u.os2fam.segment_shift = log2_16( (imageguess >> 16) << 1 );
-        if( wlink().FmtData.u.os2fam.segment_shift == 0 ) {
-            wlink().FmtData.u.os2fam.segment_shift = 1;     // since microsoft thinks 0 == 9
+        link.FmtData.u.os2fam.segment_shift = log2_16( (imageguess >> 16) << 1 );
+        if( link.FmtData.u.os2fam.segment_shift == 0 ) {
+            link.FmtData.u.os2fam.segment_shift = 1;     // since microsoft thinks 0 == 9
         }
     }
-    exe_head.gangstart = NullAlign( 1 << wlink().FmtData.u.os2fam.segment_shift ) >> wlink().FmtData.u.os2fam.segment_shift;
-    WriteOS2Data( stub_len, &exe_head );
-    WriteOS2Resources( res_fp, inRes, &outRes );
+    exe_head.gangstart = NullAlign(link,  1 << link.FmtData.u.os2fam.segment_shift ) >> link.FmtData.u.os2fam.segment_shift;
+    WriteOS2Data(link,  stub_len, &exe_head );
+    WriteOS2Resources(link,  res_fp, inRes, &outRes );
     exe_head.gangstart = 0;
     exe_head.ganglength = 0;
     if( inRes != nullptr ) {
-        SeekLoad( exe_head.resource_off + stub_len );
-        WriteResTable( &outRes );
+        SeekLoad(link,  exe_head.resource_off + stub_len );
+        WriteResTable(link,  &outRes );
         FreeResTable( &outRes );
     }
-    SeekEndLoad( 0 );
-    FiniNEResources( res_fp, inRes, &outRes );
-    DBIWrite();
+    SeekEndLoad(link,  0 );
+    FiniNEResources(link,  res_fp, inRes, &outRes );
+    DBIWrite(link);
     exe_head.signature = EXESIGN_NE;
     exe_head.version = 0x0105;          /* version 5.1 */
     exe_head.chk_sum = 0L;
     exe_head.info = 0;
-    if( wlink().FmtData.type & MK_WIN_NE ) {
+    if( link.FmtData.type & MK_WIN_NE ) {
         exe_head.target = TARGET_WINDOWS;
     } else {
         exe_head.target = TARGET_OS2;
     }
-    if( wlink().FmtData.u.os2fam.flags & PROTMODE_ONLY ) {
+    if( link.FmtData.u.os2fam.flags & PROTMODE_ONLY ) {
         exe_head.info |= OS2_PROT_MODE_ONLY;
     }
-    if( wlink().FmtData.u.os2fam.flags & SINGLE_AUTO_DATA ) {
+    if( link.FmtData.u.os2fam.flags & SINGLE_AUTO_DATA ) {
         exe_head.info |= OS2_SINGLE_AUTO;
-    } else if( wlink().FmtData.u.os2fam.flags & MULTIPLE_AUTO_DATA ){
+    } else if( link.FmtData.u.os2fam.flags & MULTIPLE_AUTO_DATA ){
         exe_head.info |= OS2_MULT_AUTO;
     } else {
         adseg = 0;    // no automatic data segment.
     }
-    if( wlink().FmtData.u.os2fam.flags & NO_APP_TYPE ) {
+    if( link.FmtData.u.os2fam.flags & NO_APP_TYPE ) {
         /* (CodeBreaker: as the original's header has it) */
-    } else if( (wlink().FmtData.type & MK_WIN_NE)
-      || (wlink().FmtData.u.os2fam.flags & PM_APPLICATION) ) {
+    } else if( (link.FmtData.type & MK_WIN_NE)
+      || (link.FmtData.u.os2fam.flags & PM_APPLICATION) ) {
         exe_head.info |= OS2_PM_APP;
-    } else if( wlink().FmtData.u.os2fam.flags & PM_NOT_COMPATIBLE ) {
+    } else if( link.FmtData.u.os2fam.flags & PM_NOT_COMPATIBLE ) {
         exe_head.info |= OS2_NOT_PM_COMPATIBLE;
     } else {
         exe_head.info |= OS2_PM_COMPATIBLE;
     }
-    if( wlink().FmtData.u.os2fam.is_private_dll ) {
+    if( link.FmtData.u.os2fam.is_private_dll ) {
         exe_head.info |= WIN_PRIVATE_DLL;
     }
-    if( wlink().FmtData.dll ) {
+    if( link.FmtData.dll ) {
         exe_head.info |= OS2_IS_DLL;
-        if( wlink().FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG ) {
+        if( link.FmtData.u.os2fam.flags & INIT_INSTANCE_FLAG ) {
             exe_head.info |= OS2_INIT_INSTANCE;
         }
     }
     exe_head.adsegnum = adseg;
-    exe_head.heap = wlink().FmtData.u.os2fam.heapsize;
+    exe_head.heap = link.FmtData.u.os2fam.heapsize;
     /*
      * the microsoft linker for windows will generate a stack even if no stack
      * segment has been explicitly specified. (as long as the user specifies a stack
      * size). Since microsoft's windows libraries rely on this, we have to mimic
      * it.
      */
-    if( wlink().FmtData.u.os2fam.flags & PHONEY_STACK_FLAG ) {
+    if( link.FmtData.u.os2fam.flags & PHONEY_STACK_FLAG ) {
         exe_head.SP = 0;
         exe_head.stacknum = adseg;
     } else {
         exe_head.SP = 0;
         //exe_head.SP = StackAddr.off;
-        if( !IS_ADDR_UNDEFINED( wlink().StackAddr ) ) {
-            exe_head.stacknum = wlink().StackAddr.seg;
+        if( !IS_ADDR_UNDEFINED( link.StackAddr ) ) {
+            exe_head.stacknum = link.StackAddr.seg;
         } else {
             exe_head.stacknum = 0;
         }
     }
-    exe_head.stack = wlink().StackSize;
+    exe_head.stack = link.StackSize;
     if( dgroup_size + exe_head.heap > MAX_DGROUP_SIZE ) {
         LnkMsg( WRN+MSG_HEAP_TOO_BIG, nullptr );
         if( dgroup_size < MAX_DGROUP_SIZE ) {
             exe_head.heap = MAX_DGROUP_SIZE - dgroup_size;
         }
     }
-    exe_head.IP = wlink().StartInfo.addr.off;
-    if( wlink().StartInfo.type == START_UNDEFED ) {
+    exe_head.IP = link.StartInfo.addr.off;
+    if( link.StartInfo.type == START_UNDEFED ) {
         exe_head.entrynum = 0;
     } else {
-        exe_head.entrynum = wlink().StartInfo.addr.seg;
+        exe_head.entrynum = link.StartInfo.addr.seg;
     }
-    exe_head.align = wlink().FmtData.u.os2fam.segment_shift;
+    exe_head.align = link.FmtData.u.os2fam.segment_shift;
     exe_head.movable = 0;
-    for( exp = wlink().FmtData.u.os2fam.exports; exp != nullptr; exp = exp->next ) {
+    for( exp = link.FmtData.u.os2fam.exports; exp != nullptr; exp = exp->next ) {
         if( exp->ismovable ) {
             exe_head.movable++;
         }
     }
     exe_head.otherflags = 0;
-    if( wlink().FmtData.u.os2fam.flags & LONG_FILENAMES ) {
+    if( link.FmtData.u.os2fam.flags & LONG_FILENAMES ) {
         exe_head.otherflags = OS2_LONG_FILE_NAMES;
     }
-    if( wlink().FmtData.u.os2fam.flags & PROPORTIONAL_FONT ) {
+    if( link.FmtData.u.os2fam.flags & PROPORTIONAL_FONT ) {
         exe_head.otherflags |= WIN_CLEAN_MEMORY | WIN_PROPORTIONAL_FONT;
-    } else if( wlink().FmtData.u.os2fam.flags & CLEAN_MEMORY ) {
+    } else if( link.FmtData.u.os2fam.flags & CLEAN_MEMORY ) {
         exe_head.otherflags |= WIN_CLEAN_MEMORY;
     }
     if( exe_head.ganglength ) {
         exe_head.otherflags |= WIN_GANGLOAD_PRESENT;
     }
     exe_head.swaparea = 0;
-    if( wlink().FmtData.type & MK_WIN_NE ) {
-        if( wlink().FmtData.ver_specified ) {
-            exe_head.expver = (wlink().FmtData.major << 8) | (wlink().FmtData.minor & 0xFF);
+    if( link.FmtData.type & MK_WIN_NE ) {
+        if( link.FmtData.ver_specified ) {
+            exe_head.expver = (link.FmtData.major << 8) | (link.FmtData.minor & 0xFF);
         } else {
             exe_head.expver = 0x300;
         }
@@ -1282,7 +1282,7 @@ void FiniOS2LoadFile( void )
      * tweak the default heap/stack size so this check isn't bulletproof.
      */
     dgroup_total = dgroup_size + exe_head.stack + exe_head.heap;
-    if( wlink().FmtData.type & MK_WIN_NE ) {
+    if( link.FmtData.type & MK_WIN_NE ) {
         if( dgroup_total > (MAX_DGROUP_SIZE - 3) ) {
             LnkMsg( FTL+MSG_DEFDATA_TOO_BIG, "l",
                     dgroup_total - MAX_DGROUP_SIZE + 3 );
@@ -1294,21 +1294,21 @@ void FiniOS2LoadFile( void )
         }
     }
 
-    if( wlink().LinkState & LS_LINK_ERROR ) {
+    if( link.LinkState & LS_LINK_ERROR ) {
         exe_head.info |= OS2_LINK_ERROR;
     }
-    SeekLoad( stub_len );
-    WriteLoad( &exe_head, sizeof( os2_exe_header ) );
+    SeekLoad(link,  stub_len );
+    WriteLoad(link,  &exe_head, sizeof( os2_exe_header ) );
 }
 
-void FreeImpNameTab( void )
+void FreeImpNameTab(Link& link)
 /*************************/
 {
-    wlink().FmtData.u.os2fam.mod_ref_list = nullptr;  /* these are permalloc'd */
-    wlink().FmtData.u.os2fam.imp_tab_list = nullptr;
+    link.FmtData.u.os2fam.mod_ref_list = nullptr;  /* these are permalloc'd */
+    link.FmtData.u.os2fam.imp_tab_list = nullptr;
 }
 
-unsigned_32 WriteStubFile( unsigned_32 stub_align )
+unsigned_32 WriteStubFile(Link& link,  unsigned_32 stub_align )
 /*************************************************/
 {
     unsigned_32     stub_len;
@@ -1322,40 +1322,40 @@ unsigned_32 WriteStubFile( unsigned_32 stub_align )
     unsigned_32     code_start;
     std::array<char, PATH_MAX> fullname;
 
-    if( wlink().FmtData.u.os2fam.no_stub ) {
+    if( link.FmtData.u.os2fam.no_stub ) {
         stub_len = 0;
-    } else if( wlink().FmtData.u.os2fam.stub_file_name == nullptr ) {
-        stub_len = WriteDOSDefStub( stub_align );
-    } else if( stricmp( wlink().FmtData.u.os2fam.stub_file_name, wlink().Root->outfile->fname ) == 0 ) {
+    } else if( link.FmtData.u.os2fam.stub_file_name == nullptr ) {
+        stub_len = WriteDOSDefStub(link,  stub_align );
+    } else if( stricmp( link.FmtData.u.os2fam.stub_file_name, link.Root->outfile->fname ) == 0 ) {
         LnkMsg( ERR+MSG_STUB_SAME_AS_LOAD, nullptr );
-        stub_len = WriteDOSDefStub( stub_align );
+        stub_len = WriteDOSDefStub(link,  stub_align );
     } else {
-        the_file = FindPath( wlink().FmtData.u.os2fam.stub_file_name, fullname.data() );
+        the_file = FindPath(link,  link.FmtData.u.os2fam.stub_file_name, fullname.data() );
         if( the_file == NIL_FHANDLE ) {
-            LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", wlink().FmtData.u.os2fam.stub_file_name );
-            return( WriteDOSDefStub( stub_align ) );   // NOTE: <== a return here.
+            LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.u.os2fam.stub_file_name );
+            return( WriteDOSDefStub(link,  stub_align ) );   // NOTE: <== a return here.
         }
-        MemFree( wlink().FmtData.u.os2fam.stub_file_name );
-        wlink().FmtData.u.os2fam.stub_file_name = MemStrdupSafe( fullname.data() );
-        QRead( the_file, &dosheader, sizeof( dos_exe_header ), wlink().FmtData.u.os2fam.stub_file_name );
+        MemFree( link.FmtData.u.os2fam.stub_file_name );
+        link.FmtData.u.os2fam.stub_file_name = MemStrdupSafe(link,  fullname.data() );
+        QRead( the_file, &dosheader, sizeof( dos_exe_header ), link.FmtData.u.os2fam.stub_file_name );
         if( dosheader.signature != EXESIGN_DOS ) {
             LnkMsg( ERR + MSG_INV_STUB_FILE, nullptr );
-            stub_len = WriteDOSDefStub( stub_align );
-        } else if( wlink().FmtData.u.os2fam.stub_verbatim ) {
+            stub_len = WriteDOSDefStub(link,  stub_align );
+        } else if( link.FmtData.u.os2fam.stub_verbatim ) {
             /* CodeBreaker: every byte as it is; only the NE header's offset filled in */
             read_len = dosheader.file_size * 512ul - (-dosheader.mod_size & 0x1ff);
-            QSeek( the_file, 0, wlink().FmtData.u.os2fam.stub_file_name );
+            QSeek( the_file, 0, link.FmtData.u.os2fam.stub_file_name );
             for( stub_len = 0; stub_len < read_len; stub_len += amount ) {
-                amount = ( read_len - stub_len < wlink().TokSize ) ? read_len - stub_len : wlink().TokSize;
-                QRead( the_file, wlink().TokBuff, amount, wlink().FmtData.u.os2fam.stub_file_name );
-                WriteLoad( wlink().TokBuff, amount );
+                amount = ( read_len - stub_len < link.TokSize ) ? read_len - stub_len : link.TokSize;
+                QRead( the_file, link.TokBuff, amount, link.FmtData.u.os2fam.stub_file_name );
+                WriteLoad(link,  link.TokBuff, amount );
             }
-            stub_len = NullAlign( stub_align );
-            SeekLoad( NE_HEADER_OFFSET );
-            WriteLoadU32( stub_len );
-            SeekLoad( stub_len );
+            stub_len = NullAlign(link,  stub_align );
+            SeekLoad(link,  NE_HEADER_OFFSET );
+            WriteLoadU32(link,  stub_len );
+            SeekLoad(link,  stub_len );
         } else {
-            QSeek( the_file, dosheader.reloc_offset, wlink().FmtData.u.os2fam.stub_file_name );
+            QSeek( the_file, dosheader.reloc_offset, link.FmtData.u.os2fam.stub_file_name );
             dosheader.reloc_offset = 0x40;
             code_start = dosheader.hdr_size * 16ul;
             read_len = dosheader.file_size * 512ul - (-dosheader.mod_size & 0x1ff) - code_start;
@@ -1365,31 +1365,31 @@ unsigned_32 WriteStubFile( unsigned_32 stub_align )
             stub_len = read_len + dosheader.hdr_size * 16ul;
             dosheader.file_size = ( stub_len + 511 ) / 512;  // round up.
             dosheader.mod_size = stub_len % 512;
-            WriteLoad( &dosheader, sizeof( dos_exe_header ) );
-            PadLoad( NE_HEADER_OFFSET - sizeof( dos_exe_header ) );
+            WriteLoad(link,  &dosheader, sizeof( dos_exe_header ) );
+            PadLoad(link,  NE_HEADER_OFFSET - sizeof( dos_exe_header ) );
             stub_len = __ROUND_UP_SIZE( stub_len, stub_align );
-            WriteLoadU32( stub_len );
+            WriteLoadU32(link,  stub_len );
             for( num_relocs = dosheader.num_relocs; num_relocs > 0; num_relocs-- ) {
-                QRead( the_file, &the_reloc, sizeof( unsigned_32 ), wlink().FmtData.u.os2fam.stub_file_name );
-                WriteLoadU32( the_reloc );
+                QRead( the_file, &the_reloc, sizeof( unsigned_32 ), link.FmtData.u.os2fam.stub_file_name );
+                WriteLoadU32(link,  the_reloc );
                 reloc_size -= sizeof( unsigned_32 );
             }
             if( reloc_size != 0 ) {    // need padding
-                PadLoad( reloc_size );
+                PadLoad(link,  reloc_size );
             }
-            QSeek( the_file, code_start, wlink().FmtData.u.os2fam.stub_file_name );
+            QSeek( the_file, code_start, link.FmtData.u.os2fam.stub_file_name );
             for( ; read_len > 0; read_len -= amount ) {
-                if( read_len < wlink().TokSize ) {
+                if( read_len < link.TokSize ) {
                     amount = read_len;
                 } else {
-                    amount = wlink().TokSize;
+                    amount = link.TokSize;
                 }
-                QRead( the_file, wlink().TokBuff, amount, wlink().FmtData.u.os2fam.stub_file_name );
-                WriteLoad( wlink().TokBuff, amount );
+                QRead( the_file, link.TokBuff, amount, link.FmtData.u.os2fam.stub_file_name );
+                WriteLoad(link,  link.TokBuff, amount );
             }
-            stub_len = NullAlign( stub_align );
+            stub_len = NullAlign(link,  stub_align );
         }
-        QClose( the_file, wlink().FmtData.u.os2fam.stub_file_name );
+        QClose( the_file, link.FmtData.u.os2fam.stub_file_name );
     }
     return( stub_len );
 }

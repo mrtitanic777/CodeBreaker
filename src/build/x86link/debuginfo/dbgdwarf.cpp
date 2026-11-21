@@ -276,6 +276,7 @@ static void DwarfAddLines( lineinfo *info )
 /*****************************************/
 // calculate the amount of space needed to hold all of the line # info.
 {
+    Link& link = wlink();
     ln_off_pair _WCUNALIGNED *lineptr;
     unsigned_32         dwsize;
     std::array<unsigned_8, 3 + 2 * MAX_LEB128> buff;
@@ -287,12 +288,12 @@ static void DwarfAddLines( lineinfo *info )
 
     prevline.off = 0;
     prevline.linnum = 1;
-    if( wlink().FmtData.type & MK_16BIT ) {
+    if( link.FmtData.type & MK_16BIT ) {
         dwsize = 13;    // start and end sequence with 16-bit offset
     } else {
         dwsize = 15;    // start and end sequence with 32-bit offset
     }
-    if( (wlink().FmtData.type & MK_SEGMENTED) == 0 ) {
+    if( (link.FmtData.type & MK_SEGMENTED) == 0 ) {
         dwsize -= 5;    // size of LNE_segment burst
     }
     lineptr = reinterpret_cast<ln_off_pair *>( info->data );
@@ -314,22 +315,23 @@ static void DwarfAddLines( lineinfo *info )
         dwsize += DWLineGen( linedelta, addrdelta, buff.data() ) - buff.data();
         lineptr = reinterpret_cast<ln_off_pair *>( reinterpret_cast<char *>( lineptr ) + item_size );
     }
-    wlink().CurrMod->u3.d->dasi.size += dwsize;
+    link.CurrMod->u3.d->dasi.size += dwsize;
 }
 
 void DwarfP1ModuleFinished( mod_entry *mod )
 /*************************************************/
 {
+    Link& link = wlink();
     DwarfState  &st = dwarfState();
 
     if( MOD_NOT_DEBUGGABLE( mod ) )
         return;
-    wlink().CurrMod = mod;
+    link.CurrMod = mod;
     if( mod->flags_mod & MOD_DBI_SEEN )
         return;
     DBILineWalk( reinterpret_cast<lineinfo *>( mod->lines ), DwarfAddLines );
     Ring2Walk( mod->publist, DBIModGlobal );
-    if( wlink().FmtData.type & MK_SEGMENTED ) {
+    if( link.FmtData.type & MK_SEGMENTED ) {
         st.sect( Sect::abbrev ).size = SegmentedStandardAbbrevs.size();
     } else {
         st.sect( Sect::abbrev ).size = FlatStandardAbbrevs.size();
@@ -351,13 +353,14 @@ void DwarfP1ModuleFinished( mod_entry *mod )
 void DwarfStoreAddrInfo( mod_entry *mod )
 /**********************************************/
 {
+    Link& link = wlink();
     sectioninfo &aranges = dwarfState().sect( Sect::aranges );
 
     if( (mod->flags_mod & MOD_DBI_SEEN) == 0 ) {
         if( mod->u3.d->arange.size > 0 ) {
             mod->u3.d->arange.u.vm_offs = aranges.size;
             mod->u3.d->arange.size += sizeof( arange_prologue );
-            if( wlink().FmtData.type & MK_SEGMENTED ) {
+            if( link.FmtData.type & MK_SEGMENTED ) {
                 mod->u3.d->arange.size += sizeof( segmented_arange_tuple );
             } else {
                 mod->u3.d->arange.size += sizeof( flat_arange_tuple );
@@ -367,7 +370,7 @@ void DwarfStoreAddrInfo( mod_entry *mod )
     }
 }
 
-void DwarfAddModule( mod_entry *mod, section *sect )
+void DwarfAddModule(Link& link,  mod_entry *mod, section *sect )
 /**************************************************/
 // this generates the headers needed in the individual sections
 {
@@ -388,7 +391,7 @@ void DwarfAddModule( mod_entry *mod, section *sect )
             arange_hdr.version = 2;
             arange_hdr.debug_offset = mod->u3.d->pubsym.u.vm_offs + st.sect( Sect::info ).start;
             arange_hdr.offset_size = sizeof( offset );
-            if( wlink().FmtData.type & MK_SEGMENTED ) {
+            if( link.FmtData.type & MK_SEGMENTED ) {
                 arange_hdr.segment_size = sizeof( segment );
             } else {
                 arange_hdr.segment_size = 0;
@@ -450,34 +453,35 @@ void DwarfAddModule( mod_entry *mod, section *sect )
     }
 }
 
-void DwarfGenModule( void )
+void DwarfGenModule(Link& link)
 /********************************/
 // write out the addr info, and write out the null die at the end of .debug_info
 {
     unsigned            size;
 
-    if( wlink().CurrMod->flags_mod & MOD_DBI_SEEN )
+    if( link.CurrMod->flags_mod & MOD_DBI_SEEN )
         return;
-    if( wlink().CurrMod->u3.d->arange.size > 0 ) {
+    if( link.CurrMod->u3.d->arange.size > 0 ) {
         // write out terminator arange
-        if( wlink().FmtData.type & MK_SEGMENTED ) {
+        if( link.FmtData.type & MK_SEGMENTED ) {
             size = sizeof( segmented_arange_tuple );
         } else {
             size = sizeof( flat_arange_tuple );
         }
-        PutInfoNulls( wlink().CurrMod->u3.d->arange.u.vm_ptr, size );
+        PutInfoNulls( link.CurrMod->u3.d->arange.u.vm_ptr, size );
     }
     // write out terminator pubsym
-    PutInfoNulls( wlink().CurrMod->u3.d->pubsym.u.vm_ptr, 1 );
+    PutInfoNulls( link.CurrMod->u3.d->pubsym.u.vm_ptr, 1 );
 }
 
 static void DefAClass( void *_seg )
 /*********************************/
 {
+    Link& link = wlink();
     DwarfState  &st = dwarfState();
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
 
-    seg->group = AllocGroup( AutoGrpName, &wlink().DBIGroups );
+    seg->group = AllocGroup(link,  AutoGrpName, &link.DBIGroups );
     seg->group->addr.seg = 0;
     if( st.sect( Sect::info ).size > 0 ) {
         for( std::size_t index = 0; index < NUM_SECTIONS; index++ ) {
@@ -503,16 +507,16 @@ void DwarfDefClass( class_entry *class_, unsigned_32 size )
     }
 }
 
-void DwarfAddGlobal( symbol *sym )
+void DwarfAddGlobal(Link& link,  symbol *sym )
 /********************************/
 {
-    wlink().CurrMod->u3.d->pubsym.size += nameLength( sym->name.u.ptr ) + sizeof( symbol_die ) + 1;
-    if( wlink().FmtData.type & MK_SEGMENTED ) {
-        wlink().CurrMod->u3.d->pubsym.size += sizeof( symbol_seg );
+    link.CurrMod->u3.d->pubsym.size += nameLength( sym->name.u.ptr ) + sizeof( symbol_die ) + 1;
+    if( link.FmtData.type & MK_SEGMENTED ) {
+        link.CurrMod->u3.d->pubsym.size += sizeof( symbol_seg );
     }
 }
 
-static offset GetLinearGroupOffset( group_entry *group )
+static offset GetLinearGroupOffset(Link& link,  group_entry *group )
 /******************************************************/
 {
     /* gives the absolute offset for ELF, relative for PE and QNX_FLAT;
@@ -524,16 +528,16 @@ static offset GetLinearGroupOffset( group_entry *group )
     off = 0;
     if( group != nullptr ) {
         off = group->linear - group->addr.off;
-        if( wlink().FmtData.type & MK_ELF ) {
-            off += wlink().FmtData.base;
+        if( link.FmtData.type & MK_ELF ) {
+            off += link.FmtData.base;
         } else {
-            off -= wlink().Groups->linear;
+            off -= link.Groups->linear;
         }
     }
     return( off );
 }
 
-void DwarfGenGlobal( symbol *sym, section *sect )
+void DwarfGenGlobal(Link& link,  symbol *sym, section *sect )
 /******************************************************/
 {
     symbol_die  die;
@@ -543,22 +547,22 @@ void DwarfGenGlobal( symbol *sym, section *sect )
 
     /* unused parameters */ (void)sect;
 
-    if( (wlink().CurrMod->flags_mod & MOD_DBI_SEEN) == 0 ) {
+    if( (link.CurrMod->flags_mod & MOD_DBI_SEEN) == 0 ) {
         if( ( sym->p.seg == nullptr )
           || ( sym->p.seg->iscode ) ) {
             die.abbrev_code = LABEL_ABBREV_CODE;
         } else {
             die.abbrev_code = VARIABLE_ABBREV_CODE;
         }
-        vmem_addr = wlink().CurrMod->u3.d->pubsym.u.vm_ptr;
+        vmem_addr = link.CurrMod->u3.d->pubsym.u.vm_ptr;
         die.off = sym->addr.off;
-        if( wlink().FmtData.type & (MK_PE | MK_QNX_FLAT | MK_ELF) ) {
-            die.off += GetLinearGroupOffset( sym->p.seg->u.leader->group );
+        if( link.FmtData.type & (MK_PE | MK_QNX_FLAT | MK_ELF) ) {
+            die.off += GetLinearGroupOffset(link,  sym->p.seg->u.leader->group );
         }
         die.isexternal = ( (sym->info & SYM_STATIC) == 0 );
         PutInfo( vmem_addr, &die, sizeof( symbol_die ) );
         vmem_addr += sizeof( symbol_die );
-        if( wlink().FmtData.type & MK_SEGMENTED ) {
+        if( link.FmtData.type & MK_SEGMENTED ) {
             symseg.len_u8 = 3;
             symseg.loc_op = DW_OP_const2u;
             symseg.seg = sym->addr.seg;
@@ -567,13 +571,14 @@ void DwarfGenGlobal( symbol *sym, section *sect )
         }
         len = nameLength( sym->name.u.ptr ) + 1;
         PutInfo( vmem_addr, sym->name.u.ptr, len );
-        wlink().CurrMod->u3.d->pubsym.u.vm_ptr = vmem_addr + len;
+        link.CurrMod->u3.d->pubsym.u.vm_ptr = vmem_addr + len;
     }
 }
 
 void DwarfGenLines( lineinfo *info )
 /**********************************/
 {
+    Link& link = wlink();
     ln_off_pair _WCUNALIGNED *lineptr;
     unsigned            dwsize;
     dw_linenum_delta    linedelta;
@@ -586,14 +591,14 @@ void DwarfGenLines( lineinfo *info )
     segdata             *seg;
     unsigned            item_size;
 
-    if( wlink().CurrMod->flags_mod & MOD_DBI_SEEN )
+    if( link.CurrMod->flags_mod & MOD_DBI_SEEN )
         return;
 
     seg = info->seg;
     prevline.off = 0;
     prevline.linnum = 1;
-    vmem_addr = wlink().CurrMod->u3.d->dasi.u.vm_ptr;
-    if( wlink().FmtData.type & MK_16BIT ) {
+    vmem_addr = link.CurrMod->u3.d->dasi.u.vm_ptr;
+    if( link.FmtData.type & MK_16BIT ) {
         dwsize = 3;
     } else {
         dwsize = 5;
@@ -601,19 +606,19 @@ void DwarfGenLines( lineinfo *info )
     buff[0] = 0;        // extended opcode
     buff[1] = dwsize;
     buff[2] = DW_LNE_set_address;
-    if( wlink().FmtData.type & MK_16BIT ) {
+    if( link.FmtData.type & MK_16BIT ) {
         MPUT_16_UN( buff.data() + 3, seg->a.delta + seg->u.leader->seg_addr.off );
     } else {
         off = seg->a.delta + seg->u.leader->seg_addr.off;
-        if( wlink().FmtData.type & (MK_PE | MK_QNX_FLAT | MK_ELF) ) {
-            off += GetLinearGroupOffset( seg->u.leader->group );
+        if( link.FmtData.type & (MK_PE | MK_QNX_FLAT | MK_ELF) ) {
+            off += GetLinearGroupOffset(link,  seg->u.leader->group );
         }
         MPUT_32_UN( buff.data() + 3, off );
     }
     dwsize += 2;
     PutInfo( vmem_addr, buff.data(), dwsize );
     vmem_addr += dwsize;
-    if( wlink().FmtData.type & MK_SEGMENTED ) {
+    if( link.FmtData.type & MK_SEGMENTED ) {
         buff[1] = 3;
         buff[2] = DW_LNE_WATCOM_set_segment_OLD;
 //        buff[2] = DW_LNE_WATCOM_set_segment;
@@ -646,7 +651,7 @@ void DwarfGenLines( lineinfo *info )
     buff[1] = 1;        // size 1
     buff[2] = DW_LNE_end_sequence;
     PutInfo( vmem_addr, buff.data(), 3 );
-    wlink().CurrMod->u3.d->dasi.u.vm_ptr = vmem_addr + 3;
+    link.CurrMod->u3.d->dasi.u.vm_ptr = vmem_addr + 3;
 }
 
 static void DwarfAddAddrInit( segdata *sdata, void *cookie )
@@ -659,11 +664,12 @@ static void DwarfAddAddrAdd( segdata *sdata, offset delta, offset size,
                              void *cookie, bool isnewmod )
 /********************************************************/
 {
+    Link& link = wlink();
     /* unused parameters */ (void)delta; (void)size; (void)cookie;
 
     if( isnewmod
       && (sdata->o.mod->flags_mod & MOD_DBI_SEEN) == 0 ) {
-        if( wlink().FmtData.type & MK_SEGMENTED ) {
+        if( link.FmtData.type & MK_SEGMENTED ) {
             sdata->o.mod->u3.d->arange.size += sizeof( segmented_arange_tuple );
         } else {
             sdata->o.mod->u3.d->arange.size += sizeof( flat_arange_tuple );
@@ -674,17 +680,18 @@ static void DwarfAddAddrAdd( segdata *sdata, offset delta, offset size,
 void DwarfAddAddrInfo( seg_leader *seg )
 /*********************************************/
 {
-    DBIAddrInfoScan( seg, DwarfAddAddrInit, DwarfAddAddrAdd, nullptr );
+    Link& link = wlink();
+    DBIAddrInfoScan(link,  seg, DwarfAddAddrInit, DwarfAddAddrAdd, nullptr );
 }
 
-static offset GetNewAddrOffset( segdata *sdata, offset delta )
+static offset GetNewAddrOffset(Link& link,  segdata *sdata, offset delta )
 /************************************************************/
 {
     offset      off;
 
     off = sdata->u.leader->seg_addr.off + delta;
-    if( wlink().FmtData.type & (MK_PE | MK_QNX_FLAT | MK_ELF) ) {
-        off += GetLinearGroupOffset( sdata->u.leader->group );
+    if( link.FmtData.type & (MK_PE | MK_QNX_FLAT | MK_ELF) ) {
+        off += GetLinearGroupOffset(link,  sdata->u.leader->group );
     }
     return( off );
 }
@@ -692,13 +699,14 @@ static offset GetNewAddrOffset( segdata *sdata, offset delta )
 static void DwarfGenAddrInit( segdata *sdata, void *_tuple )
 /**********************************************************/
 {
+    Link& link = wlink();
     arange_tuple *tuple = static_cast<arange_tuple *>( _tuple );
 
-    if( wlink().FmtData.type & MK_SEGMENTED ) {
+    if( link.FmtData.type & MK_SEGMENTED ) {
         tuple->s.v2.segment = sdata->u.leader->seg_addr.seg;
         tuple->s.v2.offset = sdata->u.leader->seg_addr.off + sdata->a.delta;
     } else {
-        tuple->f.offset = GetNewAddrOffset( sdata, sdata->a.delta );
+        tuple->f.offset = GetNewAddrOffset(link,  sdata, sdata->a.delta );
     }
 }
 
@@ -706,6 +714,7 @@ static void DwarfGenAddrAdd( segdata *sdata, offset delta, offset size,
                              void *_tuple, bool isnewmod )
 /*********************************************************************/
 {
+    Link& link = wlink();
     arange_tuple *tuple = static_cast<arange_tuple *>( _tuple );
     mod_entry * mod;
     unsigned    tup_size;
@@ -714,52 +723,53 @@ static void DwarfGenAddrAdd( segdata *sdata, offset delta, offset size,
         return;
     mod = sdata->o.mod;
     if( (mod->flags_mod & MOD_DBI_SEEN) == 0 ) {
-        if( wlink().FmtData.type & MK_SEGMENTED ) {
+        if( link.FmtData.type & MK_SEGMENTED ) {
             tuple->s.v2.length = size;
             tup_size = sizeof( segmented_arange_tuple );
             if( sdata->u.leader->class_->flags & CLASS_STACK ) {
-                tuple->s.v2.length = wlink().StackSize;
+                tuple->s.v2.length = link.StackSize;
             } else if( sdata->u.leader->combine == COMBINE_STACK ) {
-                if( (wlink().LinkState & LS_DOSSEG_FLAG) == 0 ) {
-                    tuple->s.v2.length = wlink().StackSize;
+                if( (link.LinkState & LS_DOSSEG_FLAG) == 0 ) {
+                    tuple->s.v2.length = link.StackSize;
                 }
             }
         } else {
             tuple->f.length = size;
             tup_size = sizeof( flat_arange_tuple );
             if( sdata->u.leader->class_->flags & CLASS_STACK ) {
-                tuple->f.length = wlink().StackSize;
+                tuple->f.length = link.StackSize;
             } else if( sdata->u.leader->combine == COMBINE_STACK ) {
-                if( (wlink().LinkState & LS_DOSSEG_FLAG) == 0 ) {
-                    tuple->f.length = wlink().StackSize;
+                if( (link.LinkState & LS_DOSSEG_FLAG) == 0 ) {
+                    tuple->f.length = link.StackSize;
                 }
             }
         }
         PutInfo( mod->u3.d->arange.u.vm_ptr, tuple, tup_size );
         mod->u3.d->arange.u.vm_ptr += tup_size;
     }
-    if( wlink().FmtData.type & MK_SEGMENTED ) {
+    if( link.FmtData.type & MK_SEGMENTED ) {
         tuple->s.v2.offset = sdata->u.leader->seg_addr.off + delta;
     } else {
-        tuple->f.offset = GetNewAddrOffset( sdata, delta );
+        tuple->f.offset = GetNewAddrOffset(link,  sdata, delta );
     }
 }
 
 void DwarfGenAddrInfo( seg_leader *seg )
 /*********************************************/
 {
+    Link& link = wlink();
     arange_tuple tuple;
 
-    DBIAddrInfoScan( seg, DwarfGenAddrInit, DwarfGenAddrAdd, &tuple );
+    DBIAddrInfoScan(link,  seg, DwarfGenAddrInit, DwarfGenAddrAdd, &tuple );
 }
 
-void DwarfAddrSectStart( section *sect )
+void DwarfAddrSectStart(Link& link,  section *sect )
 /*********************************************/
 // This allocates space for the dwarf information
 {
     DwarfState  &st = dwarfState();
 
-    if( ( sect == wlink().Root )
+    if( ( sect == link.Root )
       && ( st.sect( Sect::abbrev ).size > 0 ) ) {
         for( std::size_t index = 0; index < NUM_SECTIONS; index++ ) {
             if( index != idx( Sect::abbrev ) ) {
@@ -784,21 +794,21 @@ static void FillHeader( Elf32_Shdr *hdr, const char *name, stringtable *strtab,
     hdr->sh_entsize = 0;
 }
 
-static void WriteDwarfSect( unsigned addidx, unsigned_32 size )
+static void WriteDwarfSect(Link& link,  unsigned addidx, unsigned_32 size )
 /*************************************************************/
 {
     if( addidx == idx( Sect::abbrev ) ) {
-        if( wlink().FmtData.type & MK_SEGMENTED ) {
-            WriteLoad( SegmentedStandardAbbrevs.data(), size );
+        if( link.FmtData.type & MK_SEGMENTED ) {
+            WriteLoad(link,  SegmentedStandardAbbrevs.data(), size );
         } else {
-            WriteLoad( FlatStandardAbbrevs.data(), size );
+            WriteLoad(link,  FlatStandardAbbrevs.data(), size );
         }
     } else {
         WriteInfoLoad( dwarfState().sections[addidx].vm_ptr, size );
     }
 }
 
-static unsigned_32 WriteELFSections( unsigned_32 file_off, unsigned_32 curr_off,
+static unsigned_32 WriteELFSections(Link& link,  unsigned_32 file_off, unsigned_32 curr_off,
                                      Elf32_Shdr *hdr, stringtable *strtab )
 /******************************************************************************/
 // write out all of the individual section in the debugging information
@@ -820,7 +830,7 @@ static unsigned_32 WriteELFSections( unsigned_32 file_off, unsigned_32 curr_off,
                 hdr->sh_size = seg->size + addsize;
                 WriteLeaderLoad( seg );
                 if( addsize != 0 ) {
-                    WriteDwarfSect( addidx, addsize );
+                    WriteDwarfSect(link,  addidx, addsize );
                 }
                 curr_off += hdr->sh_size;
                 file_off += hdr->sh_size;
@@ -833,7 +843,7 @@ static unsigned_32 WriteELFSections( unsigned_32 file_off, unsigned_32 curr_off,
           && ( st.sections[addidx].start == 0 ) ) {
             FillHeader( hdr, st.sections[addidx].name, strtab, curr_off );
             hdr->sh_size = st.sections[addidx].size;
-            WriteDwarfSect( addidx, hdr->sh_size );
+            WriteDwarfSect(link,  addidx, hdr->sh_size );
             curr_off += hdr->sh_size;
             hdr++;
         }
@@ -850,7 +860,7 @@ static bool CheckDBISeg( void *seg, void *num )
     return( false );
 }
 
-int DwarfCountDebugSections( void )
+int DwarfCountDebugSections(Link& link)
 /****************************************/
 {
     DwarfState  &st = dwarfState();
@@ -867,14 +877,14 @@ int DwarfCountDebugSections( void )
         }
     }
 #ifdef _EXE
-    if( wlink().FmtData.type & MK_OVERLAYS ) {
+    if( link.FmtData.type & MK_OVERLAYS ) {
         num++;
     }
 #endif
     return( num );
 }
 
-offset DwarfWriteTrailer( offset curr_off )
+offset DwarfWriteTrailer(Link& link,  offset curr_off )
 /******************************************
  * write little-endian data
  */
@@ -885,18 +895,18 @@ offset DwarfWriteTrailer( offset curr_off )
     MPUT_LE_32_UN( &trailer.vendor, TIS_TRAILER_VENDOR_TIS );
     MPUT_LE_32_UN( &trailer.type, TIS_TRAILER_TYPE_TIS_DWARF );
     MPUT_LE_32_UN( &trailer.size, curr_off + sizeof( TISTrailer ) );
-    WriteLoad( &trailer, sizeof( TISTrailer ) );
+    WriteLoad(link,  &trailer, sizeof( TISTrailer ) );
     return( sizeof( TISTrailer ) );
 }
 
-offset DwarfWriteElf( offset curr_off, stringtable *strtab,
+offset DwarfWriteElf(Link& link,  offset curr_off, stringtable *strtab,
                                 Elf32_Shdr *dbgsecbegin )
 /*********************************************************/
 {
-    return( WriteELFSections( curr_off, curr_off, dbgsecbegin, strtab ) );
+    return( WriteELFSections(link,  curr_off, curr_off, dbgsecbegin, strtab ) );
 }
 
-void DwarfWrite( void )
+void DwarfWrite(Link& link)
 /*********************/
 {
     Elf32_Ehdr          elf_header;
@@ -929,17 +939,17 @@ void DwarfWrite( void )
     elf_header.e_phnum = 0;
     elf_header.e_shentsize = sizeof( Elf32_Shdr );
     elf_header.e_shnum = 2;     // reserve 2 for null header & string table
-    elf_header.e_shnum += DwarfCountDebugSections();
+    elf_header.e_shnum += DwarfCountDebugSections(link);
     elf_header.e_shstrndx = elf_header.e_shnum - 1;     // last entry
-    WriteLoad( &elf_header, sizeof( Elf32_Ehdr ) );
+    WriteLoad(link,  &elf_header, sizeof( Elf32_Ehdr ) );
     shdr_size = sizeof( Elf32_Shdr ) * elf_header.e_shnum;
     std::vector<Elf32_Shdr> sect_header( elf_header.e_shnum );   // the first is the null section
-    savepos = PosLoad() + shdr_size;
-    SeekLoad( savepos );
+    savepos = PosLoad(link) + shdr_size;
+    SeekLoad(link,  savepos );
     InitStringTable( &strtab, false );
     AddCharStringTable( &strtab, '\0' );
     virt_off = sizeof( Elf32_Ehdr ) + shdr_size;
-    virt_off = WriteELFSections( savepos, virt_off, sect_header.data() + 1, &strtab );
+    virt_off = WriteELFSections(link,  savepos, virt_off, sect_header.data() + 1, &strtab );
     sh = sect_header.data() + elf_header.e_shstrndx;
     FillHeader( sh, ".shstrtab", &strtab, virt_off );
     sh->sh_type = SHT_STRTAB;
@@ -947,7 +957,7 @@ void DwarfWrite( void )
     WriteStringTable( &strtab, WriteLoad3, nullptr );
     FiniStringTable( &strtab );
     virt_off += sh->sh_size;
-    virt_off += DwarfWriteTrailer( virt_off );
-    SeekLoad( savepos - shdr_size );
-    WriteLoad( sect_header.data(), shdr_size );
+    virt_off += DwarfWriteTrailer(link,  virt_off );
+    SeekLoad(link,  savepos - shdr_size );
+    WriteLoad(link,  sect_header.data(), shdr_size );
 }

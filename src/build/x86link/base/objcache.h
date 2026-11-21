@@ -33,13 +33,13 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern bool     CacheOpen( const file_list * );
+extern bool     CacheOpen(Link& link,  const file_list * );
 extern void     CacheClose( const file_list *, unsigned );
-extern void     *CachePermRead( const file_list *, unsigned long, size_t );
-extern void     *CacheRead( const file_list *, unsigned long, size_t );
+extern void     *CachePermRead(Link& link,  const file_list *, unsigned long, size_t );
+extern void     *CacheRead(Link& link,  const file_list *, unsigned long, size_t );
 extern bool     CacheIsEnd( const file_list *, unsigned long );
 extern bool     CacheIsPerm( void );
 extern void     CacheFini( void );
 extern void     CacheFree( const file_list *, void * );
 extern void     FreeObjCache( const file_list * );
-extern bool     DumpObjCache( void );
+extern bool     DumpObjCache(Link& link);

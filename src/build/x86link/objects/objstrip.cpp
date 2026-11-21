@@ -152,15 +152,15 @@ void RefSeg( segdata * seg )
     seg->visited = false;
 }
 
-void DataRef( symbol * sym )
+void DataRef(Link& link,  symbol * sym )
 /*********************************/
 /* symbol referenced from data, so make sure it is included */
 {
-    if( (wlink().LinkState & LS_HAVE_PPC_CODE)
-      && (wlink().FmtData.type & MK_PE) ) {
+    if( (link.LinkState & LS_HAVE_PPC_CODE)
+      && (link.FmtData.type & MK_PE) ) {
         std::string s = std::string( ".." ) + sym->name.u.ptr;
 
-        sym = SymOp( ST_FIND, s.c_str(), s.size() );
+        sym = SymOp(link,  ST_FIND, s.c_str(), s.size() );
     }
     if( (sym->info & SYM_DEFINED)
       && !IS_SYM_IMPORTED( sym ) ) {
