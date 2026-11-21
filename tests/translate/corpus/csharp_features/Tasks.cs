@@ -1,4 +1,5 @@
-// Async: tasks that wait on timers wake in the order of their time; an exception thrown in an async method is the awaiting method's;
+// Async: tasks wait on timers and on each other, so what they print has one order however busy the machine is (timers alone do not
+// keep their order under load); an exception thrown in an async method is the awaiting method's;
 // a method that finishes at once does not suspend its caller; Task.Run and WhenAll.
 using System;
 using System.Threading.Tasks;
@@ -9,9 +10,10 @@ public class Worker
     public int Done;
     public Worker(string name) { Name = name; }
 
-    public async Task<int> Work(int ms, int result)
+    public async Task<int> Work(int ms, int result, Task before)
     {
         Console.WriteLine(Name + " begins " + result);
+        await before;
         await Task.Delay(ms);
         Done++;
         Console.WriteLine(Name + " finishes " + result);
@@ -57,12 +59,13 @@ public static class Tasks
     static async Task Main()
     {
         var w = new Worker("w");
-        var slow = w.Work(300, 1);
-        var fast = w.Work(100, 2);
-        var middle = w.Work(200, 3);
+        var fast = w.Work(10, 2, Task.CompletedTask);
+        var middle = w.Work(10, 3, fast);
+        var slow = w.Work(10, 1, middle);
         Console.WriteLine("started three");
+        int last = await slow;
         Console.WriteLine("fast is " + await fast);
-        Console.WriteLine("slow is " + await slow);
+        Console.WriteLine("slow is " + last);
         Console.WriteLine("middle is " + await middle);
         Console.WriteLine("done count " + w.Done);
 
@@ -70,7 +73,10 @@ public static class Tasks
         Console.WriteLine(await Chain(5));
         Console.WriteLine(await Guarded());
 
-        int[] all = await Task.WhenAll(w.Work(60, 10), w.Work(20, 11), w.Work(40, 12));
+        var first = w.Work(5, 11, Task.CompletedTask);
+        var second = w.Work(5, 12, first);
+        var third = w.Work(5, 10, second);
+        int[] all = await Task.WhenAll(third, first, second);
         Console.WriteLine(all[0] + " " + all[1] + " " + all[2]);
 
         int viaRun = await Task.Run(() => 6 * 7);
