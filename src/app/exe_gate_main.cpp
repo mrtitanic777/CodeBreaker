@@ -12,8 +12,7 @@
 //   --corpus   the corpus files (default: the CB_CORPUS environment variable, else the "corpus" of the work folder that
 //              <repo>/settings.json names: its codebreaker.json, relative to it);
 //              cases that need it are skipped, and counted as skipped, when it is not there
-//   --jobs     cases run side by side (default: min(cores - 2, 12) when the machine is otherwise idle, else 4, the cap for a shared machine;
-//              the CB_GATE_JOBS environment variable also sets it)
+//   --jobs     cases run side by side (default 8; the CB_GATE_JOBS environment variable also sets it)
 //   --shared   the old cap of 4 (other sessions are using the machine)
 //   --times    after the run, list the slowest cases, test shards and tests (seconds)
 //   --changed  only what a change can affect since the last passing gate: the cases and unit-test areas that depend on the files that differ from
@@ -130,26 +129,8 @@ struct Env {
     bool update = false, keep = false, times = false;
 };
 
-// How many cases to run side by side. The project's cap (4) holds while other sessions use the machine; on an idle one the gate takes
-// most of it: the busy share is measured over a third of a second (system times: idle, kernel which includes idle, user), and
-// below a quarter busy the pool is min(cores - 2, 12).
-int default_jobs() {
-    constexpr int kShared = 4;
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    const int cores = static_cast<int>(si.dwNumberOfProcessors);
-    const int wide = std::clamp(cores - 2, kShared, 12);
-    auto ticks = [](FILETIME f) { return (static_cast<std::uint64_t>(f.dwHighDateTime) << 32) | f.dwLowDateTime; };
-    FILETIME i0, k0, u0, i1, k1, u1;
-    if (!GetSystemTimes(&i0, &k0, &u0)) return kShared;
-    Sleep(330);
-    if (!GetSystemTimes(&i1, &k1, &u1)) return kShared;
-    const std::uint64_t total = (ticks(k1) - ticks(k0)) + (ticks(u1) - ticks(u0));
-    const std::uint64_t idle = ticks(i1) - ticks(i0);
-    if (total == 0) return kShared;
-    const double busy = 1.0 - static_cast<double>(idle) / static_cast<double>(total);
-    return busy < 0.25 ? wide : kShared;
-}
+// How many cases run side by side unless told otherwise.
+constexpr int kDefaultJobs = 8;
 
 std::string env_var(const char* name) {
     const DWORD need = GetEnvironmentVariableA(name, nullptr, 0);   // (the Win32 call: every Windows compiler's CRT has it)
@@ -519,7 +500,7 @@ int main(int argc, char** argv) {
         }
         if (!jobs_given) {
             const std::string e = env_var("CB_GATE_JOBS");
-            env.jobs = !e.empty() ? std::max(1, std::stoi(e)) : default_jobs();
+            env.jobs = !e.empty() ? std::max(1, std::stoi(e)) : kDefaultJobs;
         }
         if (unit_shards == 0) unit_shards = std::max(8, env.jobs * 2);
         env.repo = repo ? *repo : find_repo(stdfs::current_path());
@@ -651,6 +632,16 @@ int main(int argc, char** argv) {
             std::vector<std::pair<double, std::string>> slow;   // --times: the slowest tests of the shard
         };
         std::vector<UnitResult> unit_results(nunit);
+        // One line each time a shard or a case finishes (the caller holds print_mutex), so a run shows how far it has got.
+        const std::size_t progress_total = nunit + picked.size();
+        std::size_t progress_done = 0, progress_failed = 0;
+        const auto progress = [&](bool failed) {
+            ++progress_done;
+            if (failed) ++progress_failed;
+            const auto elapsed = static_cast<long>(std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+            std::printf("[%zu/%zu] %zu%%, %zu failed, %ld:%02ld elapsed\n", progress_done, progress_total,
+                        progress_done * 100 / progress_total, progress_failed, elapsed / 60, elapsed % 60);
+        };
         parallel::parallel_for(pool, nunit + picked.size(), [&](std::size_t t) {
             if (t < nunit) {
                 UnitResult& ur = unit_results[t];
@@ -690,6 +681,7 @@ int main(int argc, char** argv) {
                 }
                 std::lock_guard lock(print_mutex);
                 if (!ur.ok) std::printf("FAIL  cb_tests shard %zu/%zu\n%s", t, nunit, ur.failures.c_str());
+                progress(!ur.ok);
                 std::fflush(stdout);
                 return;
             }
@@ -737,6 +729,7 @@ int main(int argc, char** argv) {
                 std::printf("\n%s", res.detail.c_str());
                 if (!res.detail.empty() && res.detail.back() != '\n') std::printf("\n");
             }
+            progress(res.verdict == Verdict::Fail || res.verdict == Verdict::Missing);
             std::fflush(stdout);
         });
         std::size_t pass = 0, fail = 0, skip = 0, rec = 0;

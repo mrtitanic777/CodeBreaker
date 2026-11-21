@@ -3,7 +3,7 @@ rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--no-app] [--update] [--filt
 rem codebreaker.exe, and the window's screenshot step (the window rendered in every state (including the open Language list and a translating run) and both themes, each a non-empty PNG of the size asked).
 rem
 rem     tools\gate.cmd                 build src and codebreaker.exe (incremental: ninja's object cache is the compile cache), then in ONE parallel run
-rem                                    (4 jobs, the project's cap): cb_tests as 8 shards + every command case of tests\exe_gate; then the screenshots
+rem                                    (8 jobs): cb_tests as 8 shards + every command case of tests\exe_gate; then the screenshots
 rem     tools\gate.cmd --no-build      skip the build (the objects are current)
 rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default CB_EXE, else build\codebreaker.exe, which this script builds and installs)
 rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone) and the screenshots
@@ -11,7 +11,7 @@ rem     tools\gate.cmd --no-app        skip the screenshot step (--update, --fil
 rem     tools\gate.cmd --filter lz32   only the cases whose name contains this (no unit tests)
 rem     tools\gate.cmd --update ...    record goldens of the selected cases from the program's current output (review the diff before committing)
 rem
-rem Exit code 0 = pass. CB_BUILD_JOBS limits the build (default: half the cores); CB_GATE_JOBS the run (default 4).
+rem Exit code 0 = pass. CB_BUILD_JOBS limits the build (default: half the cores); CB_GATE_JOBS the run (default 8).
 setlocal
 set HERE=%~dp0
 set ROOT=%~dp0..
@@ -42,7 +42,7 @@ call "%HERE%disk_guard.cmd" || exit /b 1
 set JOBS=%CB_BUILD_JOBS%
 if "%JOBS%"=="" set /a JOBS=%NUMBER_OF_PROCESSORS% / 2
 if %JOBS% LSS 1 set JOBS=1
-rem the run's pool: cb_exe_gate chooses (min(cores - 2, 12) on an idle machine, 4 on a shared one); CB_GATE_JOBS or --jobs set it
+rem the run's pool: 8 unless CB_GATE_JOBS or --jobs set it
 set GJOBS=%CB_GATE_JOBS%
 if not defined VCINSTALLDIR set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
 if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
