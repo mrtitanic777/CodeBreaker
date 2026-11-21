@@ -51,6 +51,7 @@ CB_TEST("source.switch_writer.the_asset_section_is_kept_as_a_file", [] {
     fs::write_file(dir.path() / "app.nro", original);
     const image_writer::Written r = reconstruct(dir.path() / "app.nro", dir.path() / "out");
     CB_CHECK(r.linked && r.same);
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*r.built) == original);
     CB_CHECK(has(fs::read_text(r.source), ".incbin \"app.assets.bin\""));
     const Bytes assets = fs::read_file(dir.path() / "out" / "app.assets.bin");
@@ -63,6 +64,7 @@ CB_TEST("source.switch_writer.a_nso_and_an_elf_come_back_as_their_loaded_image",
     fs::write_file(dir.path() / "m.nso", formats::nro::test_image::nso_bytes());
     const image_writer::Written n = reconstruct(dir.path() / "m.nso", dir.path() / "nso");
     CB_CHECK(n.linked && n.same);
+    CB_CHECK(n.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*n.built) == formats::nro::test_image::nro_bytes());   // (the inflated program)
     CB_CHECK(has(fs::read_text(n.source), "compressed segments inflated"));
     CB_CHECK(!n.notes.empty());

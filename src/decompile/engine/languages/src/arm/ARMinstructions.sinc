@@ -726,8 +726,12 @@ macro resultflags(result) {
  tmpZR = result == 0;
 }
 
+rn: pc is pc & c1619=15 & I25=0 & c0404=1 & c0707=0        { tmp:4 = inst_start+12; export tmp; }   # (an operand of a register-shifted data-processing instruction: 12 ahead)
 rn: pc is pc & c1619=15        { tmp:4 = inst_start+8; export tmp; }
 rn: Rn is Rn				{ export Rn; }
+
+rmsh: pc is pc & Rm=15        { tmp:4 = inst_start+12; export tmp; }   # (the pc as a register-shifted operand reads 12 ahead)
+rmsh: Rm is Rm				{ export Rm; }
 
 rm: pc is pc & Rm=15        { tmp:4 = inst_start+8; export tmp; }
 rm: Rm is Rm				{ export Rm; }
@@ -953,24 +957,24 @@ shift2: rm, "ror #"^sftimm	is I25=0 & sftimm & c0406=6 & rm
 ######  shift3 ######
 #####################
 
-shift3: rm, "lsl "^rs 		is I25=0 & rs & c0407=1 & rm
+shift3: rmsh, "lsl "^rs 		is I25=0 & rs & c0407=1 & rmsh
 {
-  local sa=rs&0xff; local tmp1=(rm>>(32-sa))&1; shift_carry=((sa==0:4)&&CY) || ((sa!=0:4)&&tmp1(0)); local tmp2=rm<<sa; export tmp2;
+  local sa=rs&0xff; local tmp1=(rmsh>>(32-sa))&1; shift_carry=((sa==0:4)&&CY) || ((sa!=0:4)&&tmp1(0)); local tmp2=rmsh<<sa; export tmp2;
 }
 
-shift3: rm, "lsr "^rs		is I25=0 & rs & c0407=3 & rm
+shift3: rmsh, "lsr "^rs		is I25=0 & rs & c0407=3 & rmsh
 {
-  local sa=rs&0xff; local tmp1=(rm>>(sa-1))&1; shift_carry=((sa==0:4)&&CY) || ((sa!=0:4)&&tmp1(0)); local tmp2=rm>>sa; export tmp2;
+  local sa=rs&0xff; local tmp1=(rmsh>>(sa-1))&1; shift_carry=((sa==0:4)&&CY) || ((sa!=0:4)&&tmp1(0)); local tmp2=rmsh>>sa; export tmp2;
 }
 
-shift3: rm, "asr "^rs		is I25=0 & rs & c0407=5 & rm
+shift3: rmsh, "asr "^rs		is I25=0 & rs & c0407=5 & rmsh
 {
-  local sa=rs&0xff; local tmp1=(rm s>>(sa-1))&1; shift_carry=((sa==0:4)&&CY) || ((sa!=0:4)&&tmp1(0)); local tmp2=rm s>> sa; export tmp2;
+  local sa=rs&0xff; local tmp1=(rmsh s>>(sa-1))&1; shift_carry=((sa==0:4)&&CY) || ((sa!=0:4)&&tmp1(0)); local tmp2=rmsh s>> sa; export tmp2;
 }
 
-shift3: rm, "ror "^rs		is I25=0 & rs & c0407=7 & rm
+shift3: rmsh, "ror "^rs		is I25=0 & rs & c0407=7 & rmsh
 {
-  local sa=rs&0x1f; local tmp1=(rm>>sa)|(rm<<(32-sa)); local tmp2=tmp1>>31; shift_carry=(((rs&0xff)==0:4)&&CY) || (((rs&0xff)!=0:4)&&tmp2(0)); export tmp1;
+  local sa=rs&0x1f; local tmp1=(rmsh>>sa)|(rmsh<<(32-sa)); local tmp2=tmp1>>31; shift_carry=(((rs&0xff)==0:4)&&CY) || (((rs&0xff)!=0:4)&&tmp2(0)); export tmp1;
 }
 
 
@@ -1268,8 +1272,8 @@ sinc2: sinc3		is c1313=0 & sinc3		{ }
 sinc1: sinc2,lr		is c1414=1 & sinc2 & lr		{ * mult_addr = lr; mult_addr = mult_addr + 4; }
 sinc1: lr			is c1414=1 & c0013=0 & lr	{ * mult_addr = lr; mult_addr = mult_addr + 4; }
 sinc1: sinc2		is c1414=0 & sinc2		{ }
-sinc0: sinc1,pc		is c1515=1 & sinc1 & pc		{ *:4 mult_addr = (inst_start + 8); mult_addr = mult_addr + 4; }
-sinc0: pc			is c1515=1 & c0014=0 & pc	{ *:4 mult_addr = (inst_start + 8); mult_addr = mult_addr + 4; }
+sinc0: sinc1,pc		is c1515=1 & sinc1 & pc		{ *:4 mult_addr = (inst_start + 12); mult_addr = mult_addr + 4; }
+sinc0: pc			is c1515=1 & c0014=0 & pc	{ *:4 mult_addr = (inst_start + 12); mult_addr = mult_addr + 4; }
 sinc0: sinc1		is c1515=0 & sinc1		{ }
 stlist_inc: {sinc0}	is sinc0	{ }
 
@@ -1325,7 +1329,7 @@ ldec0: ldec1		is c0000=0 & ldec1		{ }
 ldlist_dec: {ldec0}	is ldec0	{ }
 
 # stlist_dec  is the list of registers to be stored using DA or DB in Addressing Mode 4
-sdec15: pc			is c1515=1 & pc				{ *:4 mult_addr = (inst_start + 8); mult_addr = mult_addr - 4; }
+sdec15: pc			is c1515=1 & pc				{ *:4 mult_addr = (inst_start + 12); mult_addr = mult_addr - 4; }
 sdec15:				is c1515=0				{ }
 sdec14: lr,sdec15	is c1414=1 & sdec15 & lr	{ * mult_addr=lr; mult_addr = mult_addr - 4; }
 sdec14: lr			is c1414=1 & c1515=0 & lr	{ * mult_addr=lr; mult_addr = mult_addr - 4; }
@@ -4252,7 +4256,7 @@ ArmPCRelImmed12: reloff		is U23=0 & immed & rotate
 {
 # TODO: GE bits have not been included
   build COND;
-  Rd = zext( (NG<<4) | (ZR<<3) | (CY<<2) | (OV<<1) | (Q) ) << 27;
+  Rd = (cpsr & 0x07ffffff) | (zext( (NG<<4) | (ZR<<3) | (CY<<2) | (OV<<1) | (Q) ) << 27);
 }
 
 :mrs^COND Rd,spsr 		is $(AMODE) & ARMcond=1 & COND & c2027=20 & c1619=15 & Rd & offset_12=0 & spsr
@@ -4266,7 +4270,14 @@ ArmPCRelImmed12: reloff		is U23=0 & immed & rotate
   build COND;
   build cpsrmask;
   build shift1;
-  cpsr = (cpsr& ~cpsrmask) | (shift1 & cpsrmask);
+  local current:4 = (cpsr & 0x07ffffff) | (zext( (NG<<4) | (ZR<<3) | (CY<<2) | (OV<<1) | (Q) ) << 27);   # (the flags live in their own registers)
+  cpsr = (current & ~cpsrmask) | (shift1 & cpsrmask);
+  local tmp = cpsr >> 27 & 0x1f;
+  Q  = ((tmp     ) & 0x1) != 0;
+  OV = ((tmp >> 1) & 0x1) != 0;
+  CY = ((tmp >> 2) & 0x1) != 0;
+  ZR = ((tmp >> 3) & 0x1) != 0;
+  NG = ((tmp >> 4) & 0x1) != 0;
 }
 
 :msr^COND cpsrmask,rm 		is $(AMODE) & ARMcond=1 & COND & c2027=18 & cpsrmask & c1215=15 & c0811=0 & c0407=0 & rm
@@ -4274,7 +4285,8 @@ ArmPCRelImmed12: reloff		is U23=0 & immed & rotate
 # TODO: GE bits have not been included
   build COND;
   build cpsrmask;
-  cpsr = (cpsr& ~cpsrmask) | (rm & cpsrmask);
+  local current:4 = (cpsr & 0x07ffffff) | (zext( (NG<<4) | (ZR<<3) | (CY<<2) | (OV<<1) | (Q) ) << 27);   # (the flags live in their own registers)
+  cpsr = (current & ~cpsrmask) | (rm & cpsrmask);
   local tmp = cpsr >> 27 & 0x1f;
   Q  = ((tmp     ) & 0x1) != 0;
   OV = ((tmp >> 1) & 0x1) != 0;

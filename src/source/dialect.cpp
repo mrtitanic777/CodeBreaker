@@ -194,6 +194,8 @@ struct Dialect::Impl {
     std::string forced_suffix;                       // DASM's `STA.w x`: the absolute form of a zero-page address
     std::string forced_prefix;                       // ca65's `STA a:x`
     std::map<std::string, int> forced_opcodes;       // mnemonic (upper case) -> its absolute opcode
+    std::string long_prefix;                         // ca65's `LDA f:x`: the 24-bit form of an address below $10000
+    std::map<std::string, std::pair<int, int>> long_opcodes;   // mnemonic (upper case) -> its long opcode, and its long indexed (,x) one
     std::string wrap_out(std::string s) const;
     std::string wrap_in(std::string s) const;
     std::string decimals(std::string_view s, unsigned long limit = 0xFFFF) const;
@@ -779,6 +781,16 @@ std::vector<std::string> Dialect::block(std::string_view name, const Vars& vars)
 
 bool Dialect::has_block(std::string_view name) const { return impl_->blocks.contains(name); }
 
+namespace {
+
+// ca65's `.loword(x)` inside the bytes of a forced form (`STA a:.loword(label)`), said as a mask the directive layer's expressions read.
+std::string without_loword(std::string s) {
+    for (std::size_t at = s.find(".loword("); at != std::string::npos; at = s.find(".loword(", at)) s.replace(at, 8, "0xffff&(");
+    return s;
+}
+
+}  // namespace
+
 std::string Dialect::parse(std::string_view source, const Aux& aux) const {
     const Impl& d = *impl_;
     if (d.identity) return std::string(source);
@@ -958,13 +970,31 @@ std::string Dialect::parse(std::string_view source, const Aux& aux) const {
             break;
         }
         if (done) continue;
+        if (!d.long_prefix.empty()) {   // `LDA f:x`, `LDA f:x,x`: the long form, as its four bytes
+            const std::size_t blank = code.find_first_of(" \t");
+            if (blank != std::string_view::npos) {
+                const auto op = d.long_opcodes.find(text::upper(code.substr(0, blank)));
+                std::string_view rest = text::trim(code.substr(blank));
+                if (op != d.long_opcodes.end() && text::istarts_with(rest, d.long_prefix)) {
+                    rest = text::trim(rest.substr(d.long_prefix.size()));
+                    bool indexed = false;
+                    if (rest.size() > 2 && text::iequals(rest.substr(rest.size() - 2), ",x")) {
+                        indexed = true;
+                        rest = text::trim(rest.substr(0, rest.size() - 2));
+                    }
+                    const std::string operand = without_loword(d.numbers_in(rest));
+                    out += std::format("{}        .byte {},({})&0xff,(({})>>8)&0xff,({})>>16\n", prefix, indexed ? op->second.second : op->second.first, operand, operand, operand);
+                    continue;
+                }
+            }
+        }
         if (!d.forced_prefix.empty()) {   // `STA a:x`
             const std::size_t blank = code.find_first_of(" \t");
             if (blank != std::string_view::npos) {
                 const auto op = d.forced_opcodes.find(text::upper(code.substr(0, blank)));
                 const std::string_view rest = text::trim(code.substr(blank));
                 if (op != d.forced_opcodes.end() && text::istarts_with(rest, d.forced_prefix)) {
-                    const std::string operand = d.numbers_in(text::trim(rest.substr(d.forced_prefix.size())));
+                    const std::string operand = without_loword(d.numbers_in(text::trim(rest.substr(d.forced_prefix.size()))));
                     out += std::format("{}        .byte {},({})&0xff,({})>>8\n", prefix, op->second, operand, operand);
                     continue;
                 }
@@ -976,7 +1006,7 @@ std::string Dialect::parse(std::string_view source, const Aux& aux) const {
             if (blank != std::string_view::npos && word.size() > d.forced_suffix.size() && text::iequals(word.substr(word.size() - d.forced_suffix.size()), d.forced_suffix)) {
                 const auto op = d.forced_opcodes.find(text::upper(word.substr(0, word.size() - d.forced_suffix.size())));
                 if (op != d.forced_opcodes.end()) {
-                    const std::string operand = d.numbers_in(text::trim(code.substr(blank)));
+                    const std::string operand = without_loword(d.numbers_in(text::trim(code.substr(blank))));
                     out += std::format("{}        .byte {},({})&0xff,({})>>8\n", prefix, op->second, operand, operand);
                     continue;
                 }
@@ -1065,6 +1095,10 @@ std::unique_ptr<Dialect::Impl> read(std::string_view name) {
         d->forced_suffix = str(*it, "suffix");
         d->forced_prefix = str(*it, "prefix");
         for (auto o = it->at("opcodes").begin(); o != it->at("opcodes").end(); ++o) d->forced_opcodes[o.key()] = o.value().get<int>();
+    }
+    if (const auto it = j.find("forced_long"); it != j.end()) {
+        d->long_prefix = str(*it, "prefix");
+        for (auto o = it->at("opcodes").begin(); o != it->at("opcodes").end(); ++o) d->long_opcodes[o.key()] = {o.value().at(0).get<int>(), o.value().at(1).get<int>()};
     }
     if (const auto it = j.find("wraps"); it != j.end())   // [{"from": "%up(", "to_open": "(", "to_close": " >> 16)"}]
         for (const auto& row : *it) d->wraps.push_back({str(row, "from"), str(row, "to_open"), str(row, "to_close")});
@@ -1156,6 +1190,19 @@ std::string Dialect::forced_absolute(std::string_view mnemonic, std::string_view
     const std::string upper = text::upper(mnemonic);
     if (!d.forced_opcodes.contains(upper)) return {};
     return upper + d.forced_suffix + " " + d.forced_prefix + std::string(operand);
+}
+
+}  // namespace cb::source::dialect
+
+namespace cb::source::dialect {
+
+std::string Dialect::forced_long(std::string_view mnemonic, std::string_view operand, bool indexed) const {
+    const Impl& d = *impl_;
+    if (d.long_prefix.empty()) return {};
+    const std::string upper = text::upper(mnemonic);
+    const auto it = d.long_opcodes.find(upper);
+    if (it == d.long_opcodes.end()) return {};
+    return upper + " " + d.long_prefix + std::string(operand) + (indexed ? ",x" : "");
 }
 
 }  // namespace cb::source::dialect

@@ -23,6 +23,7 @@
 
 #include "emulate/m6502.hpp"
 #include "emulate/m68k.hpp"
+#include "emulate/arm.hpp"
 #include "emulate/mips.hpp"
 #include "emulate/r4300.hpp"
 #include "emulate/z80.hpp"
@@ -70,5 +71,10 @@ emulate::mips::RunResult call(emulate::mips::Bus& bus, std::uint32_t entry, cons
 // faults, coprocessor 0 and the FPU.
 emulate::r4300::RunResult run(emulate::r4300::Bus& bus, std::uint32_t entry, const emulate::r4300::RunOptions& options = {});
 emulate::r4300::RunResult call(emulate::r4300::Bus& bus, std::uint32_t entry, const emulate::r4300::RunOptions& options = {});
+
+// The Game Boy Advance's ARM7TDMI (emulate::arm::Bus of System::Gba), on ARM4t_le.sla: ARM and Thumb state, the BIOS calls and bus errors are carried by the
+// adapter. call() gives every other machine (the DS, the 3DS, the Vita) to the own core.
+emulate::arm::RunResult run(emulate::arm::Bus& bus, std::uint32_t entry, const emulate::arm::RunOptions& options = {});
+emulate::arm::RunResult call(emulate::arm::Bus& bus, std::uint32_t entry, const emulate::arm::RunOptions& options = {});
 
 }  // namespace cb::engine::pcode_cpu

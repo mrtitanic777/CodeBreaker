@@ -1,0 +1,39 @@
+{
+  "name": "ca65-65816",
+  "description": "ca65 (cc65) for the 65816: the Super Nintendo as its programs are written. .p816, .a8 / .a16 / .i8 / .i16 for the register widths, $ hex in pairs of digits, lower-case index registers, a: for an absolute address below $100 and f: for a long one below $10000, .loword(label), name = value lined up to 14, .segment \"BANKn\" placed by the linker configuration (ld65 .cfg, kept beside the source), .res fills.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "list_separator": ", ",
+  "replace": [[",X", ",x", true], [",Y", ",y", true], [",S", ",s", true]],
+  "data": {"row": 16, "run": 16, "string_min": 0},
+  "directives": [
+    {"neutral": ".equ {name}, {v}", "dialect": "{name:<14} = {v}"},
+    {"neutral": ".byte {list}", "dialect": ".byte {list}", "bytes": true},
+    {"neutral": ".space {n}, {v}", "dialect": ".res {n}, {v}"},
+    {"neutral": ".half {list}", "dialect": ".word {list}"},
+    {"neutral": ".context m16=1", "dialect": ".a16"},
+    {"neutral": ".context m16=0", "dialect": ".a8"},
+    {"neutral": ".context x16=1", "dialect": ".i16"},
+    {"neutral": ".context x16=0", "dialect": ".i8"},
+    {"neutral": "", "dialect": ".p816", "print": false},
+    {"neutral": ".org {v}", "dialect": ".org {v}"},
+    {"neutral": "", "dialect": ".incbin {s}", "incbin": true}
+  ],
+  "instructions": [
+    {"neutral": "JSR {w}", "dialect": "JSR .loword({w})", "print": false},
+    {"neutral": "JMP {w}", "dialect": "JMP .loword({w})", "print": false},
+    {"neutral": "INC A", "dialect": "INC a"}, {"neutral": "DEC A", "dialect": "DEC a"}, {"neutral": "ASL A", "dialect": "ASL a"},
+    {"neutral": "LSR A", "dialect": "LSR a"}, {"neutral": "ROL A", "dialect": "ROL a"}, {"neutral": "ROR A", "dialect": "ROR a"}
+  ],
+  "forced_absolute": {"prefix": "a:", "opcodes": {"ADC": 109, "AND": 45, "ASL": 14, "BIT": 44, "CMP": 205, "CPX": 236, "CPY": 204, "DEC": 206, "EOR": 77, "INC": 238, "JMP": 76, "JSR": 32, "LDA": 173, "LDX": 174, "LDY": 172, "LSR": 78, "ORA": 13, "ROL": 46, "ROR": 110, "SBC": 237, "STA": 141, "STX": 142, "STY": 140, "STZ": 156, "TRB": 28, "TSB": 12}},
+  "forced_long": {"prefix": "f:", "opcodes": {"ORA": [15, 31], "AND": [47, 63], "EOR": [79, 95], "ADC": [111, 127], "STA": [143, 159], "LDA": [175, 191], "CMP": [207, 223], "SBC": [239, 255]}},
+  "blocks": {
+    "segment": [".segment \"{name}\""]
+  },
+  "segments": {
+    "directive": ".segment {s}",
+    "memory": "{m}: start = {v}, size = {z}, fill = yes, file = %O;",
+    "segment": "{s}: load = {m}, type = ro;"
+  }
+}

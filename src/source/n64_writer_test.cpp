@@ -37,6 +37,7 @@ CB_TEST("source.n64_writer.the_source_builds_back_into_the_rom", [] {
     CB_CHECK_EQ(r.functions.begin()->first, 0x80001000u);
     CB_CHECK(r.code_bytes > 100);
     CB_CHECK_EQ(r.image_bytes, nt::test_rom().size());
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(cb::fs::read_file(*r.built) == nt::test_rom());
 });
 
@@ -88,6 +89,7 @@ CB_TEST("source.n64_writer.a_v64_and_an_n64_file_rebuild_in_their_own_byte_order
         cb::fs::write_file(dir.path() / name, nt::test_rom(order));
         const cb::source::image_writer::Written r = nw::reconstruct(dir.path() / name, dir.path() / ("out_" + name));
         CB_CHECK(r.linked && r.same);
+        CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
         CB_CHECK(r.built->extension() == (order == n::ByteOrder::V64 ? ".v64" : ".n64"));
         CB_CHECK(cb::fs::read_file(*r.built) == nt::test_rom(order));
         const string text = source_of(r);
@@ -130,6 +132,8 @@ CB_TEST("source.n64_writer.an_edited_program_is_not_the_original", [] {
     const cb::source::image_writer::Written a = nw::reconstruct(dir.path() / "a.z64", dir.path() / "out_a");
     const cb::source::image_writer::Written b = nw::reconstruct(dir.path() / "b.z64", dir.path() / "out_b");
     CB_CHECK(a.same && b.same);
+    CB_CHECK(a.built);   // (a failed rebuild fails here, not in the read below)
+    CB_CHECK(b.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(cb::fs::read_file(*a.built) != cb::fs::read_file(*b.built));
     CB_CHECK(contains(source_of(b), "dsll32 $v0, $a0, 5"));
 });

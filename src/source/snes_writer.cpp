@@ -13,6 +13,7 @@
 #include "core/text.hpp"
 #include "decompile/w65816.hpp"
 #include "source/described_source.hpp"
+#include "source/dialect.hpp"
 #include "source/m6502_source.hpp"
 
 namespace cb::source::snes_writer {
@@ -151,15 +152,12 @@ struct Naming {
     const iw::Names& labels;                     // by canonical address
     const decompile::AddressLabels& direct_page;   // by byte
     std::map<std::uint32_t, std::string>* equates = nullptr;   // the hardware names used (collected when set)
-    std::map<std::string, std::uint32_t>* halves = nullptr;    // the names of a label's low 16 bits that are used (collected when set)
-    std::map<std::string, std::uint32_t>* early = nullptr;     // the labels a long operand names, to be defined ahead of the code (collected when set)
 };
 
 bool direct_page_byte(const w::Insn& i, std::uint32_t& out);
 
 // The names of the numbers an instruction has: its labels, the hardware registers and the direct-page bytes it names. A label stands for the number it
-// is (a branch's or a long operand's 24 bits, a 16-bit operand of a label in bank 0); a 16-bit operand of a label past bank 0 is that label's `_w`,
-// a name for its low 16 bits, which the source defines ahead of the code.
+// is (a branch's or a long operand's 24 bits, a 16-bit operand of a label in bank 0); a 16-bit operand of a label past bank 0 is `.loword(label)`.
 decompile::AddressLabels insn_names(const Naming& n, const Insn& insn) {
     const w::Insn& i = insn.i;
     decompile::AddressLabels names;
@@ -171,9 +169,7 @@ decompile::AddressLabels insn_names(const Naming& n, const Insn& insn) {
         const auto it = n.labels.find(canonical);
         if (it == n.labels.end()) return std::nullopt;
         if (sixteen_bit ? (canonical & 0xFFFF) != operand : canonical != operand) return std::nullopt;
-        if (!sixteen_bit || canonical <= 0xFFFF) return it->second;
-        if (n.halves) (*n.halves)[it->second + "_w"] = canonical & 0xFFFF;
-        return it->second + "_w";
+        return sixteen_bit && canonical > 0xFFFF ? ".loword(" + it->second + ")" : it->second;
     };
     const auto hardware = [&](std::uint32_t v) {
         const std::string name = snes::register_name(v);
@@ -189,8 +185,8 @@ decompile::AddressLabels insn_names(const Naming& n, const Insn& insn) {
             if (const auto name = label_for(*i.target, *i.target, false)) names[*i.target] = *name;
             break;
         case w::Mode::Abs:
-            if (i.target) {   // (JMP and JSR: the description writes the 24 bits, the program bank's with the operand)
-                if (const auto name = label_for(*i.target, *i.target, false)) names[*i.target] = *name;
+            if (i.target) {   // (JMP and JSR: the description writes the 24 bits, the program bank's with the operand; the source says the 16 bits)
+                if (const auto name = label_for(*i.target, i.operand, true)) names[*i.target] = *name;
             } else if (i.mnemonic != "PEA" && !hardware(i.operand)) {
                 if (const auto name = label_for(bank | i.operand, i.operand, true)) names[i.operand] = *name;
             }
@@ -206,10 +202,7 @@ decompile::AddressLabels insn_names(const Naming& n, const Insn& insn) {
         case w::Mode::Long:
         case w::Mode::LongX:
             if ((i.operand >> 16) == 0 && is_hardware(i.operand & 0xFFFF)) hardware(i.operand);
-            else if (const auto name = label_for(i.operand, i.operand, false)) {
-                names[i.operand] = *name;
-                if (n.early) (*n.early)[*name] = i.operand;   // (the assembler's first pass guesses a label not defined yet near the instruction: in bank 0 that is a 16-bit address)
-            }
+            else if (const auto name = label_for(i.operand, i.operand, false)) names[i.operand] = *name;
             break;
         default: break;
     }
@@ -235,6 +228,66 @@ bool direct_page_byte(const w::Insn& i, std::uint32_t& out) {
 
 std::string word_list(const std::vector<std::string>& words) { return "        .half " + text::join(words, ","); }
 
+// The Super Nintendo's source is ca65's (config/dialects/ca65-65816.json).
+const dialect::Dialect& ca65() {
+    static const dialect::Dialect& d = dialect::find("ca65-65816");
+    return d;
+}
+
+// An instruction the description reads in a way its bytes do not come back from, written as ca65 writes it: a long operand in bank 0 (or a named one)
+// as `f:`, an absolute operand below $100 as `a:`. Empty when it is not one of these.
+std::string forced_text(const Insn& insn, const decompile::AddressLabels& names) {
+    const w::Insn& i = insn.i;
+    if ((i.mode == w::Mode::Long || i.mode == w::Mode::LongX) && !i.target) {
+        const auto named = names.find(i.operand);
+        if (named == names.end() && i.operand >= 0x10000) return {};
+        return ca65().forced_long(i.mnemonic, named != names.end() ? named->second : ca65().number(i.operand, 6), i.mode == w::Mode::LongX);
+    }
+    if (i.mode == w::Mode::Abs && !i.target && i.mnemonic != "PEA" && i.operand < 0x100) {
+        const auto named = names.find(i.operand);
+        return ca65().forced_absolute(i.mnemonic, named != names.end() ? named->second : ca65().number(i.operand, 4));
+    }
+    return {};
+}
+
+// The number of hex digits an operand of this instruction is written with.
+unsigned digits_of(const w::Insn& i) {
+    switch (i.mode) {
+        case w::Mode::ImmM: return i.m16 ? 4 : 2;
+        case w::Mode::ImmX: return i.x16 ? 4 : 2;
+        case w::Mode::Long:
+        case w::Mode::LongX:
+        case w::Mode::Rel:
+        case w::Mode::RelLong: return 6;
+        case w::Mode::Abs:
+        case w::Mode::AbsX:
+        case w::Mode::AbsY:
+        case w::Mode::AbsInd:
+        case w::Mode::AbsIndX:
+        case w::Mode::AbsIndL: return 4;
+        default: return 2;
+    }
+}
+
+// `text` with each number written 0x<hex> that is not part of a name written with at least `digits` digits (`LDX #0x10` is `LDX #0x0010` when X is 16 bits wide).
+std::string padded(const std::string& text, unsigned digits) {
+    std::string out;
+    for (std::size_t k = 0; k < text.size();) {
+        const bool name_before = k > 0 && (std::isalnum(static_cast<unsigned char>(text[k - 1])) || text[k - 1] == '_');
+        if (!name_before && text[k] == '0' && k + 2 < text.size() && text[k + 1] == 'x' && std::isxdigit(static_cast<unsigned char>(text[k + 2]))) {
+            std::size_t end = k + 2;
+            while (end < text.size() && std::isxdigit(static_cast<unsigned char>(text[end]))) ++end;
+            std::string hex = text.substr(k + 2, end - k - 2);
+            if (hex.size() < digits) hex.insert(0, digits - hex.size(), '0');
+            out += "0x" + hex;
+            k = end;
+        } else {
+            out += text[k++];
+        }
+    }
+    return out;
+}
+
 class SnesListing final : public iw::Listing<Insn> {
 public:
     SnesListing(const snes::Rom& rom, bool high, std::size_t first_offset, const std::map<std::uint32_t, Insn>& code, const std::set<std::uint32_t>& demoted,
@@ -255,11 +308,18 @@ public:
     std::string prelude(const Insn& insn) override {
         const w::Insn& i = insn.i;
         if (!((i.mode == w::Mode::ImmM && i.m16 != assembler_.m16) || (i.mode == w::Mode::ImmX && i.x16 != assembler_.x16))) return {};
-        assembler_.m16 = i.m16, assembler_.x16 = i.x16;
-        return described_source::context_line(m6502_source::widths(i.m16, i.x16));
+        // (one variable of the description's context at a time: ca65's `.a16` / `.i16`)
+        if (i.mode == w::Mode::ImmM) {
+            assembler_.m16 = i.m16;
+            return std::format(".context m16={}", i.m16 ? 1 : 0);
+        }
+        assembler_.x16 = i.x16;
+        return std::format(".context x16={}", i.x16 ? 1 : 0);
     }
     std::string text(const Insn& insn) const override {
-        if (const auto it = described_.find(at_offset_); it != described_.end()) return described_source::name_numbers(it->second, insn_names(naming_, insn));
+        const decompile::AddressLabels names = insn_names(naming_, insn);
+        if (std::string forced = forced_text(insn, names); !forced.empty()) return forced;
+        if (const auto it = described_.find(at_offset_); it != described_.end()) return padded(described_source::name_numbers(it->second, names), digits_of(insn.i));
         // (a text the description cannot say back: the bytes, with the description's reading in a comment)
         const w::Insn& i = insn.i;
         return m6502_source::code(m6502_source::Cpu::W65816, ByteView(rom_.data).subspan(at_offset_, i.size), i.at, {}, m6502_source::widths(i.m16, i.x16));
@@ -312,6 +372,23 @@ private:
     State& assembler_;
     translate::l2::Assembly& out_;
 };
+
+// The ld65 configuration: where each segment of the source loads (config/dialects/ca65-65816.json reads it back).
+std::string link_config(const snes::Rom& rom, bool high) {
+    std::vector<std::string> cfg = {"MEMORY {"};
+    if (!rom.copier_header.empty()) cfg.push_back(std::format("    HEADER: start = $000000, size = ${:04X}, fill = yes, file = %O;", snes::kCopierHeaderSize));
+    const std::size_t banks = rom.bank_count();
+    for (std::size_t b = 0; b < banks; ++b) {
+        const std::uint32_t start = rom.address_of(static_cast<std::uint32_t>(b * rom.bank_size()), high);
+        const std::size_t size = std::min(rom.bank_size(), rom.data.size() - b * rom.bank_size());
+        cfg.push_back(std::format("    BANK{}: start = ${:06X}, size = ${:04X}, fill = yes, file = %O;", b, start, size));
+    }
+    cfg.insert(cfg.end(), {"}", "SEGMENTS {"});
+    if (!rom.copier_header.empty()) cfg.push_back("    HEADER: load = HEADER, type = ro;");
+    for (std::size_t b = 0; b < banks; ++b) cfg.push_back(std::format("    BANK{}: load = BANK{}, type = ro;", b, b));
+    cfg.push_back("}");
+    return text::join(cfg, "\n") + "\n";
+}
 
 // The code flow finds from the vectors with the long addresses written as the mirror `high` says.
 struct Found {
@@ -413,17 +490,14 @@ iw::Written write(const snes::Rom& rom, std::string_view file_name, const std::f
 
     // the text of each instruction; one that does not assemble back into its bytes is data
     std::map<std::uint32_t, std::string> hardware;
-    std::map<std::string, std::uint32_t> halves;
-    std::map<std::string, std::uint32_t> early;
-    Naming full_naming{rom, high, labels, direct_page, &hardware, &halves, &early};
-    for (const auto& entry : code) (void)insn_names(full_naming, entry.second);   // (collects the hardware names, the low halves and the long labels used)
+    Naming full_naming{rom, high, labels, direct_page, &hardware};
+    for (const auto& entry : code) (void)insn_names(full_naming, entry.second);   // (collects the hardware names used)
     full_naming.equates = nullptr;
-    full_naming.halves = nullptr;
-    full_naming.early = nullptr;
     std::set<std::uint32_t> demoted;
     std::map<std::uint32_t, std::string> described;   // by ROM offset: the description's text of an instruction that builds back into its bytes, under its widths
     for (const auto& [offset, insn] : code) {
         const w::Insn& i = insn.i;
+        if (!forced_text(insn, insn_names(full_naming, insn)).empty()) continue;   // (ca65's `f:` and `a:` say what the description's text does not)
         if (const auto text = m6502_source::described(m6502_source::Cpu::W65816, ByteView(rom.data).subspan(offset, i.size), i.at, m6502_source::widths(i.m16, i.x16))) described[offset] = *text;
         else demoted.insert(offset);
     }
@@ -435,28 +509,17 @@ iw::Written write(const snes::Rom& rom, std::string_view file_name, const std::f
     std::vector<std::string> head = {std::format("; {}.s -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                      std::format("; Super Nintendo cartridge \"{}\": {}, {} bytes of ROM in {} banks{}", rom.title, snes::to_string(rom.mapping), rom.data.size(), rom.bank_count(),
                                                  rom.copier_header.empty() ? "" : ", with a 512-byte copier header"),
-                                     "; each BANKn is one bank, written at the address the code runs at (the file is the banks in order); the SPC700 sound program is data",
-                                     "; (65816 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu 65816 --sleigh`; `.context m16=1 x16=1` sets the register widths of the immediates that follow)",
-                                     ""};
+                                     "; each BANKn segment is one bank, linked at the address the code runs at; the SPC700 sound program is data", "",
+                                     "        .p816", ""};
     for (const auto& [value, label] : hardware) head.push_back(m6502_source::equ(label, value, 4));
     if (!hardware.empty()) head.push_back("");
     for (const auto& [byte, label] : direct_page) head.push_back(m6502_source::equ(label, byte, 2));
     if (!direct_page.empty()) head.push_back("");
-    if (!halves.empty()) {
-        head.push_back("; a label's low 16 bits, where an operand names its place in the data bank");
-        for (const auto& [label, value] : halves) head.push_back(m6502_source::equ(label, value, 4));
-        head.push_back("");
-    }
-    if (!early.empty()) {
-        head.push_back("; long labels read ahead of their lines (the assembler's first pass tells a long operand from a 16-bit one by its value)");
-        for (const auto& [label, value] : early) head.push_back(m6502_source::equ(label, value, 6));
-        head.push_back("");
-    }
-    translate::l2::Assembly out(head, "sleigh-65816", std::string(file_name));
+    translate::l2::Assembly out(head, "ca65", std::string(file_name));
 
     if (!rom.copier_header.empty()) {
         out.part("HEADER", "segment", std::nullopt, snes::kCopierHeaderSize);
-        out.append("; HEADER");
+        out.extend(ca65().block("segment", {{"name", "HEADER"}}));
         out.extend(iw::commented(m6502_source::data_lines(rom.copier_header), "the copier header"));
         out.append("");
     }
@@ -466,13 +529,15 @@ iw::Written write(const snes::Rom& rom, std::string_view file_name, const std::f
         const std::size_t first = b * rom.bank_size();
         const std::size_t last = std::min(rom.data.size(), first + rom.bank_size());
         out.part(std::format("BANK{}", b), "segment", std::nullopt, last - first);
-        out.append(std::format("; BANK{}", b));
-        out.append(std::format("        .org 0x{:06x}", rom.address_of(static_cast<std::uint32_t>(first), high)));
+        out.extend(ca65().block("segment", {{"name", std::format("BANK{}", b)}}));
         SnesListing listing(rom, high, first, code, demoted, described, full_naming, assembler, out);
         iw::emit<Insn>(out, static_cast<std::uint32_t>(first), static_cast<std::uint32_t>(last), labels, functions, listing);
         out.append("");
     }
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = ca65().print(iw::text(out) + "\n");   // (said in ca65's: config/dialects/ca65-65816.json)
+    const std::string config = link_config(rom, high);
+    const std::filesystem::path config_path = folder / (stem + ".cfg");
+    fs::write_file(config_path, as_bytes(config));
 
     // the functions as the lane runs them: with the state each starts in
     iw::Functions with_state;
@@ -485,9 +550,10 @@ iw::Written write(const snes::Rom& rom, std::string_view file_name, const std::f
         with_state[key] = label;
     }
     iw::Written r = iw::finish(folder, stem + ".s", source, with_state, code_total, rom.data.size());
+    r.config = config_path;
     Bytes original = rom.copier_header;
     original.insert(original.end(), rom.data.begin(), rom.data.end());
-    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::W65816, source, folder); }, original, folder / (stem + ".built.sfc"));
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::W65816, ca65().parse(source, {config, folder}), folder); }, original, folder / (stem + ".built.sfc"));
     return r;
 }
 

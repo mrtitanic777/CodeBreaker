@@ -46,6 +46,7 @@ CB_TEST("source.sh2_writer.a_program_comes_back_identical_and_readable", [] {
     CB_CHECK(r.linked);
     CB_CHECK(r.same);
     CB_CHECK(r.notes.empty());
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*r.built) == image.bytes);
     // `entry`, `tally` (a BSR target) and `helper` (only its address is in the code: a constant a load reads)
     CB_CHECK_EQ(r.functions.size(), 3u);
@@ -125,6 +126,7 @@ CB_TEST("source.sega32x_writer.a_cartridge_comes_back_as_two_sources", [] {
     CB_CHECK(r.linked);
     CB_CHECK(r.same);
     CB_CHECK(r.notes.empty());
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*r.built) == image);
     CB_CHECK_EQ(r.source.filename().string(), "game.sh2.s");
     CB_CHECK(std::filesystem::exists(dir.path() / "out" / "game.asm"));
@@ -158,6 +160,7 @@ CB_TEST("source.saturn_writer.a_disc_comes_back_as_one_source", [] {
     const Bytes program = t::assemble(t::kSaturnProgram);
     CB_CHECK(fs::read_file(dir.path() / "out" / "game.built.bin") == t::disc_image(disc, program.size()));
     // what the lane runs is a disc of its own that holds them: the reader finds the same system area and first program in it
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK_EQ(r.built->filename().string(), "game.built.iso");
     const formats::saturn::Disc rebuilt = formats::saturn::read(*r.built);
     const formats::saturn::Disc original = formats::saturn::parse(disc);

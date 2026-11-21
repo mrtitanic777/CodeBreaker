@@ -101,6 +101,90 @@ std::string fold_relocations(const std::string& text, bool signed_lo, bool signe
     return out;
 }
 
+// The numbers an expression names, written the way the description reads one: `0x1f` or `-0x20`.
+std::string number_text(std::int64_t v) { return v < 0 ? std::format("-0x{:x}", static_cast<std::uint64_t>(-v)) : std::format("0x{:x}", static_cast<std::uint64_t>(v)); }
+
+// The function-like halves of an address an assembly source writes in an operand: `hi(x)` (the high half, adjusted for the low half's sign, as a
+// V810's `movhi` takes it), `lo(x)` (the low half as a signed 16-bit number), and ca65's `.loword(x)`, `.hiword(x)`, `.bankbyte(x)`, `.lobyte(x)`,
+// `.hibyte(x)`. Names are matched without regard to case.
+bool address_function(std::string_view word) {
+    for (const std::string_view name : {"hi", "lo", ".loword", ".hiword", ".bankbyte", ".lobyte", ".hibyte"})
+        if (text::iequals(word, name)) return true;
+    return false;
+}
+
+std::optional<std::int64_t> address_function_value(std::string_view name, std::int64_t v) {
+    if (text::iequals(name, "hi")) return ((v + 0x8000) >> 16) & 0xFFFF;
+    if (text::iequals(name, "lo")) return static_cast<std::int16_t>(v & 0xFFFF);
+    if (text::iequals(name, ".loword")) return v & 0xFFFF;
+    if (text::iequals(name, ".hiword")) return (v >> 16) & 0xFFFF;
+    if (text::iequals(name, ".bankbyte")) return (v >> 16) & 0xFF;
+    if (text::iequals(name, ".lobyte")) return v & 0xFF;
+    if (text::iequals(name, ".hibyte")) return (v >> 8) & 0xFF;
+    return std::nullopt;
+}
+
+// `text` (labels already numbers) with each address function and each constant expression of its operands -- `(0x5f800+0x8000)>>16`, `0x123456 & 0xffff` --
+// written as the number it is. The text is returned as it is when it has none (or one it cannot evaluate).
+std::string fold_operands(const std::string& text, std::int64_t pc) {
+    const std::size_t mnemonic_end = std::min(text.find_first_of(" \t"), text.size());
+    std::string out = text.substr(0, mnemonic_end);
+    const auto evaluate = [&](std::string_view expr) -> std::optional<std::int64_t> {
+        try {
+            return dp::value(expr, {}, static_cast<std::uint32_t>(pc));
+        } catch (const std::exception&) {
+            return std::nullopt;
+        }
+    };
+    for (std::size_t k = mnemonic_end; k < text.size();) {
+        // a function: `name(expression)`
+        if (word_start(text[k]) && (k == 0 || !word_char(text[k - 1]))) {
+            std::size_t e = k;
+            while (e < text.size() && word_char(text[e])) ++e;
+            if (e < text.size() && text[e] == '(' && address_function(std::string_view(text).substr(k, e - k))) {
+                std::size_t depth = 0, close = e;
+                for (; close < text.size(); ++close) {
+                    if (text[close] == '(') ++depth;
+                    if (text[close] == ')' && --depth == 0) break;
+                }
+                if (close < text.size()) {
+                    const std::string folded_inner = fold_operands(" " + text.substr(e + 1, close - e - 1), pc).substr(1);
+                    if (const auto inner = evaluate(folded_inner))
+                        if (const auto v = address_function_value(std::string_view(text).substr(k, e - k), *inner)) {
+                            out += number_text(*v);
+                            k = close + 1;
+                            continue;
+                        }
+                }
+            }
+            out.append(text, k, e - k);
+            k = e;
+            continue;
+        }
+        // a run of number and operator characters with an operator in it
+        const auto in_run = [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0 || std::string_view("xX+-*/&|^<>()~").find(c) != std::string_view::npos; };
+        if (in_run(text[k]) && (k == 0 || !word_char(text[k - 1]))) {
+            std::size_t e = k;
+            while (e < text.size() && in_run(text[e])) ++e;
+            while (e > k && !word_char(text[e - 1]) && text[e - 1] != ')') --e;   // (the run ends at a number or a close)
+            const std::string_view run = std::string_view(text).substr(k, e - k);
+            bool operator_inside = false;
+            for (std::size_t i = 1; i < run.size(); ++i)
+                if (std::string_view("+*/&|^<>-").find(run[i]) != std::string_view::npos && run[i - 1] != '(') operator_inside = true;
+            const bool starts_a_word = e < text.size() && word_start(text[e]);   // (`1+2r`: not a number)
+            if (operator_inside && !starts_a_word && (e == k || run.front() == '(' || std::isdigit(static_cast<unsigned char>(run.front())) != 0 || run.front() == '-' || run.front() == '~')) {
+                if (const auto v = evaluate(run)) {
+                    out += number_text(*v);
+                    k = e;
+                    continue;
+                }
+            }
+        }
+        out += text[k++];
+    }
+    return out;
+}
+
 class SleighSyntax final : public build::Encoder {
 public:
     SleighSyntax(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context)
@@ -182,7 +266,8 @@ public:
                         word.resize(dot);
                     }
                 }
-                if (const auto hit = labels.find(word); hit != labels.end()) out += std::format("0x{:x}", static_cast<std::uint64_t>(hit->second)) + suffix;
+                if (e < text.size() && text[e] == '(' && address_function(word) && !labels.contains(word)) out += word;   // (`hi(x)`: a function of the operand, not a name)
+                else if (const auto hit = labels.find(word); hit != labels.end()) out += std::format("0x{:x}", static_cast<std::uint64_t>(hit->second)) + suffix;
                 else {
                     unknown.push_back({word, out.size()});
                     out += word + suffix;
@@ -233,6 +318,11 @@ public:
         }
         const std::vector<std::vector<std::uint8_t>> encodings = assembler_.assemble_first(out, static_cast<std::uint64_t>(pc));
         if (!encodings.empty()) return remember(encodings.front());
+        // (an operand written as an expression or a function of an address: assembled as the number it is)
+        if (const std::string folded = fold_operands(out, pc); folded != out) {
+            const std::vector<std::vector<std::uint8_t>> enc = assembler_.assemble_first(folded, static_cast<std::uint64_t>(pc));
+            if (!enc.empty()) return remember(enc.front());
+        }
         // Which unknown word is the label not defined yet? The one that, as a number, makes the line an instruction (in `JR NZ,ahead`
         // NZ is the description's and `ahead` the label): the directive layer then guesses its value and assembles again.
         for (const Unknown& u : unknown) {
@@ -244,7 +334,10 @@ public:
                 guess.replace(u.at, u.word.size(), std::format("0x{:x}", static_cast<std::uint64_t>(at)));
                 const std::vector<std::vector<std::uint8_t>> plain = assembler_.assemble_first(guess, static_cast<std::uint64_t>(pc));
                 bool found = !plain.empty();
-                if (found && guess.find_first_of("@%") == std::string::npos) {   // (a line with no half of an address in it: this answer is what assembling it gives)
+                if (!found) {
+                    if (const std::string folded = fold_operands(guess, pc); folded != guess) found = !assembler_.assemble_first(folded, static_cast<std::uint64_t>(pc)).empty();
+                }
+                if (found && !plain.empty() && guess.find_first_of("@%") == std::string::npos) {   // (a line with no half of an address in it: this answer is what assembling it gives)
                     std::lock_guard hold(memo_lock_);
                     if (memo_.size() >= kMemoLimit) memo_.clear();
                     memo_.emplace(std::format("{:x}|{}", static_cast<std::uint64_t>(pc), guess), Bytes(plain.front().begin(), plain.front().end()));
