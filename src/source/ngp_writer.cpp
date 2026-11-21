@@ -14,6 +14,7 @@
 #include "core/text.hpp"
 #include "decompile/tlcs900.hpp"
 #include "source/described_source.hpp"
+#include "source/dialect.hpp"
 #include "source/processors.hpp"
 
 namespace cb::source::ngp_writer {
@@ -70,7 +71,7 @@ public:
     }
     std::uint32_t size(const dt::Insn& insn) const override { return insn.size; }
     std::string text(const dt::Insn& insn) const override { return text_.at(insn.at); }
-    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
+    std::vector<std::string> data_lines(ByteView data) const override { return dialect::find("asmtlcs900").data_lines(data); }
 
     // The header: licence, start address, catalogue, sub-catalogue, colour, title, reserved bytes.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
@@ -80,16 +81,16 @@ public:
         const auto field = [&](std::size_t at, std::size_t n, const char* what) {
             const ByteView f = d.subspan(at, n);
             if (printable(f)) out_.append(std::format("        .ascii \"{}\"  ; {}", std::string(reinterpret_cast<const char*>(f.data()), f.size()), what));
-            else out_.extend(iw::commented(described_source::data_lines(f), what));
+            else out_.extend(iw::commented(dialect::find("asmtlcs900").data_lines(f), what));
         };
         field(0, 28, "licence");
-        if (start_is_labelled_) out_.append("        .long start  ; start address");
-        else out_.extend(iw::commented(described_source::data_lines(d.subspan(0x1C, 4)), "start address"));
-        out_.extend(iw::commented(described_source::data_lines(d.subspan(0x20, 2)), "catalogue number"));
-        out_.extend(iw::commented(described_source::data_lines(d.subspan(0x22, 1)), "sub-catalogue"));
-        out_.extend(iw::commented(described_source::data_lines(d.subspan(0x23, 1)), d[0x23] == 0x10 ? "colour" : "monochrome"));
+        if (start_is_labelled_) out_.append(std::format("        DB <start,>start,0x{:02X},0x{:02X}  ; start address", d[0x1E], d[0x1F]));   // (in the dialect's spelling: the low and high bytes of the label)
+        else out_.extend(iw::commented(dialect::find("asmtlcs900").data_lines(d.subspan(0x1C, 4)), "start address"));
+        out_.extend(iw::commented(dialect::find("asmtlcs900").data_lines(d.subspan(0x20, 2)), "catalogue number"));
+        out_.extend(iw::commented(dialect::find("asmtlcs900").data_lines(d.subspan(0x22, 1)), "sub-catalogue"));
+        out_.extend(iw::commented(dialect::find("asmtlcs900").data_lines(d.subspan(0x23, 1)), d[0x23] == 0x10 ? "colour" : "monochrome"));
         field(0x24, 12, "title");
-        out_.extend(iw::commented(described_source::data_lines(d.subspan(0x30, 16)), "reserved"));
+        out_.extend(iw::commented(dialect::find("asmtlcs900").data_lines(d.subspan(0x30, 16)), "reserved"));
         return static_cast<std::uint32_t>(formats::ngp::kHeaderSize);
     }
 
@@ -199,7 +200,7 @@ iw::Written write(const formats::ngp::Rom& rom, std::string_view file_name, cons
             }
             instruction_text[at] = std::move(*t);
         } else {
-            instruction_text[at] = described_source::byte_line(tlcs900_cpu(), insn.bytes(), at, {}, "");
+            instruction_text[at] = dialect::find("asmtlcs900").fallback(described_source::byte_line(tlcs900_cpu(), insn.bytes(), at, {}, ""));
         }
     }
     std::set<std::uint32_t> equates;
@@ -218,7 +219,7 @@ iw::Written write(const formats::ngp::Rom& rom, std::string_view file_name, cons
 
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                  std::format("; Neo Geo Pocket {} cartridge, {} bytes, \"{}\", start at 0x{:06X}", rom.header.colour ? "Color" : "", rom.data.size(), rom.header.title, rom.header.start), ""},
-                                "sleigh-tlcs900", std::string(file_name));
+                                "asmtlcs900", std::string(file_name));
     for (const std::uint32_t a : equates) out.append(described_source::equ(ngp::hardware().at(a), a, 4));
     if (!equates.empty()) out.append("");
     out.part("ROM", "segment", std::nullopt, rom.data.size());
@@ -227,12 +228,12 @@ iw::Written write(const formats::ngp::Rom& rom, std::string_view file_name, cons
     iw::emit<dt::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("asmtlcs900").print(iw::text(out) + "\n");   // (said in the TLCS-900/H assembler's, config/dialects/asmtlcs900.json)
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
     iw::assembled(
         r,
         [&] {
-            return described_source::assemble(tlcs900_cpu(), source, folder);
+            return described_source::assemble(tlcs900_cpu(), dialect::find("asmtlcs900").parse(source), folder);
         },
         rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;

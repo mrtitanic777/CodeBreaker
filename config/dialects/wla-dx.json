@@ -1,0 +1,28 @@
+{
+  "name": "wla-dx",
+  "description": "WLA-DX (wla-z80): the Master System and Game Gear as their homebrew is written. Memory map and ROM bank map ahead of the code, .BANK n SLOT s with an .ORG relative to the slot, .DEFINE, .DB, .DSB.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "directives": [
+    {"neutral": ".org {v}", "dialect": ".ORG {v}"},
+    {"neutral": ".equ {name}, {v}", "dialect": ".DEFINE {name:<16} {v}"},
+    {"neutral": ".byte {list}", "dialect": ".DB {list}", "bytes": true},
+    {"neutral": ".word {list}", "dialect": ".DW {list}"},
+    {"neutral": ".space {n}, {v}", "dialect": ".DSB {n},{v}"}
+  ],
+  "blocks": {
+    "prologue": [
+      "", ".MEMORYMAP", "SLOTSIZE $4000", "DEFAULTSLOT 2", "SLOT 0 $0000", "SLOT 1 $4000", "SLOT 2 $8000", ".ENDME", "",
+      ".ROMBANKMAP", "BANKSTOTAL {pages}", "BANKSIZE $4000", "BANKS {pages}", ".ENDRO", ""
+    ],
+    "bank": [".BANK {bank} SLOT {slot}", ".ORG $0000"]
+  },
+  "layout": {
+    "begin": ".MEMORYMAP",
+    "end": ".ENDME",
+    "slot": "SLOT {n} {v}",
+    "bank": ".BANK {b} SLOT {n}",
+    "skip": [[".ROMBANKMAP", ".ENDRO"]]
+  }
+}

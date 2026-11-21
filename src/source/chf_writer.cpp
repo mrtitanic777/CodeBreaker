@@ -11,6 +11,7 @@
 #include "core/fs.hpp"
 #include "decompile/f8.hpp"
 #include "source/described_source.hpp"
+#include "source/dialect.hpp"
 #include "source/processors.hpp"
 
 namespace cb::source::chf_writer {
@@ -60,7 +61,7 @@ public:
     }
     std::uint32_t size(const df::Insn& insn) const override { return insn.size; }
     std::string text(const df::Insn& insn) const override { return text_.at(insn.at); }
-    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
+    std::vector<std::string> data_lines(ByteView data) const override { return dialect::find("asmf8").data_lines(data); }
 
 private:
     const formats::chf::Rom& rom_;
@@ -107,13 +108,13 @@ iw::Written write(const formats::chf::Rom& rom, std::string_view file_name, cons
             if (named && address_labels.contains(*named)) *t = described_source::name_number(*t, *named, address_labels.at(*named), false);
             instruction_text[at] = *t;
         } else {
-            instruction_text[at] = described_source::byte_line(f8_cpu(), insn.bytes(), at, {}, "");
+            instruction_text[at] = dialect::find("asmf8").fallback(described_source::byte_line(f8_cpu(), insn.bytes(), at, {}, ""));
         }
     }
 
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                  std::format("; Channel F cartridge, {} bytes at $0800 (the F8's memory)", rom.data.size()), ""},
-                                "sleigh-f8", std::string(file_name));
+                                "asmf8", std::string(file_name));
     for (const std::uint32_t a : used) out.append(described_source::equ(chf::bios().at(a), a, 4));
     if (!used.empty()) out.append("");
     out.part("ROM", "segment", std::nullopt, rom.data.size());
@@ -122,12 +123,12 @@ iw::Written write(const formats::chf::Rom& rom, std::string_view file_name, cons
     iw::emit<df::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("asmf8").print(iw::text(out) + "\n");   // (said in the F8 assembler's, config/dialects/asmf8.json)
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
     iw::assembled(
         r,
         [&] {
-            return described_source::assemble(f8_cpu(), source, folder);
+            return described_source::assemble(f8_cpu(), dialect::find("asmf8").parse(source), folder);
         },
         rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;

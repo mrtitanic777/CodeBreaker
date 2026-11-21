@@ -11,6 +11,7 @@
 #include "core/text.hpp"
 #include "decompile/m68k.hpp"
 #include "source/genesis_writer.hpp"
+#include "source/dialect.hpp"
 #include "source/isa.hpp"
 #include "source/risc_source.hpp"
 
@@ -22,6 +23,7 @@ namespace sc = formats::segacd;
 
 namespace {
 
+const dialect::Dialect& vasm() { static const dialect::Dialect& d = dialect::find("vasm-m68k"); return d; }   // (config/dialects/vasm-m68k.json)
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr iw::Spelling kData{"D_", 6};
@@ -98,8 +100,8 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return insn.length; }
-    std::string text(const m68k::Insn& insn) const override { return risc_source::m68k_code(insn, names_); }   // (the description's text, the names put in)
-    std::vector<std::string> data_lines(ByteView data) const override { return risc_source::data_lines(data); }
+    std::string text(const m68k::Insn& insn) const override { return vasm().line(vasm().fallback(risc_source::m68k_code(insn, names_))); }   // (the description's text, the names put in, said in vasm's)
+    std::vector<std::string> data_lines(ByteView data) const override { return vasm().data_lines(data); }
     // The boot header's fields, each as data with its name.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
         if (offset >= sc::kSecurityAt) return 0;
@@ -116,10 +118,10 @@ public:
             for (const std::uint8_t b : bytes) v = v << 8 | b;
             line = std::format("        {} 0x{:0{}x}", field->kind == Kind::Word ? ".half" : ".long", v, field->length * 2);
         } else {
-            out_.extend(iw::commented(risc_source::data_lines(bytes), field->what));
+            out_.extend(iw::commented(vasm().data_lines(bytes), field->what));
             return field->length;
         }
-        out_.append(iw::commented({line}, field->what).front());
+        out_.append(iw::commented({vasm().line(line)}, field->what).front());
         return field->length;
     }
 
@@ -238,9 +240,8 @@ iw::Written write(const formats::segacd::Disc& disc, std::string_view file_name,
         std::format("; Sega CD \"{}\" / \"{}\", {}: the system area ({} KB) of a {}-byte-sector image", h.domestic_name, h.overseas_name, h.serial, boot.size() / 1024,
                     disc.sector_size),
         ""};
-    head.insert(head.end() - 1, "; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)");
-    translate::l2::Assembly out(head, "sleigh-m68k", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(risc_source::equ(hardware().at(a), a, 6));
+    translate::l2::Assembly out(head, "asm68k", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(vasm().line(risc_source::equ(hardware().at(a), a, 6), 18));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -249,7 +250,7 @@ iw::Written write(const formats::segacd::Disc& disc, std::string_view file_name,
     DiscListing listing(out, boot, blocks, code, names_for_text);
     for (const Block& b : blocks) {
         out.part(std::format("block_{:04X}", b.begin), std::string(b.title), std::nullopt, std::uint64_t{b.end - b.begin});
-        out.append(std::format("        .org 0x{:x}   ; {}", b.base, b.title));
+        out.append(vasm().line(std::format("        .org 0x{:x}   ; {}", b.base, b.title)));
         iw::emit<m68k::Insn>(out, b.begin, b.end, labels, functions, listing);
         out.append("");
     }
@@ -259,7 +260,7 @@ iw::Written write(const formats::segacd::Disc& disc, std::string_view file_name,
     iw::assembled(
         r,
         [&] {   // each block back at its disc offset
-            const Bytes image = risc_source::assemble("m68k", source, folder);
+            const Bytes image = risc_source::assemble("m68k", vasm().parse(source), folder);
             Bytes joined(boot.size(), 0);
             std::size_t at = 0;   // (the assembled blocks follow one another, whatever address each was assembled at)
             for (const Block& b : blocks) {

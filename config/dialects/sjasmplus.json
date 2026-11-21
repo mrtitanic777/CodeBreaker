@@ -1,0 +1,14 @@
+{
+  "name": "sjasmplus",
+  "description": "sjasmplus (and pasmo): the Z80 homebrew of the ZX Spectrum, MSX, ColecoVision and Amstrad CPC as it is written. ORG, EQU with the names lined up, DEFB, DEFS, $ hex in pairs of digits.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "directives": [
+    {"neutral": ".org {v}", "dialect": "ORG {v}"},
+    {"neutral": ".equ {name}, {v}", "dialect": "{name:<16} EQU {v}"},
+    {"neutral": ".byte {list}", "dialect": "DEFB {list}", "bytes": true},
+    {"neutral": ".word {list}", "dialect": "DEFW {list}"},
+    {"neutral": ".space {n}, {v}", "dialect": "DEFS {n},{v}"}
+  ]
+}

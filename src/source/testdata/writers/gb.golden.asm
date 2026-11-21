@@ -1,59 +1,56 @@
 ; demo.asm -- written by CodeBreaker from demo.gb
 ; "DEMO", ROM, 32 KB ROM
 
-.equ rROMB0, 0x2000
-.equ rLCDC, 0xff40
-.equ rLY, 0xff44
+DEF rROMB0   EQU $2000
+DEF rLCDC    EQU $FF40
+DEF rLY      EQU $FF44
 
-; bank0 (ROM0 at 0x0000)
-        .org 0x0000
-        .space 64, 0xff
+SECTION "bank0", ROM0[$0000]
+        ds 64, $FF
 
 vblank:
         RETI
-        .space 191, 0xff
+        ds 191, $FF
 
 entry:
         NOP
         JP L_0150
-        .byte 0xce,0xed,0x66,0x66,0xcc,0x0d,0x00,0x0b,0x03,0x73,0x00,0x83,0x00,0x0c,0x00,0x0d  ; Nintendo's logo (the boot ROM checks it)
-        .byte 0x00,0x08,0x11,0x1f,0x88,0x89,0x00,0x0e,0xdc,0xcc,0x6e,0xe6,0xdd,0xdd,0xd9,0x99
-        .byte 0xbb,0xbb,0x67,0x63,0x6e,0x0e,0xec,0xcc,0xdd,0xdc,0x99,0x9f,0xbb,0xb9,0x33,0x3e
-        .ascii "DEMO"  ; title
-        .byte 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-        .byte 0x00  ; Color support
-        .byte 0x00,0x00  ; licensee
-        .byte 0x00  ; Super Game Boy support
-        .byte 0x00  ; cartridge type
-        .byte 0x00  ; ROM size
-        .byte 0x00  ; RAM size
-        .byte 0x00  ; destination
-        .byte 0x00  ; old licensee
-        .byte 0x00  ; version
-        .byte 0x00  ; header checksum
-        .byte 0x00,0x00  ; global checksum
+        db $CE,$ED,$66,$66,$CC,$0D,$00,$0B,$03,$73,$00,$83,$00,$0C,$00,$0D  ; Nintendo's logo (the boot ROM checks it)
+        db $00,$08,$11,$1F,$88,$89,$00,$0E,$DC,$CC,$6E,$E6,$DD,$DD,$D9,$99
+        db $BB,$BB,$67,$63,$6E,$0E,$EC,$CC,$DD,$DC,$99,$9F,$BB,$B9,$33,$3E
+        db "DEMO",$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  ; title
+        db $00  ; Color support
+        db $00,$00  ; licensee
+        db $00  ; Super Game Boy support
+        db $00  ; cartridge type
+        db $00  ; ROM size
+        db $00  ; RAM size
+        db $00  ; destination
+        db $00  ; old licensee
+        db $00  ; version
+        db $00  ; header checksum
+        db $00,$00  ; global checksum
 L_0150:
         CALL sub_0170
 L_0153:
-        LDH A,( rLY )
-        CP 0x90
+        LDH A,(rLY)
+        CP $90
         JR NZ,L_0153
         LD HL,D_0180
-        LD ( rROMB0 ),A
+        LD (rROMB0),A
 L_015F:
         JP L_015F
-        .byte 0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff
+        db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 
 sub_0170:
-        LD A,0x91
-        LDH ( rLCDC ),A
+        LD A,$91
+        LDH (rLCDC),A
         RET
-        .byte 0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff
+        db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 D_0180:
-        .ascii "TILES AND MAPS"
-        .space 15986, 0xff
+        db "TILES AND MAPS"
+        ds 15986, $FF
 
-; bank1 (ROMX at 0x4000, bank 1)
-        .org 0x4000
-        .space 16384, 0xff
+SECTION "bank1", ROMX[$4000], BANK[1]
+        ds 16384, $FF
 

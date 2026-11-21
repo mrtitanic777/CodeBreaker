@@ -1,8 +1,9 @@
 // cb-unity: alone
-// The Neo Geo Pocket writer over a small cartridge: the source it writes, built again by the one assembler (the TLCS-900/H SLEIGH description), is the cartridge.
+// The Neo Geo Pocket writer over a small cartridge: the source it writes, built again by CodeBreaker's TLCS-900/H assembler, is the cartridge.
 
 #include "source/ngp_writer.hpp"
 
+#include "source/dialect.hpp"
 #include "source/processors.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -21,9 +22,9 @@ CB_TEST("source.ngp_writer.a_cartridge_comes_back_as_source_that_builds_the_same
     CB_CHECK((r.functions == image_writer::Functions{{0x200040, "start"}, {0x200080, "sub_200080"}, {0x2000A0, "isr_vbl"}}));
     CB_CHECK_EQ(r.image_bytes, 0x1000u);
     const std::string s = fs::read_text(r.source);
-    for (const char* want : {".equ HW_WATCHDOG, 0x006f", ".equ K2GE_RAS_V, 0x8009", ".org 0x200000", ".ascii \" LICENSED BY SNK CORPORATION\"", "start:", "sub_200080:",
-                             "isr_vbl:", "D_2000C0:", "ld (HW_WATCHDOG),0x4e", "ld XWA,isr_vbl", "ld (BIOS_INT_VBL),XWA", "ld A,(K2GE_RAS_V)", "call sub_200080", "ld XHL,D_2000C0", "jr Z,start",
-                             "swi 0x1", "reti", ".space "}) {
+    for (const char* want : {"HW_WATCHDOG EQU 0x006F", "K2GE_RAS_V EQU 0x8009", "ORG 0x200000", "DB \" LICENSED BY SNK CORPORATION\"", "DB <start,>start,0x20,0x00", "start:", "sub_200080:",
+                             "isr_vbl:", "D_2000C0:", "ld (HW_WATCHDOG),0x4E", "ld XWA,isr_vbl", "ld (BIOS_INT_VBL),XWA", "ld A,(K2GE_RAS_V)", "call sub_200080", "ld XHL,D_2000C0", "jr Z,start",
+                             "swi 1", "reti", "FILL "}) {
         if (s.find(want) == std::string::npos) CB_CHECK_EQ(std::string("missing: ") + want, std::string());
     }
 });
@@ -35,7 +36,7 @@ CB_TEST("source.ngp_writer.an_edited_source_builds_a_different_file", [] {
     const std::size_t at = s.find("add WA,BC");
     CB_CHECK(at != std::string::npos);
     s.replace(at, 9, "sub WA,BC");
-    const Bytes original = ti::cartridge(), built = processors::assemble_described(processors::find("tlcs900"), s, ".").data;
+    const Bytes original = ti::cartridge(), built = processors::assemble_described(processors::find("tlcs900"), dialect::find("asmtlcs900").parse(s), ".").data;
     CB_CHECK_EQ(built.size(), original.size());
     std::size_t different = 0;
     for (std::size_t k = 0; k < built.size(); ++k) different += built[k] != original[k];
@@ -56,7 +57,7 @@ CB_TEST("source.ngp_writer.an_instruction_with_a_second_encoding_is_written_as_b
     const image_writer::Written r = write(formats::ngp::parse(rom), "alias.ngp", dir.path());
     CB_CHECK(r.linked && r.same);
     const std::string s = fs::read_text(r.source);
-    CB_CHECK(s.find(".byte 0xc3,0xe0,0x21  ; ld A,(XWA)") != std::string::npos);
+    CB_CHECK(s.find("DB 0xC3,0xE0,0x21  ; ld A,(XWA)") != std::string::npos);
 });
 
 }  // namespace cb::source::ngp_writer
