@@ -1,4 +1,4 @@
-// core/process.hpp -- running external programs (OpenWatcom, MASM, DOSBox, cmd) the one way.
+// core/process.hpp -- running external programs (OpenWatcom, MASM, cmd) the one way.
 //
 // Everything goes through ProcessSpec: an argv (never a shell string), a working directory, environment
 // overrides, what to do with stdin/stdout/stderr, a timeout and a priority. Output is *bytes*; the caller

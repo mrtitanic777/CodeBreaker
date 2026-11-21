@@ -61,7 +61,7 @@ Bytes masked(ByteView code, bool trim_padding) {
 // The text through Microsoft C 6. Said and nothing, where it is not set up; nothing for a text it refused.
 std::optional<std::optional<Bytes>> through_msc6(const Environment& environment, std::string_view text, std::string_view flags) {
     if (!environment.compile_msc6) {
-        err("Microsoft C 6 is not set up (settings.json: dosbox_x, msc6): the text was not put to the compiler\n");
+        err("Microsoft C 6 is not set up (settings.json: msc6): the text was not put to the compiler\n");
         return std::nullopt;
     }
     return environment.compile_msc6(text, flags);

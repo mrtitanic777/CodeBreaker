@@ -65,7 +65,6 @@ std::string response_file(const stdfs::path& folder) {
 
 std::optional<stdfs::path> build(const DosRunner& runner, const Tools& tools, const stdfs::path& folder,
                                  const std::optional<stdfs::path>& work_in, std::string_view flags) {
-    require_tool(tools.dosbox_x, "dosbox_x");
     require_tool(tools.msc6, "msc6");
     require_tool(tools.msvc152, "msvc152");
     if (flags.find_first_of("&|<>^%\"\r\n") != std::string_view::npos) {
@@ -118,15 +117,14 @@ std::optional<stdfs::path> build(const DosRunner& runner, const Tools& tools, co
     spec.commands.push_back("link @" + lnk_name + " > LINK.TXT");
     spec.commands.push_back("rc " + out_name + " > RC.TXT");
     // windows.h is in the SDK's (Visual C++ 1.52c's) INCLUDE, the C library's headers in Microsoft C 6's
-    spec.cpu.insert_or_assign("cycles", "max");
     spec.variables.insert_or_assign("PATH", "C:\\BIN;E:\\BIN");
     spec.variables.insert_or_assign("INCLUDE", "C:\\INCLUDE;E:\\INCLUDE");
     spec.variables.insert_or_assign("LIB", "D:\\;E:\\LIB");
     spec.mounts = {{"c", tools.msc6}, {"e", tools.msvc152}, {"d", work}};
     spec.artifacts = {out_name};
-    spec.timeout = std::chrono::seconds(600);
     spec.work = work;
-    (void)runner.run(spec);
+    const DosRunResult ran = runner.run(spec);
+    if (!ran.why.empty()) throw ToolError("dos", 0, "", "the DOS executive could not complete the build: " + ran.why);
     const stdfs::path dll = work / out_name;
     return stdfs::exists(dll, ec) ? std::optional(dll) : std::nullopt;
 }

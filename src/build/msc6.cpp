@@ -98,7 +98,7 @@ std::string system_root() {
 }
 
 // `files` compiled by the compiler run on Windows itself, one CL a file, in a short work folder; the objects and messages
-// copied back into `work` as an emulator session leaves them.
+// copied back into `work` as a DOS session leaves them.
 bool native_session(const stdfs::path& work, std::string_view header, const std::vector<BatchFiles::File>& files, std::string_view flags,
                     const NativePaths& native, std::chrono::seconds timeout) {
     const crypto::Sha1Digest digest = crypto::sha1(as_bytes(stdfs::absolute(work).generic_string()));
@@ -134,8 +134,8 @@ bool native_session(const stdfs::path& work, std::string_view header, const std:
     return true;
 }
 
-// One emulator session compiling `files` -> whether it ran to its end. A compiler that runs on Windows itself (native_paths)
-// is run so instead -- no emulator.
+// One DOS session compiling `files` -> whether it ran to its end. A compiler that runs on Windows itself (native_paths)
+// is run so instead.
 bool run_session(const Context& ctx, const stdfs::path& work, std::string_view header, const std::vector<BatchFiles::File>& files,
                  std::string_view flags, Compiler compiler, std::chrono::seconds timeout) {
     if (const auto native = native_paths(ctx.tools, compiler)) return native_session(work, header, files, flags, *native, timeout);
@@ -146,16 +146,13 @@ bool run_session(const Context& ctx, const stdfs::path& work, std::string_view h
     for (const BatchFiles::File& file : files) {
         write_dos_text(work / (file.stem + ".C"), "#include \"m.h\"\n\n" + file.text + "\n");
         spec.commands.push_back(std::format("cl /nologo /c /W0 {} /Fo{}.OBJ {}.C > {}.TXT", flags, file.stem, file.stem, file.stem));
-        // (the objects are what the session is for: a runner that made none of them -- the DOS executive, which does not yet run
-        // Visual C++ 1.52's passes -- hands it to the one that can)
         spec.artifacts.push_back(file.stem + ".OBJ");
     }
     spec.mounts = {{"c", ctx.tools.home(compiler)}, {"d", work}};
-    spec.timeout = timeout;
     spec.work = work;
-    spec.cpu = {{"core", "dynamic"}, {"cputype", "386"}, {"cycles", "max"}};
     spec.variables = {{"PATH", "C:\\BIN"}, {"INCLUDE", "C:\\INCLUDE"}, {"LIB", "C:\\LIB"}};
-    ctx.runner.run(spec);
+    const DosRunResult ran = ctx.runner.run(spec);
+    if (!ran.why.empty()) throw ToolError("dos", 0, "", "the DOS executive could not complete the compile: " + ran.why);
     std::error_code ec;
     return stdfs::is_regular_file(work / "done.txt", ec);
 }
@@ -196,8 +193,7 @@ std::optional<std::optional<Code>> unpack_code(ByteView had) {
 bool available(const Tools& tools, Compiler compiler) {
     std::error_code ec;
     const stdfs::path& home = tools.home(compiler);
-    return !tools.dosbox_x.empty() && stdfs::is_regular_file(tools.dosbox_x, ec) && !home.empty() &&
-           stdfs::is_regular_file(home / "BIN" / "CL.EXE", ec);
+    return !home.empty() && stdfs::is_regular_file(home / "BIN" / "CL.EXE", ec);
 }
 
 std::span<const std::string_view> flag_sets() { return kFlagSets; }
@@ -354,7 +350,7 @@ std::vector<std::optional<Code>> compile_many(const Context& ctx, std::span<cons
                                               std::string_view flags, const CompileOptions& options) {
     if (!available(ctx.tools, options.compiler)) {
         throw NotFoundError(ctx.tools.home(options.compiler), 2,
-                            std::format("{} is not set up (settings.json: dosbox_x, {})",
+                            std::format("{} is not set up (settings.json: {})",
                                         options.compiler == Compiler::Msc6 ? "msc6" : "msvc152",
                                         options.compiler == Compiler::Msc6 ? "msc6" : "msvc152"));
     }
@@ -451,7 +447,7 @@ std::vector<std::optional<Code>> compile_many(const Context& ctx, std::span<cons
     std::vector<std::vector<std::size_t>> groups = any_named ? keep_files : std::vector<std::vector<std::size_t>>{};
     // A refused file: the functions its errors are in go on their own, the rest together again -- round after round, for
     // the compiler stops at a file's first errors and a second bad function shows only once the first is out (one
-    // emulator session a round).
+    // DOS session a round).
     std::map<std::size_t, std::string> texts;
     for (const auto& [k, entry] : todo) texts[k] = entry.second;
     for (int round = 0; round < 6 && !groups.empty(); ++round) {

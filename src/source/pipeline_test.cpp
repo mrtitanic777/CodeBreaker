@@ -202,9 +202,9 @@ CB_TEST("source.pipeline.match_of_a_16_bit_module_names_the_compilers_it_has", [
 CB_TEST("source.pipeline.match_lzexpand", [] {
     if (!fs::get_env("CB_PIPELINE_SLOW")) return;
     Surroundings w;
-    const std::optional<stdfs::path> msvc152 = w.config.path("msvc152"), dosbox = w.config.path("dosbox_x");
+    const std::optional<stdfs::path> msvc152 = w.config.path("msvc152");
     std::error_code ec;
-    if (!w.has_corpus() || !msvc152 || !dosbox || !stdfs::is_regular_file(*dosbox, ec) || !stdfs::is_regular_file(*msvc152 / "BIN" / "CL.EXE", ec)) return;
+    if (!w.has_corpus() || !msvc152 || !stdfs::is_regular_file(*msvc152 / "BIN" / "CL.EXE", ec)) return;
     testing::CapturedStd cap;
     CB_CHECK_EQ(w.cli.run({"match", "lzexpand.dll", "--first", "8"}), 0);
     const std::string out = cap.out();

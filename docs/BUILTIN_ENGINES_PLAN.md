@@ -12,7 +12,7 @@ rest. Nothing here is built yet.
 | OpenWatcom `wcc` / `wcc386` | compiling the C CodeBreaker writes (16-bit and 32-bit), the build and check lanes | build/functions, module_build16/32, engine/lane_kit*, engine/win16, verify/gate16 (23 files) |
 | OpenWatcom `wasm` | DOS programs' and VxDs' MASM-style assembly | source/dos_writer, source/vxd |
 | OpenWatcom `wlink` | linking DOS, Win16, Win32 and VxD builds | the same lanes |
-| DOSBox-X | running period DOS tools (Microsoft C, MASM) and DOS programs | build/dos_tools, scripts |
+| DOS executive (built in; DOSBox-X is gone) | running period DOS tools (Microsoft C, MASM) and DOS programs | build/native_dos, build/native_dos_runner, exact/emu |
 | javac (the JDK) | the Java translator's front end (TreeDump: parse and attribute) | java/frontend.cpp |
 
 ## 1. The decompiler — first, and the smallest step
@@ -50,11 +50,10 @@ generator together). Options, smallest first:
 Recommended: decide after x86asm and the decompiler are built in; option 2 fits the L2 architecture
 (docs/ARCHITECTURE.md), option 1 keeps every build's bytes as they are today.
 
-## 4. DOSBox-X
+## 4. DOS tools -- done: the built-in DOS executive
 
-Already has an in-house replacement under way: CodeBreaker's own DOS executive on its emulator (build/native_dos,
-exact/emu/dos), proven byte-identical for MASM and ML. Extending it to the Microsoft C passes and to running DOS
-programs for behaviour checks retires DOSBox-X.
+CodeBreaker's own DOS executive on its emulator (build/native_dos, exact/emu/dos) runs MASM, ML, Microsoft C 6.0a and
+Visual C++ 1.52 in-process; it is the only way DOS tools run, and a run it cannot complete fails with its reason.
 
 ## 5. The Java engines -- done: RetroMCP is retired
 
@@ -85,5 +84,5 @@ ported ("a major headache": about 120,000 lines); the JDK stays only for the tra
 ## Order
 
 1. x86asm (in progress). 2. The decompiler in-process. 3. x86link, and wasm's jobs moved to x86asm. 4. The DOS executive
-for everything DOSBox-X does. 5. The C compiler, by the option chosen.
+for every DOS tool (done). 5. The C compiler, by the option chosen.
 6. The Java engines (done: RetroMCP retired; javac not ported).

@@ -6,9 +6,8 @@
 //         std::vector<std::optional<msc6::Code>> built = msc6::compile_many(ctx, sources, header, "/AM /Gsw /Os", options);
 //     }
 //
-// The compiler is a DOS program. It is run in DOSBox-X (Tools::dosbox_x -- the emulator's program; Tools::msc6 -- the
-// folder holding the compiler's BIN and INCLUDE), every source of a call in ONE session: starting the emulator costs
-// about two seconds, compiling a function a fraction of one. Each function is compiled as a file of its own (or in a batch)
+// The compiler is a DOS program. It is run on CodeBreaker's own DOS executive (Tools::msc6 -- the folder holding the
+// compiler's BIN and INCLUDE), every source of a call in ONE session. Each function is compiled as a file of its own (or in a batch)
 // and its code read out of the object file, with the bytes the linker fills in (an address, a segment, the distance of a
 // call to another file) marked in `Code::mask` and left out of every comparison -- as build/period16's other compilers.
 //
@@ -49,9 +48,8 @@ enum class Compiler {
     Msvc152,   // Microsoft C/C++ 8.00c of Visual C++ 1.52c, which built a few of the 16-bit modules
 };
 
-// Where they are (settings.json: dosbox_x, msc6, msvc152, native16, native16_tools, native16_work).
+// Where they are (settings.json: msc6, msvc152, native16, native16_tools, native16_work).
 struct Tools {
-    std::filesystem::path dosbox_x;   // the emulator's program
     std::filesystem::path msc6;       // BIN/CL.EXE, INCLUDE
     std::filesystem::path msvc152;    // BIN/CL.EXE, INCLUDE (WINDOWS.H, the Windows 3.1 SDK's)
     bool native16 = true;             // run Visual C++ 1.52c on Windows itself when it can be (settings native16 = off: never)
@@ -68,7 +66,7 @@ struct Context {
     base::cache::Cache* cache = nullptr;
 };
 
-// The emulator and the compiler's BIN/CL.EXE are there.
+// The compiler's BIN/CL.EXE is there.
 bool available(const Tools& tools, Compiler compiler = Compiler::Msc6);
 
 // The flag sets the matcher tries in turn. /Gc: a function declared without a convention is pascal, as the reconstruction's
@@ -204,7 +202,7 @@ struct Source {
 };
 
 struct CompileOptions {
-    std::filesystem::path work;                 // the folder the emulator runs in (state/<compiler>/work); required
+    std::filesystem::path work;                 // the folder the compiler runs in (state/<compiler>/work); required
     std::chrono::seconds timeout{900};
     Compiler compiler = Compiler::Msc6;
     std::size_t batch = kBatch;
@@ -217,7 +215,7 @@ struct CompileOptions {
 // was cut off). NotFoundError when the compiler is not set up.
 //
 // With functions named, sources share source files: starting the compiler's passes (CL, C1, C2) is most of the cost of
-// compiling a function in the emulator. What a function compiles to depends on its file: a far call to a function defined in
+// compiling a function on the DOS executive. What a function compiles to depends on its file: a far call to a function defined in
 // the same file is `push cs; call` (near, the segment known), to one elsewhere `lcall` -- so a function's result is kept
 // (cached) for its whole file, and a file with one function not yet known is compiled again whole. A file the compiler refuses
 // has the functions its errors are in compiled on their own, the rest together, so one function cannot sink the rest.
@@ -230,12 +228,12 @@ std::vector<std::optional<Code>> compile_many(const Context& ctx, std::span<cons
 // run on 64-bit Windows given two things: paths short enough for a buffer in CL (a long one overruns it: CL.EXE+0xC46B reads
 // part of the path as a pointer) and an environment small enough for its pass launcher (with a modern environment it says
 // "Out of memory" before starting C2). The short paths are directory junctions, made the first time; Tools::native16 = false
-// keeps the emulator. Microsoft C 6.0a is a DOS program: always the emulator.
+// keeps the emulator. Microsoft C 6.0a is a DOS program: always the DOS executive.
 struct NativePaths {
     std::filesystem::path tools;   // the compiler's folder by a short path
     std::filesystem::path work;    // a folder to build in by a short path
 };
-// nullopt when the compiler runs in the emulator. `make_junction` false: do not make the short path (it must exist).
+// nullopt when the compiler runs on the DOS executive. `make_junction` false: do not make the short path (it must exist).
 std::optional<NativePaths> native_paths(const Tools& tools, Compiler compiler, bool make_junction = true);
 
 // A group of functions per source file: ([(stem, text)], [[(first line, source)]]) -- each group's functions in one file, and

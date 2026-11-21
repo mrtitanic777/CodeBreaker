@@ -70,12 +70,11 @@ struct Fixture {
     period16::Tools tools;
     stdfs::path folder;
     Fixture() {
-        for (const char* tool : {"dosbox", "msc6", "msvc152", "kit", "ddk"}) fs::make_dirs(dir.path() / tool);
+        for (const char* tool : {"msc6", "msvc152", "kit", "ddk"}) fs::make_dirs(dir.path() / tool);
         fs::make_dirs(dir.path() / "msvc152" / "BIN");
         fs::write_file(dir.path() / "msvc152" / "BIN" / "WINSTUB.EXE", Bytes{1});
         fs::write_file(dir.path() / "kit" / "MDLLCEW.LIB", Bytes{1});
         fs::write_file(dir.path() / "kit" / "LIBW.LIB", Bytes{2});
-        tools.dosbox_x = dir.path() / "dosbox";
         tools.msc6 = dir.path() / "msc6";
         tools.msvc152 = dir.path() / "msvc152";
         tools.win31_kit = dir.path() / "kit";
@@ -120,7 +119,6 @@ CB_TEST("build.period16.build_compiles_each_module_and_links", [] {
     CB_CHECK_EQ(s.mounts[2].drive, "d");
     CB_CHECK(fs::same_path(s.mounts[2].folder, work));
     CB_CHECK_EQ(s.variables.at("LIB"), "D:\\;E:\\LIB");
-    CB_CHECK_EQ(s.timeout.count(), 600);
     CB_CHECK_EQ(s.artifacts.at(0), "lzexpand.dll");
     CB_CHECK(fs::same_path(*s.work, work));
 });
@@ -145,7 +143,7 @@ CB_TEST("build.period16.build_errors", [] {
     t.msc6 = f.dir.path() / "nope";
     CB_CHECK_THROWS_AS(NotFoundError, (void)period16::build(runner, t, f.folder));
     t = f.tools;
-    t.dosbox_x.clear();
+    t.msvc152 = f.dir.path() / "gone";
     CB_CHECK_THROWS_AS(NotFoundError, (void)period16::build(runner, t, f.folder));
     CB_CHECK_THROWS_AS(UsageError, (void)period16::build(runner, f.tools, f.folder, std::nullopt, "/c & x"));
     fs::ScopedTempDir empty("p16empty");

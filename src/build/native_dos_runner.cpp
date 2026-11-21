@@ -5,7 +5,6 @@
 #include <cctype>
 #include <filesystem>
 #include <map>
-#include <set>
 #include <system_error>
 
 #include "core/fs.hpp"
@@ -164,54 +163,12 @@ DosCommandLine parse_dos_command(std::string_view raw) {
 }
 
 DosRunResult NativeDosRunner::run(const DosRunSpec& spec) const {
-    // (what a native attempt leaves in the work folder -- a compiler's temporary files, a log -- goes before the fallback runs
-    // there: Visual C++ 1.52 under DOSBox-X made nothing of a folder the executive had been in)
-    std::set<stdfs::path> before;
-    std::error_code ec;
-    const bool given = spec.work && !spec.work->empty();
-    if (given && stdfs::is_directory(*spec.work, ec))
-        for (const auto& e : stdfs::directory_iterator(*spec.work, ec)) before.insert(e.path());
-    const auto fall_back = [&](const std::optional<stdfs::path>& work) {
-        if (work && stdfs::is_directory(*work, ec)) {
-            std::vector<stdfs::path> made;
-            for (const auto& e : stdfs::directory_iterator(*work, ec))
-                if (!before.contains(e.path())) made.push_back(e.path());
-            for (const stdfs::path& p : made) stdfs::remove_all(p, ec);
-        }
-        return fallback_->run(spec);
-    };
-    // (a session is known by its drives and the programs its lines run: the same toolchain's next session goes where the
-    // last one had to)
-    std::string key;
-    for (const DosMount& m : spec.mounts) key += m.drive + "=" + fs::to_text(m.folder) + ";";
-    for (const std::string& line : spec.commands)
-        if (const DosCommandLine c = parse_dos_command(line); c.kind == DosCommandLine::Kind::Program) key += ndr_upper(c.program) + ";";
-    if (fallback_ != nullptr) {
-        const std::lock_guard hold(lock_);
-        if (fallen_back_.contains(key)) return fallback_->run(spec);
-    }
-    const auto remember = [&] {
-        const std::lock_guard hold(lock_);
-        fallen_back_.insert(key);
-    };
-    std::optional<stdfs::path> used;
     try {
         if (!dos_.available()) throw native_dos::NativeDosError("the DOS executive is not available here");
-        DosRunResult r = run_here(spec);
-        used = r.work;
-        // (a session that ran to its end without the files it was to make -- Visual C++ 1.52's CL leaves its passes, started
-        // from protected mode, unrun on the executive -- is the fallback's too; with none, `ok` says so)
-        if (!r.ok && fallback_ != nullptr) {
-            remember();
-            return fall_back(given ? used : std::nullopt);
-        }
-        return r;
-    } catch (const native_dos::NativeDosError&) {
-        if (fallback_ != nullptr) {
-            remember();
-            return fall_back(given ? spec.work : std::nullopt);
-        }
+        return run_here(spec);
+    } catch (const native_dos::NativeDosError& e) {   // (a program the executive cannot complete: the run says so, nothing is pretended)
         DosRunResult none;
+        none.why = e.what();
         return none;
     }
 }
@@ -231,7 +188,7 @@ DosRunResult NativeDosRunner::run_here(const DosRunSpec& spec) const {
     NdrSession session;
     for (const DosMount& m : spec.mounts) session.drives[static_cast<char>(std::toupper(static_cast<unsigned char>(m.drive.front())))] = m.folder;
     if (!session.drives.contains('D')) session.drives['D'] = work;
-    // (the last drive listed is the current one, as DosboxRunner's autoexec has it: the work drive when none names it)
+    // (the last drive listed is the current one: the work drive when none names it)
     session.current = spec.mounts.empty() || !std::any_of(spec.mounts.begin(), spec.mounts.end(), [](const DosMount& m) { return std::toupper(static_cast<unsigned char>(m.drive.front())) == 'D'; })
                           ? 'D'
                           : static_cast<char>(std::toupper(static_cast<unsigned char>(spec.mounts.back().drive.front())));
@@ -279,8 +236,7 @@ DosRunResult NativeDosRunner::run_here(const DosRunSpec& spec) const {
             }
         }
     }
-    // (the batch file's last line, as DosboxRunner writes it: `echo _DONE_ > done.txt` -- the drivers take it as "the session
-    // ran to its end")
+    // (the batch file's last line: `echo _DONE_ > done.txt` -- the drivers take it as "the session ran to its end")
     fs::write_text(work / "done.txt", "_DONE_ \r\n");
     for (const std::string& name : spec.artifacts) {
         const stdfs::path file = work / name;

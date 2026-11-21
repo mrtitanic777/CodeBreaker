@@ -69,7 +69,7 @@ struct Compiled {
 };
 
 // The tool driver (tools/pcc): the original executable's image, and a file compiled with the period compiler. The seam
-// is real: the compiler runs in an emulator or DOSBox, a test supplies a fake.
+// is real: the compiler runs on the DOS executive, a test supplies a fake.
 class PascalCompiler {
 public:
     virtual ~PascalCompiler() = default;

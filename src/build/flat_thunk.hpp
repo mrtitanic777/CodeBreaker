@@ -115,7 +115,7 @@ std::string_view subtype_name(Subtype s);   // "unknown", "win16-c", "flat-thunk
 struct Classification {
     Format format = Format::Unknown;
     Subtype subtype = Subtype::Unknown;
-    std::optional<std::string> recipe;           // "msc6-dosbox", "thunk-ml-cl-link", "msvc-native"; none for an unknown module
+    std::optional<std::string> recipe;           // "msc6-dosbox", "thunk-ml-cl-link", "msvc-native"; none for an unknown module (the first is a label the gate's golden pins: Win16 C built on the DOS executive)
     std::optional<std::uint64_t> exports;        // a PE's named exports
     std::optional<std::uint64_t> imports;        // a flat-thunk's imported symbols
     std::string why;
@@ -124,7 +124,7 @@ struct Classification {
 // KERNEL32 helpers whose presence in the import table marks a flat thunk.
 inline constexpr std::string_view kThunkMarkers[] = {"SMapLS", "SUnMapLS", "ThunkConnect32", "ThunkInitLSF", "FT_Prolog", "QT_Thunk"};
 
-// An NE module is Win16 C (built with MSC under DOSBox); a PE that imports the thunk helpers is a flat thunk, any other
+// An NE module is Win16 C (built with MSC on the DOS executive); a PE that imports the thunk helpers is a flat thunk, any other
 // PE is Win32 C. FormatError when the file is a damaged PE or NE.
 Classification classify(const std::filesystem::path& file);
 
@@ -183,7 +183,7 @@ struct Toolchain {
 };
 
 // thunk.exe (the v1.01 of the Chicago beta SDK first: closest imports), MASM 6.11c, Visual C++ 2.0. All are native
-// programs; they run on a modern Windows without DOSBox.
+// programs; they run on a modern Windows.
 Toolchain toolchain(const Locations& where);
 
 // ---- build --------------------------------------------------------------------------------------------------------

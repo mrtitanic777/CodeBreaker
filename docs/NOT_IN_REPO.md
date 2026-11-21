@@ -13,7 +13,6 @@ setting for one run.
 | The original binaries | `../Windows95/design/corpus/files` | `corpus`, `corpora` |
 | The SDK and DDK of the time (headers, debug symbols, MASM 6.11c, the thunk compiler) | `../Windows95/design/reference` | `reference` (default: the corpus's design folder) |
 | OpenWatcom (builds and judges reconstructions) | `toolchains/openwatcom/rel` | `openwatcom` |
-| DOSBox-X (runs the DOS compilers, assemblers and linkers) | `toolchains/dosbox-x/bin/x64/Release/dosbox-x.exe` | `dosbox_x` |
 | Microsoft C 6.0a | `toolchains/microsoft/compilers/msc-6.0a` | `msc6` |
 | Visual C++ 1.52c (Microsoft C/C++ 8, LINK 5.60, RC) | `toolchains/microsoft/compilers/msvc-1.52c` | `msvc152` |
 | Visual C++ 2.0 (the 32-bit compiler of 1994) | `toolchains/microsoft/compilers/msvc-2.0/BIN` | `period_compiler` |

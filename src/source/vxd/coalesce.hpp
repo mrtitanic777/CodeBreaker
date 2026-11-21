@@ -81,8 +81,8 @@ Bytes restore_entry_point(ByteView vxd, const formats::le::Module& original);
 Bytes restore_metadata(ByteView vxd, const formats::le::Module& original);
 
 // Append the original's non-resident name table and Windows version resource to a driver that lacks them, and point the
-// header at them (0x88/0x8c and 0xb8/0xbc, file offsets in LE). The DDK builds the resource with RC and ADRC2VXD under
-// DOSBox; without it, copying the bytes gives the module the version resource VMM and Setup read.
+// header at them (0x88/0x8c and 0xb8/0xbc, file offsets in LE). The DDK builds the resource with RC and ADRC2VXD on the
+// DOS executive; without it, copying the bytes gives the module the version resource VMM and Setup read.
 Bytes restore_version_resource(ByteView vxd, const formats::le::Module& original);
 
 // What `finalize` did.

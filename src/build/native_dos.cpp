@@ -15,7 +15,7 @@ namespace stdfs = std::filesystem;
 
 constexpr std::string_view kMasmExe = "MASM.EXE";
 
-// Whatever the executive throws, the run did not complete: the caller falls back to DOSBox.
+// Whatever the executive throws, the run did not complete.
 template <class Run> auto guarded(Run&& run) {
     try {
         return std::forward<Run>(run)();
@@ -74,8 +74,8 @@ std::optional<Bytes> read_if_file(const stdfs::path& p) {
 }
 
 // What one MASM run left in `work`; the log falls back to what MASM printed.
-dos_sessions::Product collect(const stdfs::path& work, std::string_view stem, const Bytes& console) {
-    dos_sessions::Product product;
+Product collect(const stdfs::path& work, std::string_view stem, const Bytes& console) {
+    Product product;
     product.obj = read_if_file(stem_path(work, stem, ".OBJ"));
     if (const auto lst = read_if_file(stem_path(work, stem, ".LST")))
         product.lst = text::from_latin1(*lst);
@@ -87,7 +87,7 @@ dos_sessions::Product collect(const stdfs::path& work, std::string_view stem, co
     return product;
 }
 
-dos_sessions::Product run_masm(const DosExecutive& dos, const stdfs::path& work, const stdfs::path& exe,
+Product run_masm(const DosExecutive& dos, const stdfs::path& work, const stdfs::path& exe,
                                std::string_view stem, std::string_view source) {
     fs::write_file(stem_path(work, stem, ".ASM"), dos_text(source));
     const Exit r = guarded([&] { return dos.run(exe, work, masm_command(stem)); });
@@ -100,38 +100,19 @@ SessionExit DosExecutive::run_session(const SessionRun& run) const {
     throw NativeDosError("this DOS executive runs no sessions: " + run.exe.filename().string());
 }
 
-Mode mode_from_environment() {
-    const std::string value = text::lower(fs::get_env("CB_NATIVE_DOS").value_or("auto"));
-    if (value == "0" || value == "off" || value == "no" || value == "false")
-        return Mode::Off;
-    if (value == "1" || value == "on" || value == "yes" || value == "true")
-        return Mode::On;
-    return Mode::Auto; // "auto", and anything not understood
-}
-
-bool is_proven(std::string_view tool) {
-    return tool == "masm" || tool == "ml";
-}
-
-bool enabled(const DosExecutive& dos, std::string_view tool, Mode mode) {
-    if (mode == Mode::Off || !dos.available())
-        return false;
-    return mode == Mode::On || is_proven(tool);
-}
-
-dos_sessions::Product assemble(const DosExecutive& dos, std::string_view source, std::string_view stem,
+Product assemble(const DosExecutive& dos, std::string_view source, std::string_view stem,
                                const stdfs::path& masm_root) {
     fs::ScopedTempDir work("masm_nat");
     const stdfs::path exe = install_masm(work.path(), masm_root);
     return run_masm(dos, work.path(), exe, stem, source);
 }
 
-dos_sessions::Finished assemble_many(const DosExecutive& dos, std::span<const dos_sessions::Source> items,
+Finished assemble_many(const DosExecutive& dos, std::span<const Source> items,
                                      const stdfs::path& masm_root) {
     fs::ScopedTempDir work("masm_nat");
     const stdfs::path exe = install_masm(work.path(), masm_root);
-    dos_sessions::Finished done;
-    for (const dos_sessions::Source& item : items) {
+    Finished done;
+    for (const Source& item : items) {
         done.results.emplace_back(item.stem, run_masm(dos, work.path(), exe, item.stem, item.text));
     }
     return done; // (`work` is gone: everything the runs made is in the results)

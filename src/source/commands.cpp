@@ -8,7 +8,6 @@
 #include <optional>
 #include <set>
 
-#include "build/dos_tools.hpp"
 #include "build/floppy.hpp"
 #include "build/masm.hpp"
 #include "build/module.hpp"
@@ -161,7 +160,7 @@ struct Production::Impl {
     }
 
     // ---- DOS ----
-    // (the period tools on the executive -- DOSBox-X only for a run it cannot complete)
+    // (the period tools run on the executive)
     struct Dos {
         CommandsNativeDos executive;
         std::unique_ptr<build::DosRunner> runs;
@@ -233,7 +232,7 @@ struct Production::Impl {
         symbols::debug_build_estimate::Environment debug_estimate;
 
         static build::masm::Context masm_context(Impl& impl, Dos& dos) {
-            return build::masm::Context{build::masm::Tools::from_config(impl.config), build::masm::Options::from_environment(), dos.executive, dos.runner, nullptr, {}};
+            return build::masm::Context{build::masm::Tools::from_config(impl.config), dos.executive, nullptr};
         }
         static ne_asm::idiom::Assemblers assemblers(Impl& impl, Dos& dos) {
             ne_asm::idiom::Assemblers a;
@@ -244,12 +243,12 @@ struct Production::Impl {
         }
         NeAsm(Impl& impl, Dos& dos)
             : masm4(masm_context(impl, dos)),
-              msvc{impl.config.path("dosbox_x").value_or(stdfs::path()), impl.config.path("msvc152").value_or(stdfs::path())},
+              msvc{impl.config.path("msvc152").value_or(stdfs::path())},
               idiom{*impl.corpus, assemblers(impl, dos), impl.config.state()},
               sweep{*impl.corpus, assemblers(impl, dos), impl.config.state()},
               recon{*impl.corpus,
                     [this](std::string_view source) {
-                        const build::dos_sessions::Product product = masm4.assemble(source);
+                        const build::masm::Product product = masm4.assemble(source);
                         return ne_asm::recon::Assembled{product.obj, product.lst.value_or(""), product.log.value_or("")};
                     }},
               segdiff{*impl.corpus,
