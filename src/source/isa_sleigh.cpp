@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <condition_variable>
 #include <format>
 #include <map>
 #include <memory>
@@ -12,6 +14,7 @@
 #include <optional>
 #include <unordered_map>
 
+#include "core/parallel.hpp"
 #include "core/text.hpp"
 #include "decompile/engine/sleigh_assembler.hh"
 #include "decompile/ppc.hpp"
@@ -100,7 +103,16 @@ std::string fold_relocations(const std::string& text, bool signed_lo, bool signe
 
 class SleighSyntax final : public build::Encoder {
 public:
-    SleighSyntax(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context) : sla_(sla), context_(context), assembler_(sla, context) {}
+    SleighSyntax(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context)
+        : sla_(sla), context_(context), pool_limit_(static_cast<std::size_t>(std::max(1, parallel::workers()))) {
+        // (the first assembler is made now: a description that cannot be read fails here, where the encoder is asked for)
+        {
+            std::lock_guard one(loading_lock());
+            all_.push_back(std::make_unique<decompile::sleigh::Assembler>(sla, context));
+        }
+        free_.push_back(all_.back().get());
+        made_ = 1;
+    }
 
     // `.context m16=1 x16=0`: the description's variables set over the ones this encoder starts from; the encoder of that context answers.
     Result<Bytes> assemble_in(std::string_view context, std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
@@ -180,25 +192,32 @@ public:
                 out += text[k++];
             }
         }
-        std::lock_guard hold(lock_);
         // (a program's lines are assembled again and again: a writer checks each instruction, then the build makes two passes; the engine takes
         // milliseconds for a line, so the lines it has encoded are kept, by address and text)
         const std::string memo_key = std::format("{:x}|{}", static_cast<std::uint64_t>(pc), out);
-        if (const auto hit = memo_.find(memo_key); hit != memo_.end()) return hit->second;
-        // (a line that is no instruction, or names a label not defined yet, fails the same way every time it is asked at an address: a
-        // writer's two passes and its guesses ask again and again, and each failure costs the guessing below)
-        if (const auto bad = failed_.find(memo_key); bad != failed_.end()) {
-            if (bad->second.empty()) return Failure(build::AsmError(0, text, "not an instruction of the processor's description"));
-            return Failure(build::UndefinedSymbolError(bad->second));
+        {
+            std::lock_guard hold(memo_lock_);
+            if (const auto hit = memo_.find(memo_key); hit != memo_.end()) return hit->second;
+            // (a line that is no instruction, or names a label not defined yet, fails the same way every time it is asked at an address: a
+            // writer's two passes and its guesses ask again and again, and each failure costs the guessing below)
+            if (const auto bad = failed_.find(memo_key); bad != failed_.end()) {
+                if (bad->second.empty()) return Failure(build::AsmError(0, text, "not an instruction of the processor's description"));
+                return Failure(build::UndefinedSymbolError(bad->second));
+            }
         }
         const auto remember_failure = [&](const std::string& undefined_word) {
-            if (failed_.size() >= 100000) failed_.clear();
+            std::lock_guard hold(memo_lock_);
+            if (failed_.size() >= kMemoLimit) failed_.clear();
             failed_[memo_key] = undefined_word;
         };
-        const auto remember = [&](const std::vector<std::uint8_t>& bytes) -> const Bytes& {
-            if (memo_.size() >= 100000) memo_.clear();
+        const auto remember = [&](const std::vector<std::uint8_t>& bytes) -> Bytes {
+            std::lock_guard hold(memo_lock_);
+            if (memo_.size() >= kMemoLimit) memo_.clear();
             return memo_.emplace(memo_key, Bytes(bytes.begin(), bytes.end())).first->second;
         };
+        // (the engine's assembler keeps state between lines: this call has one to itself, and other threads' calls have theirs)
+        const Lease lease(*this);
+        decompile::sleigh::Assembler& assembler_ = lease.assembler();
         if (out.find("%lo(") != std::string::npos || out.find("%hi(") != std::string::npos || out.find("%up(") != std::string::npos) {
             for (const bool signed_lo : {true, false}) {   // (an ori's low half is unsigned, an addiu's signed: the one the instruction takes)
                 const std::vector<std::vector<std::uint8_t>> folded = assembler_.assemble_first(fold_halves(out, pc, signed_lo), static_cast<std::uint64_t>(pc));
@@ -218,10 +237,18 @@ public:
         // NZ is the description's and `ahead` the label): the directive layer then guesses its value and assembles again.
         for (const Unknown& u : unknown) {
             // (the places a label may be taken to be: here, just ahead, and a word-aligned place ahead, which a PC-relative load of Thumb reaches)
-            for (const std::int64_t at : {pc, pc + 4, (pc & ~std::int64_t{3}) + 8}) {
+            // (the place the directive layer takes first is tried first: when this line then assembles with it, the line the layer asks next is
+            // this one, and its answer is kept below)
+            for (const std::int64_t at : {(pc & ~std::int64_t{3}) + 8, pc, pc + 4}) {
                 std::string guess = out;
                 guess.replace(u.at, u.word.size(), std::format("0x{:x}", static_cast<std::uint64_t>(at)));
-                bool found = !assembler_.assemble_first(guess, static_cast<std::uint64_t>(pc)).empty();
+                const std::vector<std::vector<std::uint8_t>> plain = assembler_.assemble_first(guess, static_cast<std::uint64_t>(pc));
+                bool found = !plain.empty();
+                if (found && guess.find_first_of("@%") == std::string::npos) {   // (a line with no half of an address in it: this answer is what assembling it gives)
+                    std::lock_guard hold(memo_lock_);
+                    if (memo_.size() >= kMemoLimit) memo_.clear();
+                    memo_.emplace(std::format("{:x}|{}", static_cast<std::uint64_t>(pc), guess), Bytes(plain.front().begin(), plain.front().end()));
+                }
                 for (const bool signed_lo : {true, false}) {   // (the label inside a %hi or %lo, or under an @ha, @h, @l)
                     if (found) break;
                     found = !assembler_.assemble_first(fold_halves(guess, pc, signed_lo), static_cast<std::uint64_t>(pc)).empty();
@@ -241,13 +268,75 @@ public:
 private:
     std::filesystem::path sla_;
     std::vector<std::pair<std::string, int>> context_;
-    decompile::sleigh::Assembler assembler_;
+    static constexpr std::size_t kMemoLimit = 2'000'000;   // (a few hundred bytes a line: a large program's lines all stay)
+
+    // The engine's assembler holds the parse tables it fills as it goes and the translator it checks each encoding with: one call at a time
+    // on each. There is one per thread that asks at the same time (up to the worker count), made when first needed, and handed back after
+    // each line, so the threads of a writer assemble side by side.
+    decompile::sleigh::Assembler& borrow() const {
+        std::unique_lock hold(pool_lock_);
+        for (;;) {
+            if (!free_.empty()) {
+                decompile::sleigh::Assembler* a = free_.back();
+                free_.pop_back();
+                return *a;
+            }
+            if (made_ < pool_limit_) break;
+            pool_wake_.wait(hold);
+        }
+        ++made_;
+        hold.unlock();
+        std::unique_ptr<decompile::sleigh::Assembler> fresh;
+        try {
+            std::lock_guard one(loading_lock());
+            fresh = std::make_unique<decompile::sleigh::Assembler>(sla_, context_);
+        } catch (...) {
+            std::lock_guard again(pool_lock_);
+            --made_;
+            pool_wake_.notify_one();
+            throw;
+        }
+        std::lock_guard again(pool_lock_);
+        all_.push_back(std::move(fresh));
+        return *all_.back();
+    }
+    void give_back(decompile::sleigh::Assembler& a) const {
+        {
+            std::lock_guard hold(pool_lock_);
+            free_.push_back(&a);
+        }
+        pool_wake_.notify_one();
+    }
+    class Lease {
+    public:
+        explicit Lease(const SleighSyntax& owner) : owner_(owner), assembler_(owner.borrow()) {}
+        Lease(const Lease&) = delete;
+        Lease& operator=(const Lease&) = delete;
+        ~Lease() { owner_.give_back(assembler_); }
+        decompile::sleigh::Assembler& assembler() const { return assembler_; }
+
+    private:
+        const SleighSyntax& owner_;
+        decompile::sleigh::Assembler& assembler_;
+    };
+
+    mutable std::mutex pool_lock_;
+    mutable std::condition_variable pool_wake_;
+    mutable std::vector<std::unique_ptr<decompile::sleigh::Assembler>> all_;
+    mutable std::vector<decompile::sleigh::Assembler*> free_;
+    mutable std::size_t made_ = 0;
+    std::size_t pool_limit_ = 1;
+    mutable std::mutex memo_lock_;
     mutable std::unordered_map<std::string, Bytes> memo_;
     mutable std::unordered_map<std::string, std::string> failed_;   // a line that failed: the label it names that is not defined yet, or empty (no instruction)
-    mutable std::mutex lock_;
 };
 
 }  // namespace
+
+std::mutex& loading_lock() {
+    static std::mutex lock;
+    return lock;
+}
 
 const build::Encoder& sleigh_encoder(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context) {
     static std::mutex lock;

@@ -9,6 +9,7 @@
 #pragma once
 
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,5 +20,8 @@ namespace cb::source::isa {
 
 // The encoder of one description and starting context (made once per pair, kept for the process).
 const build::Encoder& sleigh_encoder(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context);
+
+// Held while a description is read into a reader or an assembler (the decompiler core builds them through tables it shares, so only one is made at a time).
+std::mutex& loading_lock();
 
 }  // namespace cb::source::isa

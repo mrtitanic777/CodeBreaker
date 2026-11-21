@@ -208,4 +208,12 @@ cb::emulate::Run record(const RunResult& result);
 // run + record: the platform's runner.
 cb::emulate::Run recorded(Bus& bus, std::uint32_t entry, const RunOptions& options = {});
 
+// The GTE as a coprocessor on its own, for the p-code adapter (engine/pcode_cpu_mips.cpp): `cpu`'s gte_data and gte_control are its register file. A data register
+// read or write is what MFC2/MTC2/LWC2/SWC2 do (the special registers: SXYP, IRGB, ORGB, LZCS ...), a control read or write what CFC2/CTC2 do, and a command is
+// run by name when the core has code for it (NCLIP AVSZ3 AVSZ4 SQR OP GPF GPL MVMVA); false: it has not.
+std::uint32_t gte_register(const Cpu& cpu, unsigned n);
+void gte_set_register(Cpu& cpu, unsigned n, std::uint32_t value);
+std::uint32_t gte_control_register(const Cpu& cpu, unsigned n);
+bool gte_run_command(Cpu& cpu, std::uint32_t command, std::string_view name);
+
 }  // namespace cb::emulate::mips

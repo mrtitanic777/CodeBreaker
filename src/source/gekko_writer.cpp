@@ -18,6 +18,7 @@
 #include "decompile/ppc.hpp"
 #include "formats/gekko_map.hpp"
 #include "source/isa_ppc.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::gekko_writer {
@@ -461,7 +462,7 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
         }
         if (line.starts_with(".byte")) {
             line.resize(std::min(line.find("  ; "), line.size()));
-            line += "  ; " + dp::text(insn, names_for_text);
+            line += "  ; " + dialect::find("gas-ppc").instruction(dp::text(insn, names_for_text));
         }
         return line;
     };
@@ -473,14 +474,14 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
         std::format("; {} {}{}: {} ({}), entry 0x{:08X}, {} bytes, {} functions", pp::console_text(console), kind,
                     program.kind == pp::Kind::Rpx && program.elf && program.elf->inflated_sections != 0 ? " (decompressed)" : "", pp::cpu_text(console), "PowerPC 750 family", program.entry,
                     file.size(), functions.size()),
+        "; assemble with powerpc-eabi-as -mregnames, or with CodeBreaker's own assembler",
         std::format("; loaded: {}", [&] {
             std::vector<std::string> parts;
             for (const formats::ppc_segment::Segment& s : program.segments) parts.push_back(std::format("{} at 0x{:08X} ({} bytes)", s.name, s.address, s.size));
             return text::join(parts, ", ");
         }()),
         ""};
-    head.insert(head.end() - 1, "; (PowerPC syntax as the processor's SLEIGH description writes it: build with `assemble --cpu ppc --sleigh`)");
-    translate::l2::Assembly out(head, "sleigh-ppc", std::string(file_name));
+    translate::l2::Assembly out(head, "gas", std::string(file_name));
 
     std::map<const pp::Region*, std::string> region_labels;   // for a DOL: the labels its header's addresses and sizes are written with
     for (const pp::Region& r : program.regions) {
@@ -610,12 +611,12 @@ iw::Written write(const pp::Program& program, std::string_view file_name, const 
         if (region_labels.contains(&r)) out.append(r.name + "_end:");
     }
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("gas-ppc").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-ppc.json)
     std::size_t code_total = 0;
     code_total = code.size() * 4;
     iw::Written w = iw::finish(folder, stem + ".s", source, functions, code_total, file.size());
     const std::string extension = program.kind == pp::Kind::Dol ? ".dol" : program.kind == pp::Kind::Rpx ? ".rpx" : ".elf";
-    iw::assembled(w, [&] { return risc_source::assemble("ppc", source, folder); }, file, folder / (stem + ".built" + extension), "program");
+    iw::assembled(w, [&] { return risc_source::assemble("ppc", dialect::find("gas-ppc").parse(source), folder); }, file, folder / (stem + ".built" + extension), "program");
     return w;
 }
 

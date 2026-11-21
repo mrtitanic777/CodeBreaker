@@ -100,5 +100,40 @@ CB_TEST("source.dialect.dasm_has_the_forced_absolute_form_of_a_zero_page_address
     CB_CHECK_EQ(d.parse("        STA.w WSYNC"), "        .byte 141,(WSYNC)&0xff,(WSYNC)>>8\n");
 });
 
+CB_TEST("source.dialect.gas_arm_keeps_the_descriptions_own_zero_of_a_float_compare", [] {
+    const Dialect& d = find("gas-arm");
+    CB_CHECK_EQ(d.instruction("vcmpe.f32 s15,#0"), "vcmpe.f32 s15, #0");
+    CB_CHECK_EQ(d.parse("        vcmpe.f32 s15, #0"), "        vcmpe.f32 s15,#0\n");
+    CB_CHECK_EQ(d.instruction("mov r0,r0, lsl #0x6"), "mov r0, r0, lsl #6");
+    CB_CHECK_EQ(d.parse("        mov r0, r0, lsl #6"), "        mov r0,r0, lsl #0x6\n");
+    CB_CHECK_EQ(d.parse("        movs r0, r0, lsr #32"), "        movs r0,r0, lsr #32\n");
+});
+
+CB_TEST("source.dialect.gas_sh_writes_the_immediates_of_the_sh2_and_the_sh4_each_way_round", [] {
+    // the SH-2's description writes `add 0x3,r0` and `mov #0x40,r1`; the SH-4's writes every immediate with its `#`: both say `add     #3,r0`
+    const Dialect& sh2 = find("gas-sh");
+    CB_CHECK_EQ(sh2.instruction("add 0x3,r0"), "add     #3,r0");
+    CB_CHECK_EQ(sh2.instruction("mov #0x40,r1"), "mov     #64,r1");
+    CB_CHECK_EQ(sh2.instruction("cmp/eq 0x5,r0"), "cmp/eq  #5,r0");
+    CB_CHECK_EQ(sh2.instruction("and 0xf,r0"), "and     #0xF,r0");
+    CB_CHECK_EQ(sh2.instruction("or 0x5,r0"), "or      #5,r0");
+    CB_CHECK_EQ(sh2.instruction("trapa 0x20"), "trapa   #0x20");
+    CB_CHECK_EQ(sh2.instruction("tst.b 0xf,@(r0,gbr)"), "tst.b   #0xF,@(r0,gbr)");
+    CB_CHECK_EQ(sh2.instruction("mov.l @(K_0600,pc),r0"), "mov.l   K_0600,r0");
+    CB_CHECK_EQ(sh2.parse("        add     #3,r0"), "        add 0x3,r0\n");
+    CB_CHECK_EQ(sh2.parse("        mov     #64,r1"), "        mov #0x40,r1\n");
+    CB_CHECK_EQ(sh2.parse("        and     #0xF,r0"), "        and 0xF,r0\n");
+    CB_CHECK_EQ(sh2.parse("        or      #5,r0"), "        or 0x5,r0\n");
+    CB_CHECK_EQ(sh2.parse("        mov.l   K_0600,r0"), "        mov.l @(K_0600,pc),r0\n");
+    CB_CHECK_EQ(sh2.parse("        mov.l   r3,@r2"), "        mov.l r3,@r2\n");   // (a register move is not a constant)
+    const Dialect& sh4 = find("gas-sh4");
+    CB_CHECK_EQ(sh4.instruction("add #0x1,r0"), "add     #1,r0");
+    CB_CHECK_EQ(sh4.instruction("and #0xf,r0"), "and     #0xF,r0");
+    CB_CHECK_EQ(sh4.instruction("mov.l K_0C008308,r0"), "mov.l   K_0C008308,r0");   // (the SH-4's text already names the constant so)
+    CB_CHECK_EQ(sh4.parse("        add     #1,r0"), "        add #0x1,r0\n");
+    CB_CHECK_EQ(sh4.parse("        and     #0xF,r0"), "        and #0xF,r0\n");
+    CB_CHECK_EQ(sh4.parse("        mov.l   K_0C008308,r0"), "        mov.l K_0C008308,r0\n");
+});
+
 }  // namespace
 }  // namespace cb::source::dialect
