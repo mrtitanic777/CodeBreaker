@@ -1,0 +1,10 @@
+circle with area 7.07 -> SMALL sides=0
+rect with area 12.00 -> MEDIUM sides=4
+square with area 25.00 -> MEDIUM sides=4
+rect with area 4.00 -> SMALL sides=-1
+total 48.06858347057704
+Rect[w=1, h=2] Circle[r=0.5] true
+s,m,LL,s,
+weekend weekday unknown
+caught negative side
+24

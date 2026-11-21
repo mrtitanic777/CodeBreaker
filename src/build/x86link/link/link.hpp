@@ -1,5 +1,6 @@
 // cb/link.hpp -- the state of one link: what wlink kept in global variables, one Link per run of the linker
-// (cb_wlink::RunState::begin_run makes it), reached as wlink() (docs/X86LINK_DESIGN.md phase 4b, wave 7). Each
+// (cb_wlink::RunState::begin_run makes it) and every function that reads or changes it is given it, `Link& link`
+// (docs/X86LINK_DESIGN.md phase 4b, wave 7). Each
 // member is a global it was, with the global's name, type and initial value.
 #pragma once
 
@@ -98,8 +99,4 @@ struct Link {
     path_entry     * UsrLibPath;   /* path for library files (LibPath)         */
 };
 
-extern Link* current_link;   // (set at each run's start)
-
 }  // namespace cb_wlink
-
-inline cb_wlink::Link& wlink() { return *cb_wlink::current_link; }

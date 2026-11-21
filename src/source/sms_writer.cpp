@@ -9,6 +9,7 @@
 #include "core/fs.hpp"
 #include "decompile/z80.hpp"
 #include "knowledge/package.hpp"
+#include "source/dialect.hpp"
 #include "source/isa.hpp"
 #include "source/z80_source.hpp"
 
@@ -55,8 +56,9 @@ bool port_access(const z80::Insn& insn) { return insn.pattern == "OUT (n),A" || 
 class SmsListing final : public iw::Listing<z80::Insn> {
 public:
     SmsListing(const formats::sms::Rom& rom, std::uint32_t base, std::uint32_t first, std::uint32_t end, bool mapped,
-               const std::map<std::uint32_t, z80::Insn>& code, const decompile::AddressLabels& names, const iw::Names& port_names)
-        : rom_(rom), base_(base), first_(first), end_(end), mapped_(mapped), code_(code), names_(names), port_names_(port_names) {}
+               const std::map<std::uint32_t, z80::Insn>& code, const decompile::AddressLabels& names, const iw::Names& port_names,
+               const dialect::Dialect& dialect)
+        : rom_(rom), base_(base), first_(first), end_(end), mapped_(mapped), code_(code), names_(names), port_names_(port_names), dialect_(dialect) {}
 
     std::uint8_t byte(std::uint32_t offset) const override { return rom_.data[offset]; }
     std::uint32_t address(std::uint32_t offset) const override { return base_ + offset - first_; }
@@ -66,8 +68,9 @@ public:
         return it != code_.end() && offset + it->second.size <= end_ ? &it->second : nullptr;
     }
     std::uint32_t size(const z80::Insn& insn) const override { return insn.size; }
-    std::string text(const z80::Insn& insn) const override { return z80_source::code(insn, names_, port_names_); }   // (the description's text, the names put in)
-    std::vector<std::string> data_lines(ByteView data) const override { return z80_source::data_lines(data); }
+    std::string text(const z80::Insn& insn) const override { return z80_source::code(insn, names_, port_names_, dialect_); }   // (the description's text, the names put in, said in the dialect)
+    std::vector<std::string> data_lines(ByteView data) const override { return z80_source::data_lines(data, dialect_); }
+    std::string label_line(const std::string& name) const override { return dialect_.label_line(name); }
 
 private:
     const formats::sms::Rom& rom_;
@@ -76,7 +79,11 @@ private:
     const std::map<std::uint32_t, z80::Insn>& code_;
     const decompile::AddressLabels& names_;
     const iw::Names& port_names_;
+    const dialect::Dialect& dialect_;
 };
+
+// The Master System's source is WLA-DX's (config/dialects/wla-dx.json).
+const dialect::Dialect& wla() { static const dialect::Dialect& d = dialect::find("wla-dx"); return d; }
 
 }  // namespace
 
@@ -158,26 +165,15 @@ iw::Written write(const formats::sms::Rom& rom, std::string_view file_name, cons
          std::format("; {}, {} KB ROM{}", formats::sms::to_string(rom.system), rom.data.size() / 1024,
                      rom.header ? std::format(", header product {} version {} ({})", rom.header->product, rom.header->version, rom.header->region)
                                 : std::string()),
-         std::format("; {} pages of 16 KB: page 0 is seen at $0000, page 1 at $4000, every later page at $8000", pages),
-         "; (Z80 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu z80 --sleigh`)", ""},
-        "sleigh-z80", std::string(file_name));
-    for (const auto& [a, name] : port_names) out.append(z80_source::equ(name, a, 2));
-    for (const auto& [a, name] : constants) out.append(z80_source::equ(name, a, 4));
+         },
+        "wla-z80", std::string(file_name));
+    out.extend(wla().block("prologue", {{"pages", std::to_string(pages)}}));
+    for (const auto& [a, name] : port_names) out.append(z80_source::equ(name, a, 2, wla()));
+    for (const auto& [a, name] : constants) out.append(z80_source::equ(name, a, 4, wla()));
     if (!port_names.empty() || !constants.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
     for (const auto& [a, name] : constants) names_for_text[a] = name;
-    std::set<std::uint32_t> fixed;
-    for (const auto& entry : constants) fixed.insert(entry.first);
-    iw::Names early;   // (labels the assembler's first pass meets before their lines: defined once here, see z80_source::forward_reference)
-    for (const auto& entry : code) {
-        if (const auto a = z80_source::forward_reference(entry.second, names_for_text, fixed)) early[*a] = names_for_text.at(*a);
-    }
-    if (!early.empty()) {
-        out.append("; read ahead of their lines (behind a register the assembler's first pass takes them for unknown names)");
-        for (const auto& [a, name] : early) out.append(z80_source::equ(name, a, 4));
-        out.append("");
-    }
 
     const iw::Names no_labels;
     for (std::size_t page = 0; page < pages; ++page) {
@@ -187,15 +183,14 @@ iw::Written write(const formats::sms::Rom& rom, std::string_view file_name, cons
         const std::uint32_t end = first + static_cast<std::uint32_t>(rom.page(page).size());
         const bool mapped = page <= 2 && first < limit;   // (the pages seen at power-on: where flow was followed)
         out.part(std::format("bank{}", page), "bank", std::nullopt, rom.page(page).size());
-        out.append(std::format("; page {} in slot {}", page, slot));
-        out.append(std::format("        .org 0x{:04x}", base));
-        SmsListing listing(rom, base, first, end, mapped, code, names_for_text, port_names);
+        out.extend(wla().block("bank", {{"bank", std::to_string(page)}, {"slot", std::to_string(slot)}}));
+        SmsListing listing(rom, base, first, end, mapped, code, names_for_text, port_names, wla());
         iw::emit<z80::Insn>(out, first, end, mapped ? labels : no_labels, functions, listing);
         out.append("");
     }
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    iw::assembled(r, [&] { return z80_source::assemble(source, folder); }, rom.data, folder / (stem + ".built" + file.extension().string()));
+    iw::assembled(r, [&] { return z80_source::assemble(source, folder, wla()); }, rom.data, folder / (stem + ".built" + file.extension().string()));
     return r;
 }
 

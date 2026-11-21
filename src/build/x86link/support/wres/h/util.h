@@ -39,27 +39,27 @@
 #include "resnamor.h"
 
 
-#define AllocWResIDName(o,n)    WRESALLOC((o) + offsetof( WResIDName, Name ) + (n))
-#define AllocWResIDNum(o)       WRESALLOC((o) + sizeof( ((WResID *)0)->ID.Num ))
-#define AllocWResHelpIDNum(o)   WRESALLOC((o) + sizeof( ((WResHelpID *)0)->ID.Num ))
+#define AllocWResIDName(link,o,n)   WRESALLOC(link, (o) + offsetof( WResIDName, Name ) + (n))
+#define AllocWResIDNum(link,o)      WRESALLOC(link, (o) + sizeof( ((WResID *)0)->ID.Num ))
+#define AllocWResHelpIDNum(link,o)  WRESALLOC(link, (o) + sizeof( ((WResHelpID *)0)->ID.Num ))
 
 extern WResIDName           *WResStringIDNameFromStr( const char *str );
 
-extern WResID               *WResIDFromStr( const char *str );
-extern WResID               *WResIDFromNum( long num );
+extern WResID               *WResIDFromStr(Link& link,  const char *str );
+extern WResID               *WResIDFromNum(Link& link,  long num );
 extern void                 WResInitIDFromNum( long num, WResID *id );
-extern char                 *WResIDToStr( const WResID *id );
+extern char                 *WResIDToStr( Link& link, const WResID *id );
 extern long                 WResIDToNum( const WResID *id );
 extern void                 WResIDFree( WResID *id );
 extern int                  WResIDNameCmp( const WResIDName *name_id1, const WResIDName *name_id2 );
 extern int                  WResIDCmp( const WResID *id1, const WResID *id2 );
 extern ResNameOrOrdinal     *WResIDToNameOrOrdinal( WResID *id );
-extern WResID               *WResIDFromNameOrOrdinal( ResNameOrOrdinal *name );
+extern WResID               *WResIDFromNameOrOrdinal(Link& link,  ResNameOrOrdinal *name );
 
 extern WResHelpID           *WResHelpIDFromStr( const char *str );
 extern WResHelpID           *WResHelpIDFromNum( long num );
 extern void                 WResInitHelpIDFromNum( long num, WResHelpID *help_id );
-extern char                 *WResHelpIDToStr( const WResHelpID *help_id );
+extern char                 *WResHelpIDToStr( Link& link, const WResHelpID *help_id );
 extern long                 WResHelpIDToNum( const WResHelpID *help_id );
 extern void                 WResHelpIDFree( WResHelpID *help_id );
 extern int                  WResHelpIDCmp( const WResHelpID *help_id1, const WResHelpID *help_id2 );

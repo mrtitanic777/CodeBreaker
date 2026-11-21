@@ -2,7 +2,6 @@
 
 #include <format>
 
-#include "build/dos_tools.hpp"
 #include "build/period16.hpp"
 #include "exact/emu/native_dos_executive.hpp"
 #include "core/fs.hpp"
@@ -24,7 +23,6 @@ stdfs::path p16_resolve(const base::Corpus& corpus, const std::string& named) {
 
 Tools tools_from(const config::Config& config, const base::Corpus& corpus) {
     Tools tools;
-    tools.dosbox_x = config.path("dosbox_x").value_or(stdfs::path());
     tools.msc6 = config.path("msc6").value_or(stdfs::path());
     tools.msvc152 = config.path("msvc152").value_or(stdfs::path());
     tools.win31_kit = find_kit(config.checkout_root());
@@ -48,7 +46,7 @@ cli::Command command(const Environment& environment) {
         std::shared_ptr<base::Corpus> corpus = environment.corpus;
         if (!corpus) corpus = std::make_shared<base::Corpus>(environment.config.products());
         const Tools tools = tools_from(environment.config, *corpus);
-        // (CodeBreaker's own DOS executive runs the period tools; DOSBox-X only for a run it cannot complete)
+        // (CodeBreaker's own DOS executive runs the period tools)
         const exact::emu::NativeDosExecutive dos(environment.config);
         const std::unique_ptr<DosRunner> dos_runner = exact::emu::dos_runner(environment.config, dos);
         const DosRunner& runner = *dos_runner;

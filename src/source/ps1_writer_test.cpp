@@ -4,11 +4,10 @@
 
 #include "source/ps1_writer.hpp"
 
-#include "build/mips_asm.hpp"
+#include "source/dialect.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
-#include "source/isa.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::ps1_writer {
@@ -74,7 +73,7 @@ Bytes executable(std::string_view program = kProgram) {
 )";
     const std::string source = header + std::string(program) + "text_end:\n";
     // t_size is the program's own length, so the header is assembled with the program after it
-    return build::mips_asm::Assembler(isa::mips_encoder()).build(source);
+    return risc_source::assemble("mips", dialect::find("gas-mips").parse(source), ".");
 }
 
 std::string golden(std::string_view name) {
@@ -110,21 +109,21 @@ CB_TEST("source.ps1_writer.what_the_code_points_at_is_written_by_name", [] {
     CB_CHECK(r.functions.size() == 3);
     // the string and its address pair
     CB_CHECK(source.find(".asciz \"HELLO, PLAYSTATION\"") != std::string::npos);
-    CB_CHECK(source.find("lui a0, %hi(D_") != std::string::npos);
-    CB_CHECK(source.find("addiu a0, a0, %lo(D_") != std::string::npos);
+    CB_CHECK(source.find("lui $a0, %hi(D_") != std::string::npos);
+    CB_CHECK(source.find("addiu $a0, $a0, %lo(D_") != std::string::npos);
     // the hardware register, by name
     CB_CHECK(source.find(".equ GPU_GP1, 0x1F801814") != std::string::npos);
-    CB_CHECK(source.find("lw t1, %lo(GPU_GP1)(t0)") != std::string::npos);
+    CB_CHECK(source.find("lw $t1, %lo(GPU_GP1)($t0)") != std::string::npos);
     CB_CHECK(source.find(".equ GPU_GP0, 0x1F801810") != std::string::npos);
     // a variable past the program
     CB_CHECK(source.find(".equ var_80100000, 0x80100000") != std::string::npos);
-    CB_CHECK(source.find("lw v1, %lo(var_80100000)(v0)") != std::string::npos);
+    CB_CHECK(source.find("lw $v1, %lo(var_80100000)($v0)") != std::string::npos);
     // the table of functions, and what is no instruction
     CB_CHECK(source.find(".word entry, sub_") != std::string::npos);
     CB_CHECK(source.find(", 0xFFFFFFFF") != std::string::npos);
     CB_CHECK(source.find(".space 32") != std::string::npos);
     // the header's fields
-    CB_CHECK(source.find(".word entry    ; pc0: where it starts") != std::string::npos);
+    CB_CHECK(source.find(".word entry    # pc0: where it starts") != std::string::npos);
     CB_CHECK(source.find(".asciz \"Sony Computer Entertainment Inc. for North America area\"\n        .space 1916") != std::string::npos);
 });
 
@@ -134,8 +133,8 @@ CB_TEST("source.ps1_writer.an_edited_source_is_not_the_original", [] {
     const Bytes image = executable();
     const image_writer::Written r = write(formats::psx::parse(image), "demo.exe", dir.path());
     std::string source = fs::read_text(r.source);
-    source = text::replace_first(source, "addiu sp, sp, -0x18", "addiu sp, sp, -0x20");
-    const Bytes other = risc_source::assemble("mips", source, dir.path());
+    source = text::replace_first(source, "addiu $sp, $sp, 24", "addiu $sp, $sp, 32");
+    const Bytes other = risc_source::assemble("mips", dialect::find("gas-mips").parse(source), dir.path());
     CB_CHECK_EQ(other.size(), image.size());
     CB_CHECK(other != image);
 });

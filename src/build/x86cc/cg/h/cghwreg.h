@@ -324,7 +324,7 @@ typedef struct hw_reg_set {
                                }
 
 #ifdef HW_DEFINE_VARS
-    #define HW_DEFINE_GLOBAL_CONST( x ) const hw_reg_set x = \
+    #define HW_DEFINE_GLOBAL_CONST( x ) extern const hw_reg_set x = \
                                         {\
                                         HW_0(          __0(x) )\
                                         HW_1( HW_COMMA __1(x) )\

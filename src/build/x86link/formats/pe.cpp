@@ -35,7 +35,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/formats/os2.h"
 #include "exepe.h"
 #include "exedos.h"
@@ -775,9 +775,8 @@ static unsigned WriteDescription(Link& link,  pe_object *object, unsigned file_a
     return( desc_len );
 }
 
-bool RcPadFile( FILE *fp, size_t pad )
+bool RcPadFile(Link& link,  FILE *fp, size_t pad )
 {
-    Link& link = wlink();
     DbgAssert( FP2POSIX( fp ) == link.Root->outfile->handle );
 
     /* unused parameters */ static_cast<void>( fp );
@@ -791,21 +790,20 @@ void CheckDebugOffset( ExeFileInfo *info )
     /* unused parameters */ static_cast<void>( info );
 }
 
-RcStatus CopyExeData( FILE *in_fp, FILE *out_fp, unsigned length )
+RcStatus CopyExeData(Link& link,  FILE *in_fp, FILE *out_fp, unsigned length )
 /*****************************************************************
  * CopyExeData function is used by resource compiler to write data to executable
  * there are two implementation one in resource compiler and second in linker
  */
 {
-    Link& link = wlink();
     /* unused parameters */ static_cast<void>( out_fp );
 
     for( ; length > MAX_HEADROOM; length -= MAX_HEADROOM ) {
-        QRead( FP2POSIX( in_fp ), link.TokBuff, MAX_HEADROOM, "resource file" );
+        QRead(link,  FP2POSIX( in_fp ), link.TokBuff, MAX_HEADROOM, "resource file" );
         WriteLoad(link,  link.TokBuff, MAX_HEADROOM );
     }
     if( length > 0 ) {
-        QRead( FP2POSIX( in_fp ), link.TokBuff, length, "resource file" );
+        QRead(link,  FP2POSIX( in_fp ), link.TokBuff, length, "resource file" );
         WriteLoad(link,  link.TokBuff, length );
     }
     return( RS_OK );
@@ -818,7 +816,7 @@ void DoAddResource(Link& link,  char *name )
     unsigned        len;
 
     len = strlen( name );
-    info = static_cast<list_of_names *>( _PermAlloc( sizeof( list_of_names ) + len ) );
+    info = static_cast<list_of_names *>( PermAlloc( link, sizeof( list_of_names ) + len ) );
     memcpy( info->name, name, len + 1 );
     info->next = link.FmtData.u.pe.resources;
     link.FmtData.u.pe.resources = info;
@@ -838,14 +836,14 @@ static unsigned WritePEResources(Link& link,  pe_exe_header *pehdr, pe_object *o
         DoAddResource(link,  link.FmtData.resource );
         link.FmtData.resource = nullptr;
     }
-    status = OpenResFiles( reinterpret_cast<ExtraRes *>( link.FmtData.u.pe.resources ), &rinfo, &allopen, EXE_TYPE_PE, link.Root->outfile->fname );
+    status = OpenResFiles(link,  reinterpret_cast<ExtraRes *>( link.FmtData.u.pe.resources ), &rinfo, &allopen, EXE_TYPE_PE, link.Root->outfile->fname );
     if( !status )               // we had a problem opening
         return( 0 );
     einfo.fp = POSIX2FP( link.Root->outfile->handle );
     einfo.name = link.Root->outfile->fname;
     einfo.u.PEInfo.WinHead = pehdr;
     einfo.Type = EXE_TYPE_PE;
-    status = BuildPEResourceObject( &einfo, rinfo, object, object->rva, NullAlign(link,  file_align ), !allopen );
+    status = BuildPEResourceObject(link,  &einfo, rinfo, object, object->rva, NullAlign(link,  file_align ), !allopen );
     CloseResFiles( rinfo );
     return( object->physical_size );
 }
@@ -1154,7 +1152,7 @@ void FiniPELoadFile(Link& link)
          *  in some drivers! Who are we to argue? Never mind it's against the PE spec.
          */
         if( link.FmtData.u.os2fam.segment_shift < MINIMUM_SEG_SHIFT ) {
-            LnkMsg( WRN+MSG_VALUE_INCORRECT, "s", "ALIGNMENT" );
+            LnkMsg(link,  WRN+MSG_VALUE_INCORRECT, "s", "ALIGNMENT" );
             link.FmtData.u.os2fam.segment_shift = DEFAULT_SEG_SHIFT;
         }
 
@@ -1324,7 +1322,7 @@ void FiniPELoadFile(Link& link)
          *  in some drivers! Who are we to argue? Never mind it's against the PE spec.
          */
         if( link.FmtData.u.os2fam.segment_shift < MINIMUM_SEG_SHIFT ) {
-            LnkMsg( WRN+MSG_VALUE_INCORRECT, "s", "ALIGNMENT" );
+            LnkMsg(link,  WRN+MSG_VALUE_INCORRECT, "s", "ALIGNMENT" );
             link.FmtData.u.os2fam.segment_shift = DEFAULT_SEG_SHIFT;
         }
 
@@ -1473,7 +1471,7 @@ void FiniPELoadFile(Link& link)
         {
             for( ; currpos < totalsize; currpos += buffsize ) {
                 std::fill( buffer.begin(), buffer.end(), 0 );
-                buffsize = QRead( outfile->handle, buffer.data(), CRC_BUFF_SIZE, outfile->fname );
+                buffsize = QRead(link,  outfile->handle, buffer.data(), CRC_BUFF_SIZE, outfile->fname );
                 DbgAssert( buffsize == IOERROR );
                 DbgAssert( (buffsize % 2) != 1 ); /* check for odd length */
 
@@ -1515,11 +1513,11 @@ static unsigned getStubSize(Link& link)
       && stricmp( link.FmtData.u.os2fam.stub_file_name, link.Root->outfile->fname ) != 0 ) {
         the_file = FindPath(link,  link.FmtData.u.os2fam.stub_file_name, fullname.data() );
         if( the_file == NIL_FHANDLE ) {
-            LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.u.os2fam.stub_file_name );
+            LnkMsg(link,  WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.u.os2fam.stub_file_name );
         } else {
             MemFree( link.FmtData.u.os2fam.stub_file_name );
             link.FmtData.u.os2fam.stub_file_name = MemStrdupSafe(link,  fullname.data() );
-            QRead( the_file, &dosheader, sizeof( dos_exe_header ), link.FmtData.u.os2fam.stub_file_name );
+            QRead(link,  the_file, &dosheader, sizeof( dos_exe_header ), link.FmtData.u.os2fam.stub_file_name );
             if( dosheader.signature == EXESIGN_DOS ) {
                 code_start = dosheader.hdr_size * 16U;
                 read_len = dosheader.file_size * 512U - (-dosheader.mod_size & 0x1ff) - code_start;
@@ -1528,7 +1526,7 @@ static unsigned getStubSize(Link& link)
                 dosheader.hdr_size = 4 + reloc_size / 16;
                 stub_len = read_len + dosheader.hdr_size * 16U;
             }
-            QClose( the_file, link.FmtData.u.os2fam.stub_file_name );
+            QClose(link,  the_file, link.FmtData.u.os2fam.stub_file_name );
         }
     }
     return( stub_len );
@@ -1559,10 +1557,10 @@ static void ReadExports(Link& link,  unsigned namestart, unsigned nameend,
     unsigned_16     *ordptr;
     char            *nameptr;
 
-    QSeek( file, ordstart, fname );
-    QRead( file, ordbuf.data(), numords * sizeof( unsigned_16 ), fname );
-    QSeek( file, namestart, fname );
-    QRead( file, link.TokBuff, nameend - namestart, fname );
+    QSeek(link,  file, ordstart, fname );
+    QRead(link,  file, ordbuf.data(), numords * sizeof( unsigned_16 ), fname );
+    QSeek(link,  file, namestart, fname );
+    QRead(link,  file, link.TokBuff, nameend - namestart, fname );
     nameptr = link.TokBuff;
     ordptr = ordbuf.data();
     for( ; numords > 0; --numords ) {
@@ -1589,13 +1587,13 @@ void ReadPEExportTable(Link& link,  f_handle file, pe_dir_entry *export_dir )
     unsigned            namestart;
 
     fname = link.FmtData.u.os2fam.old_lib_name;
-    QRead( file, &table, sizeof( pe_export_directory ), fname );
+    QRead(link,  file, &table, sizeof( pe_export_directory ), fname );
     nameptrsize = table.num_name_ptrs * sizeof( unsigned_32 );
     if( nameptrsize == 0 )                      /* NOTE: <-- premature return */
         return;
-    nameptrs = static_cast<unsigned *>( MemAllocSafe( nameptrsize + sizeof( unsigned_32 ) ) );
-    QSeek( file, table.name_ptr_table_rva - export_dir->rva, fname );
-    QRead( file, nameptrs, nameptrsize, fname );
+    nameptrs = static_cast<unsigned *>( MemAllocSafe(link,  nameptrsize + sizeof( unsigned_32 ) ) );
+    QSeek(link,  file, table.name_ptr_table_rva - export_dir->rva, fname );
+    QRead(link,  file, nameptrs, nameptrsize, fname );
     numentries = 1;
     entrystart = table.ordinal_table_rva - export_dir->rva;
     curr = nameptrs;
@@ -1638,7 +1636,7 @@ static void CreateIDataSection(Link& link)
         sdata->combine = COMBINE_ADD;
         sdata->isabs = false;
         AddSegment(link,  sdata, class_ );
-        sdata->u1.vm_ptr = AllocStg( sdata->length );
+        sdata->u1.vm_ptr = AllocStg(link,  sdata->length );
         st.IData.sdata = sdata;
         AddToGroup(link,  link.IDataGroup, sdata->u.leader );
     }
@@ -1663,7 +1661,7 @@ static void RegisterImport(Link& link,  dll_sym_info *dll )
     }
     if( mod == nullptr ) {
         ++st.NumMods;
-        mod = static_cast<module_import *>( _PermAlloc( sizeof( module_import ) ) );
+        mod = static_cast<module_import *>( PermAlloc( link, sizeof( module_import ) ) );
         mod->next = st.PEImpList;
         st.PEImpList = mod;
         mod->mod = dll->m.modnum;
@@ -1676,7 +1674,7 @@ static void RegisterImport(Link& link,  dll_sym_info *dll )
         os2_imp = nullptr;
     }
     mod->num_entries++;
-    imp = static_cast<import_name *>( _PermAlloc( sizeof( import_name ) ) );
+    imp = static_cast<import_name *>( PermAlloc( link, sizeof( import_name ) ) );
     imp->dll = dll;
     imp->imp = os2_imp;
     /* keep the list sorted by name for calculating hint values */
@@ -1734,7 +1732,7 @@ static void CreateTransferSegment(Link& link,  class_entry *class_ )
         sdata->combine = COMBINE_ADD;
         sdata->isabs = false;
         AddSegment(link,  sdata, class_ );
-        sdata->u1.vm_ptr = AllocStg( sdata->length );
+        sdata->u1.vm_ptr = AllocStg(link,  sdata->length );
         st.XFerSegData = sdata;
     }
 }
@@ -1818,13 +1816,13 @@ void AllocPETransferTable(Link& link)
 
 static constexpr std::size_t PREFIX_LEN = sizeof( ImportSymPrefix ) - 1;
 
-void AddPEImportLocalSym( symbol *locsym, symbol *iatsym )
+void AddPEImportLocalSym(Link& link,  symbol *locsym, symbol *iatsym )
 /********************************************************/
 {
     PEState         &st = state();
     local_import    *imp;
 
-    imp = static_cast<local_import *>( MemAllocSafe( sizeof( local_import ) ) );
+    imp = static_cast<local_import *>( MemAllocSafe(link,  sizeof( local_import ) ) );
     AppendList( reinterpret_cast<void **>( &st.PELocalImpList ), imp );
     imp->iatsym = iatsym;
     imp->locsym = locsym;
@@ -1845,12 +1843,12 @@ bool ImportPELocalSym(Link& link,  symbol *iatsym )
         return( false );
     if( IS_SYM_IMPORTED( sym ) )
         return( false );
-    LnkMsg( WRN+MSG_IMPORT_LOCAL, "s", sym->name.u.ptr );
+    LnkMsg(link,  WRN+MSG_IMPORT_LOCAL, "s", sym->name.u.ptr );
     iatsym->info |= SYM_DEFINED | SYM_1_DCE_REF;
     if( link.LinkFlags & LF_STRIP_CODE ) {
         DefStripImpSym( iatsym );
     }
-    AddPEImportLocalSym( sym, iatsym );
+    AddPEImportLocalSym(link,  sym, iatsym );
     return( true );
 }
 

@@ -11,6 +11,7 @@
 
 #include "core/fs.hpp"
 #include "decompile/m68k.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::cdi_writer {
@@ -75,7 +76,7 @@ public:
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return os9_call(insn) ? 4 : insn.length; }
     std::string text(const m68k::Insn& insn) const override {
-        std::string line = risc_source::m68k_code(insn, names_);
+        std::string line = dialect::find("vasm-m68k").fallback(risc_source::m68k_code(insn, names_));
         if (!os9_call(insn)) return line;
         const std::uint32_t code = be16(program_.file, program_.offset(insn.pc).value() + 2);
         const auto named = system_calls().find(code);
@@ -214,11 +215,11 @@ iw::Written write(const cd::Program& program, std::string_view file_name, const 
     std::set<std::string> used_calls;
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, base_name),
                                  std::format("; Philips CD-i {}: {} module(s), {} run by the model", program.disc ? "disc" : "module file", program.modules.size(), program.placed().size()), ""},
-                                "sleigh-m68k", std::string(file_name));
+                                "asm68k", std::string(file_name));
     std::vector<cd::Module> order = program.placed();
     std::sort(order.begin(), order.end(), [](const cd::Module& a, const cd::Module& b) { return a.address < b.address; });
     // the segments are written into a second assembly first, so the equates for the calls and chips used can come before them
-    translate::l2::Assembly body({}, "sleigh-m68k", std::string(file_name));
+    translate::l2::Assembly body({}, "asm68k", std::string(file_name));
     for (const cd::Module& m : order) {
         body.part(m.name.empty() ? "module" : m.name, "segment", std::nullopt, m.size);
         body.append(std::format("        .org 0x{:06x}", m.address));
@@ -233,9 +234,9 @@ iw::Written write(const cd::Program& program, std::string_view file_name, const 
         }
     }
     out.append("");
-    const std::string source = iw::text(out) + "\n" + iw::text(body) + "\n";
+    const std::string source = dialect::find("vasm-m68k").print(iw::text(out) + "\n" + iw::text(body) + "\n");   // (said in vasm's Motorola syntax)
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), program.file.size());
-    iw::assembled(r, [&] { return rebuilt_file(program, risc_source::assemble("m68k", source, folder)); }, program.file, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
+    iw::assembled(r, [&] { return rebuilt_file(program, risc_source::assemble("m68k", dialect::find("vasm-m68k").parse(source), folder)); }, program.file, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;
 }
 

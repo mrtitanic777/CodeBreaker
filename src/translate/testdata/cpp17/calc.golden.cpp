@@ -114,7 +114,7 @@ void Sub::ctor_(int32_t var1) {
 
 int32_t Sub::build(int32_t var0) {
 	auto var1 = jrt::make<Sub>(var0);
-	return var1->extra * 3 + var1->size;
+	return jrt::nn(var1)->extra * 3 + jrt::nn(var1)->size;
 }
 
 void Sub::finit_() {
@@ -151,7 +151,7 @@ void CalcMain::main(ref<Array<ref<String>>> args) {
 		int32_t j2xo13{};
 		jrt::nn(jrt::System::out_())->println((j2xo8 = Calc::mix((int64_t)x * 31LL, x), j2xo9 = Calc::wrap((float)x / 3.0f), j2xo10 = Calc::sums(x), j2xo11 = Calc::tabled(x), j2xo12 = Calc::made(x), j2xo13 = Sub::build(x), jrt::concat(jrt::lit(u"  mix="), j2xo8, jrt::lit(u" wrap="), j2xo9, jrt::lit(u" sums="), j2xo10, jrt::lit(u" tabled="), j2xo11, jrt::lit(u" made="), j2xo12, jrt::lit(u" build="), j2xo13)));
 	}
-	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"total="), (Calc::clinit_(), Calc::total), jrt::lit(u" name="), c->name));
+	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"total="), (Calc::clinit_(), Calc::total), jrt::lit(u" name="), jrt::nn(c)->name));
 }
 
 void Calc::trace_(jrt::gc::Tracer& t) {
@@ -202,7 +202,7 @@ ref<String> Calc::label(int32_t var1) {
 int32_t Calc::guarded(int32_t var1) {
 	ref<Calc> var2 = (var1 > 0 ? nullptr : jrt::self(this));
 	try {
-		return jrt::nn(var2->cells)->length + var1;
+		return jrt::nn(jrt::nn(var2)->cells)->length + var1;
 	} catch (jrt::JavaThrow& j2x_t1) {
 		if (auto var3 = jrt::as<Exception>(j2x_t1.t)) {
 			return -7;
@@ -282,7 +282,7 @@ int32_t Calc::tabled(int32_t var0) {
 int32_t Calc::made(int32_t var0) {
 	clinit_();
 	auto var1 = jrt::make<Base>(var0, 3);
-	return var1->size + var1->scale;
+	return jrt::nn(var1)->size + jrt::nn(var1)->scale;
 }
 
 int32_t Calc::count(int32_t var1) {

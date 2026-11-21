@@ -104,7 +104,7 @@ typedef byte                cond_no;
 
 typedef struct oc_header {
     obj_length              objlen;
-    oc_class                class;
+    oc_class                class_;
     oc_length               reclen;
 } oc_header;
 
@@ -129,7 +129,7 @@ typedef struct oc_debug {
 
 typedef struct oc_select {
     oc_header               hdr;
-    bool                    starts;
+    bool_                    starts;
 } oc_select;
 
 typedef struct oc_jcond {
@@ -157,7 +157,7 @@ typedef struct oc_idata {
 typedef struct oc_linenum {
     oc_header               hdr;
     uint_32                 line;
-    bool                    label_line;
+    bool_                    label_line;
 } oc_linenum;
 
 typedef struct oc_riscins {

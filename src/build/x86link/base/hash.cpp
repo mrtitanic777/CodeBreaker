@@ -41,13 +41,13 @@
 static constexpr unsigned long HASH_MULT = 101;
 
 /* ----------------------------------------------------------------------- */
-pHTable CreateHTable( int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
+pHTable CreateHTable( Link& link, int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
     pAllocFunc allocFunc, pFreeFunc freeFunc )
 {
     pHTable table;
 
-    table = static_cast<pHTable>( allocFunc( sizeof( *table ) ) );
-    table->tbl = static_cast<pHTElem *>( allocFunc( sizeof( table->tbl[0] ) * size ) );
+    table = static_cast<pHTable>( allocFunc( link, sizeof( *table ) ) );
+    table->tbl = static_cast<pHTElem *>( allocFunc( link, sizeof( table->tbl[0] ) * size ) );
     std::memset( table->tbl, 0, sizeof( table->tbl[0] ) * size );
 
     table->size = size;
@@ -55,6 +55,7 @@ pHTable CreateHTable( int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
     table->compareFunc = compareFunc;
     table->allocFunc = allocFunc;
     table->freeFunc = freeFunc;
+    table->link = &link;
     table->stats.numElems = 0;
     table->stats.longestChainLen = 0;
     table->allowDoubles = 0;
@@ -62,10 +63,10 @@ pHTable CreateHTable( int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
     return( table );
 }
 
-pHTable CreateHTableDouble( int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
+pHTable CreateHTableDouble( Link& link, int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
          pAllocFunc allocFunc, pFreeFunc freeFunc )
 {
-    pHTable table = CreateHTable( size, hashFunc, compareFunc, allocFunc, freeFunc );
+    pHTable table = CreateHTable( link, size, hashFunc, compareFunc, allocFunc, freeFunc );
     if( table != nullptr ) {
         table->allowDoubles = 1;
     }
@@ -96,7 +97,7 @@ void *AddHTableElem( pHTable table, void *elem )
         }
     }
 
-    tblElem = static_cast<pHTElem>( table->allocFunc( sizeof( *tblElem ) ) );
+    tblElem = static_cast<pHTElem>( table->allocFunc( *table->link, sizeof( *tblElem ) ) );
     tblElem->userData = elem;
     tblElem->next = table->tbl[key];
     table->tbl[key] = tblElem;

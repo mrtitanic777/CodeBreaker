@@ -1495,11 +1495,11 @@ order is trusted; the order below is what is known today.
 | 4 | **Formats and loaders** | formats/ (PE, NE, LE, MZ, OMF, XEX ...), formats/pe_functions.py carving | reading and carving whole images in Python, per process, every run of a tool | a loader library (one per format, the decompiler's loaders reused) giving the same facts |
 | 5 | **The L2 passes and the C back end** | the L2 tree passes and the C writer in Python, after the native decompiler | tree walks over every function, every build | into src/decompile/engine: L2 built and rewritten there, C written there; Python reads the result |
 | 6 | **The engine and the store** (gated: "Step 6" above) | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | src/engine: SQLite's C API directly, the engine's scheduler in C++; left: the steps themselves |
-| 7 | **Build orchestration** | build/ (OpenWatcom, MASM, period compilers under DOSBox-X) | process starts and file handling around the compilers | a C++ driver: one process starts the compilers and gathers their output; the in-process DOS executive is done ("Step 7, first piece" above) |
+| 7 | **Build orchestration** | build/ (OpenWatcom, MASM, period compilers on the built-in DOS executive) | process starts and file handling around the compilers | a C++ driver: one process starts the compilers and gathers their output; the in-process DOS executive is done ("Step 7, first piece" above) |
 | 8 | **The rest** | everything else that computes | -- | case by case; the glue (CLI, terminal UI, MCP) stays Python |
 
-Not moved: the period compilers, OpenWatcom, MASM and DOSBox-X (other people's programs, run as
-they are), and Unicorn and Capstone themselves (already native).
+Not moved: the period compilers, OpenWatcom and MASM (other people's programs, run as
+they are; the DOS ones on the built-in DOS executive), and Unicorn and Capstone themselves (already native).
 
 ## The test kit -- `native/testkit` (2026-11-05)
 

@@ -31,4 +31,4 @@
 
 extern void         MergeIndex( void );
 extern instruction  *NeedIndex( instruction * );
-extern bool         IndexOkay( instruction *, name * );
+extern bool_         IndexOkay( instruction *, name * );

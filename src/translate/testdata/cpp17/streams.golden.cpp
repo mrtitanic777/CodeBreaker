@@ -224,7 +224,7 @@ bool Streams_Person::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Streams_Person>(o);
-	return jrt::Objects::equals(this->name_, that->name_) && this->age_ == that->age_;
+	return jrt::Objects::equals(this->name_, jrt::nn(that)->name_) && this->age_ == jrt::nn(that)->age_;
 }
 
 

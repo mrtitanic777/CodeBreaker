@@ -485,8 +485,13 @@ typedef long long           int_64;
 #endif
 
 #if defined( _WIN64 )
+#if defined( _MSC_VER )
 typedef __int64             pointer_int;
 typedef unsigned __int64    pointer_uint;
+#else
+typedef long long           pointer_int;
+typedef unsigned long long  pointer_uint;
+#endif
 #else
 typedef long                pointer_int;
 typedef unsigned long       pointer_uint;

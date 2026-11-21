@@ -120,6 +120,12 @@ CB_TEST("app.gate_changed.a_record_is_the_exact_difference_of_two_trees_by_conte
     // saved again with the same content: unchanged
     fs::write_text(r / "src" / "xna" / "a.cpp", "int a;\n");
     CB_CHECK(changed_paths(round, scan_tree(r, &round, extra)).empty());
+    // what using the program writes under config/ on this machine is not a change
+    fs::make_dirs(r / "config" / "xna" / "shadercheck" / "obj");
+    fs::write_text(r / "config" / "app.json", "{}\n");
+    fs::write_text(r / "config" / "app.recent.json", "[]\n");
+    fs::write_text(r / "config" / "xna" / "shadercheck" / "obj" / "x.dll", "x");
+    CB_CHECK(changed_paths(round, scan_tree(r, &round, extra)).empty());
     // one file edited, one added, one case line edited
     fs::write_text(r / "src" / "app" / "window_win.cpp", "int w2;\n");
     fs::write_text(r / "config" / "build" / "new.txt", "n\n");

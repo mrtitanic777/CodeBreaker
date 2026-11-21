@@ -39,7 +39,7 @@
 #define STRUCT_BYTE_SEQ( x ) \
 { \
     byte_seq_len    length; \
-    bool            relocs; \
+    bool_            relocs; \
     byte            data[x]; \
 }
 

@@ -198,3 +198,8 @@ from the fork (`toolchains/openwatcom`, `bld/wl`, branch `codebreaker`), with wl
    signature of its own: the IDE entry points (the host), the callbacks OpenWatcom's libraries make (ORL's reader and
    scans, wres's file routines, the rc merger's messages and copies, the memory tracker's allocations, LnkMsg), and
    qsort's comparison (its order is wlink's). Both corpora as before, at the same speed.
+   **5d (2026-11-21): the boundary.** `wlink()` and the pointer behind it are gone: nothing holds the Link globally.
+   The host's DLL handle is the Link; ORL's note callbacks get it as their cookie, its reader's io handle holds it and its
+   allocator is a `FunctionRef` holding it; wres's file and allocation routines and the rc merger take it; `LnkMsg` and the
+   allocators take it first (194 more functions); the symbol sort picks its comparison by the link's flag at the call.
+   Both corpora as before, at the same speed.

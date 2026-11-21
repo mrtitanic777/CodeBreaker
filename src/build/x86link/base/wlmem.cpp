@@ -105,10 +105,10 @@ void LnkMemFini( void )
 #endif
 }
 
-static void *check_nomem( void *ptr )
+static void *check_nomem(Link& link,  void *ptr )
 {
     if( ptr == nullptr ) {
-        LnkMsg( FTL + MSG_NO_DYN_MEM, nullptr );       // see note 1 below
+        LnkMsg(link,  FTL + MSG_NO_DYN_MEM, nullptr );       // see note 1 below
     }
     return( ptr );
 }
@@ -136,10 +136,9 @@ static void *doAlloc(Link& link,  size_t size )
 }
 
 TRMEMAPI( MemAlloc )
-void *MemAlloc( size_t size )
+void *MemAlloc(Link& link,  size_t size )
 /***************************/
 {
-    Link& link = wlink();
     void    *ptr;
 
 #ifdef TRMEM
@@ -153,16 +152,15 @@ void *MemAlloc( size_t size )
 }
 
 TRMEMAPI( MemAllocSafe )
-void *MemAllocSafe( size_t size )
+void *MemAllocSafe(Link& link,  size_t size )
 /*******************************/
 {
-    Link& link = wlink();
     void            *ptr;
 
 #ifdef TRMEM
     ptr = check_nomem( doAlloc( size, _TRMEM_WHO( 1 ) ) );
 #else
-    ptr = check_nomem( doAlloc(link,  size ) );
+    ptr = check_nomem(link,  doAlloc(link,  size ) );
 #endif
     return( memset( ptr, 0, size ) );
 }
@@ -197,7 +195,7 @@ char *MemStrdupSafe(Link& link,  const char *str )
 #ifdef TRMEM
     return( static_cast<char *>( check_nomem( doStrdup( str, _TRMEM_WHO( 3 ) ) ) ) );
 #else
-    return( static_cast<char *>( check_nomem( doStrdup(link,  str ) ) ) );
+    return( static_cast<char *>( check_nomem(link,  doStrdup(link,  str ) ) ) );
 #endif
 }
 
@@ -230,10 +228,9 @@ static void *doRealloc(Link& link,  void *src, size_t size )
 }
 
 TRMEMAPI( MemRealloc )
-void *MemRealloc( void *src, size_t size )
+void *MemRealloc(Link& link,  void *src, size_t size )
 /****************************************/
 {
-    Link& link = wlink();
 #ifdef TRMEM
     return( doRealloc( src, size, _TRMEM_WHO( 4 ) ) );
 #else
@@ -242,14 +239,13 @@ void *MemRealloc( void *src, size_t size )
 }
 
 TRMEMAPI( MemReallocSafe )
-void *MemReallocSafe( void *src, size_t size )
+void *MemReallocSafe(Link& link,  void *src, size_t size )
 /********************************************/
 {
-    Link& link = wlink();
 #ifdef TRMEM
     return( check_nomem( doRealloc( src, size, _TRMEM_WHO( 4 ) ) ) );
 #else
-    return( check_nomem( doRealloc(link,  src, size ) ) );
+    return( check_nomem(link,  doRealloc(link,  src, size ) ) );
 #endif
 }
 
@@ -273,7 +269,7 @@ char *MemToStringSafe(Link& link,  const void *mem, size_t size )
 #ifdef TRMEM
     ptr = static_cast<char *>( check_nomem( doAlloc( size + 1, _TRMEM_WHO( 1 ) ) ) );
 #else
-    ptr = static_cast<char *>( check_nomem( doAlloc(link,  size + 1 ) ) );
+    ptr = static_cast<char *>( check_nomem(link,  doAlloc(link,  size + 1 ) ) );
 #endif
     memcpy( ptr, mem, size );
     ptr[size] = '\0';

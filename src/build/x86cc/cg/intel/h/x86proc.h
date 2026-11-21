@@ -32,9 +32,9 @@
 
 extern type_length  StackDepth;
 
-extern bool         CanZapBP( void );
-extern void         DoRTCall( rt_class rtindex, bool pop );
+extern bool_         CanZapBP( void );
+extern void         DoRTCall( rt_class rtindex, bool_ pop );
 extern void         AdjustStackDepth( instruction *ins );
 extern void         AdjustStackDepthDirect( int adjust );
-extern bool         BaseIsSP( name *op );
-extern bool         EpilogIsLeaveOnly( void );
+extern bool_         BaseIsSP( name *op );
+extern bool_         EpilogIsLeaveOnly( void );

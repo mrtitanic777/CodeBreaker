@@ -66,8 +66,8 @@
 
 #ifdef _STANDALONE_
 
-extern bool MsgInit( void );
-extern bool MsgGet( unsigned, char * );
+extern bool_ MsgInit( void );
+extern bool_ MsgGet( unsigned, char * );
 extern void MsgFini( void );
 extern void OpenLstFile( void );
 extern void LstMsg( const char *format, ... );

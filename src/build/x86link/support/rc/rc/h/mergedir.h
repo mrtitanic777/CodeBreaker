@@ -32,4 +32,4 @@
 
 #include "wrmergdi.h"
 
-extern bool     MergeDirectory( ResFileInfo *resfiles, WResMergeError **errs );
+extern bool     MergeDirectory(Link& link,  ResFileInfo *resfiles, WResMergeError **errs );

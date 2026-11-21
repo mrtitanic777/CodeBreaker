@@ -62,17 +62,6 @@ public:
     }
 };
 
-class Recorder : public DosRunner {
-public:
-    mutable int runs = 0;
-    DosRunResult run(const DosRunSpec&) const override {
-        ++runs;
-        DosRunResult r;
-        r.ok = true;
-        return r;
-    }
-};
-
 CB_TEST("build.native_dos_runner.a_session_runs_each_program_from_its_drive_and_path_with_its_output_redirected", [] {
     fs::ScopedTempDir tools("ndr_tools"), work("ndr_work");
     fs::make_dirs(tools.path() / "BIN");
@@ -98,22 +87,22 @@ CB_TEST("build.native_dos_runner.a_session_runs_each_program_from_its_drive_and_
     CB_CHECK_EQ(text::upper(as_text(r.made.at("T.TXT"))), "CL.EXE /C T.C\r\nCL.EXE /C T.C\r\nERR");   // (`>`: standard output; `>> 2>&1`: both)
     CB_CHECK(fs::read_text(work.path() / "T.C") == "int f(void) { return 1; }\r\n");   // (text with DOS line ends)
     CB_CHECK(!stdfs::exists(work.path() / "GONE.TXT"));
-    CB_CHECK(stdfs::exists(work.path() / "done.txt"));   // (the end of the batch, as DosboxRunner's)
+    CB_CHECK(stdfs::exists(work.path() / "done.txt"));   // (the end of the batch)
 });
 
-CB_TEST("build.native_dos_runner.a_program_the_executive_cannot_run_sends_the_run_to_the_fallback", [] {
+CB_TEST("build.native_dos_runner.a_program_the_executive_cannot_run_ends_the_run_and_says_why", [] {
     fs::ScopedTempDir tools("ndr_tools"), work("ndr_work");
     fs::write_file(tools.path() / "X.EXE", Bytes{'M', 'Z'});
     FakeSessions dos;
     dos.fail = true;
-    const Recorder dosbox;
     DosRunSpec spec;
     spec.mounts = {{"c", tools.path()}, {"d", work.path()}};
     spec.commands = {"c:\\x.exe"};
     spec.work = work.path();
-    CB_CHECK(NativeDosRunner(dos, &dosbox).run(spec).ok);
-    CB_CHECK_EQ(dosbox.runs, 1);
-    CB_CHECK(!NativeDosRunner(dos).run(spec).ok);   // (no fallback: nothing pretended)
+    const DosRunResult r = NativeDosRunner(dos).run(spec);
+    CB_CHECK(!r.ok);   // (nothing pretended)
+    CB_CHECK(r.why.find("no such service") != std::string::npos);
+    CB_CHECK(!stdfs::exists(work.path() / "done.txt"));
 });
 
 }  // namespace

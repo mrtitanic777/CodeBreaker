@@ -15,6 +15,7 @@
 
 #include "core/fs.hpp"
 #include "core/text.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 #include "verify/stage_timer.hpp"
 
@@ -545,16 +546,15 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
             line.resize(std::min(line.find("  ; "), line.size()));
             line += "  ; " + dm::text(insn, names_for_text);
         }
-        return line;
+        return dialect::find("gas-mips").fallback(line);
     };
 
     // the source ----------------------------------------------------------------------------------------------------------------
     std::vector<std::string> head = {
         std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
         std::format("; {}: entry 0x{:08X}, {} bytes, {} functions", machine.description, elf.entry, file.size(), functions.size()),
-        "; (MIPS syntax as the processor's SLEIGH description writes it: build with `assemble --cpu " + machine.cpu + " --sleigh`)",
         ""};
-    translate::l2::Assembly out(head, "sleigh-" + machine.cpu, std::string(file_name));
+    translate::l2::Assembly out(head, "gas", std::string(file_name));
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
 
@@ -666,10 +666,10 @@ iw::Written write(const Machine& machine, ByteView file, const me::Elf& elf, std
     }
 
     stage.emplace("mips.join");
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("gas-mips").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-mips.json)
     stage.emplace("mips.assemble");
     iw::Written w =iw::finish(folder, stem + ".s", source, functions, code.size() * 4, file.size());
-    iw::assembled(w, [&] { return risc_source::assemble(machine.cpu, source, folder); }, file, folder / (stem + ".built" + machine.extension), "program");
+    iw::assembled(w, [&] { return risc_source::assemble(machine.cpu, dialect::find("gas-mips").parse(source), folder); }, file, folder / (stem + ".built" + machine.extension), "program");
     return w;
 }
 

@@ -1,4 +1,4 @@
-bool OPT_PROCESS( OPT_STORAGE *data )
+bool_ OPT_PROCESS( OPT_STORAGE *data )
 {
     switch( OPT_GET_LOWER() ) {
     case 'z':
@@ -260,7 +260,7 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->op = true;
 		continue;
 	    case 'r':
-		data->or = true;
+		data->or_ = true;
 		continue;
 	    case 's':
 		data->opt_size_time_timestamp = ++(data->timestamp);

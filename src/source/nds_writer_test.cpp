@@ -39,13 +39,13 @@ CB_TEST("source.nds_writer.both_programs_and_the_file_system_are_written_as_what
     const image_writer::Written r = write(formats::nds::parse(nds_test::test_rom()), "demo.nds", dir.path());
     const std::string source = fs::read_text(r.source);
     // each program has its own instruction set and its own names
-    CB_CHECK(has(source, "        ; the ARM946E-S"));
-    CB_CHECK(has(source, "        ; the ARM7TDMI"));
-    CB_CHECK(has(source, "clz r0,r0"));
+    CB_CHECK(has(source, "        .cpu arm946e-s"));
+    CB_CHECK(has(source, "        .cpu arm7tdmi"));
+    CB_CHECK(has(source, "clz r0, r0"));
     CB_CHECK(has(source, "blx r1"));
-    CB_CHECK(has(source, "0xFA000007  ; blx 0x2000044"));   // (the description's `blx` to a Thumb address does not assemble back: the bits, with the instruction)
-    CB_CHECK(has(source, "ldrd r2,r3,[r4,#0x8]"));
-    CB_CHECK(has(source, "mcr p15,0x0,r0,cr7,cr10,0x4"));
+    CB_CHECK(has(source, "0xFA000007  @ blx 0x2000044"));   // (the description's `blx` to a Thumb address does not assemble back: the bits, with the instruction)
+    CB_CHECK(has(source, "ldrd r2, r3, [r4, #8]"));
+    CB_CHECK(has(source, "mcr p15, 0, r0, c7, c10, 4"));
     CB_CHECK(has(source, ".word arm9_thumb_") && has(source, " + 1"));
     CB_CHECK(has(source, "bl arm7_arm_"));
     CB_CHECK(has(source, ".asciz \"ARM9 DATA\""));
@@ -57,18 +57,18 @@ CB_TEST("source.nds_writer.both_programs_and_the_file_system_are_written_as_what
     CB_CHECK(has(source, ".word arm9_end - arm9"));
     CB_CHECK(has(source, ".word arm7_end - arm7"));
     CB_CHECK(has(source, ".word arm9_entry"));
-    CB_CHECK(has(source, "; the Nintendo logo"));
+    CB_CHECK(has(source, "@ the Nintendo logo"));
     CB_CHECK(has(source, ".ascii \"NDSTEST\""));
     CB_CHECK(has(source, ".ascii \"ATSE\""));
     // the file system
     CB_CHECK(has(source, "fnt:"));
     CB_CHECK(has(source, "hello.txt"));
     CB_CHECK(has(source, "fat:"));
-    CB_CHECK(has(source, ".word file_0, file_0_end   ; file 0 hello.txt"));
-    CB_CHECK(has(source, "file_0:   ; hello.txt"));
+    CB_CHECK(has(source, ".word file_0, file_0_end   @ file 0 hello.txt"));
+    CB_CHECK(has(source, "file_0:   @ hello.txt"));
     CB_CHECK(has(source, "Hello from the DS file system."));
-    CB_CHECK(has(source, "; the title in English"));
-    CB_CHECK(has(source, "; Test\\nCod"));
+    CB_CHECK(has(source, "@ the title in English"));
+    CB_CHECK(has(source, "@ Test\\nCod"));
     CB_CHECK(has(source, ".word banner"));
 });
 

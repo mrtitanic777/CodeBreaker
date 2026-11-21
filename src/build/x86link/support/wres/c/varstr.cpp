@@ -37,10 +37,10 @@
 #include "wresrtns.h"
 
 
-VarString *VarStringStart( void )
+VarString *VarStringStart(Link& link)
 /*******************************/
 {
-    auto *varstr = static_cast<VarString *>( WRESALLOC( sizeof( VarString ) ) );
+    auto *varstr = static_cast<VarString *>( WRESALLOC(link,  sizeof( VarString ) ) );
 
     if( varstr == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
@@ -51,7 +51,7 @@ VarString *VarStringStart( void )
     return( varstr );
 }
 
-void VarStringAddChar( VarString *varstr, char chr )
+void VarStringAddChar(Link& link,  VarString *varstr, char chr )
 /**************************************************/
 {
     if( varstr != nullptr ) {
@@ -61,7 +61,7 @@ void VarStringAddChar( VarString *varstr, char chr )
         }
         /* if the current part is full */
         if( varstr->len == VAR_STR_PART_SIZE ) {
-            varstr->next = VarStringStart();
+            varstr->next = VarStringStart(link);
             if( varstr->next == nullptr ) {
                 return;
             }
@@ -83,7 +83,7 @@ static size_t ComputeVarStringLen( const VarString *varstr )
     return( len );
 }
 
-char *VarStringEnd( VarString *varstr, size_t *plen )
+char *VarStringEnd(Link& link,  VarString *varstr, size_t *plen )
 /****************************************************
  * allocated a continous string for list, copies the string, and free's list/
  * if retlength is not NULL the lenght of the string (excluding the '\0') is
@@ -92,7 +92,7 @@ char *VarStringEnd( VarString *varstr, size_t *plen )
 {
     const size_t    len = ComputeVarStringLen( varstr );
     /* +1 is for the '\0' */
-    auto            *str = static_cast<char *>( WRESALLOC( len + 1 ) );
+    auto            *str = static_cast<char *>( WRESALLOC(link,  len + 1 ) );
 
     if( str == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );

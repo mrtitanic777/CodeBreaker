@@ -52,9 +52,9 @@ typedef struct {
 } startinfo;
 
 
-extern void             InitLoadFile( void );
+extern void             InitLoadFile(Link& link);
 extern void             FiniLoadFile(Link& link);
-extern void             CleanLoadFile( void );
+extern void             CleanLoadFile(Link& link);
 extern void             GetStkAddr(Link& link);
 extern void             DefBSSSyms(Link& link);
 extern void             GetBSSSize(Link& link);
@@ -77,7 +77,7 @@ extern offset           CalcSplitSize(Link& link);
 extern void             FreeOutFiles(Link& link);
 extern void             InitBuffFile( outfilelist *outfile, char *, bool );
 extern void             OpenBuffFile(Link& link,  outfilelist * );
-extern void             CloseBuffFile( outfilelist * );
+extern void             CloseBuffFile(Link& link,  outfilelist * );
 extern void             SetOriginLoad(Link& link,  unsigned long );
 extern void             WriteLoad3(Link& link,  void *, const char *, size_t );
 extern void             WriteLoad(Link& link,  const void *, size_t );

@@ -34,7 +34,7 @@
 #include "x86regn.h"
 
 
-extern void             ReFormat( oc_class class );
+extern void             ReFormat( oc_class class_ );
 extern void             AddByte( byte b );
 extern void             AddToTemp( byte b );
 extern void             EmitByte( byte b );
@@ -73,7 +73,7 @@ extern void             Gpusha( void );
 extern void             Gpopa( void );
 extern void             Gcld( void );
 extern void             GenLeave( void );
-extern void             GenTouchStack( bool sp_might_point_at_something );
+extern void             GenTouchStack( bool_ sp_might_point_at_something );
 extern void             GenEnter( int size, int level );
 extern void             GenPushOffset( byte offset );
 extern void             GenUnkSub( hw_reg_set dst, pointer value );
@@ -91,7 +91,7 @@ extern void             DoRepOp( instruction *ins );
 extern void             Do4CXShift( instruction *ins, void (*rtn)(instruction *) );
 extern void             LayLeaRegOp( instruction *ins );
 extern void             DoMAddr( name *op );
-extern byte             DoMDisp( name *op, bool alt_encoding );
+extern byte             DoMDisp( name *op, bool_ alt_encoding );
 extern void             LayModRM( name *op );
 extern byte             Displacement( int_32 val, hw_reg_set regs );
 extern byte             DoIndex( hw_reg_set regs );
@@ -111,10 +111,10 @@ extern void             Pow2Div286(instruction*);
 extern type_length      TmpLoc( name *base, name *op );
 extern void             GenUnkPush( pointer value );
 extern void             GenPushC( int_32 value );
-extern pointer          GenFar16Thunk( pointer label, uint_16 parms_size, bool remove_parms );
+extern pointer          GenFar16Thunk( pointer label, uint_16 parms_size, bool_ remove_parms );
 extern void             GenP5ProfilingProlog( label_handle label );
 extern void             GenP5ProfilingEpilog( label_handle label );
 #if 0
-extern void             GenProfilingCode( char *fe_name, label_handle *data, bool prolog );
+extern void             GenProfilingCode( char *fe_name, label_handle *data, bool_ prolog );
 #endif
 #endif

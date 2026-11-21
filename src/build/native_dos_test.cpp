@@ -1,12 +1,11 @@
 // Tests of the native DOS runner's driving code over a fake executive: what is written, what command line MASM
-// gets, what is read back, the switch, and how a refusal of the executive reaches the caller. (The real executive,
+// gets, what is read back, and how a refusal of the executive reaches the caller. (The real executive,
 // exact/emu/dos, is tested with its own module.)
 //
 // Notes:
 //   * a stem with an empty, `.` or `..` part is a UsageError (it could write outside the work folder);
 //   * the work folder is deleted when the call returns (the products are already read into the result);
-//   * a .LST / .LOG keeps the CRLF line ends the tool wrote;
-//   * an unknown value of CB_NATIVE_DOS means "auto", as it did.
+//   * a .LST / .LOG keeps the CRLF line ends the tool wrote.
 #include "build/native_dos.hpp"
 
 #include <functional>
@@ -81,7 +80,7 @@ std::string text_of(const std::optional<Bytes>& b) {
 CB_TEST("build.native_dos.assemble_reads_back_the_products", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
-    const dos_sessions::Product p = nd::assemble(dos, "mov ax,1\r\nint 21h\n", "t", fake_masm_root(dir));
+    const nd::Product p = nd::assemble(dos, "mov ax,1\r\nint 21h\n", "t", fake_masm_root(dir));
     // the source reached DOS as clean CRLF text; the command line names stem.ASM,.OBJ,.LST and no cross-reference
     CB_CHECK_EQ(dos.command_lines.size(), 1u);
     CB_CHECK_EQ(dos.command_lines[0], "t.ASM,t.OBJ,t.LST,NUL;");
@@ -97,7 +96,7 @@ CB_TEST("build.native_dos.assemble_reads_back_the_products", [] {
 CB_TEST("build.native_dos.missing_parts_and_console_log", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
-    const dos_sessions::Product p = nd::assemble(dos, "SILENT NOLOG", "x", fake_masm_root(dir));
+    const nd::Product p = nd::assemble(dos, "SILENT NOLOG", "x", fake_masm_root(dir));
     CB_CHECK(!p.obj.has_value()); // MASM made no object
     CB_CHECK(p.lst.has_value());
     CB_CHECK_EQ(p.log.value_or("<none>"), "console"); // no .LOG: what MASM printed
@@ -106,7 +105,7 @@ CB_TEST("build.native_dos.missing_parts_and_console_log", [] {
 CB_TEST("build.native_dos.stem_with_folders", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
-    const dos_sessions::Product p = nd::assemble(dos, "abc", "asm/lead00", fake_masm_root(dir));
+    const nd::Product p = nd::assemble(dos, "abc", "asm/lead00", fake_masm_root(dir));
     CB_CHECK_EQ(dos.command_lines.at(0), "asm\\lead00.ASM,asm\\lead00.OBJ,asm\\lead00.LST,NUL;");
     CB_CHECK_EQ(text_of(p.obj), "cba");
     // a stem may not leave the work folder
@@ -118,8 +117,8 @@ CB_TEST("build.native_dos.stem_with_folders", [] {
 CB_TEST("build.native_dos.assemble_many_in_order", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
-    const std::vector<dos_sessions::Source> items{{"one", "111"}, {"two", "22 NOLOG"}, {"three", "3"}};
-    const dos_sessions::Finished done = nd::assemble_many(dos, items, fake_masm_root(dir));
+    const std::vector<nd::Source> items{{"one", "111"}, {"two", "22 NOLOG"}, {"three", "3"}};
+    const nd::Finished done = nd::assemble_many(dos, items, fake_masm_root(dir));
     CB_CHECK_EQ(done.results.size(), 3u);
     CB_CHECK_EQ(done.results[0].first, "one");
     CB_CHECK_EQ(done.results[1].first, "two");
@@ -147,7 +146,7 @@ CB_TEST("build.native_dos.a_refusal_becomes_native_dos_error", [] {
         CB_CHECK(std::string(e.what()).find("EmulationError") != std::string::npos);
     }
     CB_CHECK(threw);
-    const std::vector<dos_sessions::Source> items{{"a", "1"}};
+    const std::vector<nd::Source> items{{"a", "1"}};
     CB_CHECK_THROWS_AS(nd::NativeDosError, (void)nd::assemble_many(dos, items, fake_masm_root(dir)));
     CB_CHECK_THROWS_AS(nd::NativeDosError, (void)nd::run_extended(dos, {}, "ML.EXE", "", {}, {}));
 });
@@ -156,39 +155,6 @@ CB_TEST("build.native_dos.missing_masm_is_native_dos_error", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
     CB_CHECK_THROWS_AS(nd::NativeDosError, (void)nd::assemble(dos, "x", "t", dir.path() / "no-masm-here"));
-});
-
-CB_TEST("build.native_dos.the_switch", [] {
-    FakeDos dos;
-    // unset or auto: the proven tools only
-    CB_CHECK(nd::enabled(dos, "masm", nd::Mode::Auto));
-    CB_CHECK(nd::enabled(dos, "ml", nd::Mode::Auto));
-    CB_CHECK(!nd::enabled(dos, "link", nd::Mode::Auto));
-    CB_CHECK(nd::enabled(dos, "link", nd::Mode::On));
-    CB_CHECK(!nd::enabled(dos, "masm", nd::Mode::Off));
-    dos.available_ = false; // no engine: never, even forced
-    CB_CHECK(!nd::enabled(dos, "masm", nd::Mode::On));
-    CB_CHECK(!nd::enabled(dos, "masm", nd::Mode::Auto));
-    {
-        fs::ScopedEnv unset("CB_NATIVE_DOS", std::nullopt);
-        CB_CHECK(nd::mode_from_environment() == nd::Mode::Auto);
-    }
-    for (const char* v : {"0", "off", "No", "FALSE"}) {
-        fs::ScopedEnv env("CB_NATIVE_DOS", v);
-        CB_CHECK(nd::mode_from_environment() == nd::Mode::Off);
-    }
-    for (const char* v : {"1", "ON", "yes", "True"}) {
-        fs::ScopedEnv env("CB_NATIVE_DOS", v);
-        CB_CHECK(nd::mode_from_environment() == nd::Mode::On);
-    }
-    {
-        fs::ScopedEnv env("CB_NATIVE_DOS", "auto");
-        CB_CHECK(nd::mode_from_environment() == nd::Mode::Auto);
-    }
-    {
-        fs::ScopedEnv env("CB_NATIVE_DOS", "perhaps"); // not understood: auto
-        CB_CHECK(nd::mode_from_environment() == nd::Mode::Auto);
-    }
 });
 
 CB_TEST("build.native_dos.run_extended_files_in_memory", [] {

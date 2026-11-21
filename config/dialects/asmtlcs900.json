@@ -1,0 +1,17 @@
+{
+  "name": "asmtlcs900",
+  "description": "A TLCS-900/H assembler: the Neo Geo Pocket as its programs are written. ORG 0x200000, name EQU 0x006F, DB rows, FILL n,v, 0x hex in capitals, decimal software interrupt numbers.",
+  "comment": ";",
+  "number": {"prefix": "0x", "suffix": "", "case": "upper", "pad": "none"},
+  "label": "{name}:",
+  "directives": [
+    {"neutral": ".org {v}", "dialect": "ORG {v}", "exact": true},
+    {"neutral": ".equ {name}, {v}", "dialect": "{name} EQU {v}", "exact": true},
+    {"neutral": ".byte {list}", "dialect": "DB {list}", "bytes": true},
+    {"neutral": ".space {n}, {v}", "dialect": "FILL {n},{v}"},
+    {"neutral": ".ascii {s}", "dialect": "DB {s}"}
+  ],
+  "instructions": [
+    {"neutral": "swi {w}", "dialect": "swi {w}", "decimal": true}
+  ]
+}

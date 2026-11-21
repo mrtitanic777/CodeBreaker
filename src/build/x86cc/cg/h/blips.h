@@ -29,13 +29,13 @@
 ****************************************************************************/
 
 
-extern bool     BlipsOn;
+extern bool_     BlipsOn;
 
 extern void     Blip( unsigned short loc, char ch );
 extern void     BlipInit( void );
 extern void     FiniBlip( void );
 extern void     InitBlip( void );
-extern bool     WantZoiks2( void );
+extern bool_     WantZoiks2( void );
 extern void     LNBlip( source_line_number num );
 extern void     TGBlip( void );
 extern void     LPBlip( void );

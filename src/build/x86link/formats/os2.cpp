@@ -41,7 +41,7 @@
 #include <vector>
 #include "wio.h"
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/ring.h"
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
@@ -125,11 +125,11 @@ static void ReadNameTable(Link& link,  f_handle the_file )
     fname = link.FmtData.u.os2fam.old_lib_name;
     cmpcase = ( (link.LinkFlags & LF_CASE_FLAG) != 0 );
     for( ;; ) {
-        QRead( the_file, &len_u8, sizeof( len_u8 ), fname );
+        QRead(link,  the_file, &len_u8, sizeof( len_u8 ), fname );
         if( len_u8 == 0 )
             break;
-        QRead( the_file, link.TokBuff, len_u8, fname );
-        QRead( the_file, &ordinal, sizeof( ordinal ), fname );
+        QRead(link,  the_file, link.TokBuff, len_u8, fname );
+        QRead(link,  the_file, &ordinal, sizeof( ordinal ), fname );
         if( ordinal == 0 )
             continue;
         link.TokBuff[len_u8] = '\0';
@@ -157,45 +157,45 @@ static void ReadOldLib(Link& link)
 
     fname = link.FmtData.u.os2fam.old_lib_name;
     the_file = QOpenR(link,  fname );
-    QRead( the_file, &head, sizeof( dos_exe_header ), fname );
+    QRead(link,  the_file, &head, sizeof( dos_exe_header ), fname );
     if( head.dos.signature != EXESIGN_DOS
       || !NE_HEADER_FOLLOWS( head.dos.reloc_offset ) ) {
-        LnkMsg( WRN + MSG_INV_OLD_DLL, nullptr );
+        LnkMsg(link,  WRN + MSG_INV_OLD_DLL, nullptr );
     } else {
-        QSeek( the_file, NE_HEADER_OFFSET, fname );
-        QRead( the_file, &ne_header_off, sizeof( ne_header_off ), fname );
-        QSeek( the_file, ne_header_off, fname );
-        QRead( the_file, &signature, sizeof( signature ), fname );
-        QSeek( the_file, ne_header_off, fname );
+        QSeek(link,  the_file, NE_HEADER_OFFSET, fname );
+        QRead(link,  the_file, &ne_header_off, sizeof( ne_header_off ), fname );
+        QSeek(link,  the_file, ne_header_off, fname );
+        QRead(link,  the_file, &signature, sizeof( signature ), fname );
+        QSeek(link,  the_file, ne_header_off, fname );
         if( signature == EXESIGN_NE ) {
-            QRead( the_file, &head.os2, sizeof( head.os2 ), fname );
-            QSeek( the_file, ne_header_off + head.os2.resident_off, fname );
+            QRead(link,  the_file, &head.os2, sizeof( head.os2 ), fname );
+            QSeek(link,  the_file, ne_header_off + head.os2.resident_off, fname );
             ReadNameTable(link,  the_file );
-            QSeek( the_file, head.os2.nonres_off, fname );
+            QSeek(link,  the_file, head.os2.nonres_off, fname );
             ReadNameTable(link,  the_file );
         } else if( signature == EXESIGN_LE
           || signature == EXESIGN_LX ) {
-            QRead( the_file, &head.os2f, sizeof( head.os2f ), fname );
+            QRead(link,  the_file, &head.os2f, sizeof( head.os2f ), fname );
             if( head.os2f.resname_off != 0 ) {
-                QSeek( the_file, ne_header_off + head.os2f.resname_off, fname );
+                QSeek(link,  the_file, ne_header_off + head.os2f.resname_off, fname );
                 ReadNameTable(link,  the_file );
             }
             if( head.os2f.nonres_off != 0 ) {
-                QSeek( the_file, head.os2f.nonres_off, fname );
+                QSeek(link,  the_file, head.os2f.nonres_off, fname );
                 ReadNameTable(link,  the_file );
             }
         } else if( signature == EXESIGN_PE ) {
             unsigned    num_objects;
 
-            QRead( the_file, &head.pe, PE_HDR_SIZE, fname );
-            QRead( the_file, reinterpret_cast<char *>( &head.pe ) + PE_HDR_SIZE, PE_OPT_SIZE( head.pe ), fname );
+            QRead(link,  the_file, &head.pe, PE_HDR_SIZE, fname );
+            QRead(link,  the_file, reinterpret_cast<char *>( &head.pe ) + PE_HDR_SIZE, PE_OPT_SIZE( head.pe ), fname );
             num_objects = head.pe.fheader.num_objects;
             objects.resize( num_objects );
-            QRead( the_file, objects.data(), num_objects * sizeof( pe_object ), fname );
+            QRead(link,  the_file, objects.data(), num_objects * sizeof( pe_object ), fname );
             currobj = objects.data();
             for( ; num_objects > 0; --num_objects ) {
                 if( currobj->rva == PE_DIRECTORY( head.pe, PE_TBL_EXPORT ).rva ) {
-                    QSeek( the_file, currobj->physical_offset, fname );
+                    QSeek(link,  the_file, currobj->physical_offset, fname );
                     PE_DIRECTORY( head.pe, PE_TBL_EXPORT ).rva -= currobj->physical_offset;
                     ReadPEExportTable(link,  the_file, &PE_DIRECTORY( head.pe, PE_TBL_EXPORT ) );
                     break;
@@ -203,13 +203,13 @@ static void ReadOldLib(Link& link)
                 currobj++;
             }
             if( num_objects == 0 ) {
-                LnkMsg( WRN + MSG_INV_OLD_DLL, nullptr );
+                LnkMsg(link,  WRN + MSG_INV_OLD_DLL, nullptr );
             }
         } else {
-            LnkMsg( WRN+MSG_INV_OLD_DLL, nullptr );
+            LnkMsg(link,  WRN+MSG_INV_OLD_DLL, nullptr );
         }
     }
-    QClose( the_file, fname );
+    QClose(link,  the_file, fname );
     MemFree( fname );
     link.FmtData.u.os2fam.old_lib_name = nullptr;
 }
@@ -274,7 +274,7 @@ static unsigned long WriteChainedRelocs(Link& link,  group_entry *group, unsigne
 
     n = relocsize / sizeof( os2_reloc_item );
     std::vector<os2_reloc_item> items( n );
-    CopyRelocList( group->g.reloclist, items.data() );
+    CopyRelocList(link,  group->g.reloclist, items.data() );
     kept = 0;
     at = PosLoad(link);
     for( i = 0; i < n; i++ ) {
@@ -355,7 +355,7 @@ static void WriteOS2Data(Link& link,  unsigned_32 stub_len, os2_exe_header *exe_
             off = NullAlign(link,  1 << link.FmtData.u.os2fam.segment_shift );
             seg_addr = off >> link.FmtData.u.os2fam.segment_shift;
             if( seg_addr > 0xffff ) {
-                LnkMsg( ERR+MSG_ALIGN_TOO_SMALL, nullptr );
+                LnkMsg(link,  ERR+MSG_ALIGN_TOO_SMALL, nullptr );
             }
             segrec.address = static_cast<unsigned_16>( seg_addr );
             WriteGroupLoad(link,  group, false );
@@ -411,13 +411,13 @@ static unsigned_16 findResOrTypeName( ResTable *restab, WResID *name )
     return( name_id );
 }
 
-static FullTypeRecord *addExeTypeRecord( ResTable *restab,
+static FullTypeRecord *addExeTypeRecord(Link& link,  ResTable *restab,
                             WResTypeInfo *type )
 /**********************************************************/
 {
     FullTypeRecord      *exe_type;
 
-    exe_type = static_cast<FullTypeRecord *>( MemAllocSafe( sizeof( FullTypeRecord ) ) );
+    exe_type = static_cast<FullTypeRecord *>( MemAllocSafe(link,  sizeof( FullTypeRecord ) ) );
     exe_type->Info.reserved = 0;
     exe_type->Info.num_resources = type->NumResources;
     exe_type->Info.type = findResOrTypeName( restab, &(type->TypeName) );
@@ -431,14 +431,14 @@ static FullTypeRecord *addExeTypeRecord( ResTable *restab,
     return( exe_type );
 }
 
-static void addExeResRecord( ResTable *restab, FullTypeRecord *type,
+static void addExeResRecord(Link& link,  ResTable *restab, FullTypeRecord *type,
                             WResID *name, unsigned_16 mem_flags,
                       unsigned_16 exe_offset, unsigned_16 exe_length )
 /********************************************************************/
 {
     FullResourceRecord          *exe_res;
 
-    exe_res = static_cast<FullResourceRecord *>( MemAllocSafe( sizeof( FullResourceRecord ) ) );
+    exe_res = static_cast<FullResourceRecord *>( MemAllocSafe(link,  sizeof( FullResourceRecord ) ) );
     exe_res->Info.offset = exe_offset;
     exe_res->Info.length = exe_length;
     exe_res->Info.flags = mem_flags;
@@ -449,7 +449,7 @@ static void addExeResRecord( ResTable *restab, FullTypeRecord *type,
     AddLLItemAtEnd( type->Head, type->Tail, exe_res );
 }
 
-static FullTypeRecord *findExeTypeRecord( ResTable *restab,
+static FullTypeRecord *findExeTypeRecord(Link& link,  ResTable *restab,
                             WResTypeInfo *type )
 /***********************************************************/
 {
@@ -477,7 +477,7 @@ static FullTypeRecord *findExeTypeRecord( ResTable *restab,
         }
     }
     if( exe_type == nullptr ) {              /* this is a new type */
-        exe_type = addExeTypeRecord( restab, type );
+        exe_type = addExeTypeRecord(link,  restab, type );
     }
     return( exe_type );
 } /* findExeTypeRecord */
@@ -522,10 +522,10 @@ static void CopyResData(Link& link,  FILE *res_fp, size_t len )
     std::array<char, 512> buff;
 
     for( ; len > buff.size(); len -= buff.size() ) {
-        QRead( FP2POSIX( res_fp ), buff.data(), buff.size(), link.FmtData.resource );
+        QRead(link,  FP2POSIX( res_fp ), buff.data(), buff.size(), link.FmtData.resource );
         WriteLoad(link,  buff.data(), buff.size() );
     }
-    QRead( FP2POSIX( res_fp ), buff.data(), len, link.FmtData.resource );
+    QRead(link,  FP2POSIX( res_fp ), buff.data(), len, link.FmtData.resource );
     WriteLoad(link,  buff.data(), len );
 }
 
@@ -550,13 +550,13 @@ static void WriteOS2Resources(Link& link,  FILE *res_fp, WResDir inRes, ResTable
         lang = WResGetLangInfo( wind );
 
         if( WResIsFirstResOfType( wind ) ) {
-            exe_type = findExeTypeRecord( outRes, WResGetTypeInfo( wind ) );
+            exe_type = findExeTypeRecord(link,  outRes, WResGetTypeInfo( wind ) );
         }
         res = WResGetResInfo( wind );
-        addExeResRecord( outRes, exe_type, &(res->ResName),
+        addExeResRecord(link,  outRes, exe_type, &(res->ResName),
                         lang->MemoryFlags, outRes_off,
                         (lang->Length + align - 1) >> shift_count );
-        QSeek( FP2POSIX( res_fp ), lang->Offset, link.FmtData.resource );
+        QSeek(link,  FP2POSIX( res_fp ), lang->Offset, link.FmtData.resource );
         CopyResData(link,  res_fp, lang->Length );
         NullAlign(link,  align );
         outRes_off += (lang->Length + align - 1) >> shift_count;
@@ -842,7 +842,7 @@ static unsigned long WriteEntryTable(Link& link)
                 }
                 if( start->ismovable ) {
                     if( start->addr.seg > 0xFF ) {
-                        LnkMsg( WRN+MSG_BAD_MOVABLE_SEG_NUM, nullptr );
+                        LnkMsg(link,  WRN+MSG_BAD_MOVABLE_SEG_NUM, nullptr );
                     }
                     bundle_item.m.entrynum = start->addr.seg;
                     bundle_item.m.entry = start->addr.off;
@@ -927,10 +927,10 @@ void ChkOS2Exports(Link& link)
             sym = UnaliasSym(link,  ST_FIND, sym );
             if( sym == nullptr
               || (sym->info & SYM_DEFINED) == 0 ) {
-                LnkMsg( ERR+MSG_EXP_SYM_NOT_FOUND, "s", exp->sym->name.u.ptr );
+                LnkMsg(link,  ERR+MSG_EXP_SYM_NOT_FOUND, "s", exp->sym->name.u.ptr );
                 continue;               // <----- DANGER weird control flow!
             } else if( exp->sym->info & SYM_WAS_LAZY ) {
-                LnkMsg( WRN+MSG_EXP_SYM_NOT_FOUND, "s", exp->sym->name.u.ptr );
+                LnkMsg(link,  WRN+MSG_EXP_SYM_NOT_FOUND, "s", exp->sym->name.u.ptr );
             }
             // Keep the import name. If an alias is exported, we want the
             // alias name in the import lib, not the substitute name
@@ -941,7 +941,7 @@ void ChkOS2Exports(Link& link)
             exp->sym = sym;
         }
         if( (sym->info & SYM_DEFINED) == 0 ) {
-            LnkMsg( ERR+MSG_EXP_SYM_NOT_FOUND, "s", sym->name );
+            LnkMsg(link,  ERR+MSG_EXP_SYM_NOT_FOUND, "s", sym->name );
         } else {
             exp->addr = sym->addr;
             if( sym->p.seg == nullptr
@@ -958,7 +958,7 @@ void ChkOS2Exports(Link& link)
                     exp->addr.seg = 0xFE;
                     exp->addr.off = sym->addr.off;
                 } else {
-                    LnkMsg( ERR+MSG_CANT_EXPORT_ABSOLUTE, "S", sym );
+                    LnkMsg(link,  ERR+MSG_CANT_EXPORT_ABSOLUTE, "S", sym );
                 }
             } else {
                 group = sym->p.seg->u.leader->group;
@@ -968,7 +968,7 @@ void ChkOS2Exports(Link& link)
                         exp->isiopl = true; // Conforming or not doesn't matter!
                         if( exp->addr.off > 65535 ) {
                             // Call gates are 16-bit only
-                            LnkMsg( ERR+LOC+MSG_BAD_TARG_OFF, "a", &exp->addr );
+                            LnkMsg(link,  ERR+LOC+MSG_BAD_TARG_OFF, "a", &exp->addr );
                         }
                     }
                 } else if( link.FmtData.type & MK_PE ) {
@@ -983,7 +983,7 @@ void ChkOS2Exports(Link& link)
     AssignOrdinals(link);    /* make sure all exports have ordinals */
     if( (link.FmtData.type & MK_WIN_VXD)
       && ( num_entries != 1 ) ) {
-        LnkMsg( FTL+MSG_VXD_INCORRECT_EXPORT, nullptr );
+        LnkMsg(link,  FTL+MSG_VXD_INCORRECT_EXPORT, nullptr );
     }
 }
 
@@ -1007,8 +1007,8 @@ static FILE *InitNEResources(Link& link,  WResDir *inRes, ResTable *outRes )
     if( link.FmtData.resource != nullptr ) {
         res_fp = POSIX2FP( QOpenR(link,  link.FmtData.resource ) );
         if( res_fp != nullptr ) {
-            if( WResReadDir( res_fp, &dir, &dup_discarded ) ) {
-                LnkMsg( WRN+MSG_PROBLEM_IN_RESOURCE, nullptr );
+            if( WResReadDir(link,  res_fp, &dir, &dup_discarded ) ) {
+                LnkMsg(link,  WRN+MSG_PROBLEM_IN_RESOURCE, nullptr );
             } else {
                 outRes->Dir.NumTypes = dir->NumTypes;
                 outRes->Dir.NumResources = dir->NumResources;
@@ -1018,7 +1018,7 @@ static FILE *InitNEResources(Link& link,  WResDir *inRes, ResTable *outRes )
                 /* the 2 * unsigned_16 are the resource shift count and the type 0 record */
                 outRes->Dir.Head = nullptr;
                 outRes->Dir.Tail = nullptr;
-                StringIDNamesBlockBuild( &outRes->Str, dir, false );
+                StringIDNamesBlockBuild(link,  &outRes->Str, dir, false );
             }
         }
     }
@@ -1041,7 +1041,7 @@ static void FiniNEResources(Link& link,  FILE *res_fp, WResDir inRes, ResTable *
         WResFreeDir( inRes );
     }
     if( res_fp != nullptr ) {
-        QClose( FP2POSIX( res_fp ), link.FmtData.resource );
+        QClose(link,  FP2POSIX( res_fp ), link.FmtData.resource );
     }
 }
 
@@ -1237,7 +1237,7 @@ void FiniOS2LoadFile(Link& link)
     }
     exe_head.stack = link.StackSize;
     if( dgroup_size + exe_head.heap > MAX_DGROUP_SIZE ) {
-        LnkMsg( WRN+MSG_HEAP_TOO_BIG, nullptr );
+        LnkMsg(link,  WRN+MSG_HEAP_TOO_BIG, nullptr );
         if( dgroup_size < MAX_DGROUP_SIZE ) {
             exe_head.heap = MAX_DGROUP_SIZE - dgroup_size;
         }
@@ -1284,12 +1284,12 @@ void FiniOS2LoadFile(Link& link)
     dgroup_total = dgroup_size + exe_head.stack + exe_head.heap;
     if( link.FmtData.type & MK_WIN_NE ) {
         if( dgroup_total > (MAX_DGROUP_SIZE - 3) ) {
-            LnkMsg( FTL+MSG_DEFDATA_TOO_BIG, "l",
+            LnkMsg(link,  FTL+MSG_DEFDATA_TOO_BIG, "l",
                     dgroup_total - MAX_DGROUP_SIZE + 3 );
         }
     } else {
         if( dgroup_total > MAX_DGROUP_SIZE ) {
-            LnkMsg( FTL+MSG_DEFDATA_TOO_BIG, "l",
+            LnkMsg(link,  FTL+MSG_DEFDATA_TOO_BIG, "l",
                     dgroup_total - MAX_DGROUP_SIZE );
         }
     }
@@ -1327,27 +1327,27 @@ unsigned_32 WriteStubFile(Link& link,  unsigned_32 stub_align )
     } else if( link.FmtData.u.os2fam.stub_file_name == nullptr ) {
         stub_len = WriteDOSDefStub(link,  stub_align );
     } else if( stricmp( link.FmtData.u.os2fam.stub_file_name, link.Root->outfile->fname ) == 0 ) {
-        LnkMsg( ERR+MSG_STUB_SAME_AS_LOAD, nullptr );
+        LnkMsg(link,  ERR+MSG_STUB_SAME_AS_LOAD, nullptr );
         stub_len = WriteDOSDefStub(link,  stub_align );
     } else {
         the_file = FindPath(link,  link.FmtData.u.os2fam.stub_file_name, fullname.data() );
         if( the_file == NIL_FHANDLE ) {
-            LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.u.os2fam.stub_file_name );
+            LnkMsg(link,  WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.u.os2fam.stub_file_name );
             return( WriteDOSDefStub(link,  stub_align ) );   // NOTE: <== a return here.
         }
         MemFree( link.FmtData.u.os2fam.stub_file_name );
         link.FmtData.u.os2fam.stub_file_name = MemStrdupSafe(link,  fullname.data() );
-        QRead( the_file, &dosheader, sizeof( dos_exe_header ), link.FmtData.u.os2fam.stub_file_name );
+        QRead(link,  the_file, &dosheader, sizeof( dos_exe_header ), link.FmtData.u.os2fam.stub_file_name );
         if( dosheader.signature != EXESIGN_DOS ) {
-            LnkMsg( ERR + MSG_INV_STUB_FILE, nullptr );
+            LnkMsg(link,  ERR + MSG_INV_STUB_FILE, nullptr );
             stub_len = WriteDOSDefStub(link,  stub_align );
         } else if( link.FmtData.u.os2fam.stub_verbatim ) {
             /* CodeBreaker: every byte as it is; only the NE header's offset filled in */
             read_len = dosheader.file_size * 512ul - (-dosheader.mod_size & 0x1ff);
-            QSeek( the_file, 0, link.FmtData.u.os2fam.stub_file_name );
+            QSeek(link,  the_file, 0, link.FmtData.u.os2fam.stub_file_name );
             for( stub_len = 0; stub_len < read_len; stub_len += amount ) {
                 amount = ( read_len - stub_len < link.TokSize ) ? read_len - stub_len : link.TokSize;
-                QRead( the_file, link.TokBuff, amount, link.FmtData.u.os2fam.stub_file_name );
+                QRead(link,  the_file, link.TokBuff, amount, link.FmtData.u.os2fam.stub_file_name );
                 WriteLoad(link,  link.TokBuff, amount );
             }
             stub_len = NullAlign(link,  stub_align );
@@ -1355,7 +1355,7 @@ unsigned_32 WriteStubFile(Link& link,  unsigned_32 stub_align )
             WriteLoadU32(link,  stub_len );
             SeekLoad(link,  stub_len );
         } else {
-            QSeek( the_file, dosheader.reloc_offset, link.FmtData.u.os2fam.stub_file_name );
+            QSeek(link,  the_file, dosheader.reloc_offset, link.FmtData.u.os2fam.stub_file_name );
             dosheader.reloc_offset = 0x40;
             code_start = dosheader.hdr_size * 16ul;
             read_len = dosheader.file_size * 512ul - (-dosheader.mod_size & 0x1ff) - code_start;
@@ -1370,26 +1370,26 @@ unsigned_32 WriteStubFile(Link& link,  unsigned_32 stub_align )
             stub_len = __ROUND_UP_SIZE( stub_len, stub_align );
             WriteLoadU32(link,  stub_len );
             for( num_relocs = dosheader.num_relocs; num_relocs > 0; num_relocs-- ) {
-                QRead( the_file, &the_reloc, sizeof( unsigned_32 ), link.FmtData.u.os2fam.stub_file_name );
+                QRead(link,  the_file, &the_reloc, sizeof( unsigned_32 ), link.FmtData.u.os2fam.stub_file_name );
                 WriteLoadU32(link,  the_reloc );
                 reloc_size -= sizeof( unsigned_32 );
             }
             if( reloc_size != 0 ) {    // need padding
                 PadLoad(link,  reloc_size );
             }
-            QSeek( the_file, code_start, link.FmtData.u.os2fam.stub_file_name );
+            QSeek(link,  the_file, code_start, link.FmtData.u.os2fam.stub_file_name );
             for( ; read_len > 0; read_len -= amount ) {
                 if( read_len < link.TokSize ) {
                     amount = read_len;
                 } else {
                     amount = link.TokSize;
                 }
-                QRead( the_file, link.TokBuff, amount, link.FmtData.u.os2fam.stub_file_name );
+                QRead(link,  the_file, link.TokBuff, amount, link.FmtData.u.os2fam.stub_file_name );
                 WriteLoad(link,  link.TokBuff, amount );
             }
             stub_len = NullAlign(link,  stub_align );
         }
-        QClose( the_file, link.FmtData.u.os2fam.stub_file_name );
+        QClose(link,  the_file, link.FmtData.u.os2fam.stub_file_name );
     }
     return( stub_len );
 }

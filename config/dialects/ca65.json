@@ -1,0 +1,25 @@
+{
+  "name": "ca65",
+  "description": "ca65 (cc65): the NES, and the other 6502-family cartridges built with ld65. $ hex in pairs of digits, lower-case index registers, .byte rows with a comma and a space, .word for a 16-bit value, name = value, .segment \"NAME\" placed by the linker configuration (ld65 .cfg, kept beside the source), .incbin.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "list_separator": ", ",
+  "replace": [[",X", ",x", true], [",Y", ",y", true]],
+  "data": {"row": 16, "run": 0, "string_min": 0},
+  "directives": [
+    {"neutral": ".equ {name}, {v}", "dialect": "{name:<10} = {v}"},
+    {"neutral": ".byte {list}", "dialect": ".byte {list}", "bytes": true},
+    {"neutral": ".half {list}", "dialect": ".word {list}"},
+    {"neutral": ".org {v}", "dialect": ".org {v}"},
+    {"neutral": "", "dialect": ".incbin {s}", "incbin": true}
+  ],
+  "blocks": {
+    "segment": [".segment \"{name}\""]
+  },
+  "segments": {
+    "directive": ".segment {s}",
+    "memory": "{m}: start = {v}, size = {z}, fill = yes, file = %O;",
+    "segment": "{s}: load = {m}, type = ro;"
+  }
+}

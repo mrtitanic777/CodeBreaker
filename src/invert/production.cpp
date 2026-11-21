@@ -9,7 +9,6 @@
 #include <set>
 
 #include "base/cache.hpp"
-#include "build/dos_tools.hpp"
 #include "build/msc6.hpp"
 #include "build/watcom.hpp"
 #include "core/error.hpp"
@@ -112,7 +111,6 @@ struct ProductionState {
     std::shared_ptr<base::Corpus> corpus;
     std::mutex lock;
     std::unique_ptr<base::cache::Cache> cache;
-    build::dos_tools::Emulator emulator;
     std::unique_ptr<exact::emu::NativeDosExecutive> dos_executive;   // (declared before the runner, which uses it)
     std::unique_ptr<build::DosRunner> runner;
     msc6b::Tools tools;
@@ -125,16 +123,14 @@ struct ProductionState {
     exact::toolchain::Locations native_locations;
     std::atomic<std::uint64_t> native_tags{0};
     std::unique_ptr<exact::toolchain::Toolchain> msc6_native;
-    bool native_msc6_off = false;   // the executive could not run it: DOSBox from then on
+    bool native_msc6_off = false;   // the executive could not run it this way: the DOS runner from then on
     std::set<std::string> native_hopeless;   // the switch sets under which its compiler refused every one of the first texts (an optimizer pass the executive does not carry)
     // the headers
     std::unique_ptr<symbols::prototypes::PrototypeTable> prototypes;
 
     ProductionState(config::Config c, std::shared_ptr<base::Corpus> k) : config(std::move(c)), corpus(std::move(k)) {
-        emulator = build::dos_tools::Emulator::from_config(config);
         dos_executive = std::make_unique<exact::emu::NativeDosExecutive>(config);   // (the period tools on CodeBreaker's own DOS executive)
         runner = exact::emu::dos_runner(config, *dos_executive);
-        if (const auto p = config.path("dosbox_x")) tools.dosbox_x = *p;
         if (const auto p = config.path("msc6")) tools.msc6 = *p;
         if (const auto p = config.path("msvc152")) tools.msvc152 = *p;
         tools.native16 = !setting_off(config.text("native16"));
@@ -156,14 +152,13 @@ struct ProductionState {
     }
 
     // ---- Microsoft C 6.0a, Visual C++ 1.52c ----
-    // Microsoft C 6.0a runs on the DOS executive in this process (a compile a fraction of a second, no emulator started) where it can; Visual C++ 1.52c
-    // runs on Windows itself where its short paths exist (build/msc6), and either one in DOSBox-X where it cannot.
+    // Both compilers run on the DOS executive in this process (a compile a fraction of a second); Visual C++ 1.52c runs on Windows itself where its
+    // short paths exist (build/msc6).
     std::vector<std::optional<Bytes>> compile_many(msc6b::Compiler compiler, std::span<const std::string> texts, std::string_view flags) {
-        if (compiler != msc6b::Compiler::Msc6) return in_emulator(compiler, texts, flags);
+        if (compiler != msc6b::Compiler::Msc6) return through_runner(compiler, texts, flags);
         std::optional<std::vector<std::optional<Bytes>>> got = compile_msc6_native(texts, flags);
-        if (!got) return in_emulator(compiler, texts, flags);
-        // The executive's compiler stops with an internal error on some texts the emulator's compiles: what it refuses is asked of the emulator, so that a
-        // refusal is the compiler's own.
+        if (!got) return through_runner(compiler, texts, flags);
+        // What the direct toolchain refuses is asked of the DOS runner (batch sessions), so that a refusal is the compiler's own.
         std::vector<std::string> again;
         std::vector<std::size_t> where;
         for (std::size_t i = 0; i < texts.size(); ++i)
@@ -172,22 +167,15 @@ struct ProductionState {
                 where.push_back(i);
             }
         if (!again.empty()) {
-            std::vector<std::optional<Bytes>> redone = in_emulator(compiler, again, flags);
+            std::vector<std::optional<Bytes>> redone = through_runner(compiler, again, flags);
             for (std::size_t k = 0; k < where.size(); ++k) (*got)[where[k]] = std::move(redone[k]);
-        }
-        if (fs::get_env("CB_INVERT_VERIFY_NATIVE")) {   // a check of the executive against the emulator, over everything it made
-            const std::vector<std::optional<Bytes>> emulated = in_emulator(compiler, texts, flags);
-            std::size_t differ = 0;
-            for (std::size_t i = 0; i < texts.size(); ++i)
-                if (emulated[i] != (*got)[i]) ++differ;
-            log::warn(std::format("native vs emulator under {}: {} of {} texts differ ({} refused natively)", flags, differ, texts.size(), again.size()));
         }
         return std::move(*got);
     }
 
-    // The emulator takes the texts in sessions of at most kSession each: one session for hundreds of texts outlasts its time limit and loses them all.
+    // The DOS runner takes the texts in sessions of at most kSession each: one session for hundreds of texts outlasts its time limit and loses them all.
     static constexpr std::size_t kSession = 100;
-    std::vector<std::optional<Bytes>> in_emulator(msc6b::Compiler compiler, std::span<const std::string> texts, std::string_view flags) {
+    std::vector<std::optional<Bytes>> through_runner(msc6b::Compiler compiler, std::span<const std::string> texts, std::string_view flags) {
         std::vector<std::optional<Bytes>> out;
         out.reserve(texts.size());
         for (std::size_t first = 0; first < texts.size() || (texts.empty() && first == 0); first += kSession) {
@@ -228,7 +216,7 @@ struct ProductionState {
     }
 
     // Every text through Microsoft C 6.0a on the executive; nullopt when it cannot be (no executive, or a pass the executive cannot carry): the caller then
-    // uses DOSBox-X for everything. A text the compiler refuses is an answer (no code), as in the emulator.
+    // uses the DOS runner for everything. A text the compiler refuses is an answer (no code).
     std::optional<std::vector<std::optional<Bytes>>> compile_msc6_native(std::span<const std::string> texts, std::string_view flags) {
         if (native_msc6_off || !fs::get_env("CB_INVERT_MSC6_NATIVE") || native_hopeless.contains(std::string(flags)) || !mc6_native_possible()) return std::nullopt;
         try {
@@ -261,7 +249,7 @@ struct ProductionState {
                     try {
                         msc6b::Code c = msc6b::object_code(*object);
                         if (!c.code.empty()) code = std::move(c.code);
-                    } catch (const FormatError&) {   // an object that cannot be read is that text's verdict, as in the emulator
+                    } catch (const FormatError&) {   // an object that cannot be read is that text's verdict, as through the runner
                     }
                 }
                 made_one = made_one || code.has_value();
@@ -272,8 +260,8 @@ struct ProductionState {
                 }
             }
             return out;
-        } catch (const Error& e) {   // (no executive, a pass it cannot run, a kit that is not this compiler's): DOSBox-X does it
-            log::warn(std::format("Microsoft C 6 on the DOS executive: {} -- using DOSBox-X", e.what()));
+        } catch (const Error& e) {   // (no executive, a pass it cannot run, a kit that is not this compiler's): the DOS runner does it
+            log::warn(std::format("Microsoft C 6 on the DOS executive, directly: {} -- using the DOS runner", e.what()));
             native_msc6_off = true;
             return std::nullopt;
         }

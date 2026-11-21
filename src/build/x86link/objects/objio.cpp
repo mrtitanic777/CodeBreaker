@@ -35,7 +35,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/base/fileio.h"
 #include "build/x86link/driver/ideentry.h"
@@ -61,8 +61,8 @@ static infilelist *AllocEntry(Link& link,  const char *name, const path_entry *p
 {
     infilelist  *infile;
 
-    infile = static_cast<infilelist *>( _PermAlloc( sizeof( infilelist ) ) );
-    infile->name.u.ptr = AddStringStringTable( &link.PermStrings, name );
+    infile = static_cast<infilelist *>( PermAlloc( link, sizeof( infilelist ) ) );
+    infile->name.u.ptr = AddStringStringTable(link,  &link.PermStrings, name );
     infile->path_list = path;
     infile->prefix = nullptr;
     infile->handle = NIL_FHANDLE;
@@ -116,7 +116,7 @@ bool CleanCachedHandles(Link& link)
     }
     if( infile == nullptr )
         return( false );
-    QClose( infile->handle, infile->name.u.ptr );
+    QClose(link,  infile->handle, infile->name.u.ptr );
     infile->handle = NIL_FHANDLE;
     return( true );
 }
@@ -234,7 +234,7 @@ bool DoObjOpen(Link& link,  infilelist *infile )
         return( true );
     } else if( (infile->status & INSTAT_NO_WARNING) == 0 ) {
         err = ( infile->status & INSTAT_OPEN_WARNING ) ? WRN+MSG_CANT_OPEN : ERR+MSG_CANT_OPEN;
-        PrintIOError( err, "12", name );
+        PrintIOError(link,  err, "12", name );
         infile->prefix = nullptr;
         infile->handle = NIL_FHANDLE;
     }
@@ -245,7 +245,7 @@ void InitTokBuff(Link& link)
 /*****************************/
 {
     link.TokSize = MAX_HEADROOM;
-    link.TokBuff = static_cast<char *>( MemAllocSafe( MAX_HEADROOM ) );
+    link.TokBuff = static_cast<char *>( MemAllocSafe(link,  MAX_HEADROOM ) );
 }
 
 void FreeTokBuffs(Link& link)
@@ -261,7 +261,7 @@ void BadObject(Link& link)
 /***************************/
 {
     link.CurrMod->u1.source->infile->status |= INSTAT_IOERR;
-    LnkMsg( ERR+LOC+MSG_OBJ_FILE_ATTR, nullptr );
+    LnkMsg(link,  ERR+LOC+MSG_OBJ_FILE_ATTR, nullptr );
 }
 
 void EarlyEOF(Link& link)
@@ -269,5 +269,5 @@ void EarlyEOF(Link& link)
 {
     link.CurrMod->u1.source->infile->status |= INSTAT_IOERR;
     Locator( link.CurrMod->u1.source->infile->name.u.ptr, nullptr, 0 );
-    LnkMsg( ERR+MSG_EARLY_EOF, nullptr );
+    LnkMsg(link,  ERR+MSG_EARLY_EOF, nullptr );
 }

@@ -86,17 +86,19 @@
 
 #define NO_OFFSET   ((offset)-1)
 
+enum field_kind {
+    FIELD_OFFSET,    /* member */
+    FIELD_LOC,       /* member */
+    FIELD_STFIELD,   /* stfield*/
+    FIELD_INHERIT,   /* bclass */
+    FIELD_METHOD,    /* method */
+    FIELD_NESTED,    /* nested */
+    FIELD_VFUNC      /* vfunc info */
+};
+
 typedef struct field_entry{
     union field_any  *next;
-    enum {
-        FIELD_OFFSET,    /* member */
-        FIELD_LOC,       /* member */
-        FIELD_STFIELD,   /* stfield*/
-        FIELD_INHERIT,   /* bclass */
-        FIELD_METHOD,    /* method */
-        FIELD_NESTED,    /* nested */
-        FIELD_VFUNC      /* vfunc info */
-    }                   field_type;
+    enum field_kind     field_type;
 } field_entry;
 
 typedef struct{
@@ -221,12 +223,14 @@ typedef struct dim_con {
     dbg_type    idx;
 } dim_con;
 
+enum dim_kind {
+    DIM_VAR,
+    DIM_CON,
+};
+
 typedef struct dim_any {
     struct dim_any *next;
-    enum {
-        DIM_VAR,
-        DIM_CON,
-    } kind;
+    enum dim_kind kind;
     union {
         dim_var     var;
         dim_con     con;
@@ -253,7 +257,7 @@ typedef struct proc_list {
     dbg_type    ret;
     cg_type     call;
     dbg_type    cls;
-    dbg_type    this;
+    dbg_type    this_;
 } proc_list;
 
 
@@ -267,7 +271,7 @@ typedef struct location {
         uint_32             val;
     }                       u;
     unsigned                use;
-    byte                    class;
+    byte                    class_;
 } location;
 
 typedef struct location_list {
@@ -275,15 +279,17 @@ typedef struct location_list {
     dbg_loc                 loc;
 } location_list;
 
+enum dbg_sym_kind {
+    DBG_SYM_VAR,
+    DBG_SYM_TYPE,
+    DBG_SYM_TYPEDEF,
+};
+
 typedef struct dbg_local {
     struct dbg_local        *link;
     dbg_loc                 loc;
     pointer                 sym;
-    enum {
-        DBG_SYM_VAR,
-        DBG_SYM_TYPE,
-        DBG_SYM_TYPEDEF,
-    } kind;
+    enum dbg_sym_kind       kind;
 } dbg_local;
 
 typedef struct {

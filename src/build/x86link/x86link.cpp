@@ -12,6 +12,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/process.hpp"
+#include "core/working_folder.hpp"
 
 #ifdef _WIN32
 extern "C" {
@@ -85,23 +86,6 @@ IDEBool IDEAPI get_info(IDECBHdl hdl, IDEInfoType type, IDEGetInfoWParam extra, 
     return false;
 }
 
-// The working folder for the run, given back after (wlink opens its files relative to the process's).
-class InFolder {
-public:
-    explicit InFolder(const stdfs::path& folder) : before_(stdfs::current_path()) {
-        if (!folder.empty()) stdfs::current_path(folder);
-    }
-    ~InFolder() {
-        std::error_code ec;
-        stdfs::current_path(before_, ec);
-    }
-    InFolder(const InFolder&) = delete;
-    InFolder& operator=(const InFolder&) = delete;
-
-private:
-    stdfs::path before_;
-};
-
 }  // namespace
 
 bool available() { return true; }
@@ -141,7 +125,7 @@ Run link(const std::vector<std::string>& args, const stdfs::path& folder, const 
     std::string command = process::command_line(args);
     if (command.empty()) command = " ";
 
-    const InFolder in(folder);
+    const WorkingFolder in(folder);   // (wlink opens its files relative to the process's)
     IDEDllHdl dll = nullptr;
     if (IDEInitDLL(&host, &callbacks, &dll)) throw Error("x86link: the linker would not start");
     IDEInitInfo info{};

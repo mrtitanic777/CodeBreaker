@@ -1,4 +1,4 @@
-// The PC Engine writer: a HuCard comes back as source (the HuC6280's SLEIGH description) that builds the same file.
+// The PC Engine writer: a HuCard comes back as ca65 source that builds the same file.
 #include "source/pce_writer.hpp"
 
 #include <algorithm>
@@ -28,31 +28,32 @@ CB_TEST("source.pce_writer.a_card_comes_back_as_source_that_builds_the_same_file
     const image_writer::Functions expected = {{0x00E000, "reset"},     {0x00E020, "sub_00E020"}, {0x00E040, "nmi"},
                                               {0x00E041, "irq1"},      {0x00E042, "irq2"},       {0x014000, "sub_014000"}};
     CB_CHECK(r.functions == expected);
-    CB_CHECK_EQ(r.code_bytes, 56u);   // (62 less the two STA absolute of a zero-page-sized address: three bytes each, below)
+    CB_CHECK_EQ(r.code_bytes, 62u);
     CB_CHECK_EQ(r.image_bytes, file.size());
-    CB_CHECK(!r.config);
+    CB_CHECK(r.config.has_value());
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(has_line(source, ".equ VDC_SELECT, 0x0000"));
-    CB_CHECK(has_line(source, ".equ VDC_DATA_L, 0x0002"));
-    CB_CHECK(has_line(source, ".equ zp_20, 0x20"));
-    CB_CHECK(has_line(source, "; BANK0"));
-    CB_CHECK(has_line(source, "; BANK1"));
-    CB_CHECK(has_line(source, ".org 0xe000"));
-    CB_CHECK(has_line(source, ".org 0x4000"));
+    CB_CHECK(has_line(source, ".setcpu \"HuC6280\""));
+    CB_CHECK(has_line(source, "VDC_SELECT     = $0000"));
+    CB_CHECK(has_line(source, "VDC_DATA_L     = $0002"));
+    CB_CHECK(has_line(source, "zp_20          = $20"));
+    CB_CHECK(has_line(source, ".segment \"BANK0\""));
+    CB_CHECK(has_line(source, ".segment \"BANK1\""));
     CB_CHECK(has_line(source, "reset:"));
     CB_CHECK(has_line(source, "CSH"));
-    CB_CHECK(has_line(source, "TAM #0x4"));
+    CB_CHECK(has_line(source, "TAM #$04"));
     CB_CHECK(has_line(source, "JSR sub_014000"));   // bank 1, found mapped at $4000 by the LDA #1 and TAM #$04 before it
     CB_CHECK(has_line(source, "BSR sub_00E020"));
-    CB_CHECK(has_line(source, "ST0 #0x5  ; VDC CR"));
+    CB_CHECK(has_line(source, "ST0 #$05  ; VDC CR"));
     CB_CHECK(has_line(source, "LDA zp_20"));
-    CB_CHECK(has_line(source, "TII D_00E100, 0x2000, 0x4"));
+    CB_CHECK(has_line(source, "TII D_00E100, $2000, $0004"));
     CB_CHECK(has_line(source, "BBS0 zp_21, L_00E030"));
-    // (an absolute STA of a zero-page-sized address, which the description's text cannot say, stays as its bytes)
-    CB_CHECK(has_line(source, ".byte 0x8d,0x00,0x00  ; STA 0x0"));
-    CB_CHECK(has_line(source, ".byte 0x8d,0x02,0x00  ; STA 0x2"));
-    CB_CHECK(has_line(source, "TST #0x1, zp_20"));
-    CB_CHECK(has_line(source, ".half irq2,irq1,irq2,nmi,reset"));
+    CB_CHECK(has_line(source, "STA a:VDC_SELECT"));
+    CB_CHECK(has_line(source, "STA a:VDC_DATA_L"));
+    CB_CHECK(has_line(source, "TST #$01, zp_20"));
+    CB_CHECK(has_line(source, ".word irq2, irq1, irq2, nmi, reset"));
+    const std::string config = fs::read_text(*r.config);
+    CB_CHECK(config.find("BANK1: start = $4000, size = $2000, fill = yes") != std::string::npos);
+    CB_CHECK(config.find("BANK0: start = $E000") != std::string::npos);
 });
 
 CB_TEST("source.pce_writer.a_copier_header_is_a_segment_of_its_own", [] {
@@ -63,7 +64,8 @@ CB_TEST("source.pce_writer.a_copier_header_is_a_segment_of_its_own", [] {
     CB_CHECK(r.linked && r.same);
     CB_CHECK_EQ(r.image_bytes, file.size() - 512);
     const std::string source = fs::read_text(r.source);
-    CB_CHECK(has_line(source, "; HEADER"));
+    CB_CHECK(has_line(source, ".segment \"HEADER\""));
+    CB_CHECK(fs::read_text(*r.config).find("HEADER: start = $0000, size = $0200") != std::string::npos);
 });
 
 CB_TEST("source.pce_writer.what_is_not_reached_stays_data_and_an_edit_still_rebuilds", [] {
@@ -74,8 +76,8 @@ CB_TEST("source.pce_writer.what_is_not_reached_stays_data_and_an_edit_still_rebu
     const image_writer::Written r = reconstruct(dir.path() / "demo.pce", dir.path() / "out");
     CB_CHECK(r.linked && r.same);
     CB_CHECK(!r.functions.contains(0x014000));
-    CB_CHECK_EQ(r.code_bytes, 50u);   // the nine bytes of bank 1's function are data now, and the absolute STA of $0000 and $0002 (three bytes each) are written as bytes
-    CB_CHECK(has_line(fs::read_text(r.source), "JSR 0x4000"));   // bank 0 is shown at $E000: the operand cannot name its label, so it is the number
+    CB_CHECK_EQ(r.code_bytes, 53u);   // the nine bytes of bank 1's function are data now
+    CB_CHECK(has_line(fs::read_text(r.source), "JSR $4000"));   // bank 0 is shown at $E000: the operand cannot name its label, so it is the number
 });
 
 CB_TEST("source.pce_writer.a_file_that_is_not_a_card_is_refused", [] {

@@ -1,0 +1,12 @@
+{
+  "name": "asm8048",
+  "description": "An 8048 assembler (MCS-48 style): the Odyssey 2 as its programs are written. ORG $0400, DB rows, FILL n,v, $ hex in pairs of digits.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "directives": [
+    {"neutral": ".org {v}", "dialect": "ORG {v}"},
+    {"neutral": ".byte {list}", "dialect": "DB {list}", "bytes": true},
+    {"neutral": ".space {n}, {v}", "dialect": "FILL {n},{v}"}
+  ]
+}

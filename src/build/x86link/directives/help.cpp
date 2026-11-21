@@ -31,7 +31,7 @@ namespace {
 
 // `previous_null`: the last message of the help being written was empty (a second empty one ends the range). wlink kept
 // it in a static, so it went from one help to the next; here it is the help being written's own.
-void doWriteHelp(int first_msg, int last_msg, bool& previous_null) {
+void doWriteHelp(Link& link, int first_msg, int last_msg, bool& previous_null) {
     char msg_buffer[RESOURCE_MAX_SIZE];
 
     for (int msg = first_msg; msg <= last_msg; msg++) {
@@ -43,7 +43,7 @@ void doWriteHelp(int first_msg, int last_msg, bool& previous_null) {
             previous_null = true;
             continue;
         }
-        WriteStdOutInfo(msg_buffer, INF, nullptr);
+        WriteStdOutInfo(link, msg_buffer, INF, nullptr);
         if (previous_null) {
             previous_null = false;
         }
@@ -54,10 +54,10 @@ void WriteHelp(Link& link, int first_msg, int last_msg, bool genhelp, bool& prev
     if (genhelp || (first_msg == MSG_GENERAL_HELP_0 && last_msg == MSG_GENERAL_HELP_51)) {
         WLPrtBanner(link);
         if (genhelp) {
-            doWriteHelp(_GENERAL_HELP, previous_null);
+            doWriteHelp(link, _GENERAL_HELP, previous_null);
         }
     }
-    doWriteHelp(first_msg, last_msg, previous_null);
+    doWriteHelp(link, first_msg, last_msg, previous_null);
 }
 
 #ifdef _EXE

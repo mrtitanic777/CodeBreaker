@@ -31,26 +31,14 @@
 ****************************************************************************/
 
 
-#if !defined( __cplusplus )
-  #if !defined( __bool_true_false_are_defined )
-    #if !defined( __STDC_VERSION__ ) || __STDC_VERSION__ < 199901L || defined( __WATCOMC__ ) && __WATCOMC__ < 1300
-        /*
-         * support for pre C99 compilers
-         * fix for OW 1.9 bug in _Bool implementation
-         */
-        #define bool        unsigned char
-        #define true        1
-        #define false       0
-        #define __bool_true_false_are_defined 1
-    #else
-        #include <stdbool.h>
-    #endif
-  #endif
-  #if !defined( boolbit )
-    #if defined( _MSC_VER ) && _MSC_VER < 1928
-        #define boolbit     unsigned char
-    #else
-        #define boolbit     bool
-    #endif
-  #endif
+/*
+ * C++ port: the compilers' `bool` is OpenWatcom's, an unsigned char (this file's own definition under a C compiler
+ * that does not define __STDC_VERSION__, which is how MSVC compiled these sources as C), not C++'s bool: a value is kept
+ * as it is, stored in a bit-field its low bit stays and the rest is dropped, a return truncates to a byte. Those are
+ * different from C++'s bool (every non-zero value becomes true) and the compilers' output must not change, so the type is
+ * named bool_ everywhere in these sources and is what `bool` was. `true` and `false` are C++'s (1 and 0 as before).
+ */
+typedef unsigned char bool_;
+#if !defined( boolbit )
+    #define boolbit     bool_
 #endif

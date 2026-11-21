@@ -116,7 +116,7 @@ struct references_private {
     dw_column           column;
 };
 
-struct dw_client {
+struct dw_client_s {
     jmp_buf                     exception_handler;
     dw_funcs                    funcs;
     char                        *producer_name;
@@ -136,7 +136,7 @@ struct dw_client {
     uint_8                      compiler_options;
     uint_8                      offset_size;
     uint_8                      segment_size;
-    bool                        big_endian;
+    bool_                        big_endian;
 };
 
 #endif

@@ -33,7 +33,7 @@
 
 #include <cstring>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/fixups/toc.h"
 #include "build/x86link/base/hash.h"
 #include "build/x86link/base/virtmem.h"
@@ -115,7 +115,7 @@ void AddToToc(Link& link,  const TocEntryId &e )
     searchEntry.e = e;
 
     if( FindHTableElem( st.Toc, &searchEntry ) == nullptr ) {
-        TocEntry *entry = static_cast<TocEntry *>(MemAllocSafe( sizeof( *entry ) ));
+        TocEntry *entry = static_cast<TocEntry *>(MemAllocSafe(link,  sizeof( *entry ) ));
         *entry = TocEntry{};
         entry->e = e;
         entry->pos = static_cast<int>( link.TocSize );
@@ -153,7 +153,7 @@ offset OffFromToc(Link& link,  offset off )
 {
     offset toff = off - link.TocShift;
     if( static_cast<signed_16>( toff ) != static_cast<signed_32>( toff ) ) {
-        LnkMsg( ERR+MSG_TOC_TOO_BIG, nullptr );
+        LnkMsg(link,  ERR+MSG_TOC_TOO_BIG, nullptr );
     }
     return toff;
 }
@@ -170,7 +170,7 @@ offset FindEntryPosInToc(Link& link,  const TocEntryId &e )
 }
 
 void WriteOutTokElem(Link& link,  void *_elem, void *buf )
-{
+{
     TocEntry   *elem = static_cast<TocEntry *>(_elem);
     offset      addr;
 
@@ -209,7 +209,7 @@ void InitToc(Link& link)
 /***********************/
 {
     TocState &st = state();
-    st.Toc = CreateHTable( 1024, TocEntryHashFunc, TocEntryCmp, MemAllocSafe, MemFree );
+    st.Toc = CreateHTable( link, 1024, TocEntryHashFunc, TocEntryCmp, MemAllocSafe, MemFree );
     link.TocSize = 0;
     if( (link.LinkState & LS_HAVE_PPC_CODE)
       && (link.FmtData.type & MK_PE) ) {

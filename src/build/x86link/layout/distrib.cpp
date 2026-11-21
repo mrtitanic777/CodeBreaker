@@ -31,7 +31,7 @@
 
 #include <cstring>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/symbols/objpass1.h"
 #include "build/x86link/symbols/objpass2.h"
@@ -82,7 +82,7 @@ static void     ScanArcs(Link& link,  mod_entry *mod );
 
 static void DistribNumASect(Link& link,  section *sect )
 /******************************************/
-{
+{
     DistribState    &d = distrib();
 
     d.SectOvlTab[link.OvlSectNum++] = sect;
@@ -93,7 +93,7 @@ void DistribNumberSections(Link& link)
 {
     DistribState    &d = distrib();
 
-    d.SectOvlTab = static_cast<section **>( MemAllocSafe( sizeof( section * ) * ( link.OvlSectNum + 1 ) ) );
+    d.SectOvlTab = static_cast<section **>( MemAllocSafe(link,  sizeof( section * ) * ( link.OvlSectNum + 1 ) ) );
     /* OvlSectNum value 0 is reserved for Root */
     /* Overlayed sections start at 1 */
     link.OvlSectNum = 0;
@@ -113,21 +113,21 @@ void ResetDistribSupp( void )
     d.SectOvlTab = nullptr;
 }
 
-void DistribInitMods( void )
+void DistribInitMods(Link& link)
 /**************************/
 {
     DistribState    &d = distrib();
 
     d.ModTableMaxLen = INITIAL_MOD_ALLOC;
-    d.ModTable = static_cast<mod_entry **>( MemAllocSafe( INITIAL_MOD_ALLOC * sizeof( mod_entry * ) ) );
+    d.ModTable = static_cast<mod_entry **>( MemAllocSafe(link,  INITIAL_MOD_ALLOC * sizeof( mod_entry * ) ) );
     d.CurrModHandle = 0;
     d.ArcListMaxLen = INITIAL_ARC_ALLOC;
-    d.ArcList = static_cast<arcdata *>( MemAllocSafe( offsetof( arcdata, arcs ) + INITIAL_ARC_ALLOC * sizeof( dist_arc ) ) );
+    d.ArcList = static_cast<arcdata *>( MemAllocSafe(link,  offsetof( arcdata, arcs ) + INITIAL_ARC_ALLOC * sizeof( dist_arc ) ) );
     d.ArcList->numarcs = 0;
     ResetPass1Blocks();
 }
 
-void DistribAddMod( mod_entry *lp, overlay_ref ovlref )
+void DistribAddMod(Link& link,  mod_entry *lp, overlay_ref ovlref )
 /******************************************************
  * add this module to the table, and make the arclist field point to a
  * scratch buffer
@@ -142,9 +142,9 @@ void DistribAddMod( mod_entry *lp, overlay_ref ovlref )
     d.CurrModHandle++;
     if( d.CurrModHandle == d.ModTableMaxLen ) {
         if( d.ModTableMaxLen > MAX_NUM_MODULES ) {
-            LnkMsg( FTL+MSG_TOO_MANY_LIB_MODS, nullptr );
+            LnkMsg(link,  FTL+MSG_TOO_MANY_LIB_MODS, nullptr );
         }
-        new_ = static_cast<mod_entry **>( MemAllocSafe( sizeof( mod_entry * ) * d.ModTableMaxLen * 2 ) );
+        new_ = static_cast<mod_entry **>( MemAllocSafe(link,  sizeof( mod_entry * ) * d.ModTableMaxLen * 2 ) );
         memcpy( new_, d.ModTable, sizeof( mod_entry * ) * d.ModTableMaxLen );
         MemFree( d.ModTable );
         d.ModTable = new_;
@@ -169,13 +169,13 @@ void InitArcList(Link& link,  mod_entry *mod )
       && link.FmtData.u.dos.distribute
       && (link.LinkState & LS_SEARCHING_LIBRARIES) ) {
     } else {
-        mod->u2.arclist = static_cast<arcdata *>( _PermAlloc( offsetof( arcdata, arcs ) ) );
+        mod->u2.arclist = static_cast<arcdata *>( PermAlloc( link, offsetof( arcdata, arcs ) ) );
     }
 }
 
 static void MarkDead(Link& link,  void *_seg )
 /********************************/
-{
+{
     segdata     *seg = static_cast<segdata *>( _seg );
 
     if( seg->isrefd )
@@ -198,7 +198,7 @@ static void MarkDead(Link& link,  void *_seg )
 
 static void KillUnrefedSyms(Link& link,  void *_sym )
 /***************************************/
-{
+{
     symbol      *sym = static_cast<symbol *>( _sym );
     segdata     *seg;
 
@@ -220,7 +220,7 @@ static void KillUnrefedSyms(Link& link,  void *_sym )
         }
         if( link.LinkFlags & LF_SHOW_DEAD ) {
             if( link.MapFile != nullptr ) {
-                WriteMapLnkMsg( MSG_SYMBOL_DEAD, "S", sym );
+                WriteMapLnkMsg( link, MSG_SYMBOL_DEAD, "S", sym );
             }
         }
     }
@@ -230,7 +230,7 @@ static void DefineOvlSegments(Link& link,  mod_entry *mod )
 /**********************************************
  * figure out which of the segments are live
  */
-{
+{
     Ring2Walk( mod->segs, bind_link( link, MarkDead ) );
     Ring2Walk( mod->publist, bind_link( link, KillUnrefedSyms ) );
 }
@@ -357,7 +357,7 @@ overlay_ref LowestAncestor( overlay_ref ovlref, section *sect )
     return( list->ovlref );
 }
 
-static bool NewRefVector( symbol *sym, overlay_ref ovlref, overlay_ref sym_ovlref )
+static bool NewRefVector(Link& link,  symbol *sym, overlay_ref ovlref, overlay_ref sym_ovlref )
 /**********************************************************************************
  * sometimes there can be an overlay vector generated to a routine specified
  * in an .OBJ file caused by a call from a library routine. this checks for
@@ -373,7 +373,7 @@ static bool NewRefVector( symbol *sym, overlay_ref ovlref, overlay_ref sym_ovlre
      * overlay vector, and is not data
      */
     if( LowestAncestorMap( sym_ovlref, ovlref ) != sym_ovlref ) {
-        OvlVectorize( sym );
+        OvlVectorize(link,  sym );
         return( true );
     }
     return( false );
@@ -396,7 +396,7 @@ void DefDistribSym(Link& link,  symbol *sym )
         if( link.CurrMod->flags_mod & MOD_FIXED ) {
             seg = sym->p.seg;
             if( seg->iscode ) {      // if code..
-                NewRefVector( sym, sym->u.d.ovlref, arclist->ovlref );
+                NewRefVector(link,  sym, sym->u.d.ovlref, arclist->ovlref );
             } else if( (sym->u.d.ovlstate & OVL_FORCE) == 0 ) {
                 // don't generate a vector.
                 sym->u.d.ovlstate |= OVL_FORCE | OVL_NO_VECTOR;
@@ -423,7 +423,7 @@ static void AddArc(Link& link,  dist_arc arc )
 
     arclist = link.CurrMod->u2.arclist;
     if( arclist->numarcs >= d.ArcListMaxLen ) {
-        arclist = static_cast<arcdata *>( MemAllocSafe( offsetof( arcdata, arcs ) + 2 * d.ArcListMaxLen * sizeof( dist_arc ) ) );
+        arclist = static_cast<arcdata *>( MemAllocSafe(link,  offsetof( arcdata, arcs ) + 2 * d.ArcListMaxLen * sizeof( dist_arc ) ) );
         memcpy( arclist, d.ArcList, offsetof( arcdata, arcs ) + d.ArcListMaxLen * sizeof( dist_arc ) );
         MemFree( d.ArcList );
         link.CurrMod->u2.arclist = arclist;
@@ -562,7 +562,7 @@ static void ScanArcs(Link& link,  mod_entry *mod )
                         currarc.test = sym->u.d.modnum;
                         refmod = d.ModTable[currarc.mod];
                         if( refmod->flags_mod & MOD_FIXED ) {
-                            if( NewRefVector( sym, ovlref, refmod->u2.arclist->ovlref ) ) {
+                            if( NewRefVector(link,  sym, ovlref, refmod->u2.arclist->ovlref ) ) {
                                 DeleteArc( arclist, index );
                             }
                         } else {
@@ -575,7 +575,7 @@ static void ScanArcs(Link& link,  mod_entry *mod )
                         }
                     } else {
                         if( ( sym->p.seg == nullptr )
-                          || NewRefVector( sym, ovlref, sym->p.seg->u.leader->class_->section->ovlref ) ) {
+                          || NewRefVector(link,  sym, ovlref, sym->p.seg->u.leader->class_->section->ovlref ) ) {
                             DeleteArc( arclist, index );
                         }
                     }
@@ -607,7 +607,7 @@ void DistribFinishMod(Link& link,  mod_entry *mod )
         mod->u2.arclist->numarcs = 0;
     }
     allocsize = offsetof( arcdata, arcs ) + mod->u2.arclist->numarcs * sizeof( dist_arc );
-    arclist = static_cast<arcdata *>( Pass1Alloc( allocsize ) );
+    arclist = static_cast<arcdata *>( Pass1Alloc(link,  allocsize ) );
     memcpy( arclist, mod->u2.arclist, allocsize );
     mod->u2.arclist = arclist;
 }

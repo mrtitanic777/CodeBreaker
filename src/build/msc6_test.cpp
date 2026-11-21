@@ -1,5 +1,5 @@
 // Tests of cb/build/msc6.hpp. The text passes are checked on the decompiler-shaped samples with the recorded outputs (read over by hand: the argument order, the far pointers, the folded temporaries).
-// compile_many runs against a runner that stands in for DOSBox-X: it reads the C files the compile wrote and answers with
+// compile_many runs against a runner that stands in for the DOS executive: it reads the C files the compile wrote and answers with
 // object files (or the compiler's complaint), so what is tested is the batching, the bisecting of a refused file and the cache.
 #include "build/msc6.hpp"
 
@@ -346,7 +346,7 @@ CB_TEST("build.msc6.batch_files_and_refusals", [] {
 
 namespace {
 
-// A runner for what DOSBox-X would do with the compiler: it reads the C files, and "compiles" them. A function whose text
+// A runner for what the DOS executive would do with the compiler: it reads the C files, and "compiles" them. A function whose text
 // holds "#error" is refused (the file is refused with the line of the error, as CL says it).
 class FakeCompiler : public cb::build::DosRunner {
 public:
@@ -395,10 +395,8 @@ public:
 };
 
 msc6::Tools make_tools(const std::filesystem::path& dir) {
-    fs::write_file(dir / "dosbox-x.exe", Bytes{1});
     fs::write_file(dir / "msc" / "BIN" / "CL.EXE", Bytes{1, 2, 3});
     msc6::Tools tools;
-    tools.dosbox_x = dir / "dosbox-x.exe";
     tools.msc6 = dir / "msc";
     return tools;
 }
@@ -436,7 +434,7 @@ CB_TEST("build.msc6.compile_many_one_source_a_file", [] {
     std::vector<msc6::Source> sources{{.text = "int2 f1(int2 a)\n{\n}"}, {.text = "int2 f2(int2 a)\n{\n}"}, {.text = "#error\nint2 bad(int2 a)\n{\n}"}};
     const auto built = msc6::compile_many(rig.ctx, sources, "typedef short int2;\n", "/AM /Gcsw /Os", rig.options);
     CB_CHECK_EQ(built.size(), 3u);
-    CB_CHECK_EQ(rig.runner.sessions, 1);                 // all of them in one emulator session
+    CB_CHECK_EQ(rig.runner.sessions, 1);                 // all of them in one DOS session
     CB_CHECK_EQ(rig.runner.files_per_session[0], 3u);
     CB_CHECK_EQ(code_hex(built[0]), "909055" "8bec" "66" "0f" "5dcb");   // the first code segment: the helper filler and the function
     CB_CHECK(!built[2].has_value());                      // refused
@@ -531,7 +529,7 @@ CB_TEST("build.msc6.compile_many_needs_the_tools", [] {
     CB_CHECK(msc6::available(rig.tools));
     msc6::Tools msvc = rig.tools;
     CB_CHECK(!msc6::available(msvc, msc6::Compiler::Msvc152));
-    CB_CHECK(!msc6::native_paths(rig.tools, msc6::Compiler::Msc6).has_value());   // a DOS program: always the emulator
+    CB_CHECK(!msc6::native_paths(rig.tools, msc6::Compiler::Msc6).has_value());   // a DOS program: always the DOS executive
     msvc.native16 = false;
     CB_CHECK(!msc6::native_paths(msvc, msc6::Compiler::Msvc152).has_value());
     CB_CHECK_EQ(msc6::flag_sets().size(), 9u);

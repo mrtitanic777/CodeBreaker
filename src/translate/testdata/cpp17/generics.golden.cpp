@@ -220,7 +220,7 @@ int32_t Generics::hits(int32_t n) {
 			jrt::nn(b)->hit();
 		}
 	}
-	return a->count * 100 + b->count + this->total * 10000;
+	return jrt::nn(a)->count * 100 + jrt::nn(b)->count + this->total * 10000;
 }
 
 int32_t Generics::innerHits(int32_t n) {
@@ -336,7 +336,7 @@ bool Generics_Pair::equals(ref<Object> o) {
 		return false;
 	}
 	auto that = jrt::cast<Generics_Pair>(o);
-	return jrt::Objects::equals(this->first_, that->first_) && jrt::Objects::equals(this->second_, that->second_);
+	return jrt::Objects::equals(this->first_, jrt::nn(that)->first_) && jrt::Objects::equals(this->second_, jrt::nn(that)->second_);
 }
 
 void Generics_Stack::trace_(jrt::gc::Tracer& t) {
@@ -389,11 +389,11 @@ bool Generics_Stack_anon1::hasNext() {
 }
 
 ref<Object> Generics_Stack_anon1::next() {
-	return jrt::nn(this->outer_->items)->get(this->i--);
+	return jrt::nn(jrt::nn(this->outer_)->items)->get(this->i--);
 }
 
 void Generics_Stack_anon1::finit_() {
-	this->i = jrt::nn(this->outer_->items)->size() - 1;
+	this->i = jrt::nn(jrt::nn(this->outer_)->items)->size() - 1;
 }
 
 void Generics_Counter::trace_(jrt::gc::Tracer& t) {
@@ -409,7 +409,7 @@ void Generics_Counter::ctor_() {
 
 void Generics_Counter::hit() {
 	this->count++;
-	this->outer_->total++;
+	jrt::nn(this->outer_)->total++;
 }
 
 void Generics_Counter::finit_() {

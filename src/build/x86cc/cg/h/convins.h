@@ -31,6 +31,6 @@
 ****************************************************************************/
 
 
-extern bool         CvtOk( type_class_def fr, type_class_def to );
+extern bool_         CvtOk( type_class_def fr, type_class_def to );
 extern instruction  *DoConversion( instruction *ins );
 extern rt_class     LookupConvertRoutine( instruction *ins );

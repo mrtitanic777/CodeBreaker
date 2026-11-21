@@ -36,9 +36,9 @@
 extern void CheckTraces(Link& link);
 extern void CheckLibTrace( file_list * );
 extern bool FindLibTrace( mod_entry * );
-extern void PrintBadTraces( void );
+extern void PrintBadTraces(Link& link);
 extern void CleanTraces( void );
 extern void ResetSymTrace( void );
-extern void AddTraceListMod( char *, char * );
-extern void AddTraceListSym( char * );
+extern void AddTraceListMod(Link& link,  char *, char * );
+extern void AddTraceListSym(Link& link,  char * );
 extern bool FindSymTrace( const char * );

@@ -113,7 +113,7 @@ typedef struct nov_import {
 
 
 extern void     NovDBIAddGlobal(Link& link,  void * );
-extern void     NovDBIAddrStart( void );
+extern void     NovDBIAddrStart(Link& link);
 extern void     NovDBIGenGlobal(Link& link,  symbol * );
 extern void     FiniNovellLoadFile(Link& link);
 extern void     AddNovImpReloc(Link& link,  symbol *, unsigned_32, bool, bool );

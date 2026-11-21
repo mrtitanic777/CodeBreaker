@@ -32,4 +32,4 @@
 
 extern void     InitPPexpn( void );
 extern void     FiniPPexpn( void );
-extern bool     PpConstExpr( void );
+extern bool_     PpConstExpr( void );

@@ -98,7 +98,7 @@ int RCCloseFile( FILE **fp )
     return rc;
 }
 
-bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, ExeType type, const char *exename )
+bool OpenResFiles(Link& link,  ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, ExeType type, const char *exename )
 {
     unsigned        rescnt = 0;
     bool            dup_discarded;
@@ -113,26 +113,26 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, E
     *allopen = true;
     *presfiles = nullptr;
     for( ; resnames != nullptr; resnames = resnames->next ) {
-        ResFileInfo *resfile = static_cast<ResFileInfo *>( MemAllocSafe( sizeof( ResFileInfo ) ) );
+        ResFileInfo *resfile = static_cast<ResFileInfo *>( MemAllocSafe(link,  sizeof( ResFileInfo ) ) );
         resfile->next = *presfiles;
         *presfiles = resfile;
         resfile->Dir = nullptr;
         resfile->name = resnames->name;
         resfile->fp = ResOpenFileRO( resfile->name );
         if( resfile->fp == nullptr ) {
-            RcError( ERR_CANT_OPEN_FILE, resfile->name, LastWresErrStr() );
+            RcError(link,  ERR_CANT_OPEN_FILE, resfile->name, LastWresErrStr() );
             return fail();
         }
-        if( WResReadDir2( resfile->fp, &resfile->Dir, &dup_discarded, resfile ) ) {
+        if( WResReadDir2(link,  resfile->fp, &resfile->Dir, &dup_discarded, resfile ) ) {
             switch( LastWresStatus() ) {
             case WRS_BAD_SIG:
-                RcError( ERR_INVALID_RES, resfile->name );
+                RcError(link,  ERR_INVALID_RES, resfile->name );
                 break;
             case WRS_BAD_VERSION:
-                RcError( ERR_BAD_RES_VER, resfile->name );
+                RcError(link,  ERR_BAD_RES_VER, resfile->name );
                 break;
             default:
-                RcError( ERR_READING_RES, resfile->name, LastWresErrStr() );
+                RcError(link,  ERR_READING_RES, resfile->name, LastWresErrStr() );
                 break;
             }
             return fail();
@@ -144,8 +144,8 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, E
         /*
          * remove the autodepend resource
          */
-        WResID *res_id = WResIDFromStr( DEP_LIST_NAME );
-        WResID *type_id = WResIDFromNum( DEP_LIST_TYPE );
+        WResID *res_id = WResIDFromStr(link,  DEP_LIST_NAME );
+        WResID *type_id = WResIDFromNum(link,  DEP_LIST_TYPE );
         WResDelResource( resfile->Dir, type_id, res_id );
         WResIDFree( res_id );
         WResIDFree( type_id );
@@ -154,7 +154,7 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, E
         switch( type ) {
         case EXE_TYPE_NE_WIN:
             if( res_os != WRES_OS_WIN16 ) {
-                RcError( ERR_NONWIN_RES_TO_WIN_EXE, resfile->name, exename );
+                RcError(link,  ERR_NONWIN_RES_TO_WIN_EXE, resfile->name, exename );
                 return fail();
             }
             break;
@@ -165,13 +165,13 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, E
              */
             if( res_os != WRES_OS_WIN16
               && res_os != WRES_OS_OS2 ) {
-                RcError( ERR_NONWIN_RES_TO_WIN_EXE, resfile->name, exename );
+                RcError(link,  ERR_NONWIN_RES_TO_WIN_EXE, resfile->name, exename );
                 return fail();
             }
             break;
         case EXE_TYPE_PE:
             if( res_os != WRES_OS_WIN32 ) {
-                RcError( ERR_NONNT_RES_TO_NT_EXE, resfile->name, exename );
+                RcError(link,  ERR_NONNT_RES_TO_NT_EXE, resfile->name, exename );
                 return fail();
             }
             break;
@@ -181,7 +181,7 @@ bool OpenResFiles( ExtraRes *resnames, ResFileInfo **presfiles, bool *allopen, E
              */
             if( res_os != WRES_OS_OS2
               && res_os != WRES_OS_WIN16 ) {
-                RcError( ERR_NONOS2_RES_TO_OS2_EXE, resfile->name, exename );
+                RcError(link,  ERR_NONOS2_RES_TO_OS2_EXE, resfile->name, exename );
                 return fail();
             }
             break;
@@ -256,13 +256,13 @@ void SharedIOInitStatics( void )
     errFromWres() = ErrFrame();
 }
 
-void ReportDupResource( WResID *res_id, WResID *type_id, const char *file1, const char *file2, bool warn )
+void ReportDupResource(Link& link,  WResID *res_id, WResID *type_id, const char *file1, const char *file2, bool warn )
 {
     IdText      type;
     IdText      name;
 
     if( type_id->IsName ) {
-        type.owned = WResIDToStr( type_id );
+        type.owned = WResIDToStr( link, type_id );
         type.shown = type.owned;
     } else {
         switch( type_id->ID.Num ) {
@@ -312,18 +312,18 @@ void ReportDupResource( WResID *res_id, WResID *type_id, const char *file1, cons
     }
 
     if( res_id->IsName ) {
-        name.owned = WResIDToStr( res_id );
+        name.owned = WResIDToStr( link, res_id );
         name.shown = name.owned;
     } else {
         name.text = std::to_string( static_cast<unsigned>( res_id->ID.Num ) );
         name.shown = name.text.c_str();
     }
     // the same message, as a warning or an error
-    auto report = [warn]( unsigned errornum, auto... args ) {
+    auto report = [warn, &link]( unsigned errornum, auto... args ) {
         if( warn ) {
-            RcWarning( errornum, args... );
+            RcWarning(link,  errornum, args... );
         } else {
-            RcError( errornum, args... );
+            RcError(link,  errornum, args... );
         }
     };
     if( !type_id->IsName

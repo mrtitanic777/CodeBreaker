@@ -35,8 +35,8 @@
 #define DUPBUF_STACK(p,s,l) {char *x=(char *)alloca(l);memcpy(x,s,l);p=x;}
 #define DUPSTR_STACK(p,s,l) {char *x=(char *)alloca(l+1);memcpy(x,s,l);x[l]='\0';p=x;}
 
-extern void     *PermAlloc( size_t );
-extern void     *Pass1Alloc( size_t );
+extern void     *PermAlloc(Link& link,  size_t );
+extern void     *Pass1Alloc(Link& link,  size_t );
 
 extern char     *MemToStringSafe(Link& link,  const void *mem, size_t len );
 
@@ -47,7 +47,6 @@ extern void     ResetPass1Blocks( void );
 extern bool     PermShrink( void );
 extern void     ReleasePass1Blocks( void );
 
-#define _PermAlloc( size )              PermAlloc( size )
 #define _PermFree( ptr )                /* nothing to do */
 
 extern int      ValidateMem( void );    // just for debugging

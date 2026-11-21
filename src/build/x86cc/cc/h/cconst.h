@@ -31,7 +31,7 @@
 
 
 #ifndef _CPU
-    #error _CPU macro not defined
+    #error _CPU macro not_ defined
 #endif
 
 #if _CPU != 8086

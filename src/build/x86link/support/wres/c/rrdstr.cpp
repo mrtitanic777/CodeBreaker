@@ -42,9 +42,9 @@
 namespace {
 
 /* hand the collected text to the caller in a block wres allocated (none when the read failed) */
-char *finishString( const std::string &text, bool error, size_t *len )
+char *finishString(Link& link,  const std::string &text, bool error, size_t *len )
 {
-    auto *str = static_cast<char *>( WRESALLOC( text.size() + 1 ) );
+    auto *str = static_cast<char *>( WRESALLOC(link,  text.size() + 1 ) );
 
     if( str == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
@@ -64,7 +64,7 @@ char *finishString( const std::string &text, bool error, size_t *len )
 
 } // namespace
 
-char *ResReadString( FILE *fp, size_t *len )
+char *ResReadString(Link& link,  FILE *fp, size_t *len )
 /******************************************/
 {
     std::string text;
@@ -75,10 +75,10 @@ char *ResReadString( FILE *fp, size_t *len )
         text.push_back( static_cast<char>( nextchar ) );
         nextchar = ResReadUint8( &error, fp );
     }
-    return( finishString( text, error, len ) );
+    return( finishString(link,  text, error, len ) );
 }
 
-char *ResRead32String( FILE *fp, size_t *len )
+char *ResRead32String(Link& link,  FILE *fp, size_t *len )
 /********************************************/
 {
     std::string text;
@@ -89,5 +89,5 @@ char *ResRead32String( FILE *fp, size_t *len )
         text.push_back( UNI2ASCII( nextchar ) );
         nextchar = ResReadUint16( &error, fp );
     }
-    return( finishString( text, error, len ) );
+    return( finishString(link,  text, error, len ) );
 }

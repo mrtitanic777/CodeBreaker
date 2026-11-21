@@ -30,7 +30,7 @@
 ****************************************************************************/
 
 
-extern bool     RegTreeFrlFree( void );
+extern bool_     RegTreeFrlFree( void );
 extern void     BurnRegTree( reg_tree *tree );
 extern void     BurnNameTree( reg_tree *tree );
 extern void     RegTreeInit( void );

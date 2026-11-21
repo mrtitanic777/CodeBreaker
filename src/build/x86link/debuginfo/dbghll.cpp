@@ -35,7 +35,7 @@
 #include <cstring>
 #include <string_view>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/alloc.h"
 #include "hll.h"
 #include "build/x86link/base/virtmem.h"
@@ -121,13 +121,13 @@ void HllInit( void )
     state() = HllState{};
 }
 
-void HllInitModule( mod_entry *obj )
+void HllInitModule(Link& link,  mod_entry *obj )
 /**********************************/
 // called before pass 1 is done on the module
 {
     DEBUG(( DBG_HLL, "HllInitModule: obj=%p %s", obj, obj->name.u.ptr ));
 
-    obj->u3.hll = static_cast<HLLMODINFO *>( _PermAlloc( sizeof( hllmodinfo ) ) );
+    obj->u3.hll = static_cast<HLLMODINFO *>( PermAlloc( link, sizeof( hllmodinfo ) ) );
     std::memset( obj->u3.hll, 0, sizeof( hllmodinfo ) );
 }
 
@@ -295,11 +295,11 @@ void HllAddModule(Link& link,  mod_entry *obj, section *sect )
     (void)sect; // komh: make compiler happy
 }
 
-void HllGenModule( void )
+void HllGenModule( Link& link )
 /***********************/
 // generate an sstSrcModule
 {
-    DEBUG(( DBG_HLL, "HllGenModule: CurrMod=%p %s", wlink().CurrMod, wlink().CurrMod->name));
+    DEBUG(( DBG_HLL, "HllGenModule: CurrMod=%p %s", link.CurrMod, link.CurrMod->name));
     // FIXME: sort the old-style linenumbers (not supported yet)
     hllSrcModHeader();
 }
@@ -411,7 +411,7 @@ void HllAddAddrInfo( Link& link, seg_leader *seg )
 
 static void hllGenAddrInit(Link& link,  segdata *sdata, void *_info )
 /*******************************************************/
-{
+{
     hll_seginfo *info = static_cast<hll_seginfo *>( _info );
     info->Seg = hllGetSegment(link,  sdata->u.leader );
     info->offset = sdata->u.leader->seg_addr.off + sdata->a.delta;
@@ -435,7 +435,7 @@ void HllGenAddrInfo(Link& link,  seg_leader *seg )
 /************************************/
 // called for each section just before pass 2 starts
 // Fill in seginfo.
-{
+{
     hll_seginfo info;
 
     if( (seg->info & SEGINF_CODE) == 0 )
@@ -474,7 +474,7 @@ static void hllDefSegData(Link& link,  void *_sdata )
 /***************************************/
 // Creates a Type or Symbol subsection for a module and copies the data into it.
 /* NOTE: this assumes that codeview segments are byte aligned! */
-{
+{
     segdata    *sdata = static_cast<segdata *>( _sdata );
     seg_leader *leader = sdata->u.leader;
 
@@ -506,7 +506,7 @@ static void hllDefSegData(Link& link,  void *_sdata )
 
 static bool hllDefLeader(Link& link,  void *_leader, void *group )
 /****************************************************/
-{
+{
     seg_leader *leader = static_cast<seg_leader *>( _leader );
     DEBUG((DBG_HLL, "hllDefLeader: leader=%p %s", leader, leader->segname ));
 
@@ -534,7 +534,7 @@ void HllAddrStart(Link& link)
     }
 
     /* Allocate memory for the debug info. */
-    st.hll_base = DBIAlloc( st.hll_size );
+    st.hll_base = DBIAlloc(link,  st.hll_size );
 
     /* calc the position of the section. */
     currpos = st.hll_base + sizeof( start );

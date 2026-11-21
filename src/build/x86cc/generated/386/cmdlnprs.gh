@@ -124,7 +124,7 @@ struct opt_storage {
     boolbit      pil : 1;
     boolbit      oz : 1;
     boolbit      ou : 1;
-    boolbit      or : 1;
+    boolbit      or_ : 1;
     boolbit      op : 1;
     boolbit      oo : 1;
     boolbit      on : 1;
@@ -195,7 +195,7 @@ struct opt_storage {
 };
 extern void OPT_INIT( OPT_STORAGE *data );
 extern void OPT_FINI( OPT_STORAGE *data );
-extern bool OPT_PROCESS( OPT_STORAGE *data );
+extern bool_ OPT_PROCESS( OPT_STORAGE *data );
 #define OPT_ENUM_win_zw 1
 #define OPT_ENUM_win_default 2
 #define OPT_ENUM_fp_rounding_zri 3

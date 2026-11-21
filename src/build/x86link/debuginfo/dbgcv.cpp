@@ -34,7 +34,7 @@
 #include <cstring>
 #include <string_view>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "exepe.h"
 #include "cv4w.h"
 #include "build/x86link/base/virtmem.h"
@@ -147,11 +147,11 @@ void CVInit( void )
     state() = CvState{};
 }
 
-void CVInitModule( mod_entry *obj )
+void CVInitModule(Link& link,  mod_entry *obj )
 /*********************************/
 // called before pass 1 is done on the module
 {
-    obj->u3.cv = static_cast<CVMODINFO *>( _PermAlloc( sizeof( cvmodinfo ) ) );
+    obj->u3.cv = static_cast<CVMODINFO *>( PermAlloc( link, sizeof( cvmodinfo ) ) );
     std::memset( obj->u3.cv, 0, sizeof( cvmodinfo ) );
 }
 
@@ -246,7 +246,7 @@ void CVP1ModuleScanned( void )
 static void CVAddLines(Link& link,  lineinfo *info )
 /**************************************/
 // called during pass 1 linnum processing
-{
+{
     link.CurrMod->u3.cv->numlines += DBICalcLineQty( info );
 }
 
@@ -502,7 +502,7 @@ void CVGenGlobal(Link& link,  symbol *sym, section *sect )
 void CVGenLines(Link& link,  lineinfo *info )
 /*******************************/
 // called during pass 2 linnum processing
-{
+{
     CvState                     &st = state();
     cvlineinfo                  &line_info = st.line_info;
     ln_off_pair _WCUNALIGNED    *pair;
@@ -601,7 +601,7 @@ void CVAddAddrInfo( Link& link, seg_leader *seg )
 
 static void CVGenAddrInit(Link& link,  segdata *sdata, void *_info )
 /******************************************************/
-{
+{
     cv_seginfo *info = static_cast<cv_seginfo *>( _info );
     info->Seg = GetCVSegment(link,  sdata->u.leader );
     info->pad = 0;
@@ -622,7 +622,7 @@ static void CVGenAddrAdd( segdata *sdata, offset delta, offset size, void *_info
 
 void CVGenAddrInfo(Link& link,  seg_leader *seg )
 /***********************************/
-{
+{
     cv_seginfo          info;
 
     if( seg->info & SEGINF_CODE ) {
@@ -646,7 +646,7 @@ void CVDefClass(Link& link,  class_entry *class_, unsigned_32 size )
 static void DefLocal(Link& link,  void *_sdata )
 /**********************************/
 /* NOTE: this assumes that codeview segments are byte aligned! */
-{
+{
     virt_mem_ptr &misc = state().at( CvSect::misc );
     segdata    *sdata = static_cast<segdata *>( _sdata );
     seg_leader *leader;
@@ -670,7 +670,7 @@ static void DefLocal(Link& link,  void *_sdata )
 
 static bool DefLeader(Link& link,  void *_leader, void *group )
 /*************************************************/
-{
+{
     seg_leader *leader = static_cast<seg_leader *>( _leader );
 
     leader->group = static_cast<group_entry *>( group );
@@ -697,7 +697,7 @@ void CVAddrStart(Link& link)
     for( virt_mem_ptr &addr : st.sect_addrs ) {
         link.CVSize += addr.vm_offs;
     }
-    st.cv_base = DBIAlloc( link.CVSize );
+    st.cv_base = DBIAlloc(link,  link.CVSize );
     // The block is not cleared by its allocator, and some of it is never written: the padding
     // that pass 1 reserves after each module name (dword rounding) and after an odd number of
     // line numbers (the 16-bit numbers rounded up to a dword). wlink.exe leaves it zero.
@@ -789,7 +789,7 @@ void CVWriteDebugTypeMisc(Link& link,  const char *filename )
         if( bufspace >= namelen ) {
             std::memcpy( dbg_exename.data, filename, namelen );
         } else {
-            LnkMsg( WRN+LOC+MSG_INTERNAL, "s", "filename too long in CVWriteDebugTypeMisc()" );
+            LnkMsg(link,  WRN+LOC+MSG_INTERNAL, "s", "filename too long in CVWriteDebugTypeMisc()" );
         }
     }
     dbg_exename.special_purpose = link.CVDebugDirEntryPos;

@@ -1,7 +1,7 @@
 // build/x86link/directives/phar.cpp -- Phar Lap (`format phar ext|rex|seg`, its options and runtime directives): a port of
 // wlink's cmdphar.c.
 #include "build/x86link/directives/common.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/directives/formats.hpp"
 #include "exephar.h"
 
@@ -69,7 +69,7 @@ bool ProcMinReal(Link& link) {
     if (ret) {
         value >>= link.FmtData.SegShift;   // value specified in paragraphs
         if (value > 0xffff) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "MINREAL");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "MINREAL");
         } else {
             link.FmtData.u.phar.minreal = value;
         }
@@ -83,7 +83,7 @@ bool ProcMaxReal(Link& link) {
     if (ret) {
         value >>= link.FmtData.SegShift;   // value specified in paragraphs
         if (value > 0xffff) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "MAXREAL");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "MAXREAL");
         } else {
             link.FmtData.u.phar.maxreal = value;
         }
@@ -97,7 +97,7 @@ bool ProcRealBreak(Link& link) {
         return false;
     Number ok = number(value);
     if (link.FmtData.u.phar.breaksym != nullptr) {
-        LnkMsg(WRN + LOC + LINE + MSG_MULT_REALBREAKS, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_MULT_REALBREAKS, nullptr);
         MemFree(link.FmtData.u.phar.breaksym);
         link.FmtData.u.phar.breaksym = nullptr;
     }
@@ -116,7 +116,7 @@ bool ProcCallBufs(Link& link) {
     if (ret) {
         value >>= 10;   // value specified in kilobytes
         if (value > 64) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "CALLBUFS");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "CALLBUFS");
         } else {
             link.FmtData.u.phar.callbufs = value;
         }
@@ -130,7 +130,7 @@ bool ProcMiniBuf(Link& link) {
     if (ret) {
         value >>= 10;   // value specified in kilobytes
         if (value > 64 || value < 1) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "MINIBUF");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "MINIBUF");
         } else {
             link.FmtData.u.phar.minibuf = value;
         }
@@ -144,7 +144,7 @@ bool ProcMaxiBuf(Link& link) {
     if (ret) {
         value >>= 10;   // value specified in kilobytes
         if (value > 64 || value < 1) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "MAXIBUF");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "MAXIBUF");
         } else {
             link.FmtData.u.phar.maxibuf = value;
         }
@@ -157,7 +157,7 @@ bool ProcNIStack(Link& link) {
     bool ret = get_number(value);
     if (ret) {
         if (value < 4 || value > 0xFFFF) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "NISTACK");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "NISTACK");
         } else {
             link.FmtData.u.phar.nistack = value;
         }
@@ -171,7 +171,7 @@ bool ProcIStkSize(Link& link) {
     if (ret) {
         value >>= 10;   // value specified in kilobytes
         if (value > 64 || value < 1) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "ISTKSIZE");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "ISTKSIZE");
         } else {
             link.FmtData.u.phar.istksize = value;
         }

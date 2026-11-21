@@ -30,7 +30,7 @@
 
 
 extern opcnt        OpcodeNumOperands( instruction *ins );
-extern void         ReplaceOperand( instruction *ins, name *old, name *new );
+extern void         ReplaceOperand( instruction *ins, name *old, name *new_ );
 extern name         *IndexToTemp( instruction * ins, name * index );
 extern name         *FindIndex( instruction *ins );
 extern void         NoMemIndex( instruction *ins );

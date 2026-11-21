@@ -1,0 +1,8 @@
+checking[A1] 100 savings[B2] 5000 opened=2
+failed: account A1 short by 32
+after: checking[A1] 49
+rejected bad amount -5
+savings[B2] 5100 [open:checking, w:50] [open:savings]
+27641 25849
+the=1 that=1 not=1 or=1 be=3 question=1 is=1 to=3
+[3, 10, 6, 2, 9, 5, 1, 8, 4]|[v6, v3, v0, v8, v5, v2, v7, v4, v1] -2066978114

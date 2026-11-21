@@ -664,4 +664,9 @@ cb::emulate::Run record(const RunResult& result) {
 
 cb::emulate::Run recorded(Bus& bus, std::uint32_t entry, const RunOptions& options) { return record(run(bus, entry, options)); }
 
+std::uint32_t gte_register(const Cpu& cpu, unsigned n) { return gte_read(cpu, n); }
+void gte_set_register(Cpu& cpu, unsigned n, std::uint32_t value) { gte_write(cpu, n, value); }
+std::uint32_t gte_control_register(const Cpu& cpu, unsigned n) { return gte_control_read(cpu, n); }
+bool gte_run_command(Cpu& cpu, std::uint32_t command, std::string_view name) { return GteCommand(cpu, command).run(name); }
+
 }  // namespace cb::emulate::mips

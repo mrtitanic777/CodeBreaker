@@ -22,12 +22,21 @@
 #include <optional>
 
 #include "emulate/m6502.hpp"
+#include "emulate/m68k.hpp"
+#include "emulate/mips.hpp"
+#include "emulate/r4300.hpp"
 #include "emulate/z80.hpp"
 
 namespace cb::engine::pcode_cpu {
 
-// Whether call() runs on the emulator: force() if set, else not CB_PCODE_EMU=0 ("0", "false", "no").
-bool enabled();
+// The CPU families with an adapter. A family's default (default_on) is the emulator only where its lanes' homebrew is judged with no verdict
+// differing from the own core's and no slower; the others run the own core unless CB_PCODE_EMU=1.
+enum class Core : std::uint8_t { Mos6502, Z80, M68000, Mips, R4300, Arm, SuperH, PowerPc };
+bool default_on(Core core);
+
+// Whether call() runs on the emulator: force() if set, else CB_PCODE_EMU ("0", "false", "no": off for every core; "1", "true", "yes": on for every
+// core), else the core's default.
+bool enabled(Core core = Core::Mos6502);
 // Override the environment (tests flip it); std::nullopt goes back to the environment.
 void force(std::optional<bool> on);
 
@@ -41,10 +50,25 @@ emulate::m6502::RunResult call(emulate::m6502::Bus& bus, std::uint16_t entry, co
 // "io" space (IN and OUT; the port is all sixteen lines, as the description puts A or B on the high ones), the 64 KB of bus memory the
 // page map instructions are decoded from, kept current. The call is made as CALL makes it (return address pushed, kReturnAddress ends the
 // run), HALT stops the run with the Halt fault, an instruction the description lacks with Undecodable (a DD/FD in front of an instruction that
-// takes no index is skipped, most of the ED page is NOP; the NEG/RETN/IM mirrors in ED, IN/OUT (C) with no register, and the undocumented
-// DD CB copies into a register stay undecodable). R is counted by the adapter as the own core counts it; the interrupt flip-flops and mode
+// takes no index is skipped, most of the ED page is NOP; the description has every opcode, the undocumented ones too). R is counted by the adapter as the own core counts it; the interrupt flip-flops and mode
 // are tracked from the description's user operations (disable/enableMaskableInterrupts, setInterruptMode, getIFF2, halt).
 emulate::z80::RunResult run(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
 emulate::z80::RunResult call(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
+
+// The same for the 68000 lanes (emulate::m68k::Bus), on 68020.sla (a superset of the 68000). Every data access goes through the Bus's read/write (the
+// device ranges and their log are the bus's), the 16 MB of bus memory is what instructions are decoded from, a page at a time current from the last run.
+// The call is made as JSR makes it; TRAP, CHK, TRAPV and STOP end the run with the fault the own core gives.
+emulate::m68k::RunResult run(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
+emulate::m68k::RunResult call(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
+
+// The PlayStation's R3000A (emulate::mips::Bus), on mips32le.sla: the adapter carries the BIOS calls, the load delay slot, the faults, coprocessor 0 and the
+// GTE (the own core's). A branch in a branch's delay slot is the one thing the description cannot decode.
+emulate::mips::RunResult run(emulate::mips::Bus& bus, std::uint32_t entry, const emulate::mips::RunOptions& options = {});
+emulate::mips::RunResult call(emulate::mips::Bus& bus, std::uint32_t entry, const emulate::mips::RunOptions& options = {});
+
+// The Nintendo 64's R4300i (emulate::r4300::Bus), on mips64be.sla: the adapter carries the integer machine, loads and stores, branches (likely ones too),
+// faults, coprocessor 0 and the FPU.
+emulate::r4300::RunResult run(emulate::r4300::Bus& bus, std::uint32_t entry, const emulate::r4300::RunOptions& options = {});
+emulate::r4300::RunResult call(emulate::r4300::Bus& bus, std::uint32_t entry, const emulate::r4300::RunOptions& options = {});
 
 }  // namespace cb::engine::pcode_cpu

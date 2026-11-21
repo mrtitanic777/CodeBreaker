@@ -39,7 +39,7 @@
 #include <string.h>
 #include <array>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/layout/distrib.h"
 #include "build/x86link/symbols/wcomdef.h"
 #include "build/x86link/base/strtab.h"
@@ -68,16 +68,16 @@ struct nodearray {
 
 namespace {
 
-nodearray_handle MakeArray( unsigned size )
+nodearray_handle MakeArray(Link& link,  unsigned size )
 {
     nodearray_handle    nodes;
 
-    nodes = static_cast<nodearray_handle>( MemAllocSafe( sizeof( nodearray ) ) );
+    nodes = static_cast<nodearray_handle>( MemAllocSafe(link,  sizeof( nodearray ) ) );
     nodes->num = 0;
     nodes->elsize = size;
     nodes->arraymax = 0;
     size *= NODE_ARRAY_SIZE;
-    nodes->array[0] = static_cast<char *>( MemAllocSafe( size ) );
+    nodes->array[0] = static_cast<char *>( MemAllocSafe(link,  size ) );
     memset( nodes->array[0], 0, size );
     return nodes;
 }
@@ -88,10 +88,10 @@ nodearray_handle MakeArray( unsigned size )
 void InitNodes(Link& link)
 /***************************/
 {
-    link.GrpNodes = MakeArray( sizeof( grpnode ) );
-    link.SegNodes = MakeArray( sizeof( segnode ) );
-    link.ExtNodes = MakeArray( sizeof( extnode ) );
-    link.NameNodes = MakeArray( sizeof( list_of_names * ) );
+    link.GrpNodes = MakeArray(link,  sizeof( grpnode ) );
+    link.SegNodes = MakeArray(link,  sizeof( segnode ) );
+    link.ExtNodes = MakeArray(link,  sizeof( extnode ) );
+    link.NameNodes = MakeArray(link,  sizeof( list_of_names * ) );
 }
 
 namespace {
@@ -126,35 +126,35 @@ void *FindNode( nodearray_handle list, unsigned index )
 
 namespace {
 
-void AllocNewArray( nodearray_handle list )
+void AllocNewArray(Link& link,  nodearray_handle list )
 {
     unsigned    size;
 
     list->arraymax++;
     size = list->elsize * NODE_ARRAY_SIZE;
-    list->array[list->arraymax] = static_cast<char *>( MemAllocSafe( size ) );
+    list->array[list->arraymax] = static_cast<char *>( MemAllocSafe(link,  size ) );
     memset( list->array[list->arraymax], 0, size );
 }
 
 }
 
-void *AllocNode( nodearray_handle list )
+void *AllocNode(Link& link,  nodearray_handle list )
 /**************************************/
 {
     if( arrayNum( list->num ) > list->arraymax ) {
-        AllocNewArray( list );
+        AllocNewArray(link,  list );
     }
     list->num++;
     return FindNode( list, list->num );
 }
 
-void *AllocNodeIdx( nodearray_handle list, unsigned index )
+void *AllocNodeIdx(Link& link,  nodearray_handle list, unsigned index )
 /*********************************************************/
 {
     if( list->num < index ) {
         list->num = index;
         while( arrayNum( index - 1 ) > list->arraymax ) {
-            AllocNewArray( list );
+            AllocNewArray(link,  list );
         }
     }
     return FindNode( list, index );
@@ -166,7 +166,7 @@ mod_entry *NewModEntry(Link& link)
 {
     mod_entry           *entry;
 
-    entry = static_cast<mod_entry *>( CarveZeroAlloc( link.CarveModEntry ) );
+    entry = static_cast<mod_entry *>( CarveZeroAlloc(link,  link.CarveModEntry ) );
 #ifdef _EXE
     if( link.LinkFlags & LF_STRIP_CODE ) {
         InitArcList(link,  entry );
@@ -239,7 +239,7 @@ void ReleaseNames(Link& link)
 namespace {
 
 void CollapseLazy(Link& link,  void *node, void * )
-{
+{
     extnode     *curr;
 
     curr = static_cast<extnode *>( node );
@@ -311,7 +311,7 @@ segdata *AllocSegData(Link& link)
 {
     segdata *sdata;
 
-    sdata = static_cast<segdata *>( CarveZeroAlloc( link.CarveSegData ) );
+    sdata = static_cast<segdata *>( CarveZeroAlloc(link,  link.CarveSegData ) );
     sdata->o.mod = link.CurrMod;
     return sdata;
 }
@@ -319,16 +319,16 @@ segdata *AllocSegData(Link& link)
 // put a segdata on the list of free segdatas
 void FreeSegData(Link& link,  void *sdata )
 /*****************************/
-{
+{
     CarveFree( link.CarveSegData, sdata );
 }
 
-list_of_names *MakeListName( char *name, size_t len )
+list_of_names *MakeListName(Link& link,  char *name, size_t len )
 /***************************************************/
 {
     list_of_names   *new_;
 
-    new_ = static_cast<list_of_names *>( MemAllocSafe( sizeof( list_of_names ) + len ) );
+    new_ = static_cast<list_of_names *>( MemAllocSafe(link,  sizeof( list_of_names ) + len ) );
     new_->next = nullptr;
     memcpy( new_->name, name, len );
     new_->name[len] = '\0';
@@ -338,6 +338,6 @@ list_of_names *MakeListName( char *name, size_t len )
 unsigned long BadObjFormat(Link& link)
 /***************************************/
 {
-    LnkMsg( FTL+MSG_BAD_OBJECT, "s", link.CurrMod->u1.source->infile->name );
+    LnkMsg(link,  FTL+MSG_BAD_OBJECT, "s", link.CurrMod->u1.source->infile->name );
     return 0;
 }

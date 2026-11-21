@@ -7,6 +7,7 @@
 
 #include "decompile/engine/pcode_emulator.hh"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <set>
@@ -184,6 +185,19 @@ struct Emulator::Impl {
     std::uint64_t getValueBytes(const SpaceMem& m, std::uint64_t a, unsigned size) const {
         std::uint64_t v = 0;
         const unsigned n = size > 8 ? 8 : size;
+        if (size <= 8) {   // (the common case: the value is inside one page: its bytes are put together without looking the page up for each)
+            const std::uint64_t off = a & (kPageSize - 1);
+            if (off + size <= kPageSize) {
+                const Page* p = m.find(a >> kPageBits);
+                if (!p) return 0;
+                const std::uint8_t* b = p->d.data() + off;
+                if (m.big)
+                    for (unsigned i = 0; i < size; ++i) v = (v << 8) | b[i];
+                else
+                    for (unsigned i = size; i-- > 0;) v = (v << 8) | b[i];
+                return v;
+            }
+        }
         if (m.big) {
             // the low bytes are the last ones
             for (unsigned i = 0; i < n; ++i) v = (v << 8) | getByte(m, a + size - n + i);
@@ -193,6 +207,24 @@ struct Emulator::Impl {
         return v;
     }
     void putValueBytes(SpaceMem& m, std::uint64_t a, unsigned size, std::uint64_t v) {
+        if (size <= 8) {   // (inside one page: one lookup)
+            const std::uint64_t off = a & (kPageSize - 1);
+            if (off + size <= kPageSize) {
+                const std::uint64_t key = a >> kPageBits;
+                Page* p = const_cast<Page*>(m.find(key));
+                if (!p) {
+                    if (v == 0) return;   // (a page that does not exist reads zeros)
+                    p = m.make(key);
+                }
+                if (p->code) dirty = true;
+                std::uint8_t* b = p->d.data() + off;
+                if (m.big)
+                    for (unsigned i = size; i-- > 0; v >>= 8) b[i] = static_cast<std::uint8_t>(v);
+                else
+                    for (unsigned i = 0; i < size; ++i, v >>= 8) b[i] = static_cast<std::uint8_t>(v);
+                return;
+            }
+        }
         if (m.big) {
             for (unsigned i = size; i-- > 0;) {
                 putByte(m, a + i, static_cast<std::uint8_t>(v));
@@ -415,8 +447,35 @@ Emulator::~Emulator() = default;
 void Emulator::load(std::uint64_t addr, const std::uint8_t* data, std::size_t size, std::string_view space) { write(addr, data, size, space); }
 
 void Emulator::write(std::uint64_t addr, const std::uint8_t* data, std::size_t size, std::string_view space) {
+    Impl& o = *impl_;
+    SpaceMem& m = o.space(space);
+    // a page at a time: a page that does not exist and would only get zeros is not made (a 16 MB memory image of a console is mostly that)
+    for (std::size_t i = 0; i < size;) {
+        const std::uint64_t at = addr + i;
+        const std::size_t in = static_cast<std::size_t>(at & (kPageSize - 1));
+        const std::size_t n = std::min<std::size_t>(size - i, static_cast<std::size_t>(kPageSize) - in);
+        Page* p = const_cast<Page*>(m.find(at >> kPageBits));
+        if (!p) {
+            std::size_t z = 0;
+            while (z < n && data[i + z] == 0) ++z;
+            if (z == n) {
+                i += n;
+                continue;
+            }
+            p = m.make(at >> kPageBits);
+        }
+        if (p->code) o.dirty = true;
+        std::memcpy(p->d.data() + in, data + i, n);
+        i += n;
+    }
+}
+
+void Emulator::clearMemory(std::string_view space) {
     SpaceMem& m = impl_->space(space);
-    for (std::size_t i = 0; i < size; ++i) impl_->putByte(m, addr + i, data[i]);
+    m.pages.clear();
+    m.last = nullptr;
+    m.lastKey = ~std::uint64_t{0};
+    impl_->flush();
 }
 
 void Emulator::read(std::uint64_t addr, std::uint8_t* data, std::size_t size, std::string_view space) const {

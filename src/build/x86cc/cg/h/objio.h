@@ -33,7 +33,7 @@
 
 extern void         CloseObj( void );
 extern void         OpenObj( void );
-extern bool         CGOpenf( void );
+extern bool_         CGOpenf( void );
 extern void         AbortObj( void );
 extern void         ScratchObj( void );
 extern void         GetFromObj( objhandle, objoffset, byte *, size_t );

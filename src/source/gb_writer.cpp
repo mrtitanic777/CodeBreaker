@@ -11,6 +11,7 @@
 #include "decompile/sm83.hpp"
 #include "knowledge/package.hpp"
 #include "source/described_source.hpp"
+#include "source/dialect.hpp"
 #include "source/isa.hpp"
 #include "source/processors.hpp"
 
@@ -27,6 +28,9 @@ constexpr std::uint32_t kPowerOnEnd = 0x8000;    // the two banks mapped at powe
 constexpr iw::Spelling kSub{"sub_", 4};
 constexpr iw::Spelling kLocal{"L_", 4};
 constexpr iw::Spelling kData{"D_", 4};
+
+// The Game Boy's source is RGBDS's (config/dialects/rgbds.json).
+const dialect::Dialect& rgbds() { static const dialect::Dialect& d = dialect::find("rgbds"); return d; }
 
 const processors::Processor& sm83_cpu() {
     static const processors::Processor& cpu = processors::find("sm83");
@@ -111,19 +115,25 @@ public:
     std::string text(const sm83::Insn& insn) const override {   // (the description's text, the program's names where its addresses are)
         const ByteView bytes = ByteView(rom_.data).subspan(at_offset_, insn.size);
         std::optional<std::string> t = described_source::checked_text(sm83_cpu(), bytes, at_address_, insn.size);
-        if (!t) return described_source::byte_line(sm83_cpu(), bytes, at_address_, {}, "");
+        if (!t) {   // (the bytes with the description's reading in a comment)
+            const std::vector<processors::Line> lines = processors::read_described(sm83_cpu(), bytes, at_address_, 1);
+            std::string row;
+            for (const std::uint8_t b : bytes) row += std::format("{}0x{:02x}", row.empty() ? "" : ",", b);
+            return rgbds().line(".byte " + row) + (lines.empty() || lines[0].text.starts_with(".d") ? std::string() : "  ; " + rgbds().instruction(lines[0].text));
+        }
         const std::optional<std::uint32_t> named = insn.target ? std::optional<std::uint32_t>(*insn.target)
                                                      : names_its_operand(insn) ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(*insn.value)) : std::nullopt;
         if (named && names_.contains(*named)) *t = described_source::name_number(*t, *named, names_.at(*named), false);
-        return *t;
+        return rgbds().instruction(*t);
     }
-    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
+    std::vector<std::string> data_lines(ByteView data) const override { return rgbds().data_lines(data); }
+    std::string label_line(const std::string& name) const override { return rgbds().label_line(name); }
     // The cartridge header, each field with its name.
     std::uint32_t special(std::uint32_t, std::uint32_t address, const iw::Flush& flush) override {
         const HeaderField* field = bank_ == 0 ? header_field(address) : nullptr;
         if (!field) return 0;
         flush();
-        out_.extend(iw::commented(described_source::data_lines(ByteView(rom_.data).subspan(address, field->size)), field->what));
+        out_.extend(iw::commented(rgbds().data_lines(ByteView(rom_.data).subspan(address, field->size)), field->what));
         return field->size;
     }
 
@@ -202,8 +212,8 @@ iw::Written write(const formats::gb::Rom& rom, std::string_view file_name, const
                                                                   : std::format(", Game Boy Color ({})", rom.color == formats::gb::ColorSupport::Also ? "also" : "only"),
                      rom.sgb ? ", Super Game Boy" : ""),
          ""},
-        "sleigh-sm83", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(described_source::equ(known.at(a), a, 4));
+        "rgbds", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(rgbds().line(described_source::equ(known.at(a), a, 4)));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -215,15 +225,14 @@ iw::Written write(const formats::gb::Rom& rom, std::string_view file_name, const
         const std::uint32_t end = first + static_cast<std::uint32_t>(rom.bank(bank).size());
         const bool mapped = bank <= 1;   // (the banks seen at power-on: where flow was followed)
         out.part(std::format("bank{}", bank), "bank", std::nullopt, rom.bank(bank).size());
-        out.append(std::format("; bank{} ({})", bank, bank == 0 ? std::string("ROM0 at 0x0000") : std::format("ROMX at 0x4000, bank {}", bank)));
-        out.append(std::format("        .org 0x{:04x}", bank == 0 ? 0u : 0x4000u));
+        out.extend(rgbds().block(bank == 0 ? "rom0" : "romx", {{"bank", std::to_string(bank)}}));
         GbListing listing(out, rom, bank, first, end, mapped, code, names_for_text);
         iw::emit<sm83::Insn>(out, first, end, mapped ? labels : no_labels, functions, listing);
         out.append("");
     }
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    iw::assembled(r, [&] { return described_source::assemble(sm83_cpu(), source, folder); }, rom.data, folder / (stem + ".built" + file.extension().string()));
+    iw::assembled(r, [&] { return described_source::assemble(sm83_cpu(), rgbds().parse(source), folder); }, rom.data, folder / (stem + ".built" + file.extension().string()));
     return r;
 }
 

@@ -41,7 +41,7 @@
 #include <cstdio>
 #include <cstring>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/fileio.h"
 #include "build/x86link/objects/objio.h"
 #include "build/x86link/base/objcache.h"
@@ -121,7 +121,7 @@ bool CacheOpen(Link& link,  const file_list *file )
     if( infile->len == 0 ) {
         infile->len = QFileSize( infile->handle );
         if( infile->len == 0 ) {
-            LnkMsg( ERR+MSG_BAD_OBJECT, "s", infile->name );
+            LnkMsg(link,  ERR+MSG_BAD_OBJECT, "s", infile->name );
             infile->status |= INSTAT_IOERR;
             return false;
         }
@@ -141,22 +141,22 @@ bool CacheOpen(Link& link,  const file_list *file )
     }
     if( infile->cache == nullptr ) {
         if( infile->status & INSTAT_FULL_CACHE ) {
-            infile->cache = MemAllocSafe( infile->len );
+            infile->cache = MemAllocSafe(link,  infile->len );
             if( infile->currpos != 0 ) {
-                QLSeek( infile->handle, 0, SEEK_SET, infile->name.u.ptr );
+                QLSeek(link,  infile->handle, 0, SEEK_SET, infile->name.u.ptr );
             }
-            QRead( infile->handle, infile->cache, infile->len, infile->name.u.ptr );
+            QRead(link,  infile->handle, infile->cache, infile->len, infile->name.u.ptr );
             infile->currpos = infile->len;
         } else {
             unsigned numblocks = NumCacheBlocks( infile->len );
-            infile->cache = Pass1Alloc( numblocks * sizeof( char * ) );
+            infile->cache = Pass1Alloc(link,  numblocks * sizeof( char * ) );
             std::fill_n( page_table( infile ), numblocks, nullptr );
         }
     }
     return true;
 }
 
-void CacheClose( const file_list *file, unsigned pass )
+void CacheClose(Link& link,  const file_list *file, unsigned pass )
 /*****************************************************/
 {
     if( file == nullptr )
@@ -181,7 +181,7 @@ void CacheClose( const file_list *file, unsigned pass )
     case 3: /* freeing structure */
         FreeObjCache( file );
         if( infile->handle != NIL_FHANDLE ) {
-            QClose( infile->handle, infile->name.u.ptr );
+            QClose(link,  infile->handle, infile->name.u.ptr );
             infile->handle = NIL_FHANDLE;
         }
         break;
@@ -197,11 +197,11 @@ void *CachePermRead(Link& link,  const file_list *file, unsigned long pos, size_
     char *result;
     CacheState &st = state();
     if( st.Multipage ) {
-        result = static_cast<char *>( MemReallocSafe( buf, len ) );
-        link.TokBuff = static_cast<char *>( MemAllocSafe( link.TokSize ) );
+        result = static_cast<char *>( MemReallocSafe(link,  buf, len ) );
+        link.TokBuff = static_cast<char *>( MemAllocSafe(link,  link.TokSize ) );
         st.Multipage = false;           // indicate that last read is permanent.
     } else {
-        result = static_cast<char *>( MemAllocSafe( len ) );
+        result = static_cast<char *>( MemAllocSafe(link,  len ) );
         std::memcpy( result, buf, len );
     }
     return result;
@@ -228,13 +228,13 @@ void *CacheRead(Link& link,  const file_list *file, unsigned long pos, size_t le
     char **cache = page_table( infile );
     for( ;; ) {
         if( cache[bufnum] == nullptr ) {   // make sure page is in.
-            cache[bufnum] = static_cast<char *>( MemAllocSafe( kCachePageSize ) );
+            cache[bufnum] = static_cast<char *>( MemAllocSafe(link,  kCachePageSize ) );
             unsigned long newpos = static_cast<unsigned long>( bufnum ) * kCachePageSize;
             if( infile->currpos != newpos ) {
-                QSeek( infile->handle, newpos, infile->name.u.ptr );
+                QSeek(link,  infile->handle, newpos, infile->name.u.ptr );
             }
             infile->currpos = newpos + kCachePageSize;
-            QRead( infile->handle, cache[bufnum], kCachePageSize, infile->name.u.ptr );
+            QRead(link,  infile->handle, cache[bufnum], kCachePageSize, infile->name.u.ptr );
         }
         if( amtread >= len )
             break;
@@ -248,7 +248,7 @@ void *CacheRead(Link& link,  const file_list *file, unsigned long pos, size_t le
     } else {
         if( link.TokSize < len ) {
             link.TokSize = __ROUND_UP_SIZE_SECTOR( len );
-            link.TokBuff = static_cast<char *>( MemReallocSafe( link.TokBuff, link.TokSize ) );
+            link.TokBuff = static_cast<char *>( MemReallocSafe(link,  link.TokBuff, link.TokSize ) );
         }
         amtread = kCachePageSize - offset;
         std::memcpy( link.TokBuff, cache[startnum] + offset, amtread );

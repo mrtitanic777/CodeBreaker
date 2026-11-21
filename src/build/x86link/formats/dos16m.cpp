@@ -37,7 +37,7 @@
 #include <cstring>
 #include <cstdio>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "exedos.h"
 #include "exe16m.h"
 #include "build/x86link/formats/dos16m.h"
@@ -208,7 +208,7 @@ static unsigned GetRelocBlock(Link& link,  reloc_addr **reloc_data )
     if( (link.LinkState & LS_MAKE_RELOCS) && link.Root->relocs ) {
         reloclist = link.Root->reloclist;
         num_relocs = link.Root->relocs;
-        *reloc_data = static_cast<reloc_addr *>( MemAllocSafe( sizeof( reloc_addr ) * num_relocs ) );
+        *reloc_data = static_cast<reloc_addr *>( MemAllocSafe(link,  sizeof( reloc_addr ) * num_relocs ) );
         if( *reloc_data != nullptr ) {
             info.reloc_data = *reloc_data;
             WalkRelocList(link,  &reloclist, RelocWalkFn, &info );
@@ -285,12 +285,12 @@ static unsigned_32 WriteStubProg(Link& link)
     if( link.FmtData.u.d16m.stub != nullptr ) {
         fhandle = FindPath(link,  link.FmtData.u.d16m.stub, fullname.data() );
         if( fhandle == NIL_FHANDLE ) {
-            LnkMsg( WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.u.d16m.stub );
+            LnkMsg(link,  WRN+MSG_CANT_OPEN_NO_REASON, "s", link.FmtData.u.d16m.stub );
         } else {
             MemFree( link.FmtData.u.d16m.stub );
             link.FmtData.u.d16m.stub = MemStrdupSafe(link,  fullname.data() );
             size = CopyToLoad(link,  fhandle, link.FmtData.u.d16m.stub );
-            QClose( fhandle, link.FmtData.u.d16m.stub );
+            QClose(link,  fhandle, link.FmtData.u.d16m.stub );
         }
     }
     SetOriginLoad(link,  size );
@@ -365,7 +365,7 @@ void Fini16MLoadFile(Link& link)
     while( extra_sels-- ) {
         st.LastSel += sizeof( gdt_info );
         if( st.LastSel > 0xFFFF ) {
-            LnkMsg( FTL + MSG_TOO_MANY_SELECTORS, nullptr );
+            LnkMsg(link,  FTL + MSG_TOO_MANY_SELECTORS, nullptr );
         }
         if( st.LastSel >= 0xA000 && (st.LastSel & 0x1FF) == 0 ) {   // check for reserved selector
             st.LastSel += sizeof( gdt_info );
@@ -397,7 +397,7 @@ unsigned ToD16MSel(Link& link,  unsigned seg_num )
     for( x = 0xA000; LastSel >= x; x += 0x200 ) {   // check for reserved selector
         LastSel += sizeof( gdt_info );
         if( LastSel > 0xFFFF ) {
-            LnkMsg( FTL + MSG_TOO_MANY_SELECTORS, nullptr );
+            LnkMsg(link,  FTL + MSG_TOO_MANY_SELECTORS, nullptr );
         }
     }
     return( LastSel );
@@ -450,7 +450,7 @@ static void SetSegDataAbs( void *_sdata )
 
 static void RemapAliasSels(Link& link,  void *_leader )
 /*****************************************/
-{
+{
     seg_leader  *leader = static_cast<seg_leader *>( _leader );
     seg_leader  *seg;
     section     *sect;

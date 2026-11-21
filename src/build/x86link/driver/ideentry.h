@@ -32,10 +32,10 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void     WriteStdOut( const char * );
-extern void     WriteStdOutWithNL( const char * );
+extern void     WriteStdOut(Link& link,  const char * );
+extern void     WriteStdOutWithNL(Link& link,  const char * );
 extern void     WriteStdOutNL( void );
-extern void     WriteStdOutInfo( const char *, unsigned, const char * );
+extern void     WriteStdOutInfo(Link& link,  const char *, unsigned, const char * );
 extern char     *GetEnvString( const char * );
 extern void     GetExtraCommands(Link& link);
 extern int      ExecDLLPgm( const char *, const char * );

@@ -1,7 +1,7 @@
 // build/x86link/directives/novell.cpp -- Netware's directives: `format novell nlm|lan|dsk|nam|<n> 'description'`, `option`
 // for it, `import`, `export` and `module` with their `(PREFIX)`, and `debug novell` (a port of wlink's cmdnov.c).
 #include "build/x86link/directives/formats.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 
 #ifdef _NOVELL
 
@@ -151,7 +151,7 @@ bool ProcScreenName(Link& link) {
     Reader& r = reader();
     if (!r.get(Sep::none, Want::include_dot)) return false;
     if (r.text().size() > MAX_SCREEN_NAME_LENGTH) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "SCREENNAME");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "SCREENNAME");
     } else {
         if (link.FmtData.u.nov.screenname != nullptr) MemFree(link.FmtData.u.nov.screenname);   // assume second is correct
         link.FmtData.u.nov.screenname = token_string(link);
@@ -240,7 +240,7 @@ bool ProcThreadName(Link& link) {
     if (!r.get(Sep::none, Want::include_dot)) {
         return false;
     } else if (r.text().size() > MAX_THREAD_NAME_LENGTH) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "THREADNAME");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "THREADNAME");
     } else {
         link.FmtData.u.nov.threadname = token_string(link);
     }
@@ -256,7 +256,7 @@ bool ProcCopyright(Link& link) {
     Reader& r = reader();
     if (!r.get(Sep::equals, Want::include_dot) && !r.get(Sep::none, Want::include_dot)) {
         if (link.FmtData.u.nov.copyright != nullptr) MemFree(link.FmtData.u.nov.copyright);   // assume second is correct
-        link.FmtData.u.nov.copyright = static_cast<char*>(MemAllocSafe(DEFAULT_COPYRIGHT_LENGTH + 1));
+        link.FmtData.u.nov.copyright = static_cast<char*>(MemAllocSafe(link, DEFAULT_COPYRIGHT_LENGTH + 1));
         std::memcpy(link.FmtData.u.nov.copyright, DEFAULT_COPYRIGHT, DEFAULT_COPYRIGHT_LENGTH + 1);
         // (the year is written backwards from YEAR_OFFSET, as wlink does)
         char* copy_year = link.FmtData.u.nov.copyright + YEAR_OFFSET;
@@ -268,7 +268,7 @@ bool ProcCopyright(Link& link) {
         }
     } else {
         if (r.text().size() > MAX_COPYRIGHT_LENGTH) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "COPYRIGHT");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "COPYRIGHT");
         } else {
             if (link.FmtData.u.nov.copyright != nullptr) MemFree(link.FmtData.u.nov.copyright);   // assume second is correct
             link.FmtData.u.nov.copyright = token_string(link);

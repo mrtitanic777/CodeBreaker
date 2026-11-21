@@ -70,7 +70,7 @@ typedef struct {
     Elf32_Word  *chains;
 } ElfSymTable;
 
-extern ElfSymTable *    CreateElfSymTable( unsigned maxElems, stringtable *strtab );
+extern ElfSymTable *    CreateElfSymTable(Link& link,  unsigned maxElems, stringtable *strtab );
 extern void             AddSymElfSymTable( ElfSymTable *tab, symbol *sym );
 extern unsigned         FindSymIdxElfSymTable( ElfSymTable *tab, symbol *sym );
 extern void             WriteElfSymTable(Link& link,  ElfSymTable *tab,
@@ -79,6 +79,6 @@ extern void             WriteElfSymTable(Link& link,  ElfSymTable *tab,
                                           unsigned symtabidx,
                                           unsigned strtabidx );
 extern void             ZapElfSymTable( ElfSymTable *tab);
-extern size_t           AddSecName( ElfHdr *hdr, const char *name );
+extern size_t           AddSecName(Link& link,  ElfHdr *hdr, const char *name );
 
 #endif

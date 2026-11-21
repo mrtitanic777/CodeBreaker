@@ -32,7 +32,7 @@
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/link/specials.h"
 #include "pcobj.h"
 #include "build/x86link/fixups/obj2supp.h"
@@ -327,7 +327,7 @@ static void ProcModuleEnd(Link& link)
         switch( target ) {
         case TARGET_SEG:
             if( link.StartInfo.type != START_UNDEFED ) {
-                LnkMsg( MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", link.StartInfo.mod->u1.source->infile->name, link.StartInfo.mod->name );
+                LnkMsg(link,  MILD_ERR+LOC+MSG_MULT_START_ADDRS, "12", link.StartInfo.mod->u1.source->infile->name, link.StartInfo.mod->name );
                 return;                 /* <-------- NOTE: premature return */
             }
             snode = static_cast<segnode *>( FindNode( link.SegNodes, targetidx ) );
@@ -369,8 +369,8 @@ static void AddNames(Link& link)
     DEBUG(( DBG_OLD, "AddNames()" ));
     for( ; link.ObjBuff < link.EOObjRec; link.ObjBuff += name_len ) {
         name_len = *link.ObjBuff++;
-        entry = static_cast<list_of_names **>( AllocNode( link.NameNodes ) );
-        *entry = MakeListName( reinterpret_cast<char *>( link.ObjBuff ), name_len );
+        entry = static_cast<list_of_names **>( AllocNode(link,  link.NameNodes ) );
+        *entry = MakeListName(link,  reinterpret_cast<char *>( link.ObjBuff ), name_len );
     }
 }
 
@@ -456,7 +456,7 @@ static void ProcSegDef(Link& link)
         sdata->bits = BITS_16;
     }
     sdata->iscode = IsCodeClass( clname->name, strlen( clname->name ) );
-    snode = static_cast<segnode *>( AllocNode( link.SegNodes ) );
+    snode = static_cast<segnode *>( AllocNode(link,  link.SegNodes ) );
     snode->entry = sdata;
     AllocateSegment(link,  snode, clname->name );
 }
@@ -485,7 +485,7 @@ static void DefineGroup(Link& link)
         SkipIdx(link);  /* skip segment index */
         ++num_segs;
     }
-    newnode = static_cast<grpnode *>( AllocNode( link.GrpNodes ) );
+    newnode = static_cast<grpnode *>( AllocNode(link,  link.GrpNodes ) );
     group = SearchGroups(link,  grp_name->name );
     if( group == nullptr ) {
         if( num_segs == 0 ) {
@@ -636,7 +636,7 @@ static void ProcVFReference(Link& link)
         return;
     index = GetIdx(link);
     if( index == 0 ) {
-        LnkMsg( WRN+LOC+MSG_NOT_COMPILED_VF_ELIM, nullptr );
+        LnkMsg(link,  WRN+LOC+MSG_NOT_COMPILED_VF_ELIM, nullptr );
         return;
     }
     ext = static_cast<extnode *>( FindNode( link.ExtNodes, index ) );
@@ -648,10 +648,10 @@ static void ProcVFReference(Link& link)
             if( sym == nullptr ) {
                 sym = MakeWeakExtdef(link,  lname->name, nullptr );
             }
-            DefineVFReference( sym, ext->entry, true );
+            DefineVFReference(link,  sym, ext->entry, true );
         } else {                /* it's a seg idx */
             snode = static_cast<segnode *>( FindNode( link.SegNodes, GetIdx(link) ) );
-            DefineVFReference( snode, ext->entry, false );
+            DefineVFReference(link,  snode, ext->entry, false );
         }
     }
     if( (ext->entry->info & SYM_DEFINED) == 0 ) {
@@ -687,7 +687,7 @@ static void UseSymbols(Link& link,  bool static_sym, bool iscextdef )
             sym = SymOp(link,  symop, reinterpret_cast<char *>( link.ObjBuff ), sym_len );
             link.ObjBuff += sym_len;
         }
-        newnode = static_cast<extnode *>( AllocNode( link.ExtNodes ) );
+        newnode = static_cast<extnode *>( AllocNode(link,  link.ExtNodes ) );
         newnode->entry = sym;
         newnode->isweak = false;
         DefineReference(link,  sym );
@@ -854,7 +854,7 @@ static void GetObject(Link& link,  segdata *snode, unsigned obj_offset, bool lid
             DoLIData(link,  start, link.ObjBuff, size );
         } else {
             if( size + obj_offset > snode->length ) {
-                LnkMsg( FTL+LOC_REC+MSG_OBJ_FILE_ATTR, nullptr );
+                LnkMsg(link,  FTL+LOC_REC+MSG_OBJ_FILE_ATTR, nullptr );
             }
             PutInfo( start, link.ObjBuff, size );
         }
@@ -956,7 +956,7 @@ static void ProcHllLinnum(Link& link)
             link.ObjBuff = buf;
         }
 
-        snode1 = static_cast<segnode *>( AllocNode( link.SegNodes ) );
+        snode1 = static_cast<segnode *>( AllocNode(link,  link.SegNodes ) );
         snode1->entry = sdata;
         AllocateSegment(link,  snode1, _HllLineClass );
 
@@ -1240,11 +1240,11 @@ static void Pass1Cmd(Link& link,  byte cmd )
     case CMD_LIBNAM:
     case CMD_LIBLOC:
     case CMD_LIBDIC:
-        LnkMsg( WRN+LOC_REC+MSG_REC_NOT_DONE, "x", cmd );
+        LnkMsg(link,  WRN+LOC_REC+MSG_REC_NOT_DONE, "x", cmd );
         break;
     default:
         link.CurrMod->u1.source->infile->status |= INSTAT_IOERR;
-        LnkMsg( ERR+LOC_REC+MSG_BAD_REC_TYPE, "x", cmd );
+        LnkMsg(link,  ERR+LOC_REC+MSG_BAD_REC_TYPE, "x", cmd );
         break;
     }
 }
@@ -1258,7 +1258,7 @@ unsigned long OMFPass1(Link& link)
 
     PermStartMod( link.CurrMod );
     if( link.LinkState & (LS_HAVE_MACHTYPE_MASK & ~LS_HAVE_X86_CODE) ) {
-        LnkMsg( WRN+MSG_MACHTYPE_DIFFERENT, "s", link.CurrMod->u1.source->infile->name);
+        LnkMsg(link,  WRN+MSG_MACHTYPE_DIFFERENT, "s", link.CurrMod->u1.source->infile->name);
     } else {
         link.LinkState |= LS_HAVE_X86_CODE;
     }

@@ -34,7 +34,7 @@
 #ifndef DWCARVE_H_INCLUDED
 #define DWCARVE_H_INCLUDED
 
-typedef struct carve_t *carve_t;
+typedef struct carve_t_s *carve_t;
 
 extern carve_t  DW_CarveCreate( dw_client, size_t, size_t );
 extern void     DW_CarveDestroy( dw_client, carve_t );

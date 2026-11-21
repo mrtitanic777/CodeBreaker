@@ -138,7 +138,7 @@ const T& m16_first_greatest(const std::vector<T>& items, Key key) {
 
 Result run(const Inputs& in) {
     if (in.toolchain == nullptr) throw UsageError("match16: no toolchain");
-    if (in.compilers.empty()) throw UsageError("Microsoft C is not set up (settings.json: dosbox_x, msc6, msvc152)");
+    if (in.compilers.empty()) throw UsageError("Microsoft C is not set up (settings.json: msc6, msvc152)");
     Toolchain& chain = *in.toolchain;
     const std::vector<Function>& todo = in.functions;
     const auto log = [&](const std::string& line) {

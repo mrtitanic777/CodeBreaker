@@ -1,0 +1,42 @@
+{
+  "name": "vasm-m68k",
+  "description": "vasm / asm68k, Motorola syntax: the Mega Drive, Sega CD, Neo Geo, Jaguar and CD-i as their 68000 homebrew is written. Upper-case mnemonics, $ hex in pairs of digits, name equ $value, org, dc.b / dc.w / dc.l, dcb.b fills, (x).L for an absolute long address, .S for a short branch.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "none"},
+  "label": "{name}:",
+  "mnemonic_case": "upper",
+  "replace": [[").l", ").L", true]],
+  "data": {"row": 16, "run": 16, "string_min": 4},
+  "directives": [
+    {"neutral": ".equ {name}, {v}", "dialect": "{name:<16} equ {v}"},
+    {"neutral": ".org {v}", "dialect": "org {v}", "exact": true},
+    {"neutral": ".byte {list}", "dialect": "dc.b {list}", "bytes": true},
+    {"neutral": ".ascii {s}", "dialect": "dc.b {s}"},
+    {"neutral": ".half {list}", "dialect": "dc.w {list}"},
+    {"neutral": ".long {list}", "dialect": "dc.l {list}"},
+    {"neutral": ".word {list}", "dialect": "dc.l {list}"},
+    {"neutral": ".space {n}, {v}", "dialect": "dcb.b {n},{v}"}
+  ],
+  "instructions": [
+    {"neutral": "jsr {w}.l", "dialect": "JSR ({w}).L", "pad": 8},
+    {"neutral": "jmp {w}.l", "dialect": "JMP ({w}).L", "pad": 8},
+    {"neutral": "moveq {w},{r}", "dialect": "MOVEQ #{w},{r}", "decimal": true},
+    {"neutral": "trap #{w}", "dialect": "TRAP #{w}", "decimal": true},
+    {"neutral": "bra.b {w}", "dialect": "BRA.S {w}"},
+    {"neutral": "bsr.b {w}", "dialect": "BSR.S {w}"},
+    {"neutral": "bhi.b {w}", "dialect": "BHI.S {w}"},
+    {"neutral": "bls.b {w}", "dialect": "BLS.S {w}"},
+    {"neutral": "bcc.b {w}", "dialect": "BCC.S {w}"},
+    {"neutral": "bcs.b {w}", "dialect": "BCS.S {w}"},
+    {"neutral": "bne.b {w}", "dialect": "BNE.S {w}"},
+    {"neutral": "beq.b {w}", "dialect": "BEQ.S {w}"},
+    {"neutral": "bvc.b {w}", "dialect": "BVC.S {w}"},
+    {"neutral": "bvs.b {w}", "dialect": "BVS.S {w}"},
+    {"neutral": "bpl.b {w}", "dialect": "BPL.S {w}"},
+    {"neutral": "bmi.b {w}", "dialect": "BMI.S {w}"},
+    {"neutral": "bge.b {w}", "dialect": "BGE.S {w}"},
+    {"neutral": "blt.b {w}", "dialect": "BLT.S {w}"},
+    {"neutral": "bgt.b {w}", "dialect": "BGT.S {w}"},
+    {"neutral": "ble.b {w}", "dialect": "BLE.S {w}"}
+  ]
+}

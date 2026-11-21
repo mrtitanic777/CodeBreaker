@@ -130,7 +130,7 @@ int run(const cli::Args& a) {
 cli::Command command() {
     return cli::Command{
         "dos-run",
-        "run a DOS program on CodeBreaker's own DOS executive (no DOSBox-X): what it printed and which files it wrote",
+        "run a DOS program on CodeBreaker's own DOS executive: what it printed and which files it wrote",
         {cli::Option{"--dir", "", "its drive C: (default: the current folder); it is only read", cli::Arg::Value, "DIR"},
          cli::Option{"--save", "", "write the files it made or changed into this folder", cli::Arg::Value, "DIR"},
          cli::Option{"--trace-calls", "", "count the calls of each address"},

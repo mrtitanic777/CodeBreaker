@@ -30,7 +30,7 @@
 ****************************************************************************/
 
 
-extern an               BGCall( cn call, bool use_return, bool aux_inline );
+extern an               BGCall( cn call, bool_ use_return, bool_ aux_inline );
 extern void             BGProcDecl( cg_sym_handle sym, const type_def *tipe );
 extern name             *StReturn( an retval, const type_def *tipe, instruction **pins );
 extern reg_set_index    CallIPossible( instruction *ins );

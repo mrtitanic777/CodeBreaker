@@ -1,7 +1,6 @@
 // CodeBreaker's own DOS executive behind build/native_dos, and the toolchains' DosRunner (native_dos_executive.hpp).
 #include "exact/emu/native_dos_executive.hpp"
 
-#include "build/dos_tools.hpp"
 #include "build/native_dos_runner.hpp"
 #include "core/error.hpp"
 #include "core/text.hpp"
@@ -85,28 +84,8 @@ build::native_dos::SessionExit NativeDosExecutive::run_session(const build::nati
     }
 }
 
-namespace {
-
-// The native runner over the executive with DOSBox-X behind it; it keeps the DOSBox runner it falls back to.
-class DosRunnerWithFallback final : public build::DosRunner {
-public:
-    DosRunnerWithFallback(const build::native_dos::DosExecutive& dos, build::dos_tools::Emulator emulator)
-        : dosbox_(std::move(emulator)), native_(dos, &dosbox_) {}
-    build::DosRunResult run(const build::DosRunSpec& spec) const override { return native_.run(spec); }
-
-private:
-    build::dos_tools::DosboxRunner dosbox_;
-    build::NativeDosRunner native_;
-};
-
-}  // namespace
-
-std::unique_ptr<build::DosRunner> dos_runner(const config::Config& config, const build::native_dos::DosExecutive& dos) {
-    build::dos_tools::Emulator emulator = build::dos_tools::Emulator::from_config(config);
-    const build::native_dos::Mode mode = build::native_dos::mode_from_environment();
-    if (mode == build::native_dos::Mode::Off) return std::make_unique<build::dos_tools::DosboxRunner>(std::move(emulator));
-    if (mode == build::native_dos::Mode::On) return std::make_unique<build::NativeDosRunner>(dos);   // (no DOSBox-X at all)
-    return std::make_unique<DosRunnerWithFallback>(dos, std::move(emulator));
+std::unique_ptr<build::DosRunner> dos_runner(const config::Config&, const build::native_dos::DosExecutive& dos) {
+    return std::make_unique<build::NativeDosRunner>(dos);
 }
 
 }  // namespace cb::exact::emu

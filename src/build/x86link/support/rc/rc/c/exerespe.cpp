@@ -62,7 +62,7 @@ constexpr int makeLangId( uint_16 primary, uint_16 sub )
     return ( static_cast<uint_16>( sub ) << 10 ) | static_cast<uint_16>( primary );
 }
 
-void PEResDirEntryInit( PEResDirEntry *direntry, int num_entries )
+void PEResDirEntryInit(Link& link,  PEResDirEntry *direntry, int num_entries )
 {
     direntry->Head.flags = 0;
     direntry->Head.time_stamp = static_cast<unsigned_32>( std::time( nullptr ) );
@@ -71,7 +71,7 @@ void PEResDirEntryInit( PEResDirEntry *direntry, int num_entries )
     direntry->Head.num_name_entries = 0;
     direntry->Head.num_id_entries = 0;
     direntry->NumUnused = num_entries;
-    direntry->Children = static_cast<PEResEntry *>( MemAllocSafe( num_entries * sizeof( PEResEntry ) ) );
+    direntry->Children = static_cast<PEResEntry *>( MemAllocSafe(link,  num_entries * sizeof( PEResEntry ) ) );
 }
 
 void PEResDirAdd( PEResDirEntry *direntry, WResID *res_id, StringsBlock *strings )
@@ -110,7 +110,7 @@ PEResEntry *lastEntry( PEResDirEntry *direntry )
     return direntry->Children + direntry->Head.num_name_entries + direntry->Head.num_id_entries - 1;
 }
 
-bool PEResDirAddDir( PEResDirEntry *direntry, WResID *res_id, int num_sub_entries, StringsBlock *strings )
+bool PEResDirAddDir(Link& link,  PEResDirEntry *direntry, WResID *res_id, int num_sub_entries, StringsBlock *strings )
 {
     if( direntry->NumUnused <= 0 )
         return true;
@@ -119,7 +119,7 @@ bool PEResDirAddDir( PEResDirEntry *direntry, WResID *res_id, int num_sub_entrie
 
     PEResEntry *entry = lastEntry( direntry );
     entry->IsDirEntry = true;
-    PEResDirEntryInit( &entry->u.Dir, num_sub_entries );
+    PEResDirEntryInit(link,  &entry->u.Dir, num_sub_entries );
 
     return false;
 }
@@ -140,9 +140,9 @@ bool PEResDirAddData( PEResDirEntry *direntry, WResID *res_id, WResDirWindow win
     return false;
 }
 
-bool AddType( PEResDir *pedir, WResTypeInfo *typeinfo )
+bool AddType(Link& link,  PEResDir *pedir, WResTypeInfo *typeinfo )
 {
-    return PEResDirAddDir( &pedir->Root, &typeinfo->TypeName, typeinfo->NumResources, &pedir->String );
+    return PEResDirAddDir(link,  &pedir->Root, &typeinfo->TypeName, typeinfo->NumResources, &pedir->String );
 }
 
 bool AddLang( PEResDir *pedir, WResDirWindow wind )
@@ -164,7 +164,7 @@ bool AddLang( PEResDir *pedir, WResDirWindow wind )
     return PEResDirAddData( &entry_res->u.Dir, &lang_id, wind, &pedir->String );
 }
 
-bool AddRes( PEResDir *pedir, WResDirWindow wind )
+bool AddRes(Link& link,  PEResDir *pedir, WResDirWindow wind )
 {
     WResResInfo     *resinfo = WResGetResInfo( wind );
     /*
@@ -175,10 +175,10 @@ bool AddRes( PEResDir *pedir, WResDirWindow wind )
     /*
      * Add a directory level for the languages
      */
-    return PEResDirAddDir( &entry_type->u.Dir, &resinfo->ResName, resinfo->NumResources, &pedir->String );
+    return PEResDirAddDir(link,  &entry_type->u.Dir, &resinfo->ResName, resinfo->NumResources, &pedir->String );
 }
 
-bool PEResDirBuild( PEResDir *pedir, WResDir dir )
+bool PEResDirBuild(Link& link,  PEResDir *pedir, WResDir dir )
 {
     if( WResIsEmpty( dir ) ) {
         pedir->Root.Head.num_name_entries = 0;
@@ -188,17 +188,17 @@ bool PEResDirBuild( PEResDir *pedir, WResDir dir )
         pedir->ResOffset = 0;
         pedir->ResSize = 0;
     } else {
-        StringIDNamesBlockBuild( &pedir->String, dir, true );
+        StringIDNamesBlockBuild(link,  &pedir->String, dir, true );
         pedir->DirSize = sizeof( resource_dir_header );
-        PEResDirEntryInit( &pedir->Root, dir->NumTypes );
+        PEResDirEntryInit(link,  &pedir->Root, dir->NumTypes );
         for( WResDirWindow wind = WResFirstResource( dir ); !WResIsEmptyWindow( wind ); wind = WResNextResource( wind, dir ) ) {
             if( WResIsFirstResOfType( wind ) ) {
-                if( AddType( pedir, WResGetTypeInfo( wind ) ) ) {
+                if( AddType(link,  pedir, WResGetTypeInfo( wind ) ) ) {
                     return true;
                 }
             }
             if( WResIsFirstLangOfRes( wind ) ) {
-                if( AddRes( pedir, wind ) ) {
+                if( AddRes(link,  pedir, wind ) ) {
                     return true;
                 }
             }
@@ -332,16 +332,16 @@ struct CopyResInfo {
 /*
  * NB when an error occurs this function MUST return without altering errno
  */
-RcStatus copyDataEntry( PEResEntry *entry, CopyResInfo *copy_info )
+RcStatus copyDataEntry(Link& link,  PEResEntry *entry, CopyResInfo *copy_info )
 {
     if( !entry->IsDirEntry ) {
         ResFileInfo *info = static_cast<ResFileInfo *>( WResGetFileInfo( entry->u.Data.Wind ) );
         if( copy_info->curres == nullptr
           || copy_info->curres == info ) {
             WResLangInfo *langinfo = WResGetLangInfo( entry->u.Data.Wind );
-            if( RESSEEK( info->fp, langinfo->Offset, SEEK_SET ) )
+            if( RESSEEK(link,  info->fp, langinfo->Offset, SEEK_SET ) )
                 return RS_READ_ERROR;
-            const RcStatus ret = CopyExeData( info->fp, copy_info->to_fp, langinfo->Length );
+            const RcStatus ret = CopyExeData(link,  info->fp, copy_info->to_fp, langinfo->Length );
             if( ret != RS_OK ) {
                 copy_info->errres = info;
                 return ret;
@@ -351,7 +351,7 @@ RcStatus copyDataEntry( PEResEntry *entry, CopyResInfo *copy_info )
                 /*
                  * add the padding
                  */
-                if( RcPadFile( copy_info->to_fp, static_cast<std::size_t>( diff - langinfo->Length ) ) ) {
+                if( RcPadFile(link,  copy_info->to_fp, static_cast<std::size_t>( diff - langinfo->Length ) ) ) {
                     return RS_WRITE_ERROR;
                 }
             }
@@ -365,7 +365,7 @@ RcStatus copyDataEntry( PEResEntry *entry, CopyResInfo *copy_info )
 /*
  * NB when an error occurs this function MUST return without altering errno
  */
-RcStatus copyPEResources( ExeFileInfo *dst, ResFileInfo *resfiles, FILE *to_fp, bool writebyfile, ResFileInfo **errres )
+RcStatus copyPEResources(Link& link,  ExeFileInfo *dst, ResFileInfo *resfiles, FILE *to_fp, bool writebyfile, ResFileInfo **errres )
 {
     CopyResInfo     copy_info;
     RcStatus        ret;
@@ -376,11 +376,11 @@ RcStatus copyPEResources( ExeFileInfo *dst, ResFileInfo *resfiles, FILE *to_fp, 
     copy_info.file = dst;       /* for tracking debugging info offset */
     start_off = ALIGN_VALUE( start_off, sizeof( uint_32 ) );
 
-    auto copyAll = [dst, &copy_info]() {
-        return traverseTree( &dst->u.PEInfo.Res, [&copy_info]( PEResEntry *entry ) { return copyDataEntry( entry, &copy_info ); } );
+    auto copyAll = [dst, &copy_info, &link]() {
+        return traverseTree( &dst->u.PEInfo.Res, [&copy_info, &link]( PEResEntry *entry ) { return copyDataEntry(link,  entry, &copy_info ); } );
     };
 
-    if( RESSEEK( to_fp, start_off, SEEK_SET ) )
+    if( RESSEEK(link,  to_fp, start_off, SEEK_SET ) )
         return RS_WRITE_ERROR;
     if( !writebyfile ) {
         copy_info.curres = nullptr;
@@ -412,13 +412,13 @@ RcStatus copyPEResources( ExeFileInfo *dst, ResFileInfo *resfiles, FILE *to_fp, 
 /*
  * NB when an error occurs this function MUST return without altering errno
  */
-RcStatus writeDirEntry( PEResDirEntry *direntry, FILE *fp )
+RcStatus writeDirEntry(Link& link,  PEResDirEntry *direntry, FILE *fp )
 {
-    if( RESWRITE( fp, &direntry->Head, sizeof( resource_dir_header ) ) != sizeof( resource_dir_header ) )
+    if( RESWRITE(link,  fp, &direntry->Head, sizeof( resource_dir_header ) ) != sizeof( resource_dir_header ) )
         return RS_WRITE_ERROR;
 
     for( int child_num = 0; child_num < direntry->Head.num_name_entries + direntry->Head.num_id_entries; child_num++ ) {
-        if( RESWRITE( fp, direntry->Children + child_num, sizeof( resource_dir_entry ) ) != sizeof( resource_dir_entry ) ) {
+        if( RESWRITE(link,  fp, direntry->Children + child_num, sizeof( resource_dir_entry ) ) != sizeof( resource_dir_entry ) ) {
             return RS_WRITE_ERROR;
         }
     }
@@ -429,9 +429,9 @@ RcStatus writeDirEntry( PEResDirEntry *direntry, FILE *fp )
 /*
  * NB when an error occurs this function MUST return without altering errno
  */
-RcStatus writeDataEntry( PEResDataEntry *entry, FILE *fp )
+RcStatus writeDataEntry(Link& link,  PEResDataEntry *entry, FILE *fp )
 {
-    if( RESWRITE( fp, &entry->Entry, sizeof( resource_entry ) ) != sizeof( resource_entry ) )
+    if( RESWRITE(link,  fp, &entry->Entry, sizeof( resource_entry ) ) != sizeof( resource_entry ) )
         return RS_WRITE_ERROR;
     return RS_OK;
 }
@@ -461,35 +461,35 @@ RcStatus setDataEntry( PEResEntry *entry, DataEntryCookie *info )
 /*
  * NB when an error occurs this function MUST return without altering errno
  */
-RcStatus writeEntry( PEResEntry *entry, FILE *fp )
+RcStatus writeEntry(Link& link,  PEResEntry *entry, FILE *fp )
 {
     if( entry->IsDirEntry ) {
-        return writeDirEntry( &entry->u.Dir, fp );
+        return writeDirEntry(link,  &entry->u.Dir, fp );
     } else {
-        return writeDataEntry( &entry->u.Data, fp );
+        return writeDataEntry(link,  &entry->u.Data, fp );
     }
 }
 
 /*
  * NB when an error occurs this function MUST return without altering errno
  */
-RcStatus writeDirectory( PEResDir *pedir, FILE *fp )
+RcStatus writeDirectory(Link& link,  PEResDir *pedir, FILE *fp )
 {
-    if( RESSEEK( fp, pedir->ResOffset, SEEK_SET ) )
+    if( RESSEEK(link,  fp, pedir->ResOffset, SEEK_SET ) )
         return RS_WRITE_ERROR;
     /*
      * write the root entry header
      */
-    RcStatus ret = writeDirEntry( &pedir->Root, fp );
+    RcStatus ret = writeDirEntry(link,  &pedir->Root, fp );
     if( ret != RS_OK )
         return ret;
 
-    ret = traverseTree( pedir, [fp]( PEResEntry *entry ) { return writeEntry( entry, fp ); } );
+    ret = traverseTree( pedir, [fp, &link]( PEResEntry *entry ) { return writeEntry(link,  entry, fp ); } );
     if( ret != RS_OK )
         return ret;
 
     if( pedir->String.StringBlock != nullptr ) {
-        if( RESWRITE( fp, pedir->String.StringBlock, pedir->String.StringBlockSize ) != pedir->String.StringBlockSize ) {
+        if( RESWRITE(link,  fp, pedir->String.StringBlock, pedir->String.StringBlockSize ) != pedir->String.StringBlockSize ) {
             return RS_WRITE_ERROR;
         }
     }
@@ -529,10 +529,10 @@ bool RcPadFile( FILE *fp, size_t pad )
     const char  zero = 0;
 
     if( pad > 0 ) {
-        if( RESSEEK( fp, pad - 1, SEEK_CUR ) ) {
+        if( RESSEEK(link,  fp, pad - 1, SEEK_CUR ) ) {
             return true;
         }
-        if( RESWRITE( fp, &zero, 1 ) != 1 )  {
+        if( RESWRITE(link,  fp, &zero, 1 ) != 1 )  {
             return true;
         }
     }
@@ -545,15 +545,15 @@ namespace {
 /*
  * NB when an error occurs this function MUST return without altering errno
  */
-bool padObject( PEResDir *pedir, ExeFileInfo *dst, long size )
+bool padObject(Link& link,  PEResDir *pedir, ExeFileInfo *dst, long size )
 {
-    const long pos = RESTELL( dst->fp );
+    const long pos = RESTELL(link,  dst->fp );
 
     if( pos == -1 )
         return true;
     const long pad = pedir->ResOffset + size - pos;
     if( pad > 0 ) {
-        RcPadFile( dst->fp, static_cast<std::size_t>( pad ) );
+        RcPadFile(link,  dst->fp, static_cast<std::size_t>( pad ) );
     }
     CheckDebugOffset( dst );
     return false;
@@ -592,14 +592,14 @@ void setDataOffsets( PEResDir *pedir, unsigned_32 *curr_rva, ResFileInfo *resfil
     }
 }
 
-void reportDuplicateResources( WResMergeError *errs )
+void reportDuplicateResources(Link& link,  WResMergeError *errs )
 {
     for( WResMergeError *curerr = errs; curerr != nullptr; curerr = curerr->next ) {
         WResResInfo     *resinfo = WResGetResInfo( curerr->dstres );
         WResTypeInfo    *typeinfo = WResGetTypeInfo( curerr->dstres );
         ResFileInfo     *file1 = static_cast<ResFileInfo *>( WResGetFileInfo( curerr->dstres ) );
         ResFileInfo     *file2 = static_cast<ResFileInfo *>( WResGetFileInfo( curerr->srcres ) );
-        ReportDupResource( &resinfo->ResName, &typeinfo->TypeName, file1->name, file2->name, false );
+        ReportDupResource(link,  &resinfo->ResName, &typeinfo->TypeName, file1->name, file2->name, false );
     }
 }
 
@@ -609,19 +609,19 @@ void reportDuplicateResources( WResMergeError *errs )
  * here is linker entry point for building resources in executable
  * image
  */
-bool BuildPEResourceObject( ExeFileInfo *dst, ResFileInfo *resfiles, pe_object *res_obj, unsigned_32 rva, unsigned_32 offset, bool writebyfile )
+bool BuildPEResourceObject(Link& link,  ExeFileInfo *dst, ResFileInfo *resfiles, pe_object *res_obj, unsigned_32 rva, unsigned_32 offset, bool writebyfile )
 {
     PEResDir            *pedir = &dst->u.PEInfo.Res;
     WResMergeError      *errs;
 
-    MergeDirectory( resfiles, &errs );
+    MergeDirectory(link,  resfiles, &errs );
     if( errs != nullptr ) {
-        reportDuplicateResources( errs );
+        reportDuplicateResources(link,  errs );
         WResFreeMergeErrors( errs );
         return true;
     }
-    if( PEResDirBuild( pedir, resfiles->Dir ) ) {
-        RcError( ERR_INTERNAL, INTERR_ERR_BUILDING_RES_DIR );
+    if( PEResDirBuild(link,  pedir, resfiles->Dir ) ) {
+        RcError(link,  ERR_INTERNAL, INTERR_ERR_BUILDING_RES_DIR );
         return true;
     }
     CompleteTree( pedir );
@@ -630,13 +630,13 @@ bool BuildPEResourceObject( ExeFileInfo *dst, ResFileInfo *resfiles, pe_object *
     unsigned_32 curr_rva = rva + dst->u.PEInfo.Res.DirSize + dst->u.PEInfo.Res.String.StringBlockSize;
     curr_rva = ALIGN_VALUE( curr_rva, sizeof( uint_32 ) );
     setDataOffsets( pedir, &curr_rva, resfiles, writebyfile );
-    RcStatus ret = writeDirectory( pedir, dst->fp );
+    RcStatus ret = writeDirectory(link,  pedir, dst->fp );
     if( ret != RS_OK ) {
-        RcError( ERR_WRITTING_FILE, dst->name, std::strerror( errno ) );
+        RcError(link,  ERR_WRITTING_FILE, dst->name, std::strerror( errno ) );
         return true;
     }
     ResFileInfo *errres = nullptr;
-    ret = copyPEResources( dst, resfiles, dst->fp, writebyfile, &errres );
+    ret = copyPEResources(link,  dst, resfiles, dst->fp, writebyfile, &errres );
     /*
      * warning - the file names output in these messages could be
      *          incorrect if the -fr switch is in use
@@ -645,15 +645,15 @@ bool BuildPEResourceObject( ExeFileInfo *dst, ResFileInfo *resfiles, pe_object *
         if( ret == RS_READ_ERROR ) {
             ret = RS_READ_ERROR_RES;
         }
-        RcIOError( ret, errres->name, dst->name, errno );
+        RcIOError(link,  ret, errres->name, dst->name, errno );
         return true;
     }
     dst->u.PEInfo.Res.ResSize = curr_rva - rva;
 
     pe_exe_header *pehdr = dst->u.PEInfo.WinHead;
     fillResourceObj( res_obj, pedir, PE( *pehdr, file_align ) );
-    if( padObject( pedir, dst, res_obj->physical_size ) ) {
-        RcError( ERR_WRITTING_FILE, dst->name, std::strerror( errno ) );
+    if( padObject(link,  pedir, dst, res_obj->physical_size ) ) {
+        RcError(link,  ERR_WRITTING_FILE, dst->name, std::strerror( errno ) );
         return true;
     }
     /*

@@ -35,7 +35,7 @@
 #include <cstring>
 #include <string>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/objects/objio.h"
 #include "build/x86link/base/newmem.h"
@@ -163,13 +163,13 @@ void ResetSym(Link& link)
     ClearHashPointers();
 }
 
-void InitSym( void )
+void InitSym(Link& link)
 /*************************/
 {
     SymTabState &state = st();
 
-    state.GlobalSymPtrs = static_cast<symbol **>( MemAllocSafe( GLOBAL_TABALLOC ) );
-    state.StaticSymPtrs = static_cast<symbol **>( MemAllocSafe( STATIC_TABALLOC ) );
+    state.GlobalSymPtrs = static_cast<symbol **>( MemAllocSafe(link,  GLOBAL_TABALLOC ) );
+    state.StaticSymPtrs = static_cast<symbol **>( MemAllocSafe(link,  STATIC_TABALLOC ) );
 }
 
 #ifdef DEVBUILD
@@ -211,10 +211,10 @@ static void DumpTable( symbol **table, unsigned tabsize )
             numsyms, max, min ));
 }
 
-static void DumpHashTable( void )
+static void DumpHashTable( Link& link )
 /*******************************/
 {
-    if( wlink().LinkState & LS_INTERNAL_DEBUG ) {
+    if( link.LinkState & LS_INTERNAL_DEBUG ) {
         DEBUG(( DBG_ALWAYS, "symbol table load" ));
         DumpTable( st().GlobalSymPtrs, GLOBAL_TABSIZE );
         DumpTable( st().StaticSymPtrs, STATIC_TABSIZE );
@@ -259,7 +259,7 @@ void CleanSym(Link& link)
     symbol *    next;
 
 #ifdef DEVBUILD
-    DumpHashTable();
+    DumpHashTable(link);
 #endif
     if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
         for( sym = link.HeadSym; sym != nullptr; sym = next ) {
@@ -419,7 +419,7 @@ symbol *DefISymbol(Link& link,  const char *name )
     sym = RefISymbol(link,  name );
     if( (sym->info & SYM_DEFINED)
       && (sym->info & SYM_LINK_GEN) == 0 ) {
-        LnkMsg( ERR+MSG_RESERVED_SYM_DEFINED, "s", name );
+        LnkMsg(link,  ERR+MSG_RESERVED_SYM_DEFINED, "s", name );
     }
     sym->info |= SYM_DEFINED | SYM_LINK_GEN;
     return( sym );
@@ -441,11 +441,11 @@ symbol *SymOpNWPfx(Link& link,  sym_flags symop, const char *name, size_t length
 
     if( ( prefix != nullptr ) && prefixlen ) {
         if( prefixlen > 254 ) {
-            LnkMsg( ERR+MSG_SYMBOL_NAME_TOO_LONG, "s", prefix );
+            LnkMsg(link,  ERR+MSG_SYMBOL_NAME_TOO_LONG, "s", prefix );
             return( nullptr );
         }
-        if( (sym->prefix = AddSymbolStringTable( &link.PrefixStrings, prefix, prefixlen )) == nullptr ) {
-            LnkMsg( ERR+MSG_INTERNAL, "s", "no memory for prefix symbol");
+        if( (sym->prefix = AddSymbolStringTable(link,  &link.PrefixStrings, prefix, prefixlen )) == nullptr ) {
+            LnkMsg(link,  ERR+MSG_INTERNAL, "s", "no memory for prefix symbol");
             return( nullptr );
         }
     }
@@ -474,12 +474,12 @@ void MakeSymAlias(Link& link,  const char *name, size_t namelen, const char *tar
       && (*CmpNRtn)( name, target, namelen ) == 0 ) {
         const std::string   buff( target, targetlen );
 
-        LnkMsg( WRN+MSG_CIRCULAR_ALIAS_FOUND, "s", buff.c_str() );
+        LnkMsg(link,  WRN+MSG_CIRCULAR_ALIAS_FOUND, "s", buff.c_str() );
         return;                 // <--------- NOTE: premature return!!!!
     }
     sym = SymOp(link,  ST_CREATE | ST_NOALIAS, name, namelen );
     if( IS_SYM_ALIAS( sym ) ) {
-        LnkMsg( WRN+MSG_MULTIPLE_ALIASES, "S", sym );
+        LnkMsg(link,  WRN+MSG_MULTIPLE_ALIASES, "S", sym );
         if( sym->info & SYM_FREE_ALIAS ) {
             MemFree( sym->p.alias.u.ptr );
         }
@@ -608,7 +608,7 @@ static symbol *DoSymOp(Link& link,  sym_flags symop, const char *symname, size_t
     }
     if( (symop & ST_FIND) == 0 ) {
         sym = AddSym(link);
-        sym->name.u.ptr = AddSymbolStringTable( &link.PermStrings, symname, length );
+        sym->name.u.ptr = AddSymbolStringTable(link,  &link.PermStrings, symname, length );
         sym->namelen_cmp = searchlen;
 
         if( symop & ST_STATIC ) {
@@ -681,9 +681,9 @@ void ReportMultiple(Link& link,  symbol *sym, const char *name, size_t len )
         link.LinkState |= LS_UNDEFED_SYM_ERROR;
     }
     if( (*CmpNRtn)( sym->name.u.ptr, name, len + 1 ) == 0 ) {
-        LnkMsg( LOC+lev+MSG_MULT_DEF, "S", sym );
+        LnkMsg(link,  LOC+lev+MSG_MULT_DEF, "S", sym );
     } else {
-        LnkMsg( LOC+lev+MSG_MULT_DEF_BY, "12", sym->name.u.ptr, name );
+        LnkMsg(link,  LOC+lev+MSG_MULT_DEF_BY, "12", sym->name.u.ptr, name );
     }
 }
 
@@ -703,7 +703,7 @@ void ReportUndefined(Link& link)
                 level = MILD_ERR;
                 link.LinkState |= LS_UNDEFED_SYM_ERROR;
             }
-            LnkMsg( level+MSG_UNDEF_REF, "S", sym );
+            LnkMsg(link,  level+MSG_UNDEF_REF, "S", sym );
         }
     }
 }
@@ -818,7 +818,7 @@ static void UndefSymbol(Link& link,  symbol *sym )
 
 static void PurgeHashTable(Link& link,  symbol **curr )
 /*****************************************/
-{
+{
     while( *curr != nullptr ) {
         CleanAltDefs( *curr );
         if( (*curr)->info & SYM_KILL ) {
@@ -917,14 +917,14 @@ void ConvertLazyRefs(Link& link)
             } else {
                 defsym = sym->e.def;
                 if( sym->info & SYM_1_VF_MARKED ) {
-                    DefStripSym( sym, AllocSegData(link) ); // see note 1 above.
+                    DefStripSym(link,  sym, AllocSegData(link) ); // see note 1 above.
                 }
             }
             WeldSyms(link,  sym, defsym );
             sym->info |= SYM_WAS_LAZY;
             if( link.LinkFlags & LF_SHOW_DEAD ) {
                 if( link.MapFile != nullptr ) {
-                    WriteMapLnkMsg( MSG_SYMBOL_DEAD, "S", sym );
+                    WriteMapLnkMsg( link, MSG_SYMBOL_DEAD, "S", sym );
                 }
             }
         }

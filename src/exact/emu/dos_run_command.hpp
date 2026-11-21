@@ -1,5 +1,5 @@
 // exact/emu/dos_run_command.hpp -- `codebreaker dos-run`: a real-mode DOS program run on CodeBreaker's own DOS executive
-// (exact/emu/dos, on its Unicorn), in the process: no DOSBox-X.
+// (exact/emu/dos, on its Unicorn), in the process.
 //
 //     codebreaker dos-run [--dir D] [--save S] [--trace-calls] [--out results.json] <program> [its command line ...]
 //
@@ -9,8 +9,8 @@
 // report is printed (and with --out written as JSON): the exit code, what the program wrote to the console, the files.
 // Exit status: the program's exit code; 3 when it did not end within the executive's limits.
 //
-// This is the seed of the DOSBox-X replacement (docs/BUILTIN_ENGINES_PLAN.md, item 4): the jobs DOSBox-X runs today --
-// standard input, the environment, more drives, time limits -- grow here, without changing what the command does now.
+// This is where the executive's other jobs -- standard input, the environment, more drives, time limits -- grow, without
+// changing what the command does now.
 #pragma once
 
 #include "core/cli.hpp"

@@ -38,9 +38,9 @@
         instruction     *last_defn;
         instruction     *first_use;
         opcnt           i;
-        bool            last;
+        bool_            last;
         instruction     *final_defn;
-        bool            flows_in;
-        type_class_def  class;
+        bool_            flows_in;
+        type_class_def  class_;
         data_flow_def   *flow;
         instruction     *next;

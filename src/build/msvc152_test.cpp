@@ -26,15 +26,13 @@ struct Fixture {
     Fixture() {
         fs::make_dirs(dir.path() / "BIN");
         fs::write_file(dir.path() / "BIN" / "CL.EXE", Bytes{1});
-        fs::write_file(dir.path() / "dosbox-x.exe", Bytes{1});
-        tools.dosbox_x = dir.path() / "dosbox-x.exe";
         tools.msvc_root = dir.path();
     }
 };
 
 }  // namespace
 
-CB_TEST("build.msvc152.compile_asks_the_emulator_for_the_right_run", [] {
+CB_TEST("build.msvc152.compile_asks_the_executive_for_the_right_run", [] {
     Fixture f;
     FakeRunner runner;
     runner.result.ok = true;
@@ -52,10 +50,6 @@ CB_TEST("build.msvc152.compile_asks_the_emulator_for_the_right_run", [] {
     CB_CHECK(fs::same_path(s.mounts[0].folder, f.dir.path()));
     CB_CHECK_EQ(s.artifacts.size(), 3u);
     CB_CHECK_EQ(std::get<std::string>(s.files.at("t.C")), "int f(void){return 1;}");
-    CB_CHECK_EQ(s.timeout.count(), 180);
-    CB_CHECK_EQ(s.cpu.at("cputype"), "386");
-    CB_CHECK_EQ(s.cpu.at("cycles"), "max");
-    CB_CHECK_EQ(s.dos.at("ver"), "6.22");
     CB_CHECK_EQ(s.variables.at("PATH"), "C:\\BIN");
     CB_CHECK_EQ(s.variables.at("INCLUDE"), "C:\\INCLUDE");
     CB_CHECK_EQ(s.variables.at("TMP"), "D:\\");
@@ -73,12 +67,11 @@ CB_TEST("build.msvc152.compile_asks_the_emulator_for_the_right_run", [] {
 
 CB_TEST("build.msvc152.parts_that_were_not_made_are_absent", [] {
     Fixture f;
-    FakeRunner runner;   // the emulator ran and made nothing
+    FakeRunner runner;   // the executive ran and made nothing
     runner.result.work = f.dir.path() / "work";
-    const msvc152::Compiled c = msvc152::compile_c(runner, f.tools, "x", "/c", "prog", std::chrono::seconds(5));
+    const msvc152::Compiled c = msvc152::compile_c(runner, f.tools, "x", "/c", "prog");
     CB_CHECK(!c.obj && !c.cod && !c.log);
     CB_CHECK_EQ(runner.seen.commands[0], "CL /c /Fcprog.COD /Foprog.OBJ prog.C > prog.LOG 2>&1");
-    CB_CHECK_EQ(runner.seen.timeout.count(), 5);
     CB_CHECK(runner.seen.files.contains("prog.C"));
     const std::string report = msvc152::report(c);
     CB_CHECK(report.find("NO OBJ produced") != std::string::npos);
@@ -94,12 +87,9 @@ CB_TEST("build.msvc152.refuses_what_would_become_a_command", [] {
     for (const char* stem : {"", "toolongname", "a b", "a&b", "..", "a.c"}) {
         CB_CHECK_THROWS_AS(UsageError, (void)msvc152::compile_c(runner, f.tools, "x", "/c", stem));
     }
-    CB_CHECK_EQ(runner.calls, 0);   // nothing reached the emulator
+    CB_CHECK_EQ(runner.calls, 0);   // nothing reached the executive
     // tools that are not there
     msvc152::Tools missing = f.tools;
-    missing.dosbox_x = f.dir.path() / "nope.exe";
-    CB_CHECK_THROWS_AS(NotFoundError, (void)msvc152::compile_c(runner, missing, "x"));
-    missing = f.tools;
     missing.msvc_root = f.dir.path() / "elsewhere";
     CB_CHECK_THROWS_AS(NotFoundError, (void)msvc152::compile_c(runner, missing, "x"));
 });

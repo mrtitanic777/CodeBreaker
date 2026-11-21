@@ -60,7 +60,7 @@ String table for sections
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "exeelf.h"
 #include "build/x86link/formats/elf.h"
 #include "build/x86link/formats/elf2.h"
@@ -142,9 +142,9 @@ static void InitSections(Link& link,  ElfHdr *hdr )
     num += link.FmtData.u.elf.extrasects;
     hdr->eh.e_shnum = num;
     hdr->sh_size = sizeof( Elf32_Shdr ) * hdr->eh.e_shnum;
-    hdr->sh = static_cast<Elf32_Shdr *>( MemAllocSafe( hdr->sh_size ) );
+    hdr->sh = static_cast<Elf32_Shdr *>( MemAllocSafe(link,  hdr->sh_size ) );
     memset( hdr->sh, 0, hdr->sh_size );
-    hdr->sh[hdr->i.symtab].sh_name = AddSecName( hdr, ".symtab" );
+    hdr->sh[hdr->i.symtab].sh_name = AddSecName(link,  hdr, ".symtab" );
 }
 
 static void SetHeaders(Link& link,  ElfHdr *hdr )
@@ -195,7 +195,7 @@ static void SetHeaders(Link& link,  ElfHdr *hdr )
     hdr->eh.e_phnum = link.NumGroups + state().NumPhdr;
     hdr->eh.e_phoff = sizeof( Elf32_Ehdr );
     hdr->ph_size = sizeof( Elf32_Phdr ) * hdr->eh.e_phnum;
-    hdr->ph = static_cast<Elf32_Phdr *>( MemAllocSafe( hdr->ph_size ) );
+    hdr->ph = static_cast<Elf32_Phdr *>( MemAllocSafe(link,  hdr->ph_size ) );
     if( state().NumPhdr ) {
         hdr->ph->p_type = PT_PHDR;
         hdr->ph->p_offset = sizeof( Elf32_Ehdr );
@@ -206,8 +206,8 @@ static void SetHeaders(Link& link,  ElfHdr *hdr )
         hdr->ph->p_flags = PF_R | PF_X;
         hdr->ph->p_align = 0;
     }
-    InitStringTable( &hdr->secstrtab, false );
-    AddCharStringTable( &hdr->secstrtab, '\0' );
+    InitStringTable(link,  &hdr->secstrtab, false );
+    AddCharStringTable(link,  &hdr->secstrtab, '\0' );
     InitSections(link,  hdr );
     hdr->curr_off = hdr->eh.e_ehsize + hdr->ph_size;
     hdr->curr_off = __ROUND_UP_SIZE_PAGE( hdr->curr_off );
@@ -223,10 +223,10 @@ unsigned GetElfHeaderSize(Link& link)
     return( __ROUND_UP_SIZE_PAGE( size ) );
 }
 
-size_t AddSecName( ElfHdr *hdr, const char *name )
+size_t AddSecName(Link& link,  ElfHdr *hdr, const char *name )
 /************************************************/
 {
-    return( AddStringStringTableOffs( &hdr->secstrtab, name ) );
+    return( AddStringStringTableOffs(link,  &hdr->secstrtab, name ) );
 }
 
 
@@ -236,7 +236,7 @@ static void WriteSHStrings(Link& link,  ElfHdr *hdr, int str_idx, stringtable *s
     Elf32_Shdr      *sh;
 
     sh = hdr->sh + str_idx;
-    sh->sh_name = AddSecName( hdr, ".shstrtab" );
+    sh->sh_name = AddSecName(link,  hdr, ".shstrtab" );
     sh->sh_offset = hdr->curr_off;
     sh->sh_type = SHT_STRTAB;
     sh->sh_size = GetStringTableSize( strtab );
@@ -316,16 +316,16 @@ static void WriteELFGroups(Link& link,  ElfHdr *hdr )
         SetGroupHeaders(link,  group, off, ph, sh );
         WriteGroupLoad(link,  group, false );
         off = OffsetAlign(link,  off + group->size, link.FmtData.objalign );
-        sh->sh_name = AddSecName( hdr, GroupSecName( group ) );
+        sh->sh_name = AddSecName(link,  hdr, GroupSecName( group ) );
         sh++;
         if( group == link.DataGroup && link.FmtData.dgroupsplitseg != nullptr ) {
-            sh->sh_name = AddSecName( hdr, ".bss" );
+            sh->sh_name = AddSecName(link,  hdr, ".bss" );
             linear = ph->p_vaddr + __ROUND_UP_SIZE( ph->p_filesz, link.FmtData.objalign );
             InitBSSSect( sh, off, CalcSplitSize(link), linear );
             linear = __ROUND_UP_SIZE( linear + sh->sh_size, link.FmtData.objalign);
             sh++;
             if( link.StackSegPtr != nullptr ) {
-                sh->sh_name = AddSecName( hdr, ".stack" );
+                sh->sh_name = AddSecName(link,  hdr, ".stack" );
                 InitBSSSect( sh, off, link.StackSize, linear );
                 sh++;
             }
@@ -335,13 +335,13 @@ static void WriteELFGroups(Link& link,  ElfHdr *hdr )
     hdr->curr_off = off;
 }
 
-static size_t AddRelocSectName( ElfHdr *hdr, const char *secname )
+static size_t AddRelocSectName(Link& link,  ElfHdr *hdr, const char *secname )
 /****************************************************************/
 {
     std::string     name( RelASecName );
 
     name += secname;
-    return( AddSecName( hdr, name.c_str() ) );
+    return( AddSecName(link,  hdr, name.c_str() ) );
 }
 
 
@@ -367,7 +367,7 @@ static void WriteRelocsSections(Link& link,  ElfHdr *hdr )
             sh->sh_info = currgrp;
             sh->sh_addralign = 4;
             sh->sh_size = RelocSize( reloclist );
-            sh->sh_name = AddRelocSectName( hdr, GroupSecName( group ) );
+            sh->sh_name = AddRelocSectName(link,  hdr, GroupSecName( group ) );
             DumpRelocList(link,  reloclist );
             hdr->curr_off += sh->sh_size;
             sh++;
@@ -433,14 +433,14 @@ void ChkElfData(Link& link)
             link.NumImports++;
         } else if( IsSymElfExported(link,  sym ) ) {
             if( (sym->info & SYM_DEFINED) == 0 ) {
-                LnkMsg( ERR+MSG_EXP_SYM_NOT_FOUND, "s", sym->name );
+                LnkMsg(link,  ERR+MSG_EXP_SYM_NOT_FOUND, "s", sym->name );
             }
             link.NumExports++;
         }
     }
-    InitStringTable( &state().SymStrTab, false );
-    AddCharStringTable( &state().SymStrTab, '\0' );
-    state().ElfSymTab = CreateElfSymTable( link.NumImports + link.NumExports + link.NumGroups, &state().SymStrTab );
+    InitStringTable(link,  &state().SymStrTab, false );
+    AddCharStringTable(link,  &state().SymStrTab, '\0' );
+    state().ElfSymTab = CreateElfSymTable(link,  link.NumImports + link.NumExports + link.NumGroups, &state().SymStrTab );
     for( group = link.Groups; group != nullptr; group = group->next ) {
         if( group->totalsize != 0 ) {
             AddSymElfSymTable( state().ElfSymTab, group->sym );

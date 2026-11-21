@@ -75,7 +75,7 @@ extern cue_ctl      LineInfo;
 extern fname_ctl    DBFiles;
 
 extern  const char  *SrcFNoFind( uint fno );
-extern  bool        CueFind( cue_idx cue, cue_state *ret );
+extern  bool_        CueFind( cue_idx cue, cue_state *ret );
 extern  cue_idx     CueAdd( int fno, int line, int col );
 extern  void        CueMap( cue_ctl *ctl, cue_state *base );
 extern  void        InitDbgInfo( void );

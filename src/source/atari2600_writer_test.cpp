@@ -1,8 +1,9 @@
-// Tests of the Atari 2600 writer over small programs of its own, written out byte by byte: the source it writes, built again by the 6502's
-// SLEIGH description (the one assembler), is the cartridge it came from.
+// Tests of the Atari 2600 writer over small programs of its own, written out byte by byte: the source it writes, built again by CodeBreaker's
+// dasm-syntax assembler, is the cartridge it came from.
 
 #include "source/atari2600_writer.hpp"
 
+#include "source/dialect.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
@@ -34,10 +35,9 @@ CB_TEST("source.atari2600_writer.the_program_comes_back_as_source_that_builds_th
     CB_CHECK_EQ(r.image_bytes, 0x1000u);
     CB_CHECK(r.source == dir.path() / "demo.asm");
     const std::string s = source_of(r);
-    // (STA $0002 with the absolute encoding, which the description's text cannot say: `STA 0x2` is the zero-page one, so it stays as its bytes)
-    for (const char* want : {".equ WSYNC, 0x02", ".equ COLUBK, 0x09", ".equ INTIM, 0x0284", "; bank 0 (file offset 0x0000)\n        .org 0xf000", "reset:\n",
-                             "        SEI", "        STA COLUBK", "        .byte 0x8d,0x02,0x00  ; STA 0x2", "        BNE L_F007", "L_F007:\n", "        JSR sub_F01C",
-                             "        JMP L_F00C", "        LDA INTIM", "        .half reset,reset"}) {
+    for (const char* want : {"        processor 6502", "WSYNC      = $02", "COLUBK     = $09", "INTIM      = $0284", "        ORG $0000", "        RORG $F000", "reset\n",
+                             "        SEI", "        STA COLUBK", "        STA.w WSYNC", "        BNE L_F007", "L_F007\n", "        JSR sub_F01C", "        JMP L_F00C",
+                             "        LDA INTIM", "        .word reset, reset"}) {
         CB_CHECK(s.find(want) != std::string::npos);
     }
 });
@@ -46,10 +46,11 @@ CB_TEST("source.atari2600_writer.an_edited_source_builds_a_different_rom", [] {
     fs::ScopedTempDir dir("cb_a2600_edit");
     const image_writer::Written r = write(formats::atari2600::parse(program()), "demo.a26", dir.path());
     std::string s = source_of(r);
-    const std::size_t at = s.find("LDA #0xe\n");
+    const std::size_t at = s.find("LDA #$0E");
     CB_CHECK(at != std::string::npos);
-    s.replace(at, 8, "LDA #0x1e");
-    const Bytes edited = m6502_source::assemble(m6502_source::Cpu::M6502, s, dir.path());
+    s.replace(at, 8, "LDA #$1E");
+
+    const Bytes edited = m6502_source::assemble(m6502_source::Cpu::M6502, dialect::find("dasm").parse(s), dir.path());
     Bytes expected = program();
     expected[13] = 0x1E;
     CB_CHECK(edited == expected);
@@ -76,8 +77,8 @@ CB_TEST("source.atari2600_writer.banked_cartridges_write_each_bank_and_name_by_b
     CB_CHECK_EQ(r.functions.at(0x0000F000), "bank0_reset");
     CB_CHECK_EQ(r.functions.at(0x0001F000), "reset");   // the last bank is where the program starts
     const std::string s = source_of(r);
-    CB_CHECK(s.find("; bank 1 (file offset 0x1000)\n        .org 0xf000") != std::string::npos);   // (each bank is where the 6507 sees it; the file has them in order)
-    CB_CHECK(s.find("; bank 0 (file offset 0x0000)\n        .org 0xf000") != std::string::npos);
+    CB_CHECK(s.find("        ORG $1000") != std::string::npos);
+    CB_CHECK(s.find("        RORG $F000") != std::string::npos);
 });
 
 CB_TEST("source.atari2600_writer.a_two_kilobyte_cartridge_and_a_mirrored_operand", [] {
@@ -93,8 +94,8 @@ CB_TEST("source.atari2600_writer.a_two_kilobyte_cartridge_and_a_mirrored_operand
     const image_writer::Written r = write(formats::atari2600::parse(rom), "two.a26", dir.path());
     CB_CHECK(r.linked && r.same);
     const std::string s = source_of(r);
-    CB_CHECK(s.find("        .org 0xf800") != std::string::npos);
-    CB_CHECK(s.find("JMP 0x1804") != std::string::npos);
+    CB_CHECK(s.find("        RORG $F800") != std::string::npos);
+    CB_CHECK(s.find("JMP $1804") != std::string::npos);
     CB_CHECK_EQ(r.code_bytes, 4u);
 });
 

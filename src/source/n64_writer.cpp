@@ -15,6 +15,7 @@
 #include "core/text.hpp"
 #include "decompile/mips.hpp"
 #include "source/isa_r4300.hpp"
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
 namespace cb::source::n64_writer {
@@ -383,8 +384,8 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
                     base, text.size(), functions.size()),
         std::format("; boot code {}; {}", formats::n64::cic_text(rom.cic), crc_note),
         std::format("; this source is the ROM in the console's byte order (.z64){}", rom.order == formats::n64::ByteOrder::Z64 ? "" : "; the rebuilt file is made in the file's own order"),
-        "; (MIPS syntax as the processor's SLEIGH description writes it: build with `assemble --cpu r4300 --sleigh`)", ""};
-    translate::l2::Assembly out(head, "sleigh-r4300", std::string(file_name));
+        ""};
+    translate::l2::Assembly out(head, "gas", std::string(file_name));
     out.append("        .set noreorder");
     out.append("        .set noat");
     out.append("");
@@ -452,7 +453,7 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
         std::vector<std::uint32_t> operands;
         if (p.insn.target)
             if (const auto named = names_for_text.find(*p.insn.target); named != names_for_text.end()) by_value[*p.insn.target] = named->second, operands.push_back(*p.insn.target);
-        return risc_source::code("r4300", text.subspan(p.insn.pc - base, 4), p.insn.pc, by_value, operands, it == immediate.end() ? std::string() : it->second);
+        return dialect::find("gas-mips").fallback(risc_source::code("r4300", text.subspan(p.insn.pc - base, 4), p.insn.pc, by_value, operands, it == immediate.end() ? std::string() : it->second));
     };
     std::size_t off = 0;
     while (off < text.size()) {
@@ -492,11 +493,11 @@ iw::Written write(const formats::n64::Rom& rom, std::string_view file_name, cons
         }
     }
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("gas-mips").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-mips.json)
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), rom.data.size());
     const std::string built_name = stem + ".built" + std::string(formats::n64::order_text(rom.order));
     iw::assembled(
-        r, [&] { return formats::n64::Rom::convert(risc_source::assemble("r4300", source, folder), formats::n64::ByteOrder::Z64, rom.order); }, rom.in_order(), folder / built_name, "ROM");
+        r, [&] { return formats::n64::Rom::convert(risc_source::assemble("r4300", dialect::find("gas-mips").parse(source), folder), formats::n64::ByteOrder::Z64, rom.order); }, rom.in_order(), folder / built_name, "ROM");
     return r;
 }
 

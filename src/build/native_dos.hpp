@@ -1,32 +1,20 @@
-// build/native_dos.hpp -- run the period real-mode DOS tools on CodeBreaker's OWN emulator, in-process, instead of
-// launching DOSBox-X.
+// build/native_dos.hpp -- run the period real-mode DOS tools on CodeBreaker's OWN emulator, in-process.
 //
-// DOSBox-X boots a whole emulated PC in an external process to run one 16-bit DOS program: it is slow, serial,
-// heavyweight and an external dependency. CodeBreaker has a real-mode DOS executive on Unicorn (exact/emu/dos: a PSP,
-// the MCB memory chain, program load and INT 20h/21h over a filesystem that maps a working directory, and a DPMI
-// host), all in-process. This module is what the toolchain drivers (build/masm, source/vxd/masm) ask for an
-// assembly: the same MASM.EXE and the same DDK ML.EXE, run on that executive, about 20x faster, headless and parallel.
+// CodeBreaker has a real-mode DOS executive on Unicorn (exact/emu/dos: a PSP, the MCB memory chain, program load and
+// INT 20h/21h over a filesystem that maps a working directory, and a DPMI host), all in-process. This module is what the
+// toolchain drivers (build/masm, source/vxd/masm) ask for an assembly: the same MASM.EXE and the same DDK ML.EXE, run on
+// that executive, headless and parallel. It is the only way DOS tools run: a run the executive cannot complete fails with
+// a NativeDosError that says why; nothing is pretended.
 //
 //     const DosExecutive& dos = ...;                         // exact/emu/dos, behind this interface
-//     if (native_dos::enabled(dos, "masm")) {
-//         Product p = native_dos::assemble(dos, source, "t", masm_root);       // .obj, .lst, .log
-//     }
+//     Product p = native_dos::assemble(dos, source, "t", masm_root);       // .obj, .lst, .log
 //     auto made = native_dos::ml(dos, toolchain, "/c /Fom.obj m.asm", {{"m.asm", text}}, {"m.obj"});
-//
-// THE SWITCH -- environment variable CB_NATIVE_DOS (`mode_from_environment`):
-//     unset / "auto"   the native runner for the tools PROVEN byte-identical to DOSBox (MASM and the DDK's TNT ML);
-//                      the caller falls back to DOSBox when a native run cannot complete (NativeDosError)
-//     "1" / "on" ...   force the native runner (no DOSBox)
-//     "0" / "off" ...  force DOSBox
-// MASM is proven byte-identical on the objects and listings it makes; ML on real Win95 VxD sources, OMF and COFF (a
-// COFF header's time stamp is the run's clock -- ours a fixed date -- the one field that differs, as it does between
-// two DOSBox runs).
 //
 // THE DPMI TOOL: the DDK's ML.EXE is a Phar Lap TNT bound program: its real-mode stub loads DOSXNT.EXE, which enters
 // protected mode through a DPMI host and raw-switches to real mode for every DOS call. It runs entirely in memory
 // (`DosExecutive::run_dpmi`): nothing touches the disk.
 //
-// Nothing here is global: the executive, the tool folders and the mode are passed in. Everything a run makes is read
+// Nothing here is global: the executive and the tool folders are passed in. Everything a run makes is read
 // into the result and its work folder is deleted when the call returns.
 #pragma once
 
@@ -41,18 +29,37 @@
 #include <vector>
 
 #include "build/dos_run.hpp"
-#include "build/dos_sessions.hpp"
 #include "core/bytes.hpp"
 #include "core/error.hpp"
 
 namespace cb::build::native_dos {
 
-// The native runner could not complete a run (a service the executive lacks, a CPU fault, a limit): the caller falls
-// back to DOSBox. A clean run that merely reports errors of the tool is NOT this.
+// The executive could not complete a run (a service it lacks, a CPU fault, a limit). A clean run that merely reports errors
+// of the tool is NOT this.
 class NativeDosError : public EmulationError {
 public:
     using EmulationError::EmulationError;
     CB_ERROR_BOILERPLATE(NativeDosError)
+};
+
+// One source to assemble: `stem` names the DOS files (STEM.ASM -> STEM.OBJ, STEM.LST, STEM.LOG): 1-8 letters, digits,
+// underscore, dollar sign.
+struct Source {
+    std::string stem;
+    std::string text;
+};
+
+// The files an assembly produced; each is present only when the file exists.
+struct Product {
+    std::optional<Bytes> obj;
+    std::optional<std::string> lst; // Latin-1 text, as UTF-8
+    std::optional<std::string> log;
+};
+
+// What a batch answers: a product per source, in the order the sources were given.
+struct Finished {
+    std::vector<std::pair<std::string, Product>> results;
+    std::filesystem::path work; // the folder the run used, when it is kept
 };
 
 // What a real-mode run answers.
@@ -109,26 +116,15 @@ public:
     virtual MemoryResult run_dpmi(const MemoryRun& run) const = 0;
 };
 
-// CB_NATIVE_DOS.
-enum class Mode { Auto, On, Off };
-Mode mode_from_environment();
-
-// Tools proven byte-identical to DOSBox.
-bool is_proven(std::string_view tool);
-
-// Whether the native runner should be used for `tool` ("masm", "ml"): never when the mode is Off or no engine can be
-// opened; always when it is On; else only for the proven tools.
-bool enabled(const DosExecutive& dos, std::string_view tool = "masm", Mode mode = mode_from_environment());
-
 // One source with MASM.EXE from `masm_root` (BIN/MASM.EXE). `stem` names the DOS files (STEM.ASM -> STEM.OBJ, .LST); it
 // may carry sub-folders (`asm/lead00`) but never `..`. The log is MASM's own, or the console when it made none.
 // NativeDosError when the executive cannot complete or MASM.EXE is missing; UsageError for a bad stem.
-dos_sessions::Product assemble(const DosExecutive& dos, std::string_view source, std::string_view stem,
+Product assemble(const DosExecutive& dos, std::string_view source, std::string_view stem,
                                const std::filesystem::path& masm_root);
 
 // One MASM run per source, in a shared work folder (MASM.EXE copied in once), results in the order given.
-// NativeDosError the moment any run cannot complete, so the caller falls the WHOLE batch back to DOSBox.
-dos_sessions::Finished assemble_many(const DosExecutive& dos, std::span<const dos_sessions::Source> items,
+// NativeDosError the moment any run cannot complete.
+Finished assemble_many(const DosExecutive& dos, std::span<const Source> items,
                                      const std::filesystem::path& masm_root);
 
 // The environment of an extended run: PATH=C:\ .

@@ -11,6 +11,7 @@
 #include "core/fs.hpp"
 #include "decompile/m6809.hpp"
 #include "source/described_source.hpp"
+#include "source/dialect.hpp"
 #include "source/processors.hpp"
 
 namespace cb::source::vectrex_writer {
@@ -68,7 +69,7 @@ public:
     }
     std::uint32_t size(const dm::Insn& insn) const override { return insn.size; }
     std::string text(const dm::Insn& insn) const override { return text_.at(insn.at); }
-    std::vector<std::string> data_lines(ByteView data) const override { return described_source::data_lines(data); }
+    std::vector<std::string> data_lines(ByteView data) const override { return dialect::find("asm6809").data_lines(data); }
 
     // The header: copyright text, music pointer, title lines, the closing zero.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
@@ -77,7 +78,7 @@ public:
         const ByteView d = rom_.data;
         const std::size_t copyright = rom_.copyright.size();
         out_.append(printable(d.first(copyright)) ? std::format("        .ascii \"{}\"", rom_.copyright) : "        .byte " + hex8(d[0]));
-        if (!printable(d.first(copyright))) out_.extend(described_source::data_lines(d.subspan(1, copyright - 1)));
+        if (!printable(d.first(copyright))) out_.extend(dialect::find("asm6809").data_lines(d.subspan(1, copyright - 1)));
         out_.append("        .byte 0x80");
         out_.append(std::format("        .half 0x{:04x}  ; music", rom_.music));
         std::size_t p = copyright + 3;
@@ -85,7 +86,7 @@ public:
             out_.append(std::format("        .byte {},{},{},{}  ; height, width, y, x", hex8(d[p]), hex8(d[p + 1]), hex8(d[p + 2]), hex8(d[p + 3])));
             const ByteView text = d.subspan(p + 4, t.text.size());
             if (printable(text)) out_.append(std::format("        .ascii \"{}\"", t.text));
-            else out_.extend(described_source::data_lines(text));
+            else out_.extend(dialect::find("asm6809").data_lines(text));
             out_.append("        .byte 0x80");
             p += 4 + t.text.size() + 1;
         }
@@ -181,13 +182,13 @@ iw::Written write(const formats::vectrex::Rom& rom, std::string_view file_name, 
             if (named && address_labels.contains(*named)) *t = described_source::name_number(*t, *named, address_labels.at(*named), false);
             instruction_text[at] = *t;
         } else {
-            instruction_text[at] = described_source::byte_line(m6809_cpu(), insn.bytes(), at, {}, "");
+            instruction_text[at] = dialect::find("asm6809").fallback(described_source::byte_line(m6809_cpu(), insn.bytes(), at, {}, ""));
         }
     }
 
     translate::l2::Assembly out({std::format("; {}.asm -- written by CodeBreaker from {}", stem, std::filesystem::path(file_name).filename().string()),
                                  std::format("; Vectrex cartridge, {} bytes, \"{}\", program at ${:04X}", rom.data.size(), rom.copyright, rom.entry), ""},
-                                "sleigh-m6809", std::string(file_name));
+                                "asm6809", std::string(file_name));
     for (const std::uint32_t a : used) out.append(described_source::equ(*hardware_name(a), a, 4));
     if (!used.empty()) out.append("");
     out.part("ROM", "segment", std::nullopt, rom.data.size());
@@ -196,9 +197,9 @@ iw::Written write(const formats::vectrex::Rom& rom, std::string_view file_name, 
     iw::emit<dm::Insn>(out, 0, static_cast<std::uint32_t>(rom.data.size()), labels, functions, listing);
     out.append("");
 
-    const std::string source = iw::text(out) + "\n";
+    const std::string source = dialect::find("asm6809").print(iw::text(out) + "\n");   // (said in the 6809 assembler's, config/dialects/asm6809.json)
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), rom.data.size());
-    iw::assembled(r, [&] { return described_source::assemble(m6809_cpu(), source, folder); }, rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
+    iw::assembled(r, [&] { return described_source::assemble(m6809_cpu(), dialect::find("asm6809").parse(source), folder); }, rom.data, folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;
 }
 

@@ -58,8 +58,12 @@ void judge(std::string_view relative) {
     CB_CHECK_EQ(same, runs);
 }
 
-CB_TEST("engine.machine_n3ds.homebrew", [] {
-    for (const char* name : {"FBI.3dsx", "Anemone3DS.3dsx", "Anemone3DS.elf", "Universal-Updater.3dsx"}) judge(name);
+// (one test each: together they outlast a gate shard's limit, and apart the shards can share them)
+CB_TEST("engine.machine_n3ds.homebrew.fbi", [] { judge("FBI.3dsx"); });
+CB_TEST("engine.machine_n3ds.homebrew.anemone_3dsx", [] { judge("Anemone3DS.3dsx"); });
+CB_TEST("engine.machine_n3ds.homebrew.anemone_elf", [] { judge("Anemone3DS.elf"); });
+CB_TEST("engine.machine_n3ds.homebrew.universal_updater", [] {
+    judge("Universal-Updater.3dsx");
 });
 
 }  // namespace

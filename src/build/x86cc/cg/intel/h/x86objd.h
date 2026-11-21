@@ -139,7 +139,7 @@ typedef struct index_rec {
     unsigned                rom                     : 1;
     unsigned                data_in_code            : 1;
     unsigned                data_ptr_in_code        : 1;
-    unsigned                private                 : 1;
+    unsigned                private_                 : 1;
     unsigned                exec                    : 1;
     unsigned                start_data_in_code      : 1;
     unsigned                prefix_comdat_state     : 2;

@@ -91,7 +91,7 @@ enum fpe {
 
 typedef struct sw_data {
 #if defined( _STANDALONE_ )
-    bool    protect_mode;
+    bool_    protect_mode;
     int     cpu;
     int     fpu;
     int     mem_model;
@@ -147,21 +147,21 @@ typedef enum smode {
 } smode;
 
 typedef struct global_options {
-    bool        sign_value;     /* true -> WORD & DWORD are only unsigned
+    bool_        sign_value;     /* true -> WORD & DWORD are only unsigned
                                    signed #'s are SWORD & SDWORD instead. */
-    bool        stop_at_end;
-    bool        quiet;
-    bool        banner_printed;
-    bool        debug_info;
-    bool        output_comment_data_in_code_records;
-    bool        symbols_nocasesensitive;
+    bool_        stop_at_end;
+    bool_        quiet;
+    bool_        banner_printed;
+    bool_        debug_info;
+    bool_        output_comment_data_in_code_records;
+    bool_        symbols_nocasesensitive;
 
     /* error handling stuff */
     int         error_count;
     int         warning_count;
     int         error_limit;
     int         warning_level;
-    bool        warning_error;
+    bool_        warning_error;
 
     char        *code_class;
     char        *data_seg;
@@ -169,29 +169,29 @@ typedef struct global_options {
     char        *module_name;
 
   #ifdef DEBUG_OUT
-    bool        int_debug;
+    bool_        int_debug;
   #endif
     char        *default_name_mangler;
-    bool        allow_c_octals;
-    bool        emit_dependencies;
-    bool        use_stdcall_at_number;
-    bool        mangle_stdcall;
-    bool        write_listing;
-    bool        watcom_params_passed_by_regs;
+    bool_        allow_c_octals;
+    bool_        emit_dependencies;
+    bool_        use_stdcall_at_number;
+    bool_        mangle_stdcall;
+    bool_        write_listing;
+    bool_        watcom_params_passed_by_regs;
     smode       mode_init;
     smode       mode;
     int         locals_len;
     char        locals_prefix[3];
     char        trace_stack;
-    bool        optimization;
+    bool_        optimization;
 } global_options;
 
 extern global_options Options;
 
 typedef struct global_vars{
     uint    code_seg;
-    bool    data_in_code;       /* have we just written data to a code seg */
-    bool    dosseg;             /* have we seen a .dosseg directive */
+    bool_    data_in_code;       /* have we just written data to a code seg */
+    bool_    dosseg;             /* have we seen a .dosseg directive */
     uint_16 sel_idx;
     uint_32 sel_start;
     uint    expand_count;
@@ -201,7 +201,7 @@ typedef struct global_vars{
 extern global_vars  Globals;
 extern jmp_buf      errjmp;
 
-extern char     *CreateFileName( const char *template, const char *ext, bool forceext );
+extern char     *CreateFileName( const char *template_, const char *ext, bool_ forceext );
 extern void     CloseAsmFile( int type );
 
 #endif

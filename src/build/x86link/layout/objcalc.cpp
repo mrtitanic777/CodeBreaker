@@ -37,7 +37,7 @@
 #include <cstddef>
 #include <string_view>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
 #include "build/x86link/link/specials.h"
@@ -164,7 +164,7 @@ bool IsStackClass( const char *name, size_t namelen )
 
 static void AddUpSegData(Link& link,  void *_sdata )
 /**************************************/
-{
+{
     segdata     *sdata = static_cast<segdata *>( _sdata );
     seg_leader  *leader;
 
@@ -189,7 +189,7 @@ static void AddUpSegData(Link& link,  void *_sdata )
 
 static void CalcSeg(Link& link,  seg_leader *seg )
 /************************************/
-{
+{
     RingWalk( seg->pieces, bind_link( link, AddUpSegData ) );
 }
 
@@ -215,7 +215,7 @@ static bool SetGroupInitSize( void *_sdata, void *_delta )
 
 static void CalcInitSize(Link& link,  seg_leader *seg )
 /*****************************************/
-{
+{
     offset      delta;
 
     if( seg->group != nullptr ) {
@@ -359,7 +359,7 @@ static void FindUninitDataStart(Link& link)
 
 static bool FindEndAddr(Link& link,  void *_seg, void *_info )
 /**************************************************/
-{
+{
     seg_leader  *seg  = static_cast<seg_leader *>( _seg );
     grpaddrinfo *info = static_cast<grpaddrinfo *>( _info );
     offset      seg_offs;
@@ -390,7 +390,7 @@ static bool FindInitEndAddr(Link& link,  void *_seg, void *_info )
 /******************************************************/
 // Only use initialized data segments.  Copy doesn't need uninitialized segments
 // This is really only advantageous if uninitialized segments are at the end
-{
+{
     seg_leader  *seg  = static_cast<seg_leader *>( _seg );
     grpaddrinfo *info = static_cast<grpaddrinfo *>( _info );
     offset      seg_offs;
@@ -419,7 +419,7 @@ static bool FindInitEndAddr(Link& link,  void *_seg, void *_info )
 
 static bool FindCopyGroups(Link& link,  void *_seg, void *_info )
 /************************************************/
-{
+{
     // This is called by the outer level iteration looking for classes
     //  that have more than one group in them
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
@@ -437,7 +437,7 @@ static bool FindCopyGroups(Link& link,  void *_seg, void *_info )
 static void AllocSeg(Link& link,  void *_seg )
 /********************************/
 /* Allocate a segment (process all segments in a given class) */
-{
+{
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
 
     if( (seg->info & SEGINF_ABSOLUTE) == 0 ) {
@@ -498,7 +498,7 @@ static void CalcGrpAddr(Link& link,  group_entry *group )
             if( (link.FmtData.type & MK_REAL_MODE)
               && (seg->info & SEGINF_USE_32) == 0
               && (info.end_offs - info.start_offs > _64K) ) {
-                LnkMsg( ERR+MSG_GROUP_TOO_BIG, "sl", group->sym->name,
+                LnkMsg(link,  ERR+MSG_GROUP_TOO_BIG, "sl", group->sym->name,
                         info.end_offs - info.start_offs - _64K );
             }
             group->totalsize = info.end_offs - info.start_offs;
@@ -553,7 +553,7 @@ void ConvertToFrame(Link& link,  addr_type *frame_addr, segment frame, bool chec
         off = MK_REAL_ADDR( static_cast<int>( frame_addr->seg - frame ), frame_addr->off );
         if( check_16bit
           && ( off >= 0x10000 )) {
-            LnkMsg( ERR+LOC+MSG_FRAME_INVALID, "Ax", frame_addr, frame );
+            LnkMsg(link,  ERR+LOC+MSG_FRAME_INVALID, "Ax", frame_addr, frame );
         }
         frame_addr->off = off;
     }
@@ -594,7 +594,7 @@ static void DefinePublics(Link& link)
 {
     DEBUG(( DBG_OLD, "DefinePublics()" ));
     if( link.MapFlags & MAP_FLAG ) {
-        LnkMsg( INF+MSG_CREATE_MAP, nullptr );
+        LnkMsg(link,  INF+MSG_CREATE_MAP, nullptr );
     }
     if( link.MapFile != nullptr ) {
         WriteMapHead(link,  link.Root );
@@ -633,7 +633,7 @@ void ProcPubsSect(Link& link,  mod_entry *head, section *sect )
 
 static bool DefPubSym(Link& link,  void *_pub, void *_info )
 /**********************************************/
-{
+{
     symbol      *sym = static_cast<symbol *>( _pub );
     pubdefinfo  *info = static_cast<pubdefinfo *>( _info );
     segdata     *seg;
@@ -916,7 +916,7 @@ static void FillClassFlags(Link& link,  char *name, unsigned_16 flags )
         }
     }
     // if it has made it our here, no class has been found.
-    LnkMsg( WRN + MSG_CLASS_NAME_NOT_FOUND, "s", name );
+    LnkMsg(link,  WRN + MSG_CLASS_NAME_NOT_FOUND, "s", name );
 }
 
 static void FillTypeFlags(Link& link,  unsigned_16 flags, segflag_type type )
@@ -970,7 +970,7 @@ void SetSegFlags(Link& link,  seg_flags_struct *start )
         if( seg_flags->type == SEGFLAG_SEGMENT ) {
             leader = FindSegment( link.Root, seg_flags->name );
             if( leader == nullptr ) {
-                LnkMsg( WRN + MSG_SEG_NAME_NOT_FOUND, "s", seg_flags->name );
+                LnkMsg(link,  WRN + MSG_SEG_NAME_NOT_FOUND, "s", seg_flags->name );
             } else {
                 leader->segflags = seg_flags->flags;
             }
@@ -1023,7 +1023,7 @@ static void ReOrderClasses(Link& link,  section *sect )
  * This builds various classes into separate rings, and then joins them
  * together.
  */
-{
+{
     std::array<class_entry *, ORD_COUNT> rings{};   // all nullptr
     class_entry         *nextclass;
     class_entry         *class_;
@@ -1125,7 +1125,7 @@ static void SortClasses(Link& link,  section *sect )
  * to the class and segment structures.  Sort segments in a class if
  * information is provided.
  */
-{
+{
     class_entry         *DefaultRing;   // Where to put classes that don't match anything
     class_entry         *nextclass;
     class_entry         *class_;

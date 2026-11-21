@@ -35,9 +35,9 @@ extern void         CodeLabel( label_handle, unsigned );
 #if _TARGET_RISC
 extern void         CodeLabelLinenum( label_handle label, unsigned align, cg_linenum line );
 #endif
-extern void         CodeLineNumber( uint_32, bool );
+extern void         CodeLineNumber( uint_32, bool_ );
 extern void         CodeHandle( oc_class, obj_length, label_handle );
-extern obj_length   OptInsSize( oc_class class, oc_dest_attr attr );
+extern obj_length   OptInsSize( oc_class class_, oc_dest_attr attr );
 
 extern void         GenCondJump( instruction *ins );
 extern void         GenJumpLabel( label_handle );

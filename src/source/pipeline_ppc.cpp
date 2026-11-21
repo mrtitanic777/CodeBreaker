@@ -415,11 +415,9 @@ std::vector<std::string> ppc_period_names(World& world) {
     std::error_code ec;
     const std::string period = world.config().text("period_compiler");
     if (!period.empty() && stdfs::is_regular_file(fs::from_text(period) / "CL.EXE", ec)) have.push_back("msvc2");
-    const std::optional<stdfs::path> dosbox = world.config().path("dosbox_x");
-    const bool emulator = dosbox && stdfs::is_regular_file(*dosbox, ec);
     for (const std::string key : {"msc6", "msvc152"}) {
         const std::optional<stdfs::path> home = world.config().path(key);
-        if (emulator && home && stdfs::is_regular_file(*home / "BIN" / "CL.EXE", ec)) have.push_back(key);
+        if (home && stdfs::is_regular_file(*home / "BIN" / "CL.EXE", ec)) have.push_back(key);
     }
     return have;
 }

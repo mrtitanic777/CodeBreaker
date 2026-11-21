@@ -37,7 +37,7 @@
 /*-------- Typedefs -------------------*/
 #include <stddef.h>
 
-typedef void *AllocFunc( size_t size );
+typedef void *AllocFunc( Link& link, size_t size );
 typedef AllocFunc *  pAllocFunc;
 typedef void FreeFunc( void *elem );
 typedef FreeFunc *  pFreeFunc;
@@ -65,6 +65,7 @@ typedef struct _TAG_HTable {
               // Return 0 iff elem1 == elem2
     pAllocFunc allocFunc;
     pFreeFunc freeFunc;
+    Link *link;               // the link whose memory the table is in
 
     struct {
         long numElems;
@@ -84,14 +85,14 @@ typedef struct _TAG_HTable {
     EXAMPLE:   table = CreateHTable(128,  StringHashFunc, strcmp, malloc, free);
 */
 
-pHTable CreateHTable( int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
+pHTable CreateHTable( Link& link, int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
          pAllocFunc allocFunc, pFreeFunc freeFunc );
 
 /* CreateHTableDouble: Same as CreateHTable, except allow to have
    double entries.
 */
 
-pHTable CreateHTableDouble( int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
+pHTable CreateHTableDouble( Link& link, int size, pHashFunc hashFunc, pHashElemCmp compareFunc,
          pAllocFunc allocFunc, pFreeFunc freeFunc );
 
 /* addHTableElem  -- Add element to a hash table, return element added.

@@ -54,4 +54,4 @@ extern name             *HighPart( name *tosplit, type_class_def type_class );
 extern name             *OffsetPart( name *tosplit );
 extern name             *SegmentPart( name *tosplit );
 
-extern bool             UnChangeable( instruction *ins );
+extern bool_             UnChangeable( instruction *ins );

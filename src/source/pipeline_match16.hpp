@@ -1,7 +1,7 @@
 // source/pipeline_match16.hpp -- `match` and `score16` for a 16-bit Windows module: the production assembly of verify/authored/match16
 // (internal to source/pipeline_*.cpp).
 //
-// What match16::run is given -- the toolchain (Microsoft C 6.0a under DOSBox-X, or Visual C++ 1.52c's C 8.00c, which runs on Windows itself), the
+// What match16::run is given -- the toolchain (Microsoft C 6.0a on the DOS executive, or Visual C++ 1.52c's C 8.00c, which runs on Windows itself), the
 // original's functions with the places a loader fills in masked, each function said several ways (the passes of build/msc6) -- is made here from the
 // settings, the lane kit's decompiler and the module's file. `Match16Run` is everything the run leaves for `score16`, which compiles the same C
 // with OpenWatcom and sets the three beside the original.

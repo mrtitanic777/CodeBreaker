@@ -19,7 +19,7 @@ void ChkBase(Link& link, offset align);       // `option offset`: the base given
 outfilelist* NewOutFile(Link& link, char* file_name);   // the output file of that name (one per name; the name is the list's after)
 
 // ---- driver.cpp (cmdline.c)
-void Syntax();                    // a directive not understood: said, and the link stopped
+void Syntax(Link& link);                    // a directive not understood: said, and the link stopped
 void Ignite(Link& link);                    // stop parsing (help was given)
 
 // The executable's name (`name`): wlink's memory, null when none was given.

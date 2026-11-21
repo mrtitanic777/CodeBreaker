@@ -3,7 +3,7 @@
 // The production assembly of verify/authored/match16 (the driver: what to ask the compiler, in what order, and what to keep). Made here from the
 // settings and the module's file:
 //
-//   - the toolchain: build/msc6's compile_many over Microsoft C 6.0a (DOSBox-X) or Visual C++ 1.52c's C 8.00c (on Windows itself), and the
+//   - the toolchain: build/msc6's compile_many over Microsoft C 6.0a (on the DOS executive) or Visual C++ 1.52c's C 8.00c (on Windows itself), and the
 //     comparison of compare/mask, the built code's padding trimmed;
 //   - the original's functions: for each, its bytes with every word a relocation record of its segment names left out, and the distance of every
 //     near call and jump to another function (the NE file's relocation chains, and the spans of verify/lanes/win16);
@@ -15,7 +15,6 @@
 #include <set>
 
 #include "base/cache.hpp"
-#include "build/dos_tools.hpp"
 #include "build/msc6.hpp"
 #include "exact/emu/native_dos_executive.hpp"
 #include "compare/mask.hpp"
@@ -49,7 +48,6 @@ constexpr std::string_view kMsc8FlagSets[] = {"/AM /Gs /Od",  "/AM /G2s /Ox", "/
 
 m6::Tools m16p_tools(const config::Config& config) {
     m6::Tools t;
-    t.dosbox_x = config.path("dosbox_x").value_or(stdfs::path());
     t.msc6 = config.path("msc6").value_or(stdfs::path());
     t.msvc152 = config.path("msvc152").value_or(stdfs::path());
     const std::string native = text::lower(config.text("native16"));
@@ -75,10 +73,10 @@ am16::Masked m16p_trim(am16::Masked code) {
     return code;
 }
 
-// Microsoft C, in the emulator or on Windows itself, and the comparison.
+// Microsoft C, on the DOS executive or on Windows itself, and the comparison.
 class M16Chain final : public am16::Toolchain {
 public:
-    // (the compilers on CodeBreaker's own DOS executive; DOSBox-X only for a run it cannot complete)
+    // (the compilers on CodeBreaker's own DOS executive)
     M16Chain(m6::Tools tools, const config::Config& config, base::cache::Cache* cache, stdfs::path work)
         : tools_(std::move(tools)), dos_(config), runner_(exact::emu::dos_runner(config, dos_)), context_{tools_, *runner_, cache},
           work_(std::move(work)) {}
@@ -95,7 +93,7 @@ public:
 
     std::map<std::string, std::optional<am16::Masked>> compile(const am16::Compilation& request) override {
         const std::optional<m6::Compiler> compiler = m16p_compiler_of(request.compiler);
-        if (!compiler) throw UsageError("Microsoft C is not set up (settings.json: dosbox_x, msc6, msvc152)");
+        if (!compiler) throw UsageError("Microsoft C is not set up (settings.json: msc6, msvc152)");
         std::vector<m6::Source> sources;
         std::map<std::string, std::size_t> index;   // function -> its place in `sources`
         for (const auto& [fn, text] : request.sources) {
@@ -289,7 +287,7 @@ Match16Run run_match16(World& world, const stdfs::path& module, const Match16Opt
         const auto id = m16p_compiler_of(c);
         return id && m6::available(tools, *id);
     });
-    if (!set_up) throw UsageError("Microsoft C is not set up (settings.json: dosbox_x, msc6, msvc152)");
+    if (!set_up) throw UsageError("Microsoft C is not set up (settings.json: msc6, msvc152)");
 
     const std::shared_ptr<const verify::lanes::Kind> lane = world.kit().win16_lane();
     if (!lane) throw UsageError("the 16-bit lane is not set up here (the native decompiler)");

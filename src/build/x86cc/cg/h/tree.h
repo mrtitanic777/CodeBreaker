@@ -89,7 +89,7 @@ typedef struct tree_node {
         cg_callback         callback;
     } u;
     uint                    kids;
-    tn_class                class;
+    tn_class                class_;
     tn_flags                flags;
     const struct type_def   *optipe;
     union {
@@ -102,7 +102,7 @@ typedef struct tree_node {
         struct {
             byte                start;
             byte                len;
-            bool                is_signed;
+            bool_                is_signed;
         } b;
     } u1;
 } tree_node;

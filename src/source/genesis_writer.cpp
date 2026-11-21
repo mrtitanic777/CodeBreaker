@@ -10,6 +10,7 @@
 #include "core/text.hpp"
 #include "decompile/m68k.hpp"
 #include "knowledge/package.hpp"
+#include "source/dialect.hpp"
 #include "source/isa.hpp"
 #include "source/risc_source.hpp"
 
@@ -22,6 +23,8 @@ namespace {
 
 constexpr std::uint32_t kFirstCode = 0x200;   // the vectors and the header come before
 constexpr std::uint32_t kHeaderFrom = 0x100;
+// The Mega Drive's source is vasm's Motorola syntax (config/dialects/vasm-m68k.json).
+const dialect::Dialect& vasm() { static const dialect::Dialect& d = dialect::find("vasm-m68k"); return d; }
 constexpr iw::Spelling kSub{"sub_", 6};
 constexpr iw::Spelling kLocal{"L_", 6};
 constexpr iw::Spelling kData{"D_", 6};
@@ -86,8 +89,8 @@ public:
         return it == code_.end() ? nullptr : &it->second;
     }
     std::uint32_t size(const m68k::Insn& insn) const override { return insn.length; }
-    std::string text(const m68k::Insn& insn) const override { return risc_source::m68k_code(insn, names_); }   // (the description's text, the names put in)
-    std::vector<std::string> data_lines(ByteView data) const override { return risc_source::data_lines(data); }
+    std::string text(const m68k::Insn& insn) const override { return vasm().line(vasm().fallback(risc_source::m68k_code(insn, names_))); }   // (the description's text, the names put in, said in vasm's)
+    std::vector<std::string> data_lines(ByteView data) const override { return vasm().data_lines(data); }
     // The header's fields, each as data with its name; a text field as its text.
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
         const HeaderField* field = header_field(offset);
@@ -95,8 +98,8 @@ public:
         flush();
         const ByteView bytes = rom_.subspan(offset, field->length);
         const bool plain = std::ranges::all_of(bytes, [](std::uint8_t b) { return b >= 32 && b < 127 && b != 0x22 && b != 0x5C && b != 0x3B; });
-        const std::vector<std::string> lines = plain ? std::vector<std::string>{"        .ascii \"" + std::string(as_text(bytes)) + "\""}
-                                                     : risc_source::data_lines(bytes);
+        const std::vector<std::string> lines = plain ? std::vector<std::string>{vasm().line("        .ascii \"" + std::string(as_text(bytes)) + "\"")}
+                                                     : vasm().data_lines(bytes);
         out_.extend(iw::commented(lines, field->what));
         return field->length;
     }
@@ -185,9 +188,8 @@ iw::Written write(const formats::genesis::Rom& rom, std::string_view file_name, 
         std::format("; \"{}\" / \"{}\", {}, {} KB ROM{}", h.domestic_name, h.overseas_name, h.serial, data.size() / 1024,
                     rom.smd ? ", from an .smd dump" : ""),
         ""};
-    head.insert(head.end() - 1, "; (68000 syntax as the processor's SLEIGH description writes it: build with `assemble --cpu m68k --sleigh`)");
-    translate::l2::Assembly out(head, "sleigh-m68k", std::string(file_name));
-    for (const std::uint32_t a : used) out.append(risc_source::equ(hardware().at(a), a, 6));
+    translate::l2::Assembly out(head, "asm68k", std::string(file_name));
+    for (const std::uint32_t a : used) out.append(vasm().line(risc_source::equ(hardware().at(a), a, 6)));
     if (!used.empty()) out.append("");
     decompile::AddressLabels names_for_text;   // the labels and the registers: a register wins
     for (const auto& [a, label] : labels) names_for_text[a] = label;
@@ -195,7 +197,7 @@ iw::Written write(const formats::genesis::Rom& rom, std::string_view file_name, 
 
     // the vector table: 64 longs
     out.part("vectors", "vector table", std::nullopt, 0x100);
-    out.append("        .org 0x0");
+    out.append(vasm().line("        .org 0x0"));
     for (unsigned i = 0; i < 64; ++i) {
         const std::uint32_t v = static_cast<std::uint32_t>(data[i * 4]) << 24 | static_cast<std::uint32_t>(data[i * 4 + 1]) << 16 |
                                 static_cast<std::uint32_t>(data[i * 4 + 2]) << 8 | data[i * 4 + 3];
@@ -204,14 +206,14 @@ iw::Written write(const formats::genesis::Rom& rom, std::string_view file_name, 
             if (const auto named = labels.find(v); named != labels.end()) target = named->second;
         }
         const std::string what = i == 0 ? "initial stack pointer" : i == 1 ? "reset" : formats::genesis::vector_name(i);
-        out.append("        .long " + target + (what.empty() ? std::string() : "  ; " + what));
+        out.append(vasm().line("        .long " + target + (what.empty() ? std::string() : "  ; " + what)));
     }
     GenesisListing listing(out, data, code, names_for_text);
     iw::emit<m68k::Insn>(out, kHeaderFrom, limit, labels, functions, listing);
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), data.size());
-    iw::assembled(r, [&] { return risc_source::assemble("m68k", source, folder); }, data, folder / (stem + ".built.md"));
+    iw::assembled(r, [&] { return risc_source::assemble("m68k", vasm().parse(source), folder); }, data, folder / (stem + ".built.md"));
     return r;
 }
 

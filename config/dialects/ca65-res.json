@@ -1,0 +1,38 @@
+{
+  "name": "ca65-res",
+  "description": "ca65 (cc65): the NES, and the other 6502-family cartridges built with ld65. $ hex in pairs of digits, lower-case index registers, .byte rows with a comma and a space, .word for a 16-bit value, name = value, .segment \"NAME\" placed by the linker configuration (ld65 .cfg, kept beside the source), .incbin.",
+  "comment": ";",
+  "number": {"prefix": "$", "suffix": "", "case": "upper", "pad": "even"},
+  "label": "{name}:",
+  "list_separator": ",",
+  "replace": [[",X", ",x", true], [",Y", ",y", true]],
+  "data": {"row": 16, "run": 16, "string_min": 4},
+  "directives": [
+    {"neutral": ".equ {name}, {v}", "dialect": "{name:<10} = {v}"},
+    {"neutral": ".byte {list}", "dialect": ".byte {list}", "bytes": true},
+    {"neutral": ".space {n}, {v}", "dialect": ".res {n}, {v}"},
+    {"neutral": "", "dialect": ".setcpu {s}", "print": false},
+    {"neutral": ".half {list}", "dialect": ".word {list}", "separator": ", "},
+    {"neutral": ".org {v}", "dialect": ".org {v}"},
+    {"neutral": "", "dialect": ".incbin {s}", "incbin": true}
+  ],
+  "instructions": [
+    {"neutral": "TII {w}, {w2}, {w3}", "dialect": "TII {w}, {w2}, {w3}", "pad": 4},
+    {"neutral": "TDD {w}, {w2}, {w3}", "dialect": "TDD {w}, {w2}, {w3}", "pad": 4},
+    {"neutral": "TIN {w}, {w2}, {w3}", "dialect": "TIN {w}, {w2}, {w3}", "pad": 4},
+    {"neutral": "TIA {w}, {w2}, {w3}", "dialect": "TIA {w}, {w2}, {w3}", "pad": 4},
+    {"neutral": "TAI {w}, {w2}, {w3}", "dialect": "TAI {w}, {w2}, {w3}", "pad": 4},
+
+    {"neutral": "INC A", "dialect": "INC a"}, {"neutral": "DEC A", "dialect": "DEC a"}, {"neutral": "ASL A", "dialect": "ASL a"},
+    {"neutral": "LSR A", "dialect": "LSR a"}, {"neutral": "ROL A", "dialect": "ROL a"}, {"neutral": "ROR A", "dialect": "ROR a"}
+  ],
+  "forced_absolute": {"prefix": "a:", "opcodes": {"ADC": 109, "AND": 45, "ASL": 14, "BIT": 44, "CMP": 205, "CPX": 236, "CPY": 204, "DEC": 206, "EOR": 77, "INC": 238, "JMP": 76, "JSR": 32, "LDA": 173, "LDX": 174, "LDY": 172, "LSR": 78, "ORA": 13, "ROL": 46, "ROR": 110, "SBC": 237, "STA": 141, "STX": 142, "STY": 140}},
+  "blocks": {
+    "segment": [".segment \"{name}\""]
+  },
+  "segments": {
+    "directive": ".segment {s}",
+    "memory": "{m}: start = {v}, size = {z}, fill = yes, file = %O;",
+    "segment": "{s}: load = {m}, type = ro;"
+  }
+}

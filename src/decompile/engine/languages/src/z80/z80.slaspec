@@ -2342,6 +2342,124 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	$(N_flag) = 0;
 }
 
+# DD CB d op and FD CB d op with a register in the low three bits (not 6): the CB operation on (IX+d) or (IY+d), the result also copied into that register.
+# (BIT's forms with any low bits are BIT on (IX+d) or (IY+d); SLL (IX+d) is the shift that fills with a one.)
+macro rotateResultFlags(v) {
+	setResultFlags(v);
+	$(H_flag) = 0;
+	setParity(v);
+	$(N_flag) = 0;
+}
+
+:RLC ixMem8,reg0_3  is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x0 & reg0_3 {
+	local v:1 = ixMem8; $(C_flag) = (v >> 7); v = (v << 1) | $(C_flag); ixMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:RLC iyMem8,reg0_3  is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x0 & reg0_3 {
+	local v:1 = iyMem8; $(C_flag) = (v >> 7); v = (v << 1) | $(C_flag); iyMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:RRC ixMem8,reg0_3  is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x1 & reg0_3 {
+	local v:1 = ixMem8; $(C_flag) = (v & 1); v = (v >> 1) | ($(C_flag) << 7); ixMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:RRC iyMem8,reg0_3  is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x1 & reg0_3 {
+	local v:1 = iyMem8; $(C_flag) = (v & 1); v = (v >> 1) | ($(C_flag) << 7); iyMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:RL ixMem8,reg0_3   is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x2 & reg0_3 {
+	local v:1 = ixMem8; local c:1 = (v >> 7); v = (v << 1) | $(C_flag); $(C_flag) = c; ixMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:RL iyMem8,reg0_3   is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x2 & reg0_3 {
+	local v:1 = iyMem8; local c:1 = (v >> 7); v = (v << 1) | $(C_flag); $(C_flag) = c; iyMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:RR ixMem8,reg0_3   is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x3 & reg0_3 {
+	local v:1 = ixMem8; local c:1 = (v & 1); v = (v >> 1) | ($(C_flag) << 7); $(C_flag) = c; ixMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:RR iyMem8,reg0_3   is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x3 & reg0_3 {
+	local v:1 = iyMem8; local c:1 = (v & 1); v = (v >> 1) | ($(C_flag) << 7); $(C_flag) = c; iyMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SLA ixMem8,reg0_3  is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x4 & reg0_3 {
+	local v:1 = ixMem8; $(C_flag) = (v >> 7); v = v << 1; ixMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SLA iyMem8,reg0_3  is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x4 & reg0_3 {
+	local v:1 = iyMem8; $(C_flag) = (v >> 7); v = v << 1; iyMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SRA ixMem8,reg0_3  is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x5 & reg0_3 {
+	local v:1 = ixMem8; $(C_flag) = (v & 1); v = v s>> 1; ixMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SRA iyMem8,reg0_3  is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x5 & reg0_3 {
+	local v:1 = iyMem8; $(C_flag) = (v & 1); v = v s>> 1; iyMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SLL ixMem8         is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x6 & bits0_3=0x6 {
+	local v:1 = ixMem8; $(C_flag) = (v >> 7); v = (v << 1) | 1; ixMem8 = v; rotateResultFlags(v);
+}
+:SLL iyMem8         is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x6 & bits0_3=0x6 {
+	local v:1 = iyMem8; $(C_flag) = (v >> 7); v = (v << 1) | 1; iyMem8 = v; rotateResultFlags(v);
+}
+:SLL ixMem8,reg0_3  is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x6 & reg0_3 {
+	local v:1 = ixMem8; $(C_flag) = (v >> 7); v = (v << 1) | 1; ixMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SLL iyMem8,reg0_3  is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x6 & reg0_3 {
+	local v:1 = iyMem8; $(C_flag) = (v >> 7); v = (v << 1) | 1; iyMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SRL ixMem8,reg0_3  is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x0 & bits3_3=0x7 & reg0_3 {
+	local v:1 = ixMem8; $(C_flag) = (v & 1); v = v >> 1; ixMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SRL iyMem8,reg0_3  is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x0 & bits3_3=0x7 & reg0_3 {
+	local v:1 = iyMem8; $(C_flag) = (v & 1); v = v >> 1; iyMem8 = v; reg0_3 = v; rotateResultFlags(v);
+}
+:SET bits3_3,ixMem8,reg0_3 is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x3 & bits3_3 & reg0_3 {
+	mask:1 = (1 << bits3_3); local v:1 = ixMem8 | mask; ixMem8 = v; reg0_3 = v;
+}
+:SET bits3_3,iyMem8,reg0_3 is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x3 & bits3_3 & reg0_3 {
+	mask:1 = (1 << bits3_3); local v:1 = iyMem8 | mask; iyMem8 = v; reg0_3 = v;
+}
+:RES bits3_3,ixMem8,reg0_3 is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x2 & bits3_3 & reg0_3 {
+	mask:1 = ~(1 << bits3_3); local v:1 = ixMem8 & mask; ixMem8 = v; reg0_3 = v;
+}
+:RES bits3_3,iyMem8,reg0_3 is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x2 & bits3_3 & reg0_3 {
+	mask:1 = ~(1 << bits3_3); local v:1 = iyMem8 & mask; iyMem8 = v; reg0_3 = v;
+}
+:BIT bits3_3,ixMem8 is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x1 & bits3_3 & bits0_3!=0x6 {
+	mask:1 = (1 << bits3_3); val:1 = ixMem8;
+	$(Z_flag) = ((val & mask) == 0); $(PV_flag) = $(Z_flag); $(S_flag) = ((val & mask & 0x80) != 0); $(H_flag) = 1; $(N_flag) = 0;
+}
+:BIT bits3_3,iyMem8 is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x1 & bits3_3 & bits0_3!=0x6 {
+	mask:1 = (1 << bits3_3); val:1 = iyMem8;
+	$(Z_flag) = ((val & mask) == 0); $(PV_flag) = $(Z_flag); $(S_flag) = ((val & mask & 0x80) != 0); $(H_flag) = 1; $(N_flag) = 0;
+}
+
+# The ED page's copies: NEG, RETN, IM 0, 1, 2, IN (C) (flags only) and OUT (C),0.
+:NEG                is op0_8=0xed; op6_2=0x1 & bits3_3!=0x0 & bits0_3=0x4 {
+	local a_temp = A;
+	subtractionFlags(0, a_temp);
+	a_temp = -a_temp;
+	A = a_temp;
+	setResultFlags(a_temp);
+}
+:RETN               is op0_8=0xed; op6_2=0x1 & bits3_3>=0x2 & bits0_3=0x5 {
+	pop16(PC);
+	ptr:$(PTRSIZE) = PC;
+	return [ptr];
+}
+:IM 0               is op0_8=0xed; op0_8=0x66 {
+	setInterruptMode(0:1);
+}
+:IM 1               is op0_8=0xed; op0_8=0x76 {
+	setInterruptMode(1:1);
+}
+:IM 2               is op0_8=0xed; op0_8=0x7e {
+	setInterruptMode(2:1);
+}
+:IN IOAddrC         is op0_8=0xed & IOAddrC; op6_2=0x1 & bits3_3=0x6 & bits0_3=0x0 {
+	val:1 = 0;
+	ioRead(IOAddrC, val);
+	setResultFlags(val);
+	$(H_flag) = 0;
+	setParity(val);
+	$(N_flag) = 0;
+}
+:OUT IOAddrC,0      is op0_8=0xed & IOAddrC; op6_2=0x1 & bits3_3=0x6 & bits0_3=0x1 {
+	ioWrite(IOAddrC, 0:1);
+}
+
 ## DD range
 
 ixh_iyh: IXH is op0_8=0xdd & IXH { export IXH; }

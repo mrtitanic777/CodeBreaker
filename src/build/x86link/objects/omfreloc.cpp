@@ -31,7 +31,7 @@
 
 
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/newmem.h"
 #include "build/x86link/base/virtmem.h"
 #include "build/x86link/fixups/reloc.h"
@@ -172,7 +172,7 @@ void DoRelocs(Link& link)
     if( link.ObjFormat & OBJ_FMT_IGNORE_FIXUPP )
         return;
     if( link.ObjFormat & OBJ_FMT_IS_LIDATA ) {
-        LnkMsg( WRN+LOC_REC+MSG_REL_IN_LIDATA, nullptr );
+        LnkMsg(link,  WRN+LOC_REC+MSG_REL_IN_LIDATA, nullptr );
         return;
     }
     do {
@@ -280,7 +280,7 @@ static void StoreBakPat(Link& link,  segdata *sdata, byte loctype )
     bakpat_list         *bkptr;
 
     len = link.EOObjRec - link.ObjBuff;
-    bkptr = (bakpat_list *)(MemAllocSafe( sizeof( bakpat_list ) + len - 1 ));
+    bkptr = (bakpat_list *)(MemAllocSafe(link,  sizeof( bakpat_list ) + len - 1 ));
     bkptr->len = len;
     bkptr->loctype = loctype;
     bkptr->sdata = sdata;   /* We don't know the data offset yet. */

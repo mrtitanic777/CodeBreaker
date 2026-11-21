@@ -81,41 +81,41 @@
 
 #define _UpdateLive( _1, _2, _3 )
 
-#define _Equal( op1, op2 ) ( ( (op1)->n.class==N_TEMP ? DeAlias(op1) : (op1) ) == (op2) )
+#define _Equal( op1, op2 ) ( ( (op1)->n.class_==N_TEMP ? DeAlias(op1) : (op1) ) == (op2) )
 
-#define _SuffixLoad( _1, _2, _3, class )   \
-             block_cost += Save.load_cost[class];
+#define _SuffixLoad( _1, _2, _3, class_ )   \
+             block_cost += Save.load_cost[class_];
 
-#define _PrefixLoad( _1, _2, _3, class )   \
-             block_cost += Save.load_cost[class];
+#define _PrefixLoad( _1, _2, _3, class_ )   \
+             block_cost += Save.load_cost[class_];
 
-#define _SuffixStore( _1, _2, _3, class )  \
-             block_cost += Save.store_cost[class];
+#define _SuffixStore( _1, _2, _3, class_ )  \
+             block_cost += Save.store_cost[class_];
 
-#define _PrefixStore( _1, _2, _3, class )  \
-             block_cost += Save.store_cost[class];
+#define _PrefixStore( _1, _2, _3, class_ )  \
+             block_cost += Save.store_cost[class_];
 
-#define _ReplaceOpnd( _1, ins, i, _2, class ) \
-             block_save += Save.use_save[class]; \
+#define _ReplaceOpnd( _1, ins, i, _2, class_ ) \
+             block_save += Save.use_save[class_]; \
              if( i == 0 \
               && ins->head.opcode < FIRST_CONDITION \
               && ins->result != NULL \
-              && ins->result->n.class == N_REGISTER ) { \
-                 block_save += Save.use_save[class]; \
+              && ins->result->n.class_ == N_REGISTER ) { \
+                 block_save += Save.use_save[class_]; \
              }
 
-#define _ReplaceResult( _1, ins, _2, class ) \
+#define _ReplaceResult( _1, ins, _2, class_ ) \
             if( ( ins->head.opcode==OP_MOV || ins->head.opcode==OP_CONVERT ) \
-             && ins->result->n.class == N_TEMP \
-             && ins->operands[0]->n.class == N_TEMP \
+             && ins->result->n.class_ == N_TEMP \
+             && ins->operands[0]->n.class_ == N_TEMP \
              && ins->result->t.location != NO_LOCATION \
              && ins->result->t.location == ins->operands[0]->t.location ) { \
-                block_cost+=Save.load_cost[class]; \
+                block_cost+=Save.load_cost[class_]; \
             } else { \
-                block_save+=Save.def_save[class]; \
+                block_save+=Save.def_save[class_]; \
                 if( ins->num_operands != 0 \
-                 && ins->operands[0]->n.class == N_REGISTER ) { \
-                    block_save+=Save.use_save[class]; \
+                 && ins->operands[0]->n.class_ == N_REGISTER ) { \
+                    block_save+=Save.use_save[class_]; \
                 } \
             }
 
@@ -133,7 +133,7 @@
 
 #endif
 
-    class = opnd->n.type_class;
+    class_ = opnd->n.type_class;
     blk = conf->start_block;
     ins = conf->ins_range.first;
     last = false;
@@ -163,20 +163,20 @@
                         && _Isnt( conf, CST_OK_ACROSS_CALLS ) ) )
                         && !_GBitOverlap( conf->id.out_of_block, flow->call_exempt ) ) {
                     if( (ins->flags.u.call_flags & CALL_WRITES_NO_MEMORY) == 0
-                     || ( opnd->n.class == N_TEMP
+                     || ( opnd->n.class_ == N_TEMP
                        && ( opnd->v.usage & USE_ADDRESS ) ) ) {
-                        _SuffixLoad( ins, opnd, reg_name, class );
+                        _SuffixLoad( ins, opnd, reg_name, class_ );
                     }
                     if( ( last_defn != NULL
                        || ( ( opnd->v.usage & USE_IN_ANOTHER_BLOCK )
                           && _GBitOverlap( conf->id.out_of_block, flow->in ) ) )
                      && ( ( (ins->flags.u.call_flags & CALL_WRITES_NO_MEMORY) == 0 )
                        || ( (ins->flags.u.call_flags & CALL_READS_NO_MEMORY) == 0 )
-                       || ( opnd->n.class == N_TEMP
+                       || ( opnd->n.class_ == N_TEMP
                             && ( opnd->v.usage & USE_ADDRESS ) ) ) ) {
                         last_defn = NULL;
                         temp_ins = ins->head.prev;
-                        _PrefixStore( ins, reg_name, opnd, class );
+                        _PrefixStore( ins, reg_name, opnd, class_ );
                         if( first_use == NULL ) {
                             first_use = temp_ins->head.next;
                         }
@@ -191,8 +191,8 @@
                     if( first_use == NULL ) {
                         first_use = ins;
                     }
-                    _ReplaceOpnd( tree, ins, i, reg_name, class );
-                } else if( ins->operands[i]->n.class == N_INDEXED
+                    _ReplaceOpnd( tree, ins, i, reg_name, class_ );
+                } else if( ins->operands[i]->n.class_ == N_INDEXED
                      && _Equal( ins->operands[i]->i.index, opnd ) ) {
                     if( first_use == NULL ) {
                         first_use = ins;
@@ -204,8 +204,8 @@
                 if( _Equal( ins->result, opnd ) ) {
                     last_defn = ins;
                     final_defn = ins;
-                    _ReplaceResult( tree, ins, reg_name, class );
-                } else if( ins->result->n.class == N_INDEXED
+                    _ReplaceResult( tree, ins, reg_name, class_ );
+                } else if( ins->result->n.class_ == N_INDEXED
                         && _Equal( ins->result->i.index, opnd ) ) {
                     _ReplaceIdxResult( tree, ins, reg_name );
                 }
@@ -250,14 +250,14 @@
 #endif
             if( (instruction *)&blk->ins == blk->ins.head.next ) {
                 if( _GBitOverlap( conf->id.out_of_block, flow->need_store ) ) {
-                    _SuffixStore( (instruction *)&blk->ins, reg_name, opnd, class );
+                    _SuffixStore( (instruction *)&blk->ins, reg_name, opnd, class_ );
                 }
                 if( _GBitOverlap( conf->id.out_of_block, flow->need_load ) ) {
-                    _SuffixLoad( (instruction *)&blk->ins, opnd, reg_name, class );
+                    _SuffixLoad( (instruction *)&blk->ins, opnd, reg_name, class_ );
                 }
             } else {
                 if( _GBitOverlap( conf->id.out_of_block, flow->need_store ) ) {
-                    _SuffixStore( final_defn, reg_name, opnd, class );
+                    _SuffixStore( final_defn, reg_name, opnd, class_ );
 #ifndef _InRegAssgn
                     /* unused parameters */ (void)final_defn;
 #endif
@@ -270,16 +270,16 @@
                         }
                     }
 #endif
-                    _PrefixLoad( first_use, opnd, reg_name, class );
+                    _PrefixLoad( first_use, opnd, reg_name, class_ );
                 }
             }
         } else if( opnd->v.usage & ( NEEDS_MEMORY | USE_ADDRESS ) ) {
             if( last_defn != NULL ) {
-                _SuffixStore( last_defn, reg_name, opnd, class );
+                _SuffixStore( last_defn, reg_name, opnd, class_ );
 /*  } else { it was already stored after its last definition */
             }
             if( flows_in ) {
-                _PrefixLoad( conf->ins_range.first, opnd, reg_name, class );
+                _PrefixLoad( conf->ins_range.first, opnd, reg_name, class_ );
             }
         }
         _UpdateCost( blk, opnd );

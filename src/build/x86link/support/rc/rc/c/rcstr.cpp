@@ -139,7 +139,7 @@ char *StrUprCpyToUni( char *dst, const char *src, uint_16 length )
 /*
  * the string list should be filled in when this is called
  */
-void ConstructStringIDNamesBlock( StringsBlock *str )
+void ConstructStringIDNamesBlock(Link& link,  StringsBlock *str )
 {
     /*
      * calculate the size of the block needed
@@ -157,7 +157,7 @@ void ConstructStringIDNamesBlock( StringsBlock *str )
     /*
      * allocate the block for the strings
      */
-    str->StringBlock = static_cast<char *>( MemAllocSafe( str->StringBlockSize ) );
+    str->StringBlock = static_cast<char *>( MemAllocSafe(link,  str->StringBlockSize ) );
     /*
      * copy the strings into the block
      */
@@ -181,7 +181,7 @@ int CompareWResIDNames( const void *n1, const void *n2 )
 
 } // namespace
 
-void StringIDNamesBlockBuild( StringsBlock *str, WResDir dir, bool use_unicode )
+void StringIDNamesBlockBuild(Link& link,  StringsBlock *str, WResDir dir, bool use_unicode )
 {
     if( WResIsEmpty( dir ) ) {
         /*
@@ -194,7 +194,7 @@ void StringIDNamesBlockBuild( StringsBlock *str, WResDir dir, bool use_unicode )
          */
         std::size_t list_len = dir->NumTypes + dir->NumResources;
         str->UseUnicode = use_unicode;
-        str->StringList = static_cast<name_ptr *>( MemAllocSafe( list_len * sizeof( *str->StringList ) ) );
+        str->StringList = static_cast<name_ptr *>( MemAllocSafe(link,  list_len * sizeof( *str->StringList ) ) );
 
         list_len = InitStringIDNamesList( dir, str->StringList, list_len );
         list_len = SortAndRemoveRedundantStrings( str->StringList, list_len, CompareWResIDNames );
@@ -206,8 +206,8 @@ void StringIDNamesBlockBuild( StringsBlock *str, WResDir dir, bool use_unicode )
             str->StringBlock = nullptr;
             str->StringBlockSize = 0;
         } else {
-            str->StringList = static_cast<name_ptr *>( MemReallocSafe( str->StringList, list_len * sizeof( *str->StringList ) ) );
-            ConstructStringIDNamesBlock( str );
+            str->StringList = static_cast<name_ptr *>( MemReallocSafe(link,  str->StringList, list_len * sizeof( *str->StringList ) ) );
+            ConstructStringIDNamesBlock(link,  str );
         }
     }
 }
