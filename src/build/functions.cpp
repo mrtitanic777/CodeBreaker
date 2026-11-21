@@ -276,6 +276,10 @@ std::optional<Bytes> omf_here(ByteView object, const stdfs::path& folder) {
     Bytes out;
     for (const OmfRecord& r : recs) {
         Bytes body = r.body;
+        // A zero check byte means "no checksum" only when the record does not already add up to zero: a real checksum can be zero too.
+        std::uint8_t had = static_cast<std::uint8_t>(r.kind + ((r.body.size() + 1) & 0xFF) + (((r.body.size() + 1) >> 8) & 0xFF));
+        for (std::uint8_t b : r.body) had = static_cast<std::uint8_t>(had + b);
+        const bool unchecked = r.check == 0 && had != 0;
         if (r.kind == kOmfTheadr) {
             if (now.size() + name.size() - cut > 255) return std::nullopt;
             body.assign(1, static_cast<std::uint8_t>(now.size() + name.size() - cut));
@@ -314,7 +318,7 @@ std::optional<Bytes> omf_here(ByteView object, const stdfs::path& folder) {
         std::uint8_t sum = 0;
         for (std::uint8_t b : record) sum = static_cast<std::uint8_t>(sum + b);
         out.insert(out.end(), record.begin(), record.end());
-        out.push_back(r.check ? static_cast<std::uint8_t>(0u - sum) : 0);
+        out.push_back(unchecked ? std::uint8_t{0} : static_cast<std::uint8_t>(0u - sum));
     }
     return out;
 }
