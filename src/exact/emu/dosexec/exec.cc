@@ -339,7 +339,34 @@ void Run::int21() {
     };
     if (S.debug) fprintf(stderr, "int21 ax=%04llx bx=%04llx cx=%04llx dx=%04llx\n",
                          (unsigned long long)ax, (unsigned long long)bx, (unsigned long long)cx, (unsigned long long)dx);
-    if (ah == 0x4C || ah == 0x00) { exit = ah == 0x4C ? al : 0; throw DosExit(); }
+    if (ah == 0x4C || ah == 0x00) {
+        // A PSP the program made itself (55h, then 50h: how a DOS extender runs a child without 4Bh) ends as DOS ends it: the
+        // parent becomes current, Ctrl-C and critical-error vectors come back from the PSP, and control goes to its terminate address.
+        if (cur_psp != uint64_t(PSP)) {
+            const Bytes p = rd(cur_psp * 16, 0x18);
+            const auto word = [&](size_t at) { return uint64_t(p[at]) | uint64_t(p[at + 1]) << 8; };
+            const uint64_t term_ip = word(0x0A), term_cs = word(0x0C), parent = word(0x16);
+            if ((term_cs || term_ip) && parent != cur_psp) {
+                child = ah == 0x4C ? al : 0;
+                vec[0x23] = {word(0x10), word(0x0E)};
+                vec[0x24] = {word(0x14), word(0x12)};
+                const Bytes stack = rd(parent * 16 + 0x2E, 4);
+                const uint64_t parent_sp = uint64_t(stack[0]) | uint64_t(stack[1]) << 8, parent_ss = uint64_t(stack[2]) | uint64_t(stack[3]) << 8;
+                if (parent_ss || parent_sp) {
+                    W(UC_X86_REG_SS, parent_ss);
+                    W(UC_X86_REG_SP, parent_sp);
+                }
+                cur_psp = parent;
+                W(UC_X86_REG_CS, term_cs);
+                W(UC_X86_REG_IP, term_ip);
+                again = true;
+                stop();
+                return;
+            }
+        }
+        exit = ah == 0x4C ? al : 0;
+        throw DosExit();
+    }
     if (ah == 0x02 || ah == 0x06) {
         if (ah == 0x06 && (dx & 0xFF) == 0xFF) { carry(false); W(UC_X86_REG_AX, ax & 0xFF00); return; }
         console.push_back(uint8_t(dx & 0xFF));

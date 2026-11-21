@@ -62,9 +62,9 @@ CB_TEST("exact.emu.native_dos_executive.microsoft_c_6_makes_the_same_object_as_u
     CB_CHECK_EQ(as_text(native.made.at("T.TXT")), as_text(dosbox.made.at("T.TXT")));
 });
 
-// Visual C++ 1.52's CL, a DOS-extended program: the executive runs its first pass but not the passes it starts from protected
-// mode yet (no object), so the runner hands the session to DOSBox-X -- the object is DOSBox-X's, as before.
-CB_TEST("exact.emu.native_dos_executive.visual_cpp_1_52_goes_to_dosbox_and_makes_its_object", [] {
+// Visual C++ 1.52's CL, a DOS-extended program: its extender starts each pass under a PSP of its own (55h, 50h) and ends it with 4Ch,
+// which returns to that PSP's terminate address. No fallback here: the executive alone makes the object DOSBox-X makes.
+CB_TEST("exact.emu.native_dos_executive.visual_cpp_1_52_makes_the_same_object_as_under_dosbox", [] {
     CB_WINDOWS_ONLY("the DOS executive is built on Windows only");
     const config::Config& config = config::current();
     const auto msvc = config.path("msvc152");
@@ -88,7 +88,7 @@ CB_TEST("exact.emu.native_dos_executive.visual_cpp_1_52_goes_to_dosbox_and_makes
     const build::dos_tools::DosboxRunner dosbox_runner(emulator);
     const build::DosRunResult dosbox = compile(dosbox_runner, b.path());
     if (!dosbox.ok) return;   // (DOSBox-X does not run it here either: nothing to hold the runner to)
-    const build::DosRunResult native = compile(build::NativeDosRunner(dos, &dosbox_runner), a.path());
+    const build::DosRunResult native = compile(build::NativeDosRunner(dos), a.path());
     CB_CHECK(native.ok);
     if (!native.ok) return;
     CB_CHECK(native.made.at("T.OBJ") == dosbox.made.at("T.OBJ"));
