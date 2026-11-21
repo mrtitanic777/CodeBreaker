@@ -99,6 +99,10 @@ static std::vector<std::wstring> components(const std::wstring &rest) {
     return out;
 }
 
+bool same_drive(const std::wstring &a, const std::wstring &b) {
+    return normcase(drive_of(abspath(a))) == normcase(drive_of(abspath(b)));
+}
+
 std::wstring relpath(const std::wstring &path, const std::wstring &start) {
     std::wstring sa = abspath(start), pa = abspath(path);
     std::wstring sd = drive_of(sa), pd = drive_of(pa);

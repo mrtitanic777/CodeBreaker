@@ -52,12 +52,14 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-      # (the runner's Visual Studio STL asks for a newer Clang than the clang-cl it ships: STL1000; the STL's own switch
-      # lets the bundled one build, which is the compiler this job proves the code with)
+      # (the runner's Visual Studio STL needs a newer Clang than the clang-cl it ships, whose <format> does not compile against it)
+      - name: A current clang-cl
+        shell: cmd
+        run: choco upgrade llvm --version=22.1.8 -y --no-progress --allow-downgrade
       - name: codebreaker.exe and the unit tests (clang-cl)
         shell: cmd
         run: |
-          cmake -S src -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /EHsc /GR -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH" || exit /b 1
+          cmake -S src -B build-clang -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe" "-DCMAKE_CXX_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe" || exit /b 1
           cmake --build build-clang --target codebreaker cb_tests -j 4 || exit /b 1
       - name: Unit tests
         shell: cmd

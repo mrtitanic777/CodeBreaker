@@ -75,6 +75,7 @@ std::wstring pkey(const std::wstring &p);          // MemFS.key: normcase(abspat
 std::wstring path_join(const std::wstring &a, const std::vector<std::wstring> &parts);   // os.path.join
 std::wstring basename(const std::wstring &p);      // os.path.basename
 std::wstring relpath(const std::wstring &path, const std::wstring &start);   // os.path.relpath (raises ValueError)
+bool same_drive(const std::wstring &a, const std::wstring &b);   // can relpath relate them? (no path leads from C: to D:)
 bool disk_isfile(const std::wstring &p);           // os.path.isfile
 int64_t disk_getsize(const std::wstring &p);       // os.path.getsize
 void disk_remove(const std::wstring &p);           // os.remove

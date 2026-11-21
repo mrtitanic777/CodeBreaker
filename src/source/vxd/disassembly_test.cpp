@@ -295,7 +295,11 @@ CB_TEST("source.vxd.disassembly.files_and_commands", [] {
     CB_CHECK_EQ(run({splitter.string()}), cb::kExitOk);
     const std::string out = captured.out();
     CB_CHECK(has(out, "== verify: 3 modules, 3 CLEAN, 0 dirty | code="));
-    CB_CHECK(has(out, "overlap=0 overrun=0 =="));
+    const std::size_t summary = out.find("== verify: ");
+    CB_CHECK(summary != std::string::npos);
+    const std::size_t totals = out.find(" overlap=", summary);
+    CB_CHECK(totals != std::string::npos);
+    CB_CHECK_EQ(out.substr(totals, out.find_first_of("\r\n", totals) - totals), std::string(" overlap=0 overrun=0 =="));   // (a failure shows the line)
     CB_CHECK(has(out, "  ERROR broken.vxd       "));
     CB_CHECK(has(out, "  splitter.vxd Splitter  id=0x0498     501 insns   92% cov  0 jt"));
     CB_CHECK(has(out, "== 3 modules -> "));
