@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cmath>
 #include <cstring>
 #include <type_traits>
@@ -55,6 +56,7 @@ constexpr std::uint64_t kPageSize = std::uint64_t{1} << kPageBits;
 struct Page {
     std::array<std::uint8_t, kPageSize> d{};
     bool code = false;   // instructions were decoded from this page
+    std::bitset<kPageSize> decoded;   // ... and these are the bytes they were decoded from: a write that changes one of them drops the instructions that read it
 };
 
 struct SpaceMem {
@@ -90,10 +92,21 @@ struct Op {
     std::size_t first;   // into Decoded::vn: the output (if any), then the inputs
 };
 
+// How to reach a varnode without looking anything up: a constant, or the bytes of a register or temporary inside one page (the pointers hold while the page does: the
+// decoded instructions are dropped whenever a memory is cleared).
+struct Slot {
+    std::uint8_t* ptr = nullptr;   // direct: the bytes
+    std::uint64_t value = 0;       // constant: its value
+    std::uint8_t size = 0;
+    std::uint8_t kind = 0;         // 0 look it up, 1 constant, 2 direct
+    bool big = false;
+};
+
 struct Decoded {
     std::size_t length = 0;   // bytes
     std::vector<Op> ops;
     std::vector<VarnodeData> vn;
+    std::vector<Slot> slots;  // by vn
 };
 
 class Collect : public ghidra::PcodeEmit {
@@ -138,7 +151,10 @@ struct Emulator::Impl {
             for (ghidra::int4 i = 0; i < size; ++i) {
                 const std::uint64_t a = start + static_cast<std::uint64_t>(i);
                 Page* p = const_cast<Page*>(m.find(a >> kPageBits));
-                if (p) p->code = true;
+                if (p) {
+                    p->code = true;
+                    p->decoded.set(a & (kPageSize - 1));
+                }
                 ptr[i] = p ? p->d[a & (kPageSize - 1)] : 0;
             }
         }
@@ -170,7 +186,8 @@ struct Emulator::Impl {
     std::uint64_t contextTag = 0;
     std::map<std::string, int> contextSet;   // the variables setContext changed, and to what
     bool addressContextKept = true;     // the context a decoded instruction sets for other addresses (SLEIGH's globalset) stays; false: dropped after each decode
-    bool dirty = false;                // a write hit decoded code: flush before the next step
+    bool dirty = false;                // too much decoded code changed: flush before the next step
+    std::vector<std::uint64_t> stale;  // byte addresses of decoded code that changed: the instructions that read them are dropped before the next step
     std::uint64_t pcValue = 0;
     std::uint64_t stepCount = 0;
     std::set<std::uint64_t> stops;
@@ -207,8 +224,9 @@ struct Emulator::Impl {
             if (v == 0) return;
             p = m.make(key);
         }
-        if (p->code) dirty = true;
-        p->d[a & (kPageSize - 1)] = v;
+        const std::size_t off = static_cast<std::size_t>(a & (kPageSize - 1));
+        if (p->code && p->d[off] != v && p->decoded[off]) noteCodeWrite(a);
+        p->d[off] = v;
     }
     std::uint64_t getValueBytes(const SpaceMem& m, std::uint64_t a, unsigned size) const {
         std::uint64_t v = 0;
@@ -254,8 +272,16 @@ struct Emulator::Impl {
                     if (v == 0) return;   // (a page that does not exist reads zeros)
                     p = m.make(key);
                 }
-                if (p->code) dirty = true;
                 std::uint8_t* b = p->d.data() + off;
+                if (p->code) {   // (a write that changes a byte an instruction was decoded from drops that instruction: the others stay)
+                    std::uint64_t w = v;
+                    for (unsigned i = 0; i < size; ++i) {
+                        const unsigned at = m.big ? size - 1 - i : i;
+                        const std::uint8_t nb = static_cast<std::uint8_t>(w);
+                        w >>= 8;
+                        if (b[at] != nb && p->decoded[static_cast<std::size_t>(off) + at]) noteCodeWrite(a + at);
+                    }
+                }
                 if (m.big)
                     for (unsigned i = size; i-- > 0; v >>= 8) b[i] = static_cast<std::uint8_t>(v);
                 else
@@ -289,12 +315,65 @@ struct Emulator::Impl {
         if (m.hooked && writeHook && writeHook(m.space->getName(), a, size, size >= 8 ? v : v & ((std::uint64_t{1} << (8 * size)) - 1))) return;
         putValueBytes(m, a, size, v);
     }
+    // The varnodes handed to get and put are elements of the instruction being run: its slots say how to reach each.
+    const VarnodeData* vnBase = nullptr;
+    const Slot* slotBase = nullptr;
     std::uint64_t get(const VarnodeData& v) {
-        if (v.space == constSpace) return v.offset;
+        const Slot& s = slotBase[&v - vnBase];
+        if (s.kind == 2) {
+            const std::uint8_t* b = s.ptr;
+            switch (s.size) {
+                case 1: return b[0];
+                case 4: return s.big ? (std::uint64_t{b[0]} << 24 | std::uint64_t{b[1]} << 16 | std::uint64_t{b[2]} << 8 | b[3])
+                                     : (std::uint64_t{b[3]} << 24 | std::uint64_t{b[2]} << 16 | std::uint64_t{b[1]} << 8 | b[0]);
+                default: {
+                    std::uint64_t r = 0;
+                    if (s.big)
+                        for (unsigned i = 0; i < s.size; ++i) r = (r << 8) | b[i];
+                    else
+                        for (unsigned i = s.size; i-- > 0;) r = (r << 8) | b[i];
+                    return r;
+                }
+            }
+        }
+        if (s.kind == 1) return s.value;
         return readSpace(mem[static_cast<std::size_t>(v.space->getIndex())], v.offset, v.size);
     }
     void put(const VarnodeData& v, std::uint64_t value) {
+        const Slot& s = slotBase[&v - vnBase];
+        if (s.kind == 2) {
+            std::uint8_t* b = s.ptr;
+            if (s.big)
+                for (unsigned i = s.size; i-- > 0; value >>= 8) b[i] = static_cast<std::uint8_t>(value);
+            else
+                for (unsigned i = 0; i < s.size; ++i, value >>= 8) b[i] = static_cast<std::uint8_t>(value);
+            return;
+        }
         writeSpace(mem[static_cast<std::size_t>(v.space->getIndex())], v.offset, v.size, value);
+    }
+    // Slots for a decoded instruction.
+    void resolve(Decoded& d) {
+        d.slots.assign(d.vn.size(), Slot{});
+        for (std::size_t i = 0; i < d.vn.size(); ++i) {
+            const VarnodeData& v = d.vn[i];
+            Slot& s = d.slots[i];
+            if (v.space == constSpace) {
+                s.kind = 1;
+                s.value = v.offset;
+                continue;
+            }
+            SpaceMem& m = mem[static_cast<std::size_t>(v.space->getIndex())];
+            if (m.hooked || m.isCode || v.size == 0 || v.size > 8) continue;
+            const std::uint64_t a = m.space->wrapOffset(v.offset) * m.word;
+            const std::uint64_t off = a & (kPageSize - 1);
+            if (off + v.size > kPageSize) continue;
+            Page* p = const_cast<Page*>(m.find(a >> kPageBits));
+            if (!p) p = m.make(a >> kPageBits);
+            s.kind = 2;
+            s.ptr = p->d.data() + off;
+            s.size = static_cast<std::uint8_t>(v.size);
+            s.big = m.big;
+        }
     }
 
     // ---- registers
@@ -308,8 +387,35 @@ struct Emulator::Impl {
             throw std::runtime_error("no register " + name);
         }
     }
+    Slot pcSlot;   // where the pc register is, found on first use and again after a flush (a memory may have been cleared)
+    bool pcSlotValid = false;
     void syncPcRegister() {
-        if (pcReg) putValueBytes(mem[static_cast<std::size_t>(pcReg->space->getIndex())], pcReg->offset, pcReg->size, pcValue);
+        if (!pcReg) return;
+        if (!pcSlotValid) {
+            pcSlot = Slot{};
+            SpaceMem& m = mem[static_cast<std::size_t>(pcReg->space->getIndex())];
+            const std::uint64_t a = m.space->wrapOffset(pcReg->offset) * m.word;
+            const std::uint64_t off = a & (kPageSize - 1);
+            if (!m.hooked && !m.isCode && pcReg->size <= 8 && off + pcReg->size <= kPageSize) {
+                Page* p = const_cast<Page*>(m.find(a >> kPageBits));
+                if (!p) p = m.make(a >> kPageBits);
+                pcSlot.kind = 2;
+                pcSlot.ptr = p->d.data() + off;
+                pcSlot.size = static_cast<std::uint8_t>(pcReg->size);
+                pcSlot.big = m.big;
+            }
+            pcSlotValid = true;
+        }
+        if (pcSlot.kind == 2) {
+            std::uint64_t value = pcValue;
+            std::uint8_t* b = pcSlot.ptr;
+            if (pcSlot.big)
+                for (unsigned i = pcSlot.size; i-- > 0; value >>= 8) b[i] = static_cast<std::uint8_t>(value);
+            else
+                for (unsigned i = 0; i < pcSlot.size; ++i, value >>= 8) b[i] = static_cast<std::uint8_t>(value);
+            return;
+        }
+        putValueBytes(mem[static_cast<std::size_t>(pcReg->space->getIndex())], pcReg->offset, pcReg->size, pcValue);
     }
 
     // ---- decoding
@@ -318,8 +424,36 @@ struct Emulator::Impl {
         cache = &caches[contextTag];
         trans->forgetParses();
         for (SpaceMem& m : mem)
-            for (auto& [k, p] : m.pages) p->code = false;
+            for (auto& [k, p] : m.pages) {
+                if (!p->code) continue;
+                p->code = false;
+                p->decoded.reset();
+            }
         dirty = false;
+        stale.clear();
+        pcSlotValid = false;
+    }
+    // A byte an instruction was decoded from has changed: that instruction (and any other that reads the byte) is decoded again, and nothing else is. Many changes at
+    // once are the same as a flush.
+    void noteCodeWrite(std::uint64_t byteAddress) {
+        if (stale.size() >= 64) {
+            dirty = true;
+            return;
+        }
+        stale.push_back(byteAddress);
+    }
+    void dropStale() {
+        const std::uint64_t unit = mem[static_cast<std::size_t>(codeIndex)].word;
+        for (const std::uint64_t byteAddress : stale) {
+            const std::uint64_t at = byteAddress / unit;
+            for (std::uint64_t s = at >= 16 ? at - 16 : 0; s <= at; ++s)
+                for (auto& [tag, decoded] : caches) {
+                    const auto it = decoded.find(s);
+                    if (it != decoded.end() && s + it->second.length / unit > at) decoded.erase(it);
+                }
+        }
+        stale.clear();
+        trans->forgetParses();
     }
     // The translator's context cache points into the entries cleared here, so it is told to read them again.
     void dropAddressContext() {
@@ -327,7 +461,11 @@ struct Emulator::Impl {
         trans->forgetContextRange();
     }
     const Decoded* decode(std::uint64_t pc) {
-        if (dirty) flush();
+        if (dirty) {
+            flush();
+        } else if (!stale.empty()) {
+            dropStale();
+        }
         auto it = cache->find(pc);
         if (it != cache->end()) return &it->second;
         Decoded d;
@@ -340,6 +478,7 @@ struct Emulator::Impl {
         }
         if (!addressContextKept) dropAddressContext();
         if (d.length == 0) return nullptr;
+        resolve(d);
         if (cache->size() > (1u << 20)) cache->clear();
         return &cache->emplace(pc, std::move(d)).first->second;
     }
@@ -371,6 +510,17 @@ struct Emulator::Impl {
         const std::uint64_t unit = mem[static_cast<std::size_t>(codeIndex)].word;
         std::uint64_t next = pcValue + d.length / unit;
         std::size_t i = 0;
+        struct RestoreBases {   // (a hook may step the emulator: the instruction it interrupted goes on reading its own operands)
+            Impl& o;
+            const VarnodeData* vn;
+            const Slot* slot;
+            ~RestoreBases() {
+                o.vnBase = vn;
+                o.slotBase = slot;
+            }
+        } restoreBases{*this, vnBase, slotBase};
+        vnBase = d.vn.data();
+        slotBase = d.slots.data();
         try {
             while (i < d.ops.size()) {
                 const Op& op = d.ops[i];
@@ -560,7 +710,9 @@ void Emulator::write(std::uint64_t addr, const std::uint8_t* data, std::size_t s
             }
             p = m.make(at >> kPageBits);
         }
-        if (p->code) o.dirty = true;
+        if (p->code)   // (only a byte that changes, in an instruction decoded from it, costs that instruction)
+            for (std::size_t k = 0; k < n; ++k)
+                if (p->d[in + k] != data[i + k] && p->decoded[in + k]) o.noteCodeWrite(at + k);
         std::memcpy(p->d.data() + in, data + i, n);
         i += n;
     }
@@ -654,6 +806,7 @@ void Emulator::setPc(std::uint64_t pc) {
     impl_->syncPcRegister();
 }
 
+
 Emulator::Status Emulator::step() {
     Impl& o = *impl_;
     const Decoded* d = o.decode(o.pcValue);
@@ -671,7 +824,7 @@ Emulator::Status Emulator::step() {
         o.error = "no instruction at " + std::to_string(o.pcValue);
         return Status::BadInstruction;
     }
-    o.syncPcRegister();
+    o.syncPcRegister();   // (a caller may have cleared or set the registers since the last step)
     const std::uint64_t at = o.pcValue;
     if (!o.execute(*d)) return Status::Error;
     ++o.stepCount;

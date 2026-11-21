@@ -16,6 +16,7 @@
 #include <string>
 
 #include "base/config.hpp"
+#include "core/cpu_time.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -103,9 +104,9 @@ inline void compare_homebrew(const char* kind_name, const char* folder, const ch
                 verify::lanes::Effects e[2];
                 for (int core = 0; core < 2; ++core) {
                     ForcedCore forced(core == 1);
-                    const auto start = std::chrono::steady_clock::now();
+                    const double start = cb::thread_cpu_seconds();
                     e[core] = spec.effects(dirent.path(), address, state);
-                    seconds[core] += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                    seconds[core] += (cb::thread_cpu_seconds() - start);
                 }
                 ++runs;
                 if (e[0] == e[1]) continue;
