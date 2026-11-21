@@ -38,6 +38,17 @@ To bits_as(const From& from) {
     return to;
 }
 
+// A NaN operand gives that NaN, quiet, the first operand's before the second's: written out, because the compiler may commute a host a * b and the host keeps whichever
+// it was handed first.
+template <class F>
+F first_nan(F a, F c, F result) {
+    using Bits = std::conditional_t<sizeof(F) == 8, std::uint64_t, std::uint32_t>;
+    constexpr Bits quiet = Bits{1} << (sizeof(F) == 8 ? 51 : 22);
+    if (a != a) return bits_as<F>(static_cast<Bits>(bits_as<Bits>(a) | quiet));
+    if (c != c) return bits_as<F>(static_cast<Bits>(bits_as<Bits>(c) | quiet));
+    return result;
+}
+
 constexpr std::uint64_t kPageBits = 12;
 constexpr std::uint64_t kPageSize = std::uint64_t{1} << kPageBits;
 
@@ -431,10 +442,10 @@ struct Emulator::Impl {
                         if (out && (out->size == 4 || out->size == 8) && v[0].size == out->size) {
                             if (out->size == 8) {
                                 const double a = bits_as<double>(static_cast<std::uint64_t>(get(v[0]))), c = unary ? 0.0 : bits_as<double>(static_cast<std::uint64_t>(get(v[1])));
-                                put(*out, bits_as<std::uint64_t>(compute(a, c)));
+                                put(*out, bits_as<std::uint64_t>(unary ? compute(a, c) : first_nan(a, c, compute(a, c))));
                             } else {
                                 const float a = bits_as<float>(static_cast<std::uint32_t>(get(v[0]))), c = unary ? 0.0f : bits_as<float>(static_cast<std::uint32_t>(get(v[1])));
-                                put(*out, bits_as<std::uint32_t>(compute(a, c)));
+                                put(*out, bits_as<std::uint32_t>(unary ? compute(a, c) : first_nan(a, c, compute(a, c))));
                             }
                             break;
                         }
