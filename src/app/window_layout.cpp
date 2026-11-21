@@ -75,6 +75,7 @@ Layout compute_layout(View view, float width, float height, float rail, const Ex
         l.rail = {0, kTitleBarHeight, rail, std::max(0.0f, l.status_bar.y - kTitleBarHeight)};
         l.rail_convert = {8, kTitleBarHeight + 4, 48, 56};
         l.rail_tools = {8, kTitleBarHeight + 4 + 60, 48, 56};
+        l.rail_board = {8, kTitleBarHeight + 4 + 120, 48, 56};
         l.rail_settings = {8, l.status_bar.y - 56 - 8, 48, 56};
     }
     for (const Rect* card : {&l.left_card, &l.right_card}) {
@@ -237,6 +238,7 @@ bool control_exists(Control control, View view) {
         // the rail and the pages after the first: the window knows which page it is on (window_pages.hpp)
         case Control::NavConvert:
         case Control::NavTools:
+        case Control::NavBoard:
         case Control::NavSettings: return true;
         case Control::ToolSearch:
         case Control::ToolRow:
@@ -290,6 +292,7 @@ Rect control_rect(const Layout& l, Control control) {
         case Control::CaptionClose: return l.caption_close;
         case Control::NavConvert: return l.rail_convert;
         case Control::NavTools: return l.rail_tools;
+        case Control::NavBoard: return l.rail_board;
         case Control::NavSettings: return l.rail_settings;
         case Control::ToolSearch:
         case Control::ToolRow:
@@ -324,7 +327,7 @@ Rect control_rect(const Layout& l, Control control) {
 
 Control hit_test(const Layout& l, View view, float x, float y) {
     for (const Control c : {Control::CaptionClose, Control::CaptionMaximize, Control::CaptionMinimize, Control::TryAnother, Control::Cancel,
-                            Control::Browse, Control::OpenFolder, Control::CopyPath, Control::Language, Control::NavConvert, Control::NavTools, Control::NavSettings}) {
+                            Control::Browse, Control::OpenFolder, Control::CopyPath, Control::Language, Control::NavConvert, Control::NavTools, Control::NavBoard, Control::NavSettings}) {
         if (control_exists(c, view) && control_rect(l, c).contains(x, y)) return c;
     }
     // the round "+" is a button

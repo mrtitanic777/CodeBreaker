@@ -2,8 +2,10 @@
 //
 //     codebreaker                                      the window (drop a file, get its source code)
 //     codebreaker app                                  the same
-//     codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings|recent|batch|preview|dragout] [--theme light|dark] [--size WxH]
+//     codebreaker app --screenshot OUT.png [--state idle|working|done|unsupported|failed|language|translating|tools|settings|recent|batch|preview|dragout|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-empty|board-scanning] [--board KEPT-FOLDER] [--theme light|dark] [--size WxH]
 //                                                      render the real window to a PNG instead of showing it (review, and the gate's UI test)
+//     codebreaker app --board IMAGE                    the window, on the Board page, with this disc image laid out as cards (board.hpp)
+//     codebreaker app --board-scan IMAGE [--board-out FOLDER]   the same board with no window: extract or reload it and print the real counts
 //
 // The window is Windows 11 native: plain Win32 with Direct2D and DirectWrite, the DWM caption and Mica backdrop, the system accent colour and
 // theme (window_win.cpp and its parts). It runs the conversion pipeline of convert.hpp on a worker thread, one file after another when several are

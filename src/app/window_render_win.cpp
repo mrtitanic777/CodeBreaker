@@ -4,12 +4,17 @@
 #ifdef _WIN32
 #include "app/window_render_win.hpp"
 
+#include "app/window_board.hpp"
 #include "app/window_convert.hpp"
 #include "app/window_functions.hpp"
 #include "app/window_pages.hpp"
+#include "core/fs.hpp"
+#include "core/text.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
+#include <vector>
 
 namespace cb::app::window {
 
@@ -387,6 +392,11 @@ void rd_scrollbar(RdDraw& d, const Rect& area, float content, float scroll) {
     d.fill(Rect{area.right() - 4, area.y + at, 3, thumb_h}, 1.5f, rd_alpha(d.pal.text3, 0.6f));
 }
 
+std::string name_of_rel(const std::string& rel) {
+    const std::size_t slash = rel.find_last_of('/');
+    return slash == std::string::npos ? rel : rel.substr(slash + 1);
+}
+
 void rd_rail(RdDraw& d, const Layout& l, const Model& m) {
     const RdPalette& pal = d.pal;
     const struct {
@@ -397,6 +407,7 @@ void rd_rail(RdDraw& d, const Layout& l, const Model& m) {
         const wchar_t* label;
     } items[] = {{Control::NavConvert, Page::Convert, &l.rail_convert, L'', L"Convert"},
                  {Control::NavTools, Page::Tools, &l.rail_tools, L'', L"Tools"},
+                 {Control::NavBoard, Page::Board, &l.rail_board, L'\xECA5', L"Board"},
                  {Control::NavSettings, Page::Settings, &l.rail_settings, L'', L"Settings"}};
     for (const auto& it : items) {
         const Rect& r = *it.rect;
@@ -542,6 +553,656 @@ void rd_tools(RdDraw& d, const Layout& l, const Model& m, Painter& painter) {
 }
 
 // A plain button (Change..., Locate...): the field fill, a thin outline, an optional glyph and its words centred.
+// ---- the Board page ------------------------------------------------------------------------------------------------------------------------
+
+// One colour per pile: the edge of its cards and the fill of its foundation.
+D2D1_COLOR_F rd_pile_color(std::size_t pile) {
+    static constexpr std::uint32_t kHues[board::kPileCount] = {0x3B82C4, 0x7A5FC0, 0xC2573A, 0x2E9A7E, 0x8A8F3C, 0xC08A1E, 0xB84F8E, 0x3FA3B8, 0x9A6B3F, 0x6F7C8A};
+    return rd_color(kHues[pile % board::kPileCount]);
+}
+
+D2D1_COLOR_F rd_conv_color(const RdPalette& pal, board::Conv conv) {
+    switch (conv) {
+        case board::Conv::Done: return pal.ok;
+        case board::Conv::Queued:
+        case board::Conv::Running: return pal.accent;
+        case board::Conv::CannotConvert: return pal.warn;
+        case board::Conv::Failed: return pal.error;
+        default: return pal.text3;
+    }
+}
+
+// A card: a coloured edge, its name and a state dot; with room, its format, size and state in words.
+void rd_board_card(RdDraw& d, const Rect& r, const board::Card& c, bool selected, bool hot, bool whole, std::uint32_t copies = 1) {
+    const RdPalette& pal = d.pal;
+    const D2D1_COLOR_F face = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.13f : 0.08f) : (hot ? rd_color(0xF3F6FB) : rd_color(0xFFFFFF));
+    d.fill(r, 5, face);
+    d.stroke(r, 5, selected ? pal.accent : rd_alpha(pal.text, pal.dark ? 0.18f : 0.16f), selected ? 2.0f : 1.0f);
+    d.fill(Rect{r.x + 1, r.y + 4, 3, std::min(r.h, kBoardFanPitch) - 8}, 1.5f, rd_pile_color(static_cast<std::size_t>(c.pile)));
+    d.circle(Rect{r.right() - 14, r.y + 8, 7, 7}, rd_conv_color(pal, c.conv));
+    const float badge = copies > 1 ? 30.0f : 0.0f;
+    if (copies > 1) {   // a master card: how many places on the disc hold these bytes
+        const Rect chip{r.right() - 18 - badge, r.y + 4, badge - 2, 15};
+        d.fill(chip, 7, rd_alpha(pal.accent, 0.28f));
+        d.text(widen("\xC3\x97" + std::to_string(copies)), chip, 0, 10, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+    d.text(widen(c.name), Rect{r.x + 9, r.y + 2, r.w - 27 - badge, 20}, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    if (r.h < 40) return;
+    const std::string facts = (c.format.empty() ? std::string() : c.format + " \xC2\xB7 ") + board::size_words(c.size);
+    d.text(widen(facts), Rect{r.x + 9, r.y + 21, r.w - 14, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    if (whole) d.text(widen(std::string(board::conv_words(c.conv))), Rect{r.x + 9, r.y + 40, r.w - 14, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, rd_conv_color(pal, c.conv));
+}
+
+// A Bezier from `a` to `b`, leaving and arriving level.
+struct RdCurve {
+    D2D1_POINT_2F a, b;
+};
+
+void rd_curves(RdDraw& d, const std::vector<RdCurve>& curves, D2D1_COLOR_F color, float width) {
+    if (curves.empty()) return;
+    ComPtr<ID2D1PathGeometry> path;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(d.painter.d2d()->CreatePathGeometry(path.put())) || FAILED(path->Open(sink.put()))) return;
+    for (const RdCurve& c : curves) {
+        const float mid = (c.a.x + c.b.x) / 2;
+        sink->BeginFigure(c.a, D2D1_FIGURE_BEGIN_HOLLOW);
+        sink->AddBezier(D2D1::BezierSegment(D2D1::Point2F(mid, c.a.y), D2D1::Point2F(mid, c.b.y), c.b));
+        sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    }
+    if (FAILED(sink->Close())) return;
+    d.brush->SetColor(color);
+    d.rt->DrawGeometry(path.get(), d.brush.get(), width);
+}
+
+// A band between two vertical edges.
+void rd_ribbon(RdDraw& d, float x0, float y0, float h0, float x1, float y1, float h1, D2D1_COLOR_F color) {
+    ComPtr<ID2D1PathGeometry> path;
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(d.painter.d2d()->CreatePathGeometry(path.put())) || FAILED(path->Open(sink.put()))) return;
+    const float mid = (x0 + x1) / 2;
+    sink->BeginFigure(D2D1::Point2F(x0, y0), D2D1_FIGURE_BEGIN_FILLED);
+    sink->AddBezier(D2D1::BezierSegment(D2D1::Point2F(mid, y0), D2D1::Point2F(mid, y1), D2D1::Point2F(x1, y1)));
+    sink->AddLine(D2D1::Point2F(x1, y1 + h1));
+    sink->AddBezier(D2D1::BezierSegment(D2D1::Point2F(mid, y1 + h1), D2D1::Point2F(mid, y0 + h0), D2D1::Point2F(x0, y0 + h0)));
+    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    if (FAILED(sink->Close())) return;
+    d.brush->SetColor(color);
+    d.rt->FillGeometry(path.get(), d.brush.get());
+}
+
+// The dots of one channel, from `a` to `b` along its curve. More projected calls: more of them, faster; the channels near the busiest turn warm.
+void rd_flow_dots(RdDraw& d, D2D1_POINT_2F a, D2D1_POINT_2F b, double rate, const Model& m, std::uint32_t seed, float radius = 1.7f) {
+    if (!m.board_projection || rate <= 0) return;
+    const double busiest = m.board_projection->max_channel;
+    const double intensity = board::flow_intensity(rate, busiest);
+    d.brush->SetColor(intensity >= 0.6 ? rd_mix(rd_color(0xFFE2A8), rd_color(0xFF7A29), static_cast<float>((intensity - 0.6) / 0.4)) : D2D1::ColorF(1, 1, 1, 0.55f + 0.45f * static_cast<float>(intensity)));
+    const float mid = (a.x + b.x) / 2;
+    for (const float t : board::flow_dots(rate, busiest, m.board_flow_time, seed)) {
+        const float u = 1 - t;
+        const float x = u * u * u * a.x + 3 * u * u * t * mid + 3 * u * t * t * mid + t * t * t * b.x;
+        const float y = u * u * u * a.y + 3 * u * u * t * a.y + 3 * u * t * t * b.y + t * t * t * b.y;
+        d.rt->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), radius, radius), d.brush.get());
+    }
+}
+
+void rd_board_flow(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const board::Flow& flow = *m.board_flow;
+    const board::Module& focus = m.board_graph->modules[flow.focus];
+    const FlowLayout f = layout_flow(b.canvas, flow);
+    d.text(widen(m.board->cards[focus.card].name), Rect{f.title.x, f.title.y, f.title.w, 22}, 1, 16, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    const std::string unit(board::width_unit(m.board_width));
+    const std::string facts = m.board_width == board::Width::Files
+                                  ? board::count_words(focus.fan_in) + " files link to it  \xC2\xB7  it links to " + board::count_words(focus.out.size())
+                                  : board::count_words(flow.in_total) + " " + unit + " in  \xC2\xB7  " + board::count_words(flow.out_total) + " out";
+    d.text(widen(facts),
+           Rect{f.title.x, f.title.y + 21, f.title.w, 16}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+    const auto side = [&](const std::vector<board::FlowBand>& bands, const std::vector<FlowRow>& rows, bool left, int base) {
+        for (std::size_t i = 0; i < bands.size(); ++i) {
+            const FlowRow& r = rows[i];
+            const D2D1_COLOR_F hue = rd_pile_color(static_cast<std::size_t>(bands[i].pile));
+            const bool hot = m.hot == Control::BoardFlowBand && m.hot_index == base + static_cast<int>(i);
+            if (left) rd_ribbon(d, r.bar.right(), r.bar.y, r.bar.h, r.slice.x, r.slice.y, r.slice.h, rd_alpha(hue, hot ? 0.75f : 0.5f));
+            else rd_ribbon(d, r.slice.right(), r.slice.y, r.slice.h, r.bar.x, r.bar.y, r.bar.h, rd_alpha(hue, hot ? 0.75f : 0.5f));
+            if (m.board_projection) {   // the band's projected calls: everything of its kind that flows through it
+                double rate = 0;
+                for (const board::ModuleEdge& e : left ? focus.in : focus.out)
+                    if (m.board_graph->modules[e.module].pile == bands[i].pile) rate += left ? m.board_projection->channel(e.module, flow.focus) : m.board_projection->channel(flow.focus, e.module);
+                const D2D1_POINT_2F side_point = D2D1::Point2F(left ? r.bar.right() : r.bar.x, r.bar.y + r.bar.h / 2);
+                const D2D1_POINT_2F center_point = D2D1::Point2F(left ? r.slice.x : r.slice.right(), r.slice.y + r.slice.h / 2);
+                rd_flow_dots(d, left ? side_point : center_point, left ? center_point : side_point, rate, m, static_cast<std::uint32_t>(base) + static_cast<std::uint32_t>(i) + 1, 2.0f);
+            }
+            d.fill(r.bar, 0, hue);
+            const std::string words = std::string(board::pile_name(bands[i].pile)) + "  " + board::count_words(bands[i].weight);
+            d.text(widen(words), r.label, 0, 12, hot ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, pal.text, left ? DWRITE_TEXT_ALIGNMENT_TRAILING : DWRITE_TEXT_ALIGNMENT_LEADING);
+        }
+    };
+    side(flow.in, f.in, true, 0);
+    side(flow.out, f.out, false, 100);
+    d.fill(f.center, 0, pal.accent);
+    if (flow.in.empty()) d.text(L"Nothing links to it", Rect{b.canvas.x, f.center.y + f.center.h / 2 - 10, f.center.x - b.canvas.x - 16, 20}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    if (flow.out.empty()) d.text(L"It links to nothing", Rect{f.center.right() + 16, f.center.y + f.center.h / 2 - 10, b.canvas.right() - f.center.right() - 16, 20}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+}
+
+void rd_board_trace(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const board::Trace& trace = *m.board_trace;
+    const TraceLayout t = layout_trace(b.canvas, trace);
+    static const wchar_t* const kHeads[board::kTraceColumns] = {L"IN, 3 HOPS", L"IN, 2 HOPS", L"IN, 1 HOP", L"THIS FILE", L"OUT, 1 HOP", L"OUT, 2 HOPS", L"OUT, 3 HOPS"};
+    for (std::size_t c = 0; c < board::kTraceColumns; ++c) d.text(kHeads[c], t.headers[c], 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_CENTER);
+    std::vector<RdCurve> plain, heavy;
+    for (const board::TraceLink& l : trace.links) {
+        if (l.from >= t.nodes[l.column].size() || l.to >= t.nodes[l.column + 1u].size()) continue;
+        const Rect& a = t.nodes[l.column][l.from];
+        const Rect& z = t.nodes[l.column + 1u][l.to];
+        (l.heaviest ? heavy : plain).push_back({D2D1::Point2F(a.right(), a.y + a.h / 2), D2D1::Point2F(z.x, z.y + z.h / 2)});
+    }
+    rd_curves(d, plain, rd_alpha(pal.text3, 0.22f), 1.0f);
+    rd_curves(d, heavy, pal.accent, 2.5f);
+    if (m.board_projection) {   // the dots of the busiest links in view (a frame stays cheap however many there are)
+        struct Live {
+            double rate;
+            const board::TraceLink* link;
+        };
+        std::vector<Live> live;
+        live.reserve(trace.links.size());
+        for (const board::TraceLink& link : trace.links) {
+            if (link.from >= t.nodes[link.column].size() || link.to >= t.nodes[link.column + 1u].size()) continue;
+            const double rate = m.board_projection->channel(trace.columns[link.column][link.from], trace.columns[link.column + 1u][link.to]);
+            if (rate > 0) live.push_back({rate, &link});
+        }
+        constexpr std::size_t kMostLinks = 240;
+        if (live.size() > kMostLinks) {
+            std::nth_element(live.begin(), live.begin() + kMostLinks, live.end(), [](const Live& x, const Live& y) { return x.rate > y.rate; });
+            live.resize(kMostLinks);
+        }
+        for (const Live& one : live) {
+            const Rect& from = t.nodes[one.link->column][one.link->from];
+            const Rect& to = t.nodes[one.link->column + 1u][one.link->to];
+            rd_flow_dots(d, D2D1::Point2F(from.right(), from.y + from.h / 2), D2D1::Point2F(to.x, to.y + to.h / 2), one.rate, m, one.link->from * 31 + one.link->to * 7 + one.link->column);
+        }
+    }
+    const std::unordered_set<std::uint32_t> on_path(trace.heaviest.begin(), trace.heaviest.end());
+    for (std::size_t c = 0; c < board::kTraceColumns; ++c) {
+        for (std::size_t p = 0; p < t.nodes[c].size(); ++p) {
+            const std::uint32_t id = trace.columns[c][p];
+            const board::Module& module = m.board_graph->modules[id];
+            const Rect& r = t.nodes[c][p];
+            const bool heavy_node = on_path.contains(id), center = c == board::kTraceCenter;
+            const bool hot = m.hot == Control::BoardNode && m.hot_index == static_cast<int>(id);
+            d.fill(r, 3, center ? pal.accent : hot ? rd_alpha(pal.text, 0.14f) : pal.subtle);
+            if (heavy_node && !center) d.stroke(r, 3, pal.accent, 1.5f);
+            d.fill(Rect{r.x + 1, r.y + 3, 3, r.h - 6}, 1.5f, rd_pile_color(static_cast<std::size_t>(module.pile)));
+            const D2D1_COLOR_F ink = center ? pal.accent_text : pal.text;
+            d.text(widen(m.board->cards[module.card].name), Rect{r.x + 8, r.y, r.w - 46, r.h}, 0, 11, heavy_node ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, ink);
+            d.text(widen(board::count_words(module.fan_in)), Rect{r.right() - 40, r.y, 36, r.h}, 0, 10, DWRITE_FONT_WEIGHT_NORMAL, center ? pal.accent_text : pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        }
+        if (t.more_count[c] > 0) d.text(widen("+" + board::count_words(t.more_count[c]) + " more"), t.more[c], 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+}
+
+void rd_board_crumbs(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const std::vector<std::string> words = board_crumb_words(m);
+    const CrumbLayout c = layout_crumbs(b.crumbs, words);
+    for (std::size_t i = 0; i < words.size(); ++i) {
+        const Rect& r = c.crumbs[i];
+        if (r.w <= 0) continue;
+        const bool last = i + 1 == words.size();
+        const bool hot = !last && m.hot == Control::BoardCrumb && m.hot_index == static_cast<int>(i) - 1;
+        if (hot) d.fill(r, 3, pal.subtle);
+        d.text(widen(words[i]), Rect{r.x + 6, r.y, r.w - 8, r.h}, 0, 12, last ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, last ? pal.text : pal.accent);
+        if (m.focus == Control::BoardCrumb && m.focus_index == static_cast<int>(i) - 1) d.stroke(r, 3, pal.text, 2.0f);
+        if (!last) d.text(L"\u203A", Rect{r.right(), r.y, 16, r.h}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+    if (c.more.w > 0) {
+        d.text(L"\u2026", c.more, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.text(L"\u203A", Rect{c.more.right(), c.more.y, 16, c.more.h}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
+}
+
+void rd_board_library(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const board::LibraryView& v = *m.board_library;
+    const LibraryLayout l = layout_library(b.canvas, v, m.board_left_scroll, m.board_right_scroll, m.board_hover_export);
+    const bool on_function = !v.function.empty();
+    const board::Module& focus = m.board_graph->modules[v.focus];
+    const std::string name = m.board->cards[focus.card].name;
+    d.text(on_function ? L"FILES THAT USE IT" : L"IMPORTS FROM", l.left_head, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    d.text(on_function ? L"EXPORTED BY" : L"EXPORTS", l.right_head, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    std::string title = name;
+    if (on_function) {
+        title = v.left.empty() ? v.function : name + " ! " + v.function;
+        for (const board::ExportedSymbol& e : m.board_index->exports_of(focus.card))
+            if (text::lower(e.name) == v.function) title = name + " ! " + e.name;
+    }
+    d.text(widen(title), Rect{l.title.x, l.title.y, l.title.w, 22}, 1, 16, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    const std::string unit(board::width_unit(m.board_width));
+    const std::string facts = on_function ? board::count_words(v.left.size()) + " files use it"
+                                          : board::count_words(v.left.size()) + " imports  \xC2\xB7  " + board::count_words(v.right.size()) + " exports";
+    d.text(widen(facts), Rect{l.title.x, l.title.y + 21, l.title.w, 16}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+    std::uint64_t heaviest = 1;
+    for (const auto* side : {&v.left, &v.right})
+        for (const board::LibraryChannel& c : *side) heaviest = std::max(heaviest, c.weight);
+    const auto hue_of = [&](const board::LibraryChannel& c) {
+        return c.module >= 0 ? rd_pile_color(static_cast<std::size_t>(m.board_graph->modules[static_cast<std::size_t>(c.module)].pile)) : rd_pile_color(static_cast<std::size_t>(focus.pile));
+    };
+    const D2D1_RECT_F clip_rows = rd_rect(Rect{b.canvas.x, l.left_area.y, b.canvas.w, l.left_area.h});
+    d.rt->PushAxisAlignedClip(clip_rows, D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < l.left_rows.size(); ++i) {
+        const board::LibraryChannel& c = v.left[static_cast<std::size_t>(l.left_first) + i];
+        const Rect& r = l.left_rows[i];
+        const float t = library_thickness(c.weight, heaviest);
+        const bool hot = m.hot == Control::BoardLeft && m.hot_index == l.left_first + static_cast<int>(i);
+        rd_ribbon(d, r.right(), r.y + r.h / 2 - t / 2, t, l.left_slices[i].x, l.left_slices[i].y, l.left_slices[i].h, rd_alpha(hue_of(c), hot ? 0.8f : 0.42f));
+        if (hot) d.fill(r, 3, pal.subtle);
+        d.fill(Rect{r.right() - 4, r.y + r.h / 2 - t / 2, 4, t}, 0, hue_of(c));
+        d.text(widen(c.label), Rect{r.x + 4, r.y, r.w - 62, r.h}, 0, 12, hot ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        d.text(widen(board::count_words(c.weight)), Rect{r.right() - 60, r.y, 52, r.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    }
+    for (std::size_t i = 0; i < l.right_rows.size(); ++i) {
+        const auto position = static_cast<std::size_t>(l.right_first) + i;
+        const board::LibraryChannel& c = v.right[position];
+        const Rect& r = l.right_rows[i];
+        const float t = library_thickness(c.weight, heaviest);
+        const bool lit = m.board_hover_export == static_cast<int>(position);
+        const bool hot = lit || (m.hot == Control::BoardRight && m.hot_index == static_cast<int>(position));
+        rd_ribbon(d, l.right_slices[i].right(), l.right_slices[i].y, l.right_slices[i].h, r.x, r.y + r.h / 2 - t / 2, t, rd_alpha(hue_of(c), hot ? 0.85f : c.weight == 0 ? 0.14f : 0.42f));
+        if (hot) d.fill(r, 3, pal.subtle);
+        d.fill(Rect{r.x, r.y + r.h / 2 - t / 2, 4, t}, 0, hue_of(c));
+        d.text(widen(c.label), Rect{r.x + 8, r.y, r.w - 62, r.h}, 0, 12, hot ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, c.weight == 0 ? pal.text3 : pal.text);
+        d.text(widen(board::count_words(c.weight)), Rect{r.right() - 56, r.y, 52, r.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    }
+    if (m.board_hover_export >= 0 && static_cast<std::size_t>(m.board_hover_export) < v.right.size() && !on_function) {   // the lines from this export to each file that uses it
+        const auto position = static_cast<std::size_t>(m.board_hover_export);
+        const board::LibraryChannel& c = v.right[position];
+        d.text(widen("USED BY " + board::count_words(c.users.size())), l.users_head, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        std::vector<RdCurve> lines;
+        const bool on_screen = static_cast<int>(position) >= l.right_first && position - static_cast<std::size_t>(l.right_first) < l.right_rows.size();
+        for (std::size_t i = 0; i < l.user_rows.size(); ++i) {
+            const Rect& u = l.user_rows[i];
+            const board::LibraryUser& user = c.users[i];
+            if (on_screen) {
+                const Rect& from = l.right_rows[position - static_cast<std::size_t>(l.right_first)];
+                lines.push_back({D2D1::Point2F(from.right(), from.y + from.h / 2), D2D1::Point2F(u.x, u.y + u.h / 2)});
+            }
+            const bool hot = m.hot == Control::BoardUser && m.hot_index == static_cast<int>(user.module);
+            d.fill(u, 3, hot ? rd_alpha(pal.accent, 0.3f) : pal.subtle);
+            const board::Module& who = m.board_graph->modules[user.module];
+            d.fill(Rect{u.x + 1, u.y + 3, 3, u.h - 6}, 1.5f, rd_pile_color(static_cast<std::size_t>(who.pile)));
+            d.text(widen(m.board->cards[who.card].name), Rect{u.x + 8, u.y, u.w - 60, u.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+            d.text(widen(board::count_words(user.calls)), Rect{u.right() - 54, u.y, 50, u.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        }
+        rd_curves(d, lines, rd_alpha(pal.accent, 0.8f), 1.2f);
+        if (l.users_more > 0) {
+            const float y = l.user_rows.empty() ? l.users_area.y : l.user_rows.back().bottom() + 2;
+            d.text(widen("+" + board::count_words(l.users_more) + " more"), Rect{l.users_area.x, y, l.users_area.w, kLibraryRowPitch - 2}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+    }
+    if (m.board_projection) {   // the calls: from the files that use an export, through it, into this library, and on to what it imports
+        for (std::size_t i = 0; i < l.left_rows.size(); ++i) {
+            const board::LibraryChannel& c = v.left[static_cast<std::size_t>(l.left_first) + i];
+            const Rect& r = l.left_rows[i];
+            const D2D1_POINT_2F row = D2D1::Point2F(r.right(), r.y + r.h / 2), slice = D2D1::Point2F(l.left_slices[i].x, l.left_slices[i].y + l.left_slices[i].h / 2);
+            if (on_function) rd_flow_dots(d, row, slice, m.board_projection->function_user(v.focus, v.function, static_cast<std::uint32_t>(c.module)), m, static_cast<std::uint32_t>(i) + 1);
+            else rd_flow_dots(d, slice, row, m.board_projection->channel(v.focus, static_cast<std::uint32_t>(c.module)), m, static_cast<std::uint32_t>(i) + 1);
+        }
+        for (std::size_t i = 0; i < l.right_rows.size(); ++i) {
+            const board::LibraryChannel& c = v.right[static_cast<std::size_t>(l.right_first) + i];
+            const Rect& r = l.right_rows[i];
+            const D2D1_POINT_2F row = D2D1::Point2F(r.x, r.y + r.h / 2), slice = D2D1::Point2F(l.right_slices[i].right(), l.right_slices[i].y + l.right_slices[i].h / 2);
+            if (on_function) rd_flow_dots(d, slice, row, m.board_projection->function(v.focus, v.function), m, 501);
+            else rd_flow_dots(d, row, slice, m.board_projection->function(v.focus, c.key), m, static_cast<std::uint32_t>(i) + 101);
+        }
+        if (!on_function && m.board_hover_export >= 0 && static_cast<std::size_t>(m.board_hover_export) < v.right.size()) {
+            const auto position = static_cast<std::size_t>(m.board_hover_export);
+            if (static_cast<int>(position) >= l.right_first && position - static_cast<std::size_t>(l.right_first) < l.right_rows.size()) {
+                const board::LibraryChannel& c = v.right[position];
+                const Rect& to = l.right_rows[position - static_cast<std::size_t>(l.right_first)];
+                for (std::size_t i = 0; i < l.user_rows.size(); ++i) {
+                    const Rect& u = l.user_rows[i];
+                    rd_flow_dots(d, D2D1::Point2F(u.x, u.y + u.h / 2), D2D1::Point2F(to.right(), to.y + to.h / 2), m.board_projection->function_user(v.focus, c.key, c.users[i].module), m, static_cast<std::uint32_t>(i) + 201);
+                }
+            }
+        }
+    }
+    d.rt->PopAxisAlignedClip();
+    d.fill(l.center, 0, pal.accent);
+    if (v.left.empty()) d.text(on_function ? L"Nothing on the board uses it" : L"It imports nothing", Rect{l.left_area.x, l.center.y + l.center.h / 2 - 10, l.left_area.w, 20}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    if (v.right.empty()) d.text(L"It exports nothing", Rect{l.right_area.x, l.center.y + l.center.h / 2 - 10, l.right_area.w, 20}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    rd_scrollbar(d, l.left_area, static_cast<float>(v.left.size()) * kLibraryRowPitch, m.board_left_scroll);
+    rd_scrollbar(d, l.right_area, static_cast<float>(v.right.size()) * kLibraryRowPitch, m.board_right_scroll);
+}
+
+// Flow or Trace: which links count, what the picture is and is not, and the picture.
+void rd_board_maps(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    static const wchar_t* const kChips[3] = {L"Imports", L"Installs", L"References"};
+    for (std::size_t i = 0; i < b.chips.size(); ++i) {
+        const bool on = (m.board_links & (1u << i)) != 0 && (i == 0 || m.board_width == board::Width::Files);   // (Links and Calls exist for imports only)
+        const bool hot = m.hot == Control::BoardLinkChip && m.hot_index == static_cast<int>(i);
+        d.fill(b.chips[i], 13, on ? rd_alpha(pal.accent, 0.3f) : hot ? pal.subtle : D2D1::ColorF(0, 0, 0, 0));
+        d.stroke(b.chips[i], 13, on ? pal.accent : pal.stroke2);
+        d.text(kChips[i], b.chips[i], 0, 12, DWRITE_FONT_WEIGHT_NORMAL, on ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        if (m.focus == Control::BoardLinkChip && m.focus_index == static_cast<int>(i)) d.stroke(b.chips[i], 13, pal.text, 2.0f);
+    }
+    static const wchar_t* const kWidths[3] = {L"Files", L"Links", L"Calls"};
+    for (std::size_t i = 0; i < b.widths.size(); ++i) {
+        const bool on = static_cast<int>(m.board_width) == static_cast<int>(i);
+        const bool hot = m.hot == Control::BoardWidth && m.hot_index == static_cast<int>(i);
+        if (on || hot) d.fill(b.widths[i], 4, on ? rd_alpha(pal.text, pal.dark ? 0.12f : 0.09f) : pal.subtle);
+        d.stroke(b.widths[i], 4, pal.stroke2);
+        d.text(kWidths[i], b.widths[i], 0, 12, on ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, on ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        if (m.focus == Control::BoardWidth && m.focus_index == static_cast<int>(i)) d.stroke(b.widths[i], 4, pal.text, 2.0f);
+    }
+    const wchar_t* const note = m.board_width == board::Width::Files ? L"Width: distinct files. Dots: projected calls per hour (a model, not measured)."
+                                : m.board_width == board::Width::Links ? L"Width: imported functions. Dots: projected calls per hour (a model, not measured)."
+                                                                       : L"Width: static call sites. Dots: projected calls per hour (a model, not measured).";
+    d.text(note, b.note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.warn);
+    const Rect mid{b.canvas.x, b.canvas.y + b.canvas.h / 2 - 12, b.canvas.w, 24};
+    if (!m.board_index) d.text(L"The link index is not ready.", mid, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+    else if (!m.board_flow || !m.board_trace) d.text(L"No links of these kinds.", mid, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+    else if (m.board_view == 3 && m.board_library) rd_board_library(d, b, m);
+    else if (m.board_view == 1) rd_board_flow(d, b, m);
+    else rd_board_trace(d, b, m);
+    if (m.board_graph) rd_board_crumbs(d, b, m);
+    if (b.hot_path.w > 0 && m.board_projection) {
+        const std::string words = board_hot_path_words(m);
+        if (!words.empty()) d.text(widen("Projected hot path: " + words), b.hot_path, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, rd_color(0xFF9A4D), DWRITE_TEXT_ALIGNMENT_TRAILING);
+    }
+}
+
+void rd_inspector(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const InspectorLayout l = layout_inspector(b, m);
+    d.fill(b.drawer, 6, pal.dark ? rd_color(0x303030) : rd_color(0xFFFFFF));
+    d.stroke(b.drawer, 6, rd_alpha(pal.text, 0.25f));
+    d.text(L"X-Ray", Rect{b.drawer.x + 12, b.drawer.y + 4, 90, 26}, 1, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    const board::Inspector& inspector = *m.board_inspector;
+    d.text(widen(board::count_words(inspector.inbound) + " in  \xC2\xB7  " + board::count_words(inspector.outbound) + " out  \xC2\xB7  " + board::count_words(inspector.signals) + " signals"),
+           Rect{b.drawer.x + 70, b.drawer.y + 4, b.drawer.w - 108, 26}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    if (m.hot == Control::BoardInspectClose) d.fill(b.drawer_close, 4, pal.subtle);
+    d.text(L"\u00D7", b.drawer_close, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    d.rt->PushAxisAlignedClip(rd_rect(l.list), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < l.rows.size(); ++i) {
+        const auto at = static_cast<std::size_t>(l.first) + i;
+        const board::InspectorRow& row = inspector.rows[at];
+        const Rect& r = l.rows[i];
+        const bool hot = m.hot == Control::BoardInspectRow && m.hot_index == static_cast<int>(at);
+        if (row.kind == board::InspectorRow::Kind::Heading) {
+            d.fill(r, 3, pal.subtle);
+            d.text(widen(row.text), Rect{r.x + 6, r.y, r.w * 0.56f, r.h}, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+            d.text(widen(row.detail), Rect{r.x + r.w * 0.5f, r.y, r.w * 0.5f - 6, r.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+            continue;
+        }
+        if (hot) d.fill(r, 3, rd_alpha(pal.accent, 0.26f));
+        if (row.kind == board::InspectorRow::Kind::Fact) {
+            d.text(widen(row.text), Rect{r.x + 6, r.y, 136, r.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+            d.text(widen(row.detail), Rect{r.x + 142, r.y, r.w - 148, r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        } else {
+            const bool signal = row.kind == board::InspectorRow::Kind::Signal;
+            d.text(widen(row.text), Rect{r.x + 6, r.y, r.w * 0.58f - 6, r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, signal ? pal.text : pal.accent);
+            d.text(widen(row.detail), Rect{r.x + r.w * 0.58f, r.y, r.w * 0.42f - 6, r.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        }
+    }
+    d.rt->PopAxisAlignedClip();
+    rd_scrollbar(d, l.list, static_cast<float>(inspector.rows.size()) * kInspectorRowHeight, m.board_inspect_scroll);
+}
+
+void rd_board(RdDraw& d, const Layout& l, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const BoardLayout b = compute_board_layout(l, m);
+    d.fill(b.card, kCardRadius, pal.card);
+    d.stroke(b.card, kCardRadius, pal.card_stroke);
+    d.text(L"Board", b.title, 1, 18, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    std::string summary = "Drop a disc image to lay out every file in it.";
+    if (m.board) {
+        std::uint64_t done = 0, total = m.board->cards.size();
+        for (const board::Card& c : m.board->cards) done += c.conv == board::Conv::Done ? 1 : 0;
+        const std::string source = fs::to_text(fs::from_text(m.board->source).filename());
+        summary = source + " \xC2\xB7 " + board::count_words(total) + " files \xC2\xB7 " + board::count_words(m.board->cabinets) + " cabinets \xC2\xB7 " + board::count_words(done) + " converted";
+        if (m.board_index) {
+            std::uint64_t distinct = 0;
+            for (std::uint32_t i = 0; i < m.board_index->nodes.size(); ++i) distinct += m.board_index->nodes[i].group == i ? 1 : 0;
+            summary += " \xC2\xB7 " + board::count_words(distinct) + " distinct";
+        }
+        if (!m.board->failures.empty()) summary += " \xC2\xB7 " + board::count_words(m.board->failures.size()) + " could not be read";
+    }
+    if (m.board_hover && m.board_view == 0) {   // what the lit cards are
+        summary = m.board->cards[m.board_hover->card].name + " uses " + board::count_words(m.board_hover->uses) + " files (blue)  \xC2\xB7  used by " + board::count_words(m.board_hover->used_by) + " (orange)";
+    }
+    d.text(widen(summary), b.summary, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    const bool search_focused = m.focus == Control::BoardSearch;
+    const int caret = search_focused ? static_cast<int>(widen(m.board_query.substr(0, std::min<std::size_t>(static_cast<std::size_t>(std::max(0, m.caret)), m.board_query.size()))).size()) : -1;
+    rd_text_box(d, b.search, widen(m.board_query), L"Find a file", search_focused, caret);
+    d.button(Control::BoardOpen, b.open, L"Open image", 0, !m.board_busy);
+    if (m.board) {
+        static const wchar_t* const kTabs[4] = {L"Board", L"Flow", L"Trace", L"Library"};
+        for (std::size_t i = 0; i < b.tabs.size(); ++i) {
+            const bool on = m.board_view == static_cast<int>(i);
+            const bool hot = m.hot == Control::BoardViewTab && m.hot_index == static_cast<int>(i);
+            if (on || hot) d.fill(b.tabs[i], 4, on ? rd_alpha(pal.text, pal.dark ? 0.09f : 0.07f) : pal.subtle);
+            d.text(kTabs[i], b.tabs[i], 0, 13, on ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, on ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+            if (on) d.fill(Rect{b.tabs[i].x + 18, b.tabs[i].bottom() - 3, b.tabs[i].w - 36, 3}, 1.5f, pal.accent);
+            if (m.focus == Control::BoardViewTab && m.focus_index == static_cast<int>(i)) d.stroke(b.tabs[i], 4, pal.text, 2.0f);
+        }
+    }
+    if (m.board_busy) {
+        d.text(widen(m.board_stage + (m.board_detail.empty() ? std::string() : "  " + m.board_detail)), b.bar_text, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        d.fill(b.bar, 2, pal.subtle);
+        d.fill(Rect{b.bar.x, b.bar.y, b.bar.w * static_cast<float>(std::clamp(m.board_percent, 0, 100)) / 100.0f, b.bar.h}, 2, pal.accent);
+        d.button(Control::BoardCancel, b.cancel, L"Cancel", 0, true);
+    }
+    if (!m.board) {
+        if (b.empty.h > 0) {
+            d.stroke(b.empty, 6, pal.dash);
+            const float mid = b.empty.y + b.empty.h / 2;
+            d.text(m.board_busy ? L"Laying out the board" : L"Drop a disc image here", Rect{b.empty.x, mid - 30, b.empty.w, 30}, 1, 18, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+            const std::string under = !m.board_error.empty() ? m.board_error : "Every program, driver, text and data file becomes a card, cabinets opened.";
+            d.text(widen(under), Rect{b.empty.x + 16, mid + 2, b.empty.w - 32, 22}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, m.board_error.empty() ? pal.text2 : pal.error, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+        return;
+    }
+    if (m.board_view != 0) {
+        d.rt->PushAxisAlignedClip(rd_rect(b.tableau), D2D1_ANTIALIAS_MODE_ALIASED);
+        rd_board_maps(d, b, m);
+        d.rt->PopAxisAlignedClip();
+    } else {
+    struct SeenCard {
+        std::uint32_t index;
+        Rect rect;
+    };
+    std::vector<SeenCard> seen;                                   // the cards drawn, for the hover trace's connectors
+    std::array<Rect, board::kPileCount> heads{};
+    std::array<std::uint32_t, board::kPileCount> lit_in_view{};
+    const D2D1_COLOR_F uses_color = pal.accent, used_by_color = rd_color(0xFF9A4D);
+    d.rt->PushAxisAlignedClip(rd_rect(b.tableau), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < board::kPileCount; ++i) {
+        const BoardColumn c = compute_board_column(b, m, i);
+        heads[i] = c.head;
+        if (c.foundation.right() < b.tableau.x || c.foundation.x > b.tableau.right()) continue;   // out of view: nothing of it is drawn
+        const board::Stack& stack = m.board_stacks[i];
+        const D2D1_COLOR_F hue = rd_pile_color(i);
+        const bool over = m.board_drop_pile == static_cast<int>(i);
+        const bool hot_pile = m.hot == Control::BoardFoundation && m.hot_index == static_cast<int>(i);
+        d.fill(c.foundation, 6, rd_alpha(hue, over ? 0.42f : c.done_view ? 0.30f : hot_pile ? 0.24f : 0.16f));
+        d.stroke(c.foundation, 6, over ? pal.accent : rd_alpha(hue, 0.7f), over ? 2.0f : 1.0f);
+        d.text(widen(std::string(board::pile_name(static_cast<board::Pile>(i)))), Rect{c.foundation.x + 8, c.foundation.y + 4, c.foundation.w - 12, 20}, 0, 13, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        d.text(widen(board::count_words(stack.done.size()) + " of " + board::count_words(stack.total()) + " done"), Rect{c.foundation.x + 8, c.foundation.y + 23, c.foundation.w - 12, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        const Rect meter{c.foundation.x + 8, c.foundation.bottom() - 10, c.foundation.w - 16, 3};
+        d.fill(meter, 1.5f, rd_alpha(pal.text, 0.12f));
+        if (!stack.done.empty()) d.fill(Rect{meter.x, meter.y, meter.w * static_cast<float>(stack.done.size()) / static_cast<float>(stack.total()), meter.h}, 1.5f, pal.ok);
+        if (m.focus == Control::BoardFoundation && m.focus_index == static_cast<int>(i)) d.stroke(c.foundation, 6, pal.text, 2.0f);
+        const bool hot_head = m.hot == Control::BoardExpand && m.hot_index == static_cast<int>(i);
+        if (hot_head) d.fill(c.head, 4, pal.subtle);
+        const std::string head = m.board_hover ? board::count_words(m.board_hover_linked[i]) + " linked" : board::count_words(static_cast<std::uint64_t>(c.count)) + (c.done_view ? " done" : " to do");
+        d.text(widen(head), Rect{c.head.x + 6, c.head.y, c.head.w - 28, c.head.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        d.text(c.expanded ? L"\u25B4" : L"\u25BE", Rect{c.head.right() - 22, c.head.y, 18, c.head.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        if (m.focus == Control::BoardExpand && m.focus_index == static_cast<int>(i)) d.stroke(c.head, 4, pal.text, 2.0f);
+        if (c.deck.h > 0) {   // the cards not fanned out: the edges of a pile, and how many
+            for (int e = 2; e >= 0; --e) d.stroke(Rect{c.deck.x + static_cast<float>(e) * 2, c.deck.y + static_cast<float>(e) * 2, c.deck.w - static_cast<float>(e) * 4, c.deck.h - static_cast<float>(e) * 2}, 4, rd_alpha(hue, 0.45f));
+            d.text(widen("+" + board::count_words(static_cast<std::uint64_t>(c.hidden)) + " more"), c.deck, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+        const D2D1_RECT_F area = D2D1::RectF(c.area.x - 1, std::max(c.area.y, b.tableau.y), c.area.right() + 1, b.tableau.bottom());
+        d.rt->PushAxisAlignedClip(area, D2D1_ANTIALIAS_MODE_ALIASED);
+        for (int p = c.first; p < c.last; ++p) {
+            const std::uint32_t index = (*c.cards)[static_cast<std::size_t>(p)];
+            if (static_cast<int>(index) == m.board_drag) continue;
+            const bool whole = !c.expanded && p == c.last - 1;
+            Rect r = board_card_rect(c, p);
+            const std::uint32_t copies = m.board_group_copies && m.board_index && index < m.board_index->nodes.size() ? m.board_index->nodes[index].copies : 1;
+            rd_board_card(d, r, m.board->cards[index], static_cast<int>(index) == m.board_selected, m.hot == Control::BoardCard && m.hot_index == static_cast<int>(index), whole, copies);
+            if (m.board_hover) {   // unrelated cards dim; linked ones take the colour of how they are linked
+                const std::uint8_t role = m.board_hover->role[index];
+                const float strip = whole || c.expanded ? r.h : std::min(r.h, c.pitch);
+                const Rect shown{r.x, r.y, r.w, strip};
+                if (index != m.board_hover->card && role == 0) {
+                    d.fill(shown, 5, rd_alpha(pal.dark ? rd_color(0x1E1E1E) : rd_color(0xF4F4F4), 0.74f));
+                } else if (role != 0) {
+                    d.stroke(shown, 5, (role & 2) != 0 ? used_by_color : uses_color, 1.6f);
+                    ++lit_in_view[i];
+                }
+                if (index == m.board_hover->card || role != 0) seen.push_back({index, shown});
+            }
+        }
+        d.rt->PopAxisAlignedClip();
+        if (c.expanded) rd_scrollbar(d, c.area, c.content_height, std::clamp(m.board_scroll[i], 0.0f, board_max_scroll(c)));
+    }
+    if (m.board_hover) {   // the connectors, from the hovered card to what is linked to it; a column with more linked than it shows gets one line to its head
+        const auto from = std::find_if(seen.begin(), seen.end(), [&](const SeenCard& s) { return s.index == m.board_hover->card; });
+        if (from != seen.end()) {
+            const Rect source = from->rect;
+            const auto end_of = [&](const Rect& to) {
+                const bool right = to.x > source.x;
+                return RdCurve{D2D1::Point2F(right ? source.right() : source.x, source.y + source.h / 2), D2D1::Point2F(right ? to.x : to.right(), to.y + to.h / 2)};
+            };
+            std::vector<RdCurve> uses, used_by, to_heads;
+            constexpr std::size_t kMostLines = 160;
+            for (const SeenCard& s : seen) {
+                if (s.index == m.board_hover->card || uses.size() + used_by.size() >= kMostLines) continue;
+                if (s.rect.x == source.x) continue;   // (its own column: a card's neighbours in the fan need no line)
+                ((m.board_hover->role[s.index] & 2) != 0 ? used_by : uses).push_back(end_of(s.rect));
+            }
+            for (std::size_t i = 0; i < board::kPileCount; ++i)
+                if (m.board_hover_linked[i] > lit_in_view[i] && heads[i].x != source.x) to_heads.push_back(end_of(heads[i]));   // (linked cards still in its deck: either way)
+            rd_curves(d, uses, rd_alpha(uses_color, 0.18f), 4.0f);     // the glow
+            rd_curves(d, used_by, rd_alpha(used_by_color, 0.18f), 4.0f);
+            rd_curves(d, uses, rd_alpha(uses_color, 0.85f), 1.2f);
+            rd_curves(d, used_by, rd_alpha(used_by_color, 0.85f), 1.2f);
+            rd_curves(d, to_heads, rd_alpha(pal.text2, 0.6f), 1.0f);
+        }
+    }
+    d.rt->PopAxisAlignedClip();
+    if (b.content_width > b.tableau.w) {   // the sideways scroll
+        const float thumb = std::max(40.0f, b.tableau.w * b.tableau.w / b.content_width);
+        const float at = (b.tableau.w - thumb) * std::clamp(m.board_hscroll / std::max(1.0f, board_max_hscroll(b)), 0.0f, 1.0f);
+        d.fill(Rect{b.tableau.x + at, b.tableau.bottom() - 3, thumb, 3}, 1.5f, rd_alpha(pal.text3, 0.6f));
+    }
+    }   // (the cards)
+    if (b.detail.w > 0) {
+        const board::Card& c = m.board->cards[static_cast<std::size_t>(m.board_selected)];
+        d.fill(b.detail, 6, pal.subtle);
+        d.text(widen(c.name + "  \xC2\xB7  " + std::string(board::pile_name(c.pile)) + (c.format.empty() ? std::string() : "  \xC2\xB7  " + c.format) + "  \xC2\xB7  " + board::size_words(c.size) + "  \xC2\xB7  " + std::string(board::conv_words(c.conv))),
+               Rect{b.detail_text.x, b.detail_text.y, b.detail_text.w, 20}, 0, 13, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        std::string where = !c.note.empty() ? c.note : c.from.empty() ? c.rel : c.rel + "  (from " + name_of_rel(c.from) + ")";
+        if (m.board_signals && c.note.empty()) {   // what this file is wired to, by kind
+            std::array<std::uint32_t, board::kSignalTypes> kinds{};
+            for (const board::NodeSignal& wire : m.board_signals->of_node(static_cast<std::uint32_t>(m.board_selected)))
+                ++kinds[static_cast<std::size_t>(m.board_signals->signals[wire.signal].type)];
+            std::string words;
+            for (std::size_t k = 0; k < kinds.size(); ++k)
+                if (kinds[k] > 0) words += (words.empty() ? "" : ", ") + board::count_words(kinds[k]) + " " + std::string(board::signal_type_name(static_cast<board::SignalType>(k)));
+            if (!words.empty()) where += "  \xC2\xB7  " + words;
+        }
+        d.text(widen(where), Rect{b.detail_text.x, b.detail_text.y + 20, b.detail_text.w, 18}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, c.note.empty() ? pal.text2 : pal.error);
+        d.button(Control::BoardInspect, b.inspect, m.board_inspecting ? L"Close X-Ray" : L"X-Ray", 0, m.board_index != nullptr);
+        d.button(Control::BoardMap, b.map, L"Map", 0, m.board_index != nullptr);
+        d.button(Control::BoardCardOpen, b.open_card, L"Open", 0, true);
+        const bool can = c.conv != board::Conv::Queued && c.conv != board::Conv::Running && c.conv != board::Conv::Done;
+        d.button(Control::BoardCardConvert, b.convert, c.conv == board::Conv::Failed || c.conv == board::Conv::Cancelled ? L"Try again" : L"Convert", 0, can);
+    }
+    if (m.board_view == 0) {   // the signal kinds, the filters in force, and the open list over everything
+        static const wchar_t* const kPills[board::kSignalTypes] = {L"COM", L"Mutex", L"Event", L"Semaphore", L"Memory", L"Win msg", L"Port", L"IRQ", L"DMA", L"Registry", L"Autostart", L"HW class"};
+        for (std::size_t i = 0; i < b.signal_pills.size(); ++i) {
+            const Rect& r = b.signal_pills[i];
+            if (r.w <= 0) continue;
+            bool filtered = false;
+            for (const std::uint32_t id : m.board_filters) filtered = filtered || static_cast<std::size_t>(m.board_signals->signals[id].type) == i;
+            const bool open = m.board_signal_type == static_cast<int>(i), hot = m.hot == Control::BoardSignalType && m.hot_index == static_cast<int>(i);
+            d.fill(r, 13, filtered ? rd_alpha(pal.accent, 0.34f) : open ? rd_alpha(pal.text, 0.12f) : hot ? pal.subtle : D2D1::ColorF(0, 0, 0, 0));
+            d.stroke(r, 13, filtered || open ? pal.accent : pal.stroke2);
+            d.text(kPills[i], r, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, filtered || open ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+        if (b.group_copies.w > 0) {
+            const bool on = m.board_group_copies, hot = m.hot == Control::BoardGroupCopies;
+            d.fill(b.group_copies, 13, on ? rd_alpha(pal.accent, 0.3f) : hot ? pal.subtle : D2D1::ColorF(0, 0, 0, 0));
+            d.stroke(b.group_copies, 13, on ? pal.accent : pal.stroke2);
+            d.text(L"Group copies", b.group_copies, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, on ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+        for (std::size_t i = 0; i < m.board_filters.size() && b.filter_row.w > 0; ++i) {
+            const Rect chip{b.filter_row.x + static_cast<float>(i) * (kFilterChipWidth + 6), b.filter_row.y, kFilterChipWidth, b.filter_row.h};
+            if (chip.right() > b.filter_row.right()) break;
+            const bool hot = m.hot == Control::BoardFilterChip && m.hot_index == static_cast<int>(m.board_filters[i]);
+            d.fill(chip, 13, rd_alpha(pal.accent, hot ? 0.45f : 0.28f));
+            d.text(widen(board_filter_words(m, m.board_filters[i], 30)), Rect{chip.x + 10, chip.y, chip.w - 30, chip.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+            d.text(L"\u00D7", Rect{chip.right() - 22, chip.y, 16, chip.h}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+        if (m.board_signal_type >= 0) {
+            const SignalPanel panel = layout_signal_panel(b, m);
+            d.fill(panel.outline, 6, pal.dark ? rd_color(0x323232) : rd_color(0xFFFFFF));
+            d.stroke(panel.outline, 6, rd_alpha(pal.text, 0.25f));
+            d.rt->PushAxisAlignedClip(rd_rect(panel.list), D2D1_ANTIALIAS_MODE_ALIASED);
+            for (std::size_t i = 0; i < panel.rows.size(); ++i) {
+                const auto& row = m.board_signal_rows[static_cast<std::size_t>(panel.first) + i];
+                const Rect& r = panel.rows[i];
+                const bool active = std::find(m.board_filters.begin(), m.board_filters.end(), row.first) != m.board_filters.end();
+                const bool hot = m.hot == Control::BoardSignalRow && m.hot_index == static_cast<int>(row.first);
+                if (active || hot) d.fill(r, 3, active ? rd_alpha(pal.accent, 0.3f) : pal.subtle);
+                d.text(widen(m.board_signals->signals[row.first].value), Rect{r.x + 6, r.y, r.w - 76, r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+                d.text(widen(board::count_words(row.second) + " files"), Rect{r.right() - 68, r.y, 62, r.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+            }
+            d.rt->PopAxisAlignedClip();
+            rd_scrollbar(d, panel.list, static_cast<float>(m.board_signal_rows.size()) * kSignalRowHeight, m.board_signal_scroll);
+        }
+    }
+    if (b.export_button.w > 0) {   // automation
+        const auto action = [&](Control id, const Rect& r, const std::wstring& words, bool on, bool enabled) {
+            if (r.w <= 0) return;
+            const bool hot = enabled && m.hot == id;
+            d.fill(r, 13, on ? rd_alpha(pal.accent, 0.34f) : hot ? pal.subtle : D2D1::ColorF(0, 0, 0, 0));
+            d.stroke(r, 13, on ? pal.accent : pal.stroke2);
+            d.text(words, r, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, !enabled ? pal.text3 : on ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        };
+        action(Control::BoardExport, b.export_button, L"Export", false, m.board_index != nullptr);
+        if (m.board_view == 0) {
+            action(Control::BoardOrphans, b.orphans_button, m.board_orphans ? L"Orphans " + widen(board::count_words(m.board_orphans->distinct)) : L"Orphans", m.board_orphans_only, m.board_index != nullptr);
+            action(Control::BoardDecks, b.decks_button, L"Decks", m.board_decks_open || m.board_active_deck >= 0, true);
+            const bool running = m.view == View::Working;
+            const std::wstring batch = running ? L"Stop batch" : m.board_batch_armed > 0 ? L"Queue " + widen(board::count_words(m.board_batch_armed)) + L"?" : L"Convert " + widen(board::count_words(m.board_batch.size()));
+            action(Control::BoardBatch, b.batch_button, batch, running || m.board_batch_armed > 0, running || !m.board_batch.empty());
+            if (m.board_decks_open) {
+                const DeckPanel panel = layout_deck_panel(b, m);
+                d.fill(panel.outline, 6, pal.dark ? rd_color(0x323232) : rd_color(0xFFFFFF));
+                d.stroke(panel.outline, 6, rd_alpha(pal.text, 0.25f));
+                if (m.hot == Control::BoardDeckRow && m.hot_index == -1) d.fill(panel.save, 3, pal.subtle);
+                d.text(L"+  Save this view as a deck", Rect{panel.save.x + 6, panel.save.y, panel.save.w - 12, panel.save.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.accent);
+                for (std::size_t i = 0; i < panel.rows.size(); ++i) {
+                    const Rect& r = panel.rows[i];
+                    const bool active = m.board_active_deck == static_cast<int>(i), hot = m.hot == Control::BoardDeckRow && m.hot_index == static_cast<int>(i);
+                    if (active || hot) d.fill(r, 3, active ? rd_alpha(pal.accent, 0.3f) : pal.subtle);
+                    d.text(widen(m.board_decks[i].name), Rect{r.x + 6, r.y, r.w - 40, r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+                    if (panel.removes[i].w > 0) d.text(L"\u00D7", panel.removes[i], 0, 14, DWRITE_FONT_WEIGHT_NORMAL, m.hot == Control::BoardDeckRemove && m.hot_index == static_cast<int>(i) ? pal.error : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+                }
+            }
+        }
+    }
+    if (b.drawer.w > 0 && m.board_inspector) rd_inspector(d, b, m);
+    if (m.board_drag >= 0 && static_cast<std::size_t>(m.board_drag) < m.board->cards.size()) {
+        const Rect ghost{m.board_drag_x - b.column_width / 2, m.board_drag_y - 12, b.column_width, kBoardCardHeight};
+        rd_board_card(d, ghost, m.board->cards[static_cast<std::size_t>(m.board_drag)], true, false, true);
+    }
+}
+
 void rd_plain_button(RdDraw& d, const Rect& r, wchar_t glyph, const std::wstring& label, bool hot, bool focused) {
     const RdPalette& pal = d.pal;
     D2D1_COLOR_F fill = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.11f : 0.08f) : rd_mix(pal.field, pal.text, hot ? 0.035f : 0.0f);
@@ -1483,6 +2144,8 @@ void Painter::paint(ID2D1RenderTarget* rt, const Model& model, const Layout& l, 
         rd_tools(d, l, model, *this);
     } else if (model.page == Page::Settings) {
         rd_settings(d, l, model);
+    } else if (model.page == Page::Board) {
+        rd_board(d, l, model);
     } else {
         // ---- the one card: Program, or Source when Done; while the card changes, the old one fades out before the new one fades in
         if (model.fade_from_alpha > 0) {

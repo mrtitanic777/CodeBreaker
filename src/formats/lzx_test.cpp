@@ -476,5 +476,103 @@ CB_TEST("formats.lzx.a_real_title_decodes_as_the_xex_program_decodes_it", [] {
     CB_CHECK_EQ(ours[1], 'Z');
 });
 
+// A cabinet stream built bit by bit: 16-bit little-endian words, each filled from its top bit.
+class CabinetBits {
+public:
+    void put(std::uint32_t value, unsigned count) {
+        for (unsigned i = count; i-- > 0;) {
+            word_ = static_cast<std::uint16_t>((word_ << 1) | ((value >> i) & 1));
+            if (++used_ == 16) flush();
+        }
+    }
+    // Up to the next word; on a boundary, the format wants a whole word of padding.
+    void align() {
+        if (used_ == 0) put(0, 16);
+        while (used_ != 0) put(0, 1);
+    }
+    void raw(ByteView data) { append(out_, data); }
+    void u32(std::uint32_t v) {
+        for (unsigned k = 0; k < 4; ++k) out_.push_back(static_cast<std::uint8_t>(v >> (8 * k)));
+    }
+    Bytes take() { return std::move(out_); }
+
+private:
+    void flush() {
+        out_.push_back(static_cast<std::uint8_t>(word_));
+        out_.push_back(static_cast<std::uint8_t>(word_ >> 8));
+        word_ = 0;
+        used_ = 0;
+    }
+    Bytes out_;
+    std::uint16_t word_ = 0;
+    unsigned used_ = 0;
+};
+
+void cabinet_raw_header(CabinetBits& b, std::uint32_t length) {
+    b.put(3, 3);
+    b.put(length, 24);
+    b.align();
+    b.u32(1);
+    b.u32(1);
+    b.u32(1);
+}
+
+CB_TEST("formats.lzx.a_cabinet_frame_of_an_uncompressed_block", [] {
+    CabinetBits b;
+    b.put(0, 1);   // no Intel translation
+    cabinet_raw_header(b, 5);
+    b.raw(as_bytes("hello"));
+    CabinetDecoder decoder(15);
+    Bytes out;
+    decoder.frame(b.take(), 5, out);
+    CB_CHECK_EQ(std::string(as_text(out)), std::string("hello"));
+});
+
+CB_TEST("formats.lzx.a_cabinet_block_carries_across_frames", [] {
+    Bytes data(40000);
+    for (std::size_t i = 0; i < data.size(); ++i) data[i] = static_cast<std::uint8_t>(i * 7);
+    CabinetBits first;
+    first.put(0, 1);
+    cabinet_raw_header(first, 40000);
+    first.raw(ByteView(data).first(32768));
+    CabinetBits second;
+    second.raw(ByteView(data).subspan(32768));
+    CabinetDecoder decoder(16);
+    Bytes out;
+    decoder.frame(first.take(), 32768, out);
+    decoder.frame(second.take(), 40000 - 32768, out);
+    CB_CHECK(out == data);
+});
+
+CB_TEST("formats.lzx.a_cabinet_undoes_the_intel_translation", [] {
+    Bytes data(24, 0x90);
+    data[2] = 0xE8;
+    data[3] = 0x00;   // the stored operand is the absolute 0x100
+    data[4] = 0x01;
+    data[5] = 0;
+    data[6] = 0;
+    CabinetBits b;
+    b.put(1, 1);
+    b.put(0x10000, 32);
+    cabinet_raw_header(b, 24);
+    b.raw(data);
+    CabinetDecoder decoder(15);
+    Bytes out;
+    decoder.frame(b.take(), 24, out);
+    CB_CHECK_EQ(int{out[3]}, 0xFE);   // 0x100, seen from position 2
+    CB_CHECK_EQ(int{out[4]}, 0x00);
+    CB_CHECK_EQ(int{out[2]}, 0xE8);
+});
+
+CB_TEST("formats.lzx.a_cabinet_decoder_refuses_what_is_not_lzx", [] {
+    CB_CHECK_THROWS_AS(UnsupportedError, (CabinetDecoder(0)));
+    CB_CHECK_THROWS_AS(UnsupportedError, (CabinetDecoder(22)));
+    CabinetDecoder decoder(15);
+    Bytes out;
+    const Bytes junk(64, 0xFF);
+    CB_CHECK_THROWS_AS(FormatError, decoder.frame(junk, 32, out));
+    CB_CHECK_THROWS_AS(FormatError, CabinetDecoder(15).frame(junk, 40000, out));
+});
+
 }  // namespace
 }  // namespace cb::formats::lzx

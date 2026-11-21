@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "core/bytes.hpp"
 
@@ -20,6 +21,23 @@ namespace cb::formats::lzx {
 // two (15-21; XNB content uses 16). `reference`, when not empty, seeds the window with earlier data (LZX-DELTA): the
 // stream's matches may reach into it; it is not part of the output.
 Bytes decompress(ByteView data, unsigned window_bits, std::size_t out_len, ByteView reference = {});
+
+// LZX as a Microsoft cabinet holds it: one stream over a folder's data blocks, each block one output frame of at most 32768
+// bytes that starts on a fresh 16-bit word. The window, the three recent offsets, the code lengths and an unfinished LZX block
+// carry from frame to frame. The Intel E8 translation is undone frame by frame, as the stream's own header asks.
+class CabinetDecoder {
+public:
+    explicit CabinetDecoder(unsigned window_bits);   // 15-21; UnsupportedError otherwise
+    CabinetDecoder(CabinetDecoder&&) noexcept;
+    CabinetDecoder& operator=(CabinetDecoder&&) noexcept;
+    ~CabinetDecoder();
+    // Decode one frame of exactly `size` bytes and append it to `out`.
+    void frame(ByteView payload, std::size_t size, Bytes& out);
+
+private:
+    struct State;
+    std::unique_ptr<State> state_;
+};
 
 // An XEX's block chain: the first block (`first_size` bytes, hashed `first_hash`, 20 bytes) heads a list in which each
 // block names the size and SHA-1 of the next and holds chunks (a 16-bit big-endian length, then that many bytes; a

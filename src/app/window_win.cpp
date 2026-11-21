@@ -23,14 +23,20 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 #include "app/batch_queue.hpp"
+#include "app/board.hpp"
+#include "app/board_index.hpp"
+#include "app/board_signals.hpp"
 #include "app/convert.hpp"
 #include "app/notify.hpp"
 #include "app/recent.hpp"
@@ -38,6 +44,7 @@
 #include "app/source_preview.hpp"
 #include "app/tools.hpp"
 #include "app/tools_run.hpp"
+#include "app/window_board.hpp"
 #include "app/window_pages.hpp"
 #include "app/window.hpp"
 #include "app/window_convert.hpp"
@@ -88,10 +95,14 @@ float ww_ease(double t) {
 constexpr UINT kWmFinished = WM_APP + 2;   // the worker is done: its outcome is ready
 constexpr UINT kWmToast = WM_APP + 3;      // a button or click on the notification: wParam 1 open the folder, 2 show the window
 constexpr UINT kWmTray = WM_APP + 4;       // the balloon's callbacks (where there is no toast)
+constexpr UINT kWmBoardProgress = WM_APP + 5;   // the board's extraction has progress to show
+constexpr UINT kWmBoardDone = WM_APP + 6;       // the board's extraction or load has ended
 constexpr UINT_PTR kWwTaskbarTimer = 4;    // a failure shown on the taskbar button while the window is in front: cleared after a few seconds
 constexpr UINT kWwTaskbarErrorMs = 4000;
 constexpr UINT_PTR kWwMinuteTimer = 5;     // the Recent list's "when" words are made new
 constexpr UINT kWwMinuteMs = 30000;
+constexpr UINT_PTR kWwFlowTimer = 6;       // while Flow, Trace or Library shows: the projected-call dots move
+constexpr UINT kWwFlowFrameMs = 33;
 constexpr wchar_t kWwClass[] = L"CodeBreakerWindow";
 
 // ---- what the system says ------------------------------------------------------------------------------------------------------------
@@ -325,6 +336,8 @@ public:
     // Files to convert: they start a run, or join the queue of the run under way.
     void add_files(const std::vector<stdfs::path>& files);
     bool drop_on_tool(const std::vector<stdfs::path>& files);
+    bool drop_on_board(const std::vector<stdfs::path>& files);
+    void open_board_at_start(const stdfs::path& image) { initial_board_ = image; }
 
 private:
     static LRESULT CALLBACK proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
@@ -429,6 +442,18 @@ private:
     void fade_frame();
     void on_finished();
     void reset_to_idle(const std::string& status);
+    // the Board page
+    void browse_board();
+    void open_board(const stdfs::path& image, const stdfs::path& kept);
+    void on_board_progress();
+    void on_board_done();
+    void refresh_board();
+    void board_convert(int index);
+    void board_open_card(int index);
+    void board_sync_states();
+    void board_release(float x, float y);
+    void sync_board_title();
+    void sync_flow_timer();
 
     HWND hwnd_ = nullptr;
     UINT dpi_ = 96;
@@ -482,8 +507,28 @@ private:
     std::optional<convert::Outcome> outcome_;
     std::atomic<bool> progress_posted_{false};
     std::atomic<bool> running_{false};
+
+    // the Board page: the thread that extracts or loads, what it hands over (under board_lock_), and each card by its file
+    stdfs::path initial_board_;
+    std::thread board_worker_;
+    std::atomic<bool> board_cancel_{false}, board_posted_{false};
+    std::mutex board_lock_;
+    std::optional<board::ScanProgress> board_latest_;
+    std::optional<board::Board> board_result_;
+    std::optional<board::Index> board_result_index_;
+    std::optional<board::Signals> board_result_signals_;
+    std::string board_failure_;
+    std::unordered_map<std::string, std::uint32_t> board_paths_;
+    int board_press_card_ = -1;
+    POINT board_press_at_{};
+    bool board_tried_last_ = false;
+    std::wstring board_title_ = L"CodeBreaker";
+    bool flow_timer_on_ = false;
+    std::chrono::steady_clock::time_point flow_tick_{};
     friend class WwDropTarget;
 };
+
+stdfs::path ww_boards_root();
 
 WwApp* ww_app(HWND hwnd) { return reinterpret_cast<WwApp*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA)); }
 
@@ -527,7 +572,7 @@ HRESULT WwDropTarget::Drop(IDataObject* data, DWORD, POINTL, DWORD* effect) {
     const std::vector<stdfs::path> files = ww_files(data);
     if (!files.empty()) {
         *effect = DROPEFFECT_COPY;
-        if (!app_->drop_on_tool(files)) app_->add_files(files);
+        if (!app_->drop_on_tool(files) && !app_->drop_on_board(files)) app_->add_files(files);
     }
     return S_OK;
 }
@@ -599,12 +644,16 @@ int WwApp::run() {
     if (initial_file_.empty()) start_welcome();   // (a window opened on a file goes straight to work)
     ShowWindow(hwnd_, SW_SHOWNORMAL);
     UpdateWindow(hwnd_);
-    if (!initial_file_.empty()) add_files({initial_file_});
+    if (std::error_code ec; !initial_board_.empty() && stdfs::is_directory(initial_board_, ec)) open_board({}, initial_board_);   // (a board already kept)
+    else if (!initial_board_.empty()) open_board(initial_board_, {});
+    else if (!initial_file_.empty()) add_files({initial_file_});
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    board_cancel_ = true;
+    if (board_worker_.joinable()) board_worker_.join();   // (the scan stops between files; nothing is half-kept: a board is saved only when whole)
     if (running_) {   // closed with a conversion under way: ask it to stop, wait a little, then end the process (the staging folder is its own)
         cancel_ = true;
         for (int i = 0; i < 30 && running_; ++i) Sleep(100);
@@ -613,6 +662,9 @@ int WwApp::run() {
             worker_.join();
         }
     }
+    // What holds COM objects lets go of them first: released after OleUninitialize, they call into code that has been unloaded.
+    taskbar_.release();
+    notifier_.reset();
     OleUninitialize();
     return static_cast<int>(msg.wParam);
 }
@@ -673,9 +725,11 @@ void WwApp::move_focus(bool backwards) {
         order = focus_order_tools(model_);
     } else if (model_.page == Page::Settings) {
         order = focus_order_settings(model_);
+    } else if (model_.page == Page::Board) {
+        order = focus_order_board(model_);
     } else {
         order = focus_order_convert(layout_, model_);
-        for (const Control c : {Control::NavConvert, Control::NavTools, Control::NavSettings}) order.push_back({c, -1});
+        for (const Control c : {Control::NavConvert, Control::NavTools, Control::NavBoard, Control::NavSettings}) order.push_back({c, -1});
     }
     if (order.empty()) return;
     std::size_t at = order.size();
@@ -841,6 +895,7 @@ PageHit WwApp::hit_at(float x, float y) const {
     switch (model_.page) {
         case Page::Tools: return hit_test_tools(compute_tools_layout(layout_, model_), model_, x, y);
         case Page::Settings: return hit_test_settings(compute_settings_layout(layout_, model_), model_, x, y);
+        case Page::Board: return hit_test_board(compute_board_layout(layout_, model_), model_, x, y);
         default: return hit_test_convert(layout_, model_, x, y);
     }
 }
@@ -853,12 +908,21 @@ void WwApp::set_page(Page page) {
     model_.field_popup = -1;
     model_.language_open = false;
     model_.page = page;
+    sync_board_title();
     model_.focus = Control::None;
     model_.focus_index = -1;
     if (page == Page::Tools && model_.tool_rows.empty()) ww_fill_tool_rows(model_);
     if (page == Page::Settings) {
         model_.settings_advanced = false;
         fill_settings();
+    }
+    if (page == Page::Board && !model_.board && !model_.board_busy && !board_tried_last_) {   // the board open last comes back as it was, with no extraction
+        board_tried_last_ = true;
+        try {
+            const stdfs::path last = ww_boards_root() / "last.txt";
+            std::error_code ec;
+            if (stdfs::is_regular_file(last, ec)) open_board({}, fs::from_text(text::trim(fs::read_text(last))));
+        } catch (const std::exception&) {}
     }
     relayout();
     invalidate();
@@ -868,6 +932,7 @@ void WwApp::set_page(Page page) {
 
 std::string* WwApp::edit_target() {
     if (model_.focus == Control::ToolSearch) return &model_.tool_query;
+    if (model_.focus == Control::BoardSearch) return &model_.board_query;
     if (model_.focus != Control::Field || model_.focus_index < 0) return nullptr;
     std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
     if (static_cast<std::size_t>(model_.focus_index) >= fields.size()) return nullptr;
@@ -885,6 +950,10 @@ void WwApp::set_focus(Control c, int index) {
 
 // Something the person typed or chose in a field of the selected tool, or in the search box: the page follows.
 void WwApp::edited() {
+    if (model_.page == Page::Board) {
+        refresh_board();
+        return;
+    }
     if (model_.page == Page::Tools) {
         if (model_.focus == Control::ToolSearch) {
             ww_fill_tool_rows(model_);
@@ -1244,6 +1313,335 @@ void WwApp::popup_key(WPARAM key) {
     invalidate();
 }
 
+// ---- the Board page -------------------------------------------------------------------------------------------------------------------------
+
+// The folder boards are kept in, and the file naming the one open last.
+stdfs::path ww_boards_root() { return config::current().state("boards"); }
+
+bool ww_is_disc_image(const stdfs::path& file) {
+    const std::string ext = text::lower(fs::to_text(file.extension()));
+    return ext == ".iso" || ext == ".img" || ext == ".ima" || ext == ".vfd" || ext == ".bin";
+}
+
+// A drop on the Board page is for the board: a disc image opens, anything else is said to be no image.
+bool WwApp::drop_on_board(const std::vector<stdfs::path>& files) {
+    if (model_.page != Page::Board) return false;
+    if (files.size() == 1 && ww_is_disc_image(files[0])) open_board(files[0], {});
+    else model_.status_text = "The board takes one disc image (.iso, .img)";
+    invalidate();
+    return true;
+}
+
+void WwApp::browse_board() {
+    if (model_.board_busy) return;
+    ComPtr<IFileOpenDialog> dialog;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(dialog.put())))) return;
+    const COMDLG_FILTERSPEC types[] = {{L"Disc images", L"*.iso;*.img;*.ima;*.vfd;*.bin"}, {L"All files", L"*.*"}};
+    dialog->SetFileTypes(static_cast<UINT>(std::size(types)), types);
+    dialog->SetTitle(L"Choose a disc image");
+    DWORD options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
+    if (FAILED(dialog->Show(hwnd_))) return;
+    ComPtr<IShellItem> item;
+    if (FAILED(dialog->GetResult(item.put()))) return;
+    PWSTR path = nullptr;
+    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) || path == nullptr) return;
+    const stdfs::path image(path);
+    CoTaskMemFree(path);
+    open_board(image, {});
+}
+
+// Reads the kept board of `image` (or the board at `kept`), or extracts the image, on a thread of its own.
+void WwApp::open_board(const stdfs::path& image, const stdfs::path& kept) {
+    if (model_.board_busy) return;
+    board_tried_last_ = true;   // (set_page below must not start a second load of the board opened last)
+    if (board_worker_.joinable()) board_worker_.join();
+    stdfs::path root = kept;
+    try {
+        if (root.empty()) root = board::board_folder(ww_boards_root(), image);
+    } catch (const std::exception& e) {
+        model_.board_error = e.what();
+        invalidate();
+        return;
+    }
+    set_page(Page::Board);
+    model_.board_busy = true;
+    model_.board_error.clear();
+    model_.board_percent = 0;
+    model_.board_stage = "Opening";
+    model_.board_detail = fs::to_text(image.filename());
+    model_.status_text = "Laying out " + model_.board_detail;
+    board_cancel_ = false;
+    HWND window = hwnd_;
+    board_worker_ = std::thread([this, window, image, root] {
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+        std::optional<board::Board> result;
+        std::optional<board::Index> index;
+        std::optional<board::Signals> signals;
+        std::string failure;
+        try {
+            result = board::load(root);
+            if (!result && !image.empty()) {
+                result = board::scan(image, root, [this, window](const board::ScanProgress& p) {
+                    {
+                        std::lock_guard hold(board_lock_);
+                        board_latest_ = p;
+                    }
+                    if (!board_posted_.exchange(true)) PostMessageW(window, kWmBoardProgress, 0, 0);
+                }, board_cancel_);
+                if (result->complete) board::save(*result);
+            }
+            if (result && result->complete) {   // how the files link: read once, then kept beside the board
+                index = board::load_index(*result);
+                if (!index) {
+                    index = board::build_index(*result, [this, window](const board::IndexProgress& p) {
+                        board::ScanProgress shown;
+                        shown.stage = "Linking files: " + p.stage;
+                        shown.detail = board::count_words(p.done) + " of " + board::count_words(p.total);
+                        shown.percent = p.total == 0 ? 0 : static_cast<int>(p.done * 100 / p.total);
+                        {
+                            std::lock_guard hold(board_lock_);
+                            board_latest_ = shown;
+                        }
+                        if (!board_posted_.exchange(true)) PostMessageW(window, kWmBoardProgress, 0, 0);
+                    }, board_cancel_);
+                    if (index) board::save_index(*result, *index);
+                }
+                if (index) {   // the channels the files share: read once, then kept too
+                    signals = board::load_signals(*result);
+                    if (!signals) {
+                        signals = board::build_signals(*result, *index, [this, window](const board::IndexProgress& p) {
+                            board::ScanProgress shown;
+                            shown.stage = p.stage;
+                            shown.detail = board::count_words(p.done) + " of " + board::count_words(p.total);
+                            shown.percent = p.total == 0 ? 0 : static_cast<int>(p.done * 100 / p.total);
+                            {
+                                std::lock_guard hold(board_lock_);
+                                board_latest_ = shown;
+                            }
+                            if (!board_posted_.exchange(true)) PostMessageW(window, kWmBoardProgress, 0, 0);
+                        }, board_cancel_);
+                        if (signals) board::save_signals(*result, *signals);
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            failure = e.what();
+        }
+        {
+            std::lock_guard hold(board_lock_);
+            board_result_ = std::move(result);
+            board_result_index_ = std::move(index);
+            board_result_signals_ = std::move(signals);
+            board_failure_ = std::move(failure);
+        }
+        PostMessageW(window, kWmBoardDone, 0, 0);
+    });
+    relayout();
+    invalidate();
+}
+
+void WwApp::on_board_progress() {
+    std::optional<board::ScanProgress> p;
+    {
+        std::lock_guard hold(board_lock_);
+        p = std::move(board_latest_);
+        board_latest_.reset();
+    }
+    board_posted_ = false;
+    if (!p || !model_.board_busy) return;
+    model_.board_stage = p->stage;
+    model_.board_detail = p->detail;
+    model_.board_percent = p->percent;
+    invalidate();
+}
+
+void WwApp::on_board_done() {
+    if (board_worker_.joinable()) board_worker_.join();
+    std::optional<board::Board> result;
+    std::optional<board::Index> index;
+    std::optional<board::Signals> signals;
+    std::string failure;
+    {
+        std::lock_guard hold(board_lock_);
+        result = std::move(board_result_);
+        board_result_.reset();
+        index = std::move(board_result_index_);
+        board_result_index_.reset();
+        signals = std::move(board_result_signals_);
+        board_result_signals_.reset();
+        failure = std::move(board_failure_);
+    }
+    model_.board_busy = false;
+    board_posted_ = false;
+    if (!result || !result->complete) {
+        model_.board_error = !failure.empty() ? failure : result ? std::string() : std::string("There is no board there.");
+        model_.status_text = !failure.empty() ? "The image could not be read" : "Cancelled";
+        relayout();
+        invalidate();
+        return;
+    }
+    model_.board = std::make_shared<board::Board>(std::move(*result));
+    model_.board_selected = -1;
+    model_.board_hscroll = 0;
+    model_.board_scroll = {};
+    model_.board_expanded = {};
+    model_.board_show_done = {};
+    model_.board_filters.clear();
+    model_.board_orphans.reset();
+    model_.board_orphans_only = false;
+    model_.board_decks_open = false;
+    model_.board_batch_armed = 0;
+    model_.board_signal_type = -1;
+    model_.board_signal_rows.clear();
+    model_.board_view = 0;
+    model_.board_focus = -1;
+    model_.board_index = index ? std::make_shared<const board::Index>(std::move(*index)) : nullptr;
+    model_.board_signals = signals ? std::make_shared<const board::Signals>(std::move(*signals)) : nullptr;
+    model_.board_graph.reset();
+    model_.board_flow.reset();
+    model_.board_trace.reset();
+    model_.board_library.reset();
+    model_.board_inspecting = false;
+    model_.board_inspector.reset();
+    model_.board_hover.reset();
+    model_.board_hover_linked = {};
+    model_.board_projection.reset();
+    model_.board_crumbs.clear();
+    model_.board_function.clear();
+    model_.board_hover_export = -1;
+    board_paths_.clear();
+    board_paths_.reserve(model_.board->cards.size());
+    for (std::size_t i = 0; i < model_.board->cards.size(); ++i)
+        board_paths_.emplace(text::lower(fs::to_text(model_.board->file_of(model_.board->cards[i]))), static_cast<std::uint32_t>(i));
+    try {
+        fs::write_text(ww_boards_root() / "last.txt", fs::to_text(model_.board->root));
+    } catch (const std::exception&) {}   // (only what opens by itself next time)
+    model_.status_text = board::count_words(model_.board->cards.size()) + " files on the board";
+    board_load_decks(model_);
+    refresh_board();
+}
+
+void WwApp::refresh_board() {
+    board_rebuild_stacks(model_);
+    relayout();
+    invalidate();
+}
+
+// A card goes to the convert queue. It reaches its foundation only if the conversion ends Done (board_sync_states).
+void WwApp::board_convert(int index) {
+    if (!model_.board || index < 0 || static_cast<std::size_t>(index) >= model_.board->cards.size()) return;
+    board::Card& card = model_.board->cards[static_cast<std::size_t>(index)];
+    if (card.conv == board::Conv::Done) {
+        model_.status_text = card.name + " is already converted";
+    } else if (card.conv == board::Conv::Queued || card.conv == board::Conv::Running) {
+        model_.status_text = card.name + " is already on its way";
+    } else if (!can_take_files()) {
+        model_.status_text = "Wait for the cancelled run to stop";
+    } else {
+        card.conv = board::Conv::Queued;
+        card.note.clear();
+        add_files({model_.board->file_of(card)});
+        board_sync_states();
+    }
+    invalidate();
+}
+
+void WwApp::board_open_card(int index) {
+    if (!model_.board || index < 0 || static_cast<std::size_t>(index) >= model_.board->cards.size()) return;
+    const board::Card& card = model_.board->cards[static_cast<std::size_t>(index)];
+    if (card.conv == board::Conv::Done) {
+        ShellExecuteW(hwnd_, L"open", fs::from_text(card.output).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        return;
+    }
+    const std::wstring select = L"/select,\"" + stdfs::path(model_.board->file_of(card)).make_preferred().wstring() + L"\"";
+    ShellExecuteW(hwnd_, L"open", L"explorer.exe", select.c_str(), nullptr, SW_SHOWNORMAL);
+}
+
+// The cards the board sent to the queue follow it. Only what the queue really says moves a card, and a Done needs its output folder (board::record).
+void WwApp::board_sync_states() {
+    if (!model_.board) return;
+    bool moved = false, ended = false;
+    for (const batch::Item& item : queue_.items()) {
+        const auto it = board_paths_.find(text::lower(fs::to_text(item.file)));
+        if (it == board_paths_.end()) continue;
+        board::Card& card = model_.board->cards[it->second];
+        if (card.conv != board::Conv::Queued && card.conv != board::Conv::Running) continue;
+        switch (item.state) {
+            case batch::ItemState::Waiting: break;
+            case batch::ItemState::Running:
+                moved = moved || card.conv != board::Conv::Running;
+                card.conv = board::Conv::Running;
+                break;
+            case batch::ItemState::Done: board::record(card, board::Conv::Done, item.output, {}); moved = ended = true; break;
+            case batch::ItemState::CannotConvert: board::record(card, board::Conv::CannotConvert, {}, item.message); moved = ended = true; break;
+            case batch::ItemState::Failed: board::record(card, board::Conv::Failed, {}, item.message); moved = ended = true; break;
+            case batch::ItemState::Cancelled: board::record(card, board::Conv::Cancelled, {}, {}); moved = ended = true; break;
+        }
+    }
+    if (ended) {
+        try {
+            board::save_states(*model_.board);
+        } catch (const std::exception& e) {
+            model_.status_text = std::string("The board could not be saved: ") + e.what();
+        }
+    }
+    if (moved) refresh_board();
+}
+
+// The window's name (the taskbar's and Alt+Tab's) says where on the map it is.
+// The dots move only while a map is on screen, and not at all with Windows' "Animation effects" off.
+void WwApp::sync_flow_timer() {
+    const bool wanted = model_.page == Page::Board && model_.board_view != 0 && model_.board_projection != nullptr && ww_animations_on();
+    if (wanted == flow_timer_on_) return;
+    flow_timer_on_ = wanted;
+    if (wanted) {
+        flow_tick_ = std::chrono::steady_clock::now();
+        SetTimer(hwnd_, kWwFlowTimer, kWwFlowFrameMs, nullptr);
+    } else {
+        KillTimer(hwnd_, kWwFlowTimer);
+    }
+}
+
+void WwApp::sync_board_title() {
+    sync_flow_timer();
+    board_sync_inspector(model_);
+    std::wstring title = L"CodeBreaker";
+    if (model_.page == Page::Board && model_.board_view != 0 && model_.board_graph) {
+        const std::vector<std::string> words = board_crumb_words(model_);
+        title += L" - " + widen(words.back());
+        if (model_.board_view == 3 && model_.board_library && model_.board_hover_export >= 0 && static_cast<std::size_t>(model_.board_hover_export) < model_.board_library->right.size()) {
+            const board::LibraryChannel& hovered = model_.board_library->right[static_cast<std::size_t>(model_.board_hover_export)];
+            title += L" [" + widen(hovered.label) + L": " + std::to_wstring(hovered.users.size()) + L" files]";
+        }
+    }
+    if (model_.page == Page::Board && model_.board_view == 0 && model_.board_hover && model_.board)
+        title += L" - " + widen(model_.board->cards[model_.board_hover->card].name) + L" [uses " + std::to_wstring(model_.board_hover->uses) + L", used by " + std::to_wstring(model_.board_hover->used_by) + L"]";
+    if (model_.page == Page::Board && model_.board_inspecting && model_.board_inspector && model_.board)
+        title += L" (X-Ray: " + widen(model_.board->cards[model_.board_inspector->card].name) + L")";
+    if (model_.page == Page::Board && model_.board_orphans_only) title += L" {orphans}";
+    if (model_.page == Page::Board && model_.board_active_deck >= 0 && static_cast<std::size_t>(model_.board_active_deck) < model_.board_decks.size())
+        title += L" {deck: " + widen(model_.board_decks[static_cast<std::size_t>(model_.board_active_deck)].name) + L"}";
+    if (model_.page == Page::Board && model_.board_batch_armed > 0) title += L" {queue " + std::to_wstring(model_.board_batch_armed) + L"?}";
+    if (model_.page == Page::Board && !model_.board_filters.empty()) title += L" {" + std::to_wstring(model_.board_filters.size()) + L" filters}";
+    if (title != board_title_) {
+        board_title_ = title;
+        SetWindowTextW(hwnd_, title.c_str());
+    }
+}
+
+// A dragged card let go: on a foundation it is sent to be converted; it does not land there until that is true.
+void WwApp::board_release(float x, float y) {
+    const int card = model_.board_drag;
+    model_.board_drag = -1;
+    model_.board_drop_pile = -1;
+    board_press_card_ = -1;
+    if (card < 0 || !model_.board) return;
+    if (board_foundation_at(compute_board_layout(layout_, model_), model_, x, y) >= 0) board_convert(card);
+    invalidate();
+}
+
 // Activating a part of the Tools or Settings page (a click released on it, or Enter or Space on the focused one).
 void WwApp::activate_page(Control c, int index) {
     switch (c) {
@@ -1274,6 +1672,212 @@ void WwApp::activate_page(Control c, int index) {
         case Control::CmpAsmLine: compare_click(0, index); break;
         case Control::CmpCLine: compare_click(1, index); break;
         case Control::NavTools: set_page(Page::Tools); break;
+        case Control::NavBoard: set_page(Page::Board); break;
+        case Control::BoardOpen: browse_board(); break;
+        case Control::BoardCancel:
+            board_cancel_ = true;
+            model_.board_stage = "Cancelling";
+            invalidate();
+            break;
+        case Control::BoardSearch: set_focus(Control::BoardSearch, -1); break;
+        case Control::BoardFoundation:   // the pile shows what is really on it, or back to what is left to do
+            if (index >= 0 && index < static_cast<int>(board::kPileCount)) {
+                model_.board_show_done[static_cast<std::size_t>(index)] = !model_.board_show_done[static_cast<std::size_t>(index)];
+                model_.board_scroll[static_cast<std::size_t>(index)] = 0;
+                invalidate();
+            }
+            break;
+        case Control::BoardExpand:
+            if (index >= 0 && index < static_cast<int>(board::kPileCount)) {
+                model_.board_expanded[static_cast<std::size_t>(index)] = !model_.board_expanded[static_cast<std::size_t>(index)];
+                model_.board_scroll[static_cast<std::size_t>(index)] = 0;
+                invalidate();
+            }
+            break;
+        case Control::BoardCard:   // a library opens on its imports and exports; any other card is selected
+            model_.board_selected = index;
+            board_hover_card(model_, -1);
+            if (model_.board_index && model_.board && index >= 0 && model_.board->cards[static_cast<std::size_t>(index)].pile == board::Pile::Libraries) board_show_view(model_, 3);
+            else if (model_.board_index) board_inspect_card(model_, index);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardViewTab:
+            board_show_view(model_, index);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardMap:
+            model_.board_selected = index;
+            board_show_view(model_, 3);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardLinkChip:
+            if (index >= 0 && index < 3 && model_.board_width == board::Width::Files) {   // (Links and Calls are of imports only)
+                const unsigned bit = 1u << static_cast<unsigned>(index);
+                if ((model_.board_links & ~bit) != 0 || (model_.board_links & bit) == 0) {   // (one kind always stays on)
+                    model_.board_links ^= bit;
+                    board_refresh_maps(model_);
+                    relayout();
+                    invalidate();
+                }
+            }
+            break;
+        case Control::BoardWidth:
+            if (index >= 0 && index < 3) {
+                model_.board_width = static_cast<board::Width>(index);
+                board_refresh_maps(model_);
+                relayout();
+                invalidate();
+            }
+            break;
+        case Control::BoardFlowBand:   // a band: on to its most linked file
+            if (model_.board_flow) {
+                const bool right = index >= 100;
+                const auto at = static_cast<std::size_t>(right ? index - 100 : index);
+                const std::vector<board::FlowBand>& bands = right ? model_.board_flow->out : model_.board_flow->in;
+                if (at < bands.size()) {
+                    model_.board_function.clear();
+                    board_go_to(model_, static_cast<int>(bands[at].top));
+                }
+                relayout();
+                invalidate();
+            }
+            break;
+        case Control::BoardNode:
+        case Control::BoardUser:
+            board_go_to(model_, index);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardLeft:
+        case Control::BoardRight:   // a channel: a module, or a function of the one in view, becomes the centre
+            if (model_.board_library) {
+                const std::vector<board::LibraryChannel>& side = c == Control::BoardLeft ? model_.board_library->left : model_.board_library->right;
+                if (index >= 0 && static_cast<std::size_t>(index) < side.size()) {
+                    const board::LibraryChannel& channel = side[static_cast<std::size_t>(index)];
+                    if (channel.module >= 0) board_go_to(model_, static_cast<int>(channel.module));
+                    else board_go_to(model_, model_.board_focus, std::string(channel.key));
+                    relayout();
+                    invalidate();
+                }
+            }
+            break;
+        case Control::BoardOrphans:
+            board_toggle_orphans(model_);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardDecks:
+            model_.board_decks_open = !model_.board_decks_open;
+            invalidate();
+            break;
+        case Control::BoardDeckRow:
+            try {
+                if (index < 0) board_save_deck(model_);
+                else board_apply_deck(model_, index);
+            } catch (const std::exception& e) {
+                model_.status_text = std::string("The deck could not be saved: ") + e.what();
+            }
+            model_.board_decks_open = false;
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardDeckRemove:
+            try {
+                board_remove_deck(model_, index);
+            } catch (const std::exception& e) {
+                model_.status_text = std::string("The deck could not be removed: ") + e.what();
+            }
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardExport:
+            if (model_.board && model_.board_index) {
+                try {
+                    const stdfs::path written = board_export(model_);
+                    model_.status_text = "Exported JSON, GraphML and a Maltego table: " + fs::to_text(written);
+                } catch (const std::exception& e) {
+                    model_.status_text = std::string("The export failed: ") + e.what();
+                }
+                invalidate();
+            }
+            break;
+        case Control::BoardBatch:   // once: how many. Again: they join the convert queue, most linked first. While a run is under way: stop it.
+            if (running_ || queue_.active()) {
+                cancel_conversion();
+                model_.board_batch_armed = 0;
+            } else if (model_.board_batch_armed == 0) {
+                model_.board_batch_armed = model_.board_batch.size();
+            } else if (model_.board) {
+                std::vector<stdfs::path> files;
+                files.reserve(model_.board_batch.size());
+                for (const std::uint32_t card : model_.board_batch) {
+                    board::Card& queued = model_.board->cards[card];
+                    queued.conv = board::Conv::Queued;
+                    queued.note.clear();
+                    files.push_back(model_.board->file_of(queued));
+                }
+                model_.board_batch_armed = 0;
+                add_files(files);
+                board_sync_states();
+                board_rebuild_stacks(model_);
+            }
+            invalidate();
+            break;
+        case Control::BoardInspect:
+            if (model_.board_inspecting) board_inspect_card(model_, -1);
+            else board_inspect_card(model_, index);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardInspectClose:
+            board_inspect_card(model_, -1);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardInspectRow:   // a file: the drawer goes to it; a signal: the board shows what shares it
+            if (model_.board_inspector && index >= 0 && static_cast<std::size_t>(index) < model_.board_inspector->rows.size()) {
+                const board::InspectorRow row = model_.board_inspector->rows[static_cast<std::size_t>(index)];
+                if (row.card >= 0) {
+                    board_inspect_card(model_, static_cast<int>(row.card));
+                } else if (row.signal >= 0) {
+                    if (model_.board_view != 0) board_crumb_back(model_, -1);
+                    if (std::find(model_.board_filters.begin(), model_.board_filters.end(), static_cast<std::uint32_t>(row.signal)) == model_.board_filters.end())
+                        board_toggle_filter(model_, static_cast<std::uint32_t>(row.signal));
+                }
+                relayout();
+                invalidate();
+            }
+            break;
+        case Control::BoardSignalType:
+            board_open_signals(model_, index);
+            invalidate();
+            break;
+        case Control::BoardSignalRow:
+            board_toggle_filter(model_, static_cast<std::uint32_t>(index));
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardFilterChip:
+            board_toggle_filter(model_, static_cast<std::uint32_t>(index));
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardGroupCopies:
+            model_.board_group_copies = !model_.board_group_copies;
+            board_rebuild_stacks(model_);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardCrumb:
+            board_crumb_back(model_, index);
+            relayout();
+            invalidate();
+            break;
+        case Control::BoardCardOpen: board_open_card(index); break;
+        case Control::BoardCardConvert: board_convert(index); break;
         case Control::NavSettings: set_page(Page::Settings); break;
         case Control::ToolRow: select_tool(index); break;
         case Control::Run:
@@ -1328,6 +1932,27 @@ void WwApp::scroll_page(float x, float y, int lines) {
     } else if (model_.page == Page::Settings) {
         const SettingsLayout s = compute_settings_layout(layout_, model_);
         model_.setting_scroll = std::clamp(model_.setting_scroll - step, 0.0f, std::max(0.0f, s.form.content_height - s.fields_area.h));
+    } else if (model_.page == Page::Board && model_.board_inspecting && compute_board_layout(layout_, model_).drawer.contains(x, y)) {   // the X-Ray drawer
+        model_.board_inspect_scroll = std::clamp(model_.board_inspect_scroll - step * 2, 0.0f, layout_inspector(compute_board_layout(layout_, model_), model_).max_scroll);
+    } else if (model_.page == Page::Board && model_.board && model_.board_view == 0 && model_.board_signal_type >= 0 &&
+               layout_signal_panel(compute_board_layout(layout_, model_), model_).outline.contains(x, y)) {   // the open list of signals
+        model_.board_signal_scroll = std::clamp(model_.board_signal_scroll - step * 2, 0.0f, layout_signal_panel(compute_board_layout(layout_, model_), model_).max_scroll);
+    } else if (model_.page == Page::Board && model_.board && model_.board_view == 3 && model_.board_library) {   // the Library view: the list under the pointer
+        const LibraryLayout library = layout_library(compute_board_layout(layout_, model_).canvas, *model_.board_library, model_.board_left_scroll, model_.board_right_scroll, model_.board_hover_export);
+        if (library.left_area.contains(x, y)) model_.board_left_scroll = std::clamp(model_.board_left_scroll - step * 2, 0.0f, library.left_max_scroll);
+        else if (library.right_area.contains(x, y)) model_.board_right_scroll = std::clamp(model_.board_right_scroll - step * 2, 0.0f, library.right_max_scroll);
+    } else if (model_.page == Page::Board && model_.board) {
+        const BoardLayout b = compute_board_layout(layout_, model_);
+        bool scrolled = false;
+        if ((GetKeyState(VK_SHIFT) & 0x8000) == 0) {   // over an expanded column: it scrolls; anywhere else the columns move sideways
+            for (std::size_t i = 0; i < board::kPileCount && !scrolled; ++i) {
+                const BoardColumn c = compute_board_column(b, model_, i);
+                if (!c.expanded || !c.area.contains(x, y)) continue;
+                model_.board_scroll[i] = std::clamp(model_.board_scroll[i] - step * 2, 0.0f, board_max_scroll(c));
+                scrolled = true;
+            }
+        }
+        if (!scrolled) model_.board_hscroll = std::clamp(model_.board_hscroll - step * 2, 0.0f, board_max_hscroll(b));
     }
     invalidate();
 }
@@ -1425,6 +2050,7 @@ void WwApp::run_next() {
     const LanguageItem language = language_for(file);
     const std::string target = language.id;
     queue_.start(static_cast<std::size_t>(next));
+    board_sync_states();
     running_item_ = next;
     run_language_name_ = target == "original" ? std::string() : language.name;
     model_.file_name = queue_.items()[static_cast<std::size_t>(next)].name;
@@ -2233,6 +2859,7 @@ void WwApp::present_item(const batch::Item& item, const std::string& stage, cons
 // Every file of the queue has ended: the card shows the last one that was converted (or, when none was, how the last one ended), Recent has them all,
 // the taskbar button is cleared (red when something failed), and a window that is not in front says so with a notification.
 void WwApp::finish_run() {
+    board_sync_states();   // (files still waiting when Cancel was pressed)
     const std::string stage = model_.stage_label, detail = model_.detail;
     const std::vector<std::string> stream = model_.stream;
     const std::size_t total = queue_.total(), converted = queue_.done();
@@ -2291,6 +2918,7 @@ void WwApp::on_finished() {
         default: break;
     }
     queue_.finish(static_cast<std::size_t>(index), state, std::move(ended));
+    board_sync_states();
     const batch::Item& item = queue_.items()[static_cast<std::size_t>(index)];
     if (state == batch::ItemState::Done) remember_item(item);
     if (state != batch::ItemState::Cancelled) {
@@ -2417,7 +3045,23 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             break;
+        case WM_XBUTTONUP:   // the mouse's Back button: one breadcrumb back
+            if (model_.page == Page::Board && model_.board_view != 0 && GET_XBUTTON_WPARAM(wp) == XBUTTON1) {
+                board_step_back(model_);
+                sync_board_title();
+                relayout();
+                invalidate();
+                return TRUE;
+            }
+            break;
         case WM_SYSKEYDOWN:
+            if (wp == VK_LEFT && model_.page == Page::Board && model_.board_view != 0) {   // Alt+Left: one breadcrumb back
+                board_step_back(model_);
+                sync_board_title();
+                relayout();
+                invalidate();
+                return 0;
+            }
             if (wp == VK_SPACE) {   // Alt+Space
                 RECT rc{};
                 GetWindowRect(hwnd_, &rc);
@@ -2434,6 +3078,21 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             break;
         case WM_MOUSEMOVE: {
             const float mx = ww_dip(GET_X_LPARAM(lp), dpi_), my = ww_dip(GET_Y_LPARAM(lp), dpi_);
+            if (board_press_card_ >= 0 && (wp & MK_LBUTTON) != 0) {   // a card pressed: moving it a little picks it up
+                if (model_.board_drag < 0 && (std::abs(GET_X_LPARAM(lp) - board_press_at_.x) >= GetSystemMetricsForDpi(SM_CXDRAG, dpi_) ||
+                                              std::abs(GET_Y_LPARAM(lp) - board_press_at_.y) >= GetSystemMetricsForDpi(SM_CYDRAG, dpi_)))
+                {
+                    model_.board_drag = board_press_card_;
+                    board_hover_card(model_, -1);
+                }
+                if (model_.board_drag >= 0) {
+                    model_.board_drag_x = mx;
+                    model_.board_drag_y = my;
+                    model_.board_drop_pile = board_foundation_at(compute_board_layout(layout_, model_), model_, mx, my);
+                    invalidate();
+                    return 0;
+                }
+            }
             if (drag_pending_) {   // the output box was pressed: moving a little with the button down drags the folder out
                 if ((wp & MK_LBUTTON) == 0) {
                     drag_pending_ = false;
@@ -2475,6 +3134,27 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             }
             const PageHit h = hit_at(lp);
             set_hot(h.control, h.index);
+            if (model_.page == Page::Board && model_.board_view == 0) {   // the card under the pointer lights what it is linked to
+                const int card = h.control == Control::BoardCard ? h.index : -1;
+                if (card != (model_.board_hover ? static_cast<int>(model_.board_hover->card) : -1)) {
+                    board_hover_card(model_, card);
+                    sync_board_title();
+                    invalidate();
+                }
+            }
+            if (model_.page == Page::Board && model_.board_view == 3 && model_.board_library) {   // an export's lines stay while the pointer travels along them to its files
+                int hover = model_.board_hover_export;
+                if (h.control == Control::BoardRight && model_.board_library->function_is_empty()) hover = h.index;
+                else if (h.control != Control::BoardUser) {
+                    const LibraryLayout library = layout_library(compute_board_layout(layout_, model_).canvas, *model_.board_library, model_.board_left_scroll, model_.board_right_scroll, hover);
+                    if (mx < library.right_area.x || !library.right_area.contains(library.right_area.x, my)) hover = -1;
+                }
+                if (hover != model_.board_hover_export) {
+                    model_.board_hover_export = hover;
+                    sync_board_title();
+                    invalidate();
+                }
+            }
             if (!tracking_) {
                 TRACKMOUSEEVENT t{sizeof t, TME_LEAVE, hwnd_, 0};
                 tracking_ = TrackMouseEvent(&t) != FALSE;
@@ -2483,6 +3163,11 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_MOUSELEAVE:
             tracking_ = false;
+            if (model_.board_hover) {
+                board_hover_card(model_, -1);
+                sync_board_title();
+                invalidate();
+            }
             if (model_.pressed == Control::None) set_hot(Control::None);
             return 0;
         case WM_MOUSEWHEEL: {
@@ -2542,6 +3227,13 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (taskbar_.state() == Taskbar::State::Error) taskbar_.set(Taskbar::State::None);
                 return 0;
             }
+            if (wp == kWwFlowTimer) {
+                const auto now = std::chrono::steady_clock::now();
+                model_.board_flow_time = std::fmod(model_.board_flow_time + std::chrono::duration<double>(now - flow_tick_).count(), 3600.0);
+                flow_tick_ = now;
+                if (!IsIconic(hwnd_)) invalidate();
+                return 0;
+            }
             if (wp == kWwMinuteTimer) {   // "2 minutes ago" moves on
                 if (model_.page == Page::Convert && model_.view == View::Idle && !model_.recent.empty()) refresh_recent();
                 return 0;
@@ -2578,12 +3270,29 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             const PageHit h = hit_at(lp);
+            if (model_.board_batch_armed > 0 && h.control != Control::BoardBatch) {   // a click anywhere else, on a control or not, takes the question back
+                model_.board_batch_armed = 0;
+                sync_board_title();
+                invalidate();
+            }
+            if (model_.page == Page::Board && model_.board_decks_open && h.control != Control::BoardDeckRow && h.control != Control::BoardDeckRemove && h.control != Control::BoardDecks &&
+                !layout_deck_panel(compute_board_layout(layout_, model_), model_).outline.contains(mx, my)) {   // a click outside the open list closes it
+                model_.board_decks_open = false;
+                invalidate();
+                return 0;
+            }
+            if (model_.page == Page::Board && model_.board_signal_type >= 0 && h.control != Control::BoardSignalRow && h.control != Control::BoardSignalType &&
+                !layout_signal_panel(compute_board_layout(layout_, model_), model_).outline.contains(mx, my)) {   // a click outside the open list closes it
+                board_open_signals(model_, -1);
+                invalidate();
+                return 0;
+            }
             if (model_.page == Page::Convert) {
                 model_.focus = Control::None;
             } else {
                 // a text box takes the keyboard at once (a switch or a drop-down acts when the click is released)
                 const std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
-                const bool text_field = h.control == Control::ToolSearch ||
+                const bool text_field = h.control == Control::ToolSearch || h.control == Control::BoardSearch ||
                                         (h.control == Control::Field && h.index >= 0 && static_cast<std::size_t>(h.index) < fields.size() && fields[static_cast<std::size_t>(h.index)].kind <= 2);
                 if (text_field) set_focus(h.control, h.index);
                 else set_focus(Control::None, -1);
@@ -2592,6 +3301,10 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 model_.pressed = h.control;
                 model_.pressed_index = h.index;
                 SetCapture(hwnd_);
+                if (h.control == Control::BoardCard) {
+                    board_press_card_ = h.index;
+                    board_press_at_ = POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+                }
                 if (h.control == Control::OutputBox && model_.view == View::Done) {
                     drag_pending_ = true;
                     drag_origin_ = POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
@@ -2603,6 +3316,14 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_LBUTTONUP: {
             drag_pending_ = false;
+            if (model_.board_drag >= 0) {
+                model_.pressed = Control::None;
+                model_.pressed_index = -1;
+                board_release(ww_dip(GET_X_LPARAM(lp), dpi_), ww_dip(GET_Y_LPARAM(lp), dpi_));   // (before the capture goes: losing it ends a drag with no drop)
+                if (GetCapture() == hwnd_) ReleaseCapture();
+                return 0;
+            }
+            board_press_card_ = -1;
             const Control pressed = model_.pressed;
             const int pressed_index = model_.pressed_index;
             model_.pressed = Control::None;
@@ -2613,7 +3334,8 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             invalidate();
             if (pressed != Control::None && pressed == h.control && pressed_index == h.index) {
                 if (pressed >= Control::NavConvert) {
-                    if (pressed != Control::ToolSearch) activate_page(pressed, pressed_index);
+                    if (pressed != Control::ToolSearch && pressed != Control::BoardSearch) activate_page(pressed, pressed_index);
+                    sync_board_title();
                 } else {
                     activate(pressed);
                 }
@@ -2621,6 +3343,12 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_CAPTURECHANGED:
+            if (model_.board_drag >= 0 || board_press_card_ >= 0) {   // (the drag is over without a drop)
+                model_.board_drag = -1;
+                model_.board_drop_pile = -1;
+                board_press_card_ = -1;
+                invalidate();
+            }
             if (model_.pressed != Control::None) {
                 model_.pressed = Control::None;
                 invalidate();
@@ -2644,6 +3372,10 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             if (ctrl && wp == VK_OEM_COMMA) {   // Ctrl+,: Settings, Advanced
                 set_page(Page::Settings);
                 open_advanced(true);
+                return 0;
+            }
+            if (ctrl && wp == '4') {   // Ctrl+4: the Board
+                set_page(Page::Board);
                 return 0;
             }
             if (ctrl && wp >= '1' && wp <= '3') {   // Ctrl+1, 2, 3: Convert, Tools, Settings
@@ -2768,12 +3500,15 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_PAINT: paint(); return 0;
         case kWmProgress: on_progress(); return 0;
         case kWmFinished: on_finished(); return 0;
+        case kWmBoardProgress: on_board_progress(); return 0;
+        case kWmBoardDone: on_board_done(); return 0;
         case kWmToast: on_toast(wp); return 0;
         case kWmTray:
             if (notifier_) notifier_->on_tray(lp);
             return 0;
         case WM_CLOSE:
             if (running_) cancel_ = true;
+            board_cancel_ = true;
             break;
         case WM_DESTROY:
             RevokeDragDrop(hwnd_);
@@ -2787,16 +3522,117 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
 // ---- screenshots -----------------------------------------------------------------------------------------------------------------------
 
 struct WwShot {
-    std::string path, state = "idle", theme;
+    std::string board_focus;   // the Flow and Trace states centre on this file
+    std::string board_width;   // and size their channels by "files", "links" or "calls"
+    std::string path, state = "idle", theme, board_root;   // board_root: the Board states draw this kept board instead of the sample
     float width = kDefaultWidth, height = kDefaultHeight, scale = 1.0f;
 };
 
-Model ww_model_for(const std::string& state, bool dark) {
+// The sample the Board states draw: six thousand made-up cards (the screenshot shows no one's own files), some converted, one failed.
+std::shared_ptr<board::Board> ww_board_sample() {
+    static constexpr int kCounts[board::kPileCount] = {412, 980, 640, 720, 130, 96, 84, 1530, 31, 1377};
+    static constexpr const char* kExt[board::kPileCount] = {"exe", "dll", "vxd", "inf", "txt", "hlp", "ttf", "bmp", "cab", "dat"};
+    static constexpr const char* kFormat[board::kPileCount] = {"PE", "PE", "LE", "text", "text", "", "", "", "CAB", ""};
+    auto b = std::make_shared<board::Board>();
+    b->source = "Sample OS.iso";
+    b->complete = true;
+    b->cabinets = 31;
+    for (std::size_t p = 0; p < board::kPileCount; ++p) {
+        for (int i = 0; i < kCounts[p]; ++i) {
+            board::Card c;
+            c.name = std::format("sample{:04}.{}", i, kExt[p]);
+            c.rel = std::format("disc/{}/{}", kExt[p], c.name);
+            c.size = 1024ull + static_cast<std::uint64_t>(i) * 733;
+            c.pile = static_cast<board::Pile>(p);
+            c.format = kFormat[p];
+            if (p <= 2 && i % 5 == 0) c.conv = board::Conv::Done;
+            else if (p <= 2 && i % 17 == 1) c.conv = board::Conv::CannotConvert;
+            else if (p == 1 && i == 3) c.conv = board::Conv::Failed;
+            b->cards.push_back(std::move(c));
+        }
+    }
+    return b;
+}
+
+Model ww_model_for(const std::string& state, bool dark, const std::string& board_root = {}, const std::string& board_focus_name = {}, const std::string& board_width = {}) {
     Model m;
     m.dark = dark;
     m.platforms = convert::platform_summary();
     m.drop_hint = convert::drop_hint();
     m.languages = ww_items(convert::targets_for({}));
+    if (state.starts_with("board")) {   // board (fans), board-expanded (a long column, a card selected), board-empty, board-scanning
+        m.page = Page::Board;
+        if (state == "board-empty") return m;
+        if (state == "board-scanning") {
+            m.board_busy = true;
+            m.board_stage = "Opening cabinets";
+            m.board_detail = "12 of 31";
+            m.board_percent = 69;
+            m.status_text = "Laying out Sample OS.iso";
+            return m;
+        }
+        if (!board_root.empty()) {
+            std::optional<board::Board> kept = board::load(fs::from_text(board_root));
+            if (kept) m.board = std::make_shared<board::Board>(std::move(*kept));
+        }
+        if (!m.board) {
+            m.board = ww_board_sample();
+            auto links = std::make_shared<board::Index>();   // made-up links for the sample: programs on twelve libraries, libraries on three
+            links->nodes.resize(m.board->cards.size());
+            for (std::uint32_t i = 0; i < links->nodes.size(); ++i) links->nodes[i].group = i;
+            for (std::uint32_t i = 0; i < 412; ++i) links->edges.push_back({i, 412 + i % 12, board::Link::Imports, 100});
+            for (std::uint32_t i = 415; i < 1392; ++i) links->edges.push_back({i, 412 + i % 3, board::Link::Imports, 100});
+            links->finish();
+            m.board_index = links;
+        } else {
+            if (std::optional<board::Index> kept = board::load_index(*m.board)) m.board_index = std::make_shared<const board::Index>(std::move(*kept));
+            if (std::optional<board::Signals> kept = board::load_signals(*m.board)) m.board_signals = std::make_shared<const board::Signals>(std::move(*kept));
+        }
+        board_load_decks(m);
+        board_rebuild_stacks(m);
+        if (state == "board-orphans") board_toggle_orphans(m);
+        if (state == "board-deck") {
+            board_apply_deck(m, 0);
+            m.board_decks_open = true;
+        }
+        if (state == "board-filter" && m.board_signals) {   // the first Mutex shared by the most files, as a filter, with the list open
+            board_open_signals(m, static_cast<int>(board::SignalType::Mutex));
+            if (!m.board_signal_rows.empty()) board_toggle_filter(m, m.board_signal_rows[0].first);
+        }
+        if ((state == "board-inspect" || state == "board-hover") && m.board_index) {   // a named file (else the first program), in the drawer or under the pointer
+            int card = -1;
+            const std::string wanted = text::lower(board_focus_name);
+            for (const board::Stack& stack : m.board_stacks) {
+                for (const std::uint32_t i : stack.todo)
+                    if (card < 0 && (wanted.empty() ? m.board->cards[i].pile == board::Pile::Programs : text::lower(m.board->cards[i].name) == wanted)) card = static_cast<int>(i);
+            }
+            if (state == "board-inspect") board_inspect_card(m, card);
+            else {
+                board_hover_card(m, card);
+                m.hot = Control::BoardCard;
+                m.hot_index = card;
+            }
+        }
+        if (state == "board-flow" || state == "board-trace" || state.starts_with("board-library")) {
+            m.board_width = board_width == "links" ? board::Width::Links : board_width == "calls" ? board::Width::Calls : board::Width::Files;
+            board_show_view(m, state == "board-flow" ? 1 : state == "board-trace" ? 2 : 3);
+            if (m.board_graph && !board_focus_name.empty()) {
+                const std::string wanted = text::lower(board_focus_name);
+                for (std::size_t i = 0; i < m.board_graph->modules.size(); ++i)
+                    if (m.board_graph->modules[i].name == wanted) board_go_to(m, static_cast<int>(i));
+            }
+            if (state == "board-library-hover" && m.board_library && !m.board_library->right.empty()) m.board_hover_export = 0;    // the heaviest export, its lines showing
+            if (state == "board-library-function" && m.board_library && !m.board_library->right.empty()) board_go_to(m, m.board_focus, m.board_library->right[0].key);
+        }
+        m.status_text = board::count_words(m.board->cards.size()) + " files on the board";
+        if (state == "board-expanded") {
+            m.board_expanded[1] = true;
+            m.board_scroll[1] = 46 * 200;
+            if (m.board_stacks[1].todo.size() > 205) m.board_selected = static_cast<int>(m.board_stacks[1].todo[203]);
+            else if (!m.board_stacks[1].todo.empty()) m.board_selected = static_cast<int>(m.board_stacks[1].todo[0]);
+        }
+        return m;
+    }
     if (state == "welcome") {   // the welcome as the window opens, its words fully shown
         m.welcome = true;
         m.welcome_alpha = 1;
@@ -3054,7 +3890,7 @@ int ww_screenshot(const WwShot& shot) {
     D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
     if (FAILED(painter.d2d()->CreateWicBitmapRenderTarget(bitmap.get(), props, target.put()))) return 2;
     target->SetDpi(96.0f * shot.scale, 96.0f * shot.scale);
-    const Model model = ww_model_for(shot.state, dark);
+    const Model model = ww_model_for(shot.state, dark, shot.board_root, shot.board_focus, shot.board_width);
     const Layout layout = compute_layout(model.view, shot.width, shot.height, kRailWidth, extras_for(model, model.view));
     Appearance look;
     look.dark = dark;
@@ -3071,13 +3907,129 @@ int ww_screenshot(const WwShot& shot) {
     return 0;
 }
 
+// `app --board-scan IMAGE [--board-out FOLDER]`: the board with no window (what the window's worker does): extracted or reloaded, with the real counts printed.
+int ww_board_scan(const stdfs::path& image, const std::string& out_folder) {
+    try {
+        const stdfs::path root = out_folder.empty() ? board::board_folder(ww_boards_root(), image) : fs::from_text(out_folder);
+        const auto start = std::chrono::steady_clock::now();
+        std::optional<board::Board> b = board::load(root);
+        const bool reloaded = b.has_value();
+        if (!b) {
+            const std::atomic<bool> never{false};
+            std::string last;
+            b = board::scan(image, root, [&](const board::ScanProgress& p) {
+                if (p.stage != last) out("{}\n", p.stage);
+                last = p.stage;
+            }, never);
+            board::save(*b);
+        }
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        out("{} in {:.2f} s: {}\n", reloaded ? "reloaded" : "extracted", seconds, fs::to_text(root));
+        out("files {}  cabinets {}  could not be read {}\n", b->cards.size(), b->cabinets, b->failures.size());
+        const board::Stacks stacks = board::build_stacks(*b);
+        std::uint64_t bytes = 0;
+        for (const board::Card& c : b->cards) bytes += c.size;
+        for (std::size_t i = 0; i < board::kPileCount; ++i)
+            out("  {:<10} {:>6}  ({} done)\n", board::pile_name(static_cast<board::Pile>(i)), stacks[i].total(), stacks[i].done.size());
+        out("total size {}\n", board::size_words(bytes));
+        for (const board::Failure& f : b->failures) out("failed: {}: {}\n", f.path, f.why);
+        const auto index_start = std::chrono::steady_clock::now();
+        std::optional<board::Index> index = board::load_index(*b);
+        const bool index_kept = index.has_value();
+        if (!index) {
+            const std::atomic<bool> go{false};   // (the board command builds what the window would)
+            index = board::build_index(*b, {}, go);
+            if (index) board::save_index(*b, *index);
+        }
+        if (index) {
+            std::uint64_t by_link[3] = {}, unresolved = 0, groups = 0, duplicated = 0, no_inbound = 0;
+            for (const board::Edge& e : index->edges) ++by_link[static_cast<int>(e.link)];
+            for (std::uint32_t i = 0; i < index->nodes.size(); ++i) {
+                const board::Node& n = index->nodes[i];
+                unresolved += n.unresolved;
+                if (n.group == i) {
+                    ++groups;
+                    duplicated += n.copies > 1 ? 1 : 0;
+                }
+                no_inbound += index->into(i).empty() ? 1 : 0;
+            }
+            out("index {} in {:.2f} s\n", index_kept ? "reloaded" : "built", std::chrono::duration<double>(std::chrono::steady_clock::now() - index_start).count());
+            out("distinct files {}  with copies {}\n", groups, duplicated);
+            out("links {}  imports {}  installs {}  references {}\n", index->edges.size(), by_link[0], by_link[1], by_link[2]);
+            out("names not on the board {}  unreadable {}  damaged tables {}  cards with no inbound link {}\n", unresolved, index->unreadable, index->damaged, no_inbound);
+            std::uint64_t symbols = 0, matched = 0, calls = 0;
+            for (const board::Edge& e : index->edges) {
+                symbols += e.symbols;
+                matched += e.matched;
+                calls += e.calls;
+            }
+            out("imported functions {}  matched to a real export {}  static call sites {}\n", symbols, matched, calls);
+            {
+                const std::optional<board::Signals> kept_signals = board::load_signals(*b);
+                const board::Projection projection = board::build_projection(*b, *index, kept_signals ? &*kept_signals : nullptr);
+                const board::Graph graph = board::build_graph(*b, *index, board::kLinkImports);
+                std::string path;
+                for (const std::uint32_t m : projection.hot_path) path += (path.empty() ? "" : " > ") + graph.modules[m].name;
+                const board::Orphans orphans = board::find_orphans(*b, *index, kept_signals ? &*kept_signals : nullptr);
+                out("orphans (no link found): {} distinct files\n", orphans.distinct);
+                for (const board::Deck& deck : board::builtin_decks()) {
+                    const std::vector<char> named = board::cards_named(*b, deck.names);
+                    std::set<std::uint32_t> files;
+                    for (std::uint32_t c = 0; c < named.size(); ++c)
+                        if (named[c]) files.insert(index->nodes[c].group);
+                    out("deck {}: {} distinct files\n", deck.name, files.size());
+                }
+                out("projected (a model, not measured): {} calls/hour in all, busiest channel {}/h, hot path {}\n", board::rate_words(projection.total), board::rate_words(projection.max_channel), path);
+                std::vector<std::pair<double, std::uint64_t>> top;
+                for (const auto& [key, rate] : projection.channels) top.emplace_back(rate, key);
+                std::sort(top.begin(), top.end(), [](const auto& x, const auto& y) { return x.first != y.first ? x.first > y.first : x.second < y.second; });
+                for (std::size_t i = 0; i < top.size() && i < 8; ++i)
+                    out("  {:>7}/h  {:>3.0f}% density  {} > {}\n", board::rate_words(top[i].first), 100 * board::flow_intensity(top[i].first, projection.max_channel), graph.modules[top[i].second >> 32].name, graph.modules[static_cast<std::uint32_t>(top[i].second)].name);
+            }
+            const auto signals_start = std::chrono::steady_clock::now();
+            std::optional<board::Signals> signals = board::load_signals(*b);
+            const bool signals_kept = signals.has_value();
+            if (!signals) {
+                const std::atomic<bool> go{false};
+                signals = board::build_signals(*b, *index, {}, go);
+                if (signals) board::save_signals(*b, *signals);
+            }
+            if (signals) {
+                out("signals {} in {:.2f} s: {} distinct, {} file-to-signal links\n", signals_kept ? "reloaded" : "built", std::chrono::duration<double>(std::chrono::steady_clock::now() - signals_start).count(),
+                    signals->signals.size(), signals->links.size());
+                for (std::size_t type = 0; type < board::kSignalTypes; ++type) {
+                    std::uint64_t distinct = 0, links = 0, shared = 0, best = 0;
+                    std::string busiest;
+                    for (std::uint32_t id = 0; id < signals->signals.size(); ++id) {
+                        if (static_cast<std::size_t>(signals->signals[id].type) != type) continue;
+                        ++distinct;
+                        std::set<std::uint32_t> files;
+                        for (const std::uint32_t at : signals->of_signal(id)) files.insert(index->nodes[signals->links[at].node].group);
+                        links += signals->of_signal(id).size();
+                        shared += files.size() > 1 ? 1 : 0;
+                        if (files.size() > best) {
+                            best = files.size();
+                            busiest = signals->signals[id].value;
+                        }
+                    }
+                    out("  {:<15} {:>6} distinct  {:>6} links  {:>5} shared by 2+ files  busiest: {} ({} files)\n", board::signal_type_name(static_cast<board::SignalType>(type)), distinct, links, shared, busiest.substr(0, 60), best);
+                }
+            }
+        }
+        return 0;
+    } catch (const std::exception& e) {
+        err_text(std::string("codebreaker app --board-scan: ") + e.what() + "\n");
+        return 1;
+    }
+}
+
 // ---- the entry --------------------------------------------------------------------------------------------------------------------------
 
 // A copy of this program that has no console, running the window.
-bool ww_start_detached_copy(const std::string& file) {
+bool ww_start_detached_copy(const std::string& file, const std::string& board) {
     wchar_t exe[MAX_PATH * 2] = {};
     GetModuleFileNameW(nullptr, exe, static_cast<DWORD>(std::size(exe)));
-    std::wstring command = L"\"" + std::wstring(exe) + L"\" app --in-process" + (file.empty() ? std::wstring() : L" \"" + widen(file) + L"\"");
+    std::wstring command = L"\"" + std::wstring(exe) + L"\" app --in-process" + (board.empty() ? std::wstring() : L" --board \"" + widen(board) + L"\"") + (file.empty() ? std::wstring() : L" \"" + widen(file) + L"\"");
     STARTUPINFOW si{};
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
@@ -3095,7 +4047,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
     (void)no_command_given;
     WwShot shot;
     bool screenshot = false, in_process = false;
-    std::string open_file;
+    std::string open_file, open_board_image, board_scan, board_out;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
         const auto value = [&]() -> std::string { return i + 1 < args.size() ? args[++i] : std::string(); };
@@ -3117,15 +4069,27 @@ int run(std::span<const std::string> args, bool no_command_given) {
             shot.height = static_cast<float>(std::atoi(v.substr(x + 1).c_str()));
         } else if (a == "--scale") {
             shot.scale = static_cast<float>(std::atof(value().c_str()));
+        } else if (a == "--board") {   // the window opens on the Board page with this image; with --screenshot, the kept board in this folder
+            open_board_image = value();
+            shot.board_root = open_board_image;
+        } else if (a == "--board-focus") {
+            shot.board_focus = value();
+        } else if (a == "--board-width") {
+            shot.board_width = value();
+        } else if (a == "--board-scan") {
+            board_scan = value();
+        } else if (a == "--board-out") {
+            board_out = value();
         } else if (a == "--in-process") {
             in_process = true;
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette] [--theme light|dark] [--size WxH] [--scale N]]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]]\n");
             return 2;
         }
     }
+    if (!board_scan.empty()) return ww_board_scan(fs::from_text(board_scan), board_out);
     if (screenshot) {
         if (shot.path.empty() || shot.width < 200 || shot.height < 200 || shot.scale < 0.5f || shot.scale > 4.0f) {
             err_text("codebreaker app: --screenshot needs a file name; --size at least 200x200; --scale between 0.5 and 4\n");
@@ -3139,7 +4103,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         DWORD ids[4] = {};
         const DWORD attached = GetConsoleProcessList(ids, static_cast<DWORD>(std::size(ids)));
         if (attached >= 2) {
-            if (ww_start_detached_copy(open_file)) return 0;
+            if (ww_start_detached_copy(open_file, open_board_image)) return 0;
         } else if (attached == 1) {
             ShowWindow(GetConsoleWindow(), SW_HIDE);
             FreeConsole();
@@ -3147,6 +4111,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
     }
     WwApp app;
     if (!open_file.empty()) app.open_at_start(fs::from_text(open_file));
+    if (!open_board_image.empty()) app.open_board_at_start(fs::from_text(open_board_image));
     return app.run();
 }
 

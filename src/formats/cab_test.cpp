@@ -269,6 +269,22 @@ CB_TEST("formats.cab.a_missing_neighbour_is_named", [] {
     }
 });
 
+CB_TEST("formats.cab.a_name_that_leaves_the_folder_is_kept_inside_it", [] {
+    fs::ScopedTempDir dir("cab-test");
+    const Bytes one = to_bytes("outside"), two = to_bytes("inside"), three = to_bytes("drive");
+    const SourceFile files[] = {{"..\\up\\evil.osd", one}, {"ok\\good.txt", two}, {"C:\\windows\\x.dll", three}};
+    const std::filesystem::path cabinet = dir.path() / "c.cab";
+    write(files, cabinet, {.compression = Compression::None, .timestamp = kStamp});
+    const std::filesystem::path out = dir.path() / "out";
+    CB_CHECK_THROWS_AS(FormatError, (void)extract(cabinet, out));   // the plain form still refuses
+    const std::vector<Extracted> done = extract_contained(cabinet, out);
+    CB_CHECK_EQ(done.size(), std::size_t{3});
+    CB_CHECK_EQ(fs::read_text(out / "_outside_cabinet" / "up" / "evil.osd"), std::string("outside"));
+    CB_CHECK_EQ(fs::read_text(out / "ok" / "good.txt"), std::string("inside"));
+    CB_CHECK_EQ(fs::read_text(out / "_outside_cabinet" / "C_" / "windows" / "x.dll"), std::string("drive"));
+    CB_CHECK(!std::filesystem::exists(dir.path() / "up"));
+});
+
 CB_TEST("formats.cab.unsupported_and_damaged_folders", [] {
     fs::ScopedTempDir dir("cab-test");
     CB_CHECK_THROWS_AS(UnsupportedError, (void)extract(testdata("type_0003.cab"), dir.path()));   // LZX

@@ -17,6 +17,7 @@
 #include "core/intmath.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
+#include "formats/lzx.hpp"
 
 namespace cb::formats::cab {
 
@@ -403,6 +404,16 @@ void Quantum::block(ByteView payload, std::uint16_t uncompressed, Bytes& out) {
     }
 }
 
+// LZX: the window's size is in bits 8-12 of the folder's type (formats/lzx.hpp).
+class Lzx final : public Decoder {
+public:
+    explicit Lzx(std::uint16_t type) : decoder_((type >> 8) & 31) {}
+    void block(ByteView payload, std::uint16_t uncompressed, Bytes& out) override { decoder_.frame(payload, uncompressed, out); }
+
+private:
+    lzx::CabinetDecoder decoder_;
+};
+
 // ---- reading a folder ----------------------------------------------------------------------------------
 
 std::unique_ptr<Decoder> decoder_for(const Cabinet& cab, const FolderEntry& folder) {
@@ -410,7 +421,7 @@ std::unique_ptr<Decoder> decoder_for(const Cabinet& cab, const FolderEntry& fold
         case 0: return std::make_unique<Stored>();
         case 1: return std::make_unique<MsZip>();
         case 2: return std::make_unique<Quantum>(folder.type);
-        case 3: throw UnsupportedError(kReader, 0, "LZX-compressed cabinets are not supported");
+        case 3: return std::make_unique<Lzx>(folder.type);
         default: bad(std::format("{}: unknown compression type {}", path_text(cab.path), folder.type & 15));
     }
 }
@@ -483,6 +494,23 @@ std::filesystem::path safe_path(const std::filesystem::path& outdir, const std::
     return out;
 }
 
+// Where a name lands when nothing may be refused: a safe name as ever; one that would leave the folder, inside it under "_outside_cabinet".
+std::filesystem::path contained_path(const std::filesystem::path& outdir, const std::string& name) {
+    const std::string slashes = text::replace_all(name, "\\", "/");
+    std::vector<std::string> parts;
+    bool outside = name.find(':') != std::string::npos || slashes.starts_with('/');
+    for (std::string_view part : text::split(slashes, '/')) {
+        if (part == "..") outside = true;
+        if (part.empty() || part == "." || part == "..") continue;
+        parts.push_back(text::replace_all(part, ":", "_"));
+    }
+    if (!outside && !parts.empty()) return safe_path(outdir, name);
+    std::filesystem::path out = outdir / "_outside_cabinet";
+    if (parts.empty()) return out / "unnamed";
+    for (const std::string& p : parts) out /= fs::from_text(p);
+    return out;
+}
+
 void set_file_time(const std::filesystem::path& target, const FileEntry& e) {
     std::tm tm{};
     tm.tm_year = 1980 + (e.date >> 9) - 1900;
@@ -501,8 +529,8 @@ void set_file_time(const std::filesystem::path& target, const FileEntry& e) {
 
 }  // namespace
 
-std::vector<Extracted> extract(const std::filesystem::path& cabinet, const std::filesystem::path& outdir,
-                               const std::optional<std::vector<std::string>>& names) {
+static std::vector<Extracted> extract_files(const std::filesystem::path& cabinet, const std::filesystem::path& outdir,
+                                            const std::optional<std::vector<std::string>>& names, bool contain) {
     const Cabinet cab = read(cabinet);
     std::vector<std::string> wanted;
     if (names) {
@@ -523,7 +551,7 @@ std::vector<Extracted> extract(const std::filesystem::path& cabinet, const std::
         for (const FileEntry* e : entries) {
             const std::uint64_t end = std::uint64_t{e->offset} + e->size;
             if (end > stream.size()) bad(path_text(cabinet) + ": " + e->name + " is cut short");
-            const std::filesystem::path target = safe_path(outdir, e->name);
+            const std::filesystem::path target = contain ? contained_path(outdir, e->name) : safe_path(outdir, e->name);
             fs::write_file(target, ByteView(stream).subspan(e->offset, e->size));
             set_file_time(target, *e);
             auto same = std::find_if(written.begin(), written.end(), [&](const Extracted& w) { return w.name == e->name; });
@@ -532,6 +560,14 @@ std::vector<Extracted> extract(const std::filesystem::path& cabinet, const std::
         }
     }
     return written;
+}
+
+std::vector<Extracted> extract(const std::filesystem::path& cabinet, const std::filesystem::path& outdir, const std::optional<std::vector<std::string>>& names) {
+    return extract_files(cabinet, outdir, names, false);
+}
+
+std::vector<Extracted> extract_contained(const std::filesystem::path& cabinet, const std::filesystem::path& outdir, const std::optional<std::vector<std::string>>& names) {
+    return extract_files(cabinet, outdir, names, true);
 }
 
 namespace {

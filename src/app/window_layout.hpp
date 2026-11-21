@@ -7,11 +7,20 @@
 // InfoBar above it when a file cannot be converted or the run failed; the right card (Source) holds the output folder and its two buttons.
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "app/board.hpp"
+#include "app/board_automation.hpp"
+#include "app/board_flow.hpp"
+#include "app/board_index.hpp"
+#include "app/board_inspect.hpp"
+#include "app/board_projection.hpp"
+#include "app/board_signals.hpp"
 #include "app/convert.hpp"
 #include "app/function_source.hpp"
 #include "app/palette.hpp"
@@ -78,14 +87,26 @@ enum class Control {
     // that the folder is dragged out of
     RecentRow, RecentRemove, PreviewFile, CodeView, OutputBox,
     // the Source card's tabs (Files, Functions, Check) and what the Functions, Check and Compare views hold (Model::hot_index is the function / line)
-    TabFiles, TabFunctions, TabCheck, FnRow, FnFilter, FnAll, FnPicker, FnPickItem, CheckShow, CheckAgain, CmpAsmLine, CmpCLine
+    TabFiles, TabFunctions, TabCheck, FnRow, FnFilter, FnAll, FnPicker, FnPickItem, CheckShow, CheckAgain, CmpAsmLine, CmpCLine,
+    // the Board page (window_board.hpp): Model::hot_index is the column of a foundation or head, the card of a card
+    NavBoard, BoardOpen, BoardCancel, BoardSearch, BoardFoundation, BoardExpand, BoardCard, BoardCardOpen, BoardCardConvert,
+    // its Flow and Trace views: a view tab or a kind of link (index), Map on the selected card, a band (index; + 100 on the right), a module of the trace (index)
+    BoardViewTab, BoardLinkChip, BoardMap, BoardFlowBand, BoardNode, BoardWidth,
+    // the Library view: a breadcrumb (index; -1 the board), a channel on the left or right (its position), a file that uses the export under the pointer (its module)
+    BoardCrumb, BoardLeft, BoardRight, BoardUser,
+    // the signal filters: a kind of signal (index), a value in its open list (the signal), an active filter's remove (the signal), Group copies
+    BoardSignalType, BoardSignalRow, BoardFilterChip, BoardGroupCopies,
+    // the X-Ray inspector: Inspect on the selected card, its close button, one of its rows (index)
+    BoardInspect, BoardInspectClose, BoardInspectRow,
+    // automation: Orphans, Decks and its list (a row's index; -1 Save this view) and a deck's remove, Export, the batch button
+    BoardOrphans, BoardDecks, BoardDeckRow, BoardDeckRemove, BoardExport, BoardBatch
 };
 
 // The Source card's three tabs; Compare (one function's original beside its rebuilt source) is a view of Functions.
 enum class SourceTab { Files, Functions, Check };
 
 // The pages of the rail.
-enum class Page { Convert, Tools, Settings };
+enum class Page { Convert, Tools, Settings, Board };
 
 // One line of the Tools list: a group heading, or a tool (its title and where it is in tools::all()).
 struct ToolRowItem {
@@ -262,6 +283,55 @@ struct Model {
     std::vector<CapabilityItem> capabilities;                   // the main view's "What this computer can convert"
     // a drop-down of a form field is open (the Language drop-down has its own flag above)
     int field_popup = -1;
+    // ---- the Board page (board.hpp, window_board.hpp). The board is shared, not copied, when the Model is.
+    std::shared_ptr<board::Board> board;
+    board::Stacks board_stacks;                                 // what each column lists, for board_query
+    std::string board_query;
+    std::array<bool, board::kPileCount> board_expanded{};       // the column is a scrolling list rather than a fan
+    std::array<bool, board::kPileCount> board_show_done{};      // the column lists the cards on its foundation
+    std::array<float, board::kPileCount> board_scroll{};        // an expanded column's scroll, DIPs
+    float board_hscroll = 0;                                    // the columns, sideways
+    int board_selected = -1;                                    // a card (Board::cards)
+    bool board_busy = false;                                    // an image is being extracted
+    int board_percent = 0;
+    std::string board_stage, board_detail, board_error;
+    int board_drag = -1;                                        // the card being dragged
+    float board_drag_x = 0, board_drag_y = 0;
+    int board_drop_pile = -1;                                   // the foundation it is over
+    bool board_orphans_only = false;                            // only the files nothing links to
+    std::shared_ptr<const board::Orphans> board_orphans;
+    std::vector<board::Deck> board_decks;                       // the built-in ones, then the person's
+    bool board_decks_open = false;
+    int board_active_deck = -1;
+    std::vector<std::string> board_deck_names;                  // the active deck's file names (any of them)
+    std::vector<std::uint32_t> board_batch;                     // the binaries among the cards shown that a batch would convert, most linked first
+    std::size_t board_batch_armed = 0;                          // the batch button was pressed once: pressing it again queues this many
+    bool board_inspecting = false;                              // the X-Ray drawer is open
+    std::shared_ptr<const board::Inspector> board_inspector;
+    float board_inspect_scroll = 0;
+    std::shared_ptr<const board::HoverLinks> board_hover;       // the card under the pointer and what it is linked to
+    std::array<std::uint32_t, board::kPileCount> board_hover_linked{};   // how many cards of each column are lit
+    bool board_group_copies = true;                             // identical files are one master card
+    std::vector<std::uint32_t> board_filters;                   // the signals a card must be wired to, all of them
+    int board_signal_type = -1;                                 // the kind of signal whose list is open
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> board_signal_rows;   // that list: (signal, distinct files), busiest first
+    float board_signal_scroll = 0;
+    int board_view = 0;                                         // 0 the cards, 1 Flow, 2 Trace, 3 Library
+    std::shared_ptr<const board::LibraryView> board_library;
+    std::shared_ptr<const board::Projection> board_projection;  // projected calls per hour (a model: board_projection.hpp)
+    double board_flow_time = 2.5;                               // seconds: where the flow dots are
+    std::vector<std::pair<int, std::string>> board_crumbs;      // the way here: (module, function or empty), the last is what is in view
+    std::string board_function;                                 // the Library view is centred on this function of the module in focus
+    int board_hover_export = -1;                                // the export channel whose lines are showing
+    float board_left_scroll = 0, board_right_scroll = 0;        // the Library view's two lists, DIPs
+    unsigned board_links = board::kLinkImports;                 // which kinds of link the maps count
+    board::Width board_width = board::Width::Files;             // what a channel's width counts
+    int board_focus = -1;                                       // the module the maps are centred on
+    std::shared_ptr<const board::Index> board_index;
+    std::shared_ptr<const board::Signals> board_signals;
+    std::shared_ptr<const board::Graph> board_graph;
+    std::shared_ptr<const board::Flow> board_flow;
+    std::shared_ptr<const board::Trace> board_trace;
 };
 
 // Every rectangle of the window for a client size.
@@ -270,7 +340,7 @@ struct Layout {
     // title bar
     Rect title_bar, app_icon, title_text, caption_minimize, caption_maximize, caption_close;
     // the navigation rail (empty when compute_layout is given no rail)
-    Rect rail, rail_convert, rail_tools, rail_settings;
+    Rect rail, rail_convert, rail_tools, rail_board, rail_settings;
     // cards and status bar
     Rect left_card, right_card, status_bar;
     Rect left_title, left_desc, right_title, right_desc;

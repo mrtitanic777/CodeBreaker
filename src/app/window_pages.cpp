@@ -218,6 +218,7 @@ PageHit pg_hit_form(const FormLayout& form, const std::vector<FieldItem>& fields
 PageHit hit_test_rail(const Layout& l, float x, float y) {
     if (l.rail_convert.contains(x, y)) return {Control::NavConvert, -1};
     if (l.rail_tools.contains(x, y)) return {Control::NavTools, -1};
+    if (l.rail_board.contains(x, y)) return {Control::NavBoard, -1};
     if (l.rail_settings.contains(x, y)) return {Control::NavSettings, -1};
     return {};
 }
@@ -262,7 +263,7 @@ void pg_add_fields(std::vector<PageHit>& order, const std::vector<FieldItem>& fi
 }
 
 void pg_add_rail(std::vector<PageHit>& order) {
-    for (const Control c : {Control::NavConvert, Control::NavTools, Control::NavSettings}) order.push_back({c, -1});
+    for (const Control c : {Control::NavConvert, Control::NavTools, Control::NavBoard, Control::NavSettings}) order.push_back({c, -1});
 }
 
 }  // namespace

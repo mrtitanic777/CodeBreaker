@@ -22,6 +22,8 @@ public:
     Taskbar& operator=(const Taskbar&) = delete;
     // The window's taskbar button exists (WM_TASKBARBUTTONCREATED): from here the state is shown; what was asked before is applied now.
     void attach(HWND window);
+    // Lets go of the system's taskbar object. Must come before COM is shut down on this thread: its code is unloaded then.
+    void release();
     void set(State state, int percent = 0);
     State state() const { return state_; }
 

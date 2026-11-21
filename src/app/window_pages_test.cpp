@@ -113,15 +113,15 @@ CB_TEST("app.window_pages.tab_visits_the_page_and_ends_at_the_rail", [] {
     const std::vector<PageHit> order = focus_order_tools(m);
     CB_CHECK(order.front().control == Control::ToolSearch);
     CB_CHECK(order[1] == PageHit({Control::ToolRow, 0}));
-    CB_CHECK(order[order.size() - 4].control == Control::Run);
+    CB_CHECK(order[order.size() - 5].control == Control::Run);
     CB_CHECK(order.back().control == Control::NavSettings);
     std::size_t browse = 0;
     for (const PageHit& h : order) browse += h.control == Control::FieldBrowse;
     CB_CHECK(browse == 2);   // (the two file fields)
     m.tool_selected = -1;
-    CB_CHECK(focus_order_tools(m).size() == 4);   // the search box and the rail
+    CB_CHECK(focus_order_tools(m).size() == 5);   // the search box and the rail
     m.setting_fields = {{"Theme", 3, "System", {"System", "Light", "Dark"}, true, ""}, {"masm", 0, "", {}, false, ""}};
-    CB_CHECK(focus_order_settings(m).size() == 2 + 1 + 3);
+    CB_CHECK(focus_order_settings(m).size() == 2 + 1 + 4);
 });
 
 CB_TEST("app.window_pages.advanced_settings_scroll_a_long_form", [] {
@@ -173,7 +173,7 @@ CB_TEST("app.window_pages.settings_are_rows_with_the_control_on_the_right", [] {
     CB_CHECK(hit_test_settings(s, m, s.advanced_row.x + 30, s.advanced_row.y + 20).control == Control::SettingsAdvanced);
     CB_CHECK(hit_test_settings(s, m, s.capability_rows[0].x + 30, s.capability_rows[0].y + 20).control == Control::None);
     const std::vector<PageHit> order = focus_order_settings(m);
-    CB_CHECK(order.size() == 3 + 1 + 1 + 3);   // the three settings, Locate..., Advanced, the rail
+    CB_CHECK(order.size() == 3 + 1 + 1 + 4);   // the three settings, Locate..., Advanced, the rail
     CB_CHECK(order[1] == PageHit({Control::FieldBrowse, 1}));
     CB_CHECK(order[3] == PageHit({Control::Locate, 1}));
     CB_CHECK(order[4].control == Control::SettingsAdvanced);
@@ -191,7 +191,7 @@ CB_TEST("app.window_pages.advanced_has_back_beside_its_title", [] {
     CB_CHECK(s.form.fields.size() == 2 && s.form.fields[0].input.w > 0 && s.form.fields[0].browse.w > 0);
     const std::vector<PageHit> order = focus_order_settings(m);
     CB_CHECK(order.front().control == Control::SettingsBack);
-    CB_CHECK(order.size() == 1 + 3 + 3);   // Back, the file field and its Browse, the text field, the rail
+    CB_CHECK(order.size() == 1 + 3 + 4);   // Back, the file field and its Browse, the text field, the rail
 });
 
 }  // namespace

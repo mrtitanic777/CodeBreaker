@@ -106,6 +106,13 @@ public:
         return v;
     }
     void skip_pad_byte() { pos_ += 1; }
+    // Before an uncompressed block in a cabinet: up to the next 16-bit word. A stream already on a word boundary has a whole word of padding.
+    void align_for_raw() {
+        ensure(16);
+        if (bits_ > 16) pos_ -= 2;
+        bits_ = 0;
+        buf_ = 0;
+    }
     std::size_t pos() const { return pos_; }
 
 private:
@@ -350,6 +357,173 @@ Bytes decompress(ByteView data, unsigned window_bits, std::size_t out_len, ByteV
                    out.begin() + static_cast<std::ptrdiff_t>(std::min(base + out_len, out.size())));
     e8_decode(produced, intel_filesize);
     return produced;
+}
+
+struct CabinetDecoder::State {
+    unsigned position_slots = 0;
+    std::size_t main_elements = 0;
+    std::size_t window_mask = 0;
+    Bytes window;
+    std::size_t at = 0;                // where the next byte goes (not wrapped)
+    std::uint64_t written = 0;
+    std::uint32_t r0 = 1, r1 = 1, r2 = 1;
+    std::vector<std::uint8_t> main_lens, len_lens;
+    HuffmanTable main_table, len_table, aligned_table;
+    bool header_read = false, intel_started = false;
+    std::uint32_t intel_filesize = 0;
+    std::int64_t intel_position = 0;
+    std::size_t frames = 0;
+    unsigned block_type = 0;
+    std::size_t block_remaining = 0, block_length = 0;
+
+    void put(std::uint8_t byte) {
+        window[at & window_mask] = byte;
+        ++at;
+        ++written;
+    }
+
+    void undo_e8(Bytes& data) {
+        const std::int64_t size = static_cast<std::int64_t>(data.size());
+        if (intel_started && intel_filesize != 0 && frames < kMaxE8Frames && size > 10) {
+            std::int64_t position = intel_position;
+            for (std::size_t i = 0; i + 10 < data.size();) {
+                if (data[i] != 0xE8) {
+                    ++i;
+                    ++position;
+                    continue;
+                }
+                const auto absolute = static_cast<std::int32_t>(static_cast<std::uint32_t>(data[i + 1]) | (static_cast<std::uint32_t>(data[i + 2]) << 8) |
+                                                                (static_cast<std::uint32_t>(data[i + 3]) << 16) | (static_cast<std::uint32_t>(data[i + 4]) << 24));
+                if (absolute >= -position && absolute < static_cast<std::int64_t>(intel_filesize)) {
+                    const std::int64_t relative = absolute >= 0 ? absolute - position : absolute + static_cast<std::int64_t>(intel_filesize);
+                    const auto value = static_cast<std::uint32_t>(relative);
+                    for (unsigned k = 0; k < 4; ++k) data[i + 1 + k] = static_cast<std::uint8_t>(value >> (8 * k));
+                }
+                i += 5;
+                position += 5;
+            }
+        }
+        intel_position += size;
+    }
+
+    void read_block_header(BitReader& bits) {
+        block_type = bits.read(3);
+        block_remaining = block_length = bits.read_wide(24);
+        if (block_length == 0) damaged("an LZX block of no bytes");
+        if (block_type == kAligned) {
+            std::vector<std::uint8_t> aligned(kAlignedNum);
+            for (std::uint8_t& a : aligned) a = static_cast<std::uint8_t>(bits.read(3));
+            aligned_table = HuffmanTable(aligned);
+        }
+        if (block_type == kVerbatim || block_type == kAligned) {
+            read_lengths(bits, main_lens, 0, kNumChars);
+            read_lengths(bits, main_lens, kNumChars, main_elements);
+            main_table = HuffmanTable(main_lens);
+            if (main_lens[0xE8] != 0) intel_started = true;
+            read_lengths(bits, len_lens, 0, kSecondaryLengths);
+            len_table = HuffmanTable(len_lens);
+        } else if (block_type == kUncompressed) {
+            intel_started = true;
+            bits.align_for_raw();
+            r0 = bits.raw_u32();
+            r1 = bits.raw_u32();
+            r2 = bits.raw_u32();
+        } else {
+            damaged(std::format("bad block type {}", block_type));
+        }
+    }
+
+    // One match or literal; how many bytes it made.
+    unsigned decode_one(BitReader& bits) {
+        const PositionTables& T = position_tables();
+        unsigned main = main_table.decode(bits);
+        if (main < kNumChars) {
+            put(static_cast<std::uint8_t>(main));
+            return 1;
+        }
+        main -= kNumChars;
+        const unsigned length_header = main & 7;
+        const unsigned length = (length_header == kPrimaryLengths ? len_table.decode(bits) + kPrimaryLengths : length_header) + kMinMatch;
+        const unsigned slot = main >> 3;
+        std::uint32_t offset;
+        if (slot == 0) {
+            offset = r0;
+        } else if (slot == 1) {
+            offset = r1;
+            r1 = r0;
+            r0 = offset;
+        } else if (slot == 2) {
+            offset = r2;
+            r2 = r0;
+            r0 = offset;
+        } else {
+            if (slot >= position_slots) damaged("match position slot out of range");
+            const unsigned extra = T.extra[slot];
+            if (block_type == kAligned && extra >= 3) {
+                const std::uint32_t verbatim = bits.read_wide(extra - 3) << 3;
+                offset = T.base[slot] - 2 + verbatim + aligned_table.decode(bits);
+            } else {
+                offset = T.base[slot] - 2 + (extra ? bits.read_wide(extra) : 0);
+            }
+            r2 = r1;
+            r1 = r0;
+            r0 = offset;
+        }
+        if (offset == 0 || offset > written || offset > window.size()) damaged("invalid match offset");
+        for (unsigned k = 0; k < length; ++k) put(window[(at - offset) & window_mask]);   // may overlap its own output
+        return length;
+    }
+};
+
+CabinetDecoder::CabinetDecoder(unsigned window_bits) : state_(std::make_unique<State>()) {
+    if (window_bits < 15 || window_bits > 21) throw UnsupportedError(kReader, 0, std::format("a window of 2^{} bytes", window_bits));
+    const PositionTables& T = position_tables();
+    const std::size_t window_size = std::size_t{1} << window_bits;
+    while (state_->position_slots < kPositionSlots && T.base[state_->position_slots] < window_size) ++state_->position_slots;
+    state_->main_elements = kNumChars + (std::size_t{state_->position_slots} << 3);
+    state_->window.assign(window_size, 0);
+    state_->window_mask = window_size - 1;
+    state_->main_lens.assign(state_->main_elements, 0);
+    state_->len_lens.assign(kSecondaryLengths + 1, 0);
+}
+
+CabinetDecoder::CabinetDecoder(CabinetDecoder&&) noexcept = default;
+CabinetDecoder& CabinetDecoder::operator=(CabinetDecoder&&) noexcept = default;
+CabinetDecoder::~CabinetDecoder() = default;
+
+void CabinetDecoder::frame(ByteView payload, std::size_t size, Bytes& out) {
+    if (size == 0 || size > kFrame) damaged(std::format("an LZX frame of {} bytes", size));
+    State& s = *state_;
+    BitReader bits(payload);
+    if (!s.header_read) {
+        s.header_read = true;
+        if (bits.read(1)) s.intel_filesize = bits.read_wide(32);
+    }
+    const std::size_t start = s.at;
+    std::size_t done = 0;
+    while (done < size) {
+        if (s.block_remaining == 0) s.read_block_header(bits);
+        const std::size_t run = std::min(s.block_remaining, size - done);
+        if (s.block_type == kUncompressed) {
+            for (const std::uint8_t byte : bits.raw_bytes(run)) s.put(byte);
+            done += run;
+            s.block_remaining -= run;
+            if (s.block_remaining == 0 && (s.block_length & 1)) bits.skip_pad_byte();   // blocks end on a word
+            continue;
+        }
+        std::size_t made = 0;
+        while (made < run) made += s.decode_one(bits);
+        const std::size_t over = made - run;   // a match may run past the part of the block asked for, never past the block
+        if (over > s.block_remaining - run) damaged("a match runs past its LZX block");
+        s.block_remaining -= made;
+        done += made;
+    }
+    if (done != size) damaged("a match runs past its LZX frame");
+    Bytes produced(size);
+    for (std::size_t i = 0; i < size; ++i) produced[i] = s.window[(start + i) & s.window_mask];
+    s.undo_e8(produced);
+    ++s.frames;
+    append(out, produced);
 }
 
 Bytes deblock(ByteView image, std::uint32_t first_size, ByteView first_hash, bool verify) {

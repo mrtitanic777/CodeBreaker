@@ -5,9 +5,8 @@
 // a set: a file whose folder index is 0xFFFD is continued FROM the previous cabinet, 0xFFFE continues INTO the next
 // one, 0xFFFF both; the cabinets name their neighbours (prev/next) and are looked up in the same directory.
 //
-// Decompression is done for stored (NONE), MSZIP (zlib) and QUANTUM (written from the published description of the
-// format). LZX cabinets are listed but not extracted (UnsupportedError). Block checksums are verified where a cabinet
-// carries them.
+// Decompression is done for stored (NONE), MSZIP (zlib), QUANTUM (written from the published description of the format)
+// and LZX (formats/lzx.hpp). Block checksums are verified where a cabinet carries them.
 #pragma once
 
 #include <cstdint>
@@ -110,6 +109,11 @@ struct Extracted {
 // is refused (FormatError). Returned in the order extracted; a name met twice is listed once, with the later path.
 std::vector<Extracted> extract(const std::filesystem::path& cabinet, const std::filesystem::path& outdir,
                                const std::optional<std::vector<std::string>>& names = std::nullopt);
+
+// The same, for a cabinet that must be taken apart whole: a name that would leave `outdir` is not refused but kept inside it, under
+// "_outside_cabinet" with its "..", root and drive parts dropped. Nothing is ever written outside `outdir`.
+std::vector<Extracted> extract_contained(const std::filesystem::path& cabinet, const std::filesystem::path& outdir,
+                                         const std::optional<std::vector<std::string>>& names = std::nullopt);
 
 struct SourceFile {
     std::string name;      // as stored in the cabinet (UTF-8; backslash-separated paths)

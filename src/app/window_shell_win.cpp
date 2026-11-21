@@ -51,8 +51,12 @@ void sh_copy(wchar_t (&to)[N], const std::wstring& text) {
 
 // ---- the taskbar button
 
-Taskbar::~Taskbar() {
+Taskbar::~Taskbar() { release(); }
+
+void Taskbar::release() {
     if (list_ != nullptr) static_cast<ITaskbarList3*>(list_)->Release();
+    list_ = nullptr;
+    window_ = nullptr;
 }
 
 void Taskbar::attach(HWND window) {
