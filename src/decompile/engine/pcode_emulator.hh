@@ -71,6 +71,16 @@ public:
     bool hasReg(const std::string& name) const;
     std::uint64_t reg(const std::string& name) const;                 // runtime_error for an unknown name; at most 8 bytes of a wider one
     void setReg(const std::string& name, std::uint64_t value);
+    // A register found once by name and then read and written without looking the name up (what an adapter does for the registers it reads and writes on every
+    // step or every instruction it hands to another interpreter). Valid for the Emulator it came from.
+    struct RegRef {
+        std::size_t space = 0;
+        std::uint64_t offset = 0;
+        unsigned size = 0;
+    };
+    RegRef regRef(const std::string& name) const;
+    std::uint64_t reg(const RegRef& ref) const;
+    void setReg(const RegRef& ref, std::uint64_t value);
     // Every register of at most 8 bytes that is not part of a bigger one (the ones a trace shows), in the description's order.
     // parts = true: every register of at most 8 bytes, the parts too (Z80's A and F as well as AF, x86's flags).
     const std::vector<Register>& registers(bool parts = false) const;

@@ -219,6 +219,16 @@ struct Emulator::Impl {
                 const Page* p = m.find(a >> kPageBits);
                 if (!p) return 0;
                 const std::uint8_t* b = p->d.data() + off;
+                if (size == 4) {   // (the common widths written out: the compiler turns these into one load and a byte swap)
+                    return m.big ? (std::uint64_t{b[0]} << 24 | std::uint64_t{b[1]} << 16 | std::uint64_t{b[2]} << 8 | b[3])
+                                 : (std::uint64_t{b[3]} << 24 | std::uint64_t{b[2]} << 16 | std::uint64_t{b[1]} << 8 | b[0]);
+                }
+                if (size == 8) {
+                    return m.big ? (std::uint64_t{b[0]} << 56 | std::uint64_t{b[1]} << 48 | std::uint64_t{b[2]} << 40 | std::uint64_t{b[3]} << 32 | std::uint64_t{b[4]} << 24 |
+                                    std::uint64_t{b[5]} << 16 | std::uint64_t{b[6]} << 8 | b[7])
+                                 : (std::uint64_t{b[7]} << 56 | std::uint64_t{b[6]} << 48 | std::uint64_t{b[5]} << 40 | std::uint64_t{b[4]} << 32 | std::uint64_t{b[3]} << 24 |
+                                    std::uint64_t{b[2]} << 16 | std::uint64_t{b[1]} << 8 | b[0]);
+                }
                 if (m.big)
                     for (unsigned i = 0; i < size; ++i) v = (v << 8) | b[i];
                 else
@@ -598,6 +608,15 @@ void Emulator::setReg(const std::string& name, std::uint64_t value) {
     const VarnodeData& v = impl_->regData(name);
     impl_->putValueBytes(impl_->mem[static_cast<std::size_t>(v.space->getIndex())], v.offset, v.size, value);
 }
+
+Emulator::RegRef Emulator::regRef(const std::string& name) const {
+    const VarnodeData& v = impl_->regData(name);
+    return {static_cast<std::size_t>(v.space->getIndex()), v.offset, static_cast<unsigned>(v.size)};
+}
+
+std::uint64_t Emulator::reg(const RegRef& ref) const { return impl_->getValueBytes(impl_->mem[ref.space], ref.offset, ref.size); }
+
+void Emulator::setReg(const RegRef& ref, std::uint64_t value) { impl_->putValueBytes(impl_->mem[ref.space], ref.offset, ref.size, value); }
 
 const std::vector<Emulator::Register>& Emulator::registers(bool parts) const {
     Impl& o = *impl_;
