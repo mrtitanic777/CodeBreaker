@@ -60,7 +60,8 @@ CB_TEST("x86link.replay.the_directive_corpus_is_the_same_but_the_known_cases", [
         return;
     }
     std::set<std::string> known;
-    for (std::string_view line : cb::text::lines(cb::fs::read_text(cb::testing::data_path("build/x86link/testdata/directives_known.txt")))) {
+    const std::string known_text = cb::fs::read_text(cb::testing::data_path("build/x86link/testdata/directives_known.txt"));
+    for (std::string_view line : cb::text::lines(known_text)) {
         if (!line.empty() && line[0] != '#') known.insert(std::string(line.substr(0, line.find(' '))));
     }
     const stdfs::path scratch = cb::testing::data_path("../work/x86link-directives");
