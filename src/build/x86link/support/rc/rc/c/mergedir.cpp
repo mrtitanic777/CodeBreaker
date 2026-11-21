@@ -44,14 +44,14 @@
  * merge the directories of all the res files into one large directory
  * stored on the first resfileinfo node
  */
-bool MergeDirectory( ResFileInfo *resfiles, WResMergeError **errs )
+bool MergeDirectory(Link& link,  ResFileInfo *resfiles, WResMergeError **errs )
 {
     if( errs != nullptr )
         *errs = nullptr;
     if( resfiles == nullptr )
         return false;
     for( ResFileInfo *cur = resfiles->next; cur != nullptr; cur = cur->next ) {
-        if( WResMergeDirs( resfiles->Dir, cur->Dir, errs ) ) {
+        if( WResMergeDirs(link,  resfiles->Dir, cur->Dir, errs ) ) {
             return true;
         }
     }

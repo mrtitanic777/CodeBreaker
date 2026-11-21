@@ -38,7 +38,7 @@
 #include <errno.h>
 #include "wio.h"
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/objects/objio.h"
 #include "build/x86link/base/fileio.h"
 
@@ -71,13 +71,13 @@ void TrapBreak( int sig_num )
     state().caught_break = true;
 }
 
-void CheckBreak( void )
+void CheckBreak(Link& link)
 /*********************/
 {
     NtIoState &st = state();
     if( st.caught_break ) {
         st.caught_break = false;                  /* prevent recursion */
-        LnkMsg( FTL+MSG_BREAK_HIT, nullptr );    /* suicides */
+        LnkMsg(link,  FTL+MSG_BREAK_HIT, nullptr );    /* suicides */
     }
 }
 
@@ -99,10 +99,10 @@ void LnkFilesInit( void )
     st.caught_break = false;
 }
 
-void PrintIOError( unsigned msg, const char *types, const char *name )
+void PrintIOError(Link& link,  unsigned msg, const char *types, const char *name )
 /********************************************************************/
 {
-    LnkMsg( msg, types, name, strerror( errno ) );
+    LnkMsg(link,  msg, types, name, strerror( errno ) );
 }
 
 static int DoOpen(Link& link,  const char *name, unsigned mode, bool isexe )
@@ -112,7 +112,7 @@ static int DoOpen(Link& link,  const char *name, unsigned mode, bool isexe )
     int     h;
     int     perm;
 
-    CheckBreak();
+    CheckBreak(link);
     mode |= O_BINARY;
     perm = PMODE_RW;
     if( isexe )
@@ -142,7 +142,7 @@ f_handle QOpenR(Link& link,  const char *name )
     h = DoOpen(link,  name, O_RDONLY, false );
     if( h != -1 )
         return( h );
-    LnkMsg( FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
+    LnkMsg(link,  FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
     return( NIL_FHANDLE );
 }
 
@@ -154,7 +154,7 @@ f_handle QOpenRW(Link& link,  const char *name )
     h = DoOpen(link,  name, O_RDWR | O_CREAT | O_TRUNC, false );
     if( h != -1 )
         return( h );
-    LnkMsg( FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
+    LnkMsg(link,  FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
     return( NIL_FHANDLE );
 }
 
@@ -166,7 +166,7 @@ f_handle ExeCreate(Link& link,  const char *name )
     h = DoOpen(link,  name, O_RDWR | O_CREAT | O_TRUNC, true );
     if( h != -1 )
         return( h );
-    LnkMsg( FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
+    LnkMsg(link,  FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
     return( NIL_FHANDLE );
 }
 
@@ -178,7 +178,7 @@ f_handle ExeOpen(Link& link,  const char *name )
     h = DoOpen(link,  name, O_RDWR, true );
     if( h != -1 )
         return( h );
-    LnkMsg( FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
+    LnkMsg(link,  FTL+MSG_CANT_OPEN, "12", name, strerror( errno ) );
     return( NIL_FHANDLE );
 }
 
@@ -237,21 +237,21 @@ static ssize_t  posix_write( int fildes, void const *buffer, size_t nbyte )
 #define posix_write     write
 #endif
 
-size_t QRead( f_handle file, void *buffer, size_t len, const char *name )
+size_t QRead(Link& link,  f_handle file, void *buffer, size_t len, const char *name )
 /***********************************************************************/
 /* read into far memory */
 {
     size_t      h;
 
-    CheckBreak();
+    CheckBreak(link);
     h = posix_read( file, buffer, len );
     if( h == IOERROR ) {
-        LnkMsg( ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
+        LnkMsg(link,  ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
     }
     return( h );
 }
 
-size_t QWrite( f_handle file, const void *buffer, size_t len, const char *name )
+size_t QWrite(Link& link,  f_handle file, const void *buffer, size_t len, const char *name )
 /******************************************************************************/
 /* write from far memory */
 {
@@ -267,21 +267,21 @@ size_t QWrite( f_handle file, const void *buffer, size_t len, const char *name )
 
         if( pos <= SpyWrite
           && SpyWrite <= pos + len
-          && file == wlink().Root->outfile->handle ) {
+          && file == link.Root->outfile->handle ) {
             DEBUG((DBG_ALWAYS, "About to write to %s (handle %d) %d bytes at position %d:", name, file, len, pos));
             PrintMemDump( buffer, len, DUMP_BYTE );
         }
     }
 #endif
 
-    CheckBreak();
+    CheckBreak(link);
     h = posix_write( file, buffer, len );
     if( name != nullptr ) {
         if( h == IOERROR ) {
-            LnkMsg( ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
+            LnkMsg(link,  ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
         } else if( static_cast<unsigned>( h ) != len ) {
             Msg_Get( MSG_IOERRLIST_7, rc_buff.data() );
-            LnkMsg( (FTL+MSG_IO_PROBLEM) & ~OUT_MAP, "12", name, rc_buff.data() );
+            LnkMsg(link,  (FTL+MSG_IO_PROBLEM) & ~OUT_MAP, "12", name, rc_buff.data() );
         }
     }
     return( h );
@@ -289,50 +289,50 @@ size_t QWrite( f_handle file, const void *buffer, size_t len, const char *name )
 
 extern const char NLSeq[3] = { "\r\n" };   // (a constant)
 
-void QWriteNL( f_handle file, const char *name )
+void QWriteNL(Link& link,  f_handle file, const char *name )
 /**********************************************/
 {
-    QWrite( file, NLSeq, sizeof( NLSeq ) - 1, name );
+    QWrite(link,  file, NLSeq, sizeof( NLSeq ) - 1, name );
 }
 
-void QClose( f_handle file, const char *name )
+void QClose(Link& link,  f_handle file, const char *name )
 /********************************************/
 /* file close */
 {
     int         h;
 
-    CheckBreak();
+    CheckBreak(link);
     h = close( file );
     state().open_files--;
     if( h != -1 )
         return;
-    LnkMsg( ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
+    LnkMsg(link,  ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
 }
 
-long QLSeek( f_handle file, long position, int start, const char *name )
+long QLSeek(Link& link,  f_handle file, long position, int start, const char *name )
 /**********************************************************************/
 {
     long    h;
 
-    CheckBreak();
+    CheckBreak(link);
     h = lseek( file, position, start );
     if( h == -1L
       && name != nullptr ) {
-        LnkMsg( ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
+        LnkMsg(link,  ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
     }
     return( h );
 }
 
-void QSeek( f_handle file, unsigned long position, const char *name )
+void QSeek(Link& link,  f_handle file, unsigned long position, const char *name )
 /*******************************************************************/
 {
-    QLSeek( file, position, SEEK_SET, name );
+    QLSeek(link,  file, position, SEEK_SET, name );
 }
 
-unsigned long QPos( f_handle file )
+unsigned long QPos(Link& link,  f_handle file )
 /*********************************/
 {
-    CheckBreak();
+    CheckBreak(link);
     return( lseek( file, 0L, SEEK_CUR ) );
 }
 
@@ -348,7 +348,7 @@ unsigned long QFileSize( f_handle file )
     return( result );
 }
 
-void QDelete( const char *name )
+void QDelete(Link& link,  const char *name )
 /******************************/
 {
     int   h;
@@ -358,11 +358,11 @@ void QDelete( const char *name )
     h = remove( name );
     if( h == -1
       && errno != ENOENT ) { /* file not found is OK */
-        LnkMsg( ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
+        LnkMsg(link,  ERR+MSG_IO_PROBLEM, "12", name, strerror( errno ) );
     }
 }
 
-bool QReadStr( f_handle file, char *dest, size_t size, const char *name )
+bool QReadStr(Link& link,  f_handle file, char *dest, size_t size, const char *name )
 /***********************************************************************/
 /* quick read string (for reading directive file) */
 {
@@ -372,7 +372,7 @@ bool QReadStr( f_handle file, char *dest, size_t size, const char *name )
 
     eof = false;
     while( --size > 0 ) {
-        len = QRead( file, &ch, 1, name );
+        len = QRead(link,  file, &ch, 1, name );
         if( len == 0
           || len == IOERROR ) {
             eof = true;

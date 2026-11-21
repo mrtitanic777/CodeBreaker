@@ -232,7 +232,7 @@ typedef struct symbol {
 
 extern void             FiniSym( void );
 extern void             CleanSym(Link& link);
-extern void             InitSym( void );
+extern void             InitSym(Link& link);
 extern void             WriteHashPointers(Link& link,  void * );
 extern void             ReadHashPointers(Link& link,  void * );
 extern void             ClearHashPointers( void );

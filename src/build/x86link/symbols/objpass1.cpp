@@ -34,7 +34,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/link/specials.h"
 #include "build/x86link/objects/objnode.h"
 #include "build/x86link/layout/objcalc.h"
@@ -150,12 +150,12 @@ static bool StoreCDatData( void *_piece, void *_loc )
     return( false );
 }
 
-void StoreInfoData( comdat_info *info )
+void StoreInfoData(Link& link,  comdat_info *info )
 /*************************************/
 {
     virt_mem    temp;
 
-    info->sdata->u1.vm_ptr = AllocStg( info->sdata->length );
+    info->sdata->u1.vm_ptr = AllocStg(link,  info->sdata->length );
     temp = info->sdata->u1.vm_ptr;
     RingLookup( info->pieces, StoreCDatData, &temp );
 }
@@ -231,7 +231,7 @@ void InfoCDatAltDef(Link& link,  comdat_info *info )
     if( !CheckSameData( mainsym, info ) ) {
         mainsym = static_cast<symbol *>(RingLookup( mainsym->u.altdefs, CheckAltSym, info ));
         if( mainsym == nullptr ) {
-            StoreInfoData( info );
+            StoreInfoData(link,  info );
             info->sym->info |= SYM_HAS_DATA;
         }
     }
@@ -259,7 +259,7 @@ static void AddCDatAltDef(Link& link,  segdata *sdata, symbol *sym, unsigned_8 *
 
 static void DoIncSymbol(Link& link,  void *_sym )
 /***********************************/
-{
+{
     symbol      *sym = static_cast<symbol *>(_sym);
     symbol      *mainsym;
     void        *data;
@@ -324,7 +324,7 @@ static bool CmpSegName( void *leader, void *name )
 
 static bool DefIncGroup(Link& link,  void *_def, void *_grouptab )
 /****************************************************/
-{
+{
     incgroupdef     *def = static_cast<incgroupdef *>(_def);
     group_entry     ***grouptab = static_cast<group_entry ***>(_grouptab);
     group_entry     *group;
@@ -355,7 +355,7 @@ void DoIncGroupDefs(Link& link)
     group_entry     **grouptab;
 
     numgroups = RingCount( link.IncGroupDefs );
-    link.IncGroups = static_cast<group_entry **>(MemAllocSafe( sizeof( group_entry * ) * numgroups ));
+    link.IncGroups = static_cast<group_entry **>(MemAllocSafe(link,  sizeof( group_entry * ) * numgroups ));
     grouptab = link.IncGroups;
     RingLookup( link.IncGroupDefs, bind_link( link, DefIncGroup ), &grouptab );
     RingFree( &link.IncGroupDefs );
@@ -369,7 +369,7 @@ void Set64BitMode(Link& link)
     if( !HintFormat(link,  MK_ALLOW_64 ) ) {
         if( (link.ObjFormat & OBJ_FMT_TOLD_BITNESS) == 0 ) {
             link.ObjFormat |= OBJ_FMT_TOLD_BITNESS;
-            LnkMsg( WRN+MSG_FOUND_XXBIT_OBJ, "sd",
+            LnkMsg(link,  WRN+MSG_FOUND_XXBIT_OBJ, "sd",
                         link.CurrMod->u1.source->infile->name.u.ptr, 64 );
         }
     }
@@ -383,7 +383,7 @@ void Set32BitMode(Link& link)
     if( !HintFormat(link,  MK_ALLOW_32 ) ) {
         if( (link.ObjFormat & OBJ_FMT_TOLD_BITNESS) == 0 ) {
             link.ObjFormat |= OBJ_FMT_TOLD_BITNESS;
-            LnkMsg( WRN+MSG_FOUND_XXBIT_OBJ, "sd",
+            LnkMsg(link,  WRN+MSG_FOUND_XXBIT_OBJ, "sd",
                         link.CurrMod->u1.source->infile->name.u.ptr, 32 );
         }
     }
@@ -395,7 +395,7 @@ void Set16BitMode(Link& link)
     if( !HintFormat(link,  MK_ALLOW_16 ) ) {
         if( (link.ObjFormat & OBJ_FMT_TOLD_BITNESS) == 0 ) {
             link.ObjFormat |= OBJ_FMT_TOLD_BITNESS;
-            LnkMsg( WRN+MSG_FOUND_XXBIT_OBJ, "sd",
+            LnkMsg(link,  WRN+MSG_FOUND_XXBIT_OBJ, "sd",
                     link.CurrMod->u1.source->infile->name.u.ptr, 16 );
         }
     }
@@ -439,7 +439,7 @@ static void DoAllocateSegment(Link& link,  segdata *sdata, const char *clname )
     if( !sdata->isdead
       && !sdata->isuninit
       && !sdata->iscdat ) {
-        sdata->u1.vm_ptr = AllocStg( sdata->length );
+        sdata->u1.vm_ptr = AllocStg(link,  sdata->length );
     }
 }
 
@@ -494,7 +494,7 @@ static void CheckQNXSegMismatch(Link& link,  stateflag mask )
     if( (link.FmtData.type & MK_QNX)
       && (link.LinkState & mask)
       && !link.FmtData.u.qnx.seen_mismatch ) {
-        LnkMsg( WRN+LOC+MSG_CANNOT_HAVE_16_AND_32, nullptr );
+        LnkMsg(link,  WRN+LOC+MSG_CANNOT_HAVE_16_AND_32, nullptr );
         link.FmtData.u.qnx.seen_mismatch = true;
     }
 }
@@ -505,9 +505,9 @@ class_entry *DuplicateClass(Link& link,  class_entry *class_ )
 {
     class_entry *newclass;
 
-    newclass = static_cast<class_entry *>(CarveAlloc( link.CarveClass ));
+    newclass = static_cast<class_entry *>(CarveAlloc(link,  link.CarveClass ));
     memcpy( newclass, class_, sizeof( class_entry ) );
-    newclass->name.u.ptr = AddBufferStringTable( &link.PermStrings, class_->name.u.ptr, strlen( class_->name.u.ptr ) + 1 );
+    newclass->name.u.ptr = AddBufferStringTable(link,  &link.PermStrings, class_->name.u.ptr, strlen( class_->name.u.ptr ) + 1 );
     class_->next = newclass;
     return( newclass );
 }
@@ -528,9 +528,9 @@ class_entry *FindClass(Link& link,  section *sect, const char *name, byte bits, 
         lastclass = class_;
     }
     namelen = strlen( name );
-    class_ = static_cast<class_entry *>(CarveAlloc( link.CarveClass ));
+    class_ = static_cast<class_entry *>(CarveAlloc(link,  link.CarveClass ));
     class_->bits = bits;
-    class_->name.u.ptr = AddBufferStringTable( &link.PermStrings, name, namelen + 1 );
+    class_->name.u.ptr = AddBufferStringTable(link,  &link.PermStrings, name, namelen + 1 );
     class_->segs = nullptr;
     class_->section = sect;
     class_->next = nullptr;
@@ -637,7 +637,7 @@ seg_leader *InitLeader(Link& link,  const char *segname )
 {
     seg_leader  *seg;
 
-    seg = static_cast<seg_leader *>(CarveAlloc( link.CarveLeader ));
+    seg = static_cast<seg_leader *>(CarveAlloc(link,  link.CarveLeader ));
     seg->next = nullptr;
     seg->next_by_group = nullptr;
     seg->pieces = nullptr;
@@ -649,7 +649,7 @@ seg_leader *InitLeader(Link& link,  const char *segname )
     SET_ADDR_UNDEFINED( seg->seg_addr );
     seg->group = nullptr;
     seg->info = SEGINF_NONE;
-    seg->segname.u.ptr = AddStringStringTable( &link.PermStrings, segname );
+    seg->segname.u.ptr = AddStringStringTable(link,  &link.PermStrings, segname );
     seg->dbgtype = NOT_DEBUGGING_INFO;
     seg->segflags = link.FmtData.def_seg_flags;
     return( seg );
@@ -694,7 +694,7 @@ void AddSegment(Link& link,  segdata *sd, class_entry *class_ )
                 segname_16 = seg_name;
                 segname_32 = leader->segname.u.ptr;
             }
-            LnkMsg( ERR+MSG_CANT_COMBINE_32_AND_16, "12", segname_32, segname_16 );
+            LnkMsg(link,  ERR+MSG_CANT_COMBINE_32_AND_16, "12", segname_32, segname_16 );
         }
     }
     leader->dbgtype = DBIColSeg(link,  class_ );
@@ -724,7 +724,7 @@ void AddSegment(Link& link,  segdata *sd, class_entry *class_ )
 
 void FreeLeader(Link& link,  void *seg )
 /**************************/
-{
+{
     RingWalk( static_cast<seg_leader *>(seg)->pieces, bind_link( link, FreeSegData ) );
     CarveFree( link.CarveLeader, seg );
 }
@@ -742,7 +742,7 @@ void AddToGroup(Link& link,  group_entry *group, seg_leader *seg )
         return;
     if( seg->group != nullptr
       && seg->group != group ) {
-        LnkMsg( ERR+LOC+MSG_SEG_IN_TWO_GROUPS, "123", seg->segname.u.ptr,
+        LnkMsg(link,  ERR+LOC+MSG_SEG_IN_TWO_GROUPS, "123", seg->segname.u.ptr,
                                    seg->group->sym->name.u.ptr, group->sym->name.u.ptr );
         return;
     }
@@ -762,7 +762,7 @@ void AddToGroup(Link& link,  group_entry *group, seg_leader *seg )
             segname_16 = seg->segname.u.ptr;
             segname_32 = group->leaders->segname.u.ptr;
         }
-        LnkMsg( ERR+MSG_CANT_COMBINE_32_AND_16, "12", segname_32, segname_16 );
+        LnkMsg(link,  ERR+MSG_CANT_COMBINE_32_AND_16, "12", segname_32, segname_16 );
     }
     seg->group = group;
     Ring2Append( &group->leaders, seg );
@@ -815,9 +815,9 @@ void DefineSymbol(Link& link,  symbol *sym, segnode *snode, offset off, unsigned
 #ifdef _OS2
             if( link.FmtData.type & MK_PE ) {
                 if( sym->p.import_dll != nullptr ) {
-                    AddPEImportLocalSym( sym, sym->p.import_dll->iatsym );
+                    AddPEImportLocalSym(link,  sym, sym->p.import_dll->iatsym );
                     sym_type |= SYM_REFERENCED;
-                    LnkMsg( WRN+MSG_IMPORT_LOCAL, "s", sym->name.u.ptr );
+                    LnkMsg(link,  WRN+MSG_IMPORT_LOCAL, "s", sym->name.u.ptr );
                 }
             }
 #endif
@@ -831,7 +831,7 @@ void DefineSymbol(Link& link,  symbol *sym, segnode *snode, offset off, unsigned
         sym->info &= ~SYM_1_DISTRIB;
         if( snode != nullptr ) {
             if( link.LinkFlags & LF_STRIP_CODE ) {
-                DefStripSym( sym, snode->entry );
+                DefStripSym(link,  sym, snode->entry );
             }
             if( snode->info & SEGINF_CODE ) {
 #ifdef _EXE
@@ -1008,7 +1008,7 @@ void SetComdatSym(Link& link,  symbol *sym, segdata *sdata )
 {
     if( link.LinkFlags & LF_STRIP_CODE ) {
         if( sdata->iscode ) {
-            DefStripSym( sym, sdata );
+            DefStripSym(link,  sym, sdata );
         }
     }
     sym->info |= SYM_DEFINED;
@@ -1043,7 +1043,7 @@ void DefineComdat(Link& link,  segdata *sdata, symbol *sym, offset value,
         sym->info |= select;
         SetComdatSym(link,  sym, sdata );
         sym->addr.off += value;
-        sdata->u1.vm_ptr = AllocStg( sdata->length );
+        sdata->u1.vm_ptr = AllocStg(link,  sdata->length );
 
         if( nullptr == data ) {
             PutInfoNulls( sdata->u1.vm_ptr, sdata->length );
@@ -1070,7 +1070,7 @@ void DefineLazyExtdef(Link& link,  symbol *sym, symbol *defsym, bool isweak )
                 defaultsym = sym->e.def;
             }
             if( defsym != defaultsym ) {
-                LnkMsg( WRN+LOC_REC+MSG_LAZY_EXTDEF_MISMATCH, "S",sym );
+                LnkMsg(link,  WRN+LOC_REC+MSG_LAZY_EXTDEF_MISMATCH, "S",sym );
             }
         } else if( (sym->info & SYM_OLDHAT) == 0
           || IS_SYM_LINK_WEAK( sym ) ) {
@@ -1117,12 +1117,12 @@ static symbol **GetVFList(Link& link,  symbol *defsym, symbol *mainsym, bool gen
         }
         if( (link.LinkFlags & LF_STRIP_CODE)
           && mainsym != nullptr ) {
-            AddSymEdge( condsym, mainsym );
+            AddSymEdge(link,  condsym, mainsym );
         }
         count++;
     }
     if( generate ) {
-        symlist = static_cast<symbol **>(MemAllocSafe( sizeof( symbol * ) * count ));
+        symlist = static_cast<symbol **>(MemAllocSafe(link,  sizeof( symbol * ) * count ));
         liststart = symlist;
         *symlist = defsym;
         symlist++;
@@ -1187,19 +1187,19 @@ void DefineVFTableRecord(Link& link,  symbol *sym, symbol *defsym, bool ispure,
       && !IS_SYM_COMMUNAL( sym ) ) {
         if( IS_SYM_VF_REF( sym ) ) {
             if( IS_SYM_PURE_REF( sym ) ^ ispure ) {
-                LnkMsg( WRN+LOC_REC+MSG_VF_PURE_MISMATCH, "S", sym );
+                LnkMsg(link,  WRN+LOC_REC+MSG_VF_PURE_MISMATCH, "S", sym );
             }
             symlist = GetVFList(link,  defsym, nullptr, true, rtns );
             if( symlist == nullptr ) {
                 if( !CheckVFList( sym ) ) {
-                    LnkMsg( WRN+LOC_REC+MSG_VF_TABLE_MISMATCH, "S", sym );
+                    LnkMsg(link,  WRN+LOC_REC+MSG_VF_TABLE_MISMATCH, "S", sym );
                 }
             } else {
                 startlist = symlist;
                 oldlist = sym->e.vfdata;
                 for( ;; ) {
                     if( *oldlist != *symlist ) {
-                        LnkMsg( WRN+LOC_REC+MSG_VF_TABLE_MISMATCH, "S", sym );
+                        LnkMsg(link,  WRN+LOC_REC+MSG_VF_TABLE_MISMATCH, "S", sym );
                         break;
                     }
                     if( *oldlist == nullptr )
@@ -1216,15 +1216,15 @@ void DefineVFTableRecord(Link& link,  symbol *sym, symbol *defsym, bool ispure,
     }
 }
 
-void DefineVFReference( void *snode, symbol *targ, bool issym )
+void DefineVFReference(Link& link,  void *snode, symbol *targ, bool issym )
 /***********************************************************/
 {
     if( issym ) {
-        AddSymEdge( static_cast<symbol *>(snode), targ );
+        AddSymEdge(link,  static_cast<symbol *>(snode), targ );
     } else {
         segnode *node = static_cast<segnode *>(snode);
         if( node->info & SEGINF_CODE ) {
-            AddEdge( node->entry, targ );
+            AddEdge(link,  node->entry, targ );
         }
     }
 }
@@ -1297,7 +1297,7 @@ bool SeenDLLRecord(Link& link)
 {
     link.LinkState |= LS_FMT_SEEN_IMPORT_CMT;
     if( !HintFormat(link,  MK_NE | MK_OS2_FLAT | MK_PE | MK_ELF | MK_NOVELL ) ) {
-        LnkMsg( WRN+LOC+MSG_DLL_WITH_386, nullptr );
+        LnkMsg(link,  WRN+LOC+MSG_DLL_WITH_386, nullptr );
         return( false );    /* Not OK to process import/export records. */
     } else {
         return( true );

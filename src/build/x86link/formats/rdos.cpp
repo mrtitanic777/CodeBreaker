@@ -31,7 +31,7 @@
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include <exerdos.h>
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
@@ -335,7 +335,7 @@ void FiniRdosLoadFile(Link& link)
 {
     if( (link.FmtData.type & MK_RDOS_16)
       && (link.LinkState & LS_FMT_SEEN_32BIT) ) {
-        LnkMsg( WRN+LOC+MSG_CANNOT_HAVE_16_AND_32, nullptr );
+        LnkMsg(link,  WRN+LOC+MSG_CANNOT_HAVE_16_AND_32, nullptr );
     }
     state().HeaderSize = getHeaderSize(link);
     SeekLoad(link,  state().HeaderSize );

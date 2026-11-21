@@ -31,7 +31,7 @@
 
 #include <cstring>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "exephar.h"
 #include "build/x86link/formats/phar.h"
 #include "build/x86link/fixups/reloc.h"
@@ -263,7 +263,7 @@ static unsigned_32  WriteRTPBlock(Link& link)
     if( link.FmtData.u.phar.breaksym != nullptr ) {
         sym = FindISymbol(link,  link.FmtData.u.phar.breaksym );
         if( sym == nullptr ) {
-            LnkMsg( WRN+MSG_BREAKSYM_NOT_FOUND, "s", link.FmtData.u.phar.breaksym );
+            LnkMsg(link,  WRN+MSG_BREAKSYM_NOT_FOUND, "s", link.FmtData.u.phar.breaksym );
             offset = 0;
         } else {
             offset = sym->addr.off;
@@ -459,7 +459,7 @@ void CheckPharLapData(Link& link)
 /***************************/
 {
     if( (link.FmtData.type & MK_PHAR_FLAT) && (link.LinkState & LS_HAVE_16BIT_CODE) && !DirectivesHaveRealBreak() ) {
-        LnkMsg( WRN+MSG_NO_REALBREAK_WITH_16BIT, nullptr );
+        LnkMsg(link,  WRN+MSG_NO_REALBREAK_WITH_16BIT, nullptr );
     }
 }
 

@@ -32,7 +32,7 @@
 
 
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/formats/pe.h"
 #include "build/x86link/base/ring.h"
@@ -75,7 +75,7 @@ void NormalizeAddr(Link& link)
       || !link.FmtData.u.dos.ovl_short ) {
         new_seg = ( link.CurrLoc.off >> link.FmtData.SegShift ) + link.CurrLoc.seg;
         if( new_seg > 0xFFFF ) {
-            LnkMsg( ERR+MSG_APP_TOO_BIG_FOR_DOS, nullptr );
+            LnkMsg(link,  ERR+MSG_APP_TOO_BIG_FOR_DOS, nullptr );
         }
         link.CurrLoc.seg = static_cast<segment>( new_seg );
         link.CurrLoc.off &= link.FmtData.SegMask;
@@ -91,7 +91,7 @@ static offset BumpUp(Link& link,  offset ptr, offset size )
       && (link.CurrentSeg->info & SEGINF_USE_32) == 0
       && (link.FmtData.type & MK_RAW) == 0
       && ptr > 0x10000 ) {
-        LnkMsg( ERR+MSG_SEG_TOO_BIG, "sl", link.CurrentSeg->segname, static_cast<unsigned long>( ptr - 0x10000 ) );
+        LnkMsg(link,  ERR+MSG_SEG_TOO_BIG, "sl", link.CurrentSeg->segname, static_cast<unsigned long>( ptr - 0x10000 ) );
     }
     return( ptr );
 }
@@ -173,7 +173,7 @@ void ChkLocated(Link& link,  addr_type *seg_addr, bool fixed )
 {
     if( fixed ) {
         if( ( link.CurrLoc.seg << link.FmtData.SegShift ) + link.CurrLoc.off > ( seg_addr->seg << link.FmtData.SegShift ) + seg_addr->off ) {
-            LnkMsg( ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", seg_addr );
+            LnkMsg(link,  ERR + MSG_FIXED_LOC_BEFORE_CUR_LOC, "a", seg_addr );
         } else {
             link.CurrLoc = *seg_addr;
         }

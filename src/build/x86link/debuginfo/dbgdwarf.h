@@ -35,7 +35,7 @@
 #include "build/x86link/base/strtab.h"
 
 extern void     DwarfInit( void );
-extern void     DwarfInitModule( mod_entry * );
+extern void     DwarfInitModule(Link& link,  mod_entry * );
 extern void     DwarfP1ModuleScanned( void );
 extern void     DwarfP1ModuleFinished( Link& link, mod_entry * );
 extern void     DwarfAddModule(Link& link,  mod_entry *, section * );

@@ -41,7 +41,7 @@
 #include <vector>
 #include "walloca.h"
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/layout/objcalc.h"
 #include "build/x86link/base/ring.h"
 #include "exeelf.h"
@@ -236,10 +236,10 @@ void DwarfInit( void )
     }
 }
 
-void DwarfInitModule( mod_entry *mod )
+void DwarfInitModule(Link& link,  mod_entry *mod )
 /*******************************************/
 {
-    mod->u3.d = static_cast<DWARFMODINFO *>( _PermAlloc( sizeof( dwarfmodinfo ) ) );
+    mod->u3.d = static_cast<DWARFMODINFO *>( PermAlloc( link, sizeof( dwarfmodinfo ) ) );
     std::memset( mod->u3.d, 0, sizeof( dwarfmodinfo ) );
 }
 
@@ -275,7 +275,7 @@ static int GetStmtHeaderSize( mod_entry *mod )
 static void DwarfAddLines(Link& link,  lineinfo *info )
 /*****************************************/
 // calculate the amount of space needed to hold all of the line # info.
-{
+{
     ln_off_pair _WCUNALIGNED *lineptr;
     unsigned_32         dwsize;
     std::array<unsigned_8, 3 + 2 * MAX_LEB128> buff;
@@ -350,7 +350,7 @@ void DwarfP1ModuleFinished( Link& link, mod_entry *mod )
 
 void DwarfStoreAddrInfo(Link& link,  mod_entry *mod )
 /**********************************************/
-{
+{
     sectioninfo &aranges = dwarfState().sect( Sect::aranges );
 
     if( (mod->flags_mod & MOD_DBI_SEEN) == 0 ) {
@@ -473,7 +473,7 @@ void DwarfGenModule(Link& link)
 
 static void DefAClass(Link& link,  void *_seg )
 /*********************************/
-{
+{
     DwarfState  &st = dwarfState();
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
 
@@ -573,7 +573,7 @@ void DwarfGenGlobal(Link& link,  symbol *sym, section *sect )
 
 void DwarfGenLines(Link& link,  lineinfo *info )
 /**********************************/
-{
+{
     ln_off_pair _WCUNALIGNED *lineptr;
     unsigned            dwsize;
     dw_linenum_delta    linedelta;
@@ -658,7 +658,7 @@ static void DwarfAddAddrInit( segdata *sdata, void *cookie )
 static void DwarfAddAddrAdd(Link& link,  segdata *sdata, offset delta, offset size,
                              void *cookie, bool isnewmod )
 /********************************************************/
-{
+{
     /* unused parameters */ (void)delta; (void)size; (void)cookie;
 
     if( isnewmod
@@ -691,7 +691,7 @@ static offset GetNewAddrOffset(Link& link,  segdata *sdata, offset delta )
 
 static void DwarfGenAddrInit(Link& link,  segdata *sdata, void *_tuple )
 /**********************************************************/
-{
+{
     arange_tuple *tuple = static_cast<arange_tuple *>( _tuple );
 
     if( link.FmtData.type & MK_SEGMENTED ) {
@@ -705,7 +705,7 @@ static void DwarfGenAddrInit(Link& link,  segdata *sdata, void *_tuple )
 static void DwarfGenAddrAdd(Link& link,  segdata *sdata, offset delta, offset size,
                              void *_tuple, bool isnewmod )
 /*********************************************************************/
-{
+{
     arange_tuple *tuple = static_cast<arange_tuple *>( _tuple );
     mod_entry * mod;
     unsigned    tup_size;
@@ -747,7 +747,7 @@ static void DwarfGenAddrAdd(Link& link,  segdata *sdata, offset delta, offset si
 
 void DwarfGenAddrInfo(Link& link,  seg_leader *seg )
 /*********************************************/
-{
+{
     arange_tuple tuple;
 
     DBIAddrInfoScan(link,  seg, bind_link( link, DwarfGenAddrInit ), bind_link( link, DwarfGenAddrAdd ), &tuple );
@@ -763,17 +763,17 @@ void DwarfAddrSectStart(Link& link,  section *sect )
       && ( st.sect( Sect::abbrev ).size > 0 ) ) {
         for( std::size_t index = 0; index < NUM_SECTIONS; index++ ) {
             if( index != idx( Sect::abbrev ) ) {
-                st.sections[index].vm_ptr = DBIAlloc( st.sections[index].size );
+                st.sections[index].vm_ptr = DBIAlloc(link,  st.sections[index].size );
             }
         }
     }
 }
 
-static void FillHeader( Elf32_Shdr *hdr, const char *name, stringtable *strtab,
+static void FillHeader(Link& link,  Elf32_Shdr *hdr, const char *name, stringtable *strtab,
                         unsigned_32 curr_off )
 /***********************************************************************/
 {
-    hdr->sh_name = AddStringStringTableOffs( strtab, name );
+    hdr->sh_name = AddStringStringTableOffs(link,  strtab, name );
     hdr->sh_type = SHT_PROGBITS;
     hdr->sh_flags = 0;
     hdr->sh_addr = 0;
@@ -816,7 +816,7 @@ static unsigned_32 WriteELFSections(Link& link,  unsigned_32 file_off, unsigned_
                 addsize = st.sections[addidx].size;
             }
             if( seg->size != 0 ) {
-                FillHeader( hdr, seg->segname.u.ptr, strtab, curr_off );
+                FillHeader(link,  hdr, seg->segname.u.ptr, strtab, curr_off );
                 hdr->sh_size = seg->size + addsize;
                 WriteLeaderLoad(link,  seg );
                 if( addsize != 0 ) {
@@ -831,7 +831,7 @@ static unsigned_32 WriteELFSections(Link& link,  unsigned_32 file_off, unsigned_
     for( addidx = 0; addidx < NUM_SECTIONS; addidx++ ) {
         if( ( st.sections[addidx].size != 0 )
           && ( st.sections[addidx].start == 0 ) ) {
-            FillHeader( hdr, st.sections[addidx].name, strtab, curr_off );
+            FillHeader(link,  hdr, st.sections[addidx].name, strtab, curr_off );
             hdr->sh_size = st.sections[addidx].size;
             WriteDwarfSect(link,  addidx, hdr->sh_size );
             curr_off += hdr->sh_size;
@@ -936,12 +936,12 @@ void DwarfWrite(Link& link)
     std::vector<Elf32_Shdr> sect_header( elf_header.e_shnum );   // the first is the null section
     savepos = PosLoad(link) + shdr_size;
     SeekLoad(link,  savepos );
-    InitStringTable( &strtab, false );
-    AddCharStringTable( &strtab, '\0' );
+    InitStringTable(link,  &strtab, false );
+    AddCharStringTable(link,  &strtab, '\0' );
     virt_off = sizeof( Elf32_Ehdr ) + shdr_size;
     virt_off = WriteELFSections(link,  savepos, virt_off, sect_header.data() + 1, &strtab );
     sh = sect_header.data() + elf_header.e_shstrndx;
-    FillHeader( sh, ".shstrtab", &strtab, virt_off );
+    FillHeader(link,  sh, ".shstrtab", &strtab, virt_off );
     sh->sh_type = SHT_STRTAB;
     sh->sh_size = GetStringTableSize( &strtab );
     WriteStringTable( &strtab, bind_link( link, WriteLoad3 ), nullptr );

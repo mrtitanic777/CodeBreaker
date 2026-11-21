@@ -47,10 +47,10 @@ size_t WResIDSize( const WResID *id )
     return( offsetof( WResID, ID.Num ) + sizeof( id->ID.Num ) );
 }
 
-WResTypeNode *newTypeNode( const WResID *type_id )
+WResTypeNode *newTypeNode(Link& link,  const WResID *type_id )
 {
     const size_t    id_size = WResIDSize( type_id );
-    auto            *typenode = static_cast<WResTypeNode *>( WRESALLOC( offsetof( WResTypeNode, Info.TypeName ) + id_size ) );
+    auto            *typenode = static_cast<WResTypeNode *>( WRESALLOC(link,  offsetof( WResTypeNode, Info.TypeName ) + id_size ) );
 
     if( typenode != nullptr ) {
         typenode->Next = nullptr;
@@ -65,9 +65,9 @@ WResTypeNode *newTypeNode( const WResID *type_id )
     return( typenode );
 }
 
-WResLangNode *newLangNode( uint_16 memflags, uint_32 offset, uint_32 length, const WResLangType *lang, void *fileinfo )
+WResLangNode *newLangNode(Link& link,  uint_16 memflags, uint_32 offset, uint_32 length, const WResLangType *lang, void *fileinfo )
 {
-    auto *langnode = static_cast<WResLangNode *>( WRESALLOC( sizeof( WResLangNode ) ) );
+    auto *langnode = static_cast<WResLangNode *>( WRESALLOC(link,  sizeof( WResLangNode ) ) );
 
     if( langnode == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
@@ -89,10 +89,10 @@ WResLangNode *newLangNode( uint_16 memflags, uint_32 offset, uint_32 length, con
     return( langnode );
 }
 
-WResResNode *newResNode( const WResID *res_id )
+WResResNode *newResNode(Link& link,  const WResID *res_id )
 {
     const size_t    id_size = WResIDSize( res_id );
-    auto            *resnode = static_cast<WResResNode *>( WRESALLOC( offsetof( WResResNode, Info.ResName ) + id_size ) );
+    auto            *resnode = static_cast<WResResNode *>( WRESALLOC(link,  offsetof( WResResNode, Info.ResName ) + id_size ) );
 
     if( resnode == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
@@ -116,14 +116,14 @@ WResResNode *newResNode( const WResID *res_id )
  *                   and return an error. Return is true if any error has
  *                   occured (including duplicate entry)
  */
-bool WResAddResource( const WResID *type_id, const WResID *res_id,
+bool WResAddResource(Link& link,  const WResID *type_id, const WResID *res_id,
                     uint_16 memflags, long offset, uint_32 length,
                     WResDir dir, const WResLangType *lang,
                     bool *duplicate )
 /************************************************************/
 {
     WResDirWindow       wind_dup;
-    const bool          rc = WResAddResource2( type_id, res_id, memflags, offset, length, dir,
+    const bool          rc = WResAddResource2(link,  type_id, res_id, memflags, offset, length, dir,
                                                lang, &wind_dup, nullptr );
 
     if( duplicate != nullptr ) {
@@ -132,7 +132,7 @@ bool WResAddResource( const WResID *type_id, const WResID *res_id,
     return( rc );
 }
 
-bool WResAddResource2( const WResID *type_id, const WResID *res_id,
+bool WResAddResource2(Link& link,  const WResID *type_id, const WResID *res_id,
                     uint_16 memflags, long offset, uint_32 length,
                     WResDir dir, const WResLangType *lang,
                     WResDirWindow *wind_dup, void *fileinfo )
@@ -160,7 +160,7 @@ bool WResAddResource2( const WResID *type_id, const WResID *res_id,
     }
     if( typenode == nullptr ) {
         /* otherwise add the type to the list */
-        typenode = newTypeNode( type_id );
+        typenode = newTypeNode(link,  type_id );
         if( typenode == nullptr ) {
             return( true );
         }
@@ -170,7 +170,7 @@ bool WResAddResource2( const WResID *type_id, const WResID *res_id,
     }
     if( resnode == nullptr ) {
         /* add the resource to the current type */
-        resnode = newResNode( res_id );
+        resnode = newResNode(link,  res_id );
         if( resnode == nullptr ) {
             return( true );
         }
@@ -179,7 +179,7 @@ bool WResAddResource2( const WResID *type_id, const WResID *res_id,
         typenode->Info.NumResources += 1;
         dir->NumResources += 1;
     }
-    WResLangNode *langnode = newLangNode( memflags, offset, length, lang, fileinfo );
+    WResLangNode *langnode = newLangNode(link,  memflags, offset, length, lang, fileinfo );
 
     if( langnode == nullptr ) {
         return( true );

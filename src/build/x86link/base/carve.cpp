@@ -103,13 +103,13 @@ inline void add_to_free( free_t *&fl, void *p )
 }  // namespace
 
 
-static blk_t *newBlk( carve_t carver )
+static blk_t *newBlk(Link& link,  carve_t carver )
 /************************************/
 {
     blk_t           *newblk;
     blk_t           **blklist;
 
-    newblk = static_cast<blk_t *>( MemAllocSafe( carve_size( carver->blk_size ) ) );
+    newblk = static_cast<blk_t *>( MemAllocSafe(link,  carve_size( carver->blk_size ) ) );
     /*
      * keep list sorted by memory address, biggest first.
      */
@@ -143,7 +143,7 @@ static void MakeFreeList( carve_t carver, blk_t *newblk, unsigned offset )
     carver->free_list = free_list;
 }
 
-carve_t CarveCreate( unsigned elm_size, unsigned blk_size )
+carve_t CarveCreate(Link& link,  unsigned elm_size, unsigned blk_size )
 /*********************************************************/
 {
     carve_t         carver;
@@ -154,7 +154,7 @@ carve_t CarveCreate( unsigned elm_size, unsigned blk_size )
     }
     elm_size = __ROUND_UP_SIZE( elm_size, CARVE_ALIGN );
     elm_count = blk_size / elm_size;
-    carver = static_cast<carve_t>( MemAllocSafe( sizeof( *carver ) ) );
+    carver = static_cast<carve_t>( MemAllocSafe(link,  sizeof( *carver ) ) );
     carver->elm_size = elm_size;
     carver->blk_size = blk_size;
     carver->elm_count = elm_count;
@@ -226,26 +226,26 @@ void CarveDestroy( carve_t carver )
     }
 }
 
-void *CarveAlloc( carve_t carver )
+void *CarveAlloc(Link& link,  carve_t carver )
 /********************************/
 {
     void            *p;
 
     if( carver->free_list == nullptr ) {
-        MakeFreeList( carver, newBlk( carver ), 0 );
+        MakeFreeList( carver, newBlk(link,  carver ), 0 );
     }
     p = remove_from_free( carver );
     DbgZapAlloc( p, carver->elm_size );
     return( p );
 }
 
-void *CarveZeroAlloc( carve_t carver )
+void *CarveZeroAlloc(Link& link,  carve_t carver )
 /************************************/
 {
     void            **p;
 
     if( carver->free_list == nullptr ) {
-        MakeFreeList( carver, newBlk( carver ), 0 );
+        MakeFreeList( carver, newBlk(link,  carver ), 0 );
     }
     p = static_cast<void **>( remove_from_free( carver ) );
     DbgAssert( ( carver->elm_size / sizeof( *p ) ) <= 16 );
@@ -425,7 +425,7 @@ void CarveWalkAll( carve_t carver, FunctionRef<void( void *, void * )> rtn, void
     }
 }
 
-void CarveRestart( carve_t carver, unsigned num )
+void CarveRestart(Link& link,  carve_t carver, unsigned num )
 /***********************************************/
 {
     unsigned        numblks;
@@ -437,9 +437,9 @@ void CarveRestart( carve_t carver, unsigned num )
         return;
     numblks = (num + carver->elm_count - 1) / carver->elm_count;
     for( index = 0; index < numblks; index++ ) {
-        newBlk( carver );
+        newBlk(link,  carver );
     }
-    carver->blk_map = static_cast<blk_t **>( MemAllocSafe( numblks * sizeof( *carver->blk_map ) ) );
+    carver->blk_map = static_cast<blk_t **>( MemAllocSafe(link,  numblks * sizeof( *carver->blk_map ) ) );
     index = numblks - 1;
     for( block = carver->blk_list; block != nullptr; block = block->next ) {
         carver->blk_map[index] = block;

@@ -32,7 +32,7 @@
 #include <cstring>
 #include <cstddef>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
 #include "build/x86link/fixups/reloc.h"
@@ -131,7 +131,7 @@ void WalkAreas( AREASECT *area, FunctionRef<void( section * )> rtn )
 
 static void DoSecPubs(Link& link,  section *sect )
 /************************************/
-{
+{
     if( link.MapFile != nullptr ) {
         WriteMapOvlPubHead(link,  sect );
         WriteMapPubStart();
@@ -193,12 +193,12 @@ static void AllocSections(Link& link,  section *first_sect )
             if( link.OvlAreaSize < min_size ) {
                 link.OvlAreaSize = min_size;
                 if( area_specified ) {
-                    LnkMsg( WRN+MSG_AREA_TOO_SMALL, "l", static_cast<unsigned long>( min_size ) << link.FmtData.SegShift );
+                    LnkMsg(link,  WRN+MSG_AREA_TOO_SMALL, "l", static_cast<unsigned long>( min_size ) << link.FmtData.SegShift );
                 }
             }
             result = link.CurrLoc.seg + static_cast<unsigned long>( link.OvlAreaSize - ovl_size );
             if( result > 0xFFFF ) {
-                LnkMsg( WRN+MSG_CANT_RESERVE_SPACE, "l", static_cast<unsigned long>( link.OvlAreaSize ) << link.FmtData.SegShift );
+                LnkMsg(link,  WRN+MSG_CANT_RESERVE_SPACE, "l", static_cast<unsigned long>( link.OvlAreaSize ) << link.FmtData.SegShift );
             } else {
                 link.CurrLoc.seg = static_cast<segment>( result );
             }
@@ -297,7 +297,7 @@ void OvlCalc(Link& link)
     link.OvlSeg->seg_addr = ovl().tabAddr;
     link.OvlSeg->size = ovl().tabSize;
 
-    ovl().ovlSegData->u1.vm_ptr = AllocStg( ovl().tabSize );
+    ovl().ovlSegData->u1.vm_ptr = AllocStg(link,  ovl().tabSize );
     ovl().ovlSegData->length = ovl().tabSize;
     RingAppend( &ovl().ovlSegData->u.leader->pieces, ovl().ovlSegData );
 }
@@ -329,7 +329,7 @@ static bool IsAncestor( overlay_ref elder_ovlref, section *ceorl )
 #define NO_VECTOR( sym ) ( ( IS_SYM_COMMUNAL( sym ) ) \
                             || ( (sym)->u.d.ovlstate & OVL_FORCE ) )
 
-void OvlDefVector( symbol *sym )
+void OvlDefVector(Link& link,  symbol *sym )
 /******************************/
 {
     segdata     *sdata;
@@ -350,7 +350,7 @@ void OvlDefVector( symbol *sym )
         if( sym->info & SYM_REFERENCED ) {
             if( sym->u.d.ovlref != ovlref ) {
                 /* first reference must have been a proper ancestor or cousin */
-                OvlVectorize( sym );
+                OvlVectorize(link,  sym );
             }
         } else {
             sym->u.d.ovlstate |= OVL_REF;
@@ -359,7 +359,7 @@ void OvlDefVector( symbol *sym )
     }
 }
 
-void OvlVectorize( symbol *sym )
+void OvlVectorize(Link& link,  symbol *sym )
 /******************************/
 /* allocate an overlay vector for a symbol */
 {
@@ -368,7 +368,7 @@ void OvlVectorize( symbol *sym )
     sym->u.d.ovlref = ++ovl().vecNum;
     sym->u.d.ovlstate &= ~OVL_NO_VECTOR;
     sym->u.d.ovlstate |= OVL_FORCE;
-    vectnode = static_cast<vecnode *>( _PermAlloc( sizeof( vecnode ) ) );
+    vectnode = static_cast<vecnode *>( PermAlloc( link, sizeof( vecnode ) ) );
     vectnode->sym = sym;
     AppendList( reinterpret_cast<void **>( &ovl().vect.OvlVectors ), vectnode );
     DEBUG(( DBG_OLD, "Vectorize %d %S", ovl().vecNum, sym ));
@@ -399,7 +399,7 @@ static void OvlRefVector(Link& link,  symbol *sym )
         if( IsAncestor( ovlref, link.CurrSect ) )
             return;
         /* overlay vector necessary */
-        OvlVectorize( sym );
+        OvlVectorize(link,  sym );
     }
 }
 
@@ -442,7 +442,7 @@ void OvlIndirectCall(Link& link,  symbol *sym )
             ovlref = sym->p.seg->u.leader->class_->section->ovlref;
             if( ( ovlref != 0 )
               && sym->p.seg->iscode ) {
-                OvlVectorize( sym );
+                OvlVectorize(link,  sym );
             }
         }
     } else {
@@ -539,7 +539,7 @@ static void ShortVectors(Link& link,  symbol *loadsym )
         diff = loadval - temp;
         if( ( diff < -32768 )
           || ( diff > 32767 ) ) {
-            LnkMsg( ERR+MSG_VECT_RANGE, "sd", "short (1)", vecnum );
+            LnkMsg(link,  ERR+MSG_VECT_RANGE, "sd", "short (1)", vecnum );
         }
         _HostU16toTarg( diff, vectdata.ldr_addr );
         loadsym = vectnode->sym;
@@ -548,7 +548,7 @@ static void ShortVectors(Link& link,  symbol *loadsym )
         diff = MK_REAL_ADDR( loadsym->addr.seg, loadsym->addr.off ) - temp;
         if( ( diff < -32768 )
           || ( diff > 32767 ) ) {
-            LnkMsg( ERR+MSG_VECT_RANGE, "sd", "short (2)", vecnum );
+            LnkMsg(link,  ERR+MSG_VECT_RANGE, "sd", "short (2)", vecnum );
         }
         _HostU16toTarg( diff, vectdata.target );
         PutOvlInfo( vectoff, &vectdata, sizeof( vectdata ) );
@@ -581,7 +581,7 @@ static void LongVectors(Link& link,  symbol *loadsym )
         diff = loadval - temp;
         if( ( diff < -32768 )
           || ( diff > 32767 ) ) {
-            LnkMsg( ERR+MSG_VECT_RANGE, "sd", "long", vecnum );
+            LnkMsg(link,  ERR+MSG_VECT_RANGE, "sd", "long", vecnum );
         }
         _HostU16toTarg( diff, vectdata.u.v.ldr_addr );
         loadsym = vectnode->sym;
@@ -626,7 +626,7 @@ void OvlEmitVectors(Link& link)
     }
     symptr = RefISymbol(link,  loader_name );
     if( (symptr->info & SYM_DEFINED) == 0 ) {
-        LnkMsg( ERR+MSG_NO_OVERLAY_LOADER, nullptr );
+        LnkMsg(link,  ERR+MSG_NO_OVERLAY_LOADER, nullptr );
     } else if( isshort ) {
         ShortVectors(link,  symptr );
     } else {
@@ -698,7 +698,7 @@ void OvlPass1(Link& link)
 
 static void EmitOvlEntry(Link& link,  section *sect, void *_off )
 /***************************************************/
-{
+{
     ovltab_entry        entry;
     offset              len;
     unsigned_16         flags_anc;

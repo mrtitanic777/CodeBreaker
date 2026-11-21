@@ -35,7 +35,7 @@
 #include <string>
 #include <string_view>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/link/specials.h"
 #include "build/x86link/base/fileio.h"
 #include "exeflat.h"
@@ -53,7 +53,7 @@
 #include "clibext.h"
 
 
-static entry_export *FindPlace( entry_export *exp )
+static entry_export *FindPlace(Link& link,  entry_export *exp )
 /*************************************************/
 // finds the correct place to put exp to keep the export list sorted.
 {
@@ -67,7 +67,7 @@ static entry_export *FindPlace( entry_export *exp )
     if( place != nullptr && place->ordinal <= exp->ordinal ) {
         for( ;; ) {
             if( place->ordinal == exp->ordinal ) {
-                LnkMsg( WRN + MSG_DUP_EXP_ORDINAL, nullptr );
+                LnkMsg(link,  WRN + MSG_DUP_EXP_ORDINAL, nullptr );
                 exp->ordinal = 0;       // if duplicate, assign a new one later
                 break;
             }
@@ -129,7 +129,7 @@ void AddToExportList(Link& link,  entry_export *exp )
         if( currlen == len && (*CmpNRtn)( curr->name.u.ptr, exp->name.u.ptr, len ) == 0 ) {
             if( link.ObjFileFormat != FILE_FMT_INCREMENTAL ) {
                 if( !IS_SYM_COMDAT( exp->sym ) ) {
-                    LnkMsg( WRN+LOC+MSG_DUP_EXP_NAME, "s", curr->name.u.ptr );
+                    LnkMsg(link,  WRN+LOC+MSG_DUP_EXP_NAME, "s", curr->name.u.ptr );
                 }
                 FreeAnExport(link,  exp );
             }
@@ -141,7 +141,7 @@ void AddToExportList(Link& link,  entry_export *exp )
                     place = owner;
                 }
             } else if( curr->ordinal == exp->ordinal ) {
-                LnkMsg( WRN+MSG_DUP_EXP_ORDINAL, nullptr );
+                LnkMsg(link,  WRN+MSG_DUP_EXP_ORDINAL, nullptr );
                 exp->ordinal = 0;    // if duplicate, assign a new one later
                 place = &link.FmtData.u.os2fam.exports;
             } else if( curr->ordinal > exp->ordinal ) {
@@ -194,7 +194,7 @@ entry_export *AllocExport(Link& link,  const char *name, size_t len )
     entry_export    *exp;
     size_t          chop;
 
-    exp = static_cast<entry_export *>( CarveAlloc( link.CarveExportInfo ) );
+    exp = static_cast<entry_export *>( CarveAlloc(link,  link.CarveExportInfo ) );
     exp->isresident = false;
     exp->isexported = true;
     exp->ismovable = false;
@@ -213,7 +213,7 @@ entry_export *AllocExport(Link& link,  const char *name, size_t len )
                 len -= chop;
             }
         }
-        exp->name.u.ptr = AddSymbolStringTable( &link.PermStrings, name, len );
+        exp->name.u.ptr = AddSymbolStringTable(link,  &link.PermStrings, name, len );
     }
     exp->impname = nullptr;
     exp->iopl_words = 0;
@@ -256,7 +256,7 @@ dll_sym_info *AllocDLLInfo(Link& link)
 {
     dll_sym_info    *dll;
 
-    dll = static_cast<dll_sym_info *>( CarveAlloc( link.CarveDLLInfo ) );
+    dll = static_cast<dll_sym_info *>( CarveAlloc(link,  link.CarveDLLInfo ) );
     dll->isfree = false;
     return( dll );
 }
@@ -338,7 +338,7 @@ void CheckExport(Link& link,  const char *name, ordinal_t ordinal, bool cmpcase 
         if( rtn( place->name.u.ptr, name ) == 0 ) {
             if( place->ordinal == 0 ) {
                 place->ordinal = ordinal;
-                place = FindPlace( place );
+                place = FindPlace(link,  place );
                 if( place != nullptr ) {
                     if( prev == nullptr ) {
                         link.FmtData.u.os2fam.exports = place;

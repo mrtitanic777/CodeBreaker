@@ -94,7 +94,7 @@ ORL_STRUCT( orl_linnum ) {
 typedef struct orl_funcs {
     void        *(*cli_read)( orl_io_handle, size_t );
     int         (*cli_seek)( orl_io_handle, long, int );
-    void        *(*cli_alloc)( size_t );
+    FunctionRef<void *( size_t )> cli_alloc;    // (the linker's allocator, holding the Link it allocates for)
     void        (*cli_free)( void * );
 } orl_funcs;
 

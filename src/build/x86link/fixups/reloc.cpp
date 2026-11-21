@@ -34,7 +34,7 @@
 #include <cstddef>
 #include <cstring>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/fixups/reloc.h"
 #include "build/x86link/base/fileio.h"
 #include "build/x86link/base/spillio.h"
@@ -65,7 +65,7 @@ inline std::size_t used_size( const reloc_info_struct *block )
 #ifdef _QNX
 #endif
 
-static bool     SpillAreas( AREASECT *area, bool (*rtn)( section * ) );
+static bool     SpillAreas( AREASECT *area, FunctionRef<bool( section * )> rtn );
 
 void ResetReloc(Link& link)
 /*********************/
@@ -75,53 +75,53 @@ void ResetReloc(Link& link)
 #endif
 }
 
-static reloc_info AllocRelocInfo( void )
+static reloc_info AllocRelocInfo(Link& link)
 /***************************************
  * allocate a relocation information block
  */
 {
     reloc_info      reloclist;
 
-    reloclist = static_cast<reloc_info>( _PermAlloc( sizeof( reloc_info_struct ) ) );       /* allocate more */
+    reloclist = static_cast<reloc_info>( PermAlloc( link, sizeof( reloc_info_struct ) ) );       /* allocate more */
     reloclist->sizeleft = RELOC_PAGE_SIZE;
     reloclist->loc.spilled = false;
-    reloclist->loc.u.addr = static_cast<char *>( MemAlloc( RELOC_PAGE_SIZE ) );
+    reloclist->loc.u.addr = static_cast<char *>( MemAlloc(link,  RELOC_PAGE_SIZE ) );
     if( reloclist->loc.u.addr == nullptr ) {
-        reloclist->loc.u.spill = SpillAlloc( RELOC_PAGE_SIZE );
+        reloclist->loc.u.spill = SpillAlloc(link,  RELOC_PAGE_SIZE );
         reloclist->loc.spilled = true;
     }
     return( reloclist );
 }
 
-static void *OS2PagedRelocInit( offset size, unsigned unitsize )
+static void *OS2PagedRelocInit(Link& link,  offset size, unsigned unitsize )
 /***************************************************************
  * allocate simple array for all pages
  */
 {
     const unsigned  allocsize = unitsize * OSF_PAGE_COUNT( size );
-    void            *mem = MemAllocSafe( allocsize );
+    void            *mem = MemAllocSafe(link,  allocsize );
 
     std::memset( mem, 0, allocsize );
     return( mem );
 }
 
-static os2_reloc_header *OS2FlatRelocInit( offset size )
+static os2_reloc_header *OS2FlatRelocInit(Link& link,  offset size )
 /*******************************************************
  * initialize relocations for OS2 flat memory manager.
  */
 {
-    return( static_cast<os2_reloc_header *>( OS2PagedRelocInit( size, sizeof( os2_reloc_header ) ) ) );
+    return( static_cast<os2_reloc_header *>( OS2PagedRelocInit(link,  size, sizeof( os2_reloc_header ) ) ) );
 }
 
-static reloc_info *PERelocInit( offset size )
+static reloc_info *PERelocInit(Link& link,  offset size )
 /********************************************
  * initialize relocations for PE executable format
  */
 {
-    return( static_cast<reloc_info *>( OS2PagedRelocInit( size, sizeof( reloc_info ) ) ) );
+    return( static_cast<reloc_info *>( OS2PagedRelocInit(link,  size, sizeof( reloc_info ) ) ) );
 }
 
-static void DoWriteReloc( reloc_info *reloclist_head, const void *reloc, size_t size )
+static void DoWriteReloc(Link& link,  reloc_info *reloclist_head, const void *reloc, size_t size )
 /************************************************************************************/
 {
     reloc_info      reloclist;
@@ -129,18 +129,18 @@ static void DoWriteReloc( reloc_info *reloclist_head, const void *reloc, size_t 
 
     reloclist = *reloclist_head;
     if( reloclist == nullptr ) {
-        reloclist = AllocRelocInfo();
+        reloclist = AllocRelocInfo(link);
         reloclist->next = nullptr;
         *reloclist_head = reloclist;
     }
     if( reloclist->sizeleft < size ) {     /* if no space */
-        reloclist = AllocRelocInfo();
+        reloclist = AllocRelocInfo(link);
         reloclist->next = *reloclist_head;
         *reloclist_head = reloclist;
     }
     offset = used_size( reloclist );
     if( reloclist->loc.spilled ) {
-        SpillWrite( reloclist->loc.u.spill, offset, reloc, size );
+        SpillWrite(link,  reloclist->loc.u.spill, offset, reloc, size );
     } else {
         std::memcpy( reloclist->loc.u.addr + offset, reloc, size );
     }
@@ -161,12 +161,12 @@ void WriteReloc(Link& link,  group_entry *group, offset off, void *reloc, size_t
 
         reloclist_array = group->g.reloclist_array;
         if( reloclist_array == nullptr ) {
-           reloclist_array = PERelocInit( group->totalsize );
+           reloclist_array = PERelocInit(link,  group->totalsize );
            group->g.reloclist_array = reloclist_array;
         }
         idx = ( off - group->addr.off ) >> OSF_PAGE_SHIFT;
         reloclist_head = &reloclist_array[idx];
-        DoWriteReloc( reloclist_head, reloc, size );
+        DoWriteReloc(link,  reloclist_head, reloc, size );
         group->section->relocs++;
         return;
     }
@@ -176,7 +176,7 @@ void WriteReloc(Link& link,  group_entry *group, offset off, void *reloc, size_t
 
         pagelist_array = group->g.pagelist_array;
         if( pagelist_array == nullptr ) {
-            pagelist_array = OS2FlatRelocInit( group->totalsize );
+            pagelist_array = OS2FlatRelocInit(link,  group->totalsize );
             group->g.pagelist_array = pagelist_array;
         }
         idx = ( off - group->addr.off ) >> OSF_PAGE_SHIFT;
@@ -195,24 +195,24 @@ void WriteReloc(Link& link,  group_entry *group, offset off, void *reloc, size_t
             }
             break;
         }
-        DoWriteReloc( reloclist_head, reloc, size );
+        DoWriteReloc(link,  reloclist_head, reloc, size );
         group->section->relocs++;
         return;
     }
     if( link.FmtData.type & MK_NE ) {
-        DoWriteReloc( &group->g.reloclist, reloc, size );
+        DoWriteReloc(link,  &group->g.reloclist, reloc, size );
         group->section->relocs++;
         return;
     }
 #endif
 #ifdef _ELF
     if( link.FmtData.type & MK_ELF ) {
-        DoWriteReloc( &group->g.reloclist, reloc, size );
+        DoWriteReloc(link,  &group->g.reloclist, reloc, size );
         group->section->relocs++;
         return;
     }
 #endif
-    DoWriteReloc( &group->section->reloclist, reloc, size );
+    DoWriteReloc(link,  &group->section->reloclist, reloc, size );
     group->section->relocs++;
 }
 
@@ -220,13 +220,13 @@ void WriteReloc(Link& link,  group_entry *group, offset off, void *reloc, size_t
 void WriteQNXFloatReloc(Link& link,  qnx_reloc_item *item )
 /*********************************************/
 {
-    DoWriteReloc( &link.FloatFixups, item, sizeof( *item ) );
+    DoWriteReloc(link,  &link.FloatFixups, item, sizeof( *item ) );
 }
 
-void WriteQNXLinearReloc( group_entry *group, qnx_linear_item *item )
+void WriteQNXLinearReloc(Link& link,  group_entry *group, qnx_linear_item *item )
 /*******************************************************************/
 {
-    DoWriteReloc( &group->g.reloclist, item, sizeof( *item ) );
+    DoWriteReloc(link,  &group->g.reloclist, item, sizeof( *item ) );
 }
 #endif
 
@@ -369,7 +369,7 @@ unsigned DumpMaxRelocList(Link& link,  reloc_info *reloclist_head, unsigned max 
             break;
         if( size ) {
             if( reloclist->loc.spilled ) {
-                SpillRead( reloclist->loc.u.spill, 0, link.TokBuff, size );
+                SpillRead(link,  reloclist->loc.u.spill, 0, link.TokBuff, size );
                 WriteLoad(link,  link.TokBuff, size );
             } else {
                 WriteLoad(link,  reloclist->loc.u.addr, size );
@@ -381,7 +381,7 @@ unsigned DumpMaxRelocList(Link& link,  reloc_info *reloclist_head, unsigned max 
     return( total );
 }
 
-void CopyRelocList( reloc_info reloclist, void *buff )
+void CopyRelocList(Link& link,  reloc_info reloclist, void *buff )
 /******************************************************
  * CodeBreaker: copy the reloc information stored here into buff (RelocSize bytes)
  */
@@ -392,7 +392,7 @@ void CopyRelocList( reloc_info reloclist, void *buff )
         const std::size_t size = used_size( reloclist );
         if( size ) {
             if( reloclist->loc.spilled ) {
-                SpillRead( reloclist->loc.u.spill, 0, out, size );
+                SpillRead(link,  reloclist->loc.u.spill, 0, out, size );
             } else {
                 std::memcpy( out, reloclist->loc.u.addr, size );
             }
@@ -403,7 +403,7 @@ void CopyRelocList( reloc_info reloclist, void *buff )
 
 bool DumpRelocList(Link& link,  reloc_info reloclist )
 /****************************************/
-{
+{
     DumpMaxRelocList(link,  &reloclist, 0 );
     return( false );            /* so traverse works */
 }
@@ -423,7 +423,7 @@ unsigned WalkRelocList(Link& link,  reloc_info *reloclist_head, bool (*fn)( void
         const std::size_t size = used_size( reloclist );
         if( size ) {
             if( reloclist->loc.spilled ) {
-                SpillRead( reloclist->loc.u.spill, 0, link.TokBuff, size );
+                SpillRead(link,  reloclist->loc.u.spill, 0, link.TokBuff, size );
                 quit = fn( link.TokBuff, size, ctx );
             } else {
                 quit = fn( reloclist->loc.u.addr, size, ctx );
@@ -483,7 +483,7 @@ void SetRelocSize(Link& link)
     link.FmtRelocSize = sizeof( dos_addr );
 }
 
-static bool SpillRelocList( reloc_info reloclist )
+static bool SpillRelocList(Link& link,  reloc_info reloclist )
 /*************************************************
  * spill any reloc blocks pointed to by reloclist
  */
@@ -492,8 +492,8 @@ static bool SpillRelocList( reloc_info reloclist )
 
     for( ; reloclist != nullptr; reloclist = reloclist->next ) {
         if( !reloclist->loc.spilled ) {
-            spill = SpillAlloc( RELOC_PAGE_SIZE );
-            SpillWrite( spill, 0, reloclist->loc.u.addr, used_size( reloclist ) );
+            spill = SpillAlloc(link,  RELOC_PAGE_SIZE );
+            SpillWrite(link,  spill, 0, reloclist->loc.u.addr, used_size( reloclist ) );
             MemFree( reloclist->loc.u.addr );
             reloclist->loc.u.spill = spill;
             reloclist->loc.spilled = true;
@@ -504,13 +504,13 @@ static bool SpillRelocList( reloc_info reloclist )
 }
 
 
-static bool SpillSectRelocList( section *sect )
+static bool SpillSectRelocList(Link& link,  section *sect )
 /*********************************************/
 {
-    return( SpillRelocList( sect->reloclist ) );
+    return( SpillRelocList(link,  sect->reloclist ) );
 }
 
-static bool SpillSections( section *sect, bool (*rtn)( section * ) )
+static bool SpillSections( section *sect, FunctionRef<bool( section * )> rtn )
 /******************************************************************/
 {
     for( ; sect != nullptr; sect = sect->next ) {
@@ -523,7 +523,7 @@ static bool SpillSections( section *sect, bool (*rtn)( section * ) )
     return( false );
 }
 
-static bool SpillAreas( AREASECT *area, bool (*rtn)( section * ) )
+static bool SpillAreas( AREASECT *area, FunctionRef<bool( section * )> rtn )
 /****************************************************************/
 {
     for( ; area != nullptr; area = area->next ) {
@@ -543,27 +543,27 @@ bool SwapOutRelocs(Link& link)
         return( false );
     if( link.FmtData.type & (MK_OS2_FLAT | MK_WIN_VXD | MK_PE) ) {
         for( group = link.Groups; group != nullptr; group = group->next ) {
-            if( TraverseOS2RelocList(link,  group, SpillRelocList ) ) {
+            if( TraverseOS2RelocList(link,  group, bind_link( link, SpillRelocList ) ) ) {
                 return( true );
             }
         }
     } else if( link.FmtData.type & (MK_NE | MK_QNX) ) {
         for( group = link.Groups; group != nullptr; group = group->next ) {
-            if( SpillRelocList( group->g.reloclist ) ) {
+            if( SpillRelocList(link,  group->g.reloclist ) ) {
                 return( true );
             }
         }
 #ifdef _QNX
         if( link.FmtData.type & MK_QNX ) {
-            if( SpillRelocList( link.FloatFixups ) )
+            if( SpillRelocList(link,  link.FloatFixups ) )
                 return( true );
-            return( SpillSectRelocList( link.Root ) );
+            return( SpillSectRelocList(link,  link.Root ) );
         }
 #endif
     } else {
-        if( SpillSectRelocList( link.Root ) )
+        if( SpillSectRelocList(link,  link.Root ) )
             return( true );
-        if( SpillAreas( link.Root->areas, SpillSectRelocList ) ) {
+        if( SpillAreas( link.Root->areas, bind_link( link, SpillSectRelocList ) ) ) {
             return( true );
         }
     }

@@ -52,7 +52,7 @@
  * CopyExeData function is used by resource compiler to write data to executable
  * there are two implementation one in resource compiler and second in linker
  */
-extern RcStatus     CopyExeData( FILE *src_fp, FILE *dst_fp, uint_32 length );
+extern RcStatus     CopyExeData(Link& link,  FILE *src_fp, FILE *dst_fp, uint_32 length );
 extern long         AlignAmount( long offset, uint_16 shift_count );
 extern uint_16      FindShiftCount( uint_32 filelen, uint_16 numobjs );
 extern RcStatus     CopyExeDataTilEOF( FILE *src_fp, FILE *dst_fp );
@@ -61,6 +61,6 @@ extern void         CheckDebugOffset( ExeFileInfo *exe );
 extern RcStatus     SeekRead( FILE *fp, long newpos, void *buff, size_t size );
 extern ExeType      FindNEPELXHeader( FILE *fp, unsigned_32 *ne_header_off );
 extern unsigned_32  OffsetFromRVA( ExeFileInfo *exe, pe_va rva );
-extern bool         RcPadFile( FILE *fp, size_t pad );
+extern bool         RcPadFile(Link& link,  FILE *fp, size_t pad );
 
 #endif

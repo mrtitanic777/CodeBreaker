@@ -80,19 +80,19 @@ inline stringblock *GetTableLastBlk( const stringtable *t )
     return( static_cast<stringblock *>( RingLast( t->data ) ) );
 }
 
-stringblock *AllocNewBlock( stringtable *strtab )
+stringblock *AllocNewBlock(Link& link,  stringtable *strtab )
 /***********************************************/
 {
     stringblock *blk;
 
-    blk = static_cast<stringblock *>( MemAllocSafe( sizeof( stringblock ) ) );
+    blk = static_cast<stringblock *>( MemAllocSafe(link,  sizeof( stringblock ) ) );
     blk->next = nullptr;
     RingAppend( &strtab->data, blk );
     blk->size = 0;
     return( blk );
 }
 
-char *AddToStringTable( stringtable *strtab, const void *data, size_t len, bool addnullchar, size_t *offs )
+char *AddToStringTable(Link& link,  stringtable *strtab, const void *data, size_t len, bool addnullchar, size_t *offs )
 /*********************************************************************************************************/
 {
     stringblock *blk;
@@ -103,11 +103,11 @@ char *AddToStringTable( stringtable *strtab, const void *data, size_t len, bool 
     if( addnullchar )
         ++len;
     if( TableNoSplitItems( strtab ) && len > STR_BLOCK_SIZE ) {
-        LnkMsg( ERR+MSG_SYMBOL_NAME_TOO_LONG, "s", data );
+        LnkMsg(link,  ERR+MSG_SYMBOL_NAME_TOO_LONG, "s", data );
         len = STR_BLOCK_SIZE;
     }
     start = START_UNDEF;
-    for( blk = GetTableLastBlk( strtab ); blk->size + len > STR_BLOCK_SIZE; blk = AllocNewBlock( strtab ) ) {
+    for( blk = GetTableLastBlk( strtab ); blk->size + len > STR_BLOCK_SIZE; blk = AllocNewBlock(link,  strtab ) ) {
         if( start == START_UNDEF ) {
             start = GetTableLastBlkStart( strtab ) + (TableNoSplitItems( strtab ) ? STR_BLOCK_SIZE : blk->size);
         }
@@ -149,45 +149,45 @@ bool WriteStringData( void *_blk, void *_param )
 
 } // namespace
 
-void InitStringTable( stringtable *strtab, bool dontsplit )
+void InitStringTable(Link& link,  stringtable *strtab, bool dontsplit )
 /*********************************************************/
 {
     strtab->data = nullptr;
     strtab->currbase = ( dontsplit ) ? 1 : 0;
-    AllocNewBlock( strtab );
+    AllocNewBlock(link,  strtab );
 }
 
-void AddCharStringTable( stringtable *strtab, char data )
+void AddCharStringTable(Link& link,  stringtable *strtab, char data )
 /*******************************************************/
 {
-    AddToStringTable( strtab, &data, sizeof( char ), false, nullptr );
+    AddToStringTable(link,  strtab, &data, sizeof( char ), false, nullptr );
 }
 
-char *AddStringStringTable( stringtable *strtab, const char *data )
+char *AddStringStringTable(Link& link,  stringtable *strtab, const char *data )
 /*****************************************************************/
 {
-    return( AddToStringTable( strtab, data, strlen( data ) + 1, false, nullptr ) );
+    return( AddToStringTable(link,  strtab, data, strlen( data ) + 1, false, nullptr ) );
 }
 
-size_t AddStringStringTableOffs( stringtable *strtab, const char *data )
+size_t AddStringStringTableOffs(Link& link,  stringtable *strtab, const char *data )
 /**********************************************************************/
 {
     size_t  offs;
 
-    AddToStringTable( strtab, data, strlen( data ) + 1, false, &offs );
+    AddToStringTable(link,  strtab, data, strlen( data ) + 1, false, &offs );
     return( offs );
 }
 
-char *AddBufferStringTable( stringtable *strtab, const void *data, size_t len )
+char *AddBufferStringTable(Link& link,  stringtable *strtab, const void *data, size_t len )
 /*****************************************************************************/
 {
-    return( AddToStringTable( strtab, data, len, false, nullptr ) );
+    return( AddToStringTable(link,  strtab, data, len, false, nullptr ) );
 }
 
-char *AddSymbolStringTable( stringtable *strtab, const char *data, size_t len )
+char *AddSymbolStringTable(Link& link,  stringtable *strtab, const char *data, size_t len )
 /*****************************************************************************/
 {
-    return( AddToStringTable( strtab, data, len, true, nullptr ) );
+    return( AddToStringTable(link,  strtab, data, len, true, nullptr ) );
 }
 
 void ZeroStringTable( stringtable *strtab, size_t len )

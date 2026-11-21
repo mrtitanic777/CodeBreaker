@@ -1,7 +1,7 @@
 // build/x86link/directives/common.cpp -- the directives and options common to every format: file, library, name, option,
 // debug, system blocks, order, output, sort, language (a port of wlink's cmdall.c, and NewOutFile of cmdutils.c).
 #include "build/x86link/directives/common.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 
 #include <cstddef>
 #include <cstdlib>
@@ -53,7 +53,7 @@ bool ProcName(Link& link) {
 
 bool ProcDwarfDBI(Link& link) {
     if (link.LinkFlags & (LF_ANY_DBI_FLAG & ~LF_DWARF_DBI_FLAG)) {
-        LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
     link.LinkFlags |= LF_DWARF_DBI_FLAG;
@@ -62,7 +62,7 @@ bool ProcDwarfDBI(Link& link) {
 
 bool ProcWatcomDBI(Link& link) {
     if (link.LinkFlags & (LF_ANY_DBI_FLAG & ~LF_OLD_DBI_FLAG)) {
-        LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
     link.LinkFlags |= LF_OLD_DBI_FLAG;
@@ -71,7 +71,7 @@ bool ProcWatcomDBI(Link& link) {
 
 bool ProcCodeviewDBI(Link& link) {
     if (link.LinkFlags & (LF_ANY_DBI_FLAG & ~LF_CV_DBI_FLAG)) {
-        LnkMsg(WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
     link.LinkFlags |= LF_CV_DBI_FLAG;
@@ -80,7 +80,7 @@ bool ProcCodeviewDBI(Link& link) {
 
 bool ProcHllDBI(Link& link) {
     if (link.LinkFlags & (LF_ANY_DBI_FLAG & ~LF_HLL_DBI_FLAG)) {
-        LnkMsg(LOC + LINE + WRN + MSG_MULT_DBI_FORMATS, nullptr);
+        LnkMsg(link, LOC + LINE + WRN + MSG_MULT_DBI_FORMATS, nullptr);
         return true;
     }
     link.LinkFlags |= LF_HLL_DBI_FLAG;
@@ -163,7 +163,7 @@ void* AddObjFile(Link& link, const char* name, const char* membname, file_list**
     file_list* file;
     member_list* member = nullptr;
     if (membname != nullptr) {
-        member = (member_list*)(MemAllocSafe(sizeof(*member) - 1 + strlen(membname) + 1));
+        member = (member_list*)(MemAllocSafe(link, sizeof(*member) - 1 + strlen(membname) + 1));
         member->flags_dbi = link.DBIFlag;
         member->flags_mod = (module_flags)(0);
         strcpy(member->name, membname);
@@ -197,7 +197,7 @@ bool AddLibFile(Link& link) {
     cmd_flags() &= ~Flag::member_added;
     char* ptr = file_name(link, &membname);
     if (membname != nullptr) {
-        LnkMsg(WRN + LOC + LINE + MSG_NO_MEMB_IN_LIBFILE, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_NO_MEMB_IN_LIBFILE, nullptr);
         MemFree(membname);
         MemFree(ptr);
         return true;
@@ -304,7 +304,7 @@ bool ProcOptLib(Link& link) {
 
 bool ProcLibPath(Link& link) {
     if (!reader().get(Sep::none, Want::file_name)) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "LIBPATH");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "LIBPATH");
         return true;
     }
     AddLibPaths(link, reader().text().data(), reader().text().size(), true);   // true == add to front.
@@ -314,7 +314,7 @@ bool ProcLibPath(Link& link) {
 bool ProcPath(Link& link) {
     if (!reader().get(Sep::none, Want::file_name)) return false;
     const std::string_view text = reader().text();
-    path_entry* new_path = (path_entry*)(MemAllocSafe(sizeof(path_entry) + text.size()));
+    path_entry* new_path = (path_entry*)(MemAllocSafe(link, sizeof(path_entry) + text.size()));
     const char* p_in = text.data();
     const char* end = p_in + text.size();
     char* p = new_path->name;
@@ -357,7 +357,7 @@ bool ProcNameLen(Link& link) {
     const bool ret = get_number(value);
     if (ret) {
         if (value == 0) {
-            LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "NAMELEN");
+            LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "NAMELEN");
         } else {
             link.NameLen = value;
         }
@@ -404,10 +404,10 @@ bool AddDisable(Link& link) {
         if (value <= MSG_MAX_ERR_MSG_NUM) {
             ClearBit(link.MsgFlags, value);
         } else {
-            LnkMsg(WRN + LOC + LINE + MSG_INVALID_MSG_NUM, nullptr);
+            LnkMsg(link, WRN + LOC + LINE + MSG_INVALID_MSG_NUM, nullptr);
         }
     } else {
-        LnkMsg(WRN + LOC + LINE + MSG_INVALID_MSG_NUM, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_INVALID_MSG_NUM, nullptr);
     }
     return true;
 }
@@ -456,7 +456,7 @@ bool ProcHLLPack(Link& link) {
 bool ProcIncremental(Link& link) {
 #if !defined(__DOS__)
     if (any(cmd_flags() & Flag::after_incremental)) {
-        LnkMsg(ERR + LOC + LINE + MSG_INC_NEAR_START, nullptr);
+        LnkMsg(link, ERR + LOC + LINE + MSG_INC_NEAR_START, nullptr);
     }
     link.LinkFlags |= LF_INC_LINK_FLAG;
     if (reader().get(Sep::equals, Want::file_name)) {
@@ -547,10 +547,10 @@ bool ProcStart(Link& link) {
     return true;
 }
 
-bool GetPackValue(unsigned_32* value, const char* message) {
+bool GetPackValue(Link& link, unsigned_32* value, const char* message) {
     if (!have_equals(Want::normal)) return false;
     if (number(*value) != Number::ok) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", message);
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", message);
         return true;
     }
     if (*value == 0) *value = 1;
@@ -559,7 +559,7 @@ bool GetPackValue(unsigned_32* value, const char* message) {
 
 bool ProcPackcode(Link& link) {
     unsigned_32 value;
-    if (GetPackValue(&value, "PACKCODE")) {
+    if (GetPackValue(link, &value, "PACKCODE")) {
         link.PackCodeLimit = value;
         link.LinkFlags |= LF_PACKCODE_FLAG;
         return true;
@@ -569,7 +569,7 @@ bool ProcPackcode(Link& link) {
 
 bool ProcPackdata(Link& link) {
     unsigned_32 value;
-    if (GetPackValue(&value, "PACKDATA")) {
+    if (GetPackValue(link, &value, "PACKDATA")) {
         link.PackDataLimit = value;
         link.LinkFlags |= LF_PACKDATA_FLAG;
         return true;
@@ -582,7 +582,7 @@ bool ProcPackdata(Link& link) {
 bool ProcNewSegment(Link& link) {
     CommonState& c = common_state();
     if (c.last_file.u.file == nullptr) {
-        LnkMsg(WRN + LOC + LINE + MSG_NEWSEG_BEFORE_OBJ, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_NEWSEG_BEFORE_OBJ, nullptr);
     } else {
         if (any(cmd_flags() & Flag::member_added)) {
             c.last_file.u.member->flags_mod |= MOD_LAST_SEG;
@@ -634,16 +634,16 @@ constexpr Entry EndLinkOpt[] = {
 // The text up to the table's keyword, token by token with a space after each (the quirk), kept as a system block.
 void GetCommandBlock(Link& link, sysblock** hdr, const char* name, Table endtab) {
     stringtable strtab;
-    InitStringTable(&strtab, false);
-    AddBufferStringTable(&strtab, &strtab, offsetof(sysblock, commands));
+    InitStringTable(link, &strtab, false);
+    AddBufferStringTable(link, &strtab, &strtab, offsetof(sysblock, commands));
     while (!process_one(link, endtab, Sep::space)) {
         reader().forget_push_back();
-        AddBufferStringTable(&strtab, reader().text().data(), reader().text().size());
-        AddCharStringTable(&strtab, ' ');
+        AddBufferStringTable(link, &strtab, reader().text().data(), reader().text().size());
+        AddCharStringTable(link, &strtab, ' ');
         reader().forward();
     }
-    AddCharStringTable(&strtab, '\0');
-    char* copyptr = (char*)(MemAllocSafe(GetStringTableSize(&strtab)));
+    AddCharStringTable(link, &strtab, '\0');
+    char* copyptr = (char*)(MemAllocSafe(link, GetStringTableSize(&strtab)));
     sysblock* sys = (sysblock*)copyptr;
     WriteStringTable(&strtab, CopyBlocks, &copyptr);
     FiniStringTable(&strtab);
@@ -698,7 +698,7 @@ bool ProcVersion(Link& link) {
     vb.minor = 100;
     vb.revision = 100;
     vb.what = "VERSION";
-    const VersionPart result = get_version(vb, VersionPart::major | VersionPart::minor | VersionPart::revision, true);
+    const VersionPart result = get_version(link, vb, VersionPart::major | VersionPart::minor | VersionPart::revision, true);
     if (result != VersionPart::none) {
         link.FmtData.major = vb.major;
         link.FmtData.minor = vb.minor;
@@ -730,7 +730,7 @@ bool ProcImpFile(Link& link) {
 }
 
 bool AddSymTrace(Link& link) {
-    AddTraceListSym(MemToStringSafe(link, reader().text().data(), reader().text().size()));
+    AddTraceListSym(link, MemToStringSafe(link, reader().text().data(), reader().text().size()));
     return true;
 }
 
@@ -743,7 +743,7 @@ bool AddModTrace(Link& link) {
     char* membname;
     char* fname = file_name(link, &membname);
     // AddTraceListMod consumes membname: not freed here
-    AddTraceListMod(fname, membname);
+    AddTraceListMod(link, fname, membname);
     return true;
 }
 
@@ -788,7 +788,7 @@ bool ProcOutputOffset(Link& link) {
         link.FmtData.output_offset = value;
         return true;
     }
-    LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "OUTPUT OFFSET");
+    LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "OUTPUT OFFSET");
     return false;
 }
 
@@ -801,7 +801,7 @@ bool ProcOutputHshift(Link& link) {
         link.FmtData.output_hshift = true;
         return true;
     }
-    LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "OUTPUT HSHIFT");
+    LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "OUTPUT HSHIFT");
     return false;
 }
 #endif
@@ -815,7 +815,7 @@ bool ProcHshift(Link& link) {
         SetSegMask(link);
         return true;
     }
-    LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "HSHIFT");
+    LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "HSHIFT");
     return false;
 }
 
@@ -827,7 +827,7 @@ bool ProcFillchar(Link& link) {
         link.FmtData.FillChar = value;
         return true;
     }
-    LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "FILLCHAR");
+    LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "FILLCHAR");
     return false;
 }
 
@@ -841,7 +841,7 @@ bool ProcOrdSegAdr(Link& link) {
         return true;
     }
     oc->FixedAddr = false;
-    LnkMsg(WRN + LOC + LINE + MSG_ADDR_INFO_TOO_LARGE, nullptr);
+    LnkMsg(link, WRN + LOC + LINE + MSG_ADDR_INFO_TOO_LARGE, nullptr);
     return false;
 }
 
@@ -856,7 +856,7 @@ bool ProcOrdOfsAdr(Link& link) {
         return true;
     }
     oc->FixedAddr = false;
-    LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "ORDER CLNAME OFFSET");
+    LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "ORDER CLNAME OFFSET");
     return false;
 }
 
@@ -883,7 +883,7 @@ bool ProcOrdSegSegAdr(Link& link) {
         return true;
     }
     os->FixedAddr = false;
-    LnkMsg(WRN + LOC + LINE + MSG_ADDR_INFO_TOO_LARGE, nullptr);
+    LnkMsg(link, WRN + LOC + LINE + MSG_ADDR_INFO_TOO_LARGE, nullptr);
     return false;
 }
 
@@ -898,7 +898,7 @@ bool ProcOrdSegOfsAdr(Link& link) {
         return true;
     }
     os->FixedAddr = false;
-    LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "ORDER CLNAME SEGMENT OFFSET");
+    LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "ORDER CLNAME SEGMENT OFFSET");
     return false;
 }
 
@@ -913,7 +913,7 @@ bool ProcObjAlign(Link& link) {
     const Number ret = number(value);
     if (ret != Number::ok || value == 0) return false;
     if (value < 16 || value > _256M || (value & (value - 1))) {   // value not a power of 2
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "OBJALIGN");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "OBJALIGN");
         value = _64K;
     }
     link.FmtData.objalign = value;
@@ -1063,8 +1063,8 @@ bool ProcXDbg() {
     return false;
 }
 
-bool ProcIntDbg() {
-    wlink().LinkState |= LS_INTERNAL_DEBUG;
+bool ProcIntDbg(Link& link) {
+    link.LinkState |= LS_INTERNAL_DEBUG;
     return true;
 }
 #endif
@@ -1078,7 +1078,7 @@ constexpr Entry OrderSegOpts[] = {
 bool ProcOrdSeg(Link& link) {
     if (!reader().get(Sep::none, Want::include_dot)) return false;
     CommonState& c = common_state();
-    c.current_order_segment = (ORDER_SEGMENT*)(MemAllocSafe(sizeof(ORDER_SEGMENT)));
+    c.current_order_segment = (ORDER_SEGMENT*)(MemAllocSafe(link, sizeof(ORDER_SEGMENT)));
     c.current_order_segment->NextSeg = c.current_order_class->SegList;
     c.current_order_class->SegList = c.current_order_segment;
     c.current_order_segment->Name = MemToStringSafe(link, reader().text().data(), reader().text().size());
@@ -1102,7 +1102,7 @@ bool ProcOrdClass(Link& link) {
     CommonState& c = common_state();
     link.LinkState |= LS_SPEC_ORDER_FLAG;
     ORDER_CLASS* last = c.current_order_class;
-    c.current_order_class = (ORDER_CLASS*)(MemAllocSafe(sizeof(ORDER_CLASS)));
+    c.current_order_class = (ORDER_CLASS*)(MemAllocSafe(link, sizeof(ORDER_CLASS)));
     ORDER_CLASS* cur = c.current_order_class;
     if (last == nullptr) {
         link.CurrSect->orderlist = cur;
@@ -1130,7 +1130,7 @@ bool ProcOrder(Link& link) {
     bool ret = false;
     common_state().current_order_class = link.CurrSect->orderlist;
     if (common_state().current_order_class != nullptr) {
-        LnkMsg(WRN + LOC + LINE + MSG_DUP_DIRECTIVE, "s", "OPTION");
+        LnkMsg(link, WRN + LOC + LINE + MSG_DUP_DIRECTIVE, "s", "OPTION");
     }
     while (process_one(link, OrderOpts, Sep::none)) ret = true;
     return ret;
@@ -1185,13 +1185,13 @@ bool ProcStartLink(Link& link) {
 // parse a system begin block and store it somewhere
 bool ProcSysBegin(Link& link) {
     if (!reader().get(Sep::none, Want::include_dot)) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "SYSTEM BEGIN");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "SYSTEM BEGIN");
         return true;
     }
     char* sysname = MemToStringSafe(link, reader().text().data(), reader().text().size());
     sysblock* sys = FindSysBlock(sysname);
     if (sys != nullptr) {
-        LnkMsg(WRN + LOC + LINE + MSG_SYSTEM_ALREADY_DEFINED, "s", sys->name);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SYSTEM_ALREADY_DEFINED, "s", sys->name);
         while (!process_one(link, SysEndOptions, Sep::space)) {
             reader().forget_push_back();
             reader().forward();
@@ -1223,7 +1223,7 @@ bool ProcSystem(Link& link) {
     char* sysname = MemToStringSafe(link, reader().text().data(), reader().text().size());
     sysblock* sys = FindSystemBlock(sysname);
     if (sys == nullptr) {
-        LnkMsg(WRN + LOC + LINE + MSG_SYSTEM_UNDEFINED, "s", sysname);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SYSTEM_UNDEFINED, "s", sysname);
     } else {
         if (dodelete) {
             sysblock** prev;
@@ -1285,7 +1285,7 @@ constexpr Entry DbgMods[] = {
 
 bool ProcDebug(Link& link) {
     if (any(cmd_flags() & Flag::files_before_debug)) {
-        LnkMsg(WRN + LOC + LINE + MSG_DEBUG_AFTER_FILES, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_DEBUG_AFTER_FILES, nullptr);
     }
     const bool gotmod = process_one(link, DbgMods, Sep::none);
     link.DBIFlag = (dbi_flags)(0);
@@ -1430,7 +1430,7 @@ constexpr Entry Models[] = {
 
 bool ProcFormat(Link& link) {
     if (link.LinkState & LS_FMT_SPECIFIED) {
-        LnkMsg(FTL + LOC + LINE + MSG_MULTIPLE_MODES_FOUND, nullptr);
+        LnkMsg(link, FTL + LOC + LINE + MSG_MULTIPLE_MODES_FOUND, nullptr);
     }
     link.LinkState |= LS_FMT_SPECIFIED;
     return process_one_or_fail(link, Models, Sep::none);
@@ -1517,7 +1517,7 @@ void ChkBase(Link& link, offset align) {
         align = link.FmtData.objalign;
     }
     if (link.FmtData.base != NO_BASE_SPEC && (link.FmtData.base & (align - 1)) != 0) {
-        LnkMsg(WRN + LOC + LINE + MSG_OFFSET_MUST_BE_ALIGNED, "l", align);
+        LnkMsg(link, WRN + LOC + LINE + MSG_OFFSET_MUST_BE_ALIGNED, "l", align);
         link.FmtData.base = __ROUND_UP_SIZE(link.FmtData.base, align);
     }
 }
@@ -1538,7 +1538,7 @@ outfilelist* NewOutFile(Link& link, char* filename) {
         }
     }
     // file name not already in list, so add a list entry.
-    outfilelist* fnode = (outfilelist*)(MemAllocSafe(sizeof(outfilelist)));
+    outfilelist* fnode = (outfilelist*)(MemAllocSafe(link, sizeof(outfilelist)));
     InitBuffFile(fnode, filename, true);
     fnode->next = link.OutFiles;
     link.OutFiles = fnode;

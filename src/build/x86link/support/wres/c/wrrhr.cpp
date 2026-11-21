@@ -36,12 +36,12 @@
 #include "wresrtns.h"
 
 
-bool WResReadHeader( WResHeader *header, FILE *fp )
+bool WResReadHeader(Link& link,  WResHeader *header, FILE *fp )
 /*************************************************/
 {
     bool    error = false;
 
-    if( WRESSEEK( fp, 0, SEEK_SET ) )
+    if( WRESSEEK(link,  fp, 0, SEEK_SET ) )
         return( WRES_ERROR( WRS_SEEK_FAILED ) );
     header->Magic[0] = ResReadUint32( &error, fp );
     if( error )

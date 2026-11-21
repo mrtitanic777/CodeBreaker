@@ -40,7 +40,7 @@
 #include <string>
 #include <string_view>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/base/newmem.h"
 #include "build/x86link/base/fileio.h"
@@ -93,17 +93,17 @@ constexpr std::size_t MAXDEPTH = sizeof( std::size_t ) * 8;
 
 } // namespace
 
-void WriteNulls( f_handle file, size_t len, const char *name )
+void WriteNulls(Link& link,  f_handle file, size_t len, const char *name )
 /************************************************************/
 /* copy nulls for uninitialized data */
 {
     static const std::array<unsigned, 16> NullArray{};
 
     for( ; len > sizeof( NullArray ); len -= sizeof( NullArray ) ) {
-        QWrite( file, NullArray.data(), sizeof( NullArray ), name );
+        QWrite(link,  file, NullArray.data(), sizeof( NullArray ), name );
     }
     if( len > 0 ) {
-        QWrite( file, NullArray.data(), len, name );
+        QWrite(link,  file, NullArray.data(), len, name );
     }
 }
 
@@ -126,10 +126,10 @@ void CheckStop(Link& link)
     }
 }
 
-void LnkFatal( const char *msg )
+void LnkFatal(Link& link,  const char *msg )
 /******************************/
 {
-    LnkMsg( FTL+MSG_INTERNAL, "s", msg );
+    LnkMsg(link,  FTL+MSG_INTERNAL, "s", msg );
 }
 
 bool TestBit( byte *array, unsigned num )
@@ -160,7 +160,7 @@ static void WalkModsList( mod_entry *list, FunctionRef<mods_walk_fn> cbfn )
 
 static void WalkSectModsList(Link& link,  section *sect, void *mods_walk_cb )
 /***************************************************************/
-{
+{
     link.CurrSect = sect;
     WalkModsList( sect->mods, static_cast<mods_walk_data *>( mods_walk_cb )->cbfn );
 }
@@ -215,7 +215,7 @@ void SectWalkClass(Link& link,  section *sect, FunctionRef<class_walk_fn> cbfn )
 
 static void _SectWalkClass(Link& link,  section *sect, void *class_walk_cb )
 /**************************************************************/
-{
+{
     link.CurrSect = sect;
     for( class_entry *class_ = sect->classes; class_ != nullptr; class_ = class_->next ) {
         WalkClass( class_, static_cast<class_walk_data *>( class_walk_cb )->cbfn );
@@ -298,10 +298,10 @@ obj_name_list *AddNameTable(Link& link,  const char *name, size_t len, bool is_m
         owner = &imp->next;
     }
     if( imp == nullptr ) {
-        imp = static_cast<obj_name_list *>( _PermAlloc( sizeof( obj_name_list ) ) );
+        imp = static_cast<obj_name_list *>( PermAlloc( link, sizeof( obj_name_list ) ) );
         imp->next = nullptr;
         imp->len = len;
-        imp->name.u.ptr = AddSymbolStringTable( &link.PermStrings, name, len );
+        imp->name.u.ptr = AddSymbolStringTable(link,  &link.PermStrings, name, len );
         imp->num = is_mod ? index : off;
         *owner = imp;
     }
@@ -499,14 +499,14 @@ void Suicide( void )
 
 /* the directories a path list (an environment variable) names, as wlink keeps them: one allocation, the elements
    separated by PATH_LIST_SEP; an empty list when the variable is not set or is empty */
-static char *CopyPathList( const char *path_list )
+static char *CopyPathList(Link& link,  const char *path_list )
 {
     char        *list;
     char        *p;
 
     if( path_list != nullptr
       && *path_list != '\0' ) {
-        list = static_cast<char *>( MemAllocSafe( strlen( path_list ) + 1 ) );
+        list = static_cast<char *>( MemAllocSafe(link,  strlen( path_list ) + 1 ) );
         p = list;
         do {
             if( p != list )
@@ -515,7 +515,7 @@ static char *CopyPathList( const char *path_list )
         } while( *path_list != '\0' );
         *p = '\0';
     } else {
-        list = static_cast<char *>( MemAllocSafe( 1 ) );
+        list = static_cast<char *>( MemAllocSafe(link,  1 ) );
         *list = '\0';
     }
     return( list );
@@ -530,10 +530,10 @@ void InitEnvVars(Link& link)
 #else
         const char  *path_list = GetEnvString( "PATH" );
 #endif
-        link.ExePath = CopyPathList( path_list );
+        link.ExePath = CopyPathList(link,  path_list );
     }
     if( link.LibPath == nullptr ) {
-        link.LibPath = CopyPathList( GetEnvString( "LIB" ) );
+        link.LibPath = CopyPathList(link,  GetEnvString( "LIB" ) );
     }
 }
 
@@ -618,7 +618,7 @@ file_list *AllocNewFile(Link& link,  member_list *member )
 {
     file_list       *file;
 
-    file = static_cast<file_list *>( _PermAlloc( sizeof( file_list ) ) );
+    file = static_cast<file_list *>( PermAlloc( link, sizeof( file_list ) ) );
     file->next = nullptr;
     file->flags_dbi = link.DBIFlag;
     file->flags_file = static_cast<file_flags>( 0 );
@@ -649,7 +649,7 @@ char *FileName( Link& link, const char *buff, size_t len, file_defext etype, boo
     cnt = len - ( namptr - buff );
     if( cnt == 0 ) {
         const std::string name( buff, len );
-        LnkMsg( FTL+LOC+LINE+MSG_INV_FILENAME, "s", name.c_str() );
+        LnkMsg(link,  FTL+LOC+LINE+MSG_INV_FILENAME, "s", name.c_str() );
     }
     namelen = cnt;
     namptr = buff + len - 1;
@@ -684,7 +684,7 @@ char *FileName( Link& link, const char *buff, size_t len, file_defext etype, boo
             const std::string_view  ext = DefExt[etype];
 
             extlen = ext.size();
-            ptr = static_cast<char *>( MemAllocSafe( len + 1 + extlen + 1 ) );
+            ptr = static_cast<char *>( MemAllocSafe(link,  len + 1 + extlen + 1 ) );
             memcpy( ptr, buff, len );
             if( extlen > 0 ) {
                 ptr[len++] = '.';
@@ -703,18 +703,18 @@ static int stricmp_wrapper( const void *s1, const void *s2 )
     return( stricmp( static_cast<const char *>( s1 ), static_cast<const char *>( s2 ) ) );
 }
 
-section *NewSection( void )
+section *NewSection(Link& link)
 /*************************/
 {
     section             *sect;
 
-    sect = static_cast<section *>( MemAllocSafe( sizeof( section ) ) );
+    sect = static_cast<section *>( MemAllocSafe(link,  sizeof( section ) ) );
     sect->next = nullptr;
     sect->classes = nullptr;
     sect->orderlist = nullptr;
     sect->areas = nullptr;
     sect->files = nullptr;
-    sect->modFilesHashed = CreateHTable( 256, StringiHashFunc, stricmp_wrapper, MemAllocSafe, MemFree );
+    sect->modFilesHashed = CreateHTable( link, 256, StringiHashFunc, stricmp_wrapper, MemAllocSafe, MemFree );
     sect->mods = nullptr;
     sect->reloclist = nullptr;
     SET_ADDR_UNDEFINED( sect->sect_addr );

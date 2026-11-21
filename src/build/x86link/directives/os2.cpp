@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "build/x86link/directives/common.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "build/x86link/directives/cmdline.h"
@@ -107,14 +107,14 @@ bool GetWlibImports(Link& link) {
             if (r.at(0) == '\'') {
                 r.push_back();
                 if (!r.get(Sep::quote, Want::normal)) {
-                    LnkMsg(ERR + LOC + LINE + MSG_BAD_WLIB_IMPORT, nullptr);
+                    LnkMsg(link, ERR + LOC + LINE + MSG_BAD_WLIB_IMPORT, nullptr);
                     r.pop();    // get rid of this file
                     return true;
                 }
             }
             entry_export* exp = ProcWlibDLLImportEntry(link);
             if (exp == nullptr) {
-                LnkMsg(ERR + LOC + LINE + MSG_BAD_WLIB_IMPORT, nullptr);
+                LnkMsg(link, ERR + LOC + LINE + MSG_BAD_WLIB_IMPORT, nullptr);
                 r.pop();        // get rid of this file
                 return true;
             }
@@ -134,7 +134,7 @@ bool ProcNoStub(Link& link) {
 
 bool ProcSingle(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
-        LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.flags |= SINGLE_AUTO_DATA;
     link.FmtData.u.os2fam.flags &= ~MULTIPLE_AUTO_DATA;
@@ -143,7 +143,7 @@ bool ProcSingle(Link& link) {
 
 bool ProcMultiple(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
-        LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.flags &= ~SINGLE_AUTO_DATA;
     link.FmtData.u.os2fam.flags |= MULTIPLE_AUTO_DATA;
@@ -152,7 +152,7 @@ bool ProcMultiple(Link& link) {
 
 bool ProcNone(Link& link) {
     if (any(cmd_flags() & Flag::auto_segment_flag)) {
-        LnkMsg(WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_AUTO_SEG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.flags &= ~(SINGLE_AUTO_DATA | MULTIPLE_AUTO_DATA);
     return true;
@@ -243,7 +243,7 @@ bool ProcLinkVersion(Link& link) {
     vb.minor = 255;
     vb.revision = 0;
     vb.what = "LINKVERSION";
-    if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
+    if (get_version(link, vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
         link.FmtData.u.pe.lnk_specd = true;
         link.FmtData.u.pe.linkmajor = vb.major;
         link.FmtData.u.pe.linkminor = vb.minor;
@@ -259,7 +259,7 @@ bool ProcOsVersion(Link& link) {
     vb.minor = 99;          // from old default of 100 max
     vb.revision = 0;
     vb.what = "OSVERSION";
-    if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
+    if (get_version(link, vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
         link.FmtData.u.pe.osv_specd = true;
         link.FmtData.u.pe.osmajor = vb.major;
         link.FmtData.u.pe.osminor = vb.minor;
@@ -342,7 +342,7 @@ bool getimport(Link& link) {
     if (r.get(Sep::period, Want::include_dot)) {
         const Number state = number16(ordinal);
         if (state == Number::too_big) {
-            LnkMsg(LOC + LINE + MSG_IMPORT_ORD_INVALID + ERR, nullptr);
+            LnkMsg(link, LOC + LINE + MSG_IMPORT_ORD_INVALID + ERR, nullptr);
         } else if (state == Number::ok) {
             HandleImport(link, &intn, &modn, nullptr, ordinal);
         } else if (state == Number::not_a_number) {
@@ -390,7 +390,7 @@ bool getexport(Link& link) {
     if (any(cmd_flags() & Flag::anonymous_export)) exp->isanonymous = true;
     if (r.get(Sep::period, Want::include_dot)) {
         if (number(val32) != Number::ok) {
-            LnkMsg(ERR + LOC + LINE + MSG_EXPORT_ORD_INVALID, nullptr);
+            LnkMsg(link, ERR + LOC + LINE + MSG_EXPORT_ORD_INVALID, nullptr);
             MemFree(exp);
             r.get(Sep::equals, Want::include_dot);
             return true;
@@ -421,10 +421,10 @@ bool getexport(Link& link) {
     if ((link.FmtData.type & (MK_WIN_NE | MK_PE)) == 0 && r.get(Sep::none, Want::include_dot)) {
         if (number16(val16) == Number::ok) {
             if (val16 > 63) {
-                LnkMsg(LOC + LINE + MSG_TOO_MANY_IOPL_WORDS + ERR, nullptr);
+                LnkMsg(link, LOC + LINE + MSG_TOO_MANY_IOPL_WORDS + ERR, nullptr);
             } else {
                 if (val16 & 1) {
-                    LnkMsg(WRN + LOC + LINE + MSG_IOPL_BYTES_ODD, nullptr);
+                    LnkMsg(link, WRN + LOC + LINE + MSG_IOPL_BYTES_ODD, nullptr);
                 }
                 // The linker takes bytes as input!
                 exp->iopl_words = val16 / 2;
@@ -461,14 +461,14 @@ constexpr Entry SegTypeDesc[] = {
 
 bool ProcSegType(Link& link) {
     if (!process_one(link, SegTypeDesc, Sep::none)) {
-        LnkMsg(WRN + LOC + LINE + MSG_INVALID_TYPE_DESC, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_INVALID_TYPE_DESC, nullptr);
     }
     return true;
 }
 
 bool ProcPreload(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_PRELOAD) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_PRELOAD;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_PRELOAD;
@@ -477,7 +477,7 @@ bool ProcPreload(Link& link) {
 
 bool ProcLoadoncall(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_PRELOAD) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_PRELOAD;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_PRELOAD;
@@ -486,7 +486,7 @@ bool ProcLoadoncall(Link& link) {
 
 bool ProcIopl(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_IOPL_SPECD) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     SET_SEG_PMODE_DPL(link.FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_2);
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
@@ -495,7 +495,7 @@ bool ProcIopl(Link& link) {
 
 bool ProcNoIopl(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_IOPL_SPECD) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     SET_SEG_PMODE_DPL(link.FmtData.u.os2fam.seg_flags->flags, SEG_PMODE_DPL_3);
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_IOPL_SPECD;
@@ -504,7 +504,7 @@ bool ProcNoIopl(Link& link) {
 
 bool ProcExecuteonly(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_ONLY;
@@ -513,7 +513,7 @@ bool ProcExecuteonly(Link& link) {
 
 bool ProcExecuteread(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_ONLY;
@@ -522,7 +522,7 @@ bool ProcExecuteread(Link& link) {
 
 bool ProcShared(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_PURE) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_PURE;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_PURE;
@@ -531,7 +531,7 @@ bool ProcShared(Link& link) {
 
 bool ProcNonShared(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_PURE) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_PURE;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_PURE;
@@ -540,7 +540,7 @@ bool ProcNonShared(Link& link) {
 
 bool ProcReadOnly(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_READ_ONLY;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
@@ -549,7 +549,7 @@ bool ProcReadOnly(Link& link) {
 
 bool ProcReadWrite(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RFLAG) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_READ_ONLY;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_READ_SPECD;
@@ -558,7 +558,7 @@ bool ProcReadWrite(Link& link) {
 
 bool ProcConforming(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_CONFORMING) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_CONFORMING;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_CONFORMING;
@@ -567,7 +567,7 @@ bool ProcConforming(Link& link) {
 
 bool ProcNonConforming(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_CONFORMING) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_CONFORMING;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_CONFORMING;
@@ -576,7 +576,7 @@ bool ProcNonConforming(Link& link) {
 
 bool ProcMovable(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_MOVABLE) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_MOVABLE;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_MOVABLE;
@@ -585,7 +585,7 @@ bool ProcMovable(Link& link) {
 
 bool ProcFixed(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_MOVABLE) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_MOVABLE;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_MOVABLE;
@@ -618,7 +618,7 @@ bool ProcOS2Dynamic(Link& link) {
 
 bool ProcPermanent(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_RESIDENT;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
@@ -627,7 +627,7 @@ bool ProcPermanent(Link& link) {
 
 bool ProcNonPermanent(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_RESIDENT) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_RESIDENT;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_RESIDENT;
@@ -636,7 +636,7 @@ bool ProcNonPermanent(Link& link) {
 
 bool ProcPageable(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags &= ~SEG_NOPAGE;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
@@ -645,7 +645,7 @@ bool ProcPageable(Link& link) {
 
 bool ProcNonPageable(Link& link) {
     if (link.FmtData.u.os2fam.seg_flags->specified & SEG_NOPAGE) {
-        LnkMsg(WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_SEG_FLAG_MULT_DEFD, nullptr);
     }
     link.FmtData.u.os2fam.seg_flags->flags |= SEG_NOPAGE;
     link.FmtData.u.os2fam.seg_flags->specified |= SEG_NOPAGE;
@@ -687,7 +687,7 @@ constexpr Entry SegModel[] = {
 bool getsegflags(Link& link) {
     Reader& r = reader();
     r.push_back();
-    seg_flags_struct* seg_flags = (seg_flags_struct*)(MemAllocSafe(sizeof(seg_flags_struct)));
+    seg_flags_struct* seg_flags = (seg_flags_struct*)(MemAllocSafe(link, sizeof(seg_flags_struct)));
     seg_flags->specified = (seg_flags_type)(0);
     seg_flags->flags = link.FmtData.def_seg_flags;   // default value.
     seg_flags->name = nullptr;
@@ -739,7 +739,7 @@ void GetSubsystemVersion(Link& link) {
     vb.minor = 0;
     vb.revision = 0;
     vb.what = "SUBSYSTEM";
-    if (get_version(vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
+    if (get_version(link, vb, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
         link.FmtData.u.pe.sub_specd = true;
         link.FmtData.u.pe.submajor = vb.major;
         link.FmtData.u.pe.subminor = vb.minor;
@@ -1017,7 +1017,7 @@ bool ProcOS2HeapSize(Link& link) {
     if (!have_equals(Want::normal)) return false;
     const Number ret = number(value);
     if (ret != Number::ok || value == 0) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "HEAPSIZE");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "HEAPSIZE");
     } else {
         link.FmtData.u.os2fam.heapsize = value;
     }

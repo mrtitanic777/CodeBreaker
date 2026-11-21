@@ -92,7 +92,7 @@ struct Version {
     std::uint32_t major = 0, minor = 0, revision = 0;
     const char* what;   // the option, for the message a bad value gives
 };
-VersionPart get_version(Version& v, VersionPart wanted, bool novell_revision);
+VersionPart get_version(Link& link, Version& v, VersionPart wanted, bool novell_revision);
 
 // The current token as an object file's name, `lib(member)` a library's member: the file's name (wlink's FileName,
 // with its default extension: an object's, or a library's for a member) and the member, or null. Both are wlink's

@@ -35,7 +35,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/virtmem.h"
 #include "pcobj.h"
 #include "build/x86link/link/specials.h"
@@ -85,7 +85,7 @@ void ResetComdef( void )
     state() = ComdefState{};
 }
 
-static comdat_info *AllocCDatInfo( void )
+static comdat_info *AllocCDatInfo(Link& link)
 /***************************************/
 {
     ComdefState     &st = state();
@@ -95,7 +95,7 @@ static comdat_info *AllocCDatInfo( void )
         info = st.FreedInfos;
         st.FreedInfos = info->next;
     } else {
-        info = static_cast<comdat_info *>( Pass1Alloc( sizeof( comdat_info ) ) );
+        info = static_cast<comdat_info *>( Pass1Alloc(link,  sizeof( comdat_info ) ) );
     }
     info->pieces = nullptr;
     return( info );
@@ -110,7 +110,7 @@ static void FreeCDatInfo( comdat_info *info )
     st.FreedInfos = info;
 }
 
-static comdat_piece *AllocCDatPiece( void )
+static comdat_piece *AllocCDatPiece(Link& link)
 /*****************************************/
 {
     ComdefState     &st = state();
@@ -120,7 +120,7 @@ static comdat_piece *AllocCDatPiece( void )
         piece = st.FreedPieces;
         st.FreedPieces = piece->next;
     } else {
-        piece = static_cast<comdat_piece *>( Pass1Alloc( sizeof( comdat_piece ) ) );
+        piece = static_cast<comdat_piece *>( Pass1Alloc(link,  sizeof( comdat_piece ) ) );
     }
     std::memset( piece, 0, sizeof( comdat_piece ) );
     return( piece );
@@ -213,7 +213,7 @@ void ProcComdef(Link& link,  bool isstatic )
         }
         sym = SymOp(link,  symop, sym_name, sym_len );
         sym = MakeCommunalSym(link,  sym, size, kind == COMDEF_FAR, bits );
-        ext = static_cast<extnode *>( AllocNode( link.ExtNodes ) );
+        ext = static_cast<extnode *>( AllocNode(link,  link.ExtNodes ) );
         ext->entry = sym;
         ext->ovlref = 0;
     }
@@ -260,13 +260,13 @@ static void DoAltDef(Link& link,  comdat_info *info )
 
 static void FinishComdat(Link& link,  void *inf )
 /***********************************/
-{
+{
     comdat_info *info = static_cast<comdat_info *>( inf );
 
     if( info->flags & SYM_DEAD ) {      // is redefined
         DoAltDef(link,  info );
     } else {
-        StoreInfoData( info );
+        StoreInfoData(link,  info );
     }
     RingWalk( info->pieces, FreeCDatPiece );
     FreeCDatInfo( info );
@@ -401,7 +401,7 @@ void ProcComdat(Link& link)
         BadObject(link);
         return;
     }
-    piece = AllocCDatPiece();
+    piece = AllocCDatPiece(link);
     symname = FindName(link,  GetIdx(link) );
     namelen = std::strlen( symname->name );
     symop = ST_COMDAT;
@@ -415,7 +415,7 @@ void ProcComdat(Link& link)
         piece->length = link.EOObjRec - link.ObjBuff;
     }
     if( !CacheIsPerm() ) {
-        piece->data = static_cast<unsigned_8 *>( MemAllocSafe( piece->length ) );
+        piece->data = static_cast<unsigned_8 *>( MemAllocSafe(link,  piece->length ) );
         std::memcpy( piece->data, link.ObjBuff, piece->length );
         piece->free_data = true;
     } else {
@@ -436,7 +436,7 @@ void ProcComdat(Link& link)
         sdata->u.leader = snode->entry->u.leader;
         sdata->iscode = ( (snode->info & SEGINF_CODE) != 0 );
         sdata->bits = ( link.ObjFormat & OBJ_FMT_32BIT_REC ) ? BITS_32 : BITS_16;
-        info = AllocCDatInfo();
+        info = AllocCDatInfo(link);
         info->sdata = sdata;
         info->sym = sym;
         info->flags = static_cast<sym_info>( (attr & CDAT_SELECT_MASK) << CDAT_SELECT_SHIFT );

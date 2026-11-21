@@ -38,7 +38,7 @@
 #include <ctime>
 #include <string_view>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "exenov.h"
 #include "build/x86link/debuginfo/dbginfo.h"
 #include "build/x86link/fixups/reloc.h"
@@ -185,7 +185,7 @@ static unsigned_32 WriteNovExports(Link& link,  fixed_header *header )
         sym = SymOp(link,  ST_FIND, export_->name.u.ptr, export_->len );
         if( ( sym == nullptr )
           || (sym->info & SYM_DEFINED) == 0 ) {
-            LnkMsg( WRN+MSG_EXP_SYM_NOT_FOUND, "s", export_->name.u.ptr );
+            LnkMsg(link,  WRN+MSG_EXP_SYM_NOT_FOUND, "s", export_->name.u.ptr );
         } else if( !IS_SYM_IMPORTED( sym ) ) {
             ExtName ext_name;
 
@@ -225,7 +225,7 @@ static unsigned_32 WriteNovModules(Link& link,  fixed_header *header )
 
 void NovDBIAddGlobal(Link& link,  void *_sym )
 /********************************/
-{
+{
     symbol *sym = static_cast<symbol *>( _sym );
 
     if( !IS_SYM_A_REF( sym )
@@ -239,13 +239,13 @@ void NovDBIAddGlobal(Link& link,  void *_sym )
     }
 }
 
-void NovDBIAddrStart( void )
+void NovDBIAddrStart(Link& link)
 /**************************/
 {
     NovState &st = state();
 
     if( st.DbgInfoLen != 0 ) {
-        st.NovDbgInfo = AllocStg( st.DbgInfoLen );
+        st.NovDbgInfo = AllocStg(link,  st.DbgInfoLen );
         st.CurrDbgLoc = st.NovDbgInfo;
     }
 }
@@ -326,18 +326,18 @@ static unsigned_32 WriteMessages(Link& link,  extended_nlm_header *header )
     header->messageFileLength = 0;
     if( link.FmtData.u.nov.messages != nullptr ) {
         handle = QOpenR(link,  link.FmtData.u.nov.messages );
-        QRead( handle, link.TokBuff, MSG_FILE_SIGNATURE_LENGTH, link.FmtData.u.nov.messages );
+        QRead(link,  handle, link.TokBuff, MSG_FILE_SIGNATURE_LENGTH, link.FmtData.u.nov.messages );
         if( std::memcmp( link.TokBuff, MSG_FILE_SIGNATURE, MSG_FILE_SIGNATURE_LENGTH ) != 0 ) {
-            LnkMsg( WRN+MSG_INV_MESSAGE_FILE, "s", link.FmtData.u.nov.messages );
+            LnkMsg(link,  WRN+MSG_INV_MESSAGE_FILE, "s", link.FmtData.u.nov.messages );
         } else {
-            QSeek( handle, LANGUAGE_ID_OFFSET, link.FmtData.u.nov.messages );
-            QRead( handle, buf.data(), sizeof( buf ), link.FmtData.u.nov.messages );
+            QSeek(link,  handle, LANGUAGE_ID_OFFSET, link.FmtData.u.nov.messages );
+            QRead(link,  handle, buf.data(), sizeof( buf ), link.FmtData.u.nov.messages );
             header->languageID = buf[0];
             header->messageCount = buf[1];
-            QSeek( handle, 0, link.FmtData.u.nov.messages );
+            QSeek(link,  handle, 0, link.FmtData.u.nov.messages );
             header->messageFileLength = CopyToLoad(link,  handle, link.FmtData.u.nov.messages );
         }
-        QClose( handle, link.FmtData.u.nov.messages );
+        QClose(link,  handle, link.FmtData.u.nov.messages );
     }
     return( header->messageFileLength );
 }
@@ -352,9 +352,9 @@ static unsigned_32 WriteSharedNLM(Link& link,  extended_nlm_header *header, unsi
     size = 0;
     if( link.FmtData.u.nov.sharednlm != nullptr ) {
         handle = QOpenR(link,  link.FmtData.u.nov.sharednlm );
-        QRead( handle, link.TokBuff, sizeof( fixed_header ), link.FmtData.u.nov.sharednlm );
+        QRead(link,  handle, link.TokBuff, sizeof( fixed_header ), link.FmtData.u.nov.sharednlm );
         if( std::memcmp( link.TokBuff, NLM_SIGNATURE, NLM_SIGNATURE_LENGTH ) != 0 ) {
-            LnkMsg( WRN+MSG_INV_SHARED_NLM_FILE, "s", link.FmtData.u.nov.sharednlm );
+            LnkMsg(link,  WRN+MSG_INV_SHARED_NLM_FILE, "s", link.FmtData.u.nov.sharednlm );
         } else {
             sharehdr = reinterpret_cast<fixed_header *>( link.TokBuff );
             header->sharedCodeOffset = sharehdr->codeImageOffset + file_size;
@@ -376,10 +376,10 @@ static unsigned_32 WriteSharedNLM(Link& link,  extended_nlm_header *header, unsi
             header->sharedDebugRecordCount = sharehdr->numberOfDebugRecords;
             header->sharedInitializationOffset = sharehdr->codeStartOffset;
             header->sharedExitProcedureOffset = sharehdr->exitProcedureOffset;
-            QSeek( handle, 0, link.FmtData.u.nov.sharednlm );
+            QSeek(link,  handle, 0, link.FmtData.u.nov.sharednlm );
             size = CopyToLoad(link,  handle, link.FmtData.u.nov.sharednlm );
         }
-        QClose( handle, link.FmtData.u.nov.sharednlm );
+        QClose(link,  handle, link.FmtData.u.nov.sharednlm );
     }
     return( size );
 }
@@ -394,7 +394,7 @@ static void GetProcOffsets(Link& link,  fixed_header *header )
     if( link.FmtData.u.nov.checkfn != nullptr ) {
         sym = FindISymbol(link,  link.FmtData.u.nov.checkfn );
         if( sym == nullptr ) {
-            LnkMsg( WRN+MSG_CHECK_NOT_FOUND, nullptr );
+            LnkMsg(link,  WRN+MSG_CHECK_NOT_FOUND, nullptr );
         } else {
             header->checkUnloadProcedureOffset = sym->addr.off;
         }
@@ -407,7 +407,7 @@ static void GetProcOffsets(Link& link,  fixed_header *header )
     sym = FindISymbol(link,  name );
     if( ( sym == nullptr )
       || (sym->info & SYM_DEFINED) == 0 ) {
-        LnkMsg( ERR + MSG_START_PROC_NOT_FOUND, nullptr );
+        LnkMsg(link,  ERR + MSG_START_PROC_NOT_FOUND, nullptr );
     } else {
         header->codeStartOffset = sym->addr.off;
     }
@@ -418,7 +418,7 @@ static void GetProcOffsets(Link& link,  fixed_header *header )
     }
     sym = FindISymbol(link,  name );
     if( sym == nullptr ) {
-        LnkMsg( ERR + MSG_EXIT_PROC_NOT_FOUND, nullptr );
+        LnkMsg(link,  ERR + MSG_EXIT_PROC_NOT_FOUND, nullptr );
     } else {
         header->exitProcedureOffset = sym->addr.off;
     }
@@ -543,7 +543,7 @@ void FiniNovellLoadFile(Link& link)
     }
     module_name[len] = '\0';
     if( name_trunc ) {
-        LnkMsg( WRN+MSG_INTERNAL_MOD_NAME_DIFF_FROM_FILE, "s", module_name.data() );
+        LnkMsg(link,  WRN+MSG_INTERNAL_MOD_NAME_DIFF_FROM_FILE, "s", module_name.data() );
     }
     /* setup description */
     if( link.FmtData.description == nullptr ) {
@@ -554,7 +554,7 @@ void FiniNovellLoadFile(Link& link)
         if( nov_header.descriptionLength > MAX_DESCRIPTION_LENGTH ) {
             nov_header.descriptionLength = MAX_DESCRIPTION_LENGTH;
             link.FmtData.description[MAX_DESCRIPTION_LENGTH] = '\0';
-            LnkMsg( WRN+MSG_VALUE_TOO_LARGE, "s", "DESCRIPTION" );
+            LnkMsg(link,  WRN+MSG_VALUE_TOO_LARGE, "s", "DESCRIPTION" );
         }
         desc = link.FmtData.description;
     }
@@ -678,13 +678,13 @@ void AddNovImpReloc(Link& link,  symbol *sym, unsigned_32 offset, bool isrelativ
     }
     nov_imp = sym->p.import_nov;
     if( nov_imp == DUMMY_IMPORT_PTR ) {
-        nov_imp = static_cast<nov_import *>( MemAllocSafe( sizeof( nov_import ) ) );
+        nov_imp = static_cast<nov_import *>( MemAllocSafe(link,  sizeof( nov_import ) ) );
         sym->p.import_nov = nov_imp;
         nov_imp->contents = 0;
         nov_imp->u.r.relocs[nov_imp->contents++] = offset;
     } else if( nov_imp->contents < MAX_IMP_INTERNAL ) {
         if( nov_imp->contents == 1 ) {
-            tmp = static_cast<nov_import *>( MemAllocSafe( ( MAX_IMP_INTERNAL - 1 ) * sizeof( unsigned_32 ) + sizeof( nov_import ) ) );
+            tmp = static_cast<nov_import *>( MemAllocSafe(link,  ( MAX_IMP_INTERNAL - 1 ) * sizeof( unsigned_32 ) + sizeof( nov_import ) ) );
             std::memcpy( tmp, nov_imp, sizeof( nov_import ) );
             MemFree( nov_imp );
             nov_imp = tmp;
@@ -692,7 +692,7 @@ void AddNovImpReloc(Link& link,  symbol *sym, unsigned_32 offset, bool isrelativ
         }
         nov_imp->u.r.relocs[nov_imp->contents++] = offset;
     } else if( nov_imp->contents == MAX_IMP_INTERNAL ) { // set up virt.mem
-        vmem_ptr = AllocStg( IMP_VIRT_ALLOC_SIZE );
+        vmem_ptr = AllocStg(link,  IMP_VIRT_ALLOC_SIZE );
         PutInfo( vmem_ptr, nov_imp->u.r.relocs, MAX_IMP_INTERNAL * sizeof( unsigned_32 ) );
         PutInfo( vmem_ptr + MAX_IMP_INTERNAL * sizeof( unsigned_32 ), &offset, sizeof( unsigned_32 ) );
         nov_imp->contents++;
@@ -703,14 +703,14 @@ void AddNovImpReloc(Link& link,  symbol *sym, unsigned_32 offset, bool isrelativ
         voff = nov_imp->u.v.num_relocs % IMP_NUM_VIRT;
         if( voff == 0 ) {
             if( vblock >= static_cast<unsigned>( nov_imp->contents - MAX_IMP_INTERNAL ) * MAX_IMP_VIRT ) {
-                tmp = static_cast<nov_import *>( MemAllocSafe( sizeof( nov_import ) - sizeof( unsigned_32 ) + vblock * sizeof( unsigned_32 ) * 2 ) );
+                tmp = static_cast<nov_import *>( MemAllocSafe(link,  sizeof( nov_import ) - sizeof( unsigned_32 ) + vblock * sizeof( unsigned_32 ) * 2 ) );
                 std::memcpy( tmp, nov_imp, sizeof( nov_import ) - sizeof( unsigned_32 ) + vblock * sizeof( unsigned_32 ) );
                 MemFree( nov_imp );
                 nov_imp = tmp;
                 nov_imp->contents++;
                 sym->p.import_nov = nov_imp;
             }
-            nov_imp->u.v.vm_ptr[vblock] = AllocStg( IMP_VIRT_ALLOC_SIZE );
+            nov_imp->u.v.vm_ptr[vblock] = AllocStg(link,  IMP_VIRT_ALLOC_SIZE );
         }
         PutInfo( nov_imp->u.v.vm_ptr[vblock] + voff * sizeof( unsigned_32 ), &offset, sizeof( unsigned_32 ) );
         nov_imp->u.v.num_relocs++;

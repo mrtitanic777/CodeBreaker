@@ -33,8 +33,8 @@
 #pragma once   /* CodeBreaker: each header once (the directive layer includes them as C++ headers) */
 
 
-extern void             DistribInitMods( void );
-extern void             DistribAddMod( mod_entry *, overlay_ref );
+extern void             DistribInitMods(Link& link);
+extern void             DistribAddMod(Link& link,  mod_entry *, overlay_ref );
 extern void             InitArcList(Link& link,  mod_entry * );
 extern void             DistribSetSegments(Link& link);
 extern void             FreeDistribSupp(Link& link);

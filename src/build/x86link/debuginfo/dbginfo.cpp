@@ -37,7 +37,7 @@
 #include <string_view>
 #include "walloca.h"
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/debuginfo/dbginfo.h"
 #include "build/x86link/base/newmem.h"
@@ -113,12 +113,12 @@ inline debug_info *dbgInfo( section *sect )
 constexpr std::size_t MASTER_OBJ_MAJOR = offsetof( master_dbg_header, obj_major_ver );
 constexpr std::size_t MASTER_OBJ_MINOR = offsetof( master_dbg_header, obj_minor_ver );
 
-snamelist *LangAlloc( std::string_view name )
+snamelist *LangAlloc(Link& link,  std::string_view name )
 /*******************************************/
 {
     snamelist *node;
 
-    node = static_cast<snamelist *>( _PermAlloc( sizeof( snamelist ) + name.size() ) );
+    node = static_cast<snamelist *>( PermAlloc( link, sizeof( snamelist ) + name.size() ) );
     node->len = name.size();
     std::memcpy( node->name, name.data(), name.size() );
     node->name[name.size()] = '\0';
@@ -127,7 +127,7 @@ snamelist *LangAlloc( std::string_view name )
 
 }
 
-void ODBIInit( section *sect )
+void ODBIInit(Link& link,  section *sect )
 /****************************/
 {
     DbgInfoState    &st = dbgInfoState();
@@ -138,9 +138,9 @@ void ODBIInit( section *sect )
     st.master[offsetof( master_dbg_header, exe_minor_ver )] = EXE_MINOR_VERSION;
     st.master[offsetof( master_dbg_header, obj_major_ver )] = 0;
     st.master[offsetof( master_dbg_header, obj_minor_ver )] = 0;
-    st.dbiSourceLang = LangAlloc( std::string_view( FE_LANG_C, sizeof( FE_LANG_C ) - 1 ) );
+    st.dbiSourceLang = LangAlloc(link,  std::string_view( FE_LANG_C, sizeof( FE_LANG_C ) - 1 ) );
     st.dbiSourceLang->next = nullptr;
-    sect->dbg_info = _PermAlloc( sizeof( debug_info ) );
+    sect->dbg_info = PermAlloc( link, sizeof( debug_info ) );
     std::memset( sect->dbg_info, 0, sizeof( debug_info ) );  //assumes NULL == 0
 #ifdef DEVBUILD
     st.traceInfo = {};
@@ -152,7 +152,7 @@ void ODBIInitModule(Link& link,  mod_entry *mod )
 {
     if( link.CurrSect->dbg_info == nullptr )
         return;
-    mod->u3.o = static_cast<ODBIMODINFO *>( _PermAlloc( sizeof( odbimodinfo ) ) );
+    mod->u3.o = static_cast<ODBIMODINFO *>( PermAlloc( link, sizeof( odbimodinfo ) ) );
     std::memset( mod->u3.o, 0, sizeof( odbimodinfo ) );
 }
 
@@ -190,14 +190,14 @@ void ODBIP1Source(Link& link,  byte major, byte minor, const char *name, size_t 
     if( st.master[MASTER_OBJ_MAJOR] == 0 )
         st.master[MASTER_OBJ_MAJOR] = major;
     if( major != st.master[MASTER_OBJ_MAJOR] ) {
-        LnkMsg( WRN+LOC+MSG_CANT_USE_LOCALS, nullptr );
+        LnkMsg(link,  WRN+LOC+MSG_CANT_USE_LOCALS, nullptr );
         link.CurrMod->flags_dbi &= ~( DBI_TYPE | DBI_LOCAL );
     }
     if( st.master[MASTER_OBJ_MINOR] < minor ) {
         st.master[MASTER_OBJ_MINOR] = minor;
     }
     if( !FindMatch( len, name, &link.CurrMod->u3.o->dbisourceoffset ) ) {
-        node = LangAlloc( std::string_view( name, len ) );
+        node = LangAlloc(link,  std::string_view( name, len ) );
         node->next = st.dbiSourceLang->next;
         st.dbiSourceLang->next = node;        // keep "C" the first entry.
     }
@@ -293,7 +293,7 @@ void ODBIGenLocal(Link& link,  segdata *sdata )
 
 static void ODBIAddLines(Link& link,  lineinfo *info )
 /****************************************/
-{
+{
     unsigned            lineqty;
     unsigned_32         linesize;
     debug_info          *dinfo;
@@ -362,7 +362,7 @@ void ODBIAddGlobal(Link& link,  symbol *sym )
     if( ODBISymIsForGlobalDebugging( sym, link.CurrMod ) ) {
         len = std::strlen( sym->name.u.ptr );
         if( len > 255 ) {
-            LnkMsg( WRN+MSG_SYMBOL_NAME_TOO_LONG, "s", sym->name.u.ptr );
+            LnkMsg(link,  WRN+MSG_SYMBOL_NAME_TOO_LONG, "s", sym->name.u.ptr );
             len = 255;
         }
         dinfo->global.curr.u.vm_offs += sizeof( v3_gbl_info ) + len;
@@ -406,17 +406,17 @@ void ODBIAddrSectStart(Link& link,  section *sect )
     }
     dptr->locallinks.start = sizeof( section_dbg_header );
     dptr->locallinks.size = dptr->locallinks.curr.u.vm_offs;
-    dptr->locallinks.curr.u.vm_ptr = DBIAlloc( dptr->locallinks.curr.u.vm_offs );
+    dptr->locallinks.curr.u.vm_ptr = DBIAlloc(link,  dptr->locallinks.curr.u.vm_offs );
     dptr->locallinks.init.u.vm_ptr = dptr->locallinks.curr.u.vm_ptr;
 
     dptr->typelinks.start = dptr->locallinks.start + dptr->locallinks.size;
     dptr->typelinks.size = dptr->typelinks.curr.u.vm_offs;
-    dptr->typelinks.curr.u.vm_ptr = DBIAlloc( dptr->typelinks.curr.u.vm_offs );
+    dptr->typelinks.curr.u.vm_ptr = DBIAlloc(link,  dptr->typelinks.curr.u.vm_offs );
     dptr->typelinks.init.u.vm_ptr = dptr->typelinks.curr.u.vm_ptr;
 
     dptr->linelinks.start = dptr->typelinks.start + dptr->typelinks.size;
     dptr->linelinks.size = dptr->linelinks.curr.u.vm_offs;
-    dptr->linelinks.curr.u.vm_ptr = DBIAlloc( dptr->linelinks.curr.u.vm_offs );
+    dptr->linelinks.curr.u.vm_ptr = DBIAlloc(link,  dptr->linelinks.curr.u.vm_offs );
     dptr->linelinks.init.u.vm_ptr = dptr->linelinks.curr.u.vm_ptr;
 
     dptr->local.start = dptr->linelinks.start + dptr->linelinks.size;
@@ -429,21 +429,21 @@ void ODBIAddrSectStart(Link& link,  section *sect )
 
     dptr->line.start = dptr->type.start + dptr->type.size;
     dptr->line.size = dptr->line.curr.u.vm_offs;
-    dptr->line.curr.u.vm_ptr = DBIAlloc( dptr->line.curr.u.vm_offs );
+    dptr->line.curr.u.vm_ptr = DBIAlloc(link,  dptr->line.curr.u.vm_offs );
     dptr->line.init.u.vm_ptr = dptr->line.curr.u.vm_ptr;
 
     dptr->mod.start = dptr->line.start + dptr->line.size;
     dptr->mod.size = dptr->mod.curr.u.vm_offs;
-    dptr->mod.curr.u.vm_ptr = DBIAlloc( dptr->mod.curr.u.vm_offs );
+    dptr->mod.curr.u.vm_ptr = DBIAlloc(link,  dptr->mod.curr.u.vm_offs );
     dptr->mod.init.u.vm_ptr = dptr->mod.curr.u.vm_ptr;
 
     dptr->global.start = dptr->mod.start + dptr->mod.size;
     dptr->addr.start = dptr->global.start + dptr->global.curr.u.vm_offs;
     dptr->global.size = 0;
-    dptr->global.curr.u.vm_ptr = DBIAlloc( dptr->global.curr.u.vm_offs );
+    dptr->global.curr.u.vm_ptr = DBIAlloc(link,  dptr->global.curr.u.vm_offs );
     dptr->global.init.u.vm_ptr = dptr->global.curr.u.vm_ptr;
 
-    dptr->addr.curr.u.vm_ptr = DBIAlloc( dptr->addr.size );
+    dptr->addr.curr.u.vm_ptr = DBIAlloc(link,  dptr->addr.size );
     dptr->addr.init.u.vm_ptr = dptr->addr.curr.u.vm_ptr;
 
     dptr->dump_addr = dptr->global.curr.u.vm_ptr;
@@ -513,7 +513,7 @@ void ODBIAddModule( mod_entry *obj, section *sect )
 
 static void ODBIGenAddrInit(Link& link,  segdata *sdata, void *_dinfo )
 /*********************************************************/
-{
+{
     seg_dbg_info    seghdr;
     seg_leader      *seg;
     debug_info      *dptr = static_cast<debug_info *>( _dinfo );
@@ -554,7 +554,7 @@ static void ODBIGenAddrAdd( segdata *sdata, offset delta, offset size, void *_di
 
 static void ODBIGenAddrInfo(Link& link,  seg_leader *seg )
 /********************************************/
-{
+{
     debug_info  *dptr;
 
     if( link.CurrSect == link.NonSect ) {
@@ -568,13 +568,13 @@ static void ODBIGenAddrInfo(Link& link,  seg_leader *seg )
     DBIAddrInfoScan(link,  seg, bind_link( link, ODBIGenAddrInit ), ODBIGenAddrAdd, dptr );
 }
 
-static void WriteBogusAddrInfo( debug_info *dptr )
+static void WriteBogusAddrInfo(Link& link,  debug_info *dptr )
 /************************************************/
 {
     seg_dbg_info    header;
 
     dptr->addr.size = sizeof( seg_dbg_info );
-    dptr->addr.curr.u.vm_ptr = DBIAlloc( dptr->addr.size );
+    dptr->addr.curr.u.vm_ptr = DBIAlloc(link,  dptr->addr.size );
     dptr->addr.init.u.vm_ptr = dptr->addr.curr.u.vm_ptr;
     dptr->dump_addr = dptr->addr.curr.u.vm_ptr;
     header.base.offset = 0;
@@ -601,7 +601,7 @@ void ODBIP2Start(Link& link,  section *sect )
     if( dptr != nullptr ) {
         // if section has no info then write bogus address info
         if( dptr->addr.curr.u.vm_ptr == 0 ) {
-            WriteBogusAddrInfo( dptr );
+            WriteBogusAddrInfo(link,  dptr );
         } else {
             dptr->dump_addr = dptr->addr.curr.u.vm_ptr;
             SectWalkClass(link,  sect, bind_link( link, ODBIGenAddrInfo ) );
@@ -638,7 +638,7 @@ static bool CheckFirst( void *_seg, void *_firstseg )
 
 void ODBIGenLines(Link& link,  lineinfo *info )
 /*********************************/
-{
+{
     size_t              linelen;
     ln_off_pair _WCUNALIGNED *pair;
     ln_off_386          tmp_ln;
@@ -870,7 +870,7 @@ static unsigned_16 WriteSegValues(Link& link)
 
 static void WriteDBISecs(Link& link,  section *sect )
 /***************************************/
-{
+{
     debug_info          *dptr;
     section_dbg_header  header;
     unsigned long       pos;

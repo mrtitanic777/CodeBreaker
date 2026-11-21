@@ -114,8 +114,8 @@ extern void     CleanPermData(Link& link);
 extern void     ReadPermData(Link& link);
 extern void     WritePermData(Link& link);
 
-extern void     IncP2Start( void );
-extern void     PermSaveFixup( void *, size_t );
+extern void     IncP2Start( Link& link );
+extern void     PermSaveFixup(Link& link,  void *, size_t );
 extern void     PermStartMod( mod_entry * );
 extern void     PermEndMod( mod_entry * );
 extern void     WritePermFile(Link& link,  perm_write_info *, const void *data, size_t len );

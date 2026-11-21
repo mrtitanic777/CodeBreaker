@@ -32,7 +32,7 @@
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/newmem.h"
 #include "build/x86link/base/virtmem.h"
 #include "build/x86link/fixups/obj2supp.h"
@@ -55,7 +55,7 @@ void ObjPass2(Link& link)
 /* Pass 2 of 8086 linker. */
 {
     DEBUG(( DBG_BASE, "ObjPass2()" ));
-    IncP2Start();
+    IncP2Start(link);
     WalkAllSects(link,  bind_link( link, DBIP2Start ) );
     link.CurrSect = link.Root;/*  TAI */
     PModList(link,  link.Root->mods );

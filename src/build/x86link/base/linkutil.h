@@ -41,7 +41,7 @@ extern void             WalkAllSects(Link& link,  FunctionRef<walksecs_fn> );
 extern void             ParmWalkAllSects(Link& link,  FunctionRef<parmwalksecs_fn>, void * );
 extern void             CheckErr(Link& link);
 extern void             CheckStop(Link& link);
-extern void             LnkFatal( const char * );
+extern void             LnkFatal(Link& link,  const char * );
 extern void             ClearBit( byte *, unsigned );
 extern bool             TestBit( byte *, unsigned );
 extern seg_leader       *FindSegment( section *, const char * );
@@ -60,7 +60,7 @@ extern obj_name_list    *AddNameTable(Link& link,  const char *, size_t, bool, o
 extern unsigned_16      log2_16( unsigned_16 );
 extern unsigned_16      log2_32( unsigned_32 );
 extern const char       *GetBaseName( const char *, size_t, size_t * );
-extern void             WriteNulls( f_handle, size_t, const char * );
+extern void             WriteNulls(Link& link,  f_handle, size_t, const char * );
 extern void             VMemQSort( virt_mem, size_t, size_t,
                                     void (*swapfn)(virt_mem, virt_mem),
                                     int (*cmpfn)(virt_mem, virt_mem) );
@@ -68,4 +68,4 @@ extern void             InitEnvVars(Link& link);
 extern void             FiniEnvVars(Link& link);
 extern file_list        *AllocNewFile(Link& link,  member_list *member );
 extern char             *FileName( Link& link, const char *, size_t, file_defext, bool );
-extern section          *NewSection( void );
+extern section          *NewSection(Link& link);

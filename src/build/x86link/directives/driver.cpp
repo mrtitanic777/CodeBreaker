@@ -4,7 +4,7 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "build/x86link/directives/cmdline.h"
@@ -134,7 +134,7 @@ void help(Link& link) {
 void parse_command(Link& link) {
     Reader& r = reader();
     while (!r.get(Sep::end, Want::include_dot)) {
-        if (!DoParseDirectiveSuicide(link)) Syntax();
+        if (!DoParseDirectiveSuicide(link)) Syntax(link);
         r.forward();
     }
 }
@@ -168,13 +168,13 @@ void burn(Link& link) {
 
 }  // namespace
 
-void Syntax() {
+void Syntax(Link& link) {
     Reader& r = reader();
     if (!r.has_token()) {
-        LnkMsg(FTL + LOC + LINE + MSG_DIRECTIVE_ERR_BEGINNING, nullptr);
+        LnkMsg(link, FTL + LOC + LINE + MSG_DIRECTIVE_ERR_BEGINNING, nullptr);
     } else {
         const std::string word = r.str();
-        LnkMsg(FTL + LOC + LINE + MSG_DIRECTIVE_ERR, "s", word.c_str());
+        LnkMsg(link, FTL + LOC + LINE + MSG_DIRECTIVE_ERR, "s", word.c_str());
     }
 }
 
@@ -274,7 +274,7 @@ void DoCmdFile(Link& link, const char* fname) {
         }
     }
     if ((link.FmtData.type & (MK_NOVELL | MK_DOS)) && (link.LinkFlags & LF_INC_LINK_FLAG)) {
-        LnkMsg(FTL + MSG_FORMAT_BAD_OPTION, "s", "incremental");
+        LnkMsg(link, FTL + MSG_FORMAT_BAD_OPTION, "s", "incremental");
     }
 #ifdef _NOVELL
     if (link.FmtData.type & MK_NOVELL) dx::CmdNovFini();
@@ -291,7 +291,7 @@ void DoCmdFile(Link& link, const char* fname) {
     char* name = dx::exe_name();
     if (name == nullptr || !dx::any(dx::cmd_flags() & dx::Flag::have_files)) {
         dx::Ignite(link);
-        LnkMsg(FTL + MSG_NO_FILES_FOUND, nullptr);
+        LnkMsg(link, FTL + MSG_NO_FILES_FOUND, nullptr);
     }
     const size_t namelen = std::strlen(name);
     if (namelen > 0) {
@@ -336,8 +336,8 @@ void SetFormat(Link& link) {
     if (link.FmtData.type & MK_OVERLAYS) OvlFillOutFilePtrs(link);   // (every output file not named)
 #endif
     if (link.MapFile != nullptr) {
-        WriteMapLnkMsg(MSG_EXE_NAME, "s", link.Root->outfile->fname);
-        WriteMapLnkMsg(MSG_CREATE_EXE, "f");
+        WriteMapLnkMsg( link, MSG_EXE_NAME, "s", link.Root->outfile->fname);
+        WriteMapLnkMsg( link, MSG_CREATE_EXE, "f");
     }
 #ifdef _QNX
     if (link.FmtData.type & MK_QNX) dx::CmdQNXFini(link);
@@ -378,7 +378,7 @@ void DecideFormat(Link& link) {
     if ((link.LinkState & LS_FMT_DECIDED) == 0) {
         char rc_buff[RESOURCE_MAX_SIZE];
         Msg_Get(MSG_FORMAT_NOT_DECIDED, rc_buff);
-        LnkMsg(FTL + MSG_INTERNAL, "s", rc_buff);
+        LnkMsg(link, FTL + MSG_INTERNAL, "s", rc_buff);
     }
 }
 
@@ -397,7 +397,7 @@ void AddCommentLib(Link& link, const char* comment, size_t len, lib_priority pri
 }
 
 void AddLibPaths(Link& link, const char* path_list, size_t len, bool add_to_front) {
-    auto* newpath = static_cast<path_entry*>(MemAllocSafe(sizeof(path_entry) + len));
+    auto* newpath = static_cast<path_entry*>(MemAllocSafe(link, sizeof(path_entry) + len));
     const char* end = path_list + len;
     char* p = newpath->name;
     while (path_list != end) {
@@ -426,7 +426,7 @@ void AddLibPathsToEnd(Link& link, const char* path_list) {
 void AddLibPathsToEndList(Link& link, const char* path_list) {
     if (path_list == nullptr || *path_list == '\0') return;
     const size_t len = std::strlen(path_list);
-    auto* newpath = static_cast<path_entry*>(MemAllocSafe(sizeof(path_entry) + len));
+    auto* newpath = static_cast<path_entry*>(MemAllocSafe(link, sizeof(path_entry) + len));
     std::strcpy(newpath->name, path_list);
     AppendList(reinterpret_cast<void**>(&link.UsrLibPath), newpath);
 }
@@ -443,7 +443,7 @@ void ExecSystem(Link& link, const char* name) {
     sys->name = nullptr;
     while (!r.get(dx::Sep::end, dx::Want::include_dot)) {
         if (!dx::DoParseDirectiveSubset(link)) {
-            LnkMsg(WRN + LOC + LINE + MSG_ERROR_IN_SYSTEM_BLOCK, nullptr);
+            LnkMsg(link, WRN + LOC + LINE + MSG_ERROR_IN_SYSTEM_BLOCK, nullptr);
             r.pop();
             break;
         }

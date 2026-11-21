@@ -2,7 +2,7 @@
 #include <cstring>
 
 #include "build/x86link/directives/common.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/directives/formats.hpp"
 #include "build/x86link/directives/state.hpp"
 #include "build/x86link/directives/cmdline.h"
@@ -23,7 +23,7 @@ bool ProcBuffer(Link& link) {
     unsigned_32 value;
     if (!get_number(value)) return false;
     if (value < _1K || value > _32K) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "BUFFER");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "BUFFER");
     } else {
         link.FmtData.u.d16m.buffer = value;
     }
@@ -34,11 +34,11 @@ bool ProcGDTSize(Link& link) {
     unsigned_32 value;
     if (!get_number(value)) return false;
     if ((value % 8) != 0) {
-        LnkMsg(WRN + LOC + LINE + MSG_NOT_MULTIPLE_OF_8, "s", "GDTSIZE");
+        LnkMsg(link, WRN + LOC + LINE + MSG_NOT_MULTIPLE_OF_8, "s", "GDTSIZE");
         value &= -8;
     }
     if (value > 0x10000) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "GDTSIZE");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "GDTSIZE");
     } else {
         link.FmtData.u.d16m.gdtsize = --value;
     }
@@ -47,7 +47,7 @@ bool ProcGDTSize(Link& link) {
 
 bool ProcRelocs(Link& link) {
     if (link.FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
-        LnkMsg(WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
     }
     link.LinkState |= LS_MAKE_RELOCS;
     return true;
@@ -57,11 +57,11 @@ bool ProcSelStart(Link& link) {
     unsigned_32 value;
     if (!get_number(value)) return false;
     if ((value % 8) != 0) {
-        LnkMsg(WRN + LOC + LINE + MSG_NOT_MULTIPLE_OF_8, "s", "SELSTART");
+        LnkMsg(link, WRN + LOC + LINE + MSG_NOT_MULTIPLE_OF_8, "s", "SELSTART");
         value &= -8;
     }
     if (value >= 0x10000 || value < D16M_USER_SEL) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "SELSTART");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", "SELSTART");
     } else {
         link.FmtData.u.d16m.selstart = value;
     }
@@ -73,7 +73,7 @@ bool ProcExtended(Link& link) {
     if (!get_number(value)) return false;
     value >>= 10;   // value should be in K.
     if (value >= 0x10000) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "EXTENDED");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "EXTENDED");
     } else {
         link.FmtData.u.d16m.extended = value;
     }
@@ -94,7 +94,7 @@ bool ProcDataSize(Link& link) {
     unsigned_32 value;
     if (!get_number(value)) return false;
     if (value > _64K) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "DATASIZE");
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_TOO_LARGE, "s", "DATASIZE");
     } else {
         link.FmtData.u.d16m.datasize = __ROUND_UP_SIZE_TO_PARA(value);
         link.FmtData.u.d16m.flags |= DATASIZE_SPECD;
@@ -153,7 +153,7 @@ bool ProcSelectors(Link& link) {
 bool ProcAuto(Link& link) {
     // force selectors to be assigned at load time, and force relocs as well.
     if (link.FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
-        LnkMsg(WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
     }
     link.FmtData.u.d16m.options |= OPT_AUTO;
     link.LinkState |= LS_MAKE_RELOCS;
@@ -209,7 +209,7 @@ bool ProcTStack(Link& link) {
 
 bool ProcTData(Link& link) {
     if (link.FmtData.u.d16m.flags & FORCE_NO_RELOCS) {
-        LnkMsg(WRN + LOC + LINE + MSG_TRANS_RELOCS_NEEDED, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_TRANS_RELOCS_NEEDED, nullptr);
     }
     link.FmtData.u.d16m.flags |= TRANS_DATA;
     link.LinkState |= LS_MAKE_RELOCS;
@@ -257,7 +257,7 @@ bool Proc16MOptions(Link& link) {
 
 bool Proc16MNoRelocs(Link& link) {
     if (link.LinkState & LS_MAKE_RELOCS) {
-        LnkMsg(WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
+        LnkMsg(link, WRN + LOC + LINE + MSG_BOTH_RELOC_OPTIONS, nullptr);
     } else {
         link.FmtData.u.d16m.flags |= FORCE_NO_RELOCS;
     }
@@ -274,7 +274,7 @@ bool Proc16MMemory(Link& link) {
 
 bool Proc16MTransparent(Link& link) {
     if (link.FmtData.u.d16m.flags & TRANS_SPECD) {
-        LnkMsg(WRN + LOC + LINE + MSG_OPTION_MULTIPLY_DEFD, "s", "transparent");
+        LnkMsg(link, WRN + LOC + LINE + MSG_OPTION_MULTIPLY_DEFD, "s", "transparent");
         return true;
     }
     return process_one(link, TransTypes, Sep::none);

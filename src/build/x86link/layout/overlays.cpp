@@ -31,7 +31,7 @@
 
 
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/newmem.h"
 #include "build/x86link/debuginfo/dbgcomm.h"
 #include "build/x86link/debuginfo/dbgall.h"
@@ -47,7 +47,7 @@
 
 static void OvlNumASect(Link& link,  section *sect )
 /**************************************/
-{
+{
     sect->ovlref = link.OvlSectNum++;
 }
 
@@ -71,7 +71,7 @@ void OvlSetSegments(Link& link)
 
 static void FillOutPtr(Link& link,  section *sect )
 /*************************************/
-{
+{
     if( sect->outfile == nullptr ) {
         if( sect->parent != nullptr ) {
             sect->outfile = sect->parent->outfile;  //same file as ancestor.
@@ -93,7 +93,7 @@ void OvlTryDefVector(Link& link,  symbol *sym )
     if( sym->info & SYM_1_DISTRIB ) {
         DefDistribSym(link,  sym );
     } else {
-        OvlDefVector( sym );
+        OvlDefVector(link,  sym );
     }
 }
 
@@ -108,7 +108,7 @@ void OvlTryUseVector(Link& link,  symbol *sym, extnode *newnode )
 
 static void PSection(Link& link,  section *sect )
 /***********************************/
-{
+{
     link.CurrSect = sect;
     PModList(link,  sect->mods );
 }

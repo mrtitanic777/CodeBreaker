@@ -39,11 +39,11 @@
 namespace {
 
 /* the Win32 form of the header: DWORD aligned, 32-bit sizes */
-bool readHeader32( MResResourceHeader *msheader, FILE *fp )
+bool readHeader32(Link& link,  MResResourceHeader *msheader, FILE *fp )
 {
     bool    error;
 
-    error = ResReadPadDWord( fp );
+    error = ResReadPadDWord(link,  fp );
     if( !error ) {
         msheader->Size = ResReadUint32( &error, fp );
     }
@@ -51,15 +51,15 @@ bool readHeader32( MResResourceHeader *msheader, FILE *fp )
         msheader->HdrSize = ResReadUint32( &error, fp );
     }
     if( !error ) {
-        msheader->Type = ResRead32NameOrOrdinal( fp );
+        msheader->Type = ResRead32NameOrOrdinal(link,  fp );
         error = ( msheader->Type == nullptr );
     }
     if( !error ) {
-        msheader->Name = ResRead32NameOrOrdinal( fp );
+        msheader->Name = ResRead32NameOrOrdinal(link,  fp );
         error = ( msheader->Name == nullptr );
     }
     if( !error ) {
-        error = ResReadPadDWord( fp );
+        error = ResReadPadDWord(link,  fp );
     }
     if( !error ) {
         msheader->DataVersion = ResReadUint32( &error, fp );
@@ -80,14 +80,14 @@ bool readHeader32( MResResourceHeader *msheader, FILE *fp )
 }
 
 /* the Win16 form of the header */
-bool readHeader16( MResResourceHeader *msheader, FILE *fp )
+bool readHeader16(Link& link,  MResResourceHeader *msheader, FILE *fp )
 {
     bool    error;
 
-    msheader->Type = ResReadNameOrOrdinal( fp );
+    msheader->Type = ResReadNameOrOrdinal(link,  fp );
     error = ( msheader->Type == nullptr );
     if( !error ) {
-        msheader->Name = ResReadNameOrOrdinal( fp );
+        msheader->Name = ResReadNameOrOrdinal(link,  fp );
         error = ( msheader->Name == nullptr );
     }
     if( !error ) {
@@ -101,16 +101,16 @@ bool readHeader16( MResResourceHeader *msheader, FILE *fp )
 
 } // namespace
 
-MResResourceHeader *MResReadResourceHeader( FILE *fp, bool iswin32 )
+MResResourceHeader *MResReadResourceHeader(Link& link,  FILE *fp, bool iswin32 )
 /******************************************************************/
 {
-    auto *msheader = static_cast<MResResourceHeader *>( WRESALLOC( sizeof( MResResourceHeader ) ) );
+    auto *msheader = static_cast<MResResourceHeader *>( WRESALLOC(link,  sizeof( MResResourceHeader ) ) );
 
     if( msheader == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
         return( nullptr );
     }
-    const bool error = iswin32 ? readHeader32( msheader, fp ) : readHeader16( msheader, fp );
+    const bool error = iswin32 ? readHeader32(link,  msheader, fp ) : readHeader16(link,  msheader, fp );
     if( error ) {
         WRESFREE( msheader );
         msheader = nullptr;

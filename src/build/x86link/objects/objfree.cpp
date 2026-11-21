@@ -30,7 +30,7 @@
 ****************************************************************************/
 
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/fixups/reloc.h"
 #include "build/x86link/objects/objnode.h"
 #include "build/x86link/layout/overlays.h"
@@ -93,14 +93,14 @@ static void FreeMods(Link& link,  mod_entry *head )
     }
 }
 
-static void FreeFiles( file_list *file )
+static void FreeFiles(Link& link,  file_list *file )
 /**************************************/
 {
     void        *next;
 
     for( ; file != nullptr; file = static_cast<file_list *>( next ) ) {
         next = file->next;
-        CacheClose( file, 3 );
+        CacheClose(link,  file, 3 );
         if( (file->flags_file & STAT_HAS_MEMBER) && file->u.member != nullptr ) {
             FreeList( file->u.member );
         }
@@ -123,7 +123,7 @@ static void FreeSections(Link& link,  section *sect )
 
     for( ; sect != nullptr; sect = next ) {
         next = sect->next;
-        FreeFiles( sect->files );
+        FreeFiles(link,  sect->files );
         if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {
             FreeMods(link,  sect->mods );
             FreeClasses(link,  sect->classes );
@@ -173,8 +173,8 @@ void CleanLinkStruct(Link& link)
     if( link.Root == nullptr )
         return;  /* haven't finished initializing */
     BurnLibs(link);
-    FreeFiles( link.ObjLibFiles );
-    FreeFiles( link.Root->files );
+    FreeFiles(link,  link.ObjLibFiles );
+    FreeFiles(link,  link.Root->files );
     link.ObjLibFiles = nullptr;
     link.Root->files = nullptr;
     if( (link.LinkFlags & LF_INC_LINK_FLAG) == 0 ) {

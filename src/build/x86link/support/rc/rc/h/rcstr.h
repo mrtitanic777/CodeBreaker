@@ -31,6 +31,6 @@
 ****************************************************************************/
 
 
-extern void     StringIDNamesBlockBuild( StringsBlock *, WResDir, bool use_unicode );
+extern void     StringIDNamesBlockBuild(Link& link,  StringsBlock *, WResDir, bool use_unicode );
 extern int_32   StringBlockFind( StringsBlock *, WResIDName *name_id );
 extern int      CompareStringItems32( const StringItem32 *item1, const StringItem32 *item2 );

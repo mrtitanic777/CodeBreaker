@@ -39,7 +39,7 @@
 #include <sys/types.h>
 #include "wio.h"
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/debuginfo/dbginfo.h"
 #include "build/x86link/map/map.h"
 #include "build/x86link/base/fileio.h"
@@ -211,20 +211,18 @@ size_t res_read( FILE *fp, void *buf, size_t len )
     return( posix_read( FP2POSIX( fp ), buf, len ) );
 }
 
-size_t res_write( FILE *fp, const void *buf, size_t len )
+size_t res_write(Link& link,  FILE *fp, const void *buf, size_t len )
 /*******************************************************/
 {
-    Link& link = wlink();
     /* unused parameters */ (void)fp;
 
     WriteLoad(link,  buf, len );
     return( len );
 }
 
-bool res_seek( FILE *fp, long amount, int where )
+bool res_seek(Link& link,  FILE *fp, long amount, int where )
 /***********************************************/
 {
-    Link& link = wlink();
     DbgAssert( where != SEEK_END );
     DbgAssert( !( where == SEEK_CUR && amount < 0 ) );
 
@@ -245,18 +243,17 @@ bool res_seek( FILE *fp, long amount, int where )
         }
         return( false );
     } else {
-        return( QLSeek( FP2POSIX( fp ), amount, where, "resource file" ) == -1L );
+        return( QLSeek(link,  FP2POSIX( fp ), amount, where, "resource file" ) == -1L );
     }
 }
 
-long res_tell( FILE *fp )
+long res_tell(Link& link,  FILE *fp )
 /***********************/
 {
-    Link& link = wlink();
     if( FP2POSIX( fp ) == link.Root->outfile->handle ) {
         return( PosLoad(link) );
     }
-    return( QPos( FP2POSIX( fp ) ) );
+    return( QPos(link,  FP2POSIX( fp ) ) );
 }
 
 bool res_ioerr( FILE *fp, size_t rc )

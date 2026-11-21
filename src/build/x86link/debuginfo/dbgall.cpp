@@ -33,7 +33,7 @@
 
 #include <cstring>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/link/specials.h"
 #include "build/x86link/base/fileio.h"
 #include "build/x86link/base/virtmem.h"
@@ -75,7 +75,7 @@ void DBIInit(Link& link)
 // called just after command file parsing
 {
     if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIInit( link.Root );
+        ODBIInit(link,  link.Root );
     } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
         CVInit();
     } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
@@ -90,7 +90,7 @@ void DBISectInit(Link& link,  section *sect )
 // called when a section created in command file parsing
 {
     if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
-        ODBIInit( sect );
+        ODBIInit(link,  sect );
     }
 }
 
@@ -101,11 +101,11 @@ void DBIInitModule(Link& link,  mod_entry *obj )
     if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         ODBIInitModule(link,  obj );
     } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
-        DwarfInitModule( obj );
+        DwarfInitModule(link,  obj );
     } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
-        CVInitModule( obj );
+        CVInitModule(link,  obj );
     } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
-        HllInitModule( obj );
+        HllInitModule(link,  obj );
     }
 }
 
@@ -234,7 +234,7 @@ bool DBINoReloc( seg_leader *seg )
 
 static void AddNovGlobals(Link& link,  mod_entry *mod )
 /*****************************************/
-{
+{
 #ifdef _NOVELL
     Ring2Walk( mod->publist, bind_link( link, NovDBIAddGlobal ) );
 #else
@@ -344,7 +344,7 @@ void DBIAddModule(Link& link,  mod_entry *obj, section *sect )
 static void DBIGenLocal(Link& link,  void *sdata )
 /************************************/
 // called during pass 2 segment processing
-{
+{
     if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         ODBIGenLocal(link,  static_cast<segdata *>( sdata ) );
     }
@@ -379,7 +379,7 @@ void DBIGenModule(Link& link)
         } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
             DwarfGenModule(link);
         } else if( link.LinkFlags & LF_HLL_DBI_FLAG ) {
-            HllGenModule();
+            HllGenModule(link);
         } else {
             CVGenModule(link);
         }
@@ -416,7 +416,7 @@ void DBIAddLocal(Link& link,  seg_leader *seg, offset length )
 
 void DBIModGlobal(Link& link,  void *_sym )
 /*****************************/
-{
+{
     symbol          *sym = static_cast<symbol *>( _sym );
 
     if( !IS_SYM_ALIAS( sym )
@@ -473,7 +473,7 @@ void DBIAddLines(Link& link,  segdata *seg, const void *line, size_t size, bool 
 {
     lineinfo        *info;
 
-    info = static_cast<lineinfo *>( _PermAlloc( sizeof( lineinfo ) + size - 1 ) );
+    info = static_cast<lineinfo *>( PermAlloc( link, sizeof( lineinfo ) + size - 1 ) );
     info->seg = seg;
     info->size = size;
     if( is32bit )
@@ -516,13 +516,13 @@ void DBILineWalk( lineinfo *lines, FunctionRef<line_walk_fn> cbfn )
     RingLookup( lines, DoLineWalk, &line_walk_cb );
 }
 
-virt_mem DBIAlloc( virt_mem_size size )
+virt_mem DBIAlloc(Link& link,  virt_mem_size size )
 /*************************************/
 // handy virtual memory allocation routine used inside the debug info generators
 {
     if( size == 0 )
         return( 0 );
-    return( AllocStg( size ) );
+    return( AllocStg(link,  size ) );
 }
 
 void DBIAddrStart(Link& link)
@@ -531,7 +531,7 @@ void DBIAddrStart(Link& link)
 {
 #ifdef _NOVELL
     if( link.LinkFlags & LF_NOVELL_DBI_FLAG ) {
-        NovDBIAddrStart();
+        NovDBIAddrStart(link);
     }
 #endif
     if( link.LinkFlags & LF_CV_DBI_FLAG ) {
@@ -545,7 +545,7 @@ void DBIAddrStart(Link& link)
 void DBIAddrSectStart(Link& link,  section *sect )
 /************************************/
 // called for each section after address calculation is done.
-{
+{
     if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         ODBIAddrSectStart(link,  sect );
     } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
@@ -556,7 +556,7 @@ void DBIAddrSectStart(Link& link,  section *sect )
 void DBIP2Start(Link& link,  section *sect )
 /******************************/
 // called for each section just before pass 2 starts
-{
+{
     if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         ODBIP2Start(link,  sect );
     } else if( link.LinkFlags & LF_DWARF_DBI_FLAG ) {
@@ -571,7 +571,7 @@ void DBIP2Start(Link& link,  section *sect )
 void DBIFini(Link& link,  section *sect )
 /***************************/
 // called after pass 2 is finished, but before load file generation
-{
+{
     if( link.LinkFlags & LF_OLD_DBI_FLAG ) {
         ODBIFini(link,  sect );
     } else if( link.LinkFlags & LF_CV_DBI_FLAG ) {
@@ -636,7 +636,7 @@ void DBIWrite(Link& link)
         save = link.Root->outfile;
         link.Root->outfile = &symfile;
         do_DBIWrite(link);
-        CloseBuffFile( &symfile );
+        CloseBuffFile(link,  &symfile );
         link.Root->outfile = save;
     } else {
         do_DBIWrite(link);

@@ -37,7 +37,7 @@
 #include "wresrtns.h"
 
 
-bool WResMergeDirs( WResDir dstdir, WResDir srcdir, WResMergeError **errs )
+bool WResMergeDirs(Link& link,  WResDir dstdir, WResDir srcdir, WResMergeError **errs )
 /*************************************************************************/
 {
     WResDirWindow   wind_dup;
@@ -52,12 +52,12 @@ bool WResMergeDirs( WResDir dstdir, WResDir srcdir, WResMergeError **errs )
         WResLangInfo    *langinfo = WResGetLangInfo( wind );
         void            *fileinfo = WResGetFileInfo( wind );
 
-        WResAddResource2( &typeinfo->TypeName, &resinfo->ResName,
+        WResAddResource2(link,  &typeinfo->TypeName, &resinfo->ResName,
                         langinfo->MemoryFlags, langinfo->Offset,
                         langinfo->Length, dstdir, &langinfo->lang,
                         &wind_dup, fileinfo );
         if( !WResIsEmptyWindow( wind_dup ) && errs != nullptr ) {
-            auto *err = static_cast<WResMergeError *>( WRESALLOC( sizeof( WResMergeError ) ) );
+            auto *err = static_cast<WResMergeError *>( WRESALLOC(link,  sizeof( WResMergeError ) ) );
 
             err->next = *errs;
             *errs = err;

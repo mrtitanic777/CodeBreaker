@@ -40,7 +40,7 @@
 namespace {
 
 /* a name or ordinal whose first unit (flags) is read already; 'wide' units are the Win32 form */
-ResNameOrOrdinal *finishNameOrOrdinal( FILE *fp, bool wide, unsigned flags )
+ResNameOrOrdinal *finishNameOrOrdinal(Link& link,  FILE *fp, bool wide, unsigned flags )
 {
     const unsigned  ordinal_flag = wide ? 0xffffu : 0xffu;
     bool            error = false;
@@ -55,14 +55,14 @@ ResNameOrOrdinal *finishNameOrOrdinal( FILE *fp, bool wide, unsigned flags )
             return( nullptr );
         }
     } else if( flags != 0 ) {
-        restofstr = wide ? ResRead32String( fp, &stringlen ) : ResReadString( fp, &stringlen );
+        restofstr = wide ? ResRead32String(link,  fp, &stringlen ) : ResReadString(link,  fp, &stringlen );
         if( restofstr == nullptr ) {
             return( nullptr );
         }
         stringlen++; /* for the '\0' */
     }
     /* allocate space for the new Name or Ordinal */
-    auto *name = static_cast<ResNameOrOrdinal *>( WRESALLOC( sizeof( ResNameOrOrdinal ) + stringlen ) );
+    auto *name = static_cast<ResNameOrOrdinal *>( WRESALLOC(link,  sizeof( ResNameOrOrdinal ) + stringlen ) );
 
     if( name == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
@@ -84,7 +84,7 @@ ResNameOrOrdinal *finishNameOrOrdinal( FILE *fp, bool wide, unsigned flags )
 
 } // namespace
 
-ResNameOrOrdinal *ResReadNameOrOrdinal( FILE *fp )
+ResNameOrOrdinal *ResReadNameOrOrdinal(Link& link,  FILE *fp )
 /************************************************/
 {
     bool            error = false;
@@ -92,10 +92,10 @@ ResNameOrOrdinal *ResReadNameOrOrdinal( FILE *fp )
 
     if( error )
         return( nullptr );
-    return( finishNameOrOrdinal( fp, false, flags ) );
+    return( finishNameOrOrdinal(link,  fp, false, flags ) );
 }
 
-ResNameOrOrdinal *ResRead32NameOrOrdinal( FILE *fp )
+ResNameOrOrdinal *ResRead32NameOrOrdinal(Link& link,  FILE *fp )
 /**************************************************/
 {
     bool            error = false;
@@ -103,5 +103,5 @@ ResNameOrOrdinal *ResRead32NameOrOrdinal( FILE *fp )
 
     if( error )
         return( nullptr );
-    return( finishNameOrOrdinal( fp, true, flags ) );
+    return( finishNameOrOrdinal(link,  fp, true, flags ) );
 }

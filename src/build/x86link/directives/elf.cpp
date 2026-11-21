@@ -1,7 +1,7 @@
 // build/x86link/directives/elf.cpp -- ELF's directives: `format elf dll`, `option` for it, `import`, `export`, `module`
 // and `runtime` (the ABI) (a port of wlink's cmdelf.c).
 #include "build/x86link/directives/formats.hpp"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 
 #ifdef _ELF
 
@@ -82,7 +82,7 @@ void ParseABITypeAndVersion(Link& link) {
     v.minor = 255;
     v.revision = 0;
     v.what = "ABIVER";
-    if (get_version(v, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
+    if (get_version(link, v, VersionPart::major | VersionPart::minor, false) != VersionPart::none) {
         link.FmtData.u.elf.abitype = v.major;
         link.FmtData.u.elf.abiversion = v.minor;
     }
@@ -93,7 +93,7 @@ void ParseABIVersion(Link& link, const std::string& message) {
     link.FmtData.u.elf.abiversion = 0;
     std::uint16_t version;
     if (number16(version) != Number::ok || version > 255) {
-        LnkMsg(WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", message.c_str());
+        LnkMsg(link, WRN + LOC + LINE + MSG_VALUE_INCORRECT, "s", message.c_str());
     } else {
         link.FmtData.u.elf.abiversion = version;
     }

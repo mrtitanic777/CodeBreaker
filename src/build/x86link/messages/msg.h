@@ -65,7 +65,7 @@ enum msg_num {
 extern size_t   FmtStr(Link& link,  char *, size_t, const char *, ... );
 extern size_t   DoFmtStr(Link& link,  char *, size_t, const char *, va_list );
 extern size_t   GetMsgPrefix(Link& link,  unsigned num, char *buff, size_t max_len );
-extern void     LnkMsg( unsigned, const char *, ... );
+extern void     LnkMsg(Link& link,  unsigned, const char *, ... );
 extern void     Locator( const char *, const char *, unsigned );
 extern void     WLPrtBanner(Link& link);
 extern bool     SkipSymbol(Link& link,  symbol * );

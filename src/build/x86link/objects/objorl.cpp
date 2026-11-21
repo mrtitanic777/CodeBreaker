@@ -38,7 +38,7 @@
 #include <vector>
 #include "wio.h"
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/link/specials.h"
 #include "build/x86link/fixups/obj2supp.h"
 #include "build/x86link/objects/objnode.h"
@@ -73,8 +73,15 @@ struct orl_io_struct {
 
 namespace {
 
+// ORL's allocator: wlink's MemAlloc, for the link ORL reads for
+struct ORLAllocator {
+    Link        *link = nullptr;
+    void *operator()( size_t size ) const { return MemAlloc( *link, size ); }
+};
+
 // what objorl.cpp keeps for one run of the linker
 struct ORLState {
+    ORLAllocator            alloc;
     orl_handle              handle = nullptr;
     std::unordered_map<const file_list *, orl_io_struct> io;  // each file ORL reads: its handle (the address stays)
     long                    filePos = 0;
@@ -125,12 +132,13 @@ int ORLSeek( orl_io_struct *orlio, long pos, int where )
 
 }
 
-void InitORLObj( void )
-/*********************/
+void InitORLObj( Link& link )
+/***************************/
 {
     ORLState &st = orlState();
 
-    ORLSetFuncs( orl_cli_funcs, ORLRead, ORLSeek, MemAlloc, MemFree );
+    st.alloc.link = &link;
+    ORLSetFuncs( orl_cli_funcs, ORLRead, ORLSeek, st.alloc, MemFree );
 
     st.handle = ORLInit( &orl_cli_funcs );
     st.readCache.clear();
@@ -271,7 +279,7 @@ bool CheckFlags(Link& link,  orl_file_handle filehdl )
     test = (typemask | link.LinkState) & LS_HAVE_MACHTYPE_MASK;
     test &= test - 1;           /* turn off one bit */
     if( test != 0 ) {           /* multiple bits were turned on. */
-        LnkMsg( WRN+MSG_MACHTYPE_DIFFERENT, "s", link.CurrMod->u1.source->infile->name.u.ptr );
+        LnkMsg(link,  WRN+MSG_MACHTYPE_DIFFERENT, "s", link.CurrMod->u1.source->infile->name.u.ptr );
     } else {
         link.LinkState |= typemask;
     }
@@ -355,7 +363,7 @@ orl_return Unsupported( Link&, orl_sec_handle )
 }
 
 void AllocSeg(Link& link,  void *_snode, void * )
-{
+{
     segnode             *snode = static_cast<segnode *>( _snode );
     segdata             *sdata;
     const char          *clname;
@@ -432,7 +440,7 @@ void AllocSeg(Link& link,  void *_snode, void * )
     }
 }
 
-void DefNosymComdats( void *_snode, void * )
+void DefNosymComdats(Link& link,  void *_snode, void * )
 {
     segnode             *snode = static_cast<segnode *>( _snode );
     segdata             *sdata;
@@ -444,7 +452,7 @@ void DefNosymComdats( void *_snode, void * )
     if( sdata->iscdat
       && !sdata->hascdatsym
       && ( snode->contents != nullptr )) {
-        sdata->u1.vm_ptr = AllocStg( sdata->length );
+        sdata->u1.vm_ptr = AllocStg(link,  sdata->length );
         PutInfo( sdata->u1.vm_ptr, snode->contents, sdata->length );
     }
 }
@@ -472,7 +480,7 @@ orl_return DeclareSegment( Link& link, orl_sec_handle sec )
     name = ORLSecGetName( sec );
     sdata = AllocSegData(link);
     segidx = ORLCvtSecHdlToIdx( sec );
-    snode = static_cast<segnode *>( AllocNodeIdx( link.SegNodes, segidx ) );
+    snode = static_cast<segnode *>( AllocNodeIdx(link,  link.SegNodes, segidx ) );
     snode->entry = sdata;
     snode->handle = sec;
     sdata->iscdat = ( (flags & ORL_SEC_FLAG_COMDAT) != 0 );
@@ -558,7 +566,7 @@ void ImpProcSymbol(Link& link,  segnode *snode, orl_symbol_type type, const char
         if( namelen > sizeof( CoffImportRefName ) - 1 ) {
             namelen -= sizeof( CoffImportRefName ) - 1;
             if( strnicmp( name + namelen, CoffImportRefName, sizeof( CoffImportRefName ) - 1 ) == 0 ) {
-                st.impModName = static_cast<char *>( MemAllocSafe( namelen + 5 ) );
+                st.impModName = static_cast<char *>( MemAllocSafe(link,  namelen + 5 ) );
                 memcpy( st.impModName, name, namelen );
                 if( strnicmp( link.CurrMod->name.u.ptr + strlen( link.CurrMod->name.u.ptr ) - 4, ".drv", 4 ) == 0 ) { /* KLUDGE!! */
                     memcpy( st.impModName + namelen, ".drv", 5 );
@@ -633,7 +641,7 @@ orl_return ProcSymbol( Link& link, orl_symbol_handle symhdl )
             ImpProcSymbol(link,  snode, type, name, namelen );
             return ORL_OKAY;
         }
-        newnode = static_cast<extnode *>( AllocNode( link.ExtNodes ) );
+        newnode = static_cast<extnode *>( AllocNode(link,  link.ExtNodes ) );
         newnode->handle = symhdl;
         binding = ORLSymbolGetBinding( symhdl );
         symop = ST_CREATE;
@@ -802,7 +810,7 @@ orl_return DoReloc( Link& link, orl_reloc reloc )
     }
     case ORL_RELOC_TYPE_NONE:
     default:
-        LnkMsg( ERR+LOC+MSG_BAD_RELOC_TYPE, nullptr );
+        LnkMsg(link,  ERR+LOC+MSG_BAD_RELOC_TYPE, nullptr );
         break;
     }
     snode = FindSegNode(link,  reloc->section );
@@ -966,7 +974,7 @@ unsigned long ORLPass1(Link& link)
     PermStartMod( link.CurrMod );
     filehdl = InitFile(link);
     if( filehdl == nullptr ) {
-        LnkMsg( FTL+MSG_BAD_OBJECT, "s", link.CurrMod->u1.source->infile->name.u.ptr );
+        LnkMsg(link,  FTL+MSG_BAD_OBJECT, "s", link.CurrMod->u1.source->infile->name.u.ptr );
         link.CurrMod->u1.source->infile->status |= INSTAT_IOERR;
         return static_cast<unsigned long>( -1 );
     }
@@ -985,7 +993,7 @@ unsigned long ORLPass1(Link& link)
         ORLFileScan( filehdl, nullptr, bind_link( link, ProcSymbols ) );
         ScanImported(link);
         ORLFileScan( filehdl, nullptr, bind_link( link, ProcP1Specific ) );
-        IterateNodelist( link.SegNodes, DefNosymComdats, nullptr );
+        IterateNodelist( link.SegNodes, bind_link( link, DefNosymComdats ), nullptr );
     }
     FiniFile( filehdl, link.CurrMod->u1.source );
     return ORLFileSeek( link.CurrMod->u1.source, 0, SEEK_CUR );

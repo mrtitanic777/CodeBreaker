@@ -41,8 +41,8 @@ typedef struct VarString {
     struct VarString    *next;
 } VarString;
 
-extern VarString    *VarStringStart( void );
-extern void         VarStringAddChar( VarString *varstr, char chr );
-extern char         *VarStringEnd( VarString *varstr, size_t *plen );
+extern VarString    *VarStringStart(Link& link);
+extern void         VarStringAddChar(Link& link,  VarString *varstr, char chr );
+extern char         *VarStringEnd(Link& link,  VarString *varstr, size_t *plen );
 
 #endif

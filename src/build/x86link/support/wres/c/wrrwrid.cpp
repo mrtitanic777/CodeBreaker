@@ -38,7 +38,7 @@
 #include "wresrtns.h"
 
 
-void *ResReadWResID( FILE *fp, unsigned offs, uint_16 ver )
+void *ResReadWResID(Link& link,  FILE *fp, unsigned offs, uint_16 ver )
 /*********************************************************/
 {
     bool        error = false;
@@ -57,9 +57,9 @@ void *ResReadWResID( FILE *fp, unsigned offs, uint_16 ver )
         }
         if( error )
             return( nullptr );
-        ptr = static_cast<char *>( AllocWResIDName( offs + offsetof( WResID, ID.Name ), numchars ) );
+        ptr = static_cast<char *>( AllocWResIDName(link,  offs + offsetof( WResID, ID.Name ), numchars ) );
     } else {
-        ptr = static_cast<char *>( AllocWResIDNum( offs + offsetof( WResID, ID.Num ) ) );
+        ptr = static_cast<char *>( AllocWResIDNum(link,  offs + offsetof( WResID, ID.Num ) ) );
     }
     if( ptr == nullptr ) {
         WRES_ERROR( WRS_MALLOC_FAILED );
@@ -85,8 +85,8 @@ void *ResReadWResID( FILE *fp, unsigned offs, uint_16 ver )
     return( ptr );
 }
 
-WResID *WResReadWResID( FILE *fp )
+WResID *WResReadWResID(Link& link,  FILE *fp )
 /********************************/
 {
-    return( static_cast<WResID *>( ResReadWResID( fp, 0, WRESVERSION ) ) );
+    return( static_cast<WResID *>( ResReadWResID(link,  fp, 0, WRESVERSION ) ) );
 }

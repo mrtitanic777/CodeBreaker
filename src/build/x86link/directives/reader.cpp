@@ -39,7 +39,7 @@ void Reader::remove(std::size_t at, std::size_t n) {
 }
 
 void Reader::close(Source& s) {
-    if (s.file_ != -1 && s.file_ != NIL_FHANDLE) QClose(s.file_, s.name_.c_str());
+    if (s.file_ != -1 && s.file_ != NIL_FHANDLE) QClose(*link_, s.file_, s.name_.c_str());
     s.file_ = -1;
 }
 
@@ -210,11 +210,11 @@ bool Reader::make_token(Want want, Sep separator) {
 
 void Reader::expand_environment(Want want, Sep required) {
     ++cur_.next;
-    if (!make_token(Want::include_dot, Sep::percent)) LnkMsg(FTL + LOC + LINE + MSG_ENV_NAME_INCORRECT, nullptr);
+    if (!make_token(Want::include_dot, Sep::percent)) LnkMsg(*link_, FTL + LOC + LINE + MSG_ENV_NAME_INCORRECT, nullptr);
     const std::string name = str();
     const char* value = GetEnvString(name.c_str());
     if (value == nullptr) {
-        LnkMsg(WRN + LOC + LINE + MSG_ENV_NOT_FOUND, "s", name.c_str());
+        LnkMsg(*link_, WRN + LOC + LINE + MSG_ENV_NOT_FOUND, "s", name.c_str());
         return;
     }
     // the variable's value, then what follows the `%NAME%` to the token's end, read as a source of its own
@@ -254,7 +254,7 @@ void Reader::start_file() {
         if (const char* value = GetEnvString(name.c_str())) {
             push(name, value, SourceKind::environment);
         } else {
-            LnkMsg(ERR + LOC + LINE + MSG_CANT_OPEN_NO_REASON, "s", name.c_str());
+            LnkMsg(*link_, ERR + LOC + LINE + MSG_CANT_OPEN_NO_REASON, "s", name.c_str());
             Suicide();
         }
     } else {
@@ -265,7 +265,7 @@ void Reader::start_file() {
 
 void Reader::back_up() {
     if (at_ == sources_.begin()) {
-        LnkMsg(WRN + LOC + LINE + MSG_NO_PREVIOUS_INPUT, nullptr);
+        LnkMsg(*link_, WRN + LOC + LINE + MSG_NO_PREVIOUS_INPUT, nullptr);
         return;
     }
     save();
@@ -448,7 +448,7 @@ void Reader::push_file(int file, std::string_view name) {
     const std::string fname(name);
     unsigned long size = QIsDevice(file) ? 0x10000 : QFileSize(file);
     std::string text(size, '\0');
-    size_t got = size == 0 ? 0 : QRead(file, text.data(), size, fname.c_str());
+    size_t got = size == 0 ? 0 : QRead(*link_, file, text.data(), size, fname.c_str());
     if (got == IOERROR) got = 0;
     text.resize(got);
     push(fname, text, SourceKind::buffered);
@@ -488,7 +488,7 @@ bool Reader::reading_from(SourceKind kind) const {
 }
 
 void Reader::finish() {
-    if (above_current()) LnkMsg(ERR + LOC + LINE + MSG_NO_INPUT_LEFT, nullptr);
+    if (above_current()) LnkMsg(*link_, ERR + LOC + LINE + MSG_NO_INPUT_LEFT, nullptr);
     for (Source& s : sources_) close(s);
     sources_.clear();
     at_ = sources_.end();

@@ -62,7 +62,7 @@ extern bool CompareInfo( virt_mem, const void *, virt_mem_size );
 #endif
 
 extern void     VirtMemInit( void );
-extern virt_mem AllocStg( virt_mem_size );
+extern virt_mem AllocStg(Link& link,  virt_mem_size );
 extern void     ReleaseInfo( virt_mem );
 extern bool     SwapOutVirt( void );
 extern void     FreeVirtMem( void );

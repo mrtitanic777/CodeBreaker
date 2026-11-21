@@ -88,24 +88,24 @@ static unsigned_32 ElfHash( const char *sym_name )
     return( h );
 }
 
-ElfSymTable *CreateElfSymTable( unsigned maxElems, stringtable *strtab )
+ElfSymTable *CreateElfSymTable(Link& link,  unsigned maxElems, stringtable *strtab )
 /**********************************************************************/
 {
     ElfSymTable *tab;
 
-    tab = static_cast<ElfSymTable *>( MemAllocSafe( sizeof( ElfSymTable ) ) );
+    tab = static_cast<ElfSymTable *>( MemAllocSafe(link,  sizeof( ElfSymTable ) ) );
     tab->numBuckets = FindClosestPrime( maxElems / 2 );
     tab->maxElems = maxElems + 1; // element 0 is NIL
     tab->numElems = 1;
-    tab->table = static_cast<symbol **>( MemAllocSafe( tab->maxElems * sizeof( tab->table[0] ) ) );
+    tab->table = static_cast<symbol **>( MemAllocSafe(link,  tab->maxElems * sizeof( tab->table[0] ) ) );
     memset( tab->table, 0, tab->maxElems * sizeof( tab->table[0] ) );
-    tab->buckets = static_cast<Elf32_Word *>( MemAllocSafe( tab->numBuckets * sizeof( Elf32_Word ) ) );
+    tab->buckets = static_cast<Elf32_Word *>( MemAllocSafe(link,  tab->numBuckets * sizeof( Elf32_Word ) ) );
     memset( tab->buckets, 0, tab->numBuckets * sizeof( unsigned_32 ) );
-    tab->chains = static_cast<Elf32_Word *>( MemAllocSafe( tab->maxElems * sizeof( unsigned_32 ) ) );
+    tab->chains = static_cast<Elf32_Word *>( MemAllocSafe(link,  tab->maxElems * sizeof( unsigned_32 ) ) );
     memset( tab->chains, 0, tab->maxElems * sizeof( unsigned_32 ) );
     tab->strtab = strtab;
     if( GetStringTableSize( tab->strtab ) == 0 ) {
-        AddCharStringTable( tab->strtab, '\0' );
+        AddCharStringTable(link,  tab->strtab, '\0' );
     }
     return( tab );
 }
@@ -217,7 +217,7 @@ void WriteElfSymTable(Link& link,  ElfSymTable *tab, ElfHdr *hdr, unsigned hashi
     WriteLoad(link,  &elfsym, sizeof( elfsym ) );
     for( i = 1; i < tab->numElems; i++ ) {
         sym = tab->table[i];
-        elfsym.st_name = AddStringStringTableOffs( tab->strtab, sym->name.u.ptr );
+        elfsym.st_name = AddStringStringTableOffs(link,  tab->strtab, sym->name.u.ptr );
         if( tableSH->sh_info == 0
           && (sym->info & SYM_STATIC) == 0 ) {
             tableSH->sh_info = i;
@@ -246,7 +246,7 @@ void WriteElfSymTable(Link& link,  ElfSymTable *tab, ElfHdr *hdr, unsigned hashi
     hashSH->sh_link = symtabidx;
     tableSH->sh_type = SHT_SYMTAB;
     tableSH->sh_link = strtabidx;
-    hashSH->sh_name = AddSecName( hdr, ".hash" );
+    hashSH->sh_name = AddSecName(link,  hdr, ".hash" );
 }
 
 void ZapElfSymTable( ElfSymTable *tab )

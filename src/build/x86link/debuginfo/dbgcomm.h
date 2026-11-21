@@ -65,7 +65,7 @@ typedef struct lineinfo {
 
 typedef void line_walk_fn( lineinfo * );
 
-extern virt_mem DBIAlloc( virt_mem_size );
+extern virt_mem DBIAlloc(Link& link,  virt_mem_size );
 extern void     DBIModGlobal(Link& link,  void * );
 extern void     DBIAddrInfoScan(Link& link,  seg_leader *,
                       FunctionRef<void(segdata *, void *)>,

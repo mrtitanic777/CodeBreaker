@@ -35,7 +35,7 @@
 #include <cstddef>
 #include <vector>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "build/x86link/base/virtmem.h"
 #include "build/x86link/link/run_state.hpp"
 #if defined( USE_VIRTMEM )
@@ -545,28 +545,28 @@ bool CompareBlock( void *info, spilladdr loc, size_t off, size_t len )
     return( memcmp( loc.u.addr + off, info, len ) == 0 );
 }
 
-bool OutInfo( void *dummy, spilladdr loc, size_t off, size_t len )
+bool OutInfo( void *linkp, spilladdr loc, size_t off, size_t len )
 /************************************************************************
  * copy data in memory or spillfile referenced by node & off to LoadFile
  */
 {
     size_t  amt;
 
-    /* unused parameters */ (void)dummy;
+    Link& link = *static_cast<Link *>( linkp );
 
     if( len ) {
         DEBUG((DBG_VIRTMEM, "writing %d bytes (offset %x) to %d.%h", len, off, loc.spilled, loc.u.spill ));
         if( loc.spilled ) {
             for( ; len != 0; len -= amt ) {
                 amt = len;
-                if( amt > wlink().TokSize )
-                    amt = wlink().TokSize;
-                SpillRead( loc.u.spill, off, wlink().TokBuff, amt );
-                WriteLoad( wlink().TokBuff, amt );
+                if( amt > link.TokSize )
+                    amt = link.TokSize;
+                SpillRead( link, loc.u.spill, off, link.TokBuff, amt );
+                WriteLoad( link, link.TokBuff, amt );
                 off += amt;
             }
         } else {
-            WriteLoad( loc.u.addr + off, len );
+            WriteLoad( link, loc.u.addr + off, len );
         }
     }
     return( true );
@@ -628,12 +628,12 @@ bool CompareInfo( virt_mem stg, const void *info, virt_mem_size len )
     return( ScanNodes( stg, const_cast<void *>( info ), len, CompareBlock ) );
 }
 
-void WriteInfoLoad( virt_mem stg, virt_mem_size len )
+void WriteInfoLoad( Link& link, virt_mem stg, virt_mem_size len )
 /****************************************************
  * copy data in memory or spillfile referenced by stg to LoadFile
  */
 {
-    ScanNodes( stg, nullptr, len, OutInfo );
+    ScanNodes( stg, &link, len, OutInfo );
 }
 
 void PutInfoNulls( virt_mem stg, virt_mem_size len )
@@ -678,7 +678,7 @@ void     VirtMemInit( void )
 #endif
 }
 
-virt_mem AllocStg( virt_mem_size size )
+virt_mem AllocStg(Link& link,  virt_mem_size size )
 /*************************************/
 {
     VirtState &vs = virt_state();
@@ -700,10 +700,10 @@ virt_mem AllocStg( virt_mem_size size )
     if( size == 0 )
         return( 0 );
     if( size < TINY_ALLOC_CUTOFF ) {
-        ptr = static_cast<vmemblock *>( _PermAlloc( size + sizeof( vmemblock ) - 1 ) );
+        ptr = static_cast<vmemblock *>( PermAlloc( link, size + sizeof( vmemblock ) - 1 ) );
         ptr->next = ptr;
     } else {
-        ptr = static_cast<vmemblock *>( MemAllocSafe( size + sizeof( vmemblock ) - 1 ) );
+        ptr = static_cast<vmemblock *>( MemAllocSafe(link,  size + sizeof( vmemblock ) - 1 ) );
         ptr->prev = nullptr;
         ptr->next = vs.VMemBlocks;
         if( vs.VMemBlocks != nullptr ) {

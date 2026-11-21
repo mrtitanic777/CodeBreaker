@@ -31,7 +31,7 @@
 
 #include <string.h>
 #include "build/x86link/link/linkstd.h"
-#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state, wlink() */
+#include "build/x86link/link/link.hpp"   /* CodeBreaker: the link's state */
 #include "pcobj.h"
 #include "build/x86link/symbols/library.h"
 #include "ar.h"
@@ -88,7 +88,7 @@ void SetupFakeModule(Link& link)
         link.FakeModule->flags_dbi = DBI_ALL;
         link.FakeModule->flags_mod = MOD_LAST_SEG | MOD_NEED_PASS_2;
         link.FakeModule->flags_fmt = FILE_FMT_PE_XFER;
-        link.FakeModule->name.u.ptr = AddStringStringTable( &link.PermStrings, LinkerModule );
+        link.FakeModule->name.u.ptr = AddStringStringTable(link,  &link.PermStrings, LinkerModule );
         DBIInitModule(link,  link.FakeModule );
     }
 }
@@ -445,7 +445,7 @@ static void DoPass1(Link& link,  mod_entry *next, file_list *file )
                 AddToModList(link,  next );
                 next->location = loc;
                 if( membname != nullptr ) {
-                    next->name.u.ptr = AddStringStringTable( &link.PermStrings, membname );
+                    next->name.u.ptr = AddStringStringTable(link,  &link.PermStrings, membname );
                     MemFree( membname );
                 } else {
                     next->name.u.ptr = file->infile->name.u.ptr;
@@ -474,9 +474,9 @@ static void DoPass1(Link& link,  mod_entry *next, file_list *file )
             }
         }
         if( file->u.member != nullptr ) {
-            LnkMsg( ERR+MSG_CANT_FIND_MEMBER, "12", file->infile->name.u.ptr, file->u.member->name );
+            LnkMsg(link,  ERR+MSG_CANT_FIND_MEMBER, "12", file->infile->name.u.ptr, file->u.member->name );
         }
-        CacheClose( file, 1 );
+        CacheClose(link,  file, 1 );
     }
     CheckStop(link);
 }
@@ -561,16 +561,16 @@ void ProcObjFiles(Link& link)
     if( link.LinkFlags & LF_INC_LINK_FLAG ) {
         if( (link.LinkFlags & LF_DWARF_DBI_FLAG) == 0
           && (link.LinkFlags & LF_ANY_DBI_FLAG) ) {
-            LnkMsg( FTL+MSG_INC_ONLY_SUPPORTS_DWARF, nullptr );
+            LnkMsg(link,  FTL+MSG_INC_ONLY_SUPPORTS_DWARF, nullptr );
         }
         if( link.LinkFlags & LF_STRIP_CODE ) {
-            LnkMsg( FTL+MSG_INC_AND_DCE_NOT_ALLOWED, nullptr );
+            LnkMsg(link,  FTL+MSG_INC_AND_DCE_NOT_ALLOWED, nullptr );
         }
         if( link.LinkFlags & LF_VF_REMOVAL ) {
-            LnkMsg( FTL+MSG_INC_AND_VFR_NOT_ALLOWED, nullptr );
+            LnkMsg(link,  FTL+MSG_INC_AND_VFR_NOT_ALLOWED, nullptr );
         }
     }
-    LnkMsg( INF+MSG_LOADING_OBJECT, nullptr );
+    LnkMsg(link,  INF+MSG_LOADING_OBJECT, nullptr );
     if( link.LinkFlags & LF_STRIP_CODE ) {
         link.LinkState |= LS_CAN_REMOVE_SEGMENTS;
     }
@@ -683,12 +683,12 @@ void ResolveUndefined(Link& link)
     file_list   *file;
     bool        keepgoing;
 
-    LnkMsg( INF+MSG_SEARCHING_LIBS, nullptr );
+    LnkMsg(link,  INF+MSG_SEARCHING_LIBS, nullptr );
 #ifdef _EXE
     if( (link.FmtData.type & MK_OVERLAYS)
       && link.FmtData.u.dos.distribute ) {
         link.LinkState |= LS_CAN_REMOVE_SEGMENTS;
-        DistribInitMods();
+        DistribInitMods(link);
     }
 #endif
     link.CurrSect = link.Root;
@@ -717,7 +717,7 @@ void ResolveUndefined(Link& link)
     } while( keepgoing || (link.LinkState & LS_LIBRARIES_ADDED) );
 
     BurnLibs(link);
-    PrintBadTraces();
+    PrintBadTraces(link);
 }
 
 void ProcLocalImports(Link& link)
