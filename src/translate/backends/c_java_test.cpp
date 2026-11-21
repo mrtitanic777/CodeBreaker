@@ -262,3 +262,4 @@ CB_TEST("translate.c_java.collector.textstats_runs_under_stress", [] { runs_as_t
 CB_TEST("translate.c_java.collector.mix_runs_under_stress", [] { runs_as_the_jvm_under_stress("mix", "c_java/mix/golden.c"); });
 CB_TEST("translate.c_java.collector.names_runs_under_stress", [] { runs_as_the_jvm_under_stress("names", "c_java/names/golden.c"); });
 CB_TEST("translate.c_java.collector.zoo_runs_under_stress", [] { runs_as_the_jvm_under_stress("zoo", "c_java/zoo/golden.c"); });
+CB_TEST("translate.c_java.collector.t17_runs_under_stress", [] { runs_as_the_jvm_under_stress("t17", "c_java/t17.golden.c"); });

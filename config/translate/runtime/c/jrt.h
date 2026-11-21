@@ -354,9 +354,9 @@ typedef struct jrt_IntConsumer_vt { jobject_vt base; void (*accept)(jobject*, in
 #define jrt_Comparator_compare_OO(o, a, b) JRT_ICALL(Comparator, o, compare, a, b)
 #define jrt_Runnable_run_(o) JRT_ICALL(Runnable, o, run)
 #define jrt_Function_apply_O(o, a) JRT_ICALL(Function, o, apply, a)
-#define jrt_UnaryOperator_apply_O(o, a) JRT_ICALL(Function, o, apply, a)
+#define jrt_UnaryOperator_apply_O(o, a) JRT_ICALL(UnaryOperator, o, apply, a)
 #define jrt_BiFunction_apply_OO(o, a, b) JRT_ICALL(BiFunction, o, apply, a, b)
-#define jrt_BinaryOperator_apply_OO(o, a, b) JRT_ICALL(BiFunction, o, apply, a, b)
+#define jrt_BinaryOperator_apply_OO(o, a, b) JRT_ICALL(BinaryOperator, o, apply, a, b)
 #define jrt_Supplier_get_(o) JRT_ICALL(Supplier, o, get)
 #define jrt_Consumer_accept_O(o, a) JRT_ICALL(Consumer, o, accept, a)
 #define jrt_BiConsumer_accept_OO(o, a, b) JRT_ICALL(BiConsumer, o, accept, a, b)
@@ -439,6 +439,60 @@ jobject* jrt_TreeSet_new_(void);
 #define jrt_HashMap_put_OO jrt_Map_put_OO
 #define jrt_Map_Entry_getKey_ jrt_MapEntry_getKey_
 #define jrt_Map_Entry_getValue_ jrt_MapEntry_getValue_
+
+/* ---- streams (lazy; see jrt.c) */
+jobject* jrt_Collection_stream_(jobject* c);
+#define jrt_List_stream_ jrt_Collection_stream_
+#define jrt_Set_stream_ jrt_Collection_stream_
+#define jrt_ArrayList_stream_ jrt_Collection_stream_
+jobject* jrt_Arrays_stream_OA(jarray* a);
+jobject* jrt_Arrays_stream_IA(jarray* a);
+jobject* jrt_Stream_filter_O(jobject* s, jobject* f);
+jobject* jrt_Stream_map_O(jobject* s, jobject* f);
+jobject* jrt_Stream_mapToInt_O(jobject* s, jobject* f);
+jobject* jrt_Stream_flatMap_O(jobject* s, jobject* f);
+jobject* jrt_Stream_peek_O(jobject* s, jobject* f);
+jobject* jrt_Stream_limit_J(jobject* s, int64_t n);
+jobject* jrt_Stream_skip_J(jobject* s, int64_t n);
+jobject* jrt_Stream_sorted_(jobject* s);
+jobject* jrt_Stream_sorted_O(jobject* s, jobject* c);
+jobject* jrt_Stream_distinct_(jobject* s);
+int64_t jrt_Stream_count_(jobject* s);
+void jrt_Stream_forEach_O(jobject* s, jobject* f);
+jobject* jrt_Stream_toList_(jobject* s);
+jobject* jrt_Stream_collect_O(jobject* s, jobject* c);
+jobject* jrt_Stream_reduce_OO(jobject* s, jobject* id, jobject* f);
+bool jrt_Stream_anyMatch_O(jobject* s, jobject* p);
+bool jrt_Stream_allMatch_O(jobject* s, jobject* p);
+bool jrt_Stream_noneMatch_O(jobject* s, jobject* p);
+jobject* jrt_IntStream_range_II(int32_t a, int32_t b);
+jobject* jrt_IntStream_rangeClosed_II(int32_t a, int32_t b);
+jobject* jrt_IntStream_filter_O(jobject* s, jobject* f);
+jobject* jrt_IntStream_map_O(jobject* s, jobject* f);
+jobject* jrt_IntStream_mapToObj_O(jobject* s, jobject* f);
+jobject* jrt_IntStream_boxed_(jobject* s);
+jobject* jrt_IntStream_peek_O(jobject* s, jobject* f);
+jobject* jrt_IntStream_limit_J(jobject* s, int64_t n);
+jobject* jrt_IntStream_skip_J(jobject* s, int64_t n);
+jobject* jrt_IntStream_sorted_(jobject* s);
+jobject* jrt_IntStream_distinct_(jobject* s);
+int32_t jrt_IntStream_sum_(jobject* s);
+int64_t jrt_IntStream_count_(jobject* s);
+void jrt_IntStream_forEach_O(jobject* s, jobject* f);
+int32_t jrt_IntStream_reduce_IO(jobject* s, int32_t id, jobject* f);
+bool jrt_IntStream_anyMatch_O(jobject* s, jobject* p);
+bool jrt_IntStream_allMatch_O(jobject* s, jobject* p);
+bool jrt_IntStream_noneMatch_O(jobject* s, jobject* p);
+jarray* jrt_IntStream_toArray_(jobject* s);
+jobject* jrt_Collectors_toList_(void);
+jobject* jrt_Collectors_toSet_(void);
+jobject* jrt_Collectors_joining_(void);
+jobject* jrt_Collectors_joining_O(jobject* sep);
+jobject* jrt_Collectors_joining_OOO(jobject* sep, jobject* pre, jobject* post);
+jobject* jrt_Collectors_counting_(void);
+jobject* jrt_Collectors_summingInt_O(jobject* f);
+jobject* jrt_Collectors_groupingBy_O(jobject* key);
+jobject* jrt_Collectors_groupingBy_OO(jobject* key, jobject* down);
 
 /* ---- enums */
 typedef struct jrt_Enum { jobject hdr; jstring* name; int32_t ordinal; } jrt_Enum;

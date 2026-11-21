@@ -33,6 +33,7 @@
 #include "java/parse.hpp"
 #include "java/probe.hpp"
 #include "java/projects/minecraft/profiles/minecraft_xbox360.hpp"
+#include "translate/backends/c_java.hpp"
 #include "translate/backends/cpp17.hpp"
 #include "translate/native_l2.hpp"
 #include "verify/lanes/java.hpp"
@@ -1413,6 +1414,106 @@ CB_TEST("java.cpp17.the_program_runs_as_the_jvm_runs_it", [] {
     CB_CHECK_EQ(jpo_text_of(got), jpo_text_of(want));
     CB_CHECK_EQ(got.exit_code, want.exit_code);
 });
+
+// Java streams through the C back end, from source: lazy stages in Java's order, short-circuits, a stage used twice, the collectors. What the
+// program prints is what the JVM printed, and again with a collection at every allocation.
+CB_TEST("java.c.streams_run_as_the_jvm_runs_them", [] {
+    if (!jpo_ready("c-streams")) return;
+    if (!stdfs::is_regular_file(fs::from_text(std::string(translate::backends::c_java::kClang)))) return;
+    fs::ScopedTempDir work("cb-java-c-streams");
+    const stdfs::path src = work.path() / "src";
+    fs::write_text(src / "StreamKit.java", fs::read_text(testing::data_path("translate/testdata/c_java/streamkit/StreamKit.java")));
+
+    Arena arena;
+    std::vector<translate::ir::Node*> units = java::frontend::lower_program(arena, src, jpo_front().tools);
+    const translate::backends::c_java::Built built = translate::backends::c_java::build(arena, units, work.path() / "c");
+    CB_CHECK(built.exe.has_value());
+    if (!built.exe) {
+        std::cerr << built.why.substr(0, 2000) << "\n";
+        return;
+    }
+    process::ProcessSpec javac;
+    javac.argv = {fs::to_text(jpo_front().tools.javac), "-d", fs::to_text(work.path() / "classes"), fs::to_text(src / "StreamKit.java")};
+    CB_CHECK(process::run(javac).ok());
+    process::ProcessSpec jvm;
+    jvm.argv = {fs::to_text(jpo_front().tools.java), "-cp", fs::to_text(work.path() / "classes"), "StreamKit"};
+    jvm.timeout = std::chrono::seconds(120);
+    const std::string want = jpo_text_of(process::run(jvm));
+    CB_CHECK(jpo_has(want, "stream has already been operated upon or closed"));
+    process::ProcessSpec native;
+    native.argv = {fs::to_text(*built.exe)};
+    native.timeout = std::chrono::seconds(120);
+    CB_CHECK_EQ(jpo_text_of(process::run(native)), want);
+    native.env["JRT_GC_STRESS"] = "1";
+    CB_CHECK_EQ(jpo_text_of(process::run(native)), want);
+});
+
+// A corpus program from its source: its C++17 and its C translation each print what the JVM printed, the C again with a collection at every
+// allocation. `driver` is a class that calls it, for a program with no main of its own.
+namespace {
+void corpus_runs_as_the_jvm(const std::string& name, const std::string& main_class, const std::string& driver = {}) {
+    if (!jpo_ready("corpus-run") || !jpo_tool_runs("g++", "--version")) return;
+    const translate::native_l2::Library* lib = jpo_l2();
+    fs::ScopedTempDir work("cb-java-corpus");
+    const stdfs::path src = work.path() / "src";
+    std::vector<std::string> javac_args = {fs::to_text(jpo_front().tools.javac), "-nowarn", "-encoding", "UTF-8", "-d", fs::to_text(work.path() / "classes")};
+    for (const auto& entry : stdfs::directory_iterator(testing::data_path("translate/testdata/cpp03/" + name + "/src"))) {
+        const std::string file = fs::to_text(entry.path().filename());
+        const stdfs::path to = src / file.substr(file.find('_') + 1);   // (the corpus numbers its files: 000_Base.java)
+        fs::write_text(to, fs::read_text(entry.path()));
+        javac_args.push_back(fs::to_text(to));
+    }
+    if (!driver.empty()) {
+        const stdfs::path to = src / (driver + ".java");
+        fs::write_text(to, fs::read_text(testing::data_path("translate/testdata/c_java/" + name + "_driver/" + driver + ".java")));
+        javac_args.push_back(fs::to_text(to));
+    }
+    process::ProcessSpec javac;
+    javac.argv = javac_args;
+    CB_CHECK(process::run(javac).ok());
+    process::ProcessSpec jvm;
+    jvm.argv = {fs::to_text(jpo_front().tools.java), "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-cp", fs::to_text(work.path() / "classes"), main_class};
+    jvm.timeout = std::chrono::seconds(120);
+    const process::ProcessResult recorded = process::run(jvm);
+    CB_CHECK(recorded.exit_code == 0);
+    const std::string want = jpo_text_of(recorded);
+    CB_CHECK(!want.empty());
+
+    {
+        Arena arena;
+        const std::vector<translate::ir::Node*> units = java::frontend::lower_program(arena, src, jpo_front().tools);
+        fs::write_text(work.path() / "program.cpp", translate::backends::cpp17::program(*lib, arena, units));
+        std::vector<std::string> args(std::begin(translate::backends::cpp17::kFlags), std::end(translate::backends::cpp17::kFlags));
+        args.insert(args.end(), {"-I", fs::to_text(translate::backends::cpp17::runtime_dir()), "program.cpp", "-o", "program.exe"});
+        const std::string failed = jpo_gxx(args, work.path());
+        CB_CHECK_EQ(failed, std::string());
+        if (failed.empty()) {
+            process::ProcessSpec native;
+            native.argv = {fs::to_text(work.path() / "program.exe")};
+            native.timeout = std::chrono::seconds(120);
+            CB_CHECK_EQ(jpo_text_of(process::run(native)), want);
+        }
+    }
+    if (!stdfs::is_regular_file(fs::from_text(std::string(translate::backends::c_java::kClang)))) return;
+    Arena arena;
+    std::vector<translate::ir::Node*> units = java::frontend::lower_program(arena, src, jpo_front().tools);
+    const translate::backends::c_java::Built built = translate::backends::c_java::build(arena, units, work.path() / "c");
+    CB_CHECK(built.exe.has_value());
+    if (!built.exe) {
+        std::cerr << built.why.substr(0, 2000) << std::endl;
+        return;
+    }
+    process::ProcessSpec native;
+    native.argv = {fs::to_text(*built.exe)};
+    native.timeout = std::chrono::seconds(120);
+    CB_CHECK_EQ(jpo_text_of(process::run(native)), want);
+    native.env["JRT_GC_STRESS"] = "1";
+    CB_CHECK_EQ(jpo_text_of(process::run(native)), want);
+}
+}  // namespace
+
+CB_TEST("java.corpus.sample_runs_as_the_jvm_in_cpp17_and_c", [] { corpus_runs_as_the_jvm("sample", "sample.FixtureMain"); });
+CB_TEST("java.corpus.t03_runs_as_the_jvm_in_cpp17_and_c", [] { corpus_runs_as_the_jvm("t03", "T03Main", "T03Main"); });
 
 // Tally.java converted by the transpiler for C++17 and for C++03: the C++17 text has a
 // range-for, the switch expression as a lambda and `auto*` for a new; neither has a gap; the C++17 text compiles (-fsyntax-only).

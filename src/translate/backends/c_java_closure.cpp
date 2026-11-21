@@ -46,6 +46,9 @@ Code MethodWriter::on(const ir::Node& n, const ir::Lambda& k) {
     for_each_node(k.body, [&](const ir::Node* x) { walked.push_back(x); });
     for (const ir::Node* x : walked) {
         if (const auto* local = ir::get<ir::Local>(x); local != nullptr && local->sym) inner.insert(ident(local->sym->name));
+        if (const auto* nested = ir::get<ir::Lambda>(x)) {   // a lambda inside this one: its parameters are its own, not captured from outside
+            for (const ir::Node* p : nested->params) inner.insert(ident(need_sym(param_of(p).sym, "a lambda parameter").name));
+        }
     }
     std::vector<Cap> caps;
     std::unordered_set<std::string> seen;
