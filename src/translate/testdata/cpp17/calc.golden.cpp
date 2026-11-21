@@ -1,7 +1,7 @@
 // written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
 // Java program's L2; it runs on jrt.hpp, the Java library in C++17.
-// reference counting cannot free a cycle: these classes can form one, where a collector
-// (Boehm) would be needed to reclaim it: Calc
+// these classes can form a reference cycle, which the runtime's cycle collector frees: Calc
+#define JRT_CYCLES
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -21,6 +21,9 @@ struct Calc;
 
 struct Base : virtual Object {
 	const char16_t* jclass_() const override { return u"Base"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t size{};
 	int32_t scale{};
 	void ctor_(int32_t var1);
@@ -30,6 +33,9 @@ struct Base : virtual Object {
 
 struct Sub : Base {
 	const char16_t* jclass_() const override { return u"Sub"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t extra{};
 	void ctor_(int32_t var1);
 	static int32_t build(int32_t var0);
@@ -38,12 +44,18 @@ struct Sub : Base {
 
 struct CalcMain : virtual Object {
 	const char16_t* jclass_() const override { return u"CalcMain"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	CalcMain();
 	static void main(ref<Array<ref<String>>> args);
 };
 
 struct Calc : virtual Object {
 	const char16_t* jclass_() const override { return u"Calc"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	static inline int32_t total{};
 	static inline ref<Array<int32_t>> table{};
 	ref<Array<int32_t>> cells{};
@@ -67,6 +79,12 @@ struct Calc : virtual Object {
 	void finit_();
 };
 
+void Base::trace_(jrt::gc::Tracer& t) {
+	(void)t;
+}
+void Base::clear_() {
+}
+
 void Base::ctor_(int32_t var1) {
 	finit_();
 	this->size = var1 * this->scale;
@@ -79,6 +97,13 @@ void Base::ctor_(int32_t var1, int32_t var2) {
 
 void Base::finit_() {
 	this->scale = 2;
+}
+
+void Sub::trace_(jrt::gc::Tracer& t) {
+	Base::trace_(t);
+}
+void Sub::clear_() {
+	Base::clear_();
 }
 
 void Sub::ctor_(int32_t var1) {
@@ -94,6 +119,12 @@ int32_t Sub::build(int32_t var0) {
 
 void Sub::finit_() {
 	this->extra = 7;
+}
+
+void CalcMain::trace_(jrt::gc::Tracer& t) {
+	(void)t;
+}
+void CalcMain::clear_() {
 }
 
 CalcMain::CalcMain() {
@@ -121,6 +152,17 @@ void CalcMain::main(ref<Array<ref<String>>> args) {
 		jrt::nn(jrt::System::out_())->println((j2xo8 = Calc::mix((int64_t)x * 31LL, x), j2xo9 = Calc::wrap((float)x / 3.0f), j2xo10 = Calc::sums(x), j2xo11 = Calc::tabled(x), j2xo12 = Calc::made(x), j2xo13 = Sub::build(x), jrt::concat(jrt::lit(u"  mix="), j2xo8, jrt::lit(u" wrap="), j2xo9, jrt::lit(u" sums="), j2xo10, jrt::lit(u" tabled="), j2xo11, jrt::lit(u" made="), j2xo12, jrt::lit(u" build="), j2xo13)));
 	}
 	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"total="), (Calc::clinit_(), Calc::total), jrt::lit(u" name="), c->name));
+}
+
+void Calc::trace_(jrt::gc::Tracer& t) {
+	t(cells);
+	t(items);
+	t(name);
+}
+void Calc::clear_() {
+	cells = nullptr;
+	items = nullptr;
+	name = nullptr;
 }
 
 void Calc::ctor_() {

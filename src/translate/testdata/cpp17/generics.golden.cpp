@@ -1,7 +1,7 @@
 // written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
 // Java program's L2; it runs on jrt.hpp, the Java library in C++17.
-// reference counting cannot free a cycle: these classes can form one, where a collector
-// (Boehm) would be needed to reclaim it: Generics_Box, Generics_Pair, Generics_Stack, Generics_Stack_anon1
+// these classes can form a reference cycle, which the runtime's cycle collector frees: Generics_Box, Generics_Pair, Generics_Stack, Generics_Stack_anon1
+#define JRT_CYCLES
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -29,6 +29,9 @@ struct Generics_anon2;
 
 struct Generics : virtual Object {
 	const char16_t* jclass_() const override { return u"Generics"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t total{};
 	Generics();
 	static ref<Object> max(ref<List> xs);
@@ -46,6 +49,9 @@ struct Generics : virtual Object {
 
 struct Generics_Box : virtual Object {
 	const char16_t* jclass_() const override { return u"Generics.Box"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	ref<Object> value{};
 	Generics_Box(ref<Object> value);
 	virtual ref<Object> get();
@@ -56,6 +62,9 @@ struct Generics_Box : virtual Object {
 
 struct Generics_Pair : virtual Object {
 	const char16_t* jclass_() const override { return u"Generics.Pair"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	ref<Object> first_{};
 	ref<Object> second_{};
 	Generics_Pair(ref<Object> first, ref<Object> second);
@@ -76,6 +85,9 @@ struct Generics_Visitor : virtual Object {
 
 struct Generics_Stack : virtual Object, virtual Iterable {
 	const char16_t* jclass_() const override { return u"Generics.Stack"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	ref<List> items{};
 	void ctor_();
 	virtual void push(ref<Object> t);
@@ -88,6 +100,9 @@ struct Generics_Stack : virtual Object, virtual Iterable {
 struct Generics_Stack_anon1 : virtual Object, virtual Iterator {
 	const char16_t* jclass_() const override { return u"Generics_Stack_anon1"; }
 	ref<Generics_Stack> outer_;
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t i{};
 	void ctor_();
 	virtual bool hasNext();
@@ -98,6 +113,9 @@ struct Generics_Stack_anon1 : virtual Object, virtual Iterator {
 struct Generics_Counter : virtual Object {
 	const char16_t* jclass_() const override { return u"Generics.Counter"; }
 	ref<Generics> outer_;
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t count{};
 	void ctor_();
 	virtual void hit();
@@ -106,11 +124,20 @@ struct Generics_Counter : virtual Object {
 
 struct Generics_anon2 : virtual Object, virtual Generics_Visitor {
 	const char16_t* jclass_() const override { return u"Generics_anon2"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	void ctor_();
 	virtual ref<Object> visitNumber(int32_t k);
 	virtual ref<Object> visitText(ref<String> s);
 	void finit_();
 };
+
+void Generics::trace_(jrt::gc::Tracer& t) {
+	(void)t;
+}
+void Generics::clear_() {
+}
 
 Generics::Generics() {
 }
@@ -244,6 +271,13 @@ void Generics::main(ref<Array<ref<String>>> args) {
 })), jrt::concat(j2xo13, jrt::lit(u" "), j2xo14)));
 }
 
+void Generics_Box::trace_(jrt::gc::Tracer& t) {
+	t(value);
+}
+void Generics_Box::clear_() {
+	value = nullptr;
+}
+
 Generics_Box::Generics_Box(ref<Object> value) {
 	this->value = value;
 }
@@ -258,6 +292,15 @@ void Generics_Box::set(ref<Object> v) {
 
 ref<Generics_Box> Generics_Box::map(ref<Function> f) {
 	return std::make_shared<Generics_Box>(jrt::nn(f)->apply(this->value));
+}
+
+void Generics_Pair::trace_(jrt::gc::Tracer& t) {
+	t(first_);
+	t(second_);
+}
+void Generics_Pair::clear_() {
+	first_ = nullptr;
+	second_ = nullptr;
 }
 
 Generics_Pair::Generics_Pair(ref<Object> first, ref<Object> second) {
@@ -296,6 +339,13 @@ bool Generics_Pair::equals(ref<Object> o) {
 	return jrt::Objects::equals(this->first_, that->first_) && jrt::Objects::equals(this->second_, that->second_);
 }
 
+void Generics_Stack::trace_(jrt::gc::Tracer& t) {
+	t(items);
+}
+void Generics_Stack::clear_() {
+	items = nullptr;
+}
+
 void Generics_Stack::ctor_() {
 	finit_();
 }
@@ -323,6 +373,13 @@ void Generics_Stack::finit_() {
 	this->items = jrt::make<ArrayList>();
 }
 
+void Generics_Stack_anon1::trace_(jrt::gc::Tracer& t) {
+	t(outer_);
+}
+void Generics_Stack_anon1::clear_() {
+	outer_ = nullptr;
+}
+
 void Generics_Stack_anon1::ctor_() {
 	finit_();
 }
@@ -339,6 +396,13 @@ void Generics_Stack_anon1::finit_() {
 	this->i = jrt::nn(this->outer_->items)->size() - 1;
 }
 
+void Generics_Counter::trace_(jrt::gc::Tracer& t) {
+	t(outer_);
+}
+void Generics_Counter::clear_() {
+	outer_ = nullptr;
+}
+
 void Generics_Counter::ctor_() {
 	finit_();
 }
@@ -349,6 +413,12 @@ void Generics_Counter::hit() {
 }
 
 void Generics_Counter::finit_() {
+}
+
+void Generics_anon2::trace_(jrt::gc::Tracer& t) {
+	(void)t;
+}
+void Generics_anon2::clear_() {
 }
 
 void Generics_anon2::ctor_() {

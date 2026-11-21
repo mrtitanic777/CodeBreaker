@@ -3,8 +3,8 @@
 // codebreaker/translate/runtime/cpp17/jrt.hpp. Its choices, each the idiomatic form where it is provably
 // the same as Java and the faithful form elsewhere:
 //   - references are jrt::ref<T> (std::shared_ptr): reference counting in place of the collector; a class
-//     whose fields can lead back to itself can form a cycle that is never freed (Model::cycles lists them,
-//     the place a collector would be needed);
+//     whose fields can lead back to itself can form a cycle (Model::cycles lists them): such a program
+//     defines JRT_CYCLES, and every class lists its references for the runtime's cycle collector;
 //   - a record and any class nothing extends whose constructors never hand `this` out gets real C++
 //     constructors (std::make_shared<Point>(x, y)); every other class is made in two phases as the JVM
 //     makes it (jrt::make: fields zero, then ctor_), so a virtual call in a constructor reaches the override;
@@ -596,6 +596,8 @@ struct Program {
     // ---------------------------------------------------------------- the program
     std::string write() {
         auto ord = ordered();
+        auto cyc = model->cycles();
+        collected = !cyc.empty();
         Strs body, defs;
         for (auto* c : ord) {
             auto s = struct_(c);
@@ -607,10 +609,9 @@ struct Program {
         }
         Strs head = {"// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the",
                      "// Java program's L2; it runs on jrt.hpp, the Java library in C++17."};
-        auto cyc = model->cycles();
-        if (!cyc.empty()) {
-            head.push_back("// reference counting cannot free a cycle: these classes can form one, where a collector");
-            head.push_back("// (Boehm) would be needed to reclaim it: " + join(cyc, ", "));
+        if (collected) {
+            head.push_back("// these classes can form a reference cycle, which the runtime's cycle collector frees: " + join(cyc, ", "));
+            head.push_back("#define JRT_CYCLES");
         }
         head.push_back("#include \"jrt.hpp\"");
         head.push_back("");
@@ -703,13 +704,32 @@ struct Program {
 
     Strs struct_(ClassInfo* c);
     Strs definitions(ClassInfo* c);
+    bool collected = false;   // the program can form a cycle: its classes list their references for the collector
+    Strs reference_fields(ClassInfo* c);
 };
+
+// The instance fields of a class that hold a reference: the outer instance, the captures, the declared fields.
+Strs Program::reference_fields(ClassInfo* c) {
+    Strs out;
+    const auto holds = [](const std::string& t) { return t.rfind("ref<", 0) == 0; };
+    if (c->needs_outer) out.push_back("outer_");
+    for (auto& cap : c->captures)
+        if (holds(ct(cap.second))) out.push_back("cap_" + ident(cap.first));
+    for (auto& f : c->fields())
+        if (sym(f) && !sstatic(sym(f)) && holds(ct(type(f)))) out.push_back(field_name(sname(sym(f))));
+    return out;
+}
 
 Strs Program::struct_(ClassInfo* c) {
     Strs L{"struct " + c->cname + " : " + join(bases(c), ", ") + " {"};
     L.push_back("\tconst char16_t* jclass_() const override { return " + u16(py::strip_chars(c->qname, "<>")) + "; }");
     if (c->needs_outer) L.push_back("\t" + ct(mk_type("class", c->outer->qname)) + " outer_;");
     for (auto& cap : c->captures) L.push_back("\t" + ct(cap.second) + " cap_" + ident(cap.first) + "{};");
+    if (collected && c->kind != "interface") {
+        L.push_back("\tjrt::gc::Tracked gc_tracked_{this};");
+        L.push_back("\tvoid trace_(jrt::gc::Tracer& t) override;");
+        L.push_back("\tvoid clear_() override;");
+    }
     for (auto& f : c->fields()) {
         if (!sym(f)) continue;
         std::string t = ct(type(f));
@@ -811,6 +831,20 @@ Strs Program::definitions(ClassInfo* c) {
     Strs L;
     bool two = two_phase(c);
     bool clinit = needs_clinit(c);
+    if (collected && c->kind != "interface") {
+        const bool has_base = !c->base.empty() && c->base != OBJECT;
+        const Strs held = reference_fields(c);
+        L.push_back("void " + c->cname + "::trace_(jrt::gc::Tracer& t) {");
+        if (has_base) L.push_back("\t" + cls_name(c->base) + "::trace_(t);");
+        if (!has_base && held.empty()) L.push_back("\t(void)t;");
+        for (auto& f : held) L.push_back("\tt(" + f + ");");
+        L.push_back("}");
+        L.push_back("void " + c->cname + "::clear_() {");
+        if (has_base) L.push_back("\t" + cls_name(c->base) + "::clear_();");
+        for (auto& f : held) L.push_back("\t" + f + " = nullptr;");
+        L.push_back("}");
+        L.push_back("");
+    }
     for (auto& m : c->methods()) {
         if (!node(m, "body")) continue;
         auto d = Method(*this, c, m).define(two, clinit);

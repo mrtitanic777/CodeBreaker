@@ -105,3 +105,29 @@ CB_TEST("translate.cpp17.the_python_semantics_snippet_runs_as_cpython_runs_it", 
             cb::testing::record_failure(__FILE__, __LINE__, expected[i].first + ": CPython gave " + expected[i].second.dump() + ", the C++ gave " + lines[i]);
     }
 });
+
+// The Java runtime's cycle collector (JRT_CYCLES in jrt.hpp), built with g++ as the Java programs are: rings of objects, directly and
+// through a list, a map and an array, are freed; a ring a local or a static holds stays; an object a method is running on stays.
+CB_TEST("translate.cpp17.the_cycle_collector_frees_rings_and_nothing_in_use", [] {
+    try {
+        cb::process::ProcessSpec probe;
+        probe.argv = {"g++", "--version"};
+        probe.timeout = std::chrono::seconds(30);
+        if (cb::process::run(probe).exit_code != 0) return;
+    } catch (const std::exception&) {
+        std::cerr << "cycle collector test: no g++ on PATH; skipped\n";
+        return;
+    }
+    cb::fs::ScopedTempDir work("cb_jrt_gc");
+    const std::string exe = cb::fs::to_text(work.path() / "gc_check.exe");
+    cb::process::ProcessSpec build;
+    build.argv = {"g++", "-std=c++17", "-fwrapv", "-w", "-O1", "-I" + cb::fs::to_text(cb::testing::data_path("../config/translate/runtime/cpp17")), "-o", exe,
+                  cb::fs::to_text(cb::testing::data_path("translate/testdata/cpp17/gc_check.cpp"))};
+    build.timeout = std::chrono::seconds(300);
+    CB_CHECK(cb::process::run(build).exit_code == 0);
+    cb::process::ProcessSpec run;
+    run.argv = {exe};
+    run.timeout = std::chrono::seconds(120);
+    const auto ran = cb::process::run(run);
+    CB_CHECK(ran.exit_code == 0);
+});

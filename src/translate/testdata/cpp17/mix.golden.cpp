@@ -1,7 +1,7 @@
 // written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
 // Java program's L2; it runs on jrt.hpp, the Java library in C++17.
-// reference counting cannot free a cycle: these classes can form one, where a collector
-// (Boehm) would be needed to reclaim it: Mix_Box
+// these classes can form a reference cycle, which the runtime's cycle collector frees: Mix_Box
+#define JRT_CYCLES
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -27,6 +27,9 @@ struct Mix_anon1;
 
 struct Mix : virtual Object {
 	const char16_t* jclass_() const override { return u"Mix"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	static inline int32_t LIMIT = 10;
 	static inline int32_t counter{};
 	static inline int64_t total = 5LL;
@@ -46,6 +49,9 @@ struct Mix : virtual Object {
 
 struct Mix_Color : Enum {
 	const char16_t* jclass_() const override { return u"Mix.Color"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t w{};
 	static inline ref<Mix_Color> RED;
 	static inline ref<Mix_Color> GREEN;
@@ -75,6 +81,9 @@ template <class L> struct Mix_Shape::Of : Mix_Shape {
 struct Mix_Inner : virtual Object {
 	const char16_t* jclass_() const override { return u"Mix.Inner"; }
 	ref<Mix> outer_;
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t v{};
 	void ctor_(int32_t v);
 	virtual int32_t get();
@@ -83,6 +92,9 @@ struct Mix_Inner : virtual Object {
 
 struct Mix_Box : virtual Object {
 	const char16_t* jclass_() const override { return u"Mix.Box"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	ref<Object> item{};
 	Mix_Box(ref<Object> item);
 	virtual ref<Object> get();
@@ -91,10 +103,19 @@ struct Mix_Box : virtual Object {
 
 struct Mix_anon1 : virtual Object, virtual Mix_Shape {
 	const char16_t* jclass_() const override { return u"Mix_anon1"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	void ctor_();
 	virtual double area();
 	void finit_();
 };
+
+void Mix::trace_(jrt::gc::Tracer& t) {
+	(void)t;
+}
+void Mix::clear_() {
+}
 
 Mix::Mix() {
 	clinit_();
@@ -282,6 +303,13 @@ void Mix::clinit_() {
 	Mix::counter = 3;
 }
 
+void Mix_Color::trace_(jrt::gc::Tracer& t) {
+	Enum::trace_(t);
+}
+void Mix_Color::clear_() {
+	Enum::clear_();
+}
+
 void Mix_Color::ctor_(ref<String> name_in, int32_t ordinal_in) {
 	clinit_();
 	jrt::Enum::ctor_(name_in, ordinal_in);
@@ -317,6 +345,13 @@ ref<Mix_Color> Mix_Color::valueOf(ref<String> n) {
 	jrt::raise_msg(std::make_shared<jrt::IllegalArgumentException>(), u"No enum constant Mix.Color." + n->s);
 }
 
+void Mix_Inner::trace_(jrt::gc::Tracer& t) {
+	t(outer_);
+}
+void Mix_Inner::clear_() {
+	outer_ = nullptr;
+}
+
 void Mix_Inner::ctor_(int32_t v) {
 	finit_();
 	this->v = v + this->outer_->base;
@@ -329,12 +364,25 @@ int32_t Mix_Inner::get() {
 void Mix_Inner::finit_() {
 }
 
+void Mix_Box::trace_(jrt::gc::Tracer& t) {
+	t(item);
+}
+void Mix_Box::clear_() {
+	item = nullptr;
+}
+
 Mix_Box::Mix_Box(ref<Object> item) {
 	this->item = item;
 }
 
 ref<Object> Mix_Box::get() {
 	return this->item;
+}
+
+void Mix_anon1::trace_(jrt::gc::Tracer& t) {
+	(void)t;
+}
+void Mix_anon1::clear_() {
 }
 
 void Mix_anon1::ctor_() {

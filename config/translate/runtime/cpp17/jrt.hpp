@@ -2,8 +2,7 @@
 //
 // The object model (docs/TRANSLATOR_DESIGN.md, the C++17 back end):
 //   * every Java reference is a jrt::ref<T> (std::shared_ptr): reference counting in place of the collector.
-//     A cycle of references is never freed -- the back end lists the classes that can form one, where a
-//     collector (Boehm) would be needed to reclaim it;
+//     A program whose classes can form a cycle also gets the cycle collector below (JRT_CYCLES);
 //   * every class derives (virtually) from jrt::Object; generics are erased, as Java erases them: a type
 //     variable is ref<Object>, and a value read back through one is cast to what javac said it is;
 //   * a class is made in two phases, as the JVM makes it: allocated with its fields zero, then its Java
@@ -17,6 +16,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -49,8 +49,44 @@ ref<String> lit(const char16_t* s);
 template <class T> [[noreturn]] void raise_new(const char16_t* msg);
 
 // ------------------------------------------------------------------------------------------- Object
+#ifdef JRT_CYCLES
+// The cycle collector, in a program whose classes can form a reference cycle (the back end defines JRT_CYCLES for it). Reference
+// counting still frees everything else at once. Every object that holds references is listed; a collection (when the list has
+// doubled) takes each one's count, subtracts the references that come from listed objects, and what is left is held from outside:
+// a local, a static, a lambda's capture, anything not traced. All that those reach is alive. What remains is kept if the stack
+// holds a pointer into it (a method may be running on an object nothing refers to any more), and otherwise is garbage: its
+// references are dropped, which frees it. What is not traced only ever keeps an object alive, so a missing trace_ is a leak, never a
+// wrong free. The program is single-threaded, as this runtime is.
+namespace gc {
+struct Tracer {
+	void (*visit)(Tracer&, Object*);
+	void* state;
+	template <class T> void operator()(const ref<T>& p) { if (p) visit(*this, p.get()); }
+};
+void add(Object* o, const void* at, std::size_t size);
+void remove(Object* o);
+void collect();
+// a member of a class that holds references: lists the object for its lifetime
+struct Tracked {
+	Object* o;
+	template <class T> explicit Tracked(T* self) : o(self) { add(o, self, sizeof(T)); }
+	Tracked(const Tracked&) = delete;
+	Tracked& operator=(const Tracked&) = delete;
+	~Tracked() { remove(o); }
+};
+struct NotTracked { template <class T> explicit NotTracked(T*) {} };
+template <class T> struct is_ref : std::false_type {};
+template <class T> struct is_ref<std::shared_ptr<T>> : std::true_type {};
+}  // namespace gc
+#endif
+
 struct Object : std::enable_shared_from_this<Object> {
 	virtual ~Object() {}
+#ifdef JRT_CYCLES
+	std::size_t gc_slot_ = static_cast<std::size_t>(-1);
+	virtual void trace_(gc::Tracer&) {}                          // each reference this object holds
+	virtual void clear_() {}                                     // drop them (it is garbage)
+#endif
 	void ctor_() {}
 	virtual const char16_t* jclass_() const { return u"java.lang.Object"; }
 	virtual ref<String> toString();
@@ -59,6 +95,113 @@ struct Object : std::enable_shared_from_this<Object> {
 };
 
 template <class T> ref<T> self(T* p) { return std::dynamic_pointer_cast<T>(p->shared_from_this()); }
+
+#ifdef JRT_CYCLES
+namespace gc {
+inline constexpr std::size_t no_slot = static_cast<std::size_t>(-1);
+struct Entry { Object* o; const char* begin; const char* end; };
+struct Heap {
+	std::vector<Entry> all;
+	std::size_t next = 4096;                                      // the list's size that starts the next collection
+	std::size_t freed = 0;                                        // objects a collection has freed
+	bool busy = false;
+	const void* stack_base = nullptr;                             // set by run_main; no collection without it
+};
+inline Heap& heap() { static Heap* h = new Heap; return *h; }     // (never destroyed: a static's destructor may still reach it)
+
+inline void add(Object* o, const void* at, std::size_t size) {
+	Heap& h = heap();
+	const char* b = static_cast<const char*>(at);
+	const char* e = b + size;
+	if (o->gc_slot_ != no_slot) {                                 // a base class listed it: the whole object's extent
+		Entry& x = h.all[o->gc_slot_];
+		x.begin = std::min(x.begin, b);
+		x.end = std::max(x.end, e);
+		return;
+	}
+	if (h.all.size() >= h.next) collect();
+	o->gc_slot_ = h.all.size();
+	h.all.push_back({o, b, e});
+}
+
+inline void remove(Object* o) {
+	if (o->gc_slot_ == no_slot) return;
+	Heap& h = heap();
+	const Entry last = h.all.back();
+	h.all[o->gc_slot_] = last;
+	last.o->gc_slot_ = o->gc_slot_;
+	h.all.pop_back();
+	o->gc_slot_ = no_slot;
+}
+
+struct Marking { std::vector<char>* live; std::vector<std::size_t>* todo; };
+
+inline void mark_from(Heap& h, const std::vector<char>& building, Marking& m) {
+	Tracer mark{[](Tracer& t, Object* c) {
+		auto& s = *static_cast<Marking*>(t.state);
+		if (c->gc_slot_ != no_slot && !(*s.live)[c->gc_slot_]) { (*s.live)[c->gc_slot_] = 1; s.todo->push_back(c->gc_slot_); }
+	}, &m};
+	while (!m.todo->empty()) {
+		const std::size_t i = m.todo->back();
+		m.todo->pop_back();
+		if (!building[i]) h.all[i].o->trace_(mark);
+	}
+}
+
+// Every word of the stack and the saved registers that points into an object about to be freed keeps it.
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((no_sanitize("address")))   // (it reads the whole stack, red zones too)
+#endif
+inline void pin_from_stack(Heap& h, Marking& m) {
+	std::vector<std::size_t> dead;
+	for (std::size_t i = 0; i < h.all.size(); ++i) if (!(*m.live)[i]) dead.push_back(i);
+	std::sort(dead.begin(), dead.end(), [&](std::size_t a, std::size_t b) { return h.all[a].begin < h.all[b].begin; });
+	const auto word = [&](std::uintptr_t v) {
+		const char* p = reinterpret_cast<const char*>(v);
+		auto it = std::upper_bound(dead.begin(), dead.end(), p, [&](const char* x, std::size_t i) { return x < h.all[i].begin; });
+		if (it == dead.begin()) return;
+		const std::size_t i = *--it;
+		if (p < h.all[i].end && !(*m.live)[i]) { (*m.live)[i] = 1; m.todo->push_back(i); }
+	};
+	std::jmp_buf registers;
+	(void)setjmp(registers);
+	const char* low = reinterpret_cast<const char*>(&registers);
+	const char* high = static_cast<const char*>(h.stack_base);
+	low += (alignof(std::uintptr_t) - reinterpret_cast<std::uintptr_t>(low) % alignof(std::uintptr_t)) % alignof(std::uintptr_t);
+	for (; low + sizeof(std::uintptr_t) <= high; low += sizeof(std::uintptr_t)) {
+		word(*reinterpret_cast<const volatile std::uintptr_t*>(low));
+	}
+}
+
+inline void collect() {
+	Heap& h = heap();
+	if (h.busy || !h.stack_base) return;
+	h.busy = true;
+	const std::size_t n = h.all.size();
+	std::vector<std::int64_t> count(n);
+	std::vector<char> live(n, 0), building(n, 0);
+	std::vector<std::size_t> todo;
+	for (std::size_t i = 0; i < n; ++i) {
+		count[i] = h.all[i].o->weak_from_this().use_count();
+		if (count[i] == 0) { building[i] = live[i] = 1; todo.push_back(i); }   // still being constructed: not read, and alive
+	}
+	Tracer minus{[](Tracer& t, Object* c) { if (c->gc_slot_ != no_slot) --static_cast<std::int64_t*>(t.state)[c->gc_slot_]; }, count.data()};
+	for (std::size_t i = 0; i < n; ++i) if (!building[i]) h.all[i].o->trace_(minus);
+	for (std::size_t i = 0; i < n; ++i) if (!live[i] && count[i] > 0) { live[i] = 1; todo.push_back(i); }
+	Marking m{&live, &todo};
+	mark_from(h, building, m);
+	pin_from_stack(h, m);
+	mark_from(h, building, m);
+	std::vector<ref<Object>> dead;
+	for (std::size_t i = 0; i < n; ++i) if (!live[i]) dead.push_back(h.all[i].o->shared_from_this());
+	for (auto& o : dead) o->clear_();                             // (all still held: nothing is freed while links are cut)
+	h.freed += dead.size();
+	dead.clear();
+	h.next = std::max<std::size_t>(4096, h.all.size() * 2);
+	h.busy = false;
+}
+}  // namespace gc
+#endif
 
 // allocation in two phases: the object, then its Java constructor
 template <class T, class... A> ref<T> make(A&&... a) {
@@ -611,6 +754,11 @@ struct Math {
 template <class T> struct Array : Object {
 	std::vector<T> a;
 	int32_t length = 0;
+#ifdef JRT_CYCLES
+	std::conditional_t<gc::is_ref<T>::value, gc::Tracked, gc::NotTracked> gc_tracked_{this};
+	void trace_(gc::Tracer& t) override { if constexpr (gc::is_ref<T>::value) for (auto& x : a) t(x); else (void)t; }
+	void clear_() override { if constexpr (gc::is_ref<T>::value) for (auto& x : a) x = nullptr; }
+#endif
 	const char16_t* jclass_() const override { return u"[array"; }
 	void init(int32_t n) { if (n < 0) raise_msg(std::make_shared<NegativeArraySizeException>(), sv(n)); a.assign(n, T{}); length = n; }
 	T& operator[](int32_t i) {
@@ -901,6 +1049,11 @@ struct List : Collection {
 };
 struct ArrayList : List {
 	std::vector<O> v;
+#ifdef JRT_CYCLES
+	gc::Tracked gc_tracked_{this};
+	void trace_(gc::Tracer& t) override { for (auto& x : v) t(x); }
+	void clear_() override { v.clear(); }
+#endif
 	const char16_t* jclass_() const override { return u"java.util.ArrayList"; }
 	void ctor_() {}
 	void ctor_(int32_t n) { if (n < 0) raise_new<IllegalArgumentException>(nullptr); }
@@ -993,6 +1146,11 @@ struct MapEntry : Object {
 	O key, value;
 	int32_t hash = 0;
 	ref<MapEntry> next;
+#ifdef JRT_CYCLES
+	gc::Tracked gc_tracked_{this};
+	void trace_(gc::Tracer& t) override { t(key); t(value); t(next); }
+	void clear_() override { key = nullptr; value = nullptr; next = nullptr; }
+#endif
 	const char16_t* jclass_() const override { return u"java.util.HashMap.Node"; }
 	O getKey() { return key; }
 	O getValue() { return value; }
@@ -1048,6 +1206,11 @@ struct HashMap : Map {
 	int32_t count = 0;
 	bool linked = false;                                          // LinkedHashMap: insertion order
 	std::vector<ref<MapEntry>> order;
+#ifdef JRT_CYCLES
+	gc::Tracked gc_tracked_{this};
+	void trace_(gc::Tracer& t) override { for (auto& x : table) t(x); for (auto& x : order) t(x); }
+	void clear_() override { table.clear(); order.clear(); count = 0; }
+#endif
 	const char16_t* jclass_() const override { return u"java.util.HashMap"; }
 	void ctor_() {}
 	void ctor_(int32_t n) { int32_t c = 1; while (c < n) c <<= 1; if (n > 0) table.resize(c); }
@@ -1134,6 +1297,11 @@ struct LinkedHashMap : HashMap {
 struct TreeMap : Map {
 	ref<Comparator> cmp;
 	std::vector<ref<MapEntry>> v;                                 // kept sorted
+#ifdef JRT_CYCLES
+	gc::Tracked gc_tracked_{this};
+	void trace_(gc::Tracer& t) override { t(cmp); for (auto& x : v) t(x); }
+	void clear_() override { cmp = nullptr; v.clear(); }
+#endif
 	const char16_t* jclass_() const override { return u"java.util.TreeMap"; }
 	void ctor_() {}
 	void ctor_(ref<Comparator> c) { cmp = c; }
@@ -1178,6 +1346,11 @@ struct MapIter : Iterator {
 // a set backed by a map's keys (HashSet is a HashMap's key set, as in Java)
 struct MapSet : Set {
 	ref<Map> m;
+#ifdef JRT_CYCLES
+	gc::Tracked gc_tracked_{this};
+	void trace_(gc::Tracer& t) override { t(m); }
+	void clear_() override { m = nullptr; }
+#endif
 	int kind = 0;                                                 // 0 keys, 1 values, 2 entries
 	const char16_t* jclass_() const override { return u"java.util.HashSet"; }
 	int32_t size() override { return m->size(); }
@@ -1574,6 +1747,10 @@ template <class F> struct Finally {
 };
 
 inline int run_main(void (*m)(ref<Array<ref<String>>>), int argc, char** argv) {
+#ifdef JRT_CYCLES
+	char stack_top = 0;
+	gc::heap().stack_base = &stack_top + 1;
+#endif
 	auto args = new_array<ref<String>>(argc > 1 ? argc - 1 : 0);
 	for (int i = 1; i < argc; ++i) (*args)[i - 1] = str(u16(argv[i]));
 	try {

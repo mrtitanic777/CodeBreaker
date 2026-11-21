@@ -203,7 +203,7 @@ know is a node or a flag, and lowering is left to the back end or a pass.
 | Back end | Targets | Memory from a GC source | Notes |
 |---|---|---|---|
 | C++03 | Xbox 360, older consoles | ownership inference, reference counting where undecidable | today's path |
-| C++17 | PC (Windows, Linux) | Boehm GC | templates, lambdas, CMake; one back end for every front end, in C++ (below) |
+| C++17 | PC (Windows, Linux) | reference counting and its own cycle collector | templates, lambdas, CMake; one back end for every front end, in C++ (below) |
 | C (C99) | anything with a C compiler | Boehm GC | classes as structs and function tables, exceptions as `setjmp` |
 | Java | JVM | native | pointer-heavy C/C++ through the emulated memory |
 | C# | .NET | native | structs and unsafe code available for C sources |

@@ -1,7 +1,7 @@
 // written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
 // Java program's L2; it runs on jrt.hpp, the Java library in C++17.
-// reference counting cannot free a cycle: these classes can form one, where a collector
-// (Boehm) would be needed to reclaim it: Bank_Account
+// these classes can form a reference cycle, which the runtime's cycle collector frees: Bank_Account
+#define JRT_CYCLES
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -31,6 +31,9 @@ struct Bank_Savings;
 
 struct Bank : virtual Object {
 	const char16_t* jclass_() const override { return u"Bank"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	Bank();
 	static int64_t simulate(int32_t seed);
 	static ref<String> wordFreq(ref<String> text);
@@ -41,6 +44,9 @@ struct Bank : virtual Object {
 
 struct Bank_InsufficientFunds : Exception {
 	const char16_t* jclass_() const override { return u"Bank.InsufficientFunds"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t shortBy{};
 	void ctor_(ref<String> msg, int32_t shortBy);
 	void finit_();
@@ -48,6 +54,9 @@ struct Bank_InsufficientFunds : Exception {
 
 struct Bank_Account : virtual Object {
 	const char16_t* jclass_() const override { return u"Bank.Account"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	static inline int32_t opened = 0;
 	ref<String> id{};
 	int64_t balance{};
@@ -63,6 +72,9 @@ struct Bank_Account : virtual Object {
 
 struct Bank_Checking : Bank_Account {
 	const char16_t* jclass_() const override { return u"Bank.Checking"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	void ctor_(ref<String> id, int64_t initial);
 	virtual ref<String> kind();
 	virtual int64_t fee(int64_t amount);
@@ -73,6 +85,9 @@ struct Bank_Checking : Bank_Account {
 
 struct Bank_Savings : Bank_Account {
 	const char16_t* jclass_() const override { return u"Bank.Savings"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
 	int32_t rate{};
 	void ctor_(ref<String> id, int64_t initial, int32_t rate);
 	virtual ref<String> kind();
@@ -82,6 +97,12 @@ struct Bank_Savings : Bank_Account {
 	using Bank_Account::fee;
 	using Bank_Account::kind;
 };
+
+void Bank::trace_(jrt::gc::Tracer& t) {
+	(void)t;
+}
+void Bank::clear_() {
+}
 
 Bank::Bank() {
 }
@@ -205,6 +226,13 @@ void Bank::main(ref<Array<ref<String>>> args) {
 	jrt::nn(jrt::System::out_())->println((j2xo5 = Bank::ordered(9), j2xo6 = Bank::hashOrder(33), jrt::concat(j2xo5, jrt::lit(u" "), j2xo6)));
 }
 
+void Bank_InsufficientFunds::trace_(jrt::gc::Tracer& t) {
+	Exception::trace_(t);
+}
+void Bank_InsufficientFunds::clear_() {
+	Exception::clear_();
+}
+
 void Bank_InsufficientFunds::ctor_(ref<String> msg, int32_t shortBy) {
 	Exception::ctor_(msg);
 	finit_();
@@ -212,6 +240,15 @@ void Bank_InsufficientFunds::ctor_(ref<String> msg, int32_t shortBy) {
 }
 
 void Bank_InsufficientFunds::finit_() {
+}
+
+void Bank_Account::trace_(jrt::gc::Tracer& t) {
+	t(id);
+	t(log);
+}
+void Bank_Account::clear_() {
+	id = nullptr;
+	log = nullptr;
 }
 
 void Bank_Account::ctor_(ref<String> id, int64_t initial) {
@@ -247,6 +284,13 @@ void Bank_Account::finit_() {
 	this->log = jrt::make<ArrayList>();
 }
 
+void Bank_Checking::trace_(jrt::gc::Tracer& t) {
+	Bank_Account::trace_(t);
+}
+void Bank_Checking::clear_() {
+	Bank_Account::clear_();
+}
+
 void Bank_Checking::ctor_(ref<String> id, int64_t initial) {
 	Bank_Account::ctor_(id, initial);
 	finit_();
@@ -261,6 +305,13 @@ int64_t Bank_Checking::fee(int64_t amount) {
 }
 
 void Bank_Checking::finit_() {
+}
+
+void Bank_Savings::trace_(jrt::gc::Tracer& t) {
+	Bank_Account::trace_(t);
+}
+void Bank_Savings::clear_() {
+	Bank_Account::clear_();
 }
 
 void Bank_Savings::ctor_(ref<String> id, int64_t initial, int32_t rate) {
