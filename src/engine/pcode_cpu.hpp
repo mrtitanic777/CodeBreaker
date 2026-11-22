@@ -37,8 +37,8 @@ namespace cb::engine::pcode_cpu {
 enum class Core : std::uint8_t { Mos6502, Z80, M68000, Mips, R4300, Arm, SuperH, PowerPc };
 bool default_on(Core core);
 
-// Where a family's machines differ, the default is the machine's: the ARM's DS and 3DS are on the emulator and its GBA is not, the SH's Saturn is and its
-// 32X and Dreamcast are not.
+// Where a family's machines differ, the default is the machine's: the ARM's DS and 3DS are on the emulator and its GBA is not, the SH's Saturn and 32X are
+// and its Dreamcast is not. (The 32X's 68000 is on the emulator too, by its machine's choice: enabled_by.)
 enum class ShMachine : std::uint8_t { Saturn, Sega32x, Dreamcast };
 bool default_on(emulate::arm::System system);
 bool default_on(ShMachine machine);

@@ -54,7 +54,7 @@ bool default_on(Core core) { return core == Core::Mos6502 || core == Core::Z80 |
 
 bool default_on(emulate::arm::System system) { return system == emulate::arm::System::Nds9 || system == emulate::arm::System::Nds7 || system == emulate::arm::System::N3ds; }
 
-bool default_on(ShMachine machine) { return machine == ShMachine::Saturn; }
+bool default_on(ShMachine machine) { return machine == ShMachine::Saturn || machine == ShMachine::Sega32x; }
 
 bool enabled_by(bool lane_default) {
     if (const int f = g_force.load(); f >= 0) return f == 1;

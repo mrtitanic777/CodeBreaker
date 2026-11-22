@@ -210,7 +210,7 @@ vl::Effects effects_68k(const formats::sega32x::Rom& rom, std::uint32_t entry, c
     a68[0] = static_cast<std::uint32_t>(at(state, "a0"));
     options.d = d68;
     options.a = a68;
-    const emulate::m68k::RunResult run = cb::engine::pcode_cpu::call(bus, entry, options);
+    const emulate::m68k::RunResult run = pcode_cpu::enabled_by(true) ? pcode_cpu::run(bus, entry, options) : emulate::m68k::run(bus, entry, options);   // (the 32X is on the emulator; the other 68000 lanes are not yet)
     Bytes results, saved, status;
     put_word(results, run.d[0]);
     put_word(results, run.d[1]);
