@@ -147,8 +147,9 @@ int run(const Options& options, const Services& services) {
         if (!options.again && is_done.contains(path.generic_string())) {
             const auto judged = services.store.best(id->sha, id->profile);
             bool all = true;
+            const bool driver = services.reconstruct.kind_name(path) == std::optional<std::string>("le");
             for (const std::string& a : services.store.addresses(id->sha))
-                if (!judged.contains(a)) {
+                if (!judged.contains(a) && (!driver || a.find(':') != std::string::npos)) {   // (see Ledger::counts)
                     all = false;
                     break;
                 }

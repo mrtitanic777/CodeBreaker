@@ -140,6 +140,8 @@ CB_TEST("source.dos_writer.io_sys_is_four_programs_and_without_tools_none_of_the
     CB_CHECK_EQ(r.data, 101517u);
     CB_CHECK_EQ(r.sources.size(), 4u);
     CB_CHECK_EQ(r.notes.size(), 4u);
+    CB_CHECK(!r.functions.empty());   // (the sweep judges a kernel by its parts' functions)
+    CB_CHECK(r.functions.begin()->second.name.starts_with("msload."));
     for (const std::string& note : r.notes) CB_CHECK(note.find(": assembler: ") != std::string::npos);
     // the fills SYSINIT was stored with are listed beside the sources
     CB_CHECK(fs::read_text(dir.path() / "out" / "sysinit.pack").starts_with("; the stretches of SYSINIT that LINK /EXEPACK stored as fills"));

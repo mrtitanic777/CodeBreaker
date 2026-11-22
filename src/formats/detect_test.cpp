@@ -80,7 +80,8 @@ CB_TEST("formats.detect.new_header_from_bytes", [] {
     CB_CHECK(!detect::new_header(Bytes(0x80, 0x41)).has_value());        // not MZ
     put(mz, 0x3C, 0xFFFFFFF0u, 4);                                         // a new-header offset past the end
     CB_CHECK(detect::new_header(mz) == detect::NewHeader::None);
-    CB_CHECK(detect::lane_of(detect::NewHeader::W3) == detect::Lane::Dos);
+    CB_CHECK(detect::lane_of(detect::NewHeader::W3) == detect::Lane::Le);
+    CB_CHECK(detect::lane_of(detect::NewHeader::W4) == detect::Lane::Le);
     CB_CHECK(detect::lane_of(detect::NewHeader::Lx) == detect::Lane::Le);
 });
 
