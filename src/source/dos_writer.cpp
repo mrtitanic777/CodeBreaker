@@ -568,6 +568,12 @@ Result kernel(Context& cx, const std::filesystem::path& path, const Bytes& data,
     for (const Subject& s : k.parts) {
         const Result r = run_program(cx, s, outdir);
         result.parts.push_back(part_from(s.stem, r));
+        // the kernel's functions are its parts': each part has its own address space, so its number goes above a real-mode address
+        for (const auto& [address, function] : r.functions) {
+            analyze::dos_functions::Function named = function;
+            named.name = s.stem + "." + function.name;
+            result.functions.emplace(static_cast<std::uint32_t>(result.parts.size()) << 20 | address, std::move(named));
+        }
         result.sources.insert(result.sources.end(), r.sources.begin(), r.sources.end());
         result.instructions += r.instructions;
         result.raw += r.raw;

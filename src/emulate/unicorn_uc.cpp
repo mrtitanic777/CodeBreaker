@@ -210,6 +210,7 @@ struct LoadedCopy {
 #define CB_X(name) api.name = lib.function<decltype(&::name)>(#name);
         CB_UNICORN_FUNCTIONS(CB_X)
 #undef CB_X
+        emu::unicorn::commit_code_buffer_to_its_end();
     }
 };
 

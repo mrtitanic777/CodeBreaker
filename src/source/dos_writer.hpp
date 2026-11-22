@@ -112,7 +112,7 @@ struct Result {
     std::vector<std::string> remarks;
     std::string kind;                             // "mz", "com", "driver", "kernel", "driver+vxd", "dos+windows"
     std::size_t instructions = 0, raw = 0, data = 0;
-    std::map<std::uint32_t, analyze::dos_functions::Function> functions;   // by offset in the image
+    std::map<std::uint32_t, analyze::dos_functions::Function> functions;   // by offset in the image (a kernel's: part number << 20 | offset)
     std::vector<Part> parts;
     std::optional<Facts> facts;
     bool equivalent = false;                      // the same programs, laid out another way (see `notes`)

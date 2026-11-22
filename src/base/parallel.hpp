@@ -76,6 +76,9 @@ public:
     int count() const;
     // The slots actually held (0 when the wait ran out and the caller runs on one regardless).
     int held() const;
+    // For a long job that started while the machine was busy: one more slot, if one is free, the memory carries another piece and at
+    // least `idle_needed` processors are idle. Whether it took one. Never waits for a slot.
+    bool grow(double idle_needed = 1.5);
 
 private:
     struct Impl;
