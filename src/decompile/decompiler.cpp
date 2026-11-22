@@ -543,7 +543,8 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
     std::atomic<std::size_t> next{0};
     std::mutex lock;
     std::condition_variable changed;
-    std::size_t chunks_done = 0, functions_done = 0;
+    std::size_t chunks_done = 0;
+    std::vector<char> chunk_finished(chunks.size(), 0);
     const auto work = [&] {
         for (std::size_t i = next.fetch_add(1); i < chunks.size(); i = next.fetch_add(1)) {
             try {
@@ -554,7 +555,7 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
             {
                 const std::lock_guard<std::mutex> hold(lock);
                 ++chunks_done;
-                functions_done += chunks[i].size();
+                chunk_finished[i] = 1;
             }
             changed.notify_all();
         }
@@ -568,20 +569,26 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
     {
         Workers workers;
         for (int i = 0; i < std::min(slots.count(), static_cast<int>(chunks.size())); ++i) workers.threads.emplace_back(work);
-        std::size_t told = 0;
+        std::size_t chunks_told = 0, functions_told = 0;
         std::unique_lock<std::mutex> hold(lock);
+        // Told in chunk order, one line a chunk, so the same job prints the same lines however its chunks raced.
+        const auto tell_finished = [&] {
+            while (chunks_told < chunks.size() && chunk_finished[chunks_told]) {
+                functions_told += chunks[chunks_told++].size();
+                hold.unlock();
+                if (progress_) progress_(functions_told, wanted.size());
+                hold.lock();
+            }
+        };
         while (chunks_done < chunks.size()) {
             changed.wait_for(hold, std::chrono::seconds(2));
-            const std::size_t functions = functions_done;
+            tell_finished();
             hold.unlock();
-            if (progress_ && functions != told) progress_(told = functions, wanted.size());
             if (next.load() < chunks.size() && (static_cast<std::size_t>(slots.count()) > workers.threads.size() || slots.grow()))
                 workers.threads.emplace_back(work);
             hold.lock();
         }
-        const std::size_t functions = functions_done;
-        hold.unlock();
-        if (progress_ && functions != told) progress_(functions, wanted.size());
+        tell_finished();
     }
     for (const std::exception_ptr& e : failed)
         if (e) std::rethrow_exception(e);
