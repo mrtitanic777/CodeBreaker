@@ -88,8 +88,8 @@ typedef struct asm_sym {
     uint_32         total_length;   /* total number of elements (lengthof) */
     uint_32         count;
     mangle_func     mangler;
-    bool_            public_;
-    bool_            referenced;
+    bool            public_;
+    bool            referenced;
     lang_type       langtype;
 #else
     long            addr;
@@ -109,7 +109,7 @@ extern void             AsmTakeOut( const char *name );
 extern void             AsmPurgeMacro( const char *name );
 extern void             AsmRestorePurgedMacros( void );
 extern void             AsmResetPassConstants( void );
-extern bool_             AsmChangeName( const char *old, const char *new_ );
+extern bool             AsmChangeName( const char *old, const char *new_ );
 extern void             AsmSetMandatoryName( asm_sym_handle sym, const char *name );
 extern void             WriteListing( void );
 

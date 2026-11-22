@@ -52,7 +52,7 @@
 #include "feprotos.h"
 
 
-bool_     IsTrickyPointerConv( instruction *ins )
+bool     IsTrickyPointerConv( instruction *ins )
 /******************************************************
     Is "ins" a near (based) to far pointer conversion that has
     to be carefully converted with taking segments into account?
@@ -72,12 +72,12 @@ bool_     IsTrickyPointerConv( instruction *ins )
     return( false );
 }
 
-static  bool_    RelocConst( name *op ) {
+static  bool    RelocConst( name *op ) {
 /***************************************
     Is "op" a relocatable constant?
 */
 
-    bool_        reloc_const;
+    bool        reloc_const;
 
     reloc_const = false;
     if( op->n.class_ == N_CONSTANT ) {
@@ -89,7 +89,7 @@ static  bool_    RelocConst( name *op ) {
 }
 
 
-static bool_ ActiveCompare( instruction *ins ) {
+static bool ActiveCompare( instruction *ins ) {
 /*********************************************/
 
     if( _FalseIndex( ins ) == _TrueIndex( ins ) )
@@ -128,7 +128,7 @@ static  instruction *CmpRelocZero( instruction *ins, opcnt c, opcnt r )
 {
     name        *cons;
     name        *rel;
-    bool_        truth;
+    bool        truth;
 
     if( OpcodeNumOperands( ins ) != 2 )
         return( NULL );
@@ -171,7 +171,7 @@ static  instruction *CmpRelocZero( instruction *ins, opcnt c, opcnt r )
     return( KillCompare( ins, AllocIntConst( truth ? FETrue() : 0 ) ) );
 }
 
-static  instruction *StraightLine( instruction *ins, tn fold, bool_ is_true )
+static  instruction *StraightLine( instruction *ins, tn fold, bool is_true )
 /***************************************************************************
     See if we can turn a comparison into a straight line piece of code.
 */
@@ -384,7 +384,7 @@ instruction    *FoldIns( instruction *ins ) {
 */
 
     opcnt       i;
-    bool_        have_const;
+    bool        have_const;
 
     if( ins->ins_flags & INS_CC_USED )
         return( NULL );
@@ -414,7 +414,7 @@ instruction    *FoldIns( instruction *ins ) {
 }
 
 
-bool_    ConstFold( block *root ) {
+bool    ConstFold( block *root ) {
 /****************************************
     For each instruction in the program, see if we can do some constant
     folding that wasn't caught in the tree phase. This will come from
@@ -424,7 +424,7 @@ bool_    ConstFold( block *root ) {
 
     instruction *ins;
     instruction *next;
-    bool_        change;
+    bool        change;
     block       *blk;
 
     change = false;

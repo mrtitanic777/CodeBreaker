@@ -60,22 +60,22 @@
 #include "asmdefs.h"
 
 
-extern bool_             ptr_operator( memtype, bool_ );
+extern bool             ptr_operator( memtype, bool );
 
 
 static void             SizeString( unsigned op_size );
-static bool_             check_size( void );
-static bool_             segm_override_jumps( token_buffer *tokbuf, expr_list *opndx );
+static bool             check_size( void );
+static bool             segm_override_jumps( token_buffer *tokbuf, expr_list *opndx );
 
 
 #if defined( _STANDALONE_ )
 
-extern bool_             DefineProc;     // true if the definition of procedure
+extern bool             DefineProc;     // true if the definition of procedure
                                         // has not ended
 
 static void             check_assume( asm_sym_handle sym, prefix_reg );
 
-bool_                    CheckSeg;       // if checking of opened segment is needed
+bool                    CheckSeg;       // if checking of opened segment is needed
 asm_sym_handle          Frame;         // Frame of current fixup
 asm_sym_handle          SegOverride;
 
@@ -88,7 +88,7 @@ asm_sym_handle          SegOverride;
 extern void             make_inst_hash_table( void );
 
 
-static bool_             mem2code( unsigned char, asm_token, asm_token, asm_sym_handle sym );
+static bool             mem2code( unsigned char, asm_token, asm_token, asm_sym_handle sym );
 
 #if defined( _STANDALONE_ )
 
@@ -158,7 +158,7 @@ const asm_ins ASMI86FAR *get_instruction( const char *string )
     return( NULL );
 }
 
-static bool_ comp_mem( asm_token reg1, asm_token reg2, unsigned char *rm_field )
+static bool comp_mem( asm_token reg1, asm_token reg2, unsigned char *rm_field )
 /*****************************************************************************/
 /*
 - compare and return the r/m field encoding of 16-bit address mode;
@@ -397,7 +397,7 @@ int OperandSize( OPNDTYPE opnd )
     return( 0 );
 }
 
-bool_ InRange( unsigned long val, unsigned bytes )
+bool InRange( unsigned long val, unsigned bytes )
 /**********************************************/
 /*
      Can 'val' be represented in 'bytes' bytes?
@@ -416,7 +416,7 @@ bool_ InRange( unsigned long val, unsigned bytes )
 
 }
 
-static bool_ mem2code( unsigned char ss, asm_token index, asm_token base, asm_sym_handle sym )
+static bool mem2code( unsigned char ss, asm_token index, asm_token base, asm_sym_handle sym )
 /*******************************************************************************************/
 /*
   encode the memory operand to machine code
@@ -768,7 +768,7 @@ static asm_cpu add_cpu_flags( asm_token token, asm_cpu cpu, asm_cpu new_cpu )
     return( cpu );
 }
 
-bool_ cpu_directive( asm_token token )
+bool cpu_directive( asm_token token )
 /***********************************/
 {
     asm_cpu     new_cpu;
@@ -824,7 +824,7 @@ bool_ cpu_directive( asm_token token )
     return( RC_OK );
 }
 
-static bool_ idata_float( long value )
+static bool idata_float( long value )
 /***********************************/
 /*
   check the correct operand/data size for float immediate operand;
@@ -897,7 +897,7 @@ static unsigned char get_sr_rm_byte( prefix_reg seg_prefix )
 
 #if defined( _STANDALONE_ )
 
-static bool_ proc_check( token_buffer *tokbuf, const char *curline, bool_ *prolog )
+static bool proc_check( token_buffer *tokbuf, const char *curline, bool *prolog )
 /********************************************************************************
  * Check if we are inside a procedure and write prologue statements if the
  * current line is the first instruction line following the procedure
@@ -931,7 +931,7 @@ const char * const regs[3][4]= {
     { "eax", "edx", "ebx ", "ecx" },
 };
 
-static bool_ get_register_argument( token_buffer *tokbuf, token_idx index, char *buffer, int *register_count, bool_ *on_stack )
+static bool get_register_argument( token_buffer *tokbuf, token_idx index, char *buffer, int *register_count, bool *on_stack )
 {
     token_idx   i;
     int         size, j;
@@ -1137,7 +1137,7 @@ static bool_ get_register_argument( token_buffer *tokbuf, token_idx index, char 
     return( RC_OK );
 }
 
-static bool_ get_stack_argument( token_buffer *tokbuf, token_idx idx, char *buffer )
+static bool get_stack_argument( token_buffer *tokbuf, token_idx idx, char *buffer )
 {
     int         size;
 
@@ -1237,13 +1237,13 @@ static bool_ get_stack_argument( token_buffer *tokbuf, token_idx idx, char *buff
     return( RC_OK );
 }
 
-static bool_ expand_call( token_buffer *tokbuf, token_idx index, lang_type langtype )
+static bool expand_call( token_buffer *tokbuf, token_idx index, lang_type langtype )
 {
     token_idx   i, j;
     token_idx   arglist[16];
     int         k;
     int         argcount, cleanup, reversed, register_count, register_arguments;
-    bool_        parameter_on_stack;
+    bool        parameter_on_stack;
     char        buffer[MAX_LINE_LEN];
 
     argcount = cleanup = reversed = register_count = register_arguments = 0;
@@ -1340,7 +1340,7 @@ static bool_ expand_call( token_buffer *tokbuf, token_idx index, lang_type langt
 
 #endif
 
-static bool_ process_jumps( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
+static bool process_jumps( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
 /**********************************************************************************
  * parse the jumps instructions operands
  */
@@ -1362,7 +1362,7 @@ static bool_ process_jumps( token_buffer *tokbuf, expr_list *opndx, int *jmp_fla
     return( jmp( tokbuf, opndx, jmp_flags ) );
 }
 
-static bool_ segm_override_jumps( token_buffer *tokbuf, expr_list *opndx )
+static bool segm_override_jumps( token_buffer *tokbuf, expr_list *opndx )
 /***********************************************************************/
 {
     if( ISVALID_IDX( opndx->override ) ) {
@@ -1379,7 +1379,7 @@ static bool_ segm_override_jumps( token_buffer *tokbuf, expr_list *opndx )
     return( RC_OK );
 }
 
-static bool_ segm_override_idata( token_buffer *tokbuf, expr_list *opndx )
+static bool segm_override_idata( token_buffer *tokbuf, expr_list *opndx )
 /***********************************************************************/
 {
     if( ISVALID_IDX( opndx->override ) ) {
@@ -1396,7 +1396,7 @@ static bool_ segm_override_idata( token_buffer *tokbuf, expr_list *opndx )
     return( RC_OK );
 }
 
-static bool_ segm_override_memory( token_buffer *tokbuf, expr_list *opndx )
+static bool segm_override_memory( token_buffer *tokbuf, expr_list *opndx )
 /************************************************************************/
 {
     if( ISVALID_IDX( opndx->override ) ) {
@@ -1413,7 +1413,7 @@ static bool_ segm_override_memory( token_buffer *tokbuf, expr_list *opndx )
     return( RC_OK );
 }
 
-static bool_ idata_nofixup( expr_list *opndx )
+static bool idata_nofixup( expr_list *opndx )
 /*******************************************/
 {
     OPNDTYPE    op_type = OP_NONE;
@@ -1671,7 +1671,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct AsminsState {
-    bool_ ConstantOnly;
+    bool ConstantOnly;
 #if !defined( _STANDALONE_ )
     asm_cpu CPUinfo;
 #endif
@@ -1681,13 +1681,13 @@ struct AsminsState {
 
 static inline AsminsState& asmins_state() { return cbrun_part<AsminsState>(); }
 
-static bool_ idata_fixup( token_buffer *tokbuf, expr_list *opndx )
+static bool idata_fixup( token_buffer *tokbuf, expr_list *opndx )
 /***************************************************************/
 {
     asmfixup        *fixup;
     fixup_types     fixup_type;
     int             type;
-    bool_            sym32;
+    bool            sym32;
 
     asmdefs_state().Code->data[asmdefs_state().Opnd_Count] = opndx->value;
     segm_override_idata( tokbuf, opndx );
@@ -1829,7 +1829,7 @@ static bool_ idata_fixup( token_buffer *tokbuf, expr_list *opndx )
     return( RC_OK );
 }
 
-static bool_ idata_operand( token_buffer *tokbuf, expr_list *opndx )
+static bool idata_operand( token_buffer *tokbuf, expr_list *opndx )
 /*****************************************************************/
 {
     if( opndx->sym == NULL ) {
@@ -1839,17 +1839,17 @@ static bool_ idata_operand( token_buffer *tokbuf, expr_list *opndx )
     }
 }
 
-static bool_ memory_operand( token_buffer *tokbuf, expr_list *opndx )
+static bool memory_operand( token_buffer *tokbuf, expr_list *opndx )
 /******************************************************************/
 {
     unsigned char   ss = SCALE_FACTOR_1;
     asm_token       index = T_NULL;
     asm_token       base = T_NULL;
     asm_sym_handle  sym;
-    bool_            base_lock = false;
+    bool            base_lock = false;
     fixup_types     fixup_type;
 #if defined( _STANDALONE_ )
-    bool_            sym32;
+    bool            sym32;
 #endif
 
     asmdefs_state().Code->data[asmdefs_state().Opnd_Count] = opndx->value;
@@ -2074,7 +2074,7 @@ static bool_ memory_operand( token_buffer *tokbuf, expr_list *opndx )
     return( RC_OK );
 }
 
-static bool_ process_address( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
+static bool process_address( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
 /************************************************************************************
  * parse the memory reference operand
  */
@@ -2184,7 +2184,7 @@ static bool_ process_address( token_buffer *tokbuf, expr_list *opndx, int *jmp_f
 //    return( RC_OK );
 }
 
-static bool_ process_const( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
+static bool process_const( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
 /*********************************************************************************/
 {
     if( IS_ANY_BRANCH( asmdefs_state().Code->info.token ) )    // jumps/call processing
@@ -2207,7 +2207,7 @@ static bool_ process_const( token_buffer *tokbuf, expr_list *opndx, int *jmp_fla
     return( idata_operand( tokbuf, opndx ) );
 }
 
-static bool_ process_reg( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
+static bool process_reg( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
 /*******************************************************************************/
 /*
 - parse and encode the register operand;
@@ -2329,7 +2329,7 @@ static bool_ process_reg( token_buffer *tokbuf, expr_list *opndx, int *jmp_flags
     return( RC_OK );
 }
 
-bool_ AsmParse( token_buffer *tokbuf, const char *curline )
+bool AsmParse( token_buffer *tokbuf, const char *curline )
 /*********************************************************
  * - co-ordinate the parsing process;
  * - it is a basically a big loop to loop through all the tokens and identify them
@@ -2337,17 +2337,17 @@ bool_ AsmParse( token_buffer *tokbuf, const char *curline )
  */
 {
     token_idx       i;
-    bool_            cur_opnd_label = false;
-    bool_            last_opnd_label = false;
+    bool            cur_opnd_label = false;
+    bool            last_opnd_label = false;
     asm_code        *rCode = asmdefs_state().Code;
     expr_list       opndx;
     token_idx       n;
     operand_idx     j;
     int             jmp_flags;
-    bool_            flag;
+    bool            flag;
 #if defined( _STANDALONE_ )
     lang_type       langtype;
-    static bool_     in_epilogue = false;
+    static bool     in_epilogue = false;
 #endif
 
 #if defined( _STANDALONE_ )
@@ -2526,7 +2526,7 @@ bool_ AsmParse( token_buffer *tokbuf, const char *curline )
                 && ( ( tokbuf->tokens[i+1].u.token == T_EQU )
                 || ( tokbuf->tokens[i+1].u.token == T_EQU2 )
                 || ( tokbuf->tokens[i+1].u.token == T_TEXTEQU ) ) ) ) {
-                bool_ expanded;
+                bool expanded;
                 if( ExpandSymbol( tokbuf, i, false, &expanded ) )
                     return( RC_ERROR );
                 if( expanded ) {
@@ -2720,7 +2720,7 @@ static void SizeString( unsigned op_size )
     }
 }
 
-static bool_ check_size( void )
+static bool check_size( void )
 /****************************/
 /*
 - use to make sure the size of first operand match the size of second operand;
@@ -2729,7 +2729,7 @@ static bool_ check_size( void )
 {
     OPNDTYPE        op1 = asmdefs_state().Code->info.opnd_type[OPND1];
     OPNDTYPE        op2 = asmdefs_state().Code->info.opnd_type[OPND2];
-    bool_            state;
+    bool            state;
     long            temp;
     int             op1_size;
     int             op2_size;
@@ -3113,7 +3113,7 @@ static bool_ check_size( void )
 
 #if !defined( _STANDALONE_ )
 
-void AsmEnvInit( int use32, int cpu, int fpu, bool_ fpu_emu )
+void AsmEnvInit( int use32, int cpu, int fpu, bool fpu_emu )
 /**********************************************************/
 {
     asmdefs_state().Code->use32 = ( use32 != 0 );

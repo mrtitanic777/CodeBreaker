@@ -31,7 +31,7 @@
 
 
 extern void             InitIns( void );
-extern bool_             InsFrlFree( void );
+extern bool             InsFrlFree( void );
 extern void             FreeIns( instruction * );
 extern instruction      *NewIns( opcnt );
 extern instruction      *MakeNop( void );

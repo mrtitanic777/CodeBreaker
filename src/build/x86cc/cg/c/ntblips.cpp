@@ -50,7 +50,7 @@ static    int           IMCount;
 static    int           PSCount;
 static    int           PLCount;
 static    int           DGCount;
-static    bool_          Zoiks2;
+static    bool          Zoiks2;
 #endif
 
 
@@ -94,7 +94,7 @@ void    FiniBlip( void )
 #endif
 }
 
-bool_    WantZoiks2( void )
+bool    WantZoiks2( void )
 /************************/
 {
     return( false );

@@ -43,10 +43,10 @@ inline AsmfixupState& asmfixup_state() { return cbrun_part<AsmfixupState>(); }
 #include "asminlin.h"
 extern asmfixup     *AddFixup( asm_sym_handle sym, fixup_types fixup_type, fixup_options fixup_option );
 extern void         add_frame( void );
-extern bool_         BackPatch( asm_sym_handle sym );
+extern bool         BackPatch( asm_sym_handle sym );
 extern void         mark_fixupp( OPNDTYPE determinant, operand_idx index );
-extern bool_         store_fixup( operand_idx index );
+extern bool         store_fixup( operand_idx index );
 
-extern bool_         AddFPPatchAndFixups( fp_patches patch );
+extern bool         AddFPPatchAndFixups( fp_patches patch );
 
 #endif

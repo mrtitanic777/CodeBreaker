@@ -66,7 +66,7 @@ enum allocation_state {
     ALLOC_CONST_TEMP
 };
 
-static  bool_    ContainedIn( name *name1, name *name2 )
+static  bool    ContainedIn( name *name1, name *name2 )
 /********************************************************
     Returns true if name1 is completely contained within the location
     occupied by name2
@@ -270,7 +270,7 @@ static  void    ReAlias( reg_tree *tree )
 }
 
 
-static  bool_    SplitConflicts( void )
+static  bool    SplitConflicts( void )
 /*************************************
     Build a name tree for each conflict, and then if the top of the tree
     has no restrictions on which registers it can have, its name mustn't
@@ -282,7 +282,7 @@ static  bool_    SplitConflicts( void )
 */
 {
     conflict_node       *conf;
-    bool_                change;
+    bool                change;
 
     change = false;
     for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
@@ -328,8 +328,8 @@ void    NullConflicts( var_usage off )
 }
 
 
-static  bool_  FixInstructions( conflict_node *conf, reg_tree *tree,
-                               hw_reg_set reg, bool_ need_live_update )
+static  bool  FixInstructions( conflict_node *conf, reg_tree *tree,
+                               hw_reg_set reg, bool need_live_update )
 /***********************************************************************
     Run the the instruction list assigning register "reg" to conflict
     "conf" whose tree is "tree".  "need_live_info_update" will be set to
@@ -369,7 +369,7 @@ static  bool_  FixInstructions( conflict_node *conf, reg_tree *tree,
 }
 
 
-static  bool_    Idx( name *op )
+static  bool    Idx( name *op )
 /********************************
     Return true if "op" is a name that has been used as the index field
     of an N_INDEXED (eg: 5[t1])
@@ -435,7 +435,7 @@ static int_32   CountRegMoves( conflict_node *conf,
     name                *op2;
 #endif
     name                *res;
-    bool_                idx;
+    bool                idx;
     conflict_node       *other_conf;
     name                *other_opnd;
 
@@ -591,7 +591,7 @@ static int_32   CountRegMoves( conflict_node *conf,
 }
 
 
-static  bool_    UnaryOpGetsReg( instruction *ins, hw_reg_set reg, name *op )
+static  bool    UnaryOpGetsReg( instruction *ins, hw_reg_set reg, name *op )
 /******************************************************************************
     return true if this is a unary operator and we can generate code
     given that the result or operand gets a register (a little machine specific
@@ -604,7 +604,7 @@ static  bool_    UnaryOpGetsReg( instruction *ins, hw_reg_set reg, name *op )
 }
 
 
-static  bool_    StealsSeg( instruction *ins,
+static  bool    StealsSeg( instruction *ins,
                            hw_reg_set reg, hw_reg_set except,
                            name *actual_op )
 /***************************************************************
@@ -638,7 +638,7 @@ static  bool_    StealsSeg( instruction *ins,
 }
 
 
-static bool_ StealsIdx( instruction *ins, hw_reg_set except, name *actual_op )
+static bool StealsIdx( instruction *ins, hw_reg_set except, name *actual_op )
 /****************************************************************
     Does precluding the set of regiseters "except" from operands of
     "ins" make it impossible to generate an indexed addressing mode?
@@ -648,7 +648,7 @@ static bool_ StealsIdx( instruction *ins, hw_reg_set except, name *actual_op )
     name                *op;
     conflict_node       *new_conf;
     opcnt               i;
-    bool_                is_result;
+    bool                is_result;
 
     is_result = false;
     for( i = ins->num_operands; i-- > 0; ) {
@@ -923,7 +923,7 @@ static  void    NeighboursUse( conflict_node *conf )
 
 
 static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
-                                     hw_reg_set except, bool_ needs_one )
+                                     hw_reg_set except, bool needs_one )
 /*************************************************************************
     Give the best possible register to conflict "conf", (whose tree is
     "tree"), excluding registers in the set "except".  The best register
@@ -944,8 +944,8 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
     hw_reg_set  gave_hi;
     hw_reg_set  gave_lo;
     bool_maybe  greed;
-    bool_        all_true;
-    bool_        failed;
+    bool        all_true;
+    bool        failed;
 
     NeighboursUse( conf );
     if( tree == NULL ) {
@@ -1031,13 +1031,13 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
 }
 
 
-bool_    AssignARegister( conflict_node *conf, hw_reg_set reg )
+bool    AssignARegister( conflict_node *conf, hw_reg_set reg )
 /***********************************************************************
     Used to assign register "reg" to conflict "conf", before we've
     started the true register allocator.  (used by I87REG.C)
 */
 {
-    bool_        need_live_update;
+    bool        need_live_update;
 
     BuildRegTree( conf );
     need_live_update = FixInstructions( conf, conf->tree, reg, false );
@@ -1136,7 +1136,7 @@ conflict_node   *InMemory( conflict_node *conf )
 }
 
 
-conflict_node   *GiveRegister( conflict_node *conf, bool_ needs_one )
+conflict_node   *GiveRegister( conflict_node *conf, bool needs_one )
 /**********************************************************************
     Give a register to conflict "conf", if at all possible.  The
     NEEDS_INDEX and NEEDS_SEGMENT stuff is just saying that if we tried
@@ -1193,7 +1193,7 @@ conflict_node   *GiveRegister( conflict_node *conf, bool_ needs_one )
 }
 
 
-static bool_         ConfBefore( void *c1, void *c2 )
+static bool         ConfBefore( void *c1, void *c2 )
 /*********************************************************
     used by SortConflicts
 */
@@ -1223,7 +1223,7 @@ static  enum allocation_state    AssignConflicts( void )
     conflict_node               *next;
     enum allocation_state       state;
     name                        *opnd;
-    bool_                        only_const_temps;
+    bool                        only_const_temps;
 
     for( conf = data_state().ConfList; conf != NULL; conf = next ) {
         next = conf->next_conflict;
@@ -1300,7 +1300,7 @@ void    ReConstFold( void )
 }
 
 
-bool_    RegAlloc( bool_ keep_on_truckin )
+bool    RegAlloc( bool keep_on_truckin )
 /*************************************************
     Allocate registers to variables while expanding instructions.
     Instructions are expanded until they correspond 1 to 1 with machine

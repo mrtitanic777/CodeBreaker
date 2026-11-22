@@ -106,7 +106,7 @@ void    CFFini( cfhandle h )
     }
 }
 
-bool_ CFFrlFree( cfhandle h )
+bool CFFrlFree( cfhandle h )
 /**************************/
 {
     if( h->head != NULL ) {

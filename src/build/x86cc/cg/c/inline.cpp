@@ -128,7 +128,7 @@ an      BGStopInline( call_handle call, const type_def *tipe )
 }
 
 
-static bool_ NotEquiv( const type_def *a, const type_def *b )
+static bool NotEquiv( const type_def *a, const type_def *b )
 /**********************************************************/
 {
     if( TypeClass( a ) != TypeClass( b ) )
@@ -187,7 +187,7 @@ void    BGRetInline( an addr, const type_def *tipe )
 }
 
 
-bool_    BGInInline( void )
+bool    BGInInline( void )
 /************************/
 {
     return( inline_state().InlineStack != NULL );

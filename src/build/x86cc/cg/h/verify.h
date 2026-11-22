@@ -30,4 +30,4 @@
 ****************************************************************************/
 
 
-extern bool_    OtherVerify( vertype kind, instruction *ins, name *op1, name *op2, name *result );
+extern bool    OtherVerify( vertype kind, instruction *ins, name *op1, name *op2, name *result );

@@ -133,7 +133,7 @@ void    ChgLblRef( ins_entry *instr, label_handle new_lbl )
 }
 
 
-bool_    UniqueLabel( label_handle lbl )
+bool    UniqueLabel( label_handle lbl )
 /**************************************
         Does the label have any alias which is a UNIQUE label?
 */
@@ -247,7 +247,7 @@ void    ScrapCodeLabel( label_handle lbl )
 {
     label_handle    *owner;
     label_handle    redir;
-    bool_            code;
+    bool            code;
 
   optbegin
     owner = &optdata_state().Handles;

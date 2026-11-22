@@ -107,7 +107,7 @@ void    BigLabel( void )
     AddIns( ins );
 }
 
-bool_    AskIsFrameIndex( name *op )
+bool    AskIsFrameIndex( name *op )
 /*********************************/
 {
     name        *bp;

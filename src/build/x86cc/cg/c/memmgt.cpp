@@ -64,7 +64,7 @@ static uint             Chunks;
 #ifdef TRMEM
 
 static _trmem_hdl       TrHdl = _TRMEM_HDL_NONE;
-static bool_             local_init;
+static bool             local_init;
 
 static void PrintLine( void *handle, const char *buff, size_t len )
 /*****************************************************************/

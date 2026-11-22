@@ -124,7 +124,7 @@ void BadCmdLineOption( void )
     BadCmdLine( ERR_INVALID_OPTION );
 }
 
-static bool_ debugOptionAfterOptOption( OPT_STORAGE *data )
+static bool debugOptionAfterOptOption( OPT_STORAGE *data )
 {
     if( data->debug_info_timestamp > data->opt_level_timestamp ) {
         if( data->debug_info_timestamp > data->opt_size_time_timestamp ) {
@@ -189,7 +189,7 @@ static void checkOENumber( unsigned *p )
     /* unused parameters */ (void)p;
 }
 
-static bool_ checkSTD( unsigned *value )
+static bool checkSTD( unsigned *value )
 {
     cstd_ver    cstd;
 
@@ -236,7 +236,7 @@ static void checkErrorLimit( unsigned *p )
     /* unused parameters */ (void)p;
 }
 
-static bool_ scanDefine( OPT_STRING **p )
+static bool scanDefine( OPT_STRING **p )
 {
     /* unused parameters */ (void)p;
 
@@ -245,7 +245,7 @@ static bool_ scanDefine( OPT_STRING **p )
     return( true );
 }
 
-static bool_ scanDefinePlus( OPT_STRING **p )
+static bool scanDefinePlus( OPT_STRING **p )
 {
     /* unused parameters */ (void)p;
 
@@ -258,7 +258,7 @@ static bool_ scanDefinePlus( OPT_STRING **p )
     return( true );
 }
 
-static bool_ scanUndefine( OPT_STRING **p )
+static bool scanUndefine( OPT_STRING **p )
 {
     const char  *name;
     size_t      len;
@@ -273,7 +273,7 @@ static bool_ scanUndefine( OPT_STRING **p )
     return( true );
 }
 
-static void handleOptionEQ( OPT_STORAGE *data, bool_ value )
+static void handleOptionEQ( OPT_STORAGE *data, bool value )
 {
     /* unused parameters */ (void)data;
 
@@ -310,7 +310,7 @@ static void checkPPWidth( unsigned *p )
     *p = verifyPPWidth( *p );
 }
 
-static void setMessageStatus( OPT_STRING *s, bool_ state )
+static void setMessageStatus( OPT_STRING *s, bool state )
 {
     msg_codes   msgnum;
 
@@ -853,7 +853,7 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     CBanner();
 }
 
-bool_ MergeIncludeFromEnv( const char *env )
+bool MergeIncludeFromEnv( const char *env )
 /*****************************************/
 {
     const char  *env_value;

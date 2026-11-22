@@ -116,7 +116,7 @@ void ParmCountMismatch( void )
     CErr1( ERR_PARM_COUNT_MISMATCH );
 }
 
-static cmp_type InUnion( TYPEPTR typ1, TYPEPTR typ2, bool_ reversed )
+static cmp_type InUnion( TYPEPTR typ1, TYPEPTR typ2, bool reversed )
 {
     FIELDPTR    field;
 
@@ -137,7 +137,7 @@ static cmp_type InUnion( TYPEPTR typ1, TYPEPTR typ2, bool_ reversed )
     return( NO );
 }
 
-static bool_ CheckParmPromotion( TYPEPTR typ )
+static bool CheckParmPromotion( TYPEPTR typ )
 {
     SKIP_TYPEDEFS( typ );
     switch( typ->decl_type ) {
@@ -217,7 +217,7 @@ static cmp_type CompatibleStructs( TAGPTR tag1, TAGPTR tag2 )
     return( OK );
 }
 
-static typecheck_err CheckCompatibleFunctionParms( TYPEPTR typ1, TYPEPTR typ2, bool_ topLevelCheck )
+static typecheck_err CheckCompatibleFunctionParms( TYPEPTR typ1, TYPEPTR typ2, bool topLevelCheck )
 {
     TYPEPTR         *plist1;
     TYPEPTR         *plist2;
@@ -280,7 +280,7 @@ static typecheck_err CheckCompatibleFunctionParms( TYPEPTR typ1, TYPEPTR typ2, b
     return( rc );
 }
 
-bool_ CheckCompatibleLanguage( type_modifiers typ1, type_modifiers typ2 )
+bool CheckCompatibleLanguage( type_modifiers typ1, type_modifiers typ2 )
 {
     typ1 &= MASK_LANGUAGES;
     typ2 &= MASK_LANGUAGES;
@@ -499,7 +499,7 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
 
 #define SUBNOT( a, b, on )  ( ( (a&on)|(b&on) )^(a&on) )
 
-static cmp_type CompatibleType( TYPEPTR typ1, TYPEPTR typ2, bool_ assignment, bool_ null_ptr  )
+static cmp_type CompatibleType( TYPEPTR typ1, TYPEPTR typ2, bool assignment, bool null_ptr  )
 {
     cmp_type         ret_val;
     cmp_type         ret_pq;
@@ -616,7 +616,7 @@ static TREEPTR reverse_parms_tree( TREEPTR parm )
     return( prev );
 }
 
-static void CompareParms( TYPEPTR *master, TREEPTR parms, bool_ reverse )
+static void CompareParms( TYPEPTR *master, TREEPTR parms, bool reverse )
 {
     TYPEPTR     typ1;
     int         parm_num;
@@ -733,16 +733,16 @@ void CheckCallParms( void )
     }
 }
 
-bool_ CheckZeroConstant( TREEPTR tree )
+bool CheckZeroConstant( TREEPTR tree )
 {
     uint64  val64 = LongValue64( tree );
 
     return( U64isZero( val64 ) );
 }
 
-bool_ CheckZero( TREEPTR tree )
+bool CheckZero( TREEPTR tree )
 {
-    bool_    rc = false;
+    bool    rc = false;
 
     if( tree->op.opr == OPR_PUSHINT ) {
         uint64  val64 = LongValue64( tree );
@@ -752,7 +752,7 @@ bool_ CheckZero( TREEPTR tree )
     return( rc );
 }
 
-bool_ CheckAssignBits( uint64 *val, unsigned width, bool_ mask )
+bool CheckAssignBits( uint64 *val, unsigned width, bool mask )
 /*************************************************************
  * check if value of val fit into specified width bit-size
  * if mask is true then value is AND by width bit-size mask
@@ -762,7 +762,7 @@ bool_ CheckAssignBits( uint64 *val, unsigned width, bool_ mask )
 {
     uint64      max;
     uint64      tmp;
-    bool_        overflow;
+    bool        overflow;
 
     overflow = false;
     /*
@@ -794,7 +794,7 @@ bool_ CheckAssignBits( uint64 *val, unsigned width, bool_ mask )
     return( overflow );
 }
 
-bool_ CheckAssignRange( TYPEPTR typ1, TREEPTR opnd2 )
+bool CheckAssignRange( TYPEPTR typ1, TREEPTR opnd2 )
 /*************************************************************
  * check if value of opnd2 fit into target type of typ1
  *
@@ -843,9 +843,9 @@ bool_ CheckAssignRange( TYPEPTR typ1, TREEPTR opnd2 )
     return( false );
 }
 
-static bool_ IsPtrtoFunc( TYPEPTR typ )
+static bool IsPtrtoFunc( TYPEPTR typ )
 {
-    bool_    ret;
+    bool    ret;
 
     ret = false;
     SKIP_TYPEDEFS( typ );
@@ -859,13 +859,13 @@ static bool_ IsPtrtoFunc( TYPEPTR typ )
     return( ret );
 }
 
-static bool_ IsPointer( TYPEPTR typ )
+static bool IsPointer( TYPEPTR typ )
 {
     SKIP_TYPEDEFS( typ );
     return( typ->decl_type == TYP_POINTER );
 }
 
-void CheckParmAssign( TYPEPTR typ1, TREEPTR opnd2, int parm_num, bool_ asgn_check )
+void CheckParmAssign( TYPEPTR typ1, TREEPTR opnd2, int parm_num, bool asgn_check )
 {
     TYPEPTR        typ2;
 
@@ -1153,7 +1153,7 @@ static typecheck_err TypeCheck( TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
     return( TCE_OK );                /* indicate types are identical */
 }
 
-bool_ CheckIdenticalType( TYPEPTR typ1, TYPEPTR typ2 )
+bool CheckIdenticalType( TYPEPTR typ1, TYPEPTR typ2 )
 {
     typecheck_err   rc;
 
@@ -1162,7 +1162,7 @@ bool_ CheckIdenticalType( TYPEPTR typ1, TYPEPTR typ2 )
 }
 
 
-bool_ VerifyType( TYPEPTR new_, TYPEPTR old, SYMPTR sym )
+bool VerifyType( TYPEPTR new_, TYPEPTR old, SYMPTR sym )
 {
     switch( TypeCheck( new_, old, sym ) ) {
     case TCE_TYPE2_HAS_MORE_INFO:
@@ -1181,7 +1181,7 @@ bool_ VerifyType( TYPEPTR new_, TYPEPTR old, SYMPTR sym )
 }
 
 
-bool_ CheckCompatibleFunction( TYPEPTR typ1, TYPEPTR typ2, bool_ topLevelCheck )
+bool CheckCompatibleFunction( TYPEPTR typ1, TYPEPTR typ2, bool topLevelCheck )
 {
     return( CheckCompatibleFunctionParms( typ1, typ2, topLevelCheck ) == TCE_OK );
 }

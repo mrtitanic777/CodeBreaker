@@ -389,7 +389,7 @@ static TOKEN doScanDotSomething( int c )
     return( token );
 }
 
-static TOKEN doScanFloat( bool_ hex )
+static TOKEN doScanFloat( bool hex )
 /**********************************/
 {
     int             c;
@@ -558,9 +558,9 @@ static TOKEN doScanNum( void )
     TOKEN           token;
     const char      *curr;
     size_t          len;
-    bool_            overflow;
-    bool_            ssuffix;
-    bool_            usuffix;
+    bool            overflow;
+    bool            ssuffix;
+    bool            usuffix;
     enum {
         SUFF_NONE,
         SUFF_8    = 0x01, /* 8-bit */
@@ -652,7 +652,7 @@ static TOKEN doScanNum( void )
             /*
              * scan octal number
              */
-            bool_    digit89;
+            bool    digit89;
 
             bad_token_type = ERR_INVALID_OCTAL_CONSTANT;
             /*
@@ -877,7 +877,7 @@ static TOKEN ScanDelim1( void )
     return( token );
 }
 
-static bool_ checkDelim2( TOKEN *token, TOKEN last )
+static bool checkDelim2( TOKEN *token, TOKEN last )
 /*************************************************/
 {
     switch( *token ) {
@@ -1198,7 +1198,7 @@ static msg_codes doScanHex( int max, unsigned_64 *pval64, escinp_fn ifn, escout_
 {
     int             c;
     int             count;
-    bool_            too_big;
+    bool            too_big;
 
     too_big = false;
     count = max;
@@ -1539,11 +1539,11 @@ static TOKEN ScanCharConst( void )
     return( doScanCharConst( TYP_CHAR ) );
 }
 
-static TOKEN doScanString( bool_ wide )
+static TOKEN doScanString( bool wide )
 /************************************/
 {
     int         c;
-    bool_        ok;
+    bool        ok;
 
     ok = false;
     cvars_state().BadTokenInfo = ERR_NONE;
@@ -1899,7 +1899,7 @@ void ScanInit( void )
     cvars_state().GetCharCheck = GetCharCheckFile;
 }
 
-bool_ InitPPScan( void )
+bool InitPPScan( void )
 /**********************
  * called by CollectParms() to gather tokens for macro parms
  * and CDefine() to gather tokens for macro definition
@@ -1924,7 +1924,7 @@ bool_ InitPPScan( void )
     return( false );
 }
 
-void FiniPPScan( bool_ ppscan_mode )
+void FiniPPScan( bool ppscan_mode )
 /**********************************
  * called when CollectParms() and
  * CDefine() are finished gathering tokens

@@ -46,7 +46,7 @@
 static  ins_entry       *Redirect( ins_entry *, ins_entry * );
 
 
-static  bool_    LineLabel( ins_entry *label )
+static  bool    LineLabel( ins_entry *label )
 /*******************************************/
 {
 #if _TARGET_RISC
@@ -60,11 +60,11 @@ static  bool_    LineLabel( ins_entry *label )
 }
 
 
-static  bool_    CompressLabels( ins_entry *label )
+static  bool    CompressLabels( ins_entry *label )
 /************************************************/
 {
     ins_entry   *other_label;
-    bool_        lbl_unique;
+    bool        lbl_unique;
 
   optbegin
     lbl_unique = UniqueLabel( _Label( label ) );
@@ -98,7 +98,7 @@ static  bool_    CompressLabels( ins_entry *label )
 }
 
 
-static  bool_    UnTangle1( ins_entry *jmp, ins_entry **instr )
+static  bool    UnTangle1( ins_entry *jmp, ins_entry **instr )
 /************************************************************/
 {
     ins_entry   *c_jmp;
@@ -143,7 +143,7 @@ static  bool_    UnTangle1( ins_entry *jmp, ins_entry **instr )
 }
 
 
-static  bool_    UnTangle2( ins_entry *jmp, ins_entry **instr )
+static  bool    UnTangle2( ins_entry *jmp, ins_entry **instr )
 /************************************************************/
 {
     oc_class    cl;
@@ -198,7 +198,7 @@ ins_entry       *Untangle( ins_entry *instr )
 /*******************************************/
 {
     ins_entry   *jmp;
-    bool_        change;
+    bool        change;
 
   optbegin
     for( ;; ) {

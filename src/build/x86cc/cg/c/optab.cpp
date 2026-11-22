@@ -69,7 +69,7 @@ void    DoNothing( instruction *ins )
 }
 
 
-bool_    DoesSomething( instruction *ins )
+bool    DoesSomething( instruction *ins )
 /***************************************/
 {
     if( ins->u.gen_table == NULL )

@@ -34,7 +34,7 @@
 #include "i64.h"
 
 
-static TYPEPTR StructDecl(DATA_TYPE,bool_);
+static TYPEPTR StructDecl(DATA_TYPE,bool);
 //static TYPEPTR ComplexDecl(int,bool);
 static void      SetPlainCharType( DATA_TYPE char_type );
 static void CheckBitfieldType( TYPEPTR typ );
@@ -182,7 +182,7 @@ void WalkTypeList( void (*func)(TYPEPTR) )
     }
 }
 
-static TYPEPTR DupType( TYPEPTR typ, enum type_state flags, bool_ force_duplicate )
+static TYPEPTR DupType( TYPEPTR typ, enum type_state flags, bool force_duplicate )
 {
     TYPEPTR     newtype;
     TYPEPTR     next;
@@ -260,7 +260,7 @@ type_modifiers TypeQualifier( void )
     }
 }
 
-static TYPEPTR GetScalarType( bool_ *plain_int, type_mask bmask, type_modifiers flags )
+static TYPEPTR GetScalarType( bool *plain_int, type_mask bmask, type_modifiers flags )
 {
     DATA_TYPE   data_type;
     TYPEPTR     typ;
@@ -377,13 +377,13 @@ static void AdvanceToken( void )
     }
 }
 
-static void DeclSpecifiers( bool_ *plain_int, decl_info *info )
+static void DeclSpecifiers( bool *plain_int, decl_info *info )
 {
     TYPEPTR             typ;
     type_mask           bmask;
     type_mask           bit;
     type_modifiers      flags;
-    bool_                packed;
+    bool                packed;
     SYM_HANDLE          sym_handle;
     stg_classes         stg_class;
     stg_classes         specified_stg_class;
@@ -715,13 +715,13 @@ got_specifier:
 
 void TypeSpecifier( decl_info *info )
 {
-    bool_                plain_int;
+    bool                plain_int;
 
     info->stg = SC_NONE;      // indicate don't want any storage class specifiers
     DeclSpecifiers( &plain_int, info );
 }
 
-static void GetFieldTypeSpecifier( bool_ *plain_int, decl_info *info )
+static void GetFieldTypeSpecifier( bool *plain_int, decl_info *info )
 {
 
     info->stg = SC_NONE;      // indicate don't want any storage class specifiers
@@ -730,7 +730,7 @@ static void GetFieldTypeSpecifier( bool_ *plain_int, decl_info *info )
 
 void FullDeclSpecifier( decl_info *info )
 {
-    bool_        plain_int;
+    bool        plain_int;
 
     info->stg = SC_FORWARD;    // indicate want storage class specifiers
     DeclSpecifiers( &plain_int, info );
@@ -842,7 +842,7 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
 }
 
 
-static TYPEPTR EnumFieldType( TYPEPTR ftyp, bool_ plain_int,
+static TYPEPTR EnumFieldType( TYPEPTR ftyp, bool plain_int,
                     bitfield_width bits_start, bitfield_width bits_width )
 {
     TYPEPTR     typ;
@@ -983,9 +983,9 @@ static void ClearFieldHashTable( TAGPTR tag )
     }
 }
 
-static bool_ CheckAdjModsTypeNode( type_modifiers old_mod, type_modifiers decl_mod )
+static bool CheckAdjModsTypeNode( type_modifiers old_mod, type_modifiers decl_mod )
 {
-    bool_        adjust;
+    bool        adjust;
 
     adjust = false;
     if( (decl_mod & MASK_LANGUAGES) && (old_mod & MASK_LANGUAGES) != (decl_mod & MASK_LANGUAGES) ) {
@@ -1041,7 +1041,7 @@ static target_size GetFields( TYPEPTR decl )
     align_type          worst_alignment;
     DATA_TYPE           unqualified_type;
     DATA_TYPE           prev_unqualified_type;
-    bool_                plain_int;
+    bool                plain_int;
     decl_info           info;
     const_val           cval;
 
@@ -1185,7 +1185,7 @@ static target_size GetFields( TYPEPTR decl )
 }
 
 
-static TYPEPTR StructDecl( DATA_TYPE decl_typ, bool_ packed )
+static TYPEPTR StructDecl( DATA_TYPE decl_typ, bool packed )
 {
     TYPEPTR     typ;
     TAGPTR      tag;
@@ -1325,7 +1325,7 @@ static target_size GetComplexFields( TYPEPTR decl )
 }
 
 
-static TYPEPTR ComplexDecl( DATA_TYPE decl_typ, bool_ packed )
+static TYPEPTR ComplexDecl( DATA_TYPE decl_typ, bool packed )
 {
     TYPEPTR     typ;
     TAGPTR      tag;
@@ -1677,7 +1677,7 @@ target_size TypeSizeEx( TYPEPTR typ, bitfield_width *pFieldWidth )
  * requested size if 'exact' is true, or the next larger type will be
  * returned (eg. 64-bit integer if 6 byte size is requested).
  */
-TYPEPTR GetIntTypeBySize( target_size size, bool_ sign, bool_ exact )
+TYPEPTR GetIntTypeBySize( target_size size, bool sign, bool exact )
 {
     static const DATA_TYPE  s_types[] = { TYP_CHAR, TYP_SHORT, TYP_INT, TYP_LONG, TYP_LONG64 };
     static const DATA_TYPE  u_types[] = { TYP_UCHAR, TYP_USHORT, TYP_UINT, TYP_ULONG, TYP_ULONG64 };

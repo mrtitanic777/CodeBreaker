@@ -22,7 +22,7 @@
 
 char *GetPathElement( const char *path_list, const char *end, char **path )
 {
-    bool_    is_blank;
+    bool    is_blank;
     char    c;
 
     is_blank = true;

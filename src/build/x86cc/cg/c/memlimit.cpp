@@ -56,7 +56,7 @@ namespace {
 /* the statics of this file, one set for each run of the compiler */
 struct MemlimitState {
     pointer_uint MemLimit;
-    bool_ IckyWicky;
+    bool IckyWicky;
 };
 
 }  // namespace
@@ -64,10 +64,10 @@ struct MemlimitState {
 static inline MemlimitState& memlimit_state() { return cbrun_part<MemlimitState>(); }
 
 
-static  bool_    FlushSomeOpt( pointer_uint size )
+static  bool    FlushSomeOpt( pointer_uint size )
 /***********************************************/
 {
-    bool_        freed;
+    bool        freed;
 
     if( optmac_state().InOptimizer == 0 && HaveCodeSeg() ) {
         PUSH_OP( AskCodeSeg() );
@@ -84,7 +84,7 @@ static  bool_    FlushSomeOpt( pointer_uint size )
 }
 
 
-static  bool_    ChkMemLimit( pointer_uint limit )
+static  bool    ChkMemLimit( pointer_uint limit )
 /***********************************************/
 {
     if( _IsModel( CGSW_GEN_MEMORY_LOW_FAILS ) )
@@ -116,14 +116,14 @@ void    FlushOpt( void )
 }
 
 
-bool_    MemCritical( void )
+bool    MemCritical( void )
 /*************************/
 {
     return( ChkMemLimit( memlimit_state().MemLimit - memlimit_state().MemLimit/4 ) );
 }
 
 
-bool_    MemLow( void )
+bool    MemLow( void )
 /********************/
 {
     return( ChkMemLimit( memlimit_state().MemLimit ) );
@@ -146,7 +146,7 @@ void    BlowAwayFreeLists( void )
 }
 
 
-bool_    MemCheck( size_t size )
+bool    MemCheck( size_t size )
 /*****************************/
 {
     if( FEMoreMem( size ) )

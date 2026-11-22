@@ -194,7 +194,7 @@ void *PermMemAlloc( size_t amount )
     return( MacroAllocateInSeg( amount ) );
 }
 
-bool_ MacroCompare( MEPTR m1, MEPTR m2 )
+bool MacroCompare( MEPTR m1, MEPTR m2 )
 {
     if( m1->macro_len == m2->macro_len
       && m1->macro_defn == m2->macro_defn

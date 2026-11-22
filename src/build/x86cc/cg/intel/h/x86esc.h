@@ -33,6 +33,6 @@
 
 extern void     DoAbsPatch( abspatch_handle *handle, int len );
 extern void     DoFESymRef( cg_sym_handle sym, cg_class class_, offset val, fe_fixup_types fixup_type );
-extern void     DoSymRef( name *opnd, offset val, bool_ base );
+extern void     DoSymRef( name *opnd, offset val, bool base );
 extern void     DoSegRef( segment_id segid );
 extern void     DoLblRef( label_handle lbl, segment_id segid, offset val, escape_class esc_attr );

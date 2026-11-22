@@ -586,7 +586,7 @@ static  temp_entry      *AddTempEntry( name *op )
 }
 
 
-static  void    DefUseTemp( name *op, instruction *ins, bool_ defined )
+static  void    DefUseTemp( name *op, instruction *ins, bool defined )
 /********************************************************************/
 {
     temp_entry *temp;
@@ -617,7 +617,7 @@ static  void            KillTempEntry( name *op )
 }
 
 
-static  void    CheckTemp( instruction *ins, name *op, bool_ defined )
+static  void    CheckTemp( instruction *ins, name *op, bool defined )
 /*******************************************************************/
 {
     if( op->n.class_ == N_MEMORY ) {
@@ -637,7 +637,7 @@ static  void    CheckTemp( instruction *ins, name *op, bool_ defined )
 }
 
 
-static  bool_ Better( void *t1, void *t2 )
+static  bool Better( void *t1, void *t2 )
 /***************************************/
 {
     return( ((temp_entry *)t1)->savings > ((temp_entry *)t2)->savings );
@@ -679,11 +679,11 @@ static void    FiniTempEntries( void )
 }
 
 
-static  bool_    StackBetween( instruction *first, instruction *last, int inc )
+static  bool    StackBetween( instruction *first, instruction *last, int inc )
 /****************************************************************************/
 {
     instruction *ins;
-    bool_        enough;
+    bool        enough;
 
     enough = true;
     for( ins = first; ins != last; ins = ins->head.next ) {
@@ -711,7 +711,7 @@ static  void    KillRelatedTemps( name *op )
     }
 }
 
-static  bool_    OKToCache( temp_entry *temp ) {
+static  bool    OKToCache( temp_entry *temp ) {
 /*********************************************/
 
     instruction         *ins;
@@ -912,7 +912,7 @@ static  void    ReOrderForCall( instruction *ins )
     }
 }
 
-bool_    FPInsIntroduced( instruction *ins )
+bool    FPInsIntroduced( instruction *ins )
 /******************************************
  * Used by the scheduler. We want to make sure that introduced instructions
  * stay put.
@@ -922,7 +922,7 @@ bool_    FPInsIntroduced( instruction *ins )
 }
 
 
-bool_    FPFreeIns( instruction *ins )
+bool    FPFreeIns( instruction *ins )
 /**********************************************
  * Return true if "ins" is going to be vaporized by the cacheing
  * algorithm in FPPostSched.

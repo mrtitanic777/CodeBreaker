@@ -45,13 +45,13 @@
 #include "insdead.h"
 
 
-static  bool_    CheckIns( instruction **pins )
+static  bool    CheckIns( instruction **pins )
 /********************************************/
 {
-    bool_                ok;
+    bool                ok;
     const opcode_entry  *try_;
     instruction         *ins;
-    bool_                dummy;
+    bool                dummy;
     opcnt               i;
 
     ins = *pins;
@@ -133,11 +133,11 @@ static  instruction     *MakeClear( name *res, type_class_def type_class )
 }
 
 
-bool_    ScoreZero( score_hdl scoreboard, instruction **pins )
+bool    ScoreZero( score_hdl scoreboard, instruction **pins )
 /***********************************************************/
 {
     instruction         *ins;
-    bool_                change;
+    bool                change;
     type_class_def      type_class;
     type_class_def      half_type_class;
     zero_bits           op1zpart;

@@ -29,9 +29,9 @@
 ****************************************************************************/
 
 
-extern bool_     MemCritical( void );
-extern bool_     MemCheck( size_t );
-extern bool_     MemLow( void );
+extern bool     MemCritical( void );
+extern bool     MemCheck( size_t );
+extern bool     MemLow( void );
 
 #define _MemLow                 MemLow()
 #define _MemCritical            MemCritical()

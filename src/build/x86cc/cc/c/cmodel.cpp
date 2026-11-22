@@ -49,7 +49,7 @@ extern  char    const CompilerID[];
  * COMMAND LINE PARSING OF MACRO DEFINITIONS
  */
 
-static bool_ EqualChar( int c )
+static bool EqualChar( int c )
 {
     return( c == '#'
         || c == '=' );
@@ -73,11 +73,11 @@ static size_t get_token_len( const char *start )
 }
 
 
-static char *Def_Macro_Tokens( const char *str, bool_ multiple_tokens, macro_flags mflags )
+static char *Def_Macro_Tokens( const char *str, bool multiple_tokens, macro_flags mflags )
 {
     size_t      mlen;
     MEPTR       mentry;
-    bool_        ppscan_mode;
+    bool        ppscan_mode;
     TOKEN       token;
 
     mlen = get_token_len( str );
@@ -140,7 +140,7 @@ char *Define_Macro( const char *str )
     return( Def_Macro_Tokens( str, cvars_state().CompFlags.extended_defines, MFLAG_NONE ) );
 }
 
-char *Define_UserMacro( const char *str, bool_ multiple_tokens )
+char *Define_UserMacro( const char *str, bool multiple_tokens )
 {
     return( Def_Macro_Tokens( str, multiple_tokens, MFLAG_USER_DEFINED ) );
 }

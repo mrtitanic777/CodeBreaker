@@ -102,7 +102,7 @@ typedef struct tree_node {
         struct {
             byte                start;
             byte                len;
-            bool_                is_signed;
+            bool                is_signed;
         } b;
     } u1;
 } tree_node;

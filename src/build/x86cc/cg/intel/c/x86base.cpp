@@ -150,7 +150,7 @@ static  int             CalcBaseSave( type_length bp, name *temp ) {
 }
 
 
-static  bool_    TempBefore( void *t1, void *t2 ) {
+static  bool    TempBefore( void *t1, void *t2 ) {
 /************************************************/
 
     return( ((name *)t1)->t.v.alt_location > ((name *)t2)->t.v.alt_location );

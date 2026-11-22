@@ -71,7 +71,7 @@ static inline FlowsaveState& flowsave_state() { return cbrun_part<FlowsaveState>
 
 
 #if 0
-static block *FindDominatorBlock( dom_bit_set *dom, bool_ post )
+static block *FindDominatorBlock( dom_bit_set *dom, bool post )
 /**************************************************************
     Returns pointer to the block with the given dominator set. If
     post == true, then looks at post_dominator set instead.
@@ -94,7 +94,7 @@ static block *FindDominatorBlock( dom_bit_set *dom, bool_ post )
 }
 #endif
 
-static bool_ OpRefsReg( name *op, hw_reg_set reg )
+static bool OpRefsReg( name *op, hw_reg_set reg )
 /***********************************************/
 {
     switch( op->n.class_ ) {
@@ -111,7 +111,7 @@ static bool_ OpRefsReg( name *op, hw_reg_set reg )
     return( false );
 }
 
-static bool_ BlockUses( block *blk, hw_reg_set reg )
+static bool BlockUses( block *blk, hw_reg_set reg )
 /*************************************************/
 {
     instruction *ins;
@@ -135,7 +135,7 @@ static bool_ BlockUses( block *blk, hw_reg_set reg )
     return( false );
 }
 
-static bool_     InLoop( block *blk )
+static bool     InLoop( block *blk )
 /**********************************/
 {
     if( blk->loop_head != NULL )
@@ -254,7 +254,7 @@ static void GetRegUsage( reg_flow_info *info )
     }
 }
 
-static bool_ PairOk( block *save, block *restore, reg_flow_info *info, int curr_reg )
+static bool PairOk( block *save, block *restore, reg_flow_info *info, int curr_reg )
 /**********************************************************************************/
 {
     int                 i;

@@ -40,11 +40,11 @@ extern hw_reg_set       InLineParm( hw_reg_set regs, hw_reg_set used );
 extern hw_reg_set       StructReg( void );
 extern reg_set_index    SegIndex( void );
 extern reg_set_index    NoSegments( reg_set_index idx );
-extern reg_set_index    IndexIntersect( reg_set_index curr, type_class_def type_class, bool_ is_temp_index );
-extern bool_             IsIndexReg( hw_reg_set reg, type_class_def type_class, bool_ is_temp_index );
+extern reg_set_index    IndexIntersect( reg_set_index curr, type_class_def type_class, bool is_temp_index );
+extern bool             IsIndexReg( hw_reg_set reg, type_class_def type_class, bool is_temp_index );
 extern type_class_def   RegClass( hw_reg_set regs );
-extern bool_             IndexRegOk( hw_reg_set reg, bool_ is_temp_index );
-extern bool_             IsSegReg( hw_reg_set regs );
+extern bool             IndexRegOk( hw_reg_set reg, bool is_temp_index );
+extern bool             IsSegReg( hw_reg_set regs );
 extern hw_reg_set       Low16Reg( hw_reg_set regs );
 extern hw_reg_set       High16Reg( hw_reg_set regs );
 extern hw_reg_set       Low32Reg( hw_reg_set regs );
@@ -56,10 +56,10 @@ extern hw_reg_set       LowReg( hw_reg_set regs );
 extern hw_reg_set       LowOffsetReg( hw_reg_set regs );
 extern hw_reg_set       LowTreePart( hw_reg_set regs );
 extern hw_reg_set       FullReg( hw_reg_set regs );
-extern bool_             IsRegClass( hw_reg_set regs, type_class_def type_class );
+extern bool             IsRegClass( hw_reg_set regs, type_class_def type_class );
 extern hw_reg_set       ActualParmReg( hw_reg_set reg );
 extern hw_reg_set       FixedRegs( void );
-extern bool_             IsStackReg( name *sp );
+extern bool             IsStackReg( name *sp );
 extern hw_reg_set       StackReg( void );
 extern hw_reg_set       DisplayReg( void );
 extern int              SizeDisplayReg( void );
@@ -78,7 +78,7 @@ extern hw_reg_set       MustSaveRegs( void );
 extern hw_reg_set       ScratchReg( void );
 
 #if _TARGET_INTEL
-extern hw_reg_set       ReturnReg( type_class_def type_class, bool_ use_87 );
+extern hw_reg_set       ReturnReg( type_class_def type_class, bool use_87 );
 #else
 extern hw_reg_set       ReturnReg( type_class_def type_class );
 extern reg_set_index    UsualPossible( type_class_def type_class );

@@ -56,7 +56,7 @@ struct ScinfoState {
 static inline ScinfoState& scinfo_state() { return cbrun_part<ScinfoState>(); }
 
 
-static  bool_    ScoreSame( score_info *x, score_info *y )
+static  bool    ScoreSame( score_info *x, score_info *y )
 /*******************************************************/
 {
     if( x->class_ != y->class_ )
@@ -79,7 +79,7 @@ static  bool_    ScoreSame( score_info *x, score_info *y )
 }
 
 
-static  bool_    ScoreStomp( score_info *x, score_info *y )
+static  bool    ScoreStomp( score_info *x, score_info *y )
 /********************************************************/
 {
     score_info  *tmp;
@@ -147,7 +147,7 @@ static  bool_    ScoreStomp( score_info *x, score_info *y )
     return( false );
 }
 
-bool_    ScoreLookup( score_hdl scoreitem, score_info *info )
+bool    ScoreLookup( score_hdl scoreitem, score_info *info )
 /**********************************************************/
 {
     score_list  *curr;
@@ -163,14 +163,14 @@ bool_    ScoreLookup( score_hdl scoreitem, score_info *info )
 }
 
 
-bool_    ScoreEqual( score_hdl scoreboard, int index, score_info *info )
+bool    ScoreEqual( score_hdl scoreboard, int index, score_info *info )
 /*********************************************************************/
 {
     if( ScoreLookup( &scoreboard[index], info ) )
         return( true );
     if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
         score_reg   *entry;
-        bool_        is_equal;
+        bool        is_equal;
         type_length half_size;
 
         entry = score_state().ScoreList[index];
@@ -352,7 +352,7 @@ void    ScoreInfo( score_info *info, name *op )
 }
 
 
-bool_    ScoreLAInfo( score_info *info, name *op )
+bool    ScoreLAInfo( score_info *info, name *op )
 /***********************************************/
 {
     switch( op->n.class_ ) {

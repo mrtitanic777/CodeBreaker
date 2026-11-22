@@ -91,7 +91,7 @@ static void ReplaceTokenAt( token_buffer *tokbuf, token_idx start, const_info *c
     tokbuf->count = tokbuf->count - 1 + constinfo->count;
 }
 
-bool_ ExpandSymbol( token_buffer *tokbuf, token_idx i, bool_ early_only, bool_ *expanded )
+bool ExpandSymbol( token_buffer *tokbuf, token_idx i, bool early_only, bool *expanded )
 /*************************************************************************************/
 {
     dir_node_handle     dir;
@@ -115,7 +115,7 @@ bool_ ExpandSymbol( token_buffer *tokbuf, token_idx i, bool_ early_only, bool_ *
     return( RC_OK );
 }
 
-bool_ ExpandProcString( token_buffer *tokbuf, token_idx index, bool_ *expanded )
+bool ExpandProcString( token_buffer *tokbuf, token_idx index, bool *expanded )
 /****************************************************************************/
 {
     token_idx           i;
@@ -311,7 +311,7 @@ static void FreeConstData( const_info *constinfo )
     }
 }
 
-bool_ StoreConstantNumber( const char *name, long value, bool_ redefine )
+bool StoreConstantNumber( const char *name, long value, bool redefine )
 {
     asm_tok         *new_;
     dir_node_handle dir;
@@ -353,7 +353,7 @@ bool_ StoreConstantNumber( const char *name, long value, bool_ redefine )
     return( RC_OK );
 }
 
-static bool_ createconstant( const char *name, bool_ value, token_buffer *tokbuf, token_idx start, bool_ redefine, bool_ expand_early )
+static bool createconstant( const char *name, bool value, token_buffer *tokbuf, token_idx start, bool redefine, bool expand_early )
 /*********************************************************************************************************************************/
 {
     asm_tok             *new_;
@@ -361,8 +361,8 @@ static bool_ createconstant( const char *name, bool_ value, token_buffer *tokbuf
     token_idx           i;
     token_idx           count;
     token_idx           counta;
-    bool_                can_be_redefine;
-    bool_                new_constant;
+    bool                can_be_redefine;
+    bool                new_constant;
 
     new_constant = false;
     dir = (dir_node_handle)AsmGetSymbol( name );
@@ -545,7 +545,7 @@ static bool_ createconstant( const char *name, bool_ value, token_buffer *tokbuf
     return( RC_OK );
 }
 
-bool_ DefineConstant( token_buffer *tokbuf, token_idx i, bool_ redefine, bool_ expand_early )
+bool DefineConstant( token_buffer *tokbuf, token_idx i, bool redefine, bool expand_early )
 /*****************************************************************************************
  * if expand_early is true, expand before doing any parsing
  */
@@ -567,7 +567,7 @@ bool_ DefineConstant( token_buffer *tokbuf, token_idx i, bool_ redefine, bool_ e
     return( createconstant( name, false, tokbuf, i, redefine, expand_early ) );
 }
 
-bool_ StoreConstant( const char *name, const char *value, bool_ redefine )
+bool StoreConstant( const char *name, const char *value, bool redefine )
 /**********************************************************************/
 {
     token_buffer    tokbuf;
@@ -588,11 +588,11 @@ void MakeConstantUnderscored( const char *name )
     createconstant( buffer, true, NULL, 0, true, false );
 }
 
-bool_ ExpandAllConsts( token_buffer *tokbuf, token_idx start_pos, bool_ early_only )
+bool ExpandAllConsts( token_buffer *tokbuf, token_idx start_pos, bool early_only )
 /********************************************************************************/
 {
     token_idx   i;
-    bool_        expanded;
+    bool        expanded;
 
     if( tokbuf->tokens[start_pos + 1].class_ == TC_DIRECTIVE ) {
         switch( tokbuf->tokens[start_pos + 1].u.token ) {
@@ -616,7 +616,7 @@ bool_ ExpandAllConsts( token_buffer *tokbuf, token_idx start_pos, bool_ early_on
     return( RC_OK );
 }
 
-bool_ ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool_ early_only, bool_ flag_msg )
+bool ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg )
 /**********************************************************************************************/
 {
     token_idx   val;
@@ -632,7 +632,7 @@ bool_ ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool_ early_onl
     return( RC_OK );
 }
 
-bool_ ExpandTheConstant( token_buffer *tokbuf, token_idx start_pos, bool_ early_only, bool_ flag_msg )
+bool ExpandTheConstant( token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg )
 /***************************************************************************/
 {
     token_idx   val;
@@ -650,7 +650,7 @@ bool_ ExpandTheConstant( token_buffer *tokbuf, token_idx start_pos, bool_ early_
 
 #else
 
-bool_ ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool_ early_only, bool_ flag_msg )
+bool ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg )
 /**********************************************************************************************/
 {
     token_idx   val;

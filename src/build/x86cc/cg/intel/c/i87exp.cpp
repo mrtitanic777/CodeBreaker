@@ -226,7 +226,7 @@ static const opcode_entry *GenTab( instruction *ins, const opcode_entry *array )
 }
 
 
-bool_    FPStackReg( name *reg_name )
+bool    FPStackReg( name *reg_name )
 /**********************************/
 {
     int         reg_num;
@@ -289,7 +289,7 @@ static  void    PrefixFLDOp( instruction *ins, operand_type op, opcnt i )
 }
 
 
-bool_            FPResultNotNeeded( instruction *ins )
+bool            FPResultNotNeeded( instruction *ins )
 /***************************************************/
 {
     return( ins->u.gen_table == MFST2 );

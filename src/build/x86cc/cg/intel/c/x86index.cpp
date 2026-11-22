@@ -104,14 +104,14 @@ instruction     *NeedIndex( instruction *ins )
 }
 
 
-bool_    IndexOkay( instruction *ins, name *index )
+bool    IndexOkay( instruction *ins, name *index )
 /*************************************************
  * return true if "index" needs to be split out of instruction and a
  * short lived temporary used instead.
  */
 {
     name                *name;
-    bool_                is_temp_index;
+    bool                is_temp_index;
     conflict_node       *conf;
 
     if( HasTrueBase( index )
@@ -157,7 +157,7 @@ bool_    IndexOkay( instruction *ins, name *index )
 }
 
 
-static  bool_    SegIsBase( name **index )
+static  bool    SegIsBase( name **index )
 /****************************************
  * return true if the segment override for N_INDEXED "*index" is the
  * same as the segment override for its N_MEMORY base location, and if
@@ -369,7 +369,7 @@ void    MergeIndex( void )
     instruction *ins;
     opcnt       i;
     name        **name;
-    bool_        dec;
+    bool        dec;
 
     for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
@@ -468,7 +468,7 @@ static  void    PropSegments( void )
     instruction         *ins;
     conflict_node       *src;
     conflict_node       *dst;
-    bool_                change;
+    bool                change;
 
     for( src = data_state().ConfList; src != NULL; src = src->next_conflict ) {
         if( _Is( src, CST_VALID_SEGMENT ) ) {

@@ -92,8 +92,8 @@ namespace {
 /* the statics of this file, one set for each run of the compiler */
 struct LoopoptsFileState {
     int NumIndVars;
-    bool_ LoopProtected;
-    bool_ MemChangedInLoop;
+    bool LoopProtected;
+    bool MemChangedInLoop;
 };
 
 }  // namespace
@@ -149,7 +149,7 @@ static void     ReplaceAllOccurences( name *of, name *with )
 }
 
 
-static bool_     InLoop( block *blk )
+static bool     InLoop( block *blk )
 /***********************************
  * return true if blk is in the loop defined by Head.
  */
@@ -216,7 +216,7 @@ block    *AddPreBlock( block *postblk )
 }
 
 
-static bool_     IsPreHeader( block *test )
+static bool     IsPreHeader( block *test )
 /*****************************************
  * return true if block "test" will serve as a preheader for "Loop".  A
  * preheader must branch directly to the loop head, and no other block
@@ -379,7 +379,7 @@ void     MakeJumpBlock( block *cond_blk, block_edge *exit_edge )
 }
 
 
-static bool_     KillOneTrippers( void )
+static bool     KillOneTrippers( void )
 /**************************************
  * Nuke the loops that are only going to go around one time.
  */
@@ -390,7 +390,7 @@ static bool_     KillOneTrippers( void )
     instruction *ins;
     instruction *next;
     block_num   i;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
@@ -523,8 +523,8 @@ void     MarkInvariants( void )
     name        *op;
     block       *blk;
     instruction *ins;
-    bool_        free_index;
-    bool_        have_call;
+    bool        free_index;
+    bool        have_call;
 
 
     for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
@@ -631,7 +631,7 @@ void     MarkInvariants( void )
 }
 
 
-static bool_     InvariantReg( name *op )
+static bool     InvariantReg( name *op )
 /**************************************/
 {
     if( op->n.class_ != N_REGISTER )
@@ -642,7 +642,7 @@ static bool_     InvariantReg( name *op )
 }
 
 
-bool_     InvariantOp( name *op )
+bool     InvariantOp( name *op )
 /*******************************
  * return true if "op" is invariant with respect to "Loop"
  */
@@ -667,7 +667,7 @@ bool_     InvariantOp( name *op )
 }
 
 
-static value    OpLTZero( name *op, bool_ fp )
+static value    OpLTZero( name *op, bool fp )
 {
     if( op->n.class_ != N_CONSTANT )
         return( CMP_UNKNOWN );
@@ -685,7 +685,7 @@ static value    OpLTZero( name *op, bool_ fp )
     return( CMP_FALSE );
 }
 
-static value    OpEQZero( name *op, bool_ fp )
+static value    OpEQZero( name *op, bool fp )
 {
     if( op->n.class_ != N_CONSTANT )
         return( CMP_UNKNOWN );
@@ -704,16 +704,16 @@ static value    OpEQZero( name *op, bool_ fp )
 }
 
 
-bool_     Hoistable( instruction *ins, block *blk )
+bool     Hoistable( instruction *ins, block *blk )
 /*************************************************
  * Is it safe to hoist instruction "ins" out of the loop (or if)?
  */
 {
-    bool_        will_execute;
-    bool_        dangerous;
+    bool        will_execute;
+    bool        dangerous;
     opcnt       i;
     value       v;
-    bool_        big_const;
+    bool        big_const;
 
     will_execute = false;
     dangerous = false;
@@ -805,7 +805,7 @@ bool_     Hoistable( instruction *ins, block *blk )
 }
 
 
-static bool_     InvariantExpr( instruction *ins, block *blk )
+static bool     InvariantExpr( instruction *ins, block *blk )
 /************************************************************
  * Return true if the operands of instruction "ins" are invariant with
  * respect to "Loop", and "ins" could be safely brought out of the
@@ -935,7 +935,7 @@ static void     FreeInvariant( invariant *invar )
 }
 
 
-static bool_     SameInvariant( invariant *i1, invariant *i2 )
+static bool     SameInvariant( invariant *i1, invariant *i2 )
 /************************************************************
  * return true if "i1" and "i2" are idential invariant lists.
  */
@@ -957,7 +957,7 @@ static bool_     SameInvariant( invariant *i1, invariant *i2 )
     }
 }
 
-static bool_     DifferentClasses( type_class_def type_class1, type_class_def type_class2 )
+static bool     DifferentClasses( type_class_def type_class1, type_class_def type_class2 )
 /***********************************************************************
  * return true if "type_class1" and "type_class2" are different, ignoring signed v.s.
  * unsigned differences.
@@ -1153,7 +1153,7 @@ void    FiniIndVars( void )
 }
 
 
-static  bool_    ListContainsVar( name *list, name *ivname )
+static  bool    ListContainsVar( name *list, name *ivname )
 /*************************************************************
  * Does the invariant list "list" contain the invariant name "ivname"
  */
@@ -1192,7 +1192,7 @@ static  void    FreeBadVars( void )
 }
 
 
-bool_    Inducable( block *blk, instruction *ins )
+bool    Inducable( block *blk, instruction *ins )
 /***********************************************/
 {
     name        *cons;
@@ -1252,7 +1252,7 @@ static void     CheckBasic( instruction *ins, name *op, name *cons )
     }
 }
 
-static  bool_    BasicNotRedefined( induction *var, instruction *ins )
+static  bool    BasicNotRedefined( induction *var, instruction *ins )
 /********************************************************************
  * Check that there is no assignment to the basic induction variable of var
  * between the assignment to var and ins (in the same block).
@@ -1271,7 +1271,7 @@ static  bool_    BasicNotRedefined( induction *var, instruction *ins )
 }
 
 
-static  bool_    KillIndVars( instruction *ins )
+static  bool    KillIndVars( instruction *ins )
 /**********************************************
  * Kill all induction variables that haven't already survived one pass
  * of the loop and are modified by the current instruction (defined >1
@@ -1279,7 +1279,7 @@ static  bool_    KillIndVars( instruction *ins )
  */
 {
     induction   *var;
-    bool_        killed;
+    bool        killed;
 
     killed = false;
     for( var = loopopts_state().IndVarList; var != NULL; var = var->next ) {
@@ -1297,7 +1297,7 @@ static  bool_    KillIndVars( instruction *ins )
 
 
 static  void    CheckNonBasic( instruction *ins, induction *var,
-                               name *cons, bool_ reverse )
+                               name *cons, bool reverse )
 /**********************************************************
  * See if "ins" creates a non-basic induction variable.  (A linear
  * function of another induction variable).  If it does, add an
@@ -1383,7 +1383,7 @@ static  void    CheckNonBasic( instruction *ins, induction *var,
 
 
 static  void    CheckInvariant( instruction *ins, induction *var,
-                                name *invariant_op, bool_ reverse )
+                                name *invariant_op, bool reverse )
 /*******************************************************************
  * Check if "ins" is adding, subtracting or multiplying an existing
  * induction variable by a loop invariant (non-constant) variable.  If
@@ -1659,7 +1659,7 @@ static  void    MergeVars( void )
 }
 
 
-static  bool_    IsAddressMode( induction *var )
+static  bool    IsAddressMode( induction *var )
 /*********************************************/
 {
 #if 0 // when this doesn't work, it REALLY doesn't work
@@ -1903,7 +1903,7 @@ static  instruction     *Multiply( name *op, int_32 by, name *temp,
  * "prev" with it.  Return a pointer to the last instruction generated.
  */
 {
-    bool_        negative;
+    bool        negative;
     int         log2;
     instruction *ins;
 
@@ -2078,7 +2078,7 @@ static  void *MarkDown( block *blk )
 
 
 static  void    LabelDown( instruction *frum,
-                           instruction *avoiding, bool_ go_around )
+                           instruction *avoiding, bool go_around )
 /********************************************************************
  * start labeling instructions INS_VISITED starting at "frum", stopping
  * if we hit instruction "avoiding".  If we missed "avoiding", label
@@ -2115,8 +2115,8 @@ static  void    LabelDown( instruction *frum,
 }
 
 
-static  bool_    PathFrom( instruction *frum, instruction *to,
-                          instruction *avoiding, bool_ go_around )
+static  bool    PathFrom( instruction *frum, instruction *to,
+                          instruction *avoiding, bool go_around )
 /******************************************************************
  * Return true if there is a path from 'from' to 'to' avoiding
  * 'avoiding'.  Conceptually, this is done by dropping some paint on
@@ -2125,9 +2125,9 @@ static  bool_    PathFrom( instruction *frum, instruction *to,
  * we return true.
  */
 {
-    bool_        change;
+    bool        change;
     block       *blk;
-    bool_        foundpath;
+    bool        foundpath;
     instruction *ins;
 
     LabelDown( frum, avoiding, go_around );
@@ -2156,7 +2156,7 @@ static  bool_    PathFrom( instruction *frum, instruction *to,
 }
 
 
-static  bool_    NoPathThru( instruction *ins1,
+static  bool    NoPathThru( instruction *ins1,
                             instruction *ins2, instruction *ins3 )
 /*******************************************************************
  * return true if there is no path from ins1 to ins2 going through ins3
@@ -2242,7 +2242,7 @@ static  void    UnMarkWillExecBlocks( void )
     }
 }
 
-static  bool_    InstructionWillExec( instruction *ins )
+static  bool    InstructionWillExec( instruction *ins )
 /********************************************************
  * true if the given instruction will be executed every time through the loop.
  */
@@ -2371,9 +2371,9 @@ instruction     *DupInstrs( instruction *blk_end,
 
 
 #if 0
-static  bool_    BlueMoonUnRoll( block *cond_blk, induction *var,
+static  bool    BlueMoonUnRoll( block *cond_blk, induction *var,
                         instruction *cond, instruction *indins,
-                        block_edge *exit_edge, bool_ know_bounds,
+                        block_edge *exit_edge, bool know_bounds,
                         int_32 initial, int_32 final )
 /***************************************************************/
 {
@@ -2534,11 +2534,11 @@ static  induction       *FindReplacement( induction *var )
 }
 
 
-bool_    AnalyseLoop( induction *var, bool_ *ponecond,
+bool    AnalyseLoop( induction *var, bool *ponecond,
                              instruction **pcond, block **pcond_blk )
 /********************************************************************/
 {
-    bool_        can_replace;
+    bool        can_replace;
     block       *blk;
     block       *first_blk;
     instruction *ins;
@@ -2664,7 +2664,7 @@ static  name    *InitialValue( name *op )
 }
 
 
-bool_    CalcFinalValue( induction *var, block *blk, instruction *ins,
+bool    CalcFinalValue( induction *var, block *blk, instruction *ins,
                                 int_32 *final, int_32 *initial )
 /*********************************************************************
  * See if we can figure out what the final value of induction variable
@@ -2771,7 +2771,7 @@ bool_    CalcFinalValue( induction *var, block *blk, instruction *ins,
 }
 
 
-static  bool_    FinalValue( instruction *ins, block *blk, induction *var )
+static  bool    FinalValue( instruction *ins, block *blk, induction *var )
 /***************************************************************************
  * Figure out the final value of the induction variable if possible.  If
  * we can, put assignments of the final value at each loop exit so that
@@ -2816,7 +2816,7 @@ static  bool_    FinalValue( instruction *ins, block *blk, induction *var )
 }
 
 
-static  bool_    PointerOk( name *op )
+static  bool    PointerOk( name *op )
 /***********************************/
 {
 #ifdef _POINTER_GETS_NEAR_BOUNDS
@@ -2839,7 +2839,7 @@ static  bool_    PointerOk( name *op )
 }
 
 
-static  bool_    DangerousTypeChange( induction *var, induction *other )
+static  bool    DangerousTypeChange( induction *var, induction *other )
 /**********************************************************************
  * Is it dangerous to replace "var" with "other"?  This is true if
  * "other" might wrap around its limits.
@@ -2859,7 +2859,7 @@ static  bool_    DangerousTypeChange( induction *var, induction *other )
     return( true );
 }
 
-static  bool_    ConstOverflowsType( const signed_64 *val, type_class_def type_class )
+static  bool    ConstOverflowsType( const signed_64 *val, type_class_def type_class )
 /************************************************************************************
  * Return true if the given (signed) constant is too big or too small for
  * the given type_class.
@@ -2901,7 +2901,7 @@ static  bool_    ConstOverflowsType( const signed_64 *val, type_class_def type_c
     return( false );
 }
 
-static  bool_    DoReplacement( instruction *ins, induction *rep,
+static  bool    DoReplacement( instruction *ins, induction *rep,
                                opcnt ind, opcnt non_ind, type_class_def type_class )
 /***********************************************************************************
  * Replace operands[ind] with "rep" in instruction "ins".
@@ -2974,7 +2974,7 @@ static  bool_    DoReplacement( instruction *ins, induction *rep,
     return( true );
 }
 
-static  bool_    RepIndVar( instruction *ins, induction *rep,
+static  bool    RepIndVar( instruction *ins, induction *rep,
                            opcnt i_ind, opcnt i_non_ind, type_class_def type_class )
 /******************************************************************************
  * One operand of "ins" needs to be replaced with "rep"
@@ -3003,7 +3003,7 @@ static  void    RepBoth( instruction *ins, induction *rep, type_class_def type_c
 }
 
 
-static  bool_    ReplUses( induction *var, induction *rep,
+static  bool    ReplUses( induction *var, induction *rep,
                           instruction *ins, type_class_def type_class )
 /*******************************************************************
  * Replace all uses of induction variable "var" with "rep" in
@@ -3052,9 +3052,9 @@ static  void    Replace( induction *var, induction *replacement )
     instruction         *ins;
     instruction         *cond;
     block               *cond_blk;
-    bool_                onecond;
+    bool                onecond;
     type_class_def      type_class;
-    bool_                free_ins;
+    bool                free_ins;
 
     if( !AnalyseLoop( var, &onecond, &cond, &cond_blk ) )
         return;
@@ -3081,7 +3081,7 @@ static  void    Replace( induction *var, induction *replacement )
 }
 
 
-static  bool_    DoLoopInvariant( bool_(*rtn)(void) )
+static  bool    DoLoopInvariant( bool(*rtn)(void) )
 /*************************************************
  * Do loop invariant code motion from the outside in.  First haul any
  * invariant expressions out of the innermost loops, then the next
@@ -3092,7 +3092,7 @@ static  bool_    DoLoopInvariant( bool_(*rtn)(void) )
     level_depth         max_depth;
     level_depth         depth;
     block               *blk;
-    bool_                change;
+    bool                change;
 
     change = false;
     max_depth = MaxDepth();
@@ -3120,7 +3120,7 @@ static  bool_    DoLoopInvariant( bool_(*rtn)(void) )
 }
 
 
-static  bool_    FindRegInvariants( void )
+static  bool    FindRegInvariants( void )
 /****************************************
  * Find any invariant, hoistable expressions in "Loop", and
  * pre-calculate the expression in the loop pre-header, putting the
@@ -3135,7 +3135,7 @@ static  bool_    FindRegInvariants( void )
     instruction *ins;
     instruction *next;
     opcnt       i;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( blk = loopopts_state().Loop; blk != NULL; blk = blk->u.loop ) {
@@ -3177,7 +3177,7 @@ static  bool_    FindRegInvariants( void )
 }
 
 
-static  bool_    FindInvariants( void )
+static  bool    FindInvariants( void )
 /*************************************
  * Find any invariant, hoistable expressions in "Loop", and
  * pre-calculate the expression in the loop pre-header, putting the
@@ -3194,7 +3194,7 @@ static  bool_    FindInvariants( void )
     name        *op;
     name        *temp;
     opcnt       i;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( blk = loopopts_state().Loop; blk != NULL; blk = blk->u.loop ) {
@@ -3253,14 +3253,14 @@ static  bool_    FindInvariants( void )
 }
 
 
-bool_    LoopInvariant( void )
+bool    LoopInvariant( void )
 /***************************/
 {
     return( DoLoopInvariant( &FindInvariants ) );
 }
 
 
-bool_    LoopRegInvariant( void )
+bool    LoopRegInvariant( void )
 /******************************/
 {
     return( DoLoopInvariant( &FindRegInvariants ) );
@@ -3322,7 +3322,7 @@ static  void    ElimIndVars( void )
 }
 
 
-static  bool_    ReduceVar( induction *var )
+static  bool    ReduceVar( induction *var )
 /******************************************
  * Do strength reduction on induction variable "var", if it is current
  * to this loop, and the top, or end result, of an induction
@@ -3392,13 +3392,13 @@ static  bool_    ReduceVar( induction *var )
 }
 
 
-static  bool_    ReduceInStrength( void )
+static  bool    ReduceInStrength( void )
 /***************************************
  * For each induction variable, see if we can reduce it in strength.
  */
 {
     induction   *var;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( var = loopopts_state().IndVarList; var != NULL; var = var->next ) {
@@ -3425,7 +3425,7 @@ static  void    DupNoncondInstrs( block *cond_blk, instruction *cond, block *pre
 }
 #endif
 
-static  bool_    TwistLoop( block_list *header_list, bool_ unroll )
+static  bool    TwistLoop( block_list *header_list, bool unroll )
 /****************************************************************
  * Try to fall into loops without testing the condition the first
  * time if we know how many times the loop will go around.  We
@@ -3442,13 +3442,13 @@ static  bool_    TwistLoop( block_list *header_list, bool_ unroll )
     block               *cond_blk;
     block_edge          *exit_edge;
     block_edge          *loop_edge;
-    bool_                onecond;
+    bool                onecond;
     int_32              final;
     int_32              initial;
     induction           *var;
     block_edge          *edge;
-    bool_                know_bounds;
-    bool_                do_the_twist;
+    bool                know_bounds;
+    bool                do_the_twist;
     block_list          *list;
     block               *old_prehead;
     block               *old_head;
@@ -3588,7 +3588,7 @@ static  bool_    TwistLoop( block_list *header_list, bool_ unroll )
 }
 
 
-static  bool_    DoInduction( block_list *header, bool_ reduce, bool_ unroll )
+static  bool    DoInduction( block_list *header, bool reduce, bool unroll )
 /**************************************************************************
  * Process induction variables in the loop whose loop header is
  * "header".  We do any loops contained inside this loop before
@@ -3604,7 +3604,7 @@ static  bool_    DoInduction( block_list *header, bool_ reduce, bool_ unroll )
 {
     block_list  curr_block;
     int         old;
-    bool_        change;
+    bool        change;
     induction   **owner;
     induction   *list;
 
@@ -3678,13 +3678,13 @@ static  bool_    DoInduction( block_list *header, bool_ reduce, bool_ unroll )
 }
 
 
-static  bool_    Induction( bool_ reduce, bool_ unroll )
+static  bool    Induction( bool reduce, bool unroll )
 /****************************************************
  * Do induction variable processing
  */
 {
     block_list  list;
-    bool_        change;
+    bool        change;
 
     list.blk = NULL;
     list.next = NULL;
@@ -3698,14 +3698,14 @@ static  bool_    Induction( bool_ reduce, bool_ unroll )
 }
 
 
-bool_    IndVars( void )
+bool    IndVars( void )
 /*********************/
 {
     return( Induction( true, false ) );
 }
 
 
-bool_    TransLoops( bool_ unroll )
+bool    TransLoops( bool unroll )
 /*******************************/
 {
     return( Induction( false, unroll ) );

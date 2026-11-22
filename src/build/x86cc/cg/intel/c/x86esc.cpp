@@ -62,7 +62,7 @@
 
 static void     DoRelocRef( cg_sym_handle sym, cg_class class_, segment_id segid, offset val, escape_class esc_attr );
 static void     OutShortDisp( label_handle lbl );
-static void     OutCodeDisp( label_handle lbl, fix_class f, bool_ rel, oc_class class_ );
+static void     OutCodeDisp( label_handle lbl, fix_class f, bool rel, oc_class class_ );
 
 namespace {
 
@@ -78,7 +78,7 @@ struct X86escState {
 static inline X86escState& x86esc_state() { return cbrun_part<X86escState>(); }
 
 
-bool_    CodeHasAbsPatch( oc_entry *code )
+bool    CodeHasAbsPatch( oc_entry *code )
 /***************************************/
 {
     byte        *curr;
@@ -160,7 +160,7 @@ void  DoFESymRef( cg_sym_handle sym, cg_class class_, offset val, fe_fixup_types
 }
 
 
-void    DoSymRef( name *opnd, offset val, bool_ base )
+void    DoSymRef( name *opnd, offset val, bool base )
 /***************************************************/
 {
     DoFESymRef( static_cast<cg_sym_handle>(opnd->v.symbol), opnd->m.memory_type, val, base ? FE_FIX_BASE : FE_FIX_OFF );
@@ -284,7 +284,7 @@ static  void    ExpandCJ( any_oc *oc )
 {
     oc_class            class_;
     fix_class           f;
-    bool_                rel;
+    bool                rel;
     obj_length          objlen;
 
     class_ = oc->oc_header.class_;
@@ -351,7 +351,7 @@ static  void    OutShortDisp( label_handle lbl ) {
 
 
 static  void    OutCodeDisp( label_handle lbl, fix_class f,
-                             bool_ rel, oc_class class_ ) {
+                             bool rel, oc_class class_ ) {
 /********************************************************/
 
     offset              addr;
@@ -405,7 +405,7 @@ static  label_handle ExpandObj( byte *cur, int explen )
     offset              val = 0;
     segment_id          segid;
     fix_class           class_;
-    bool_                rel;
+    bool                rel;
     unsigned            len;
     abs_patch           *apatch;
 

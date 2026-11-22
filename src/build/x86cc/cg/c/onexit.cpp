@@ -45,8 +45,8 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct OnexitState {
-    bool_ volatile BrkFlag;
-    bool_ OnExitFlag = true;
+    bool volatile BrkFlag;
+    bool OnExitFlag = true;
 };
 
 }  // namespace
@@ -89,7 +89,7 @@ static void InitOnExit( void )
 }
 
 
-bool_ TBreak( void )
+bool TBreak( void )
 /*****************/
 {
     int         brk;

@@ -68,10 +68,10 @@ static void addNumber           // STORE A NUMBER
 }
 
 
-static bool_ scanOffNumber       // SCAN A NUMBER
+static bool scanOffNumber       // SCAN A NUMBER
     ( unsigned *pvalue )        // - target
 {
-    bool_ number_scanned;
+    bool number_scanned;
     unsigned value;
     int c;
 
@@ -138,7 +138,7 @@ void OPT_CLEAN_STRING           // CLEAN UP STRINGS
 }
 
 
-bool_ OPT_GET_ID                 // PARSE: ID
+bool OPT_GET_ID                 // PARSE: ID
     ( OPT_STRING **p )          // - target
 {
     size_t len;
@@ -154,7 +154,7 @@ bool_ OPT_GET_ID                 // PARSE: ID
     return( false );
 }
 
-bool_ OPT_GET_ID_OPT             // PARSE: OPTIONAL ID
+bool OPT_GET_ID_OPT             // PARSE: OPTIONAL ID
     ( OPT_STRING **p )          // - target
 {
     if( CmdRecogEquals() || !CmdScanSwEnd() ) {
@@ -171,7 +171,7 @@ int OPT_GET_LOWER               // GET CHAR IN LOWERCASE
 }
 
 
-bool_ OPT_GET_NUMBER             // PARSE: #
+bool OPT_GET_NUMBER             // PARSE: #
     ( unsigned *p )             // - target
 {
     unsigned value;
@@ -185,7 +185,7 @@ bool_ OPT_GET_NUMBER             // PARSE: #
 }
 
 
-bool_ OPT_GET_NUMBER_MULTIPLE    // PARSE: OPTION #
+bool OPT_GET_NUMBER_MULTIPLE    // PARSE: OPTION #
     ( OPT_NUMBER **h )          // - target
 {
     unsigned value;
@@ -198,7 +198,7 @@ bool_ OPT_GET_NUMBER_MULTIPLE    // PARSE: OPTION #
     return( false );
 }
 
-bool_ OPT_GET_NUMBER_DEFAULT
+bool OPT_GET_NUMBER_DEFAULT
     ( unsigned *p, unsigned default_value )
 {
     unsigned value;
@@ -212,12 +212,12 @@ bool_ OPT_GET_NUMBER_DEFAULT
 }
 
 
-bool_ OPT_GET_FILE               // PARSE: FILE NAME
+bool OPT_GET_FILE               // PARSE: FILE NAME
     ( OPT_STRING **p )          // - target
 {
     size_t len;
     char const *fname;
-    bool_ quoted;
+    bool quoted;
 
     CmdRecogEquals();
     len = CmdScanFilename( &fname, &quoted );
@@ -232,12 +232,12 @@ bool_ OPT_GET_FILE               // PARSE: FILE NAME
     return( false );
 }
 
-bool_ OPT_GET_FILE_OPT           // PARSE: OPTIONAL FILE NAME
+bool OPT_GET_FILE_OPT           // PARSE: OPTIONAL FILE NAME
     ( OPT_STRING **p )          // - target
 {
     size_t len;
     char const *fname;
-    bool_ quoted;
+    bool quoted;
 
     // handle leading option char specially
     if( CmdRecogEquals() || !CmdScanSwEnd() ) {
@@ -256,12 +256,12 @@ bool_ OPT_GET_FILE_OPT           // PARSE: OPTIONAL FILE NAME
 }
 
 
-bool_ OPT_GET_PATH               // PARSE: PATH
+bool OPT_GET_PATH               // PARSE: PATH
     ( OPT_STRING **p )          // - target
 {
     size_t len;
     char const *path;
-    bool_ quoted;
+    bool quoted;
 
 //    CmdPathDelim();
     CmdRecogEquals();
@@ -277,12 +277,12 @@ bool_ OPT_GET_PATH               // PARSE: PATH
     return( false );
 }
 
-bool_ OPT_GET_PATH_OPT           // PARSE: OPTIONAL PATH
+bool OPT_GET_PATH_OPT           // PARSE: OPTIONAL PATH
     ( OPT_STRING **p )          // - target
 {
     size_t len;
     char const *fname;
-    bool_ quoted;
+    bool quoted;
 
 //    if( CmdPathDelim() || !CmdScanSwEnd() ) {
     if( CmdRecogEquals() || !CmdScanSwEnd() ) {
@@ -301,12 +301,12 @@ bool_ OPT_GET_PATH_OPT           // PARSE: OPTIONAL PATH
 }
 
 
-bool_ OPT_GET_OPTION             // PARSE: OPTION TEXT
+bool OPT_GET_OPTION             // PARSE: OPTION TEXT
     ( OPT_STRING **p )          // - target
 {
     size_t len;
     char const *option;
-    bool_ quoted;
+    bool quoted;
 
     CmdRecogEquals();
     len = CmdScanOption( &option, &quoted );
@@ -322,7 +322,7 @@ bool_ OPT_GET_OPTION             // PARSE: OPTION TEXT
 }
 
 
-bool_ OPT_GET_CHAR               // PARSE: CHAR
+bool OPT_GET_CHAR               // PARSE: CHAR
     ( int *p )                  // - target
 {
     int c;
@@ -341,7 +341,7 @@ bool_ OPT_GET_CHAR               // PARSE: CHAR
     return( false );
 }
 
-bool_ OPT_GET_CHAR_OPT           // PARSE: OPTIONAL CHAR
+bool OPT_GET_CHAR_OPT           // PARSE: OPTIONAL CHAR
     ( int *p )                  // - target
 {
     if( CmdRecogEquals() || !CmdScanSwEnd() ) {
@@ -351,19 +351,19 @@ bool_ OPT_GET_CHAR_OPT           // PARSE: OPTIONAL CHAR
 }
 
 
-bool_ OPT_RECOG                  // RECOGNIZE CHAR
+bool OPT_RECOG                  // RECOGNIZE CHAR
     ( int c )                   // - to be recog'ed
 {
     return( CmdRecogChar( c ) );
 }
 
-bool_ OPT_RERECOG                // RE-RECOGNIZE LAST CHAR
+bool OPT_RERECOG                // RE-RECOGNIZE LAST CHAR
     ( int c )                   // - to be recog'ed
 {
     return( CmdReRecogChar( c ) );
 }
 
-bool_ OPT_RECOG_LOWER            // RECOGNIZE LOWERCASE CHAR
+bool OPT_RECOG_LOWER            // RECOGNIZE LOWERCASE CHAR
     ( int c )                   // - to be recog'ed
 {
     return( CmdRecogLowerChar( c ) );
@@ -375,7 +375,7 @@ void OPT_UNGET                  // UNGET A CHARACTER
     CmdScanUngetChar();
 }
 
-bool_ OPT_END( void )            // DETECT END OF CHAIN
+bool OPT_END( void )            // DETECT END OF CHAIN
 {
     return( CmdScanSwEnd() );
 }

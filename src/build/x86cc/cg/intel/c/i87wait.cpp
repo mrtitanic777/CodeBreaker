@@ -40,7 +40,7 @@
 #include "x87.h"
 
 
-static  bool_    OpsCollide( name *op_87, name *op_86 ) {
+static  bool    OpsCollide( name *op_87, name *op_86 ) {
 /****************************************************/
 
     if( op_87->n.class_ == N_INDEXED ) {
@@ -69,7 +69,7 @@ static  bool_    OpsCollide( name *op_87, name *op_86 ) {
 }
 
 
-static  bool_    CallNeedsWait( name *op, name *res ) {
+static  bool    CallNeedsWait( name *op, name *res ) {
 /****************************************************/
 
     if( op == NULL ) {
@@ -89,10 +89,10 @@ static  bool_    CallNeedsWait( name *op, name *res ) {
 }
 
 
-static  bool_    NeedWait( name *op, name *res, instruction *ins_86 ) {
+static  bool    NeedWait( name *op, name *res, instruction *ins_86 ) {
 /********************************************************************/
 
-    bool_        need_wait;
+    bool        need_wait;
     opcnt       i;
 
     if( op != NULL ) {
@@ -119,7 +119,7 @@ void    Wait8087( void )
     gentype     gen;
     name        *last_fpop = NULL;
     name        *last_fpres = NULL;
-    bool_        past_jump;
+    bool        past_jump;
 
     /* Prior to 386, FWAITs are always needed. On 386 and up, only when
      * user explicitly asked for them.

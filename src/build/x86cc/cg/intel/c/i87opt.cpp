@@ -95,7 +95,7 @@ void    FPParms( void )
     }
 }
 
-static  bool_    CanPushImmed( pn parm, int *num_parms )
+static  bool    CanPushImmed( pn parm, int *num_parms )
 /******************************************************
  * find out if we can "push" floating point parameters onto the 8087
  * stack immediately as they are calculated, or if we must delay
@@ -196,7 +196,7 @@ static  instruction     *PushDelayed( instruction *ins, an addr, call_state *sta
 }
 
 
-static bool_ PushDelayedIfStackOperand( instruction *ins, pn parm, call_state *state )
+static bool PushDelayedIfStackOperand( instruction *ins, pn parm, call_state *state )
 /************************************************************************************
  * Delay the "push" of a floating point parameter if any of its
  * operands are 8087 stack operands.
@@ -218,7 +218,7 @@ static bool_ PushDelayedIfStackOperand( instruction *ins, pn parm, call_state *s
 }
 
 
-static bool_ PushDelayedIfRedefinition( instruction *ins, pn parm, call_state *state )
+static bool PushDelayedIfRedefinition( instruction *ins, pn parm, call_state *state )
 /************************************************************************************
  * Delay the "push" of a floating point parameter if any of its
  * operands are  redefined between the calculation of the parm and the
@@ -359,7 +359,7 @@ _OE(                         PRESERVE, V_NO,           RG_,          G_FSINCOS, 
 
 #define _OTHER( x ) ( (x) == OP_SIN ? OP_COS : OP_SIN )
 
-static  bool_    FSinCos( instruction *ins1 )
+static  bool    FSinCos( instruction *ins1 )
 /********************************************
  * find the FSINCOS sequence
  */
@@ -462,7 +462,7 @@ static  void    MoveThrough( name *from, name *to, instruction *from_ins,
  * any should be taken from "from_ins" and "to_ins".
  */
 {
-    bool_        dummy;
+    bool        dummy;
     instruction *new_ins;
 
     new_ins = MakeMove( from, reg, type_class );
@@ -534,7 +534,7 @@ static  instruction    *To86Move( instruction *ins, instruction *next )
 }
 
 
-static  bool_    RedundantStore( instruction *ins )
+static  bool    RedundantStore( instruction *ins )
 /************************************************/
 {
     instruction         *next;
@@ -553,7 +553,7 @@ static  bool_    RedundantStore( instruction *ins )
 }
 
 
-static  instruction    *Opt87Sequence( instruction *ins, bool_ *again )
+static  instruction    *Opt87Sequence( instruction *ins, bool *again )
 /*********************************************************************
  * Look for silly 8087 sequences and fix them up.
  */
@@ -777,7 +777,7 @@ static void    Opt8087( void )
     block       *blk;
     instruction *ins;
     int         i;
-    bool_        again;
+    bool        again;
     instruction *next;
 
     for( blk = data_state().HeadBlock; blk != NULL; ) {
@@ -820,7 +820,7 @@ void    FPOptimize( void )
     }
 }
 
-bool_    FPDivIsADog( type_class_def type_class )
+bool    FPDivIsADog( type_class_def type_class )
 /**********************************************/
 {
 

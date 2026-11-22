@@ -81,7 +81,7 @@ void Expecting( const char *a_token )
     CErr3p( ERR_EXPECTING_BUT_FOUND, a_token, NameOfCurToken() );
 }
 
-bool_ ExpectingToken( TOKEN token )
+bool ExpectingToken( TOKEN token )
 {
     if( cvars_state().CurToken == token ) {
         return( true );
@@ -106,7 +106,7 @@ void ExpectIdentifier( void )
     CErr2p( ERR_EXPECTING_IDENTIFIER_BUT_FOUND, NameOfCurToken() );
 }
 
-bool_ ExpectingConstant( void )
+bool ExpectingConstant( void )
 {
     if( cvars_state().CurToken == T_CONSTANT ) {
         return( true );

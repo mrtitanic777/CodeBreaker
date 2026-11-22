@@ -70,7 +70,7 @@ typedef enum {
 } flood_decision;
 
 typedef struct flood_info {
-    bool_        post_dominates;
+    bool        post_dominates;
     block       *dominator;
 } flood_info;
 
@@ -80,7 +80,7 @@ typedef int (*bp_heuristic)( block *, instruction * );
 
 static  source_line_number      DumpLineNum( source_line_number n,
                                              source_line_number last,
-                                             bool_ label_line )
+                                             bool label_line )
 /*******************************************************************/
 {
     if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
@@ -201,19 +201,19 @@ void    GenObject( void )
 }
 
 
-static  bool_    GenId( block *blk, block *next )
+static  bool    GenId( block *blk, block *next )
 /**********************************************/
 {
     return( blk->gen_blk_id > next->gen_blk_id );
 }
 
 
-static  void    BlocksSortedBy( bool_ (*bigger)( block *, block * ) )
+static  void    BlocksSortedBy( bool (*bigger)( block *, block * ) )
 /******************************************************************/
 {
     block       *blk;
     block       *next;
-    bool_        change;
+    bool        change;
 
     for( change = ( data_state().HeadBlock->next_block != NULL ); change; ) {
         change = false;
@@ -247,7 +247,7 @@ static  void    BQInit( block_queue *q )
     q->last = NULL;
 }
 
-static  bool_    BQEmpty( block_queue *q )
+static  bool    BQEmpty( block_queue *q )
 /***************************************/
 {
     return( q->first == NULL );
@@ -423,7 +423,7 @@ static  int     Want( instruction *cond, int index )
     return( prediction );
 }
 
-static  bool_    BlockContainsCall( block *blk )
+static  bool    BlockContainsCall( block *blk )
 /*********************************************/
 {
     instruction         *ins;
@@ -486,7 +486,7 @@ static  flood_decision PDFloodFunc( block *blk, flood_info *info )
     return( CONTINUE );
 }
 
-static  bool_    PostDominates( block *dominator, block *blk )
+static  bool    PostDominates( block *dominator, block *blk )
 /**************************************************************
  * Return true if dominator post-dominates blk.
  * To determine this, we just flood down aborting whenever we hit
@@ -502,7 +502,7 @@ static  bool_    PostDominates( block *dominator, block *blk )
     return( info.post_dominates );
 }
 
-static  bool_    CallApplies( block *src, block *dst )
+static  bool    CallApplies( block *src, block *dst )
 /***************************************************/
 {
     src = dst;
@@ -532,7 +532,7 @@ static  int     CallHeuristic( block *blk, instruction *cond )
     return( prediction );
 }
 
-static  bool_    LoopApplies( block *blk )
+static  bool    LoopApplies( block *blk )
 /***************************************/
 {
     if( _IsBlkAttr( blk, BLK_LOOP_HEADER ) )
@@ -563,7 +563,7 @@ static  int     LoopHeuristic( block *blk, instruction *cond )
     return( prediction );
 }
 
-static  bool_    GuardApplies( block *blk, block *dst, name *reg )
+static  bool    GuardApplies( block *blk, block *dst, name *reg )
 /***************************************************************/
 {
     instruction *ins;
@@ -624,7 +624,7 @@ static  int     GuardHeuristic( block *blk, instruction *cond )
     return( DNA );
 }
 
-static  bool_    StoreApplies( block *blk, block *next )
+static  bool    StoreApplies( block *blk, block *next )
 /*****************************************************/
 {
     instruction *ins;
@@ -662,7 +662,7 @@ static  int     StoreHeuristic( block *blk, instruction *cond )
     return( prediction );
 }
 
-static  bool_    ReturnApplies( block *blk )
+static  bool    ReturnApplies( block *blk )
 /*****************************************/
 {
     if( _IsBlkAttr( blk, BLK_RETURN ) )

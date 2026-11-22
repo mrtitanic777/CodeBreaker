@@ -483,7 +483,7 @@ int     CountFPRegs( hw_reg_set regs )
 }
 
 #if _TARGET & _TARG_80386
-static bool_     NeedOpndSize( instruction *ins )
+static bool     NeedOpndSize( instruction *ins )
 /***********************************************
  * Do we REALLY, REALLY need the operand size override.
  */
@@ -552,7 +552,7 @@ static bool_     NeedOpndSize( instruction *ins )
 #endif
 
 
-static  bool_    LayOpndSize( instruction *ins, gentype gen )
+static  bool    LayOpndSize( instruction *ins, gentype gen )
 /***********************************************************
  * Generate an operand size prefix if the instruction needs it
  * (Eg: MOV    AX,DX need it in a USE32 segment)
@@ -877,7 +877,7 @@ static  void    DoP5Divide( instruction *ins )
  * runtime routine to correct it.
  */
 {
-    bool_        used_ds = false;
+    bool        used_ds = false;
 
     _Code;
     LayOpbyte( 0x9c );          /* pushf */
@@ -1613,7 +1613,7 @@ void    GenLeave( void )
 }
 
 
-void    GenTouchStack( bool_ sp_might_point_at_something )
+void    GenTouchStack( bool sp_might_point_at_something )
 /********************************************************
  * MOV         [esp],eax
  */
@@ -1920,7 +1920,7 @@ static void     GenUnkLea( pointer value )
 }
 
 #if ( _TARGET & _TARG_8086 )
-static bool_ CleanupDiesAtLeave( instruction *ins )
+static bool CleanupDiesAtLeave( instruction *ins )
 /*************************************************
  * Nothing after `ins` in its block reaches the stack, the block returns, and the epilog is
  * LEAVE alone: SP added to here is set back from BP all the same
@@ -1963,7 +1963,7 @@ void    GenObjCode( instruction *ins )
     name        *left = NULL;
     name        *right = NULL;
     opcnt       i;
-    bool_        opnd_size;
+    bool        opnd_size;
 
     gen = G( ins );
     if( gen != G_NO ) {

@@ -299,7 +299,7 @@ void    DoMAddr( name *op )
 }
 
 
-byte    DoMDisp( name *op, bool_ alt_encoding )
+byte    DoMDisp( name *op, bool alt_encoding )
 /********************************************/
 {
     hw_reg_set          regs;

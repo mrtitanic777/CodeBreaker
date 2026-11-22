@@ -978,7 +978,7 @@ static void DoSwitch( OPNODE *node, cg_name name )
     CGSelect( table, name );
 }
 
-static bool_ IsStruct( TYPEPTR typ )
+static bool IsStruct( TYPEPTR typ )
 /*********************************/
 {
     SKIP_TYPEDEFS( typ );
@@ -1084,8 +1084,8 @@ static void CDoAutoDecl( SYM_HANDLE sym_handle )
 {
     TYPEPTR             typ;
     cg_type             dtype;
-    bool_                emit_debug_info;
-    bool_                emit_extra_info;
+    bool                emit_debug_info;
+    bool                emit_extra_info;
     SYM_ENTRY           sym;
 
     for( ; sym_handle != SYM_NULL; sym_handle = sym.handle ) {
@@ -1184,9 +1184,9 @@ static void ParmReverse( SYM_HANDLE sym_handle )
 }
 #endif
 
-static bool_ DoFuncDefn( SYM_HANDLE funcsym_handle )
+static bool DoFuncDefn( SYM_HANDLE funcsym_handle )
 {
-    bool_        parms_reversed;
+    bool        parms_reversed;
     SYM_HANDLE  sym_handle;
     cg_type     ret_type;
 
@@ -1715,9 +1715,9 @@ void GenInLineFunc( SYM_HANDLE sym_handle )
     }
 }
 
-bool_ IsInLineFunc( SYM_HANDLE sym_handle )
+bool IsInLineFunc( SYM_HANDLE sym_handle )
 {
-    bool_        ret;
+    bool        ret;
     TREEPTR     tree;
     TREEPTR     right;
 

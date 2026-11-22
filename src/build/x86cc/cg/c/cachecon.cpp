@@ -129,7 +129,7 @@ static  type_class_def  FindMaxClass( name *cons, int *prefs )
 }
 
 
-static  bool_    ReplaceConst( name *cons, name *temp, type_class_def tmp_class )
+static  bool    ReplaceConst( name *cons, name *temp, type_class_def tmp_class )
 /*******************************************************************************
 
      Replace all occurences of "cons" with "temp".  As a hack, we
@@ -142,7 +142,7 @@ static  bool_    ReplaceConst( name *cons, name *temp, type_class_def tmp_class 
     instruction         *ins;
     opcnt               i;
     type_class_def      type_class;
-    bool_                change;
+    bool                change;
     opcnt               num_operands;
 
 #if ( _TARGET & _TARG_AXP ) || ( _TARG_MEMORY & _TARG_LOW_FIRST ) == 0

@@ -102,7 +102,7 @@ typedef struct case_entry {
     struct case_entry   *next_case;
     unsigned_64         value;
     LABEL_INDEX         label;
-    bool_                gen_label;
+    bool                gen_label;
 } CASEDEFN, *CASEPTR;
 
 typedef struct  switch_entry {
@@ -187,8 +187,8 @@ typedef struct expr_node {
         TREEPTR         thread;         // used during pass 2 full codegen
     } u;
     OPNODE              op;
-    bool_                visit;
-    bool_                checked;            // opnd values have been checked
+    bool                visit;
+    bool                checked;            // opnd values have been checked
 } EXPRNODE;
 
 typedef struct  sym_list_heads {

@@ -39,9 +39,9 @@
 #define U64_DOUBLE_CORRECTION   (2.0 * ( (double)9223372036854775807LL + 1.0 ))
 
 
-static bool_ IsConstantZero( TREEPTR tree );
+static bool IsConstantZero( TREEPTR tree );
 
-static uint_32 DoOp32( uint_32 left, opr_code opr, uint_32 right, bool_ sign )
+static uint_32 DoOp32( uint_32 left, opr_code opr, uint_32 right, bool sign )
 {
     uint_32         value;
 
@@ -118,7 +118,7 @@ static uint_32 DoOp32( uint_32 left, opr_code opr, uint_32 right, bool_ sign )
 }
 
 
-static uint64 DoOp64( uint64 left, opr_code opr, uint64 right, bool_ sign )
+static uint64 DoOp64( uint64 left, opr_code opr, uint64 right, bool sign )
 {
     uint64          tmp;
     uint64          value;
@@ -327,7 +327,7 @@ int64 LongValue64( TREEPTR leaf )
     FLOATVAL        *flt;
     char            *endptr;
     long_double     ld;
-    bool_            sign;
+    bool            sign;
 
     switch( leaf->op.u1.const_type ) {
     case TYP_CHAR:
@@ -933,7 +933,7 @@ void CastConstNode( TREEPTR leaf, TYPEPTR newtyp )
     }
 }
 
-static bool_ IsConstantZero( TREEPTR tree )
+static bool IsConstantZero( TREEPTR tree )
 {
     if( tree->op.opr == OPR_PUSHINT ) {
         return( CheckZeroConstant( tree ) );
@@ -993,7 +993,7 @@ static void FoldQuestionTree( TREEPTR tree )
 }
 
 
-static bool_ FoldableTree( TREEPTR tree )
+static bool FoldableTree( TREEPTR tree )
 {
     TREEPTR     opnd;
     TYPEPTR     typ;
@@ -1178,8 +1178,8 @@ static void CheckOpndValues( TREEPTR tree )
     case OPR_LSHIFT_EQUAL:
     case OPR_RSHIFT_EQUAL:
         if( IsConstLeaf( tree->right ) ) {
-            bool_        shift_too_big = false;
-            bool_        shift_negative = false;
+            bool        shift_too_big = false;
+            bool        shift_negative = false;
             unsigned    max_shift;
 
             opnd = tree->right;
@@ -1244,7 +1244,7 @@ static void CheckOpndValues( TREEPTR tree )
     case OPR_DIV:
     case OPR_MOD:
         if( IsConstLeaf( tree->right ) ) {
-            bool_    zero_divisor = false;
+            bool    zero_divisor = false;
 
             opnd = tree->right;
             r_type = opnd->u.expr_type;

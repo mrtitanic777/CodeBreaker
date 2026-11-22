@@ -186,7 +186,7 @@ static asm_sym_handle FindLocalLabel( const char *name )
     return( NULL );
 }
 
-static bool_ AddLocalLabel( asm_sym_handle sym )
+static bool AddLocalLabel( asm_sym_handle sym )
 /*********************************************/
 {
     label_list  *label;
@@ -319,7 +319,7 @@ void FreeASym( asm_sym_handle sym )
 
 #if defined( _STANDALONE_ )
 
-bool_ AsmChangeName( const char *old, const char *new_ )
+bool AsmChangeName( const char *old, const char *new_ )
 /****************************************************/
 {
     asm_sym_handle  *sym_ptr;

@@ -29,5 +29,5 @@
 ****************************************************************************/
 
 
-extern bool_         FoldIntoIndex( instruction *ins );
-extern instruction  *SIBPossibleIndex( instruction *, name *, name **, bool_ *, hw_reg_set, hw_reg_set, bool_ *, bool_ * );
+extern bool         FoldIntoIndex( instruction *ins );
+extern instruction  *SIBPossibleIndex( instruction *, name *, name **, bool *, hw_reg_set, hw_reg_set, bool *, bool * );

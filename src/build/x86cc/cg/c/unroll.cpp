@@ -64,8 +64,8 @@ typedef struct loop_condition {
     block       *loop_edge;
     instruction *compare_ins;
     block       *compare_block;
-    bool_        clean;          /* do we need something to clean up after us? */
-    bool_        complete;       /* did we unroll the loop completely */
+    bool        clean;          /* do we need something to clean up after us? */
+    bool        complete;       /* did we unroll the loop completely */
 } loop_condition;
 
 
@@ -279,7 +279,7 @@ static  void    UnMarkHeaderEdges( block *loop )
 #define MAX_CODE_SIZE   0x20
 #define UNROLL_MAX      0x20
 
-static int_32   UnrollCount( block *loop_tail, bool_ *clean, bool_ *complete )
+static int_32   UnrollCount( block *loop_tail, bool *clean, bool *complete )
 /***************************************************************************
  * Figure out how many times we want to unroll the given loop.
  */
@@ -329,7 +329,7 @@ static int_32   UnrollCount( block *loop_tail, bool_ *clean, bool_ *complete )
 }
 
 #if 0
-static  bool_    ReplaceName( name **pop, name *orig, name *new_name )
+static  bool    ReplaceName( name **pop, name *orig, name *new_name )
 /********************************************************************
  * Replace all occurrences of orig in *pop with new and return the new name.
  */
@@ -465,7 +465,7 @@ static  void    ChainTwoLoops( loop_abstract *first, loop_abstract *last )
     last->head->u.loop = first->tail;
 }
 
-static  block   *DoUnroll( block *tail, int_32 reps, bool_ replace_vars )
+static  block   *DoUnroll( block *tail, int_32 reps, bool replace_vars )
 /***********************************************************************
  * Unroll the given loop (this is the tail block, and loop is connected
  * through blk->u.loop to the head, in which blk->u.loop == NULL) reps
@@ -538,7 +538,7 @@ static  block   *DoUnroll( block *tail, int_32 reps, bool_ replace_vars )
     return( next_block );
 }
 
-static  bool_    TractableCond( loop_condition *cond )
+static  bool    TractableCond( loop_condition *cond )
 /****************************************************
  * To be a nice conditional exit (one we can munge) we need a comparison
  * between an induction variable and a loop-invariant expression. If these
@@ -546,7 +546,7 @@ static  bool_    TractableCond( loop_condition *cond )
  * return false, the values of cond are guaranteed to be irrelevant junk.
  */
 {
-    bool_        ok;
+    bool        ok;
     induction   *tmp;
     int_32      plus;
 //    bool        exit_true;
@@ -727,7 +727,7 @@ static  int     ExitEdges( block *head )
     return( count );
 }
 
-bool_    CanHoist( block *head )
+bool    CanHoist( block *head )
 /******************************
  * Figure out if we can hoist the condition of a loop to the top of
  * the loop. Basically, we can do this as long as there are no
@@ -1067,7 +1067,7 @@ static  void    MakeWorldGoAround( block *loop, loop_abstract *cleanup_copy, loo
      */
 }
 
-bool_    Hoisted( block *head, instruction *compare )
+bool    Hoisted( block *head, instruction *compare )
 {
 #if 0
     if( CanHoist( head ) ) {
@@ -1085,7 +1085,7 @@ bool_    Hoisted( block *head, instruction *compare )
     return( false );
 }
 
-bool_    UnRoll( void )
+bool    UnRoll( void )
 /*********************
  * Unroll the given loop n times.
  */
@@ -1093,7 +1093,7 @@ bool_    UnRoll( void )
     loop_condition      cond;
     block               *last;
     int_32              unroll_count;
-    bool_                one_cond;
+    bool                one_cond;
     loop_abstract       cleanup_copy;
 
     if( _IsBlkAttr( loopopts_state().Head, BLK_DONT_UNROLL ) )

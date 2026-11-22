@@ -31,6 +31,6 @@
 
 extern ins_entry    *NewInstr( any_oc *oc );
 extern void         FreeInstr( ins_entry *instr );
-extern bool_         InstrFrlFree( void );
+extern bool         InstrFrlFree( void );
 extern label_handle AddNewLabel( ins_entry *new_, obj_length align );
 extern void         AddNewJump( ins_entry *new_, label_handle lbl );

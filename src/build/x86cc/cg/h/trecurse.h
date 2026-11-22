@@ -32,4 +32,4 @@
 
 extern void     TRAddParm( instruction *call_ins, instruction *parm_ins );
 extern void     TRDeclareParm( instruction *parm_ins );
-extern bool_     TailRecursion( void );
+extern bool     TailRecursion( void );

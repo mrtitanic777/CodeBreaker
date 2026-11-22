@@ -30,7 +30,7 @@
 ****************************************************************************/
 
 
-extern bool_    PropRegsOne( void );
+extern bool    PropRegsOne( void );
 extern void    SetCSEBits( instruction *ins, instruction *new_ins );
-extern bool_    PropagateMoves( void );
-extern bool_    CommonSex( bool_ leave_indvars_alone );
+extern bool    PropagateMoves( void );
+extern bool    CommonSex( bool leave_indvars_alone );

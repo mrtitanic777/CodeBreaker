@@ -63,7 +63,7 @@ typedef char        *SEGADDR_T; /* contains actual pointer to block of memory */
 
 typedef struct seg_info {
     SEGADDR_T           index;          /* segment #, EMS page #, disk seek # */
-    boolbit             allocated : 1;  /* 1 => has been allocated */
+    bool             allocated : 1;  /* 1 => has been allocated */
 } seg_info;
 
 

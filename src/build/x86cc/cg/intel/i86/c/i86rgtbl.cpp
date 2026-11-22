@@ -652,7 +652,7 @@ hw_reg_set      StructReg( void )
 }
 
 
-hw_reg_set  ReturnReg( type_class_def type_class, bool_ use_87 )
+hw_reg_set  ReturnReg( type_class_def type_class, bool use_87 )
 /*************************************************************/
 {
     const hw_reg_set    *list;
@@ -683,7 +683,7 @@ reg_set_index   NoSegments( reg_set_index regs_idx )
 }
 
 
-reg_set_index   IndexIntersect( reg_set_index curr, type_class_def type_class, bool_ is_temp_index )
+reg_set_index   IndexIntersect( reg_set_index curr, type_class_def type_class, bool is_temp_index )
 /*************************************************************************************************/
 {
     if( is_temp_index ) {
@@ -695,7 +695,7 @@ reg_set_index   IndexIntersect( reg_set_index curr, type_class_def type_class, b
 }
 
 
-bool_    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool_ is_temp_index )
+bool    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool is_temp_index )
 /*********************************************************************************/
 {
     const hw_reg_set    *list;
@@ -741,7 +741,7 @@ type_class_def  RegClass( hw_reg_set regs )
 }
 
 
-bool_    IndexRegOk( hw_reg_set reg, bool_ is_temp_index )
+bool    IndexRegOk( hw_reg_set reg, bool is_temp_index )
 /******************************************************/
 {
     const hw_reg_set    *list;
@@ -762,7 +762,7 @@ bool_    IndexRegOk( hw_reg_set reg, bool_ is_temp_index )
 }
 
 
-bool_    IsSegReg( hw_reg_set regs )
+bool    IsSegReg( hw_reg_set regs )
 /*********************************/
 {
     hw_reg_set  tmp;
@@ -907,7 +907,7 @@ hw_reg_set      FullReg( hw_reg_set regs )
 }
 
 
-bool_    IsRegClass( hw_reg_set regs, type_class_def type_class )
+bool    IsRegClass( hw_reg_set regs, type_class_def type_class )
 /**************************************************************/
 {
     const hw_reg_set    *list;
@@ -952,7 +952,7 @@ hw_reg_set      FixedRegs( void )
 }
 
 
-bool_    IsStackReg( name *sp )
+bool    IsStackReg( name *sp )
 /****************************/
 {
     if( sp == NULL )

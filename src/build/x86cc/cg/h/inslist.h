@@ -125,7 +125,7 @@ typedef struct instruction {
         struct {
             union {
                 cond_dst_idx    dest_idx;
-                bool_            bool_flag;
+                bool            bool_flag;
                 call_flags      call_flags;
                 nop_flags       nop_flags;
                 byte            zap_value;      /* for conversions on AXP */

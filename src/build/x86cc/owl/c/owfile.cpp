@@ -204,7 +204,7 @@ static void resolveLabelNames( owl_file_handle file ) {
     }
 }
 
-static bool_ comdefSection( owl_section_handle section )
+static bool comdefSection( owl_section_handle section )
 //*****************************************************
 {
     if( section->type & OWL_SEC_ATTR_COMDAT ) {

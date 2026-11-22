@@ -120,7 +120,7 @@ static  void    PullQueue( void )
 }
 
 
-static  bool_    LDone( any_oc *oc )
+static  bool    LDone( any_oc *oc )
 /*********************************/
 {
     label_handle    lbl;
@@ -178,7 +178,7 @@ void    InputOC( any_oc *oc )
 }
 
 
-bool_    ShrinkQueue( pointer_uint size )
+bool    ShrinkQueue( pointer_uint size )
 /**************************************/
 {
     pointer_uint    freed;

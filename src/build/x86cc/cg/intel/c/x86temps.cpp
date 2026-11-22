@@ -169,7 +169,7 @@ void    RelocParms( void )
 }
 
 
-bool_    TempAllocBefore( void *t1, void *t2 )
+bool    TempAllocBefore( void *t1, void *t2 )
 /*******************************************/
 {
     if( (((name *)t1)->t.temp_flags & USED_AS_FD) && (((name *)t2)->t.temp_flags & USED_AS_FD) == 0 ) {

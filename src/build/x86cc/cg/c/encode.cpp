@@ -94,7 +94,7 @@ void    CodeLabel( label_handle label, unsigned align )
 #endif
 }
 
-void    CodeLineNumber( cg_linenum line, bool_ label_line )
+void    CodeLineNumber( cg_linenum line, bool label_line )
 /*********************************************************
     Dump a line number into the queue
 */

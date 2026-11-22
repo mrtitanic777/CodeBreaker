@@ -122,7 +122,7 @@ static cmp_result CheckCmpRange( cg_op opcode, int op_type, float_handle cf )
     signed_64           high;
     signed_64           val;
     rel_op              rel;
-    bool_                rev_ret = false;
+    bool                rev_ret = false;
 
     /* Map cg rel ops to equivalent cases */
     switch( opcode ) {
@@ -761,7 +761,7 @@ tn      FoldRShift( tn left, tn rite, const type_def *tipe )
         rv = rite->u.name->c.u.cfval;
         ri = CFConvertByType( rv, tipe );
         if( left->class_ == TN_CONS ) {
-            bool_    done = false;
+            bool    done = false;
 
             if( ri >= (tipe->length * 8) ) {
                 if( tipe->attr & TYPE_SIGNED ) {
@@ -1285,7 +1285,7 @@ float_handle CnvCFToType( float_handle cf, const type_def *tipe )
     return( cf );
 }
 
-static  tn      FindBase( tn tree, bool_ op_eq )
+static  tn      FindBase( tn tree, bool op_eq )
 /*********************************************/
 {
     type_attr           child_attr;
@@ -1330,7 +1330,7 @@ static  void    BurnToBase( tn root, tn base )
     }
 }
 
-static bool_ IsObjectAddr( tn tree )
+static bool IsObjectAddr( tn tree )
 /*********************************/
 {
     if( tree->class_ == TN_LEAF && tree->u.addr->format == NF_ADDR ) {
@@ -1356,7 +1356,7 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
     float_handle    rv;
     tn              base_r;
     tn              base_l;
-    bool_            op_eq;
+    bool            op_eq;
 
     if( left->class_ == TN_CONS ) {
         temp = left;
@@ -1501,7 +1501,7 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
     return( NULL );
 }
 
-static  bool_    SimpleLeaf( tn tree )
+static  bool    SimpleLeaf( tn tree )
 /***********************************/
 {
     if( tree->class_ == TN_UNARY && tree->u1.t.op == O_POINTS ) {
@@ -1574,7 +1574,7 @@ tn      FoldPostGetsCompare( cg_op opcode, tn left, tn rite, const type_def *tip
 /* routines above here are called while building the tree */
 /* routines below here are called while tearing the tree apart */
 
-static  an Flip( an name, bool_ op_false, bool_ op_true )
+static  an Flip( an name, bool op_false, bool op_true )
 /*****************************************************/
 {
     label_handle    *temp;
@@ -1668,10 +1668,10 @@ an FoldConsCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
 }
 
 
-bool_    FoldIfTrue( tn left, label_handle lbl )
+bool    FoldIfTrue( tn left, label_handle lbl )
 /*****************************************************/
 {
-    bool_        folded;
+    bool        folded;
 
     folded = false;
     if( left->class_ == TN_CONS ) {
@@ -1685,10 +1685,10 @@ bool_    FoldIfTrue( tn left, label_handle lbl )
 }
 
 
-bool_    FoldIfFalse( tn left, label_handle lbl )
+bool    FoldIfFalse( tn left, label_handle lbl )
 /******************************************************/
 {
-    bool_        folded;
+    bool        folded;
 
     folded = false;
     if( left->class_ == TN_CONS ) {

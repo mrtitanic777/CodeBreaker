@@ -54,5 +54,5 @@ extern  float_handle CnvCFToType( float_handle cf, const type_def *tipe );
 extern  tn      FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe );
 extern  tn      FoldPostGetsCompare( cg_op opcode, tn left, tn rite, const type_def *tipe );
 extern  an      FoldConsCompare( cg_op opcode, tn left, tn rite, const type_def *tipe );
-extern  bool_    FoldIfTrue( tn left, label_handle lbl );
-extern  bool_    FoldIfFalse( tn left, label_handle lbl );
+extern  bool    FoldIfTrue( tn left, label_handle lbl );
+extern  bool    FoldIfFalse( tn left, label_handle lbl );

@@ -323,7 +323,7 @@ typedef struct {
     jmp_buf             exception_handler;
     dw_langnum          language;
     dw_cm               compiler_options;
-    bool_                big_endian;
+    bool                big_endian;
 } dw_init_info;
 
 /* compilation units */

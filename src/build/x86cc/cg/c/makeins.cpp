@@ -62,7 +62,7 @@ void    InitIns( void )
 }
 
 
-bool_    InsFrlFree( void )
+bool    InsFrlFree( void )
 /******************************
  * Free up the "instruction" free list.
  */

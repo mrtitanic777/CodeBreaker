@@ -139,7 +139,7 @@ name    *AddrConst( name *value, segment_id segid, constant_type_class const_typ
     }
 }
 
-bool_    SegIsCS( name *op ) {
+bool    SegIsCS( name *op ) {
 /*************************************/
 
     hw_reg_set  segreg;
@@ -151,7 +151,7 @@ bool_    SegIsCS( name *op ) {
 }
 
 
-bool_    SegIsSS( name *op ) {
+bool    SegIsSS( name *op ) {
 /*************************************/
 
     hw_reg_set  segreg;
@@ -286,7 +286,7 @@ cg_type NamePtrType( name *op ) {
 }
 
 
-  bool_    SegOver( name *op ) {
+  bool    SegOver( name *op ) {
 /*************************************/
 
     segment_id  segid;
@@ -328,7 +328,7 @@ cg_type NamePtrType( name *op ) {
 }
 
 
-bool_    LoadAToMove( instruction *ins ) {
+bool    LoadAToMove( instruction *ins ) {
 /***********************************************/
 
     segment_id  segid;
@@ -354,7 +354,7 @@ bool_    LoadAToMove( instruction *ins ) {
     return( true );
 }
 
-bool_                     IsUncacheableMemory( name *opnd )
+bool                     IsUncacheableMemory( name *opnd )
 /*
     Return true if we don't want to cache the global piece of memory
     represented by opnd in a register - this could be dangerous if the

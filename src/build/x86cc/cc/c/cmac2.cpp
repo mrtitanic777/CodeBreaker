@@ -110,7 +110,7 @@ struct  cpp_info {              /* C Pre-processor information */
     source_loc      src_loc;
     FNAMEPTR        flist;
     enum pp_types   cpp_type;
-    bool_            processing;
+    bool            processing;
 };
 
 
@@ -147,7 +147,7 @@ static void WantEOL( void )
 }
 
 
-static void IncLevel( bool_ value )
+static void IncLevel( bool value )
 {
     struct cpp_info *cpp;
 
@@ -210,7 +210,7 @@ static void PreProcStmt( void )
 
 TOKEN CheckControl( void )
 {
-    bool_        lines_skipped;
+    bool        lines_skipped;
     ppctl_t     old_ppctl;
     TOKEN       token;
 
@@ -295,7 +295,7 @@ static void CIdent( void )
 
 void CInclude( void )
 {
-    bool_        in_macro;
+    bool        in_macro;
     char        buf[82];
 
     if( cvars_state().PCH_FileName != NULL && !cvars_state().CompFlags.make_precompiled_header ) {
@@ -488,7 +488,7 @@ MEPTR MacroScan( void )
     MPPTR           formal_parms;
     int             parm_count;
     macro_flags     mflags;
-    bool_            ppscan_mode;
+    bool            ppscan_mode;
     char            *token_buf;
     source_loc      macro_loc;
     MEPTR           mentry;
@@ -626,7 +626,7 @@ static void CIfNDef( void )
 
 static void CIf( void )
 {
-    bool_    value;
+    bool    value;
 
     PPCTL_ENABLE_LEX_ERRORS();
     PPCTL_ENABLE_MACROS();
@@ -641,7 +641,7 @@ static void CIf( void )
 
 static void CElif( void )
 {
-    bool_    value;
+    bool    value;
 
     PPCTL_ENABLE_LEX_ERRORS();
     PPCTL_ENABLE_MACROS();
@@ -719,12 +719,12 @@ static void CEndif( void )
     WantEOL();
 }
 
-bool_ MacroDel( const char *name )
+bool MacroDel( const char *name )
 /*******************************/
 {
     MEPTR           mentry;
     MEPTR           prev_mentry;
-    bool_            ret;
+    bool            ret;
     mac_hash_idx    hash;
 
     ret = false;

@@ -75,8 +75,8 @@ typedef struct owl_x86_abs_patch {
     struct owl_x86_abs_patch *next;
     owl_x86_patch             patch;
     long_offset               value;
-    bool_                      have_value;
-    bool_                      have_offset;
+    bool                      have_value;
+    bool                      have_offset;
 } owl_x86_abs_patch;
 
 namespace {
@@ -264,7 +264,7 @@ static void freeAbsPatch( owl_x86_abs_patch *patch )
     CGFree( patch );
 }
 
-static owl_reloc_type relocType( fix_class class_, bool_ relative )
+static owl_reloc_type relocType( fix_class class_, bool relative )
 {
     if( class_ & (F_TLS | F_FAR16) ) {
         owlUnsupported( "OWL x86 MVP does not support TLS or far16 relocations" );
@@ -279,7 +279,7 @@ static owl_reloc_type relocType( fix_class class_, bool_ relative )
     }
 }
 
-static bool_ inlineFunction( cg_sym_handle sym )
+static bool inlineFunction( cg_sym_handle sym )
 {
     if( FEAttr( sym ) & FE_PROC ) {
         if( FindAuxInfoSym( sym, FEINF_CALL_BYTES ) != NULL
@@ -307,7 +307,7 @@ static void owlInitSegDefs( void )
     x86owl_state().PendingLine = 0;
 }
 
-static bool_ owlFreeObjCache( void ) { return( false ); }
+static bool owlFreeObjCache( void ) { return( false ); }
 static segment_id owlAskOP( void ) { return( x86owl_state().CurrSection == NULL ? UNDEFSEG : x86owl_state().CurrSection->segid ); }
 
 static void owlSetOP( segment_id segid )
@@ -330,7 +330,7 @@ static segment_id owlChangeOP( segment_id segid )
     return( old );
 }
 
-static void owlDefSegment( segment_id segid, seg_attr attr, const char *name, uint align, bool_ use_16 )
+static void owlDefSegment( segment_id segid, seg_attr attr, const char *name, uint align, bool use_16 )
 {
     owl_x86_section *section;
     owl_section_type type;
@@ -384,38 +384,38 @@ static void owlObjInit( void )
 }
 
 static offset owlAskLocation( void ) { return( OWLTellLocation( x86owl_state().CurrSection->handle ) ); }
-static void owlChkDbgSegSize( offset max, bool_ typing ) { (void)max; (void)typing; }
+static void owlChkDbgSegSize( offset max, bool typing ) { (void)max; (void)typing; }
 
-static bool_ owlUseImportForm( fe_attr attr )
+static bool owlUseImportForm( fe_attr attr )
 {
     if( attr & (FE_GLOBAL | FE_IMPORT) )
         return( true );
     return( (attr & FE_INTERNAL) == 0 );
 }
 
-static bool_ owlSegIsNear( segment_id segid ) { return( findSection( segid ) != NULL ); }
-static bool_ owlSegIsBlank( segment_id segid )
+static bool owlSegIsNear( segment_id segid ) { return( findSection( segid ) != NULL ); }
+static bool owlSegIsBlank( segment_id segid )
 {
     owl_section_type type = OWLTellSectionType( findSection( segid )->handle );
     return( type == OWL_SECTION_BSS || type == OWL_SECTION_COMDAT_BSS );
 }
-static bool_ owlSegIsPrivate( segment_id segid )
+static bool owlSegIsPrivate( segment_id segid )
 {
     owl_x86_section *section = findSection( segid );
     return( section == NULL || (section->attr & (PRIVATE | EXEC)) != 0 );
 }
-static bool_ owlSegIsROM( segment_id segid )
+static bool owlSegIsROM( segment_id segid )
 {
     owl_x86_section *section = findSection( segid );
     return( section != NULL && (section->attr & ROM) != 0 );
 }
 static segment_id owlAskBackSeg( void ) { return( x86owl_state().DataSectionId ); }
 static segment_id owlAskCodeSeg( void ) { return( x86owl_state().CodeSectionId ); }
-static bool_ owlHaveCodeSeg( void ) { return( x86owl_state().CodeSectionId != BACKSEGS ); }
+static bool owlHaveCodeSeg( void ) { return( x86owl_state().CodeSectionId != BACKSEGS ); }
 static segment_id owlAskAltCodeSeg( void ) { return( x86owl_state().CodeSectionId ); }
 static segment_id owlAskCode16Seg( void ) { owlUnsupported( "OWL x86 has no 16-bit code section" ); return( UNDEFSEG ); }
-static void owlOutSelect( bool_ starts ) { (void)starts; }
-static void owlSetUpObj( bool_ is_data ) { (void)is_data; }
+static void owlOutSelect( bool starts ) { (void)starts; }
+static void owlSetUpObj( bool is_data ) { (void)is_data; }
 static void owlFlushOP( segment_id segid ) { (void)segid; }
 
 static void owlDefaultLibs( void )
@@ -552,7 +552,7 @@ static void owlObjFini( void )
     CloseObj();
 }
 
-static bool_ owlSymIsExported( cg_sym_handle sym )
+static bool owlSymIsExported( cg_sym_handle sym )
 {
     return( sym != NULL && ((FEAttr( sym ) & FE_DLLEXPORT) != 0
         || ((call_class)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS ) & FECALL_GEN_DLL_EXPORT) != 0) );
@@ -654,7 +654,7 @@ static void owlOutAbsPatch( abs_patch *handle, patch_attr attr )
     else owlOutDataByte( value );
 }
 
-static void owlOutReloc( segment_id segid, fix_class class_, bool_ relative )
+static void owlOutReloc( segment_id segid, fix_class class_, bool relative )
 {
     owl_x86_section *target = findSection( segid );
     if( target == NULL )
@@ -662,18 +662,18 @@ static void owlOutReloc( segment_id segid, fix_class class_, bool_ relative )
     OWLEmitReloc( x86owl_state().CurrSection->handle, owlAskLocation(), target->base_symbol, relocType( class_, relative ) );
 }
 
-static void owlOutSpecialCommon( import_handle handle, fix_class class_, bool_ relative )
+static void owlOutSpecialCommon( import_handle handle, fix_class class_, bool relative )
 {
     (void)handle; (void)class_; (void)relative;
     owlUnsupported( "conditional/common import handles are not implemented by the OWL x86 MVP" );
 }
 
-static void owlOutImport( cg_sym_handle sym, fix_class class_, bool_ relative )
+static void owlOutImport( cg_sym_handle sym, fix_class class_, bool relative )
 {
     OWLEmitReloc( x86owl_state().CurrSection->handle, owlAskLocation(), symbolHandle( sym ), relocType( class_, relative ) );
 }
 
-static void owlOutRTImportRel( rt_class index, fix_class class_, bool_ relative )
+static void owlOutRTImportRel( rt_class index, fix_class class_, bool relative )
 {
     owl_symbol_handle symbol = OWLSymbolInit( x86owl_state().OwlFile, AskRTName( index ) );
     OWLEmitReloc( x86owl_state().CurrSection->handle, owlAskLocation(), symbol, relocType( class_, relative ) );
@@ -684,7 +684,7 @@ static void owlOutRTImport( rt_class index, fix_class class_ )
     owlOutRTImportRel( index, class_, F_CLASS( class_ ) == F_OFFSET || F_CLASS( class_ ) == F_LDR_OFFSET );
 }
 
-static void owlOutBckExport( const char *name, bool_ is_export )
+static void owlOutBckExport( const char *name, bool is_export )
 {
     owl_symbol_handle symbol = OWLSymbolInit( x86owl_state().OwlFile, name );
     OWLEmitLabel( x86owl_state().CurrSection->handle, symbol, OWL_TYPE_OBJECT, OWL_SYM_GLOBAL );
@@ -700,7 +700,7 @@ static void owlOutBckImport( const char *name, back_handle bck, fix_class class_
     OWLEmitReloc( x86owl_state().CurrSection->handle, owlAskLocation(), symbol, relocType( class_, false ) );
 }
 
-static void owlOutLineNum( cg_linenum line, bool_ label_line ) { (void)label_line; x86owl_state().PendingLine = line; }
+static void owlOutLineNum( cg_linenum line, bool label_line ) { (void)label_line; x86owl_state().PendingLine = line; }
 static unsigned owlSavePendingLine( unsigned line ) { unsigned old = x86owl_state().PendingLine; x86owl_state().PendingLine = line; return( old ); }
 static void owlOutBytes( unsigned len, const byte *src ) { if( len != 0 ) OWLEmitData( x86owl_state().CurrSection->handle, (const char *)src, len ); }
 
@@ -716,7 +716,7 @@ static void owlOutIterated( byte pattern, offset len )
     }
 }
 
-static bool_ owlNeedBaseSet( void ) { return( false ); }
+static bool owlNeedBaseSet( void ) { return( false ); }
 static offset owlAskMaxSize( void ) { return( OWLTellSize( x86owl_state().CurrSection->handle ) ); }
 static long_offset owlAskBigLocation( void ) { return( OWLTellLocation( x86owl_state().CurrSection->handle ) ); }
 static long_offset owlAskBigMaxSize( void ) { return( OWLTellSize( x86owl_state().CurrSection->handle ) ); }
@@ -747,7 +747,7 @@ static segment_id owlAskSegID( pointer handle, cg_class class_ )
     }
 }
 
-static bool_ owlNameIsCode( pointer handle, cg_class class_ )
+static bool owlNameIsCode( pointer handle, cg_class class_ )
 {
     switch( class_ ) {
     case CG_FE: return( (FEAttr( static_cast<cg_sym_handle>(handle) ) & FE_PROC) != 0 );
@@ -758,7 +758,7 @@ static bool_ owlNameIsCode( pointer handle, cg_class class_ )
     }
 }
 
-static bool_ owlNameIsROM( pointer handle, cg_class class_ ) { return( owlSegIsROM( owlAskSegID( handle, class_ ) ) ); }
+static bool owlNameIsROM( pointer handle, cg_class class_ ) { return( owlSegIsROM( owlAskSegID( handle, class_ ) ) ); }
 
 const x86_obj_emitter X86OwlEmitter = {
     owlInitSegDefs,

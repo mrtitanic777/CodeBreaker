@@ -37,7 +37,7 @@
 
 /* i87exp.c*/
 extern instruction      *PrefFLDOp( instruction *ins, operand_type op, name *opnd );
-extern bool_             FPResultNotNeeded( instruction *ins );
+extern bool             FPResultNotNeeded( instruction *ins );
 extern instruction      *SuffFSTPRes( instruction *ins, name *opnd, result_type res );
 extern instruction      *SuffFXCH( instruction *ins, int i );
 extern instruction      *PrefFXCH( instruction *ins, int i );
@@ -63,7 +63,7 @@ extern void             SetFPPatchType( fp_patches type );
 extern void             FPPatchTypeRef( void );
 
 /* i87sched.c */
-extern bool_             FPInsIntroduced( instruction * );
+extern bool             FPInsIntroduced( instruction * );
 
 /* i87wait.c */
 extern void             Wait8087( void );

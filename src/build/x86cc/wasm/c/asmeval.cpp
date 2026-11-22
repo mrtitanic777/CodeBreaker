@@ -47,12 +47,12 @@ namespace {
 struct AsmevalState {
     struct {
         token_idx           idx;
-        bool_                close_bracket;
+        bool                close_bracket;
     } TakeOut[MAX_TOKEN_COUNT + 1];
     token_idx TokCnt;
     asm_tok Store[MAX_TOKEN_COUNT + 1];
     int op_sq_bracket_level;
-    bool_ error_msg;
+    bool error_msg;
 };
 
 }  // namespace
@@ -65,7 +65,7 @@ typedef enum process_flag {
     PROC_OPERAND
 } process_flag;
 
-static bool_ evaluate( expr_list *, token_buffer *tokbuf, token_idx *, token_idx, process_flag, bool_ (*)(token_buffer *, token_idx) );
+static bool evaluate( expr_list *, token_buffer *tokbuf, token_idx *, token_idx, process_flag, bool (*)(token_buffer *, token_idx) );
 
 static void init_expr( expr_list *new_ )
 /*************************************/
@@ -228,7 +228,7 @@ static int get_precedence( token_buffer *tokbuf, token_idx i )
     return( -1 );
 }
 
-static bool_ get_operand( expr_list *new_, token_buffer *tokbuf, token_idx *start, token_idx end, bool_ (*is_expr)(token_buffer *, token_idx) )
+static bool get_operand( expr_list *new_, token_buffer *tokbuf, token_idx *start, token_idx end, bool (*is_expr)(token_buffer *, token_idx) )
 /******************************************************************************************************************************************/
 {
     const char      *ptr;
@@ -429,7 +429,7 @@ static bool_ get_operand( expr_list *new_, token_buffer *tokbuf, token_idx *star
     return( RC_OK );
 }
 
-static bool_ is_optr( token_buffer *tokbuf, token_idx i )
+static bool is_optr( token_buffer *tokbuf, token_idx i )
 /*******************************************************
  * determine if it is an operator
  */
@@ -450,7 +450,7 @@ static bool_ is_optr( token_buffer *tokbuf, token_idx i )
     return( true );
 }
 
-static bool_ is_unary( token_buffer *tokbuf, token_idx i, bool_ sign )
+static bool is_unary( token_buffer *tokbuf, token_idx i, bool sign )
 /*******************************************************************
  * determine if it is an unary operand
  */
@@ -504,7 +504,7 @@ static bool_ is_unary( token_buffer *tokbuf, token_idx i, bool_ sign )
     return( false );
 }
 
-static bool_ cmp_token_cls( token_buffer *tokbuf, token_idx i, tok_class cls )
+static bool cmp_token_cls( token_buffer *tokbuf, token_idx i, tok_class cls )
 /****************************************************************************
  * compare tokbuf->tokens[i] and tok
  */
@@ -512,14 +512,14 @@ static bool_ cmp_token_cls( token_buffer *tokbuf, token_idx i, tok_class cls )
     return( tokbuf->tokens[i].class_ == cls );
 }
 
-static bool_ check_same( expr_list *tok_1, expr_list *tok_2, exprtype type )
+static bool check_same( expr_list *tok_1, expr_list *tok_2, exprtype type )
 /*************************************************************************/
 /* Check if both tok_1 and tok_2 equal type */
 {
     return( tok_1->type == type && tok_2->type == type );
 }
 
-static bool_ check_both( expr_list *tok_1, expr_list *tok_2, exprtype type1, exprtype type2 )
+static bool check_both( expr_list *tok_1, expr_list *tok_2, exprtype type1, exprtype type2 )
 /******************************************************************************************/
 /* Check if tok_1 == type1 and tok_2 == type2 or vice versa */
 {
@@ -608,14 +608,14 @@ static void fix_struct_value( expr_list *token )
 #endif
 }
 
-static bool_ check_direct_reg( expr_list *token_1, expr_list *token_2 )
+static bool check_direct_reg( expr_list *token_1, expr_list *token_2 )
 /********************************************************************/
 {
     return( ( token_1->type == EXPR_REG ) && !token_1->indirect
         || ( token_2->type == EXPR_REG ) && !token_2->indirect );
 }
 
-static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *tokbuf, token_idx index )
+static bool calculate( expr_list *token_1, expr_list *token_2, token_buffer *tokbuf, token_idx index )
 /*****************************************************************************************************
  * Perform the operation between token_1 and token_2
  */
@@ -1433,19 +1433,19 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
     return( RC_OK );
 }
 
-static bool_ evaluate(
+static bool evaluate(
     expr_list *operand1,
     token_buffer *tokbuf,
     token_idx *i,
     token_idx end,
     process_flag proc_flag,
-    bool_ (*is_expr)(token_buffer *, token_idx) )
+    bool (*is_expr)(token_buffer *, token_idx) )
 /**********************************************/
 {
     expr_list           operand2;
-    bool_                token_needed;
+    bool                token_needed;
     token_idx           curr_operator;
-    bool_                next_operator;
+    bool                next_operator;
     int                 op_sq_bracket;
 
     token_needed = false;
@@ -1675,7 +1675,7 @@ static bool_ evaluate(
     return( RC_OK );
 }
 
-static bool_ is_expr1( token_buffer *tokbuf, token_idx i )
+static bool is_expr1( token_buffer *tokbuf, token_idx i )
 /********************************************************
  * Check if the token is part of an expression
  */
@@ -1767,7 +1767,7 @@ static bool_ is_expr1( token_buffer *tokbuf, token_idx i )
     return( false );
 }
 
-static bool_ is_expr2( token_buffer *tokbuf, token_idx i )
+static bool is_expr2( token_buffer *tokbuf, token_idx i )
 /*******************************************************/
 /* Check if the token is part of an expression */
 {
@@ -1861,7 +1861,7 @@ static bool_ is_expr2( token_buffer *tokbuf, token_idx i )
     return( false );
 }
 
-static bool_ fix_parens( token_buffer *tokbuf )
+static bool fix_parens( token_buffer *tokbuf )
 /*********************************************
  * Take out those brackets which may surround a non-expression, e.g.
  * Right now only 'dup' requires a pair of parentheses, which should be
@@ -1920,7 +1920,7 @@ static token_idx fix( expr_list *res, token_buffer *tokbuf, token_idx start, tok
     token_idx           i;
     token_idx           old_start;
 //    int                 old_end;
-    bool_                need_number;
+    bool                need_number;
 
     MakeConst( res );
     if( res->type == EXPR_CONST ) {
@@ -2179,13 +2179,13 @@ static void fix_final( token_buffer *tokbuf )
     }
 }
 
-token_idx EvalExpr( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok, bool_ flag_msg )
+token_idx EvalExpr( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok, bool flag_msg )
 /***********************************************************************************************/
 {
     token_idx   i;
     token_idx   start;          // position of first token of an expression
     token_idx   num;            // number of tokens in the expression
-    bool_        final;
+    bool        final;
     expr_list   result;
     token_idx   count;
 
@@ -2254,12 +2254,12 @@ token_idx EvalExpr( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok
     return( asmeval_state().TokCnt );
 }
 
-bool_ EvalOperand( token_buffer *tokbuf, token_idx *start_tok, token_idx count, expr_list *result, bool_ flag_msg )
+bool EvalOperand( token_buffer *tokbuf, token_idx *start_tok, token_idx count, expr_list *result, bool flag_msg )
 /***************************************************************************************************************/
 {
     token_idx   i = *start_tok;
     token_idx   num;            // number of tokens in the expression
-    bool_        rc;
+    bool        rc;
 
     init_expr( result );
     if( tokbuf->tokens[i].class_ == TC_FINAL )
@@ -2293,7 +2293,7 @@ bool_ EvalOperand( token_buffer *tokbuf, token_idx *start_tok, token_idx count, 
 }
 
 #if 0
-static bool_ is_expr_const( token_idx i )
+static bool is_expr_const( token_idx i )
 /********************************/
 /* Check if the token is part of constant expression */
 {
@@ -2356,7 +2356,7 @@ static bool_ is_expr_const( token_idx i )
 
 #if defined( _STANDALONE_ )
 
-token_idx EvalConstant( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok, bool_ flag_msg )
+token_idx EvalConstant( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok, bool flag_msg )
 /***************************************************************************************************/
 {
     token_idx   i;

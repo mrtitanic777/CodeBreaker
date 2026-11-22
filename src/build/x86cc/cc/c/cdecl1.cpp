@@ -239,7 +239,7 @@ static void BeginFunc( void )
     }
 }
 
-bool_ CheckFuncMain( const char *name )
+bool CheckFuncMain( const char *name )
 {
     switch( checkMain( name ) ) {
     case MAIN_MAIN:

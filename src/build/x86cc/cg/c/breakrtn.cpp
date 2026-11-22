@@ -56,7 +56,7 @@ struct BreakrtnState {
     block *Break;
     edge_list *BranchOuts;
     block *Tail = { NULL };
-    bool_ HaveBreak = { false };
+    bool HaveBreak = { false };
 };
 
 }  // namespace
@@ -77,7 +77,7 @@ static void     FreeBranchOuts( void )
 }
 
 
-bool_    CreateBreak( void )
+bool    CreateBreak( void )
 /*************************/
 {
     block       *blk;
@@ -293,7 +293,7 @@ block   *TailBlocks( void )
     return( breakrtn_state().Tail );
 }
 
-bool_    BreakExists( void )
+bool    BreakExists( void )
 /*************************/
 {
     return( breakrtn_state().HaveBreak );

@@ -36,7 +36,7 @@
 
 #define MAX_ASM_LINE_LEN 511
 
-static bool_ EndOfAsmStmt( void )
+static bool EndOfAsmStmt( void )
 /******************************/
 {
     if( cvars_state().CurToken == T_SEMI_COLON ) {
@@ -97,7 +97,7 @@ static void GetAsmLine( void )
 void AsmStmt( void )
 /******************/
 {
-    bool_            too_many_bytes;
+    bool            too_many_bytes;
     unsigned char   buff[MAXIMUM_BYTESEQ + ASM_BLOCK];
     TOKEN           skip_token;
     ppctl_t         old_ppctl;

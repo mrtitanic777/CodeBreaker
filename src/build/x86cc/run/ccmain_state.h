@@ -21,6 +21,6 @@
 
 /* the variables of ccmain_state.h, one set for each run of the compiler (run/cbrun.hpp) */
 struct CcmainState {
-    bool_ PrintWhiteSpace;   // also refered from cmac2.c
+    bool PrintWhiteSpace;   // also refered from cmac2.c
 };
 inline CcmainState& ccmain_state() { return cbrun_part<CcmainState>(); }

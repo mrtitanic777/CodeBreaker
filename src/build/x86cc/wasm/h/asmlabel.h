@@ -34,12 +34,12 @@
 
 #if defined( _STANDALONE_ )
 
-extern bool_             IsLabelStruct( const char * );
+extern bool             IsLabelStruct( const char * );
 extern void             PrepAnonLabels( void );
-extern bool_             LabelDirective( token_buffer *tokbuf, token_idx );
+extern bool             LabelDirective( token_buffer *tokbuf, token_idx );
 
 #endif
 
-extern bool_             MakeLabel( token_buffer *tokbuf, token_idx i, memtype );
+extern bool             MakeLabel( token_buffer *tokbuf, token_idx i, memtype );
 
 #endif

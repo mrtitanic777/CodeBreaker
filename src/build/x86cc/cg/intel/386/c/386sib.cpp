@@ -53,22 +53,22 @@ typedef struct sib_info {
 } sib_info;
 
 
-bool_ FoldIntoIndex( instruction *ins )
+bool FoldIntoIndex( instruction *ins )
 /************************************/
 {
     name        *cons;
-    bool_        is_base;
+    bool        is_base;
     name        *new_x;
     hw_reg_set  base_reg;
     hw_reg_set  other_reg;
     hw_reg_set  tmp;
     sib_info    sib;
-    bool_        dies;
-    bool_        modifies;
+    bool        dies;
+    bool        modifies;
     instruction *next;
     sib_info    *sib_head;
     sib_info    *curr_sib;
-    bool_        cons_add;
+    bool        cons_add;
 
     cons_add = false;
     if( ins->head.opcode == OP_LSHIFT ) {

@@ -75,7 +75,7 @@ typedef struct reg_tree {
         type_length             size;
         type_length             offset;
         byte                    idx; /* aka reg_set_index */
-        bool_                    has_name;
+        bool                    has_name;
 } reg_tree;
 
 typedef struct instruction_range {

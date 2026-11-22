@@ -52,7 +52,7 @@ struct DominateState {
 static inline DominateState& dominate_state() { return cbrun_part<DominateState>(); }
 
 
-static bool_             AssignDominatorBits( void )
+static bool             AssignDominatorBits( void )
 /*************************************************/
 {
     block       *blk;
@@ -74,7 +74,7 @@ static bool_             AssignDominatorBits( void )
     return( dominate_state().ReturnBlock != NULL );
 }
 
-bool_ CalcDominatorInfo( void )
+bool CalcDominatorInfo( void )
 /****************************/
 {
     block       *blk;
@@ -86,8 +86,8 @@ bool_ CalcDominatorInfo( void )
     dom_bit_set full_set;
     dom_bit_set old_dominator;
     dom_bit_set temp_bits;
-    bool_        change;
-    bool_        have_info;
+    bool        change;
+    bool        have_info;
 
     have_info = false;
     if( AssignDominatorBits() ) {

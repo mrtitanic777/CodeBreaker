@@ -31,10 +31,10 @@
 ****************************************************************************/
 
 
-extern bool_         FindShort( ins_entry *ins, ins_entry *end );
+extern bool         FindShort( ins_entry *ins, ins_entry *end );
 extern void         CloneCode( label_handle lbl );
 extern ins_entry    *IsolatedCode( ins_entry *instr );
-extern bool_         StraightenCode( ins_entry *jump );
+extern bool         StraightenCode( ins_entry *jump );
 extern void         CheckStraightenCode( ins_entry *lbl_ins );
 extern void         CallRet( ins_entry *instr );
 extern void         JmpRet( ins_entry *instr );

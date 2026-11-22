@@ -47,7 +47,7 @@ typedef struct block_entry {
     tryindex_t  parent_index;   /* TRY: parent index */
     TREEPTR     inc_var;        /* variable used in FOR statement */
     SYM_HANDLE  sym_list;       /* symbols defined in this block */
-    bool_        gen_endblock;   /* set if OPR_ENDBLOCK needed */
+    bool        gen_endblock;   /* set if OPR_ENDBLOCK needed */
 } BLOCKDEFN, *BLOCKPTR;
 
 /*
@@ -61,7 +61,7 @@ enum return_with {
 
 struct return_info {
     enum return_with    with;
-    bool_                with_expr;
+    bool                with_expr;
 };
 
 
@@ -301,9 +301,9 @@ static void Jump( LABEL_INDEX label )
 }
 
 
-static bool_ JumpFalse( TREEPTR expr, LABEL_INDEX label )
+static bool JumpFalse( TREEPTR expr, LABEL_INDEX label )
 {
-    bool_        jump_generated;
+    bool        jump_generated;
 
     jump_generated = false;
     if( expr->op.opr == OPR_PUSHINT ) {
@@ -343,7 +343,7 @@ void LookAhead( void )
 }
 
 
-static bool_ GrabLabels( void )
+static bool GrabLabels( void )
 {
     LABELPTR    label;
 
@@ -712,7 +712,7 @@ static void NewLoop( void )
 
 static void ForStmt( void )
 {
-    bool_    parsed_semi_colon = false;
+    bool    parsed_semi_colon = false;
 
     NextToken();
     MustRecog( T_LEFT_PAREN );
@@ -916,7 +916,7 @@ static SYM_HANDLE DummyTrySymbol( void )
 }
 
 
-static bool_ EndTry( void )
+static bool EndTry( void )
 {
     tryindex_t  parent_scope;
     TREEPTR     expr;
@@ -1141,7 +1141,7 @@ static void EndOfStmt( void )
 }
 
 
-static bool_ IsDeclarator( TOKEN token )
+static bool IsDeclarator( TOKEN token )
 {
     SYM_HANDLE      sym_handle;
     SYM_ENTRY       sym;
@@ -1196,9 +1196,9 @@ void Statement( void )
     LABEL_INDEX         end_of_func_label;
     SYM_HANDLE          func_result_handle;
     TREEPTR             tree;
-    bool_                return_at_outer_level;
-    bool_                skip_to_next_token;
-    bool_                declaration_allowed;
+    bool                return_at_outer_level;
+    bool                skip_to_next_token;
+    bool                declaration_allowed;
     struct return_info  return_info;
     SYM_ENTRY           sym;
 

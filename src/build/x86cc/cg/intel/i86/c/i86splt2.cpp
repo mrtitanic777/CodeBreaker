@@ -936,7 +936,7 @@ instruction     *rINTCOMP( instruction *ins )
     cond_dst_idx        true_idx;
     cond_dst_idx        false_idx;
     cond_dst_idx        first_idx;
-    bool_                rite_is_zero;
+    bool                rite_is_zero;
 
     rite_is_zero = CFTest( ins->operands[1]->c.u.cfval ) == 0;
     half_type_class = HalfClass[ins->type_class];

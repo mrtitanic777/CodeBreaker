@@ -50,10 +50,10 @@ struct Cpragx86State {
     };
 #endif
     struct {
-        boolbit     f_near          : 1;
-        boolbit     f_routine_pops  : 1;
-        boolbit     f_caller_return : 1;
-        boolbit     f_8087_returns  : 1;
+        bool     f_near          : 1;
+        bool     f_routine_pops  : 1;
+        bool     f_caller_return : 1;
+        bool     f_8087_returns  : 1;
     } AuxInfoFlg;
 };
 
@@ -213,9 +213,9 @@ static void PragmaAuxEnd( void )
     PragmaAuxEnding();
 }
 
-bool_ GetPragmaAuxAlias( void )
+bool GetPragmaAuxAlias( void )
 {
-    bool_    isfar16;
+    bool    isfar16;
 
     isfar16 = PragRecogId( "far16" );
     if( IS_ID_OR_KEYWORD( cvars_state().CurToken ) ) {
@@ -357,7 +357,7 @@ void AsmUsesAuto( aux_info *info )
     info->cclass_target |= FECALL_X86_NEEDS_BP_CHAIN;
 }
 
-bool_ AsmInsertFixups( aux_info *info )
+bool AsmInsertFixups( aux_info *info )
 /************************************/
 {
     byte_seq            *seq;
@@ -372,16 +372,16 @@ bool_ AsmInsertFixups( aux_info *info )
     unsigned char       *dst;
     unsigned char       *src;
     unsigned char       *end;
-    bool_                perform_fixups;
+    bool                perform_fixups;
     unsigned char       cg_fix;
     SYM_HANDLE          sym_handle;
     SYM_ENTRY           sym;
     char                *name;
     unsigned            skip;
-    bool_                mutate_to_segment;
-    bool_                uses_auto;
+    bool                mutate_to_segment;
+    bool                uses_auto;
 #if _CPU == 8086
-    bool_                fixup_padding;
+    bool                fixup_padding;
 #endif
 
     src = asminlin_state().AsmCodeBuffer;
@@ -610,7 +610,7 @@ void AsmSysLine( const char *buff )
 #endif
 }
 
-static bool_ checkEnum( unsigned char *byte_value )
+static bool checkEnum( unsigned char *byte_value )
 /************************************************/
 {
     id_hash_idx hash;
@@ -631,18 +631,18 @@ static bool_ checkEnum( unsigned char *byte_value )
     return( false );
 }
 
-static bool_ GetByteSeq( aux_info *info )
+static bool GetByteSeq( aux_info *info )
 /**************************************/
 {
     unsigned char       buff[MAXIMUM_BYTESEQ + ASM_BLOCK];
     char                *name;
     unsigned            offset;
     fix_words           fixword;
-    bool_                uses_auto;
-    bool_                too_many_bytes;
+    bool                uses_auto;
+    bool                too_many_bytes;
     unsigned char       byte_value;
 #if _CPU == 8086
-    bool_                use_fpu_emu = false;
+    bool                use_fpu_emu = false;
 #endif
 
     AsmSysInit( buff );
@@ -802,11 +802,11 @@ static void GetParmInfo( void )
 /****************************/
 {
     struct {
-        boolbit     f_pop       : 1;
-        boolbit     f_reverse   : 1;
-        boolbit     f_loadds    : 1;
-        boolbit     f_nomemory  : 1;
-        boolbit     f_list      : 1;
+        bool     f_pop       : 1;
+        bool     f_reverse   : 1;
+        bool     f_loadds    : 1;
+        bool     f_nomemory  : 1;
+        bool     f_list      : 1;
     } have;
 
     have.f_pop = false;
@@ -845,10 +845,10 @@ static void GetSTRetInfo( void )
 /*****************************/
 {
     struct {
-        boolbit     f_float     : 1;
-        boolbit     f_struct    : 1;
-        boolbit     f_allocs    : 1;
-        boolbit     f_list      : 1;
+        bool     f_float     : 1;
+        bool     f_struct    : 1;
+        bool     f_allocs    : 1;
+        bool     f_list      : 1;
     } have;
 
     have.f_float = false;
@@ -884,9 +884,9 @@ static void GetRetInfo( void )
 /***************************/
 {
     struct {
-        boolbit     f_no8087    : 1;
-        boolbit     f_list      : 1;
-        boolbit     f_struct    : 1;
+        bool     f_no8087    : 1;
+        bool     f_list      : 1;
+        bool     f_struct    : 1;
     } have;
 
     have.f_no8087 = false;
@@ -917,9 +917,9 @@ static void GetSaveInfo( void )
 /****************************/
 {
     struct {
-        boolbit     f_exact     : 1;
-        boolbit     f_nomemory  : 1;
-        boolbit     f_list      : 1;
+        bool     f_exact     : 1;
+        bool     f_nomemory  : 1;
+        bool     f_list      : 1;
     } have;
 
     have.f_exact = false;
@@ -945,15 +945,15 @@ void PragAux( void )
 /******************/
 {
     struct {
-        boolbit     f_call      : 1;
-        boolbit     f_loadds    : 1;
-        boolbit     f_rdosdev   : 1;
-        boolbit     f_export    : 1;
-        boolbit     f_parm      : 1;
-        boolbit     f_value     : 1;
-        boolbit     f_modify    : 1;
-        boolbit     f_frame     : 1;
-        boolbit     uses_auto   : 1;
+        bool     f_call      : 1;
+        bool     f_loadds    : 1;
+        bool     f_rdosdev   : 1;
+        bool     f_export    : 1;
+        bool     f_parm      : 1;
+        bool     f_value     : 1;
+        bool     f_modify    : 1;
+        bool     f_frame     : 1;
+        bool     uses_auto   : 1;
     } have;
 
     InitAuxInfo();

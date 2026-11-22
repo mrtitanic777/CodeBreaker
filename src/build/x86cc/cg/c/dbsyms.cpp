@@ -208,7 +208,7 @@ cue_idx CueAdd( int fno, int line, int col )
     return( ctl->state.cue + PRIMARY_RANGE );
 }
 
-bool_ CueFind( cue_idx cue, cue_state *ret )
+bool CueFind( cue_idx cue, cue_state *ret )
 /*****************************************/
 {
     cue_ctl     *ctl;
@@ -417,7 +417,7 @@ void _CGAPI     DBSrcCue( uint fno, uint line, uint col )
 /*******************************************************/
 {
     cue_idx     idx;
-    bool_        hasxcue;
+    bool        hasxcue;
 //    const char  *fname;
 
 #ifdef DEVBUILD
@@ -610,7 +610,7 @@ void    _CGAPI DBLocalSym( cg_sym_handle sym, cg_type indirect )
     }
 }
 
-void    _CGAPI DBLocalType( cg_sym_handle sym, bool_ kind )
+void    _CGAPI DBLocalType( cg_sym_handle sym, bool kind )
 /********************************************************/
 {
     dbg_local   *lcl;
@@ -634,7 +634,7 @@ void    _CGAPI DBLocalType( cg_sym_handle sym, bool_ kind )
     }
 }
 
-static  void    AddBlockInfo( dbg_block *blk, bool_ start )
+static  void    AddBlockInfo( dbg_block *blk, bool start )
 /********************************************************/
 {
     instruction *ins;

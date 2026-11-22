@@ -41,7 +41,7 @@
 #include "cfeinfo.h"
 
 
-#define TOKEN2BOOL(t)   ((bool_)(t))
+#define TOKEN2BOOL(t)   ((bool)(t))
 #define BOOL2TOKEN(b)   ((TOKEN)(b))
 
 
@@ -165,7 +165,7 @@ static TREEPTR FarPtr16Cvt( TREEPTR newparm  )
     return( newparm );
 }
 
-static TREEPTR ParmNode( TREEPTR parmlist, TREEPTR newparm, bool_ far16_func )
+static TREEPTR ParmNode( TREEPTR parmlist, TREEPTR newparm, bool far16_func )
 {
     TREEPTR     tree;
     TYPEPTR     parmtyp;
@@ -493,14 +493,14 @@ static void IncSymWeight( SYMPTR sym )
 
 //-----------------------------CMATH------------------------------------
 
-static bool_ IsStruct( TYPEPTR typ )
+static bool IsStruct( TYPEPTR typ )
 /*********************************/
 {
     SKIP_TYPEDEFS( typ );
     return( typ->decl_type == TYP_STRUCT || typ->decl_type == TYP_UNION );
 }
 
-bool_ IsLValue( TREEPTR tree )
+bool IsLValue( TREEPTR tree )
 {
     switch( tree->op.opr ) {
     case OPR_ERROR:
@@ -529,7 +529,7 @@ bool_ IsLValue( TREEPTR tree )
     return( false );
 }
 
-static bool_ IsCallValue( TREEPTR tree )
+static bool IsCallValue( TREEPTR tree )
 {
     while( tree->op.opr == OPR_DOT || tree->op.opr == OPR_INDEX ) {
         tree = tree->left;
@@ -1179,11 +1179,11 @@ static TREEPTR IncDec( TREEPTR tree, TOKEN opr )
 
 //-----------------------------CEXPR-----------------------------------
 
-bool_ ConstExprAndType( const_val *val )
+bool ConstExprAndType( const_val *val )
 {
     TREEPTR     tree;
     call_list   **save;
-    bool_        ret;
+    bool        ret;
 
     save = cexpr_state().FirstCallLnk;
     ++cvars_state().ExprLevel;                    /* allow for nested expressions */
@@ -1732,7 +1732,7 @@ static TREEPTR ExprOpnd( void )
 }
 
 
-static bool_ IsMacroDefined( void )
+static bool IsMacroDefined( void )
 {
     MEPTR       mentry;
 
@@ -1806,7 +1806,7 @@ static TREEPTR ExprId( void )
 
 
 #if 0
-static bool_ LValueArray( TREEPTR tree )
+static bool LValueArray( TREEPTR tree )
 {
     TYPEPTR     typ;
 
@@ -2208,9 +2208,9 @@ static TREEPTR GenFuncCall( TREEPTR last_parm )
     TYPEPTR         typ;
     type_modifiers  flags;
     target_size     string_len;
-    bool_            optimized;
+    bool            optimized;
 //    bool            recursive = false;
-    bool_            far16_func = false;
+    bool            far16_func = false;
     int             parm_count;
     SYM_NAMEPTR     sym_name;
     SYM_ENTRY       sym;

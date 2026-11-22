@@ -39,7 +39,7 @@
 typedef struct cmd_scan_ctl {
     char const  *curr_ptr;      // current scan position
     char const  *switch_ptr;    // start of current switch
-    bool_        unix_mode;      // scan mode
+    bool        unix_mode;      // scan mode
 } cmd_scan_ctl;
 
 namespace {
@@ -81,14 +81,14 @@ int CmdScanChar(                // SCAN THE NEXT CHARACTER
 }
 
 
-bool_ CmdScanBufferEnd(          // TEST IF END OF BUFFER
+bool CmdScanBufferEnd(          // TEST IF END OF BUFFER
     void )
 {
     return( *cmdscan_state().cmd.curr_ptr == '\0' );
 }
 
 
-bool_ CmdScanSwEnd(              // TEST IF END OF SWITCH
+bool CmdScanSwEnd(              // TEST IF END OF SWITCH
     void )
 {
     int c;                     // - current character
@@ -129,10 +129,10 @@ int CmdPeekChar(                // PEEK AT NEXT CHARACTER, IN LOWER CASE
 }
 
 
-bool_ CmdRecogLowerChar(         // RECOGNIZE A LOWER CASE CHARACTER
+bool CmdRecogLowerChar(         // RECOGNIZE A LOWER CASE CHARACTER
     int recog )                 // - character to be recognized
 {
-    bool_ retn;                  // - true ==> got it
+    bool retn;                  // - true ==> got it
 
     if( recog == CmdScanLowerChar() ) {
         retn = true;
@@ -144,10 +144,10 @@ bool_ CmdRecogLowerChar(         // RECOGNIZE A LOWER CASE CHARACTER
 }
 
 
-bool_ CmdRecogChar(              // RECOGNIZE A CHARACTER
+bool CmdRecogChar(              // RECOGNIZE A CHARACTER
     int recog )                 // - character to be recognized
 {
-    bool_ retn;                  // - true ==> got it
+    bool retn;                  // - true ==> got it
 
     if( recog == CmdScanChar() ) {
         retn = true;
@@ -159,10 +159,10 @@ bool_ CmdRecogChar(              // RECOGNIZE A CHARACTER
 }
 
 
-bool_ CmdReRecogChar(            // RE-RECOGNIZE LAST CHARACTER
+bool CmdReRecogChar(            // RE-RECOGNIZE LAST CHARACTER
     int recog )                 // - character to be recognized
 {
-    bool_ retn;                  // - true ==> got it
+    bool retn;                  // - true ==> got it
 
     CmdScanUngetChar();
     if( recog == CmdScanChar() ) {
@@ -174,7 +174,7 @@ bool_ CmdReRecogChar(            // RE-RECOGNIZE LAST CHARACTER
 }
 
 
-bool_ CmdRecogEquals(            // SKIP EQUALCHAR IN COMMAND LINE
+bool CmdRecogEquals(            // SKIP EQUALCHAR IN COMMAND LINE
     void )
 {
     switch( CmdPeekChar() ) {
@@ -187,7 +187,7 @@ bool_ CmdRecogEquals(            // SKIP EQUALCHAR IN COMMAND LINE
     return( false );
 }
 
-bool_ CmdPathDelim(              // SKIP EQUALCHAR # or ' ' IN COMMAND LINE
+bool CmdPathDelim(              // SKIP EQUALCHAR # or ' ' IN COMMAND LINE
     void )
 {
     switch( CmdPeekChar() ) {
@@ -246,7 +246,7 @@ size_t CmdScanQuotedString(     // SCAN AN OPTION
 
 size_t CmdScanOption(           // SCAN AN OPTION
     char const **option,        // - addr( option pointer )
-    bool_ *quoted )              // - addr( quoted )
+    bool *quoted )              // - addr( quoted )
 {
     char const *str_beg;        // - start of string
 
@@ -301,7 +301,7 @@ size_t CmdScanId(               // SCAN AN IDENTIFIER
 
 size_t CmdScanFilename(         // SCAN A FILE NAME
     char const **option,        // - addr( option pointer )
-    bool_ *quoted )              // - addr( quoted )
+    bool *quoted )              // - addr( quoted )
 {
     char const *str_beg;        // - start of string
     int c;
@@ -334,7 +334,7 @@ void CmdScanSkipWhiteSpace(     // SKIP OVER WHITE SPACES
     }
 }
 
-bool_ CmdScanSwitchChar( int c )
+bool CmdScanSwitchChar( int c )
 {
 #ifdef __UNIX__
     return( c == '-' );

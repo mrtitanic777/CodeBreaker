@@ -45,7 +45,7 @@ typedef enum {
     MODIFIES_REG        = 2,
 } mod_info;
 
-static  bool_    InsIsCandidate( instruction *ins )
+static  bool    InsIsCandidate( instruction *ins )
 /************************************************/
 {
     name    *reg;
@@ -71,7 +71,7 @@ void    BuildIndex( void )
     block       *blk;
     instruction *ins;
     instruction *next;
-    bool_        change;
+    bool        change;
 
     for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         do {
@@ -88,7 +88,7 @@ void    BuildIndex( void )
 }
 
 
-static  bool_    LivesAfterIns( instruction *ins, name *reg )
+static  bool    LivesAfterIns( instruction *ins, name *reg )
 /**********************************************************/
 {
     name        *res;
@@ -109,7 +109,7 @@ static  bool_    LivesAfterIns( instruction *ins, name *reg )
 }
 
 
-static bool_ BadUse( name *reg, name *test, name **pindex, bool_ * is_base )
+static bool BadUse( name *reg, name *test, name **pindex, bool * is_base )
 /************************************************************************/
 {
     hw_reg_set  idx_name;
@@ -176,10 +176,10 @@ static  mod_info        Modifies( instruction *next, name *reg,
 
 instruction     *SIBPossibleIndex( instruction *ins, name *reg,
                                            name **pindex,
-                                           bool_ *pbase,
+                                           bool *pbase,
                                            hw_reg_set base_reg,
                                            hw_reg_set other_reg,
-                                           bool_ *dies, bool_ *pmodifies )
+                                           bool *dies, bool *pmodifies )
 /**********************************************************************/
 {
     instruction     *next;

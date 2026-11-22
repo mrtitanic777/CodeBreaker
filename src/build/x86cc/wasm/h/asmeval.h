@@ -55,20 +55,20 @@ typedef struct expr_list {
                                     //   or register
     asm_token       instr;          // instruction token for label
                                     //
-    bool_            indirect;       // Whether inside [] or not
-    bool_            explicit_;       // Whether expression type explicitly given
-    bool_            empty;
-    bool_            abs;
+    bool            indirect;       // Whether inside [] or not
+    bool            explicit_;       // Whether expression type explicitly given
+    bool            empty;
+    bool            abs;
     memtype         mem_type;       // Whether expr is BYTE, WORD, DWORD, etc.
     uint_8          scale;          // scaling factor 1, 2, 4, or 8 - 386 code only
     asm_sym_handle  sym;
     asm_sym_handle  mbr;
 } expr_list;
 
-extern token_idx    EvalExpr( token_buffer *tokbuf, token_idx start, token_idx end, bool_ );
-extern bool_         EvalOperand( token_buffer *tokbuf, token_idx *, token_idx, expr_list *, bool_ );
+extern token_idx    EvalExpr( token_buffer *tokbuf, token_idx start, token_idx end, bool );
+extern bool         EvalOperand( token_buffer *tokbuf, token_idx *, token_idx, expr_list *, bool );
 #if defined( _STANDALONE_ )
-extern token_idx    EvalConstant( token_buffer *tokbuf, token_idx start, token_idx end, bool_ );
+extern token_idx    EvalConstant( token_buffer *tokbuf, token_idx start, token_idx end, bool );
 #endif
 
 #endif

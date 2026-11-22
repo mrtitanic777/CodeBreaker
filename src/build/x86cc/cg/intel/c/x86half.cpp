@@ -53,7 +53,7 @@
 #include "_x86half.h"
 
 
-bool_    IndexOverlaps( instruction *ins, opcnt i )
+bool    IndexOverlaps( instruction *ins, opcnt i )
 /************************************************/
 {
     if( ins->operands[i]->n.class_ != N_INDEXED )

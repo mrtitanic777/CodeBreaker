@@ -49,7 +49,7 @@
 #define BLK_CONTAINS_CALL   BLK_LOOP_EXIT /* borrow. Only used during loop opts */
 
 
-static  bool_    SameConf( name *op, instruction *ins, conflict_node *conf )
+static  bool    SameConf( name *op, instruction *ins, conflict_node *conf )
 /*************************************************************************/
 {
     if( op->n.class_ == N_INDEXED ) {
@@ -162,7 +162,7 @@ static  void    PropagateLoadStoreBits( block *start, global_bit_set *id )
 {
     data_flow_def       *source_dat;
     data_flow_def       *blk_dat;
-    bool_                change;
+    bool                change;
     block_edge          *edge;
     block               *blk;
 

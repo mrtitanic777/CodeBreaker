@@ -81,7 +81,7 @@ struct InsschedFileState {
 static inline InsschedFileState& inssched_file_state() { return cbrun_part<InsschedFileState>(); }
 
 
-bool_    SchedFrlFree( void )
+bool    SchedFrlFree( void )
 /***********************************
  * Free the instruction schedulers dependancy link lists.
  */
@@ -184,7 +184,7 @@ static void InitDag( void )
     inssched_state().DataDag = head;
 }
 
-static bool_ StackOp( instruction *ins )
+static bool StackOp( instruction *ins )
 /**************************************
  * Does this instruction explicitly or implicitly use the machine's stack
  * pointer.
@@ -221,8 +221,8 @@ static bool_ StackOp( instruction *ins )
 }
 
 
-static  bool_    ReallyDefinedBy( instruction *ins_i, instruction *ins_j,
-                                 name *op, bool_ ins_linked )
+static  bool    ReallyDefinedBy( instruction *ins_i, instruction *ins_j,
+                                 name *op, bool ins_linked )
 /**********************************************************************/
 {
     bool_maybe  redefd;
@@ -251,7 +251,7 @@ static  bool_    ReallyDefinedBy( instruction *ins_i, instruction *ins_j,
     return( false );
 }
 
-static bool_ OkToSlide( instruction *ins, name *op )
+static bool OkToSlide( instruction *ins, name *op )
 /**************************************************
  * Is it OK to slide an INDEX_ADJUST instruction past an index name?
  */
@@ -282,7 +282,7 @@ static bool_ OkToSlide( instruction *ins, name *op )
     return( true );
 }
 
-static bool_ HiddenDependancy( instruction *ins, name *op )
+static bool HiddenDependancy( instruction *ins, name *op )
 /*********************************************************
  * Look out for cheesy hidden dependencies. These can come
  * about, for instance, when two instructions modify
@@ -311,7 +311,7 @@ static bool_ HiddenDependancy( instruction *ins, name *op )
 }
 
 static dep_type CheckOneOp( instruction *ins_i, instruction *ins_j,
-                        name *op, bool_ ins_linked )
+                        name *op, bool ins_linked )
 /******************************************************************
  * Check one op for redefinition
  */
@@ -342,7 +342,7 @@ static dep_type CheckOneOp( instruction *ins_i, instruction *ins_j,
 
 
 static dep_type DataDependant( instruction *ins_i,
-                               instruction *ins_j, bool_ ins_linked )
+                               instruction *ins_j, bool ins_linked )
 /************************************************************************
  * Does instruction i redefine any of the operands or result of
  * instruction j? And if so, how?
@@ -391,7 +391,7 @@ static dep_type DataDependant( instruction *ins_i,
     return( ret );
 }
 
-static bool_ ImplicitDependancy( instruction *imp, instruction *ins )
+static bool ImplicitDependancy( instruction *imp, instruction *ins )
 /*******************************************************************
  * Does instruction 'imp' modify a implicitly used (segment) register
  * and, if so, does 'ins' use it?
@@ -437,7 +437,7 @@ static bool_ ImplicitDependancy( instruction *imp, instruction *ins )
 }
 
 
-bool_ InsOrderDependant( instruction *ins_i, instruction *ins_j )
+bool InsOrderDependant( instruction *ins_i, instruction *ins_j )
 /**************************************************************/
 {
     if( ins_j->head.opcode == OP_NOP && ins_j->result == NULL && !DoesSomething( ins_j ) )
@@ -481,7 +481,7 @@ bool_ InsOrderDependant( instruction *ins_i, instruction *ins_j )
 }
 
 
-static  bool_    MultiIns( instruction *ins )
+static  bool    MultiIns( instruction *ins )
 /*******************************************
  * Is ins part of a two instruction sequence, like SUB, SBB?
  */
@@ -498,7 +498,7 @@ static  bool_    MultiIns( instruction *ins )
     return( false );
 }
 
-static  bool_    InsUsesCC( instruction *ins )
+static  bool    InsUsesCC( instruction *ins )
 /********************************************
  * Does 'ins' uses the condition codes set from a previous instruction?
  */
@@ -543,9 +543,9 @@ static void BuildDag( void )
 {
     data_dag    *dag_i;
     data_dag    *dag_j;
-    bool_        link_multi;
-    bool_        link_all;
-    bool_        used_cc;
+    bool        link_multi;
+    bool        link_all;
+    bool        used_cc;
 
     for( dag_i = inssched_state().DataDag; dag_i != NULL; dag_i = dag_i->prev ) {
         used_cc = (dag_i->ins->ins_flags & INS_CC_USED) != 0;
@@ -672,7 +672,7 @@ static int StallCost( instruction *ins, instruction *top )
     const FU_entry  *entry;
     instruction     *curr;
     instruction     *last;
-    bool_            ins_stack;
+    bool            ins_stack;
 
     /*
      * NOP's always get a stall cost of -1 so that they are scheduled
@@ -764,7 +764,7 @@ static scale_typ ScaleAdjust( name *op, hw_reg_set reg )
 }
 
 
-static void FixIndexAdjust( instruction *adj, bool_ forward )
+static void FixIndexAdjust( instruction *adj, bool forward )
 /***********************************************************
  * 'adj' is an index adjust instruction. We must run forward/backward
  * through the block looking for uses of the register as an index and
@@ -1079,7 +1079,7 @@ void    Schedule( void )
  */
 {
     mem_out_action      old_memout;
-    bool_                first_time;
+    bool                first_time;
 
     first_time = true;
     InitFrl( &inssched_file_state().DepFrl );

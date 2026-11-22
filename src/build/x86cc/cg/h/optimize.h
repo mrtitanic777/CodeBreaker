@@ -29,7 +29,7 @@
 ****************************************************************************/
 
 
-extern bool_    SameThing( name *x, name *y );
+extern bool    SameThing( name *x, name *y );
 extern void    DeadTemps( void );
 extern void    AxeDeadCode( void );
 extern void    DeadInstructions( void );

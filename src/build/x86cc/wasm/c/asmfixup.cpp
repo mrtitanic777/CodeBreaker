@@ -167,7 +167,7 @@ static void PatchCodeBuffer( asmfixup *fixup, unsigned size )
 
 #endif
 
-static bool_ DoPatch( asm_sym_handle sym, asmfixup *fixup )
+static bool DoPatch( asm_sym_handle sym, asmfixup *fixup )
 /********************************************************/
 {
     long                disp;
@@ -283,7 +283,7 @@ static bool_ DoPatch( asm_sym_handle sym, asmfixup *fixup )
     return( RC_OK );
 }
 
-bool_ BackPatch( asm_sym_handle sym )
+bool BackPatch( asm_sym_handle sym )
 /*****************************
  * patching for forward reference labels in Jmp/Call instructions;
  * call only when a new label appears;
@@ -362,7 +362,7 @@ void mark_fixupp( OPNDTYPE determinant, operand_idx index )
 
 #if defined( _STANDALONE_ )
 
-bool_ store_fixup( operand_idx index )
+bool store_fixup( operand_idx index )
 /************************************
  * Store the fixup information in a OMF output fixup record
  */
@@ -383,7 +383,7 @@ bool_ store_fixup( operand_idx index )
     return( RC_OK );
 }
 
-static bool_ MakeFpFixup( const char *patch_name )
+static bool MakeFpFixup( const char *patch_name )
 /***********************************************/
 {
     dir_node_handle dir;
@@ -430,7 +430,7 @@ static bool_ MakeFpFixup( const char *patch_name )
 
 #endif
 
-bool_ AddFPPatchAndFixups( fp_patches patch )
+bool AddFPPatchAndFixups( fp_patches patch )
 /******************************************/
 {
 #if defined( _STANDALONE_ )

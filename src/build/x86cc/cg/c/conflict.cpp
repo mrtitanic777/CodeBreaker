@@ -320,7 +320,7 @@ void    MarkPossible( instruction *ins, name *opnd, reg_set_index regs_idx )
 }
 
 
-reg_set_index   MarkIndex( instruction *ins, name *opnd, bool_ is_temp_index )
+reg_set_index   MarkIndex( instruction *ins, name *opnd, bool is_temp_index )
 /***************************************************************************/
 {
     conflict_node       *conf;
@@ -432,10 +432,10 @@ void    InitConflict( void )
 }
 
 
-bool_    ConfFrlFree( void )
+bool    ConfFrlFree( void )
 /*************************/
 {
-    bool_    ret;
+    bool    ret;
 
     ret  = FrlFreeAll( &conflict_vars_state().ConfFrl, sizeof( conflict_node ) );
     ret |= FrlFreeAll( &conflict_vars_state().ConfAliasVarsFrl, sizeof( possible_for_alias ) );

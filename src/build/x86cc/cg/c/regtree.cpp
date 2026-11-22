@@ -55,7 +55,7 @@ static inline RegtreeState& regtree_state() { return cbrun_part<RegtreeState>();
 
 
 #if _TARGET_INTEL
-static bool_ HasSegRegs( reg_tree *tree )
+static bool HasSegRegs( reg_tree *tree )
 {
     hw_reg_set  *regs;
 
@@ -111,10 +111,10 @@ static  void    FreeRegSet( hw_reg_set *regs )
 }
 
 
-bool_    RegTreeFrlFree( void )
+bool    RegTreeFrlFree( void )
 /****************************/
 {
-    bool_        freed;
+    bool        freed;
 
     freed = FrlFreeAll( &regtree_state().TreeFrl, sizeof( reg_tree ) );
     freed |= FrlFreeAll( &regtree_state().RegFrl, REGSET_SIZE );
@@ -218,8 +218,8 @@ static  reg_tree        *BuildTree( name *alias, name *master,
 {
     reg_tree    *tree;
     name        *temp;
-    bool_        have_lo;
-    bool_        have_hi;
+    bool        have_lo;
+    bool        have_hi;
     type_length losize;
     type_length hisize;
     type_length midpoint;
@@ -372,12 +372,12 @@ static  void    CompressSets( reg_tree *tree )
 }
 
 
-static  bool_    PartIntersect( reg_tree *part,
+static  bool    PartIntersect( reg_tree *part,
                                reg_tree *whole,
                                hw_reg_set (*rtn)( hw_reg_set ) )
 /****************************************************************/
 {
-    bool_        change;
+    bool        change;
     int         i;
     int         j;
     hw_reg_set  *src;
@@ -455,10 +455,10 @@ static  bool_    PartIntersect( reg_tree *part,
 }
 
 
-static  bool_    Intersect( reg_tree *tree )
+static  bool    Intersect( reg_tree *tree )
 /*****************************************/
 {
-    bool_        change;
+    bool        change;
 
     change = false;
     if( tree->hi != NULL ) {

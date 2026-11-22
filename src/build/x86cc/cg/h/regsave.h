@@ -49,5 +49,5 @@ extern save_def     Weight( save_def value, block *blk );
 extern void         CalcSavings( conflict_node *conf );
 
 extern void         InitWeights( uint size );
-extern bool_         WorthProlog( conflict_node *conf, hw_reg_set reg );
+extern bool         WorthProlog( conflict_node *conf, hw_reg_set reg );
 extern void         ConstSavings( void );

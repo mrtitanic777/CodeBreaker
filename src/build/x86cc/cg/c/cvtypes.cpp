@@ -711,7 +711,7 @@ enum{ MAX_FOLD_EXPR = 10 };
 typedef struct {
     fold_leaf   *stk;
     fold_leaf   ops[MAX_FOLD_EXPR];
-    bool_        error;
+    bool        error;
 } fold_expr;
 
 static  void    DoLocFold( dbg_loc loc, fold_expr *what )
@@ -783,7 +783,7 @@ static  void    DoLocFold( dbg_loc loc, fold_expr *what )
     what->stk = stk;
 }
 
-static bool_ FoldExpr( dbg_loc loc, fold_leaf *ret )
+static bool FoldExpr( dbg_loc loc, fold_leaf *ret )
 /*************************************************/
 {
     fold_expr      expr;
@@ -1168,7 +1168,7 @@ enum based_leaf_kind {
 typedef struct {
     cg_sym_handle s;
     enum based_leaf_kind kind;
-    bool_ indirect;
+    bool indirect;
 } based_leaf;
 
 #define MAX_OPS 2

@@ -78,7 +78,7 @@ static const hw_reg_set IndexTab[] = {
 };
 
 
-static void OpndSizeIf( bool_ if_32 )
+static void OpndSizeIf( bool if_32 )
 /**********************************/
 {
     if( ( if_32 && _IsTargetModel( CGSW_X86_USE_32 ) )
@@ -106,7 +106,7 @@ void    DoRepOp( instruction *ins )
 /*********************************/
 {
     type_length size;
-    bool_        first;
+    bool        first;
 
     size = ins->result->n.size;
     first = true;
@@ -237,7 +237,7 @@ static  byte    DoDisp( type_length val, hw_reg_set base_reg, name *op )
     }
 }
 
-byte    DoMDisp( name *op, bool_ alt_encoding )
+byte    DoMDisp( name *op, bool alt_encoding )
 /********************************************/
 {
     hw_reg_set          regs;
@@ -254,7 +254,7 @@ byte    DoMDisp( name *op, bool_ alt_encoding )
 
 
 static  void    EA( hw_reg_set base, hw_reg_set index, scale_typ scale,
-                         int_32 val, name *mem_loc, bool_ lea )
+                         int_32 val, name *mem_loc, bool lea )
 /***************************************************************/
 {
     if( HW_CEqual( index, HW_ESP ) )
@@ -581,7 +581,7 @@ void    GenPushC( int_32 value )
 }
 
 
-pointer GenFar16Thunk( pointer label, uint_16 parms_size, bool_ remove_parms )
+pointer GenFar16Thunk( pointer label, uint_16 parms_size, bool remove_parms )
 /***************************************************************************/
 {
     pointer     code_32;
@@ -618,7 +618,7 @@ pointer GenFar16Thunk( pointer label, uint_16 parms_size, bool_ remove_parms )
 }
 
 
-static void    doProfilingCode( char *fe_name, label_handle *data, bool_ prolog )
+static void    doProfilingCode( char *fe_name, label_handle *data, bool prolog )
 /******************************************************************************/
 {
     if( prolog )
@@ -632,7 +632,7 @@ static void    doProfilingCode( char *fe_name, label_handle *data, bool_ prolog 
 }
 
 
-static  void    doProfilingPrologEpilog( label_handle label, bool_ prolog )
+static  void    doProfilingPrologEpilog( label_handle label, bool prolog )
 /************************************************************************/
 {
     if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
@@ -704,7 +704,7 @@ static  void    doProfilingPrologEpilog( label_handle label, bool_ prolog )
 }
 
 #if 0
-void    GenProfilingCode( char *fe_name, label_handle *data, bool_ prolog )
+void    GenProfilingCode( char *fe_name, label_handle *data, bool prolog )
 /************************************************************************/
 {
     if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
@@ -819,7 +819,7 @@ void    Pow2Div( instruction *ins )
 /*********************************/
 {
     int         log2;
-    bool_        if_32;
+    bool        if_32;
 
     if_32 = false;
     log2 = GetLog2( ins->operands[1]->c.lo.u.int_value );
@@ -857,7 +857,7 @@ void    Pow2Div( instruction *ins )
 void    By2Div( instruction *ins )
 /********************************/
 {
-    bool_        if_32;
+    bool        if_32;
 
     if_32 = false;
     switch( ins->type_class ) {

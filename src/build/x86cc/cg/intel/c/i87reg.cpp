@@ -171,7 +171,7 @@ name    *ST( int num )
 }
 
 
-static  bool_    MathOpsBlowStack( conflict_node *conf, int stk_level )
+static  bool    MathOpsBlowStack( conflict_node *conf, int stk_level )
 /*****************************************************************
     See if putting "conf" on the stack would blow the 8087 stack in the
     face of stack requirements for any complicated math operations in
@@ -194,7 +194,7 @@ static  bool_    MathOpsBlowStack( conflict_node *conf, int stk_level )
 }
 
 
-static  bool_    AssignFPResult( block *blk, instruction *ins, int *stk_level )
+static  bool    AssignFPResult( block *blk, instruction *ins, int *stk_level )
 /*******************************************************************************
     Try to assign a "stack" register to the result of instruction
     "ins"., updating "*stk_level" if we did.  These register given out
@@ -208,7 +208,7 @@ static  bool_    AssignFPResult( block *blk, instruction *ins, int *stk_level )
 {
     name                *op;
     conflict_node       *conf;
-    bool_                need_live_update;
+    bool                need_live_update;
 
     op = ins->result;
     if( op == NULL )
@@ -462,7 +462,7 @@ static  void    FPAlloc( void )
     instruction         *ins;
     int                 stk_level;
     int                 sequence;
-    bool_                need_live_update;
+    bool                need_live_update;
     name                *name;
     instruction         *new_ins;
 
@@ -527,7 +527,7 @@ static  void    FPAlloc( void )
 }
 
 
-static  bool_    CanStack( name *name )
+static  bool    CanStack( name *name )
 /***************************************
     Return true if "name" is a candidate for an 8087 "stack" location.
 */
@@ -724,7 +724,7 @@ int     FPStkReq( instruction *ins )
 }
 
 
-bool_    FPStackIns( instruction *ins )
+bool    FPStackIns( instruction *ins )
 /************************************/
 {
     if( !_FPULevel( FPU_87 ) )
@@ -737,7 +737,7 @@ bool_    FPStackIns( instruction *ins )
 }
 
 
-bool_    FPSideEffect( instruction *ins )
+bool    FPSideEffect( instruction *ins )
 /*************************************************
     Return true if instruction "ins" is an instruction that has a side
     effect, namely pushes or pops the 8087 stack.
@@ -745,7 +745,7 @@ bool_    FPSideEffect( instruction *ins )
 */
 {
     opcnt       i;
-    bool_        has_fp_reg;
+    bool        has_fp_reg;
 
     if( !_FPULevel( FPU_87 ) )
         return( false );
@@ -808,7 +808,7 @@ void    FPSetStack( name *name )
 }
 
 
-bool_    FPIsStack( name *name )
+bool    FPIsStack( name *name )
 /****************************************
     return true if "name" is a stackable temp.
 */
@@ -821,7 +821,7 @@ bool_    FPIsStack( name *name )
 }
 
 
-bool_    FPStackOp( name *name )
+bool    FPStackOp( name *name )
 /****************************************
     return true if "name" is a stackable temp.
 */
@@ -845,7 +845,7 @@ void    FPNotStack( name *name )
 }
 
 
-bool_    FPIsConvert( instruction *ins )
+bool    FPIsConvert( instruction *ins )
 /************************************************
     return true if "ins" is a converstion that could be handled by the 8087.
 */

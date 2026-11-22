@@ -136,7 +136,7 @@ struct dw_client_s {
     uint_8                      compiler_options;
     uint_8                      offset_size;
     uint_8                      segment_size;
-    bool_                        big_endian;
+    bool                        big_endian;
 };
 
 #endif

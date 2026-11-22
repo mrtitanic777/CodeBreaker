@@ -174,11 +174,11 @@ static  void *MarkVisited( block *blk )
     return NULL;
 }
 
-static  bool_    DepthFirstSearch( void )
+static  bool    DepthFirstSearch( void )
 /**************************************/
 {
     block       *blk;
-    bool_        reducible;
+    bool        reducible;
 
     data_state().BlockList = NULL;
     MarkVisited( data_state().HeadBlock );
@@ -248,14 +248,14 @@ namespace {
 /* the statics of this file, one set for each run of the compiler */
 struct FlographState {
     interval_def *Intervals;
-    bool_ functionDegenerate;
+    bool functionDegenerate;
 };
 
 }  // namespace
 
 static inline FlographState& flograph_state() { return cbrun_part<FlographState>(); }
 
-static  bool_    FindIntervals( void )
+static  bool    FindIntervals( void )
 /***********************************/
 {
     block               *blk;
@@ -266,7 +266,7 @@ static  bool_    FindIntervals( void )
     level_depth         level;
     int                 num;
     int                 prev_num;
-    bool_                add;
+    bool                add;
 
     num = 0;
     for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
@@ -448,7 +448,7 @@ static  void    NestingDepth( void )
     block_edge          *edge;
     block               *target;
     block_num           i;
-    bool_                change;
+    bool                change;
 
     for( interval = data_state().BlockList->u.interval->parent; interval->parent != NULL; interval = interval->parent ) {
         level = interval->level - 1;
@@ -526,7 +526,7 @@ static  void    KillIntervals( void )
 }
 
 
-static  bool_    FlowDone( block *curr, void *parm )
+static  bool    FlowDone( block *curr, void *parm )
 /*************************************************/
 {
     if( curr == (block *)parm ) {
@@ -536,7 +536,7 @@ static  bool_    FlowDone( block *curr, void *parm )
     return( true );
 }
 
-static  bool_    Degenerate( void )
+static  bool    Degenerate( void )
 /********************************/
 {
     block       *blk;

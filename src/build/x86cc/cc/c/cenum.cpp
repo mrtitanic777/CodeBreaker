@@ -196,8 +196,8 @@ TYPEPTR EnumDecl( type_modifiers flags )
         enum enum_rng   step;
         enum enum_rng   error;
         uint64          n;
-        bool_            minus;
-        bool_            has_sign;
+        bool            minus;
+        bool            has_sign;
         ENUMPTR         *prev_lnk;
         ENUMPTR         esym;
         source_loc      error_loc;

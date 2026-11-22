@@ -91,13 +91,13 @@ static  void    NotVisited( void )
 }
 
 
-bool_    RepOp( name **pop, name *of, name *with )
+bool    RepOp( name **pop, name *of, name *with )
 /***********************************************/
 {
     name        *op;
     name        *base;
     name        *index;
-    bool_        change;
+    bool        change;
 
     op = *pop;
     change = false;
@@ -149,11 +149,11 @@ static  void    ReplaceInstances( name *of, name *with )
 }
 
 
-static  bool_    Split1Var( conflict_node *conf )
+static  bool    Split1Var( conflict_node *conf )
 /**********************************************/
 {
     block       *unlabeled;
-    bool_        change;
+    bool        change;
     name        *op;
 
     NotVisited();

@@ -57,7 +57,7 @@ struct DataState {
     source_line_number SrcLine;
     global_bit_set MemoryBits;
     type_class_def ClassPointer;
-    bool_ BlockByBlock;
+    bool BlockByBlock;
     type_length MaxStack;
     const type_def *TypeBoolean;
     const type_def *TypeInteger;
@@ -70,16 +70,16 @@ struct DataState {
     const type_def *TypeLongLongInteger;
     const type_def *TypeHugeInteger;
     hw_reg_set GivenRegisters;
-    bool_ BlocksUnTrimmed;
+    bool BlocksUnTrimmed;
     an AddrList;
     segment_id DbgLocals;
     segment_id DbgTypes;
     uint_16 TypeIdx;
     byte OptForSize;
-    bool_ HaveLiveInfo;
-    bool_ HaveDominatorInfo;
+    bool HaveLiveInfo;
+    bool HaveDominatorInfo;
     pointer_uint FrlSize;
-    bool_ HaveCurrBlock;
+    bool HaveCurrBlock;
     type_length TypeClassSize[XX + 1];
 };
 inline DataState& data_state() { return cbrun_part<DataState>(); }

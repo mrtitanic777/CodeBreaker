@@ -77,15 +77,15 @@ typedef struct file_list {
     } u;
     const FNAME         *srcfile;   /* name of include file */
     unsigned long       line_num;   /* current line in parent file */
-    bool_                is_a_file;
-    bool_                hidden;
+    bool                is_a_file;
+    bool                hidden;
 } file_list;
 
 extern void             FreeForceInclude( void );
 
-extern bool_             in_prologue;
-extern bool_             CheckSeg;
-extern bool_             DefineProc;             // true if the definition of procedure
+extern bool             in_prologue;
+extern bool             CheckSeg;
+extern bool             DefineProc;             // true if the definition of procedure
                                                 // has not ended
 extern unsigned long    PassTotal;
 
@@ -103,13 +103,13 @@ static char             *IncludePath = NULL;
 
 #if defined( _STANDALONE_ )
 
-static bool_ get_asmline( char *ptr, unsigned max, FILE *fp )
+static bool get_asmline( char *ptr, unsigned max, FILE *fp )
 /**********************************************************/
 {
     int         quote = '\0';
-    bool_        skip;
+    bool        skip;
     int         c;
-    bool_        got_something;
+    bool        got_something;
     /*
      * blow away any comments
      * look for ';'
@@ -221,7 +221,7 @@ void PushLineQueue( void )
     line_queue = new_;
 }
 
-bool_ PopLineQueue( void )
+bool PopLineQueue( void )
 /************************
  * remove a line queue from the top of the
  * stack & throw it away
@@ -241,7 +241,7 @@ bool_ PopLineQueue( void )
     return( true );
 }
 
-bool_ GetQueueMacroHidden( void )
+bool GetQueueMacroHidden( void )
 /******************************/
 {
     if(( file_stack != NULL )
@@ -278,7 +278,7 @@ static line_list *enqueue( void )
     return( new_ );
 }
 
-static file_list *push_flist( const char *name, bool_ is_a_file )
+static file_list *push_flist( const char *name, bool is_a_file )
 /**************************************************************/
 {
     file_list   *new_;
@@ -387,7 +387,7 @@ static FILE *open_file_in_include_path( const char *name, char *fullpath )
     return( fp );
 }
 
-bool_ InputQueueFile( const char *path )
+bool InputQueueFile( const char *path )
 /*************************************/
 {
     FILE        *fp;
@@ -522,7 +522,7 @@ static char *join_multiline_cmds( char *line, size_t max_len )
     return( line );
 }
 
-bool_    ScanLine( char *string, size_t max_len )
+bool    ScanLine( char *string, size_t max_len )
 /**********************************************/
 {
     char        *line;
@@ -566,7 +566,7 @@ void AsmDataByte( unsigned char byte )
     AsmByte( byte );
 }
 
-static bool_ CheckHaveSeg( void )
+static bool CheckHaveSeg( void )
 /******************************/
 {
     if( CurrSeg != NULL )
@@ -621,7 +621,7 @@ void FreeIncludePath( void )
     FreeForceInclude();
 }
 
-void PushMacro( const char *name, bool_ hidden )
+void PushMacro( const char *name, bool hidden )
 /*********************************************/
 {
     file_list *new_;
@@ -769,7 +769,7 @@ void AsmLine( const char *string )
      * Guarded to count==1 so a definition ( name EQU ... ) LHS is never expanded.
      */
     if( tokbuf.count == 1 && tokbuf.tokens[0].class_ == TC_ID ) {
-        bool_ expanded;
+        bool expanded;
         if( ExpandSymbol( &tokbuf, 0, false, &expanded ) ) {
             write_to_file = false;
             return;
@@ -789,7 +789,7 @@ void AsmLine( const char *string )
         if( CurrProc != NULL
           && !DefineProc ) {
             for( count = 0; count < tokbuf.count; count++ ) {
-                bool_ expanded;
+                bool expanded;
                 if( ExpandProcString( &tokbuf, count, &expanded ) ) {
                     write_to_file = false;
                     return;
@@ -810,7 +810,7 @@ void AsmLine( const char *string )
 
 #else
 
-void AsmLine( const char *string, bool_ use_emu )
+void AsmLine( const char *string, bool use_emu )
 /**********************************************/
 {
     enum fpe        old_floating_point;

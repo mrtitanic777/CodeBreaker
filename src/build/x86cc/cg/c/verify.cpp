@@ -42,7 +42,7 @@
 #include "verify.h"
 
 
-static  bool_    SameLocation( name *n1, name *n2 )
+static  bool    SameLocation( name *n1, name *n2 )
 /************************************************/
 {
     type_length loc1, loc2;
@@ -66,7 +66,7 @@ static  bool_    SameLocation( name *n1, name *n2 )
 }
 
 
-static  bool_    NextCmp( instruction *ins )
+static  bool    NextCmp( instruction *ins )
 /*****************************************/
 {
     instruction *next;
@@ -84,7 +84,7 @@ static  bool_    NextCmp( instruction *ins )
 }
 
 
-static  bool_    IsMin( name *op, type_class_def type_class )
+static  bool    IsMin( name *op, type_class_def type_class )
 /***********************************************************
  * Verify if "op" is a constant which is the smallest of possible
  * values for type "class".
@@ -119,7 +119,7 @@ static  bool_    IsMin( name *op, type_class_def type_class )
     return( false );
 }
 
-static  bool_    IsMax( name *op, type_class_def type_class )
+static  bool    IsMax( name *op, type_class_def type_class )
 /***********************************************************
  * Verify if "op" is a constant which is the largest of possible
  * values for type "class".
@@ -162,7 +162,7 @@ static  bool_    IsMax( name *op, type_class_def type_class )
     return( false );
 }
 
-static  bool_    Op2Pow2( instruction *ins )
+static  bool    Op2Pow2( instruction *ins )
 /*****************************************/
 {
     int         log;
@@ -178,7 +178,7 @@ static  bool_    Op2Pow2( instruction *ins )
     return( true );
 }
 
-bool_    OtherVerify( vertype kind, instruction *ins,
+bool    OtherVerify( vertype kind, instruction *ins,
                         name *op1, name *op2, name *result )
 /***********************************************************
  * verify a if "kind" is true about instruction "ins" whose operands

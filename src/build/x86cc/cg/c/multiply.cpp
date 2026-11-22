@@ -185,7 +185,7 @@ static  instruction     *CheckMul( instruction *ins )
 {
     int_32              rhs;
     int                 i;
-    bool_                neg;
+    bool                neg;
     instruction         *new_ins;
     name                *orig;
     name                *temp;

@@ -57,6 +57,6 @@ extern void             InitNames( void );
 extern void             ReInitNames( void );
 extern void             FreeNames( void );
 extern void             FreeAName( name *op );
-extern bool_             NameFrlFree( void );
+extern bool             NameFrlFree( void );
 extern i_flags          AlignmentToFlags( type_length alignment );
 extern type_length      FlagsToAlignment( i_flags flags );

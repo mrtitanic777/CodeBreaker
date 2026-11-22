@@ -43,7 +43,7 @@
 //extern  type_class_def  RegClass(hw_reg_set);
 
 
-bool_    DoVerify( vertype kind, instruction *ins )
+bool    DoVerify( vertype kind, instruction *ins )
 /************************************************/
 {
     name        *op1 = NULL;

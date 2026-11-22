@@ -33,9 +33,9 @@
 
 extern hw_reg_set   CalcSegment( cg_sym_handle sym, cg_class class_ );
 extern name         *AddrConst( name *value, segment_id segid, constant_type_class const_type );
-extern bool_         SegIsCS( name *op );
-extern bool_         SegIsSS( name *op );
+extern bool         SegIsCS( name *op );
+extern bool         SegIsSS( name *op );
 extern name         *GetSegment( name *op );
 extern name         *NearSegment( void );
 extern name         *SegName( name *op );
-extern bool_         SegOver( name *op );
+extern bool         SegOver( name *op );

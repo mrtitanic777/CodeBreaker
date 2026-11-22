@@ -40,7 +40,7 @@
 struct I87dataState {
     name *FPStatWord;
     name *Parm8087[MAX_8087_REG + 1];
-    bool_ Used87;
+    bool Used87;
     int Max87Stk;
 };
 inline I87dataState& i87data_state() { return cbrun_part<I87dataState>(); }

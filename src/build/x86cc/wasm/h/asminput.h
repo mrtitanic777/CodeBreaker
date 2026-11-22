@@ -36,12 +36,12 @@
 #include "bool.h"
 
 extern void     PushLineQueue( void );
-extern bool_     PopLineQueue( void );
+extern bool     PopLineQueue( void );
 extern void     InputQueueLine( const char *line );
-extern bool_     InputQueueFile( const char *path );
+extern bool     InputQueueFile( const char *path );
 extern char     *ReadTextLine( char *string );
-extern void     PushMacro( const char *name, bool_ hidden );
-extern bool_     ScanLine( char *line, size_t len );
+extern void     PushMacro( const char *name, bool hidden );
+extern bool     ScanLine( char *line, size_t len );
 extern void     AddItemToIncludePath( const char *string, const char *end );
 extern void     FreeIncludePath( void );
 

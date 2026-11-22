@@ -186,8 +186,8 @@ static int myatoi( const char *p )
 static  void    CalcMemSize( void )
 /*********************************/
 {
-    bool_            max_size_queried;
-    bool_            size_queried;
+    bool            max_size_queried;
+    bool            size_queried;
     pointer_uint    size_requested;
     pointer_uint    memory_available;
     char            buff[80];

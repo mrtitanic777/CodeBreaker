@@ -45,7 +45,7 @@
 
 static bool_maybe   ZapsIndexed( name *, name * );
 
-bool_    TempsOverlap( name *name1, name *name2 )
+bool    TempsOverlap( name *name1, name *name2 )
 /***********************************************
  * Do N_TEMP names "name1" and "name2" occupy the same memory?
  */
@@ -66,7 +66,7 @@ bool_    TempsOverlap( name *name1, name *name2 )
 }
 
 
-static  bool_  ZapsMemory( name *result, name *op, bool_ for_index )
+static  bool  ZapsMemory( name *result, name *op, bool for_index )
 /*****************************************************************
  * Could redefining "result" redefine N_MEMORY name "op"?
  */
@@ -103,7 +103,7 @@ static  bool_  ZapsMemory( name *result, name *op, bool_ for_index )
 }
 
 
-static  bool_  ZapsTemp( name *result, name *op, bool_ for_index )
+static  bool  ZapsTemp( name *result, name *op, bool for_index )
 /***************************************************************
  * Could redefining "result" redefine N_TEMP name "op"?
  */
@@ -243,7 +243,7 @@ static  bool_maybe  ZapsIndexed( name *result, name *op )
 }
 
 
-bool_    NameIsConstant( name *op )
+bool    NameIsConstant( name *op )
 /********************************/
 {
     if( op->n.class_ == N_TEMP
@@ -261,7 +261,7 @@ bool_    NameIsConstant( name *op )
     return( AskNameIsROM( op->v.symbol, op->m.memory_type ) );
 }
 
-bool_maybe  VisibleToCall( instruction *ins, name *op, bool_ modifies )
+bool_maybe  VisibleToCall( instruction *ins, name *op, bool modifies )
 /*********************************************************************
  * Is the operand 'op' visible to the code in invoked by the call 'ins'?
  * The 'modifies' flag means we only care if the routine can modify 'op'.
@@ -310,7 +310,7 @@ bool_maybe  VisibleToCall( instruction *ins, name *op, bool_ modifies )
     return( MB_FALSE );
 }
 
-static  bool_    ZappedBySTQ_U( instruction *ins, name *op )
+static  bool    ZappedBySTQ_U( instruction *ins, name *op )
 /*********************************************************/
 {
 #if _TARGET & _TARG_AXP
@@ -383,7 +383,7 @@ bool_maybe  ReDefinedBy( instruction *ins, name *op )
 }
 
 
-bool_    IsVolatile( name *op )
+bool    IsVolatile( name *op )
 /*****************************
  * Is "op" volatile in the C sense of the word?
  */

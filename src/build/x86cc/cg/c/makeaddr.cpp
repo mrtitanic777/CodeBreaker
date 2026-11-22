@@ -220,7 +220,7 @@ void    NamesCrossBlocks( void )
 }
 
 
-bool_    AddrFrlFree( void )
+bool    AddrFrlFree( void )
 /*************************/
 {
     return( FrlFreeAll( &makeaddr_state().AddrNameFrl, sizeof( address_name ) ) );
@@ -398,7 +398,7 @@ void    Convert( an addr, type_class_def type_class )
 }
 
 
-bool_    PointLess( an l_addr, an r_addr )
+bool    PointLess( an l_addr, an r_addr )
 /***************************************/
 {
     if( l_addr->class_ != CL_POINTER && r_addr->class_ != CL_POINTER )
@@ -505,7 +505,7 @@ void    FixCodePtr( an addr )
 }
 
 
-bool_    NeedPtrConvert( an addr, const type_def *tipe )
+bool    NeedPtrConvert( an addr, const type_def *tipe )
 /*****************************************************/
 {
     if( addr->format != NF_ADDR )

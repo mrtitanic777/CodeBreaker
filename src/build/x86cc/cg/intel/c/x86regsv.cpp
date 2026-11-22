@@ -103,7 +103,7 @@ void    InitWeights( uint size )
 }
 
 
-bool_    WorthProlog( conflict_node *conf, hw_reg_set reg )
+bool    WorthProlog( conflict_node *conf, hw_reg_set reg )
 /*******************************************************************
     decide if the savings associated with giving conflict "conf"
     is worth the cost incurred by generating a prolog to

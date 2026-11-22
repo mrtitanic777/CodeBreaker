@@ -101,12 +101,12 @@ void OpenErrFile( void )
     }
 }
 
-static bool_ okToPrintMsg( msg_codes msgnum, int *plevel )
+static bool okToPrintMsg( msg_codes msgnum, int *plevel )
 /********************************************************
  * See if OK to print message
  */
 {
-    bool_        ok;
+    bool        ok;
     int         level;
     unsigned    msg_index;
 

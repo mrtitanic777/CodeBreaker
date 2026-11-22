@@ -38,23 +38,23 @@ block    *NextInProg( block *blk );
 void     MakeJumpBlock( block *cond_blk, block_edge *exit_edge );
 void     UnMarkInvariants( void );
 void     MarkInvariants( void );
-bool_     InvariantOp( name *op );
-bool_     Hoistable( instruction *ins, block *blk );
+bool     InvariantOp( name *op );
+bool     Hoistable( instruction *ins, block *blk );
 induction    *FindIndVar( name *op );
 void     CommonInvariant( void );
 void    FiniIndVars( void );
-bool_    Inducable( block *blk, instruction *ins );
+bool    Inducable( block *blk, instruction *ins );
 void    SuffixPreHeader( instruction *ins );
 void    MoveDownLoop( block *cond );
 instruction     *DupIns( instruction *blk_end, instruction *ins, name *var, int_32 adjust );
 instruction     *DupInstrs( instruction *blk_end, instruction *first, instruction *last, induction *var, int_32 adjust );
-bool_    AnalyseLoop( induction *var, bool_ *ponecond, instruction **pcond, block **pcond_blk );
-bool_    CalcFinalValue( induction *var, block *blk, instruction *ins, int_32 *final, int_32 *initial );
-bool_    LoopInvariant( void );
-bool_    LoopRegInvariant( void );
+bool    AnalyseLoop( induction *var, bool *ponecond, instruction **pcond, block **pcond_blk );
+bool    CalcFinalValue( induction *var, block *blk, instruction *ins, int_32 *final, int_32 *initial );
+bool    LoopInvariant( void );
+bool    LoopRegInvariant( void );
 void    LoopEnregister( void );
-bool_    IndVars( void );
-bool_    TransLoops( bool_ unroll );
+bool    IndVars( void );
+bool    TransLoops( bool unroll );
 
 #ifndef CB_STATE_LOOPOPTS_H
 #define CB_STATE_LOOPOPTS_H

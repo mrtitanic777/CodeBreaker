@@ -377,7 +377,7 @@ static int TB_create(u96 *value, long exponent, TB_LD *ld)
     return 0;
 }
 
-TB_LD * strtotb( const char *p, TB_LD * ld, bool_ negative )
+TB_LD * strtotb( const char *p, TB_LD * ld, bool negative )
 /**********************************************************
  * convert string into tbyte/long double
  * set result sign

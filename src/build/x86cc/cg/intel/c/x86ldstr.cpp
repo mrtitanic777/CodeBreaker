@@ -55,7 +55,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct X86ldstrState {
-    bool_ PreferSize;
+    bool PreferSize;
     const hw_reg_set *RoverByte;
     const hw_reg_set *RoverWord;
     const hw_reg_set *RoverDouble;
@@ -238,7 +238,7 @@ static  instruction     *MakeGeneratable( instruction *ins )
 }
 
 
-static  bool_    LoadStoreIns( instruction *ins )
+static  bool    LoadStoreIns( instruction *ins )
 /***********************************************
  * RISCify one instruction. See LdStAlloc for details.
  */
@@ -279,10 +279,10 @@ static  bool_    LoadStoreIns( instruction *ins )
 }
 
 #if _TARGET & _TARG_8086
-static  bool_    FixMem16Moves( void ) { return( false ); }
+static  bool    FixMem16Moves( void ) { return( false ); }
 static  void    CompressMem16Moves( void ) {}
 #else
-static  bool_    SplitMem16Move( instruction *ins )
+static  bool    SplitMem16Move( instruction *ins )
 /*************************************************
  * Return true if we can split the 16-bit move
  * instruction given into two one-byte moves.
@@ -354,7 +354,7 @@ static  void    RestoreMem16Move( instruction *ins )
     }
 }
 
-static  bool_    FixMem16Moves( void )
+static  bool    FixMem16Moves( void )
 /************************************
  * Look for 16-bit mem moves and turn them into two 1-byte
  * mem moves, so as to escape the dreaded size override. If
@@ -365,7 +365,7 @@ static  bool_    FixMem16Moves( void )
 {
     block       *blk;
     instruction *ins;
-    bool_        changed;
+    bool        changed;
     instruction *next;
 
     if( data_state().OptForSize > 0 )
@@ -410,7 +410,7 @@ static  void    CompressMem16Moves( void )
 #endif
 
 
-bool_    LdStAlloc( void )
+bool    LdStAlloc( void )
 /*******************************
  * Look for non-move operations with memory operands and change them
  * into RISC style load/store instructions. This helps on the 486 and
@@ -425,7 +425,7 @@ bool_    LdStAlloc( void )
     block       *blk;
     instruction *ins;
     instruction *next;
-    bool_        changed;
+    bool        changed;
 
     x86ldstr_state().RoverByte = NULL;
     x86ldstr_state().RoverWord = NULL;
@@ -462,7 +462,7 @@ bool_    LdStAlloc( void )
     return( changed );
 }
 
-static bool_ CanCompressOperand( instruction *ins, name **popnd )
+static bool CanCompressOperand( instruction *ins, name **popnd )
 /**************************************************************/
 {
     opcnt       i;
@@ -506,7 +506,7 @@ static bool_ CanCompressOperand( instruction *ins, name **popnd )
     return( true );
 }
 
-static bool_     CanCompressResult( instruction *ins,
+static bool     CanCompressResult( instruction *ins,
                                    name *prev_op0, instruction *next,
                                    name **popnd )
 /**********************************************************************/

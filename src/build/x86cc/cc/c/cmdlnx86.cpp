@@ -69,7 +69,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct Cmdlnx86State {
-    bool_ nd_used = false;
+    bool nd_used = false;
 };
 
 }  // namespace

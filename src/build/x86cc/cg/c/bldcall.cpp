@@ -286,7 +286,7 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
     name                *parm_name;
     type_class_def      type_class;
     const type_def      *ptipe;
-    bool_                no_temp;
+    bool                no_temp;
 
     ptipe = QParmType( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ), sym, tipe );
     type_class = TypeClass( ptipe );
@@ -805,7 +805,7 @@ static void SplitStructParms( pn *parm_list, call_state *state )
 }
 #endif
 
-bool_        AssgnParms( cn call, bool_ aux_inline )
+bool        AssgnParms( cn call, bool aux_inline )
 /********************************************************
  * Decide what registers the parms should go in.
  * Assign registers to first parm first, etc. Also, assign a congolmeration
@@ -816,7 +816,7 @@ bool_        AssgnParms( cn call, bool_ aux_inline )
 {
     pn                  parm;
     call_state          *state;
-    bool_                push_no_pop;
+    bool                push_no_pop;
     int                 parms;
     instruction         *call_ins;
     type_class_def      parm_type_class;

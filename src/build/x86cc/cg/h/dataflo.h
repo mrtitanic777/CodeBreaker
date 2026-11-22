@@ -32,5 +32,5 @@
 
 
 extern void    MakeConflicts( void );
-extern bool_    MoreConflicts( void );
+extern bool    MoreConflicts( void );
 extern void    SetInOut( block *blk );

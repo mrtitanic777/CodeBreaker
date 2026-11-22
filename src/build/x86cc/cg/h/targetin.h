@@ -39,10 +39,10 @@ extern type_length      PushSize( type_length );
 extern void             PushLocals( void );
 extern void             SetTempLocation( name *, type_length );
 extern type_length      TempLocation( name * );
-extern bool_             TempAllocBefore( void *, void * );
+extern bool             TempAllocBefore( void *, void * );
 extern unsigned         DepthAlign( unsigned );
 extern void             GenCallLabel( pointer );
 extern void             GenLabelReturn( void );
 extern void             GenObjCode( instruction * );
 
-extern bool_             DoVerify( vertype kind, instruction *ins );
+extern bool             DoVerify( vertype kind, instruction *ins );

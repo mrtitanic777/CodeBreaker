@@ -60,7 +60,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct DbtypesState {
-    bool_ Nested;   /* set when types are nested by others */
+    bool Nested;   /* set when types are nested by others */
 };
 
 }  // namespace
@@ -385,7 +385,7 @@ dbg_type _CGAPI DBArray( dbg_type idx, dbg_type base )
     return( ret );
 }
 
-dbg_array _CGAPI DBBegArray( dbg_type base, cg_type tipe, bool_ is_col_major )
+dbg_array _CGAPI DBBegArray( dbg_type base, cg_type tipe, bool is_col_major )
 /***************************************************************************/
 {
     dbg_array       ar;
@@ -647,10 +647,10 @@ dbg_type _CGAPI DBBasedPtr( cg_type ptr_type, dbg_type base,
 }
 
 
-bool_ _CGAPI DBNested( bool_ nested )
+bool _CGAPI DBNested( bool nested )
 /*********************************/
 {
-    bool_ ret;
+    bool ret;
 
 #ifdef DEVBUILD
     EchoAPI( "DBNested(%i)", nested );
@@ -663,7 +663,7 @@ bool_ _CGAPI DBNested( bool_ nested )
     return( ret );
 }
 
-dbg_struct _CGAPI DBBegNameStruct( cchar_ptr nm, cg_type tipe, bool_ is_struct )
+dbg_struct _CGAPI DBBegNameStruct( cchar_ptr nm, cg_type tipe, bool is_struct )
 /*****************************************************************************/
 {
     uint        n_len;
@@ -702,7 +702,7 @@ dbg_struct _CGAPI DBBegNameStruct( cchar_ptr nm, cg_type tipe, bool_ is_struct )
     return( st );
 }
 
-dbg_struct _CGAPI DBBegStruct( cg_type tipe, bool_ is_struct )
+dbg_struct _CGAPI DBBegStruct( cg_type tipe, bool is_struct )
 /***********************************************************/
 {
     dbg_struct  st;

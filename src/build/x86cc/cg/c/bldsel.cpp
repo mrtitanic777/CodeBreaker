@@ -139,14 +139,14 @@ int SelCompare( const signed_64 *lo1, const signed_64 *lo2 )
 }
 
 
-static bool_     NodeLess( void *s1, void *s2 )
+static bool     NodeLess( void *s1, void *s2 )
 /********************************************/
 {
     return( SelCompare( &((const select_list *)s1)->low, &((const select_list *)s2)->low ) < 0 );
 }
 
 
-static void     SortNodeList( an node, sel_handle s_node, bool_ is_signed )
+static void     SortNodeList( an node, sel_handle s_node, bool is_signed )
 /************************************************************************/
 {
     const select_list   *list;
@@ -426,7 +426,7 @@ static  an      GenSelTable( an node, sel_handle s_node, const type_def *tipe )
 static void DoBinarySearch( an node, const select_list *list, const type_def *tipe,
                                int lo, int hi, label_handle other,
                                const signed_64 *lobound, const signed_64 *hibound,
-                               bool_ have_lobound, bool_ have_hibound )
+                               bool have_lobound, bool have_hibound )
 /*************************************************************************/
 {
     int                 num;

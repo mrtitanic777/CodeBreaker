@@ -50,7 +50,7 @@
 #define MAX_TYPE_SIZE   (1024 * 16)
 
 static  void            NewType( temp_buff *temp, uint ty_def );
-static  void            EndType( bool_ check_too_big );
+static  void            EndType( bool check_too_big );
 
 namespace {
 
@@ -595,7 +595,7 @@ static  void    NewType( temp_buff *temp, uint ty_def ) {
 }
 
 
-static  void    EndType( bool_ check_too_big ) {
+static  void    EndType( bool check_too_big ) {
 /*********************************************/
 
 

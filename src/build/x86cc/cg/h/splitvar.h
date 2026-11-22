@@ -31,5 +31,5 @@
 ****************************************************************************/
 
 
-extern bool_    RepOp( name **pop, name *of, name *with );
+extern bool    RepOp( name **pop, name *of, name *with );
 extern void    SplitVars( void );

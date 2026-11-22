@@ -71,14 +71,14 @@ static HMODULE  dllHandle;
 static HANDLE   dllHandle;
 #endif
 
-bool_ _CGAPI BELoad( cchar_ptr dll_name )
+bool _CGAPI BELoad( cchar_ptr dll_name )
 /**************************************/
 {
 #ifdef __OS2__
 #define SIZE 32
     unsigned char badfile[SIZE];
 #endif
-    bool_ retval;
+    bool retval;
 
     if( dll_name == NULL ) {
 #if _TARGET & _TARG_8086
@@ -121,7 +121,7 @@ bool_ _CGAPI BELoad( cchar_ptr dll_name )
 void _CGAPI BEUnload( void )
 /**************************/
 {
-    bool_ retval;
+    bool retval;
     void _CGDLLEXPORT (*func_ptr)( cg_interface * );
 
 #ifdef __OS2__
@@ -145,7 +145,7 @@ void _CGAPI BEUnload( void )
 #include "bool.h"
 #include "cgcli.h"
 
-bool_ _CGAPI BELoad( const char *name )
+bool _CGAPI BELoad( const char *name )
 /************************************/
 {
     /* unused parameters */ (void)name;

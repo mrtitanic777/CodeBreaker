@@ -147,7 +147,7 @@ const char  *AskRTName( rt_class rtindex )
 }
 
 
-bool_    RTLeaveOp2( instruction *ins )
+bool    RTLeaveOp2( instruction *ins )
 /*************************************
  * return true if it's a bad idea to put op2 into a temporary since we're
  * gonna take the bugger's address in rMAKECALL.

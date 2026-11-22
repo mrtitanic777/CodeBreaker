@@ -52,8 +52,8 @@ typedef struct patch_info {
         tn              node;
         instruction     *ins;
     } u;
-    bool_        in_tree;        // are we hanging in a tree somewhere?
-    bool_        patched;        // has someone made a node out of us yet?
+    bool        in_tree;        // are we hanging in a tree somewhere?
+    bool        patched;        // has someone made a node out of us yet?
 } patch_info;
 
 extern  patch_handle    BGNewPatch( void );

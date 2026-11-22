@@ -205,13 +205,13 @@ void    FreeScoreBoard( score_hdl scoreboard )
 }
 
 
-void    MemChanged( score_hdl scoreboard, bool_ statics_too )
+void    MemChanged( score_hdl scoreboard, bool statics_too )
 /**********************************************************/
 {
     int         i;
     score_list  **owner;
     score_list  *curr;
-    bool_        changed;
+    bool        changed;
 
     for( i = score_state().ScoreCount; i > 0; --i ) {
         if( scoreboard->list != NULL ) {
@@ -268,7 +268,7 @@ score_list      *NewScListEntry( void )
 }
 
 
-bool_    ScoreFrlFree( void )
+bool    ScoreFrlFree( void )
 /**************************/
 {
     return( FrlFreeAll( &score_state().ScListFrl, sizeof( score_list ) ) );

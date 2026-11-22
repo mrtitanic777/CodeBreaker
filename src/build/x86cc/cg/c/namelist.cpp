@@ -729,10 +729,10 @@ void    FreeAName( name *op )
 }
 
 
-bool_    NameFrlFree( void )
+bool    NameFrlFree( void )
 /*************************/
 {
-    bool_            freed;
+    bool            freed;
     name_class_def  class_;
 
     freed = false;

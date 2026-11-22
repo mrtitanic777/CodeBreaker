@@ -204,7 +204,7 @@ STR_HANDLE GetLiteral( void )
     STR_HANDLE          str_lit;
     STR_HANDLE          p;
     STR_HANDLE          q;
-    bool_                is_wide;
+    bool                is_wide;
 
     /*
      * first we store the whole string in a linked list to see if

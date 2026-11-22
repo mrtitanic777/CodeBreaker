@@ -57,7 +57,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct CdumpState {
-    bool_ do_message_output;   /* Optimize output for human */
+    bool do_message_output;   /* Optimize output for human */
 };
 
 }  // namespace
@@ -513,9 +513,9 @@ static void DumpDecl( TYPEPTR typ, SYMPTR funcsym, STRCHUNK *pch )
 
 static void DumpSymbol( TYPEPTR typ, SYMPTR sym, STRCHUNK *pch )
 {
-    bool_        was_array;
+    bool        was_array;
 
-    was_array = ( typ->decl_type == TYP_POINTER && (typ->u.p.decl_flags & FLAG_WAS_ARRAY) );
+    was_array = ( typ->decl_type == TYP_POINTER && (typ->u.p.decl_flags & FLAG_WAS_ARRAY) != 0 );
     if( was_array ) {
         DumpFlags( typ->u.p.decl_flags & ~MASK_QUALIFIERS, typ, pch );
         DumpFlags( typ->u.p.decl_flags & MASK_QUALIFIERS, typ, pch );

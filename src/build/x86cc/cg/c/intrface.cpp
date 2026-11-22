@@ -107,7 +107,7 @@ namespace {
 struct IntrfaceState {
     uback_info *BckInfoHead;   // linked list of available bck_info's
     bck_info_block *BckInfoCarveHead;   // list of big blocks of bck_info's
-    bool_ memStarted = false;
+    bool memStarted = false;
     back_handle NewBackReturn = NULL;
     cg_name CGDuplicateArray[2];
 };

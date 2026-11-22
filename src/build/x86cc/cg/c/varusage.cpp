@@ -68,7 +68,7 @@ static  void    Use( name *op, block *blk, var_usage usage )
 }
 
 
-static  bool_    CoveringDefinitions( name *op )
+static  bool    CoveringDefinitions( name *op )
 /**********************************************
     If we are only defining a piece of "op", we check all of its aliases
     to see if they have been defined in this block as well.  Only if all
@@ -80,7 +80,7 @@ static  bool_    CoveringDefinitions( name *op )
     name        *alias;
     int         i;
     uint        loc;
-    bool_        covered[MAX_POSSIBLE_REG + 1];
+    bool        covered[MAX_POSSIBLE_REG + 1];
 
     if( op->n.size > MAX_POSSIBLE_REG )
         return( false );
@@ -367,7 +367,7 @@ static  void    SearchDefUse( void )
     instruction *ins;
     name        *name;
     opcnt       i;
-    bool_        touched_non_op;
+    bool        touched_non_op;
 
     for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         touched_non_op = false;

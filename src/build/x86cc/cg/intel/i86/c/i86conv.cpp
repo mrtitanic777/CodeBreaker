@@ -301,7 +301,7 @@ static  conv_method     AskHow( type_class_def fr, type_class_def to )
 }
 
 
-bool_    CvtOk( type_class_def fr, type_class_def to )
+bool    CvtOk( type_class_def fr, type_class_def to )
 /***************************************************/
 {
     if( fr == XX )

@@ -59,7 +59,7 @@ typedef struct user_seg {
 #if _INTEL_CPU
     hw_reg_set      pegged_register;
 #endif
-    bool_            used;
+    bool            used;
 } user_seg;
 
 typedef struct seg_name {
@@ -149,7 +149,7 @@ void AssignSeg( SYMPTR sym )
 }
 
 
-void SetFarHuge( SYMPTR sym, bool_ report )
+void SetFarHuge( SYMPTR sym, bool report )
 {
 #if _INTEL_CPU
     TYPEPTR             typ;

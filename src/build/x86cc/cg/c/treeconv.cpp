@@ -44,12 +44,12 @@
 #include "typemap.h"
 
 
-static  bool_    DemoteTree( tn name, const type_def *tipe, bool_ just_test ) {
+static  bool    DemoteTree( tn name, const type_def *tipe, bool just_test ) {
 /***************************************************************************/
 
     const type_def  *frum;
-    bool_            demote_this_node;
-    bool_            can_demote;
+    bool            demote_this_node;
+    bool            can_demote;
 
     frum = name->tipe;
     can_demote = false;

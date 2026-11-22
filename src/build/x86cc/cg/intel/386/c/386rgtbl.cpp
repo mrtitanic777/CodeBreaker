@@ -740,7 +740,7 @@ hw_reg_set      StructReg( void )
 }
 
 
-hw_reg_set      ReturnReg( type_class_def type_class, bool_ use_87 )
+hw_reg_set      ReturnReg( type_class_def type_class, bool use_87 )
 /******************************************************************
  * return the "normal" return register used for type "class"
  */
@@ -775,7 +775,7 @@ reg_set_index   NoSegments( reg_set_index regs_idx )
 }
 
 
-reg_set_index   IndexIntersect( reg_set_index curr, type_class_def type_class, bool_ is_temp_index )
+reg_set_index   IndexIntersect( reg_set_index curr, type_class_def type_class, bool is_temp_index )
 /***********************************************************
  * return the intersection of "curr" with the set of index
  * registers of type "class"
@@ -787,7 +787,7 @@ reg_set_index   IndexIntersect( reg_set_index curr, type_class_def type_class, b
 }
 
 
-bool_    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool_ is_temp_index )
+bool    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool is_temp_index )
 /*****************************************************************************
  * return true if "reg" can be used as an index of type "class"
  */
@@ -847,7 +847,7 @@ type_class_def  RegClass( hw_reg_set regs )
     }
 }
 
-bool_    IndexRegOk( hw_reg_set reg, bool_ is_temp_index )
+bool    IndexRegOk( hw_reg_set reg, bool is_temp_index )
 /*******************************************************
  * return true if "reg" is ok to be used as in index reg.
  * "is_temp_index" means we'll also need to incorporate the
@@ -872,7 +872,7 @@ bool_    IndexRegOk( hw_reg_set reg, bool_ is_temp_index )
 }
 
 
-bool_    IsSegReg( hw_reg_set regs )
+bool    IsSegReg( hw_reg_set regs )
 /**********************************
  * return true if "regs" is a segment register
  */
@@ -1095,7 +1095,7 @@ hw_reg_set      LowOffsetReg( hw_reg_set regs )
 }
 
 
-bool_    IsRegClass( hw_reg_set regs, type_class_def type_class )
+bool    IsRegClass( hw_reg_set regs, type_class_def type_class )
 /***************************************************************
  * return true if "regs" has type "class" (eg I4, U4, etc)
  */
@@ -1149,7 +1149,7 @@ hw_reg_set      FixedRegs( void )
 }
 
 
-bool_    IsStackReg( name *sp )
+bool    IsStackReg( name *sp )
 /****************************/
 {
     if( sp == NULL )

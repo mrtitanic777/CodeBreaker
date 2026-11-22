@@ -34,8 +34,8 @@
 #define _IsntReDefinedBy(a,b)   (ReDefinedBy(a,b) == MB_FALSE)
 #define _IsVisibleToCall(a,b,c) (VisibleToCall(a,b,c) != MB_FALSE)
 
-extern bool_         TempsOverlap( name *name1, name *name2 );
-extern bool_         NameIsConstant( name *op );
-extern bool_maybe   VisibleToCall( instruction *ins, name *op, bool_ modifies );
+extern bool         TempsOverlap( name *name1, name *name2 );
+extern bool         NameIsConstant( name *op );
+extern bool_maybe   VisibleToCall( instruction *ins, name *op, bool modifies );
 extern bool_maybe   ReDefinedBy( instruction *ins, name *op );
-extern bool_         IsVolatile( name *op );
+extern bool         IsVolatile( name *op );

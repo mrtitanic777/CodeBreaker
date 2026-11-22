@@ -41,9 +41,9 @@
 
 #define USE_FPU_EMUL    ((asmglob_state().SWData.fpt==DO_FP_EMULATION)&&(!rCode->use32)&&(ins->cpu & P_FPU_MASK)!=P_NO87)
 
-static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTYPE determinant );
+static bool match_phase_3( bool *found, const asm_ins ASMI86FAR **pins, OPNDTYPE determinant );
 
-static bool_ output_3DNow( const asm_ins ASMI86FAR *ins )
+static bool output_3DNow( const asm_ins ASMI86FAR *ins )
 /******************************************************/
 {
     if( ins->byte1_info == F_0F0F ) {
@@ -55,7 +55,7 @@ static bool_ output_3DNow( const asm_ins ASMI86FAR *ins )
     return( RC_OK );
 }
 
-static bool_ output( const asm_ins ASMI86FAR *ins )
+static bool output( const asm_ins ASMI86FAR *ins )
 /************************************************/
 /*
 - determine what code should be output and their order;
@@ -319,7 +319,7 @@ static bool_ output( const asm_ins ASMI86FAR *ins )
     return( RC_OK );
 }
 
-static bool_ output_data( OPNDTYPE determinant, operand_idx index )
+static bool output_data( OPNDTYPE determinant, operand_idx index )
 /***************************************************************/
 /*
   output address displacement and immediate data;
@@ -392,7 +392,7 @@ static bool_ output_data( OPNDTYPE determinant, operand_idx index )
     return( RC_OK );
 }
 
-static bool_ match_phase_2( bool_ *found, const asm_ins ASMI86FAR **pins )
+static bool match_phase_2( bool *found, const asm_ins ASMI86FAR **pins )
 /***********************************************************************
 - a routine used by match_phase_1() to determine whether both operands match
   with that in the assembly instructions table;
@@ -422,7 +422,7 @@ static bool_ match_phase_2( bool_ *found, const asm_ins ASMI86FAR **pins )
     }
 }
 
-bool_ match_phase_1( void )
+bool match_phase_1( void )
 /*************************
 - this routine will look up the assembler opcode table and try to match
   the first operand in table with what we get;
@@ -430,11 +430,11 @@ bool_ match_phase_1( void )
   second operand also match; if not, it must be error;
 */
 {
-    bool_            rc;
-    bool_            temp_opsiz = false;
+    bool            rc;
+    bool            temp_opsiz = false;
     OPNDTYPE        cur_opnd;
     OPNDTYPE        asm_op1;
-    bool_            found = true;
+    bool            found = true;
     const asm_ins   ASMI86FAR *ins;
 
     // if nothing inside, no need to output anything
@@ -600,7 +600,7 @@ bool_ match_phase_1( void )
     return( RC_ERROR );
 }
 
-static bool_ check_3rd_operand( const asm_ins ASMI86FAR *ins )
+static bool check_3rd_operand( const asm_ins ASMI86FAR *ins )
 /***********************************************************/
 {
     OPNDTYPE    cur_opnd;
@@ -620,7 +620,7 @@ static bool_ check_3rd_operand( const asm_ins ASMI86FAR *ins )
     }
 }
 
-static bool_ output_3rd_operand( const asm_ins ASMI86FAR *ins )
+static bool output_3rd_operand( const asm_ins ASMI86FAR *ins )
 /************************************************************/
 {
     if( ins->opnd_type_3rd == OP3_NONE ) {
@@ -639,7 +639,7 @@ static bool_ output_3rd_operand( const asm_ins ASMI86FAR *ins )
     }
 }
 
-static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTYPE determinant )
+static bool match_phase_3( bool *found, const asm_ins ASMI86FAR **pins, OPNDTYPE determinant )
 /************************************************************************
 - this routine will look up the assembler opcode table and try to match
   the second operand with what we get;

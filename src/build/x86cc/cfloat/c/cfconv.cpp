@@ -381,7 +381,7 @@ cfloat  *CFRound( cfhandle h, cfloat *f )
     return( result );
 }
 
-static cfloat   *CFCnvLongToF( cfhandle h, signed_32 data, bool_ is_signed )
+static cfloat   *CFCnvLongToF( cfhandle h, signed_32 data, bool is_signed )
 /*************************************************************************/
 {
     cfloat              *result;
@@ -464,7 +464,7 @@ cfloat  *CFCnvU64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
 cfloat  *CFCnvI64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
 /******************************************************************/
 {
-    bool_        neg;
+    bool        neg;
     cfloat      *result;
 
     neg = false;
@@ -500,7 +500,7 @@ cfloat  *CFCnvUF( cfhandle h, uint data )
     return( CFCnvLongToF( h, data, false ) );
 }
 
-static bool_     CFIsIntType( cfloat *f, cfloat *maxval )
+static bool     CFIsIntType( cfloat *f, cfloat *maxval )
 /*******************************************************
  * Assume 2-complement
  * if signed maxval is magnitude of smallest negative number
@@ -530,55 +530,55 @@ static bool_     CFIsIntType( cfloat *f, cfloat *maxval )
     return( true );
 }
 
-bool_ CFIsI8( cfloat *f )
+bool CFIsI8( cfloat *f )
 /**********************/
 {
     return( CFIsIntType( f, (cfloat *)&MaxNegI8 ) );
 }
 
-bool_ CFIsI16( cfloat *f )
+bool CFIsI16( cfloat *f )
 /***********************/
 {
     return( CFIsIntType( f, (cfloat *)&MaxNegI16 ) );
 }
 
-bool_ CFIsI32( cfloat *f )
+bool CFIsI32( cfloat *f )
 /***********************/
 {
     return( CFIsIntType( f, (cfloat *)&MaxNegI32 ) );
 }
 
-bool_ CFIsI64( cfloat *f )
+bool CFIsI64( cfloat *f )
 /***********************/
 {
     return( CFIsIntType( f, (cfloat *)&MaxNegI64 ) );
 }
 
-bool_ CFIsU8( cfloat *f )
+bool CFIsU8( cfloat *f )
 /**********************/
 {
     return( CFIsIntType( f, (cfloat *)&MaxU8 ) );
 }
 
-bool_ CFIsU16( cfloat *f )
+bool CFIsU16( cfloat *f )
 /***********************/
 {
     return( CFIsIntType( f, (cfloat *)&MaxU16 ) );
 }
 
-bool_ CFIsU32( cfloat *f )
+bool CFIsU32( cfloat *f )
 /***********************/
 {
     return( CFIsIntType( f, (cfloat *)&MaxU32 ) );
 }
 
-bool_ CFIsU64( cfloat *f )
+bool CFIsU64( cfloat *f )
 /***********************/
 {
     return( CFIsIntType( f, (cfloat *)&MaxU64 ) );
 }
 
-bool_ CFIs32( cfloat *f )
+bool CFIs32( cfloat *f )
 /**********************/
 {
     if( CFIsI32( f ) )
@@ -588,7 +588,7 @@ bool_ CFIs32( cfloat *f )
     return( false );
 }
 
-bool_ CFIs64( cfloat *f )
+bool CFIs64( cfloat *f )
 /**********************/
 {
     if( CFIsI64( f ) )
@@ -598,7 +598,7 @@ bool_ CFIs64( cfloat *f )
     return( false );
 }
 
-bool_ CFIsSize( cfloat *f, uint size )
+bool CFIsSize( cfloat *f, uint size )
 /***********************************/
 {
     switch( size ) {
@@ -630,7 +630,7 @@ bool_ CFIsSize( cfloat *f, uint size )
     return( false );
 }
 
-bool_ CFSignedSize( cfloat *f, uint size )
+bool CFSignedSize( cfloat *f, uint size )
 /***************************************/
 {
     switch( size ) {
@@ -654,7 +654,7 @@ bool_ CFSignedSize( cfloat *f, uint size )
     return( false );
 }
 
-bool_ CFUnSignedSize( cfloat *f, uint size )
+bool CFUnSignedSize( cfloat *f, uint size )
 /*****************************************/
 {
     switch( size ) {
@@ -678,11 +678,11 @@ bool_ CFUnSignedSize( cfloat *f, uint size )
     return( false );
 }
 
-bool_ CFIsFloat( cfloat *f )
+bool CFIsFloat( cfloat *f )
 /*************************/
 {
     int     sign;
-    bool_    ok;
+    bool    ok;
 
     sign = f->sign;
     f->sign = 1;
@@ -695,11 +695,11 @@ bool_ CFIsFloat( cfloat *f )
     return( ok );
 }
 
-bool_ CFIsDouble( cfloat *f )
+bool CFIsDouble( cfloat *f )
 /**************************/
 {
     int     sign;
-    bool_    ok;
+    bool    ok;
 
     sign = f->sign;
     f->sign = 1;

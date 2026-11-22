@@ -85,7 +85,7 @@ static  name    *FindPiece( hw_reg_set opnd, hw_reg_set frm, hw_reg_set to )
 }
 
 
-static  bool_    CanChange( instruction **pins,
+static  bool    CanChange( instruction **pins,
                            name *frm, name *to, instruction *new_ins )
 /********************************************************************/
 {
@@ -93,8 +93,8 @@ static  bool_    CanChange( instruction **pins,
     const opcode_entry  *try_;
     opcnt               i;
     name                *opnd;
-    bool_                temp_index;
-    bool_                has_index;
+    bool                temp_index;
+    bool                has_index;
 
     ins = *pins;
     if( ins->head.opcode == OP_CONVERT
@@ -157,7 +157,7 @@ static  bool_    CanChange( instruction **pins,
 }
 
 
-static  bool_    CantChange( instruction **pins, name *frm, name *to )
+static  bool    CantChange( instruction **pins, name *frm, name *to )
 /*******************************************************************/
 {
     instruction         *new_ins;
@@ -174,7 +174,7 @@ static  bool_    CantChange( instruction **pins, name *frm, name *to )
     return( true );
 }
 
-static  bool_    Modifies( name *Y, name *Z, name *result )
+static  bool    Modifies( name *Y, name *Z, name *result )
 /********************************************************/
 {
     if( result == NULL )
@@ -188,7 +188,7 @@ static  bool_    Modifies( name *Y, name *Z, name *result )
     return( false );
 }
 
-static  bool_    UsedIn( name *op, name *reg )
+static  bool    UsedIn( name *op, name *reg )
 /*******************************************/
 {
     if( op->n.class_ == N_REGISTER ) {
@@ -212,7 +212,7 @@ static  bool_    UsedIn( name *op, name *reg )
 }
 
 
-static  bool_    ThrashDown( instruction *ins )
+static  bool    ThrashDown( instruction *ins )
 /*********************************************
  * We have a move instruction of the form
  *           MOV Y ==> Z
@@ -284,7 +284,7 @@ static  bool_    ThrashDown( instruction *ins )
 }
 
 
-static  bool_    ThrashUp( instruction *ins )
+static  bool    ThrashUp( instruction *ins )
 /*******************************************
  * OK, if there is an instruction of the form
  *           OP(?Z,?Z) ==> Z
@@ -361,7 +361,7 @@ static  bool_    ThrashUp( instruction *ins )
 }
 
 
-bool_    RegThrash( block *blk )
+bool    RegThrash( block *blk )
 /*****************************/
 {
     instruction *ins;

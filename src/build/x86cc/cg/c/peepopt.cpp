@@ -53,15 +53,15 @@
 
 #define OP2VAL( ins ) ( (ins)->operands[1]->c.lo.u.int_value )
 
-typedef bool_    (ONE_OP)(instruction *,instruction *);
-typedef bool_    (TWO_OP)(instruction *,instruction *);
-typedef bool_    (THREE_OP)(instruction *,instruction *);
+typedef bool    (ONE_OP)(instruction *,instruction *);
+typedef bool    (TWO_OP)(instruction *,instruction *);
+typedef bool    (THREE_OP)(instruction *,instruction *);
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct PeepoptState {
-    bool_ AfterRegAlloc;
+    bool AfterRegAlloc;
 };
 
 }  // namespace
@@ -69,7 +69,7 @@ struct PeepoptState {
 static inline PeepoptState& peepopt_state() { return cbrun_part<PeepoptState>(); }
 
 
-static  bool_    InsChangeable( instruction *ins, name *new_op, name **op )
+static  bool    InsChangeable( instruction *ins, name *new_op, name **op )
 /************************************************************************/
 {
     if( peepopt_state().AfterRegAlloc ) {
@@ -86,7 +86,7 @@ static  void    InsReset( instruction *ins )
     }
 }
 
-static  bool_    MergeTwo( instruction *a, instruction *b, int_32 value )
+static  bool    MergeTwo( instruction *a, instruction *b, int_32 value )
 /**********************************************************************/
 {
     name        *cons;
@@ -167,7 +167,7 @@ static  bool_    MergeTwo( instruction *a, instruction *b, int_32 value )
 }
 
 static  ONE_OP  DoAdd;
-static  bool_    DoAdd( instruction *a, instruction *b )
+static  bool    DoAdd( instruction *a, instruction *b )
 /*****************************************************/
 {
     return( MergeTwo( a, b, OP2VAL( a ) + OP2VAL( b ) ) );
@@ -175,7 +175,7 @@ static  bool_    DoAdd( instruction *a, instruction *b )
 
 
 static  ONE_OP  DoMul;
-static  bool_    DoMul( instruction *a, instruction *b )
+static  bool    DoMul( instruction *a, instruction *b )
 /*****************************************************/
 {
     return( MergeTwo( a,b, OP2VAL( a ) * OP2VAL( b ) ) );
@@ -183,7 +183,7 @@ static  bool_    DoMul( instruction *a, instruction *b )
 
 
 static  ONE_OP  DoAnd;
-static  bool_    DoAnd( instruction *a, instruction *b )
+static  bool    DoAnd( instruction *a, instruction *b )
 /*****************************************************/
 {
     return( MergeTwo( a,b, OP2VAL( a ) & OP2VAL( b ) ) );
@@ -191,7 +191,7 @@ static  bool_    DoAnd( instruction *a, instruction *b )
 
 
 static  ONE_OP  DoOr;
-static  bool_    DoOr( instruction *a, instruction *b )
+static  bool    DoOr( instruction *a, instruction *b )
 /****************************************************/
 {
     return( MergeTwo( a,b, OP2VAL( a ) | OP2VAL( b ) ) );
@@ -199,7 +199,7 @@ static  bool_    DoOr( instruction *a, instruction *b )
 
 
 static TWO_OP AndOr;
-static bool_ AndOr( instruction *and_ins, instruction *or_ins )
+static bool AndOr( instruction *and_ins, instruction *or_ins )
 /************************************************************/
 {
     int_32      new_and;
@@ -222,7 +222,7 @@ static bool_ AndOr( instruction *and_ins, instruction *or_ins )
 
 
 static TWO_OP OrAnd;
-static bool_ OrAnd( instruction *or_ins, instruction *and_ins )
+static bool OrAnd( instruction *or_ins, instruction *and_ins )
 /************************************************************/
 {
     int_32      new_or;
@@ -259,7 +259,7 @@ static bool_ OrAnd( instruction *or_ins, instruction *and_ins )
 
 
 static THREE_OP OrAndOr;
-static bool_ OrAndOr( instruction *a, instruction *b )
+static bool OrAndOr( instruction *a, instruction *b )
 /***************************************************/
 {
     int_32      and_val;
@@ -290,7 +290,7 @@ static bool_ OrAndOr( instruction *a, instruction *b )
 
 
 static THREE_OP AndOrAnd;
-static bool_ AndOrAnd( instruction *a, instruction *b )
+static bool AndOrAnd( instruction *a, instruction *b )
 /****************************************************/
 {
     int_32      or_val;
@@ -320,7 +320,7 @@ static bool_ AndOrAnd( instruction *a, instruction *b )
 }
 
 
-static  bool_    DoRShift( instruction *a, instruction *b )
+static  bool    DoRShift( instruction *a, instruction *b )
 /********************************************************/
 {
     if( a->type_class != b->type_class )
@@ -329,7 +329,7 @@ static  bool_    DoRShift( instruction *a, instruction *b )
 }
 
 
-static  bool_    DoLShift( instruction *a, instruction *b )
+static  bool    DoLShift( instruction *a, instruction *b )
 /********************************************************/
 {
     return( DoAdd( a, b ) );
@@ -337,7 +337,7 @@ static  bool_    DoLShift( instruction *a, instruction *b )
 
 
 static TWO_OP LRShift;
-static bool_ LRShift( instruction *a, instruction *b )
+static bool LRShift( instruction *a, instruction *b )
 /***************************************************/
 {
     /* unused parameters */ (void)a; (void)b;
@@ -347,7 +347,7 @@ static bool_ LRShift( instruction *a, instruction *b )
 
 
 static TWO_OP RLShift;
-static bool_ RLShift( instruction *a, instruction *b )
+static bool RLShift( instruction *a, instruction *b )
 /***************************************************/
 {
     /* unused parameters */ (void)a; (void)b;
@@ -357,7 +357,7 @@ static bool_ RLShift( instruction *a, instruction *b )
 
 
 static THREE_OP Nop3;
-static bool_ Nop3( instruction *a, instruction *b )
+static bool Nop3( instruction *a, instruction *b )
 /************************************************/
 {
     /* unused parameters */ (void)a; (void)b;
@@ -366,7 +366,7 @@ static bool_ Nop3( instruction *a, instruction *b )
 }
 
 
-static bool_ SameOpWithConst( instruction *ins, instruction *next )
+static bool SameOpWithConst( instruction *ins, instruction *next )
 /****************************************************************/
 {
     name        *op;
@@ -382,7 +382,7 @@ static bool_ SameOpWithConst( instruction *ins, instruction *next )
 }
 
 
-static bool_ OpConst( instruction *ins )
+static bool OpConst( instruction *ins )
 /*************************************/
 {
     name        *op;
@@ -402,7 +402,7 @@ static bool_ OpConst( instruction *ins )
 
 static  instruction     *FindInsPair( instruction *ins,
                                      instruction **stopper,
-                                     bool_ *pchange, opcode_defs opcode,
+                                     bool *pchange, opcode_defs opcode,
                                      opcode_defs opcode2,
                                      ONE_OP *oprtn )
 /*****************************************************************/
@@ -430,13 +430,13 @@ static  instruction     *FindInsPair( instruction *ins,
 }
 
 
-static instruction *FindInsTriple( instruction *ins, bool_ *pchange,
+static instruction *FindInsTriple( instruction *ins, bool *pchange,
                                    opcode_defs opcode1, opcode_defs opcode2,
                                    ONE_OP *op1rtn, ONE_OP *op2rtn,
                                    TWO_OP *op12rtn, THREE_OP *op121rtn )
 /**********************************************************************/
 {
-    bool_        change;
+    bool        change;
     instruction *ins2;
     instruction *ins3;
     instruction *next;
@@ -469,13 +469,13 @@ static instruction *FindInsTriple( instruction *ins, bool_ *pchange,
 }
 
 
-static instruction *AddOpt( instruction *ins, bool_ *pchange )
+static instruction *AddOpt( instruction *ins, bool *pchange )
 /***********************************************************/
 {
     return( FindInsPair( ins, NULL, pchange, OP_ADD, OP_NOP, DoAdd ) );
 }
 
-static instruction *SubOpt( instruction *ins, bool_ *pchange )
+static instruction *SubOpt( instruction *ins, bool *pchange )
 /***********************************************************/
 {
     /*
@@ -485,14 +485,14 @@ static instruction *SubOpt( instruction *ins, bool_ *pchange )
 }
 
 
-static instruction *MulOpt( instruction *ins, bool_ *pchange )
+static instruction *MulOpt( instruction *ins, bool *pchange )
 /***********************************************************/
 {
     return( FindInsPair( ins, NULL, pchange, OP_MUL, OP_NOP, DoMul ) );
 }
 
 
-static instruction *OrOpt( instruction *ins, bool_ *pchange )
+static instruction *OrOpt( instruction *ins, bool *pchange )
 /**********************************************************/
 {
     return( FindInsTriple( ins, pchange, OP_OR, OP_AND,
@@ -500,7 +500,7 @@ static instruction *OrOpt( instruction *ins, bool_ *pchange )
 }
 
 
-static instruction *AndOpt( instruction *ins, bool_ *pchange )
+static instruction *AndOpt( instruction *ins, bool *pchange )
 /***********************************************************/
 {
     return( FindInsTriple( ins, pchange, OP_AND, OP_OR,
@@ -508,7 +508,7 @@ static instruction *AndOpt( instruction *ins, bool_ *pchange )
 }
 
 
-static instruction *LShiftOpt( instruction *ins, bool_ *pchange )
+static instruction *LShiftOpt( instruction *ins, bool *pchange )
 /**************************************************************/
 {
     return( FindInsTriple( ins, pchange, OP_LSHIFT, OP_RSHIFT,
@@ -516,14 +516,14 @@ static instruction *LShiftOpt( instruction *ins, bool_ *pchange )
 }
 
 
-static instruction *RShiftOpt( instruction *ins, bool_ *pchange )
+static instruction *RShiftOpt( instruction *ins, bool *pchange )
 /**************************************************************/
 {
     return( FindInsTriple( ins, pchange, OP_RSHIFT, OP_LSHIFT,
                            DoRShift, DoLShift, RLShift, Nop3 ) );
 }
 
-static bool_ DoArithmeticOps( instruction *ins, bool_ *change, instruction **n )
+static bool DoArithmeticOps( instruction *ins, bool *change, instruction **n )
 /****************************************************************************/
 {
     instruction *next;
@@ -561,7 +561,7 @@ static bool_ DoArithmeticOps( instruction *ins, bool_ *change, instruction **n )
     return( true );
 }
 
-static bool_ DoConversionOps( instruction *ins, bool_ *change, instruction **n )
+static bool DoConversionOps( instruction *ins, bool *change, instruction **n )
 /****************************************************************************/
 {
     instruction *next;
@@ -630,7 +630,7 @@ static bool_ DoConversionOps( instruction *ins, bool_ *change, instruction **n )
     return( false );
 }
 
-static bool_ ReferencedBy( instruction *ins, name *op )
+static bool ReferencedBy( instruction *ins, name *op )
 /******************************************************/
 {
     opcnt       i;
@@ -659,7 +659,7 @@ static bool_ ReferencedBy( instruction *ins, name *op )
     return( false );
 }
 
-static bool_ DoMemWrites( instruction *ins, bool_ *change, instruction **n )
+static bool DoMemWrites( instruction *ins, bool *change, instruction **n )
 /************************************************************************/
 {
     instruction *next;
@@ -693,12 +693,12 @@ static bool_ DoMemWrites( instruction *ins, bool_ *change, instruction **n )
     return( false );
 }
 
-bool_ PeepOptBlock( block *blk, bool_ after_reg_alloc )
+bool PeepOptBlock( block *blk, bool after_reg_alloc )
 /***************************************************/
 {
     instruction *ins;
     instruction *next;
-    bool_        change;
+    bool        change;
 
     change = false;
     peepopt_state().AfterRegAlloc = after_reg_alloc;
@@ -717,11 +717,11 @@ bool_ PeepOptBlock( block *blk, bool_ after_reg_alloc )
     return( change );
 }
 
-bool_ PeepOpt( block *start, block *(*func)(block *, void *parm), void *parm, bool_ after_reg_alloc )
+bool PeepOpt( block *start, block *(*func)(block *, void *parm), void *parm, bool after_reg_alloc )
 /*************************************************************************************************/
 {
     block       *blk;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( blk = start; blk != NULL; blk = func( blk, parm ) ) {

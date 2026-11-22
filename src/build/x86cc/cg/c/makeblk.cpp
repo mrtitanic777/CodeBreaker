@@ -288,7 +288,7 @@ type_class_def  InitCallState( const type_def *tipe )
 }
 
 
-void    AddTarget( label_handle dest, bool_ dest_label_dies )
+void    AddTarget( label_handle dest, bool dest_label_dies )
 /***********************************************************
  * Don't handle expression jumps yet
  */
@@ -391,14 +391,14 @@ static void *LinkReturns( void *arg )
                 return( TO_SR_VALUE( false ) );
             makeblk_state().LinkReturnsParms[0] = link_to;
             makeblk_state().LinkReturnsParms[1] = blk->next_block->label;
-            if( !FROM_SR_VALUE( SafeRecurseCG( LinkReturns, NULL ), bool_ ) ) {
+            if( !FROM_SR_VALUE( SafeRecurseCG( LinkReturns, NULL ), bool ) ) {
                 return( TO_SR_VALUE( false ) );
             }
         } else {
             for( i = blk->targets; i-- > 0; ) {
                 makeblk_state().LinkReturnsParms[0] = link_to;
                 makeblk_state().LinkReturnsParms[1] = blk->edge[i].destination.u.lbl;
-                if( !FROM_SR_VALUE( SafeRecurseCG( LinkReturns, NULL ), bool_ ) ) {
+                if( !FROM_SR_VALUE( SafeRecurseCG( LinkReturns, NULL ), bool ) ) {
                     return( TO_SR_VALUE( false ) );
                 }
             }
@@ -407,7 +407,7 @@ static void *LinkReturns( void *arg )
     return( TO_SR_VALUE( true ) );
 }
 
-bool_        FixReturns( void )
+bool        FixReturns( void )
 /*****************************
  * link all LABEL_RETURN blocks to any CALL_LABEL block they could
  * have been invoked from
@@ -424,7 +424,7 @@ bool_        FixReturns( void )
             _MarkBlkAttrSet( blk, BLK_RETURNED_TO );
             makeblk_state().LinkReturnsParms[0] = blk->next_block->label;
             makeblk_state().LinkReturnsParms[1] = blk->edge[0].destination.u.lbl;
-            if( !FROM_SR_VALUE( LinkReturns( NULL ), bool_ ) ) {
+            if( !FROM_SR_VALUE( LinkReturns( NULL ), bool ) ) {
                 return( false );
             }
             for( other_blk = data_state().HeadBlock; other_blk != NULL; other_blk = other_blk->next_block ) {
@@ -470,7 +470,7 @@ void    AddAnIns( block *blk, instruction *ins )
 }
 
 
-bool_    BlkTooBig( void )
+bool    BlkTooBig( void )
 /***********************/
 {
     label_handle    blk;

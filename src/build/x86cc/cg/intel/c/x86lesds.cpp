@@ -47,7 +47,7 @@ _OE(                           NO_CC,  V_NO,           RG_,          G_LDSES,   
 };
 
 
-static  bool_    AdjacentMem( name *s, name *r, type_class_def type_class )
+static  bool    AdjacentMem( name *s, name *r, type_class_def type_class )
 /************************************************************************/
 {
     name        *base_s;
@@ -92,7 +92,7 @@ static  bool_    AdjacentMem( name *s, name *r, type_class_def type_class )
 }
 
 
-static bool_     MemMove( instruction *ins )
+static bool     MemMove( instruction *ins )
 /*****************************************/
 {
     if( ins->head.opcode == OP_MOV ) {
@@ -109,7 +109,7 @@ static bool_     MemMove( instruction *ins )
 }
 
 
-static bool_     OptMemMove( instruction *ins, instruction *next )
+static bool     OptMemMove( instruction *ins, instruction *next )
 /***************************************************************/
 {
     uint_32         shift;
@@ -175,7 +175,7 @@ static bool_     OptMemMove( instruction *ins, instruction *next )
 
 #if _TARGET & _TARG_8086
 
-static bool_ isPushX2( instruction *ins )
+static bool isPushX2( instruction *ins )
 /**************************************/
 {
     if( ins->head.opcode == OP_PUSH ) {
@@ -191,7 +191,7 @@ static bool_ isPushX2( instruction *ins )
 }
 
 
-static bool_ isOpConstant( name *op )
+static bool isOpConstant( name *op )
 /**********************************/
 {
     if( op->n.class_ == N_CONSTANT ) {
@@ -203,7 +203,7 @@ static bool_ isOpConstant( name *op )
 }
 
 
-static bool_ OptPushDWORDConstant( instruction *ins, instruction *next )
+static bool OptPushDWORDConstant( instruction *ins, instruction *next )
 /*********************************************************************/
 {
     name    *opi;
@@ -242,7 +242,7 @@ static bool_ OptPushDWORDConstant( instruction *ins, instruction *next )
 }
 
 
-static bool_ OptPushDWORDMemory( instruction *ins, instruction *next )
+static bool OptPushDWORDMemory( instruction *ins, instruction *next )
 /*******************************************************************/
 {
     assert( isPushX2( ins ) && isPushX2( next ) );
@@ -256,7 +256,7 @@ static bool_ OptPushDWORDMemory( instruction *ins, instruction *next )
 #endif
 
 
-static  bool_    NotByteMove( instruction *ins )
+static  bool    NotByteMove( instruction *ins )
 /*********************************************/
 {
     if( ins->head.opcode != OP_MOV )
@@ -267,7 +267,7 @@ static  bool_    NotByteMove( instruction *ins )
 }
 
 
-static  bool_    IsLDSES( instruction *ins, instruction *next )
+static  bool    IsLDSES( instruction *ins, instruction *next )
 /************************************************************/
 {
     if( G( ins ) != G_RM1 && G( ins ) != G_MOVAM )
@@ -280,7 +280,7 @@ static  bool_    IsLDSES( instruction *ins, instruction *next )
 }
 
 
-static  void    CheckLDSES( instruction *seg, instruction *reg, bool_ seg_first )
+static  void    CheckLDSES( instruction *seg, instruction *reg, bool seg_first )
 /******************************************************************************/
 {
     hw_reg_set  tmp;
@@ -320,7 +320,7 @@ void    OptSegs( void )
     block       *blk;
     instruction *ins;
     instruction *next;
-    bool_        redo;
+    bool        redo;
     instruction *tmp;
 
     do {

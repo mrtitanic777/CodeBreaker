@@ -66,29 +66,29 @@
 
 
 static void         initSegDefs( void );
-static bool_         freeObjCache( void );
+static bool         freeObjCache( void );
 static segment_id   askOP( void );
 static segment_id   changeOP( segment_id );
 static void         setOP( segment_id );
-static void         defSegment( segment_id, seg_attr, const char *, uint, bool_ );
+static void         defSegment( segment_id, seg_attr, const char *, uint, bool );
 static void         doEmptyQueue( void );
 static char         getMemModel( void );
 static segment_id   dbgSegDef( const char *, const char *, int );
 static void         objInit( void );
 static offset       askLocation( void );
-static void         chkDbgSegSize( offset, bool_ );
-static bool_         useImportForm( fe_attr );
-static bool_         askSegIsNear( segment_id );
-static bool_         askSegIsBlank( segment_id );
-static bool_         askSegIsPrivate( segment_id );
-static bool_         askSegIsROM( segment_id );
+static void         chkDbgSegSize( offset, bool );
+static bool         useImportForm( fe_attr );
+static bool         askSegIsNear( segment_id );
+static bool         askSegIsBlank( segment_id );
+static bool         askSegIsPrivate( segment_id );
+static bool         askSegIsROM( segment_id );
 static segment_id   askBackSeg( void );
 static segment_id   askCodeSeg( void );
-static bool_         haveCodeSeg( void );
+static bool         haveCodeSeg( void );
 static segment_id   askAltCodeSeg( void );
 static segment_id   askCode16Seg( void );
-static void         outSelect( bool_ );
-static void         setUpObj( bool_ );
+static void         outSelect( bool );
+static void         setUpObj( bool );
 static void         flushOP( segment_id );
 static void         objFini( void );
 static void         outDLLExport( uint, cg_sym_handle );
@@ -105,18 +105,18 @@ static void         outDataByte( byte );
 static void         outDataShort( uint_16 );
 static void         outDataLong( uint_32 );
 static void         outAbsPatch( abs_patch *, patch_attr );
-static void         outReloc( segment_id, fix_class, bool_ );
-static void         outSpecialCommon( import_handle, fix_class, bool_ );
-static void         outImport( cg_sym_handle, fix_class, bool_ );
-static void         outRTImportRel( rt_class, fix_class, bool_ );
+static void         outReloc( segment_id, fix_class, bool );
+static void         outSpecialCommon( import_handle, fix_class, bool );
+static void         outImport( cg_sym_handle, fix_class, bool );
+static void         outRTImportRel( rt_class, fix_class, bool );
 static void         outRTImport( rt_class, fix_class );
-static void         outBckExport( const char *, bool_ );
+static void         outBckExport( const char *, bool );
 static void         outBckImport( const char *, back_handle, fix_class );
-static void         outLineNum( cg_linenum, bool_ );
+static void         outLineNum( cg_linenum, bool );
 static unsigned     savePendingLine( unsigned );
 static void         outDBytes( unsigned, const byte * );
 static void         outIBytes( byte, offset );
-static bool_         needBaseSet( void );
+static bool         needBaseSet( void );
 static offset       askMaxSize( void );
 static long_offset  askBigLocation( void );
 static long_offset  askBigMaxSize( void );
@@ -124,9 +124,9 @@ static void         tellObjNewLabel( cg_sym_handle );
 static void         tellObjNewProc( cg_sym_handle );
 static void         tellObjVirtFuncRef( void * );
 static segment_id   askSegID( pointer, cg_class );
-static bool_         askNameIsCode( pointer, cg_class );
-static bool_         askNameIsROM( pointer, cg_class );
-static bool_         symIsExported( cg_sym_handle );
+static bool         askNameIsCode( pointer, cg_class );
+static bool         askNameIsROM( pointer, cg_class );
+static bool         symIsExported( cg_sym_handle );
 
 
 #define _NIDX_NULL      1   /* lname "" */
@@ -223,7 +223,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct X86omfState {
-    bool_ GenStaticImports;
+    bool GenStaticImports;
     omf_idx ImportHdl;
     array_control Imports;
     array_control SegInfo;
@@ -249,7 +249,7 @@ struct X86omfState {
     segment_id backSegId = BACKSEGS;
     omf_idx FPPatchImp[FPP_NUMBER_OF_TYPES];
     int segmentCount;
-    bool_ NoDGroup;
+    bool NoDGroup;
     short CurrFNo;
 #if _TARGET & _TARG_80386
     omf_idx FlatGIndex;
@@ -403,7 +403,7 @@ static void FlushNames( void )
     }
 }
 
-static bool_ freeObjCache( void )
+static bool freeObjCache( void )
 /***********************/
 {
     lname_cache         *tmp;
@@ -455,7 +455,7 @@ static  void    ReallocArray( array_control *arr, unsigned need )
     arr->alloc = new_len;
 }
 
-static  byte    SegmentAttr( byte align, seg_attr tipe, bool_ use_16 )
+static  byte    SegmentAttr( byte align, seg_attr tipe, bool use_16 )
 /*******************************************************************/
 {
     byte        attr;
@@ -665,7 +665,7 @@ static object *InitTarg( index_rec *rec )
     return( obj );
 }
 
-static  void    DoASegDef( index_rec *rec, bool_ use_16 )
+static  void    DoASegDef( index_rec *rec, bool use_16 )
 /******************************************************/
 {
     object          *obj;
@@ -804,7 +804,7 @@ static  index_rec   *AllocNewSegRec( void )
     return( rec );
 }
 
-static void DoSegment( segdef *seg, array_control *dgroup_def, array_control *tgroup_def, bool_ use_16 )
+static void DoSegment( segdef *seg, array_control *dgroup_def, array_control *tgroup_def, bool use_16 )
 /*****************************************************************************************************/
 {
     index_rec   *rec;
@@ -928,7 +928,7 @@ static segdef *AllocSegDefs( const char *str )
     return( seg );
 }
 
-static void DoSegDefsAndFree( array_control *dgroup_def, array_control *tgroup_def, bool_ use_16 )
+static void DoSegDefsAndFree( array_control *dgroup_def, array_control *tgroup_def, bool use_16 )
 {
     segdef  *seg;
 
@@ -940,7 +940,7 @@ static void DoSegDefsAndFree( array_control *dgroup_def, array_control *tgroup_d
     }
 }
 
-static void    defSegment( segment_id segid, seg_attr attr, const char *str, uint align, bool_ use_16 )
+static void    defSegment( segment_id segid, seg_attr attr, const char *str, uint align, bool use_16 )
 /*********************************************************************************************/
 {
     segdef              *new_seg;
@@ -1371,7 +1371,7 @@ static offset  askLocation( void )
     return( (offset)x86omf_state().CurrSeg->location );
 }
 
-static void chkDbgSegSize( offset max, bool_ typing )
+static void chkDbgSegSize( offset max, bool typing )
 /*******************************************/
 {
     const dbg_seg_info  *info;
@@ -1392,7 +1392,7 @@ static void chkDbgSegSize( offset max, bool_ typing )
 }
 
 
-static bool_    useImportForm( fe_attr attr )
+static bool    useImportForm( fe_attr attr )
 /***********************************/
 {
     if( attr & (FE_GLOBAL|FE_IMPORT) )
@@ -1403,7 +1403,7 @@ static bool_    useImportForm( fe_attr attr )
 }
 
 
-static bool_    askSegIsNear( segment_id segid )
+static bool    askSegIsNear( segment_id segid )
 /**************************************/
 {
     index_rec   *rec;
@@ -1419,7 +1419,7 @@ static bool_    askSegIsNear( segment_id segid )
 }
 
 
-static bool_    askSegIsBlank( segment_id segid )
+static bool    askSegIsBlank( segment_id segid )
 /***************************************/
 {
     index_rec *rec;
@@ -1431,7 +1431,7 @@ static bool_    askSegIsBlank( segment_id segid )
 }
 
 
-static bool_    askSegIsPrivate( segment_id segid )
+static bool    askSegIsPrivate( segment_id segid )
 /*****************************************/
 {
     index_rec   *rec;
@@ -1443,7 +1443,7 @@ static bool_    askSegIsPrivate( segment_id segid )
 }
 
 
-static bool_    askSegIsROM( segment_id segid )
+static bool    askSegIsROM( segment_id segid )
 /*************************************/
 {
     index_rec   *rec;
@@ -1469,7 +1469,7 @@ static segment_id  askCodeSeg( void )
 }
 
 
-static bool_    haveCodeSeg( void )
+static bool    haveCodeSeg( void )
 /*************************/
 {
     return( x86omf_state().codeSegId != BACKSEGS );
@@ -1622,7 +1622,7 @@ static omf_idx NeedComdatNidx( import_kind kind )
 }
 
 
-static void    outSelect( bool_ starts )
+static void    outSelect( bool starts )
 /******************************/
 {
     array_control   *obj_data;
@@ -1655,7 +1655,7 @@ static void    outSelect( bool_ starts )
     x86omf_state().CurrSeg->start_data_in_code = false;
 }
 
-static  void    OutLEDataStart( bool_ iterated )
+static  void    OutLEDataStart( bool iterated )
 /*********************************************/
 {
     byte            flag;
@@ -1705,7 +1705,7 @@ static  void    OutLEDataStart( bool_ iterated )
 }
 
 
-static  void    CheckLEDataSize( unsigned max_size, bool_ need_init )
+static  void    CheckLEDataSize( unsigned max_size, bool need_init )
 /******************************************************************/
 {
     long_offset     start;
@@ -1731,11 +1731,11 @@ static  void    CheckLEDataSize( unsigned max_size, bool_ need_init )
     }
 }
 
-static void    setUpObj( bool_ is_data )
+static void    setUpObj( bool is_data )
 /******************************/
 {
     object      *obj;
-    bool_        old_data;
+    bool        old_data;
 
     obj = x86omf_state().CurrSeg->obj;
     if( obj == NULL )
@@ -2281,7 +2281,7 @@ static  void    FreeAbsPatch( abs_patch *apatch )
 }
 
 
-static void CheckExportSwitch( bool_ next_is_static )
+static void CheckExportSwitch( bool next_is_static )
 /**************************************************/
 {
     /*
@@ -2294,7 +2294,7 @@ static void CheckExportSwitch( bool_ next_is_static )
 }
 
 
-static  void    CheckImportSwitch( bool_ next_is_static )
+static  void    CheckImportSwitch( bool next_is_static )
 /******************************************************/
 {
     /*
@@ -2337,7 +2337,7 @@ static  void    OutExport( cg_sym_handle sym )
 }
 
 
-static void _TellImportHandle( cg_sym_handle sym, import_handle imphdl, bool_ alt_dllimp )
+static void _TellImportHandle( cg_sym_handle sym, import_handle imphdl, bool alt_dllimp )
 /*************************************************************************************/
 {
     if( alt_dllimp ) {
@@ -2347,7 +2347,7 @@ static void _TellImportHandle( cg_sym_handle sym, import_handle imphdl, bool_ al
     }
 }
 
-static import_handle _AskImportHandle( cg_sym_handle sym, bool_ alt_dllimp )
+static import_handle _AskImportHandle( cg_sym_handle sym, bool alt_dllimp )
 /**********************************************************************/
 {
     if( alt_dllimp ) {
@@ -2406,7 +2406,7 @@ static void GenImportResolve( cg_sym_handle sym, omf_idx idx, omf_idx def_idx )
 }
 
 
-static omf_idx  GenImport( cg_sym_handle sym, bool_ alt_dllimp )
+static omf_idx  GenImport( cg_sym_handle sym, bool alt_dllimp )
 /*************************************************************/
 {
     omf_idx         imp_idx;
@@ -2704,7 +2704,7 @@ static omf_fix_loc getOMFFixLoc( fix_class class_ )
 }
 
 
-static void DoFix( omf_idx idx, bool_ rel, base_type base, fix_class class_, omf_idx sidx )
+static void DoFix( omf_idx idx, bool rel, base_type base, fix_class class_, omf_idx sidx )
 /***************************************************************************************/
 {
     fixup       *cursor;
@@ -3050,7 +3050,7 @@ static void    outAbsPatch( abs_patch *apatch, patch_attr attr )
 }
 
 
-static void    outReloc( segment_id segid, fix_class class_, bool_ rel )
+static void    outReloc( segment_id segid, fix_class class_, bool rel )
 /*************************************************************/
 {
     index_rec   *rec;
@@ -3065,7 +3065,7 @@ static void    outReloc( segment_id segid, fix_class class_, bool_ rel )
 }
 
 
-static void outSpecialCommon( import_handle imphdl, fix_class class_, bool_ rel )
+static void outSpecialCommon( import_handle imphdl, fix_class class_, bool rel )
 /**********************************************************************/
 {
     CheckLEDataSize( 3 * sizeof( offset ), true );
@@ -3073,7 +3073,7 @@ static void outSpecialCommon( import_handle imphdl, fix_class class_, bool_ rel 
 }
 
 
-static void    outImport( cg_sym_handle sym, fix_class class_, bool_ rel )
+static void    outImport( cg_sym_handle sym, fix_class class_, bool rel )
 /***************************************************************/
 {
     fe_attr     attr;
@@ -3092,7 +3092,7 @@ static void    outImport( cg_sym_handle sym, fix_class class_, bool_ rel )
 }
 
 
-static void    outRTImportRel( rt_class rtindex, fix_class class_, bool_ rel )
+static void    outRTImportRel( rt_class rtindex, fix_class class_, bool rel )
 /*******************************************************************/
 {
     import_handle   imphdl;
@@ -3115,7 +3115,7 @@ static void    outRTImport( rt_class rtindex, fix_class class_ )
     outRTImportRel( rtindex, class_, ( F_CLASS( class_ ) == F_OFFSET || F_CLASS( class_ ) == F_LDR_OFFSET ) );
 }
 
-static void    outBckExport( const char *name, bool_ is_export )
+static void    outBckExport( const char *name, bool is_export )
 /******************************************************/
 {
     array_control       *obj_exports;
@@ -3161,7 +3161,7 @@ static void    outBckImport( const char *name, back_handle bck, fix_class class_
 }
 
 
-static void    outLineNum( cg_linenum  line, bool_ label_line )
+static void    outLineNum( cg_linenum  line, bool label_line )
 /*****************************************************/
 {
     object      *obj;
@@ -3273,10 +3273,10 @@ static void    outIBytes( byte pattern, offset len )
 }
 
 
-static bool_    needBaseSet( void )
+static bool    needBaseSet( void )
 /*************************/
 {
-    bool_        need;
+    bool        need;
 
     need = ( x86omf_state().CurrSeg->need_base_set != 0 );
     x86omf_state().CurrSeg->need_base_set = false;
@@ -3393,7 +3393,7 @@ static void     tellObjVirtFuncRef( void *cookie )
     POP_OP();
 }
 
-static bool_     InlineFunction( cg_sym_handle sym )
+static bool     InlineFunction( cg_sym_handle sym )
 /*************************************************/
 {
     if( FEAttr( sym ) & FE_PROC ) {
@@ -3426,7 +3426,7 @@ static segment_id      askSegID( pointer hdl, cg_class class_ )
     }
 }
 
-static bool_    askNameIsCode( pointer hdl, cg_class class_ )
+static bool    askNameIsCode( pointer hdl, cg_class class_ )
 /**************************************************/
 {
     switch( class_ ) {
@@ -3442,16 +3442,16 @@ static bool_    askNameIsCode( pointer hdl, cg_class class_ )
     return( false );
 }
 
-static bool_    askNameIsROM( pointer hdl, cg_class class_ )
+static bool    askNameIsROM( pointer hdl, cg_class class_ )
 /*************************************************/
 {
     return( askSegIsROM( askSegID( hdl, class_ ) ) );
 }
 
-static bool_ symIsExported( cg_sym_handle sym )
+static bool symIsExported( cg_sym_handle sym )
 /*************************************/
 {
-    bool_        exported;
+    bool        exported;
 
     exported = false;
     if( sym != NULL ) {

@@ -66,8 +66,8 @@ typedef struct nested_macros {
     struct nested_macros    *next;
     MEPTR                   mentry;
     MACRO_ARG               *macro_parms;
-    bool_                    rescanning;
-    bool_                    substituting_parms;
+    bool                    rescanning;
+    bool                    substituting_parms;
 } NESTED_MACRO;
 
 typedef struct special_macro_names {
@@ -79,7 +79,7 @@ typedef struct special_macro_names {
 extern void         DumpMTokens( MACRO_TOKEN *mtok );
 
 
-static MACRO_TOKEN  *ExpandNestedMacros( MACRO_TOKEN *mtok_head, bool_ rescanning );
+static MACRO_TOKEN  *ExpandNestedMacros( MACRO_TOKEN *mtok_head, bool rescanning );
 
 namespace {
 
@@ -327,7 +327,7 @@ TOKEN GetMacroToken( void )
 /*************************/
 {
     MACRO_TOKEN     *mtok;
-    bool_            keep_token;
+    bool            keep_token;
     TOKEN           token;
 
     token = T_NULL;
@@ -552,7 +552,7 @@ static MACRO_ARG *CollectParms( MEPTR mentry )
     TOKEN           token_prev;
     int             parm_idx;
     int             parm_count_reqd;
-    bool_            ppscan_mode;
+    bool            ppscan_mode;
     MACRO_ARG       *macro_parms;
 
     macro_parms = NULL;
@@ -777,7 +777,7 @@ static MACRO_TOKEN *AppendToken( MACRO_TOKEN *mtok_head, TOKEN token, const char
     return( mtok_head );
 }
 
-static bool_ MacroBeingExpanded( MEPTR mentry )
+static bool MacroBeingExpanded( MEPTR mentry )
 /********************************************/
 {
     NESTED_MACRO    *nested;
@@ -792,7 +792,7 @@ static bool_ MacroBeingExpanded( MEPTR mentry )
     return( false );
 }
 
-static exp_state isExpandable( MEPTR mentry, MACRO_TOKEN *mtok, bool_ macro_parm )
+static exp_state isExpandable( MEPTR mentry, MACRO_TOKEN *mtok, bool macro_parm )
 /*******************************************************************************/
 {
     int         lparen;
@@ -873,7 +873,7 @@ static MACRO_TOKEN *ReTokenBuffer( const char *buffer )
 {
     MACRO_TOKEN *mtok_head;
     MACRO_TOKEN **pmtok_tail;
-    bool_        ppscan_mode;
+    bool        ppscan_mode;
 
     ppscan_mode = InitPPScan();
     ReScanInit( buffer );
@@ -1227,7 +1227,7 @@ static void markUnexpandableIds( MACRO_TOKEN *mtok_head )
     }
 }
 
-static MACRO_TOKEN *MacroExpansion( bool_ rescanning, MEPTR mentry )
+static MACRO_TOKEN *MacroExpansion( bool rescanning, MEPTR mentry )
 /*****************************************************************/
 {
     MACRO_ARG       *macro_parms;
@@ -1255,7 +1255,7 @@ static MACRO_TOKEN *MacroExpansion( bool_ rescanning, MEPTR mentry )
     return( mtok_head );
 }
 
-static MACRO_TOKEN *ExpandNestedMacros( MACRO_TOKEN *mtok_head, bool_ rescanning )
+static MACRO_TOKEN *ExpandNestedMacros( MACRO_TOKEN *mtok_head, bool rescanning )
 /*******************************************************************************/
 {
     MACRO_TOKEN *mtok1;

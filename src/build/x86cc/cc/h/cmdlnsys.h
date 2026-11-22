@@ -42,5 +42,5 @@ extern void CmdSysAnalyse( OPT_STORAGE * );
 extern char *SetStringOption( char **, OPT_STRING ** );
 extern void SetTargetName( char **, const char * );
 extern void SetTargetNameBT( char **target_name, OPT_STRING **bt_value );
-extern bool_ MergeIncludeFromEnv( const char * );
+extern bool MergeIncludeFromEnv( const char * );
 extern void DefSwitchMacro( const char * );

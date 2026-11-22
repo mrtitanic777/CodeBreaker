@@ -134,7 +134,7 @@ typedef struct asmfixup {
     unsigned            fixup_loc;
     fixup_types         fixup_type;
     fixup_options       fixup_option;
-    bool_                external;
+    bool                external;
 //    unsigned            line;
 #if defined( _STANDALONE_ )
     struct asmfixup     *next_loc;
@@ -180,8 +180,8 @@ inline AsminlinState& asminlin_state() { return cbrun_part<AsminlinState>(); }
 #if defined( _STANDALONE_ )
 extern void             AsmLine( const char * );
 #else
-extern void             AsmLine( const char *, bool_ );
-extern void             AsmEnvInit( int, int, int, bool_ );
+extern void             AsmLine( const char *, bool );
+extern void             AsmEnvInit( int, int, int, bool );
 extern void             AsmInit( void );
 extern void             AsmFini( void );
 extern void             AsmFiniRelocs( void );

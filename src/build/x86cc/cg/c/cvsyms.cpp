@@ -378,7 +378,7 @@ void    CVOutSym( cv_out *out, cg_sym_handle sym )
     }
 }
 
-void    CVGenStatic( cg_sym_handle sym, dbg_loc loc, bool_ mem )
+void    CVGenStatic( cg_sym_handle sym, dbg_loc loc, bool mem )
 /*************************************************************/
 {
     dbg_type    tipe;

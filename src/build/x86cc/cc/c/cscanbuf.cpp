@@ -77,7 +77,7 @@ void WriteBufferString( const char *s )
     cvars_state().Buffer[cvars_state().TokenLen] = '\0';
 }
 
-void WriteBufferEscStr( const char **src, bool_ quote )
+void WriteBufferEscStr( const char **src, bool quote )
 /****************************************************/
 {
     const char  *p;

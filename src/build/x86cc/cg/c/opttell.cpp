@@ -205,7 +205,7 @@ void    TellBeginExecutions( void )
 void    TellFreeAllLabels( void )
 /*******************************/
 {
-    bool_        unfreed;
+    bool        unfreed;
 
   optbegin
     unfreed = false;

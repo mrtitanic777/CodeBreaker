@@ -67,5 +67,5 @@ inline InsschedState& inssched_state() { return cbrun_part<InsschedState>(); }
 
 extern const FU_entry   *FUEntry( instruction *ins );
 extern void             Schedule( void );
-extern bool_             SchedFrlFree( void );
-extern bool_             InsOrderDependant( instruction *ins_i, instruction *ins_j );
+extern bool             SchedFrlFree( void );
+extern bool             InsOrderDependant( instruction *ins_i, instruction *ins_j );

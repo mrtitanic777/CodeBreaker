@@ -74,8 +74,8 @@ namespace {
 struct ObjioState {
     objoffset ObjOffset;
     handle ObjFile;
-    bool_ NeedSeek;
-    bool_ EraseObj;
+    bool NeedSeek;
+    bool EraseObj;
     buf *BufList;   // start of list of buffers
     buf *CurBuf;   // current buffer
 };
@@ -145,7 +145,7 @@ static  handle  CreateStream( const char *name )
 }
 
 
-bool_    CGOpenf( void )
+bool    CGOpenf( void )
 /*********************/
 {
     objio_state().ObjFile = CreateStream( static_cast<const char *>(FEAuxInfo( NULL, FEINF_OBJECT_FILE_NAME )) );

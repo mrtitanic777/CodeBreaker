@@ -84,7 +84,7 @@ void InitIncFile( void )
     cgetch_state().IncFileDepth = MAX_INC_DEPTH;
 }
 
-static bool_ ReadBuffer( FCB *fcb )
+static bool ReadBuffer( FCB *fcb )
 {
     size_t      read_amount;
 
@@ -558,7 +558,7 @@ void GetNextCharUndo( int c )
 #endif
 }
 
-static bool_ FCB_Alloc( FILE *fp, const char *filename, src_file_type typ )
+static bool FCB_Alloc( FILE *fp, const char *filename, src_file_type typ )
 {
     FCB             *fcb;
     unsigned char   *src_buffer;
@@ -615,7 +615,7 @@ static void FCB_Free( FCB *fcb )
     CMemFree( fcb );
 }
 
-bool_ OpenFCB( FILE *fp, const char *filename, src_file_type typ )
+bool OpenFCB( FILE *fp, const char *filename, src_file_type typ )
 {
     if( cgetch_state().IncFileDepth == 0 ) {
         CErr2( ERR_INCDEPTH, MAX_INC_DEPTH );

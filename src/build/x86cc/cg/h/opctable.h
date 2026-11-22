@@ -34,4 +34,4 @@
 #include "optable.h"
 
 extern const opcode_entry   *OpcodeTable( table_def i );
-extern bool_                 IsNop( const opcode_entry *e );
+extern bool                 IsNop( const opcode_entry *e );

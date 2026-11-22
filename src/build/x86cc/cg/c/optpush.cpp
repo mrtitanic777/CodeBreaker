@@ -95,13 +95,13 @@ void    JmpToRet( ins_entry *instr, ins_entry *ret )
 }
 
 
-bool_    RetAftrLbl( ins_entry *ret )
+bool    RetAftrLbl( ins_entry *ret )
 /**********************************/
 {
     ins_entry       *ref;
     label_handle    lbl;
     ins_entry       *next;
-    bool_            change;
+    bool            change;
 
   optbegin
     change = false;

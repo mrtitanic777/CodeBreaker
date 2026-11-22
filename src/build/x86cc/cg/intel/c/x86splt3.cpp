@@ -38,7 +38,7 @@
 #include "fixindex.h"
 
 
-static bool_ SegMemLoc( name *op )
+static bool SegMemLoc( name *op )
 /********************************
  * Return true if the operand COULD be the one associated with the segment
  */
@@ -70,7 +70,7 @@ static bool_ SegMemLoc( name *op )
 
 
 static  void    MoveSeg( instruction *ins, instruction *new_ins,
-                         name *op, bool_ save_old )
+                         name *op, bool save_old )
 /**************************************************/
 {
     opcnt   i;

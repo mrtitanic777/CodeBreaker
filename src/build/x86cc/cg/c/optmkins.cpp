@@ -74,7 +74,7 @@ void    FreeInstr( ins_entry *instr )
 }
 
 
-bool_    InstrFrlFree( void )
+bool    InstrFrlFree( void )
 /**************************/
 {
     return( FrlFreeAll( &optdata_state().InstrFrl, OCENTRY_SIZE ) );

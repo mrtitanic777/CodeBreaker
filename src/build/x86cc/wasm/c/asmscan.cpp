@@ -49,7 +49,7 @@ const char              *CurrString; // Current Input Line
 
 #if defined( _STANDALONE_ )
 
-bool_                    EnumDirective;
+bool                    EnumDirective;
 
 #endif
 
@@ -65,13 +65,13 @@ struct AsmscanState {
 static inline AsmscanState& asmscan_state() { return cbrun_part<AsmscanState>(); }
 
 
-static bool_ get_float( asm_tok *tok, const char **input, char **output )
+static bool get_float( asm_tok *tok, const char **input, char **output )
 /**********************************************************************/
 {
     /* valid floats look like:  (int)[.(int)][e(int)][r] */
 
-    bool_            got_decimal;
-    bool_            got_e;
+    bool            got_decimal;
+    bool            got_e;
     const char      *ptr;
     size_t          len;
     int             c;
@@ -136,7 +136,7 @@ static void array_mul_add( unsigned char *buf, unsigned base, const char *dig, u
     }
 }
 
-static bool_ get_string( asm_tok *tok, const char **input, char **output )
+static bool get_string( asm_tok *tok, const char **input, char **output )
 /***********************************************************************/
 {
     char    symbol_o;
@@ -211,12 +211,12 @@ static bool_ get_string( asm_tok *tok, const char **input, char **output )
     return( RC_OK );
 }
 
-static bool_ get_number( asm_tok *tok, const char **input, char **output, bool_ base10 )
+static bool get_number( asm_tok *tok, const char **input, char **output, bool base10 )
 /************************************************************************************/
 {
     const char          *ptr;
     const char          *dig_start;
-    bool_                first_char_0;
+    bool                first_char_0;
     unsigned char       extra;
     size_t              len;
     unsigned            base = 0;
@@ -363,7 +363,7 @@ static bool_ get_number( asm_tok *tok, const char **input, char **output, bool_ 
     return( RC_OK );
 } /* get_number */
 
-static bool_ get_id_in_backquotes( asm_tok *tok, const char **input, char **output )
+static bool get_id_in_backquotes( asm_tok *tok, const char **input, char **output )
 /*********************************************************************************/
 {
     tok->string_ptr = *output;
@@ -384,7 +384,7 @@ static bool_ get_id_in_backquotes( asm_tok *tok, const char **input, char **outp
     return( RC_OK );
 }
 
-static bool_ get_id( asm_tok *tok, const char **input, char **output )
+static bool get_id( asm_tok *tok, const char **input, char **output )
 /********************************************************************
  * get_id could change buf_index, if a COMMENT directive is found
  */
@@ -567,7 +567,7 @@ static bool_ get_id( asm_tok *tok, const char **input, char **output )
 
 #if defined( _STANDALONE_ )
 
-static bool_ get_comment( asm_tok *tok, const char **input, char **output )
+static bool get_comment( asm_tok *tok, const char **input, char **output )
 {
     size_t  len;
     /* save the whole line .. we need to check
@@ -585,7 +585,7 @@ static bool_ get_comment( asm_tok *tok, const char **input, char **output )
 
 #endif
 
-static bool_ get_special_symbol( asm_tok *tok, const char **input, char **output )
+static bool get_special_symbol( asm_tok *tok, const char **input, char **output )
 /*******************************************************************************/
 {
     char        symbol;
@@ -674,7 +674,7 @@ static bool_ get_special_symbol( asm_tok *tok, const char **input, char **output
 }
 
 #if defined( _STANDALONE_ )
-static bool_ get_inc_path( asm_tok *tok, const char **input, char **output )
+static bool get_inc_path( asm_tok *tok, const char **input, char **output )
 /*************************************************************************/
 {
     char symbol;
@@ -715,7 +715,7 @@ void SetFinalToken( token_buffer *tokbuf, token_idx count )
     tokbuf->count = count;
 }
 
-bool_ AsmScan( token_buffer *tokbuf, const char *string )
+bool AsmScan( token_buffer *tokbuf, const char *string )
 /*******************************************************
  * - perform syntax checking on scan line;
  * - pass back tokens for later use;
@@ -726,7 +726,7 @@ bool_ AsmScan( token_buffer *tokbuf, const char *string )
     char                *output_ptr;
     asm_tok             *tok;
     int                 c;
-    bool_                base10;
+    bool                base10;
     token_idx           i;
 
 #ifdef DEBUG_OUT

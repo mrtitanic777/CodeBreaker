@@ -30,4 +30,4 @@
 ****************************************************************************/
 
 
-extern  void    *SortList( void *list, unsigned next_offset, bool_(* before)(void *,void *) );
+extern  void    *SortList( void *list, unsigned next_offset, bool(* before)(void *,void *) );

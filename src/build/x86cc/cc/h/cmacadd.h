@@ -38,7 +38,7 @@ extern void         InitMacroSegments( void );
 extern void         FreeMacroSegments( void );
 extern MEPTR        CreateMEntry( const char *, size_t len );
 extern MEPTR        MacroDefine( size_t len, macro_flags mflags );
-extern bool_         MacroCompare( MEPTR, MEPTR );
+extern bool         MacroCompare( MEPTR, MEPTR );
 extern MEPTR        MacroLookup( const char * );
 
 void MacroSegmentAddChar(       // MacroSegment: ADD A CHARACTER

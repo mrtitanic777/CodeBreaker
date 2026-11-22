@@ -90,7 +90,7 @@ static instruction *FindPreviousIns( instruction *curr )
 }
 
 
-static bool_ SafeOp( name *op, bool_ write )
+static bool SafeOp( name *op, bool write )
 /*****************************************
  * Return true if the given operand is not something which
  * would indicate an instruction with a possibly useful effect.
@@ -112,7 +112,7 @@ static bool_ SafeOp( name *op, bool_ write )
     }
 }
 
-static bool_ CheckReturn( instruction *ins )
+static bool CheckReturn( instruction *ins )
 /******************************************
  * Check to see if the given instruction, which writes to
  * ReturnValue, receives it's value, unmodified, from the
@@ -218,7 +218,7 @@ static void DoTrans( block *blk, instruction *call_ins )
     PointEdge( edge, target );
 }
 
-static bool_ SafePath( instruction *ins )
+static bool SafePath( instruction *ins )
 /***************************************
  * Return true if the path from the given ins (not OP_BLOCK)
  * to the end of the block is safe to ignore for purposes of
@@ -284,7 +284,7 @@ static block *SafeBlock( block *blk )
     return( safe );
 }
 
-static bool_ ScaryOperand( name *var )
+static bool ScaryOperand( name *var )
 /************************************
  * return true if the operand given has any properties which
  * might make elimination of tail recursion impossible
@@ -295,13 +295,13 @@ static bool_ ScaryOperand( name *var )
          * if anything has had its address taken we chicken out
          */
         if( var->n.class_ == N_TEMP ) {
-            return( var->v.usage & USE_ADDRESS );
+            return( ( var->v.usage & USE_ADDRESS ) != 0 );
         }
     }
     return( false );
 }
 
-static bool_ ScaryConditions( void )
+static bool ScaryConditions( void )
 /**********************************
  * Traverse the current function and return
  * true if there are any conditions present which
@@ -329,7 +329,7 @@ static bool_ ScaryConditions( void )
     return( false );
 }
 
-static bool_     OkayToTransCall( block *blk, instruction *call_ins )
+static bool     OkayToTransCall( block *blk, instruction *call_ins )
 /*******************************************************************
  * Check to see if it is okay to turn this call instruction
  * into a jump to eliminate tail recursion.  To see if this
@@ -343,7 +343,7 @@ static bool_     OkayToTransCall( block *blk, instruction *call_ins )
     block_num       i;
     instruction     *parm;
     instruction     *ins;
-    bool_            ok;
+    bool            ok;
 
     label = AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) );
     if( call_ins->operands[CALL_OP_ADDR]->v.symbol != label ) {
@@ -417,7 +417,7 @@ void     TRDeclareParm( instruction *parm_ins )
     _PROC_LINK( data_state().CurrProc ) = static_cast<instruction *>((void *)parm_ins);
 }
 
-bool_     TailRecursion( void )
+bool     TailRecursion( void )
 /************************************
  * Eliminate any tail recursion. We assume that, for any call in
  * the function, we have a linked list of the parameters to that
@@ -435,7 +435,7 @@ bool_     TailRecursion( void )
     block       *blk;
     instruction *ins;
     instruction *next;
-    bool_        changed;
+    bool        changed;
 
     changed = false;
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )

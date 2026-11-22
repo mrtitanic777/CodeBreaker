@@ -626,8 +626,8 @@ static cmp_result IsMeaninglessCompare( signed_64 val, TYPEPTR typ_op1, TYPEPTR 
     cmp_result  ret;
     int         result_size;
     int         op1_size;
-    bool_        rev_ret;
-    bool_        isBitField;
+    bool        rev_ret;
+    bool        isBitField;
 
     op1_size = NumSizeType( typ_op1 );
     if( op1_size == 0 ) {
@@ -813,13 +813,13 @@ static TREEPTR BoolConv( TYPEPTR typ, TREEPTR tree )
 }
 
 
-static bool_ IsInt( DATA_TYPE op )
+static bool IsInt( DATA_TYPE op )
 /********************************
  * what's target compatible between default int as ret type
  * and a later declaration
  */
 {
-    bool_        ret;
+    bool        ret;
 
     switch( op ) {
     case TYP_BOOL:
@@ -1182,7 +1182,7 @@ static TREEPTR ArrayMinusConst( TREEPTR op1, TREEPTR op2 )
 }
 
 
-static bool_ LValue( TREEPTR op1 )
+static bool LValue( TREEPTR op1 )
 {
     TYPEPTR     typ;
 
@@ -1650,7 +1650,7 @@ TREEPTR ShiftOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
 }
 
 
-bool_ IsFuncPtr( TYPEPTR typ )
+bool IsFuncPtr( TYPEPTR typ )
 {
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type != TYP_POINTER )
@@ -1662,7 +1662,7 @@ bool_ IsFuncPtr( TYPEPTR typ )
     return( true );
 }
 
-bool_ IsPtrConvSafe( TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp )
+bool IsPtrConvSafe( TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp )
 /****************************************************************
  * Check if pointer conversion is losing high (segment) bits.
  * A special dispensation is made for null pointer conversions; if the
@@ -1672,7 +1672,7 @@ bool_ IsPtrConvSafe( TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp )
  * a 16-bit HANDLE type.
  */
 {
-    bool_                is_safe = true;
+    bool                is_safe = true;
     segment_id          new_segid;
     segment_id          old_segid;
     type_modifiers      new_flags;
@@ -1733,7 +1733,7 @@ bool_ IsPtrConvSafe( TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp )
     return( is_safe );
 }
 
-TREEPTR CnvOp( TREEPTR opnd, TYPEPTR newtyp, bool_ cast_op )
+TREEPTR CnvOp( TREEPTR opnd, TYPEPTR newtyp, bool cast_op )
 {
     TYPEPTR             typ;
     enum  conv_types    cnv;

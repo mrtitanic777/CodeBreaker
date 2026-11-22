@@ -34,7 +34,7 @@
 
 /* the variables of blips.h, one set for each run of the compiler (run/cbrun.hpp) */
 struct BlipsState {
-    bool_ BlipsOn;
+    bool BlipsOn;
 };
 inline BlipsState& blips_state() { return cbrun_part<BlipsState>(); }
 
@@ -44,7 +44,7 @@ extern void     Blip( unsigned short loc, char ch );
 extern void     BlipInit( void );
 extern void     FiniBlip( void );
 extern void     InitBlip( void );
-extern bool_     WantZoiks2( void );
+extern bool     WantZoiks2( void );
 extern void     LNBlip( source_line_number num );
 extern void     TGBlip( void );
 extern void     LPBlip( void );

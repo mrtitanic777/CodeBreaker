@@ -1431,13 +1431,13 @@ const opcode_entry      *OpcodeTable( table_def i )
     }
 }
 
-bool_    IsNop( const opcode_entry *entry )
+bool    IsNop( const opcode_entry *entry )
 /****************************************/
 {
     return( entry == DoNop );
 }
 
-bool_    IsString( const opcode_entry *entry )
+bool    IsString( const opcode_entry *entry )
 /*******************************************/
 {
     return( entry == String );

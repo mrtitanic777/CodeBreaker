@@ -146,7 +146,7 @@ edge_stack      *EdgeStackInit( void )
     return( stk );
 }
 
-bool_            EdgeStackEmpty( edge_stack *stk )
+bool            EdgeStackEmpty( edge_stack *stk )
 /***********************************************/
 {
     return( stk->top == NULL );

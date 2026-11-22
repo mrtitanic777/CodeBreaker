@@ -36,5 +36,5 @@ extern  an      BGStopInline( call_handle call, const type_def *tipe );
 extern  void    BGProcInline( cg_sym_handle proc_sym, const type_def *tipe );
 extern  void    BGParmInline( cg_sym_handle sym, const type_def *tipe );
 extern  void    BGRetInline( an addr, const type_def *tipe );
-extern  bool_    BGInInline( void );
+extern  bool    BGInInline( void );
 extern  int     BGInlineDepth( void );

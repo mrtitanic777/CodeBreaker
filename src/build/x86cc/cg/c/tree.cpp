@@ -75,7 +75,7 @@
 
 
 static  void    FreeTreeNode( tn node );
-static  void    Control( cg_op opcode, tn node, label_handle lbl, bool_ gen );
+static  void    Control( cg_op opcode, tn node, label_handle lbl, bool gen );
 
 
 static const type_class_def BinMat[] = {
@@ -127,7 +127,7 @@ struct TreeState {
         FD,FD,FD,FD,FD,FD,FD,FD,ER,ER,FD,FD,FL,/* FD*/
         FL,FL,FL,FL,FL,FL,FL,FL,ER,ER,FL,FL,FL,/* FL*/
     };
-    bool_ IsAddress;
+    bool IsAddress;
     tn NodesToZap;
 };
 
@@ -276,7 +276,7 @@ tn  TGCallback( cg_callback rtn, callback_handle ptr )
 }
 
 static const type_def   *ResultType( tn left, tn rite, const type_def *tipe,
-                    const type_class_def *mat_type_class, bool_ demote_const )
+                    const type_class_def *mat_type_class, bool demote_const )
 /***********************************************************************
  * What is the resulting type of "left" opcode "rite" given that the front
  * end says it should be "tipe" (T_DEFAULT if its not sure).
@@ -347,7 +347,7 @@ static const type_def   *ResultType( tn left, tn rite, const type_def *tipe,
 }
 
 #if _TARGET_INTEL
-static bool_ RHSLongPointer( tn rite )
+static bool RHSLongPointer( tn rite )
 {
     if( rite->class_ == TN_LEAF && rite->u.addr->format == NF_ADDR ) {
         switch( rite->u.addr->class_ ) {
@@ -377,7 +377,7 @@ tn  TGCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
  */
 {
     tn      new_tn;
-    bool_    can_demote;
+    bool    can_demote;
 
     can_demote = true;
 #if _TARGET & _TARG_AXP
@@ -990,7 +990,7 @@ tn  TGLVAssign( tn dst, tn src, const type_def *tipe )
 }
 
 
-bool_    TGCanDuplicate( tn node )
+bool    TGCanDuplicate( tn node )
 /****************************************
  * return true if node safe to duplicate? (Has no side effects)
  */
@@ -1340,13 +1340,13 @@ tn  TGVolatile( tn node )
 }
 
 
-static  bool_    SetAddress( bool_ value )
+static  bool    SetAddress( bool value )
 /***************************************
  * Indicate we're processing an address expression.  Return the old
  * value of IsAddress.
  */
 {
-    bool_    old_value;
+    bool    old_value;
 
     old_value = tree_state().IsAddress;
     tree_state().IsAddress = value;
@@ -1359,7 +1359,7 @@ static  an  NotAddrGen( tn node )
  * generate a node which is NOT an address expression.
  */
 {
-    bool_    was_address;
+    bool    was_address;
     an      retv;
 
     was_address = SetAddress( false );
@@ -1401,7 +1401,7 @@ void    TGControl( cg_op opcode, tn node, label_handle lbl )
 }
 
 
-static  void    Control( cg_op opcode, tn node, label_handle lbl, bool_ gen )
+static  void    Control( cg_op opcode, tn node, label_handle lbl, bool gen )
 /***********************************************************************
  * see TGControl ^
  */
@@ -1580,7 +1580,7 @@ static  an  AddrGen( tn node )
  * be folded by AddrPlus and friends)
  */
 {
-    bool_        was_address;
+    bool        was_address;
     an          retv;
     name        *base;
     tn_flags    flags;
@@ -1664,7 +1664,7 @@ an  TNFlow( tn node )
     #define JUST_USE_SHIFTS
 #endif
 
-static  an  TNBitShift( an retv, tn node, bool_ already_masked )
+static  an  TNBitShift( an retv, tn node, bool already_masked )
 /**************************************************************
  * Yield the integer value of the bit field of rvalue "retv" based on
  * the bit field specification in "node". For an unsigned bit field
@@ -1810,7 +1810,7 @@ static  void    DoAnd64( an left, unsigned_64 mask, tn node )
               node->tipe, node->tipe ) );
 }
 
-static  an  TNBitOpGets( tn node, const type_def *tipe, bool_ yield_before_op )
+static  an  TNBitOpGets( tn node, const type_def *tipe, bool yield_before_op )
 /***********************************************************************
  * Do a bit field assgnment, like a += b, or a = b or b++.  If
  * "yield_before_op" is true, we want to yield the value of the bit
@@ -2115,7 +2115,7 @@ an  TNBinary( tn node )
     tn      l;
     tn      r;
     tn      folded;
-    bool_    was_address;
+    bool    was_address;
 
     if( node->u.left->kids >= node->u1.t.rite->kids ) {
         left = TreeGen( node->u.left );
@@ -2215,7 +2215,7 @@ static  an  TNQuestion( tn node )
 }
 
 
-static  bool_    FunctionModifiesSP( tn call )
+static  bool    FunctionModifiesSP( tn call )
 /********************************************
  * does the given call modify sp?
  */
@@ -2231,7 +2231,7 @@ static  bool_    FunctionModifiesSP( tn call )
     return( false );
 }
 
-static  bool_    ModifiesSP( tn node )
+static  bool    ModifiesSP( tn node )
 /************************************
  * see if the given tree can modify SP in any way - for now,
  * just see if we make a call to a routine which modifies SP
@@ -2299,7 +2299,7 @@ static  void    MakeSPSafe( tn scan )
     }
 }
 
-static  an  TNCall( tn callhandle, bool_ ignore_return )
+static  an  TNCall( tn callhandle, bool ignore_return )
 /******************************************************
  * generate block for a TN_CALL node
  */
@@ -2312,8 +2312,8 @@ static  an  TNCall( tn callhandle, bool_ ignore_return )
     an              retv;
     an              parman;
     const type_def  *tipe;
-    bool_            aux_inline;     /* ASM inline code */
-    bool_            call_inline;    /* C inline code */
+    bool            aux_inline;     /* ASM inline code */
+    bool            call_inline;    /* C inline code */
     name            *base;
     call_class      cclass;
     cg_sym_handle   sym;
@@ -2416,7 +2416,7 @@ void    TNZapParms( void )
 }
 
 
-bool_    TGIsAddress( void )
+bool    TGIsAddress( void )
 /**********************************
  * Are we processing an address expression?
  */
@@ -2498,7 +2498,7 @@ void    TInit( void )
 }
 
 
-bool_    TreeFrlFree( void )
+bool    TreeFrlFree( void )
 /*************************/
 {
     return( FrlFreeAll( &tree_state().TreeFrl, sizeof( tree_node ) ) );

@@ -79,8 +79,8 @@ typedef struct asm_code {
     struct {
         asm_token       ins;            // prefix before instruction, e.g. lock
         prefix_reg      seg;            // segment register override
-        boolbit         adrsiz  : 1;    // address size prefix
-        boolbit         opsiz   : 1;    // operand size prefix
+        bool         adrsiz  : 1;    // address size prefix
+        bool         opsiz   : 1;    // operand size prefix
     } prefix;
     memtype             mem_type;       // byte / word / etc. NOT near/far
     long                data[OPND_MAX];
@@ -93,9 +93,9 @@ typedef struct asm_code {
     } info;
     signed char     extended_ins;
     unsigned char   sib;
-    boolbit         use32           : 1;
-    boolbit         indirect        : 1;    // CALL/JMP indirect jump
-    boolbit         mem_type_fixed  : 1;
+    bool         use32           : 1;
+    bool         indirect        : 1;    // CALL/JMP indirect jump
+    bool         mem_type_fixed  : 1;
 } asm_code;
 
 #define NO_PREFIX   0x00
@@ -152,11 +152,11 @@ extern int      GetInsString( asm_token, char * );
 #endif
 
 extern int      OperandSize( OPNDTYPE opnd );
-extern bool_     InRange( unsigned long val, unsigned bytes );
-extern bool_     cpu_directive( asm_token );
-extern bool_     AsmParse( token_buffer *tokbuf, const char *curline );
-extern bool_     NextArrayElement( token_buffer *tokbuf, bool_ *next );
-extern bool_     data_init( token_buffer *tokbuf, token_idx, token_idx );
-extern bool_     match_phase_1( void );
+extern bool     InRange( unsigned long val, unsigned bytes );
+extern bool     cpu_directive( asm_token );
+extern bool     AsmParse( token_buffer *tokbuf, const char *curline );
+extern bool     NextArrayElement( token_buffer *tokbuf, bool *next );
+extern bool     data_init( token_buffer *tokbuf, token_idx, token_idx );
+extern bool     match_phase_1( void );
 
 #endif

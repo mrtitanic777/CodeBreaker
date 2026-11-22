@@ -30,5 +30,5 @@
 
 
 extern instruction      *FoldIns( instruction *ins );
-extern bool_             ConstFold( block *root );
-extern bool_             IsTrickyPointerConv( instruction *ins );
+extern bool             ConstFold( block *root );
+extern bool             IsTrickyPointerConv( instruction *ins );

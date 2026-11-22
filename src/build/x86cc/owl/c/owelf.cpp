@@ -46,7 +46,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct OwelfState {
-    bool_ useRela;   // Use .rela or .rel
+    bool useRela;   // Use .rela or .rel
 };
 
 }  // namespace

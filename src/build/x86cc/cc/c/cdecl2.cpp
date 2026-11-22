@@ -333,7 +333,7 @@ static SYM_HANDLE FuncDecl( SYMPTR sym, stg_classes stg_class, decl_state *state
 
 static SYM_HANDLE VarDecl( SYMPTR sym, stg_classes stg_class, decl_state *state )
 {
-    bool_                old_def;
+    bool                old_def;
     TYPEPTR             typ;
     SYM_HANDLE          sym_handle;
     SYM_HANDLE          old_sym_handle;
@@ -668,7 +668,7 @@ static SYM_HANDLE InitDeclarator( SYMPTR sym, decl_info const * const info, decl
     return( sym_handle );
 }
 
-bool_ DeclList( SYM_HANDLE *sym_head )
+bool DeclList( SYM_HANDLE *sym_head )
 {
     decl_state          state;
     SYM_HANDLE          sym_handle;
@@ -804,7 +804,7 @@ bool_ DeclList( SYM_HANDLE *sym_head )
 }
 
 
-bool_ LoopDecl( SYM_HANDLE *sym_head )
+bool LoopDecl( SYM_HANDLE *sym_head )
 {
     decl_state          state;
     SYM_HANDLE          sym_handle;
@@ -976,7 +976,7 @@ static TYPEPTR Pointer( TYPEPTR typ, struct mod_info *info )
         }
         info->modifier |= flags;
         if( cvars_state().CurToken == T___BASED ) {
-            bool_        use_seg;
+            bool        use_seg;
             id_hash_idx hash;
 
             use_seg = false;
@@ -1605,7 +1605,7 @@ static TYPEPTR *GetProtoType( decl_info *first )
 }
 
 
-TYPEPTR *MakeParmList( parm_list *parm, bool_ reversed )
+TYPEPTR *MakeParmList( parm_list *parm, bool reversed )
 {
     TYPEPTR             *parm_types;
     parm_list           *next_parm;
@@ -1671,7 +1671,7 @@ TYPEPTR *MakeParmList( parm_list *parm, bool_ reversed )
     return( parm_types );
 }
 
-static bool_ VoidType( TYPEPTR typ )
+static bool VoidType( TYPEPTR typ )
 {
     if( typ != NULL ) {
         SKIP_TYPEDEFS( typ );
@@ -1796,13 +1796,13 @@ static void FreeParmList( void )
 }
 
 #if _CPU == 370
-static bool_ IsIntComp( TYPEPTR ret1 )
+static bool IsIntComp( TYPEPTR ret1 )
 /************************************
  * what's target compatible between default int as ret type
  * and a later declaration
  */
 {
-    bool_        ret;
+    bool        ret;
 
     SKIP_TYPEDEFS( ret1 );
     switch( ret1->decl_type ) {

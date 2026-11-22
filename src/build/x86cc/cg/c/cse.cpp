@@ -87,7 +87,7 @@ namespace {
 /* the statics of this file, one set for each run of the compiler */
 struct CseState {
     instruction *ExprHeads[LAST_CSE_OP + 1];
-    bool_ LeaveIndVars;
+    bool LeaveIndVars;
 };
 
 }  // namespace
@@ -114,7 +114,7 @@ static  void    ReCalcAddrTaken( void )
 }
 
 
-static  bool_    LoadAddr( void )
+static  bool    LoadAddr( void )
 /*******************************
  * Propagate load address instructions by replacing them with moves of
  * "relocatable constants".
@@ -126,7 +126,7 @@ static  bool_    LoadAddr( void )
 {
     block       *blk;
     instruction *ins;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
@@ -138,7 +138,7 @@ static  bool_    LoadAddr( void )
 }
 
 
-static  bool_    FindDefnBlocks( block *blk, instruction *cond, opcnt i )
+static  bool    FindDefnBlocks( block *blk, instruction *cond, opcnt i )
 /**********************************************************************/
 {
     block_edge  *edge;
@@ -151,7 +151,7 @@ static  bool_    FindDefnBlocks( block *blk, instruction *cond, opcnt i )
     instruction *new_ins;
     block_edge  *jump_edge;
     block       *new_dest_blk;
-    bool_        change;
+    bool        change;
 
     change = false;
     op = cond->operands[i];
@@ -209,7 +209,7 @@ static  bool_    FindDefnBlocks( block *blk, instruction *cond, opcnt i )
 }
 
 
-static  bool_    StretchABlock( block *blk )
+static  bool    StretchABlock( block *blk )
 /******************************************
  * see StretchEdges
  */
@@ -237,7 +237,7 @@ static  bool_    StretchABlock( block *blk )
 }
 
 
-static  bool_    StretchEdges( void )
+static  bool    StretchEdges( void )
 /***********************************
  *
  * Try to detect code like:
@@ -249,7 +249,7 @@ static  bool_    StretchEdges( void )
  */
 {
     block       *blk;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
@@ -261,7 +261,7 @@ static  bool_    StretchEdges( void )
 }
 
 
-bool_    PropRegsOne( void )
+bool    PropRegsOne( void )
 /**************************
  * We can't propagate registers very far, but one instruction is safe.
  * This is specially for the case when we have a(b(x)). We'll generate
@@ -277,7 +277,7 @@ bool_    PropRegsOne( void )
     instruction *next;
     name        *reg;
     name        **opp;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
@@ -334,7 +334,7 @@ static  void    TreeBits( block *root )
 {
     block       *daddy;
     a_bit_set   next_bit;
-    bool_        change;
+    bool        change;
     block       *blk;
     instruction *ins;
     block       **owner;
@@ -515,7 +515,7 @@ static  void    CleanPartition( void )
 }
 
 
-static bool_ CanCrossBlocks( instruction *ins1, instruction *ins2, name *op )
+static bool CanCrossBlocks( instruction *ins1, instruction *ins2, name *op )
 /***************************************************************************
  * If we're generating a partial routine, we cannot cause an
  * existing N_TEMP to cross blocks, due to an assumption
@@ -551,7 +551,7 @@ static  void    UseInOther( instruction *ins1, instruction *ins2, name *op )
 }
 
 
-static  bool_    UnOpsLiveFrom( instruction *first, instruction *last )
+static  bool    UnOpsLiveFrom( instruction *first, instruction *last )
 /*********************************************************************
  * Do the operand and result of "first" live until instruction "last"?
  */
@@ -583,7 +583,7 @@ static  who_dies BinOpsLiveFrom( instruction *first,
  */
 {
     instruction *ins;
-    bool_        result_dies;
+    bool        result_dies;
 
     if( result == NULL ) {
         for( ins = last->head.prev; ; ins = ins->head.prev ) {
@@ -621,7 +621,7 @@ static  who_dies BinOpsLiveFrom( instruction *first,
     return( ALL_LIVE );
 }
 
-static  bool_            HoistLooksGood( instruction *target, instruction *orig )
+static  bool            HoistLooksGood( instruction *target, instruction *orig )
 /*******************************************************************************
  * Does it look like a good idea to hoist a busy expression from the original
  * instruction to the hoist point. Currently, this is not a good idea if we
@@ -653,7 +653,7 @@ static  bool_            HoistLooksGood( instruction *target, instruction *orig 
 }
 
 
-static  instruction     *ProcessExpr( instruction *ins1, instruction *ins2, bool_ signed_matters )
+static  instruction     *ProcessExpr( instruction *ins1, instruction *ins2, bool signed_matters )
 /************************************************************************************************
  * Given two instruction "ins1" and "ins2" in the same partition, first
  * find out if they have the same operands, and if they do, determine
@@ -758,7 +758,7 @@ static  instruction     *ProcessExpr( instruction *ins1, instruction *ins2, bool
 }
 
 
-static  bool_    OkToInvert( name *div )
+static  bool    OkToInvert( name *div )
 /**************************************
  * Is it OK to compute the reciprical of 'div'? Either it must
  * be exactly representable (a integer power of two) or the user
@@ -783,7 +783,7 @@ static  bool_    OkToInvert( name *div )
 }
 
 
-static  bool_    ProcessDivide( instruction *ins1, instruction *ins2 )
+static  bool    ProcessDivide( instruction *ins1, instruction *ins2 )
 /********************************************************************
  * Given two instruction "ins1" and "ins2" in the same partition, first
  * find out if they have the same divisor, and if they do, determine
@@ -848,7 +848,7 @@ static  void    DeleteFromList( instruction **owner,
     *owner = new_;
 }
 
-static  bool_    DoOneOpcode( opcode_defs opcode )
+static  bool    DoOneOpcode( opcode_defs opcode )
 /************************************************
  * Here we check all instructions with opcode "opcode" against all
  * others with the same opcode, and if we process a common
@@ -856,13 +856,13 @@ static  bool_    DoOneOpcode( opcode_defs opcode )
  * opcodes.
  */
 {
-    bool_        change;
+    bool        change;
     instruction *ins1;
     instruction *ins2;
     instruction *next1;
     instruction *next2;
     instruction *which_ins;
-    bool_        signed_matters;
+    bool        signed_matters;
 
     change = false;
     switch( opcode ) {
@@ -917,10 +917,10 @@ static  bool_    DoOneOpcode( opcode_defs opcode )
 }
 
 
-static  bool_    DoDivides( void )
+static  bool    DoDivides( void )
 /*******************************/
 {
-    bool_        change;
+    bool        change;
     instruction *ins1;
     instruction *ins2;
     instruction *next1;
@@ -965,7 +965,7 @@ static  void    CleanTableEntries( block *root )
 }
 
 
-static  bool_    DoArithOps( block *root )
+static  bool    DoArithOps( block *root )
 /****************************************
  * Given a partition whose root is "root", do common subexpressions and
  * very busy expressions on arithmetic operators. The approach is fairly
@@ -978,7 +978,7 @@ static  bool_    DoArithOps( block *root )
     block       *blk;
     opcode_defs opcode;
     instruction *ins;
-    bool_        change;
+    bool        change;
     opcnt       i;
 
     for( opcode = FIRST_CSE_OP; opcode <= LAST_CSE_OP; ++opcode ) {
@@ -1025,13 +1025,13 @@ static  bool_    DoArithOps( block *root )
 }
 
 
-static  bool_    PropagateExprs( void )
+static  bool    PropagateExprs( void )
 /*************************************
  * Do common subexpression and very busy expressions, for each
  * "partition".
  */
 {
-    bool_        change;
+    bool        change;
     block       *blk;
 
     change = false;
@@ -1045,7 +1045,7 @@ static  bool_    PropagateExprs( void )
 }
 
 
-static bool_ FixOneStructRet( instruction *call )
+static bool FixOneStructRet( instruction *call )
 /***********************************************
  * Fix one structured return copy.
  */
@@ -1084,7 +1084,7 @@ static bool_ FixOneStructRet( instruction *call )
     return( true );
 }
 
-static  bool_    FixStructRet( block *root )
+static  bool    FixStructRet( block *root )
 /******************************************
  * search for code that looks like
  *
@@ -1102,7 +1102,7 @@ static  bool_    FixStructRet( block *root )
 {
     block       *blk;
     instruction *ins;
-    bool_        change;
+    bool        change;
 
     change = false;
     blk = root;
@@ -1134,7 +1134,7 @@ static  block   *NextBlock( block *blk, void *parm )
     return( blk->u.partition );
 }
 
-static  bool_    isMoveIns( instruction *ins )
+static  bool    isMoveIns( instruction *ins )
 /********************************************
  * Is "ins" a move type instruction?
  */
@@ -1149,7 +1149,7 @@ static  bool_    isMoveIns( instruction *ins )
 }
 
 
-static  bool_    CanLinkMove( instruction *ins )
+static  bool    CanLinkMove( instruction *ins )
 /**********************************************
  * Is "ins" suitable for copy propagation?
  */
@@ -1213,7 +1213,7 @@ static void RemoveLink( instruction *ins, name *link )
     }
 }
 
-static  bool_    LinkableMove( instruction *ins )
+static  bool    LinkableMove( instruction *ins )
 /***********************************************
  * Determine if ins is ok to link into the list of
  * moves associated with it's result.
@@ -1337,16 +1337,16 @@ static  void    CleanMoves( block *root )
 }
 
 
-static  bool_    PropOpnd( instruction *ins, name **op,
-                          instruction *definition, bool_ backward,
-                          bool_ is_opnd )
+static  bool    PropOpnd( instruction *ins, name **op,
+                          instruction *definition, bool backward,
+                          bool is_opnd )
 /****************************************************************
  * See if we can propagate the operand from a move into the spot for
  * operands "*op" in instruction "ins" given definition (move) list
  * "definition".  (See DoPropagateMoves).
  */
 {
-    bool_                change;
+    bool                change;
     name                *opnd;
     name                *defop;
     name                *defres;
@@ -1455,7 +1455,7 @@ static  bool_    PropOpnd( instruction *ins, name **op,
 }
 
 
-static  bool_    PropMoves( block *root, bool_ backward )
+static  bool    PropMoves( block *root, bool backward )
 /******************************************************
  * For each operand of each instruction in partition "root", see if
  * there is a move preceeding it whose operand could be used instead.
@@ -1464,7 +1464,7 @@ static  bool_    PropMoves( block *root, bool_ backward )
 {
     opcnt       i;
     block       *blk;
-    bool_        change;
+    bool        change;
     instruction *ins;
     name        *idx;
     opcode_defs opcode;
@@ -1524,7 +1524,7 @@ static  bool_    PropMoves( block *root, bool_ backward )
 }
 
 
-static  bool_    DoPropagateMoves( void )
+static  bool    DoPropagateMoves( void )
 /***************************************
  * First link all moves in a partion together with a special field in
  * the symbol table of ins->result being used to store the head of the
@@ -1537,8 +1537,8 @@ static  bool_    DoPropagateMoves( void )
  * the operand of the instruction with the operand of the move.
  */
 {
-    bool_        change;
-    bool_        block_changed;
+    bool        change;
+    bool        block_changed;
     block       *blk;
 
     change = false;
@@ -1577,12 +1577,12 @@ static  bool_    DoPropagateMoves( void )
     return( change );
 }
 
-bool_    PropagateMoves( void )
+bool    PropagateMoves( void )
 /*****************************
  * Do copy propagation.
  */
 {
-    bool_        change;
+    bool        change;
 
     change = false;
     FindPartition();
@@ -1594,14 +1594,14 @@ bool_    PropagateMoves( void )
 }
 
 
-bool_    CommonSex( bool_ leave_indvars_alone )
+bool    CommonSex( bool leave_indvars_alone )
 /****************************************************
  * Do COMMON SubEXpression and related optimizations.
  */
 {
-    bool_        loops_killed;
-    bool_        change;
-    bool_        anychange;
+    bool        loops_killed;
+    bool        change;
+    bool        anychange;
 
     loops_killed = false;
     cse_state().LeaveIndVars = leave_indvars_alone;

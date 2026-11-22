@@ -68,7 +68,7 @@ static  void    MarkReachableBlocks( void )
 {
     block       *blk;
     block       *son;
-    bool_        change;
+    bool        change;
     block_num   i;
 
     do {
@@ -104,7 +104,7 @@ int     CountIns( block *blk )
 }
 
 
-static  bool_    FindBlock( block *blk )
+static  bool    FindBlock( block *blk )
 /*************************************/
 {
     block       *curr;
@@ -242,13 +242,13 @@ void    MoveHead( block *old, block *new_ )
 }
 
 
-static  bool_    Retarget( block *blk )
+static  bool    Retarget( block *blk )
 /************************************/
 {
     block_edge  *edge;
     block_edge  *next;
     block       *target;
-    bool_        success;
+    bool        success;
 
     success = true;                    /* assume can get rid of block*/
     target = blk->edge[0].destination.u.blk;
@@ -343,7 +343,7 @@ static  void    JoinBlocks( block *jump, block *target )
 }
 
 
-static  bool_    SameTarget( block *blk )
+static  bool    SameTarget( block *blk )
 /**************************************/
 {
     instruction *ins;
@@ -367,15 +367,15 @@ static  bool_    SameTarget( block *blk )
 }
 
 
-static  bool_    DoBlockTrim( void )
+static  bool    DoBlockTrim( void )
 /*********************************/
 {
     block       *blk;
     block       *next;
     block       *target;
     instruction *ins;
-    bool_        change;
-    bool_        any_change;
+    bool        change;
+    bool        any_change;
     block_id    blk_id;
 
     _MarkBlkAllUnVisited();
@@ -459,13 +459,13 @@ void KillCondBlk( block *blk, instruction *ins, cond_dst_idx dest_idx )
     FreeIns( ins );
 }
 
-bool_    DeadBlocks( void )
+bool    DeadBlocks( void )
 /************************/
 {
     block           *blk;
     instruction     *ins;
     cond_dst_idx    dest_idx;
-    bool_            change;
+    bool            change;
 
     change = false;
     for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
@@ -490,10 +490,10 @@ bool_    DeadBlocks( void )
 }
 
 
-bool_    BlockTrim( void )
+bool    BlockTrim( void )
 /***********************/
 {
-    bool_    change = false;
+    bool    change = false;
 
     if( ( data_state().CurrProc->state.attr & ROUTINE_WANTS_DEBUGGING ) == 0 ) {
         change = DoBlockTrim();

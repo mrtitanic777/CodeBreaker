@@ -133,7 +133,7 @@ an      BGTempName( name *temp, const type_def *tipe )
 }
 
 
-bool_    FiniLabel( label_handle lbl, block *blk )
+bool    FiniLabel( label_handle lbl, block *blk )
 /***********************************************/
 {
     block_num   i;
@@ -167,7 +167,7 @@ void    BGFiniLabel( label_handle lbl )
 }
 
 
-bool_    NeedConvert( const type_def *from, const type_def *to )
+bool    NeedConvert( const type_def *from, const type_def *to )
 /*************************************************************/
 {
     if( from == to )
@@ -375,7 +375,7 @@ void    BGControl( cg_op opcode, an expr, label_handle lbl )
 }
 
 
-void    BGGenCtrl( cg_op opcode, an expr, label_handle lbl, bool_ gen )
+void    BGGenCtrl( cg_op opcode, an expr, label_handle lbl, bool gen )
 /********************************************************************/
 {
     switch( opcode ) {
@@ -545,7 +545,7 @@ static  an      CheckType( an op, const type_def *tipe ) {
 }
 
 
-an      BGBinary( cg_op opcode, an left, an rite, const type_def *tipe, bool_ fold_addr )
+an      BGBinary( cg_op opcode, an left, an rite, const type_def *tipe, bool fold_addr )
 /**********************************************************************************/
 {
     an          result;

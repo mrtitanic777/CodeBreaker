@@ -72,7 +72,7 @@ static const opcode_attr OpAttrs[LAST_OP - FIRST_OP + 1] = {
 #define _IsntIns( ins, attr )      ((OpAttrs[ins->head.opcode] & attr) == 0)
 
 
-static  bool_    ReDefinesOps( instruction *of, instruction *ins )
+static  bool    ReDefinesOps( instruction *of, instruction *ins )
 /******************************************************************
  * return true if instruction "ins" redefines any of the operands
  * or the result of instruction "of"
@@ -98,7 +98,7 @@ static  bool_    ReDefinesOps( instruction *of, instruction *ins )
 }
 
 
-static  bool_    CanReorder( instruction *try_, instruction *after )
+static  bool    CanReorder( instruction *try_, instruction *after )
 /*****************************************************************
  * return try if "try" could be moved past instruction "after"
  */
@@ -176,7 +176,7 @@ static  void    PushInsForward( block *blk )
 }
 
 
-bool_    SameThing( name *x, name *y )
+bool    SameThing( name *x, name *y )
 /********************************************
  * returns true if "x" and "y" are the same thing. IE: N_MEMORY
  * names which are associated with the same front end symbol or
@@ -236,7 +236,7 @@ void    DeadTemps( void )
 }
 
 
-static  bool_    IsDeadIns( block *blk, instruction *ins, instruction *next )
+static  bool    IsDeadIns( block *blk, instruction *ins, instruction *next )
 /*****************************************************************************
  * returns true if an instruction is assigning to a name which is not
  * live immediately following instruction "ins".
@@ -286,7 +286,7 @@ void    AxeDeadCode( void )
     instruction         *ins;
     instruction         *next;
     instruction         *kill;
-    bool_                change;
+    bool                change;
 
     /*
      * Reuse field, it's useless for killed instruction

@@ -40,7 +40,7 @@
 #include "asmjump.h"
 
 /* prototypes */
-bool_ ptr_operator( memtype mem_type, bool_ fix_mem_type );
+bool ptr_operator( memtype mem_type, bool fix_mem_type );
 
 #if defined( _STANDALONE_ )
 
@@ -190,7 +190,7 @@ static void FarCallToNear( token_buffer *tokbuf )
 }
 #endif
 
-bool_ jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
+bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
 /*
   determine the displacement of jmp;
 */
@@ -670,7 +670,7 @@ bool_ jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
     return( RC_OK );
 }
 
-bool_ ptr_operator( memtype mem_type, bool_ fix_mem_type )
+bool ptr_operator( memtype mem_type, bool fix_mem_type )
 /******************************************************/
 /*
   determine what should be done with SHORT, NEAR, FAR, BYTE, WORD, DWORD, PTR

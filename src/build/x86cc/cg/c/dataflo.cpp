@@ -52,7 +52,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct DatafloState {
-    bool_ MoreUseInOtherTemps;
+    bool MoreUseInOtherTemps;
 };
 
 }  // namespace
@@ -78,7 +78,7 @@ static  void    AddTempSave( name *op, block *blk )
 }
 
 
-static  bool_    AllocBefore( void *n1, void *n2 )
+static  bool    AllocBefore( void *n1, void *n2 )
 /***********************************************/
 {
     name    *t1 = static_cast<name *>(n1);
@@ -143,7 +143,7 @@ static  void    RoughSortTemps( void )
 
 
 static  global_bit_set AssignGlobalBits( name_class_def class_,
-                             global_bit_set *bit, bool_ first_time )
+                             global_bit_set *bit, bool first_time )
 /*****************************************************************/
 {
     conflict_node       *conf;
@@ -226,7 +226,7 @@ void    MakeConflicts( void )
 }
 
 
-bool_    MoreConflicts( void )
+bool    MoreConflicts( void )
 /***************************/
 {
     global_bit_set     bit;
@@ -287,7 +287,7 @@ static  void    LiveAnalysis( block *tail, global_bit_set memory_bits )
     data_flow_def       *data;
     global_bit_set      new_gbs;
     block_num           i;
-    bool_                change;
+    bool                change;
 
 
     /*   Want tail of block list, to do inside-out traversal of*/

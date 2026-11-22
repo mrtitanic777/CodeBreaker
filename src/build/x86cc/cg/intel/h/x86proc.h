@@ -41,9 +41,9 @@ inline X86procState& x86proc_state() { return cbrun_part<X86procState>(); }
 
 #endif
 
-extern bool_         CanZapBP( void );
-extern void         DoRTCall( rt_class rtindex, bool_ pop );
+extern bool         CanZapBP( void );
+extern void         DoRTCall( rt_class rtindex, bool pop );
 extern void         AdjustStackDepth( instruction *ins );
 extern void         AdjustStackDepthDirect( int adjust );
-extern bool_         BaseIsSP( name *op );
-extern bool_         EpilogIsLeaveOnly( void );
+extern bool         BaseIsSP( name *op );
+extern bool         EpilogIsLeaveOnly( void );

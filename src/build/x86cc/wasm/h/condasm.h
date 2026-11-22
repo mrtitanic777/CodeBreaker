@@ -34,5 +34,5 @@
 extern void IfCondInit( void );
 extern void IfCondFini( void );
 extern void prep_line_for_conditional_assembly( char * );
-extern bool_ conditional_assembly_directive( token_buffer *tokbuf, token_idx );
-extern bool_ conditional_error_directive( token_buffer *tokbuf, token_idx );
+extern bool conditional_assembly_directive( token_buffer *tokbuf, token_idx );
+extern bool conditional_error_directive( token_buffer *tokbuf, token_idx );

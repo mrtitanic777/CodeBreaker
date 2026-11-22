@@ -49,7 +49,7 @@ const opcode_entry  *ResetGenEntry( instruction *ins )
 /****************************************************/
 {
     const opcode_entry  *try_;
-    bool_                dummy;
+    bool                dummy;
 
     try_ = FindGenEntry( ins, &dummy );
 #if _TARGET_INTEL
@@ -72,7 +72,7 @@ const opcode_entry  *ResetGenEntry( instruction *ins )
 }
 
 
-bool_    ChangeIns( instruction *ins, name *to, name **op, change_type flags )
+bool    ChangeIns( instruction *ins, name *to, name **op, change_type flags )
 /****************************************************************************
  * Is it alright to change operand "*op" to a reference to "to" in
  * instruction "ins".  We check here that the instruction would still
@@ -91,7 +91,7 @@ bool_    ChangeIns( instruction *ins, name *to, name **op, change_type flags )
     opcnt               i;
     name                *save_ops[MAX_OPS_PER_INS];
     type_class_def      type_class;
-    bool_                ok;
+    bool                ok;
 
     ok = true;
     table = ins->table;
@@ -152,7 +152,7 @@ bool_    ChangeIns( instruction *ins, name *to, name **op, change_type flags )
 }
 
 
-static  bool_    TryOldIndex( score_hdl scoreboard, instruction *ins, name **opp )
+static  bool    TryOldIndex( score_hdl scoreboard, instruction *ins, name **opp )
 /********************************************************************************
  * Try to find an 'older' index register to replace the index of
  * "*opp", in instruction "ins", given register scoreboard "sc".
@@ -196,7 +196,7 @@ static  bool_    TryOldIndex( score_hdl scoreboard, instruction *ins, name **opp
     return( false );
 }
 
-static  bool_    TryRegOp( score_hdl scoreboard, instruction *ins, name **opp )
+static  bool    TryRegOp( score_hdl scoreboard, instruction *ins, name **opp )
 /*****************************************************************************
  * See if we can find an equivalent register operand for the operand
  * "*opp" in instruction "ins", given that the current state of
@@ -263,14 +263,14 @@ static  bool_    TryRegOp( score_hdl scoreboard, instruction *ins, name **opp )
 }
 
 
-bool_    FindRegOpnd( score_hdl scoreboard, instruction *ins )
+bool    FindRegOpnd( score_hdl scoreboard, instruction *ins )
 /************************************************************
  * See if we can find an operand of "ins" that could be replaces by a
  * register or an 'older' register (one that was defined first).
  */
 {
     opcnt       i;
-    bool_        change;
+    bool        change;
 
     if( IsStackReg( ins->result ) )
         return( false );
@@ -320,7 +320,7 @@ void    ScoreMakeEqual( score_hdl scoreboard, name *op1, name *op2 )
     }
 }
 
-bool_    ScoreMove( score_hdl scoreboard, instruction *ins )
+bool    ScoreMove( score_hdl scoreboard, instruction *ins )
 /**********************************************************
  * Update "sc" to reflect the affect of an OP_MOV instruction "ins" on
  * the registers and memory locations.
@@ -386,7 +386,7 @@ bool_    ScoreMove( score_hdl scoreboard, instruction *ins )
 }
 
 
-bool_    ScoreLA( score_hdl scoreboard, instruction *ins )
+bool    ScoreLA( score_hdl scoreboard, instruction *ins )
 /********************************************************
  * Update "sc" to reflect the affect of an OP_MOV instruction "ins" on
  * the registers and memory locations.

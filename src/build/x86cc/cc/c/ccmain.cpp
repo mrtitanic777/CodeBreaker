@@ -77,7 +77,7 @@
 #define NULLDEV_NAME    "nulldev"
 
 
-void FrontEndInit( bool_ reuse )
+void FrontEndInit( bool reuse )
 /******************************
  * Do the once only things
  ******************************/
@@ -105,13 +105,13 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct CcmainState {
-    bool_ IsStdIn;
-    bool_ IsNullDev;
+    bool IsStdIn;
+    bool IsNullDev;
     char *FNameBuf = NULL;
     unsigned CppColumn = 0;
     unsigned CppWidth = 0;
     unsigned CommentChar = '\0';
-    bool_ CppFirstChar = false;
+    bool CppFirstChar = false;
 };
 
 }  // namespace
@@ -145,7 +145,7 @@ static void finiGlobals( void )
     FiniBuffer();
 }
 
-static bool_ ParseCmdLine( char **cmdline )
+static bool ParseCmdLine( char **cmdline )
 {
     char        *cmd;
 
@@ -229,10 +229,10 @@ static void DelDepFile( void )
     }
 }
 
-static char *createFileName( const char *template_, const char *ext, bool_ forceext )
+static char *createFileName( const char *template_, const char *ext, bool forceext )
 {
     pgroup2     pg;
-    bool_        use_defaults;
+    bool        use_defaults;
     const char  *module_name;
 
     use_defaults = ( template_ == NULL );
@@ -279,7 +279,7 @@ static void DumpDepFile( void )
     }
 }
 
-static IALIASPTR AddIAlias( const char *alias_name, const char *real_name, bool_ is_lib )
+static IALIASPTR AddIAlias( const char *alias_name, const char *real_name, bool is_lib )
 {
     size_t      alias_len;
     size_t      real_len;
@@ -322,7 +322,7 @@ static void FreeIAlias( void )
     cvars_state().IAliasNames = NULL;
 }
 
-static const char *IncludeAlias( const char *filename, bool_ is_lib )
+static const char *IncludeAlias( const char *filename, bool is_lib )
 {
     IALIASPTR   alias;
 
@@ -334,7 +334,7 @@ static const char *IncludeAlias( const char *filename, bool_ is_lib )
     return( filename );
 }
 
-void PrtfFilenameErr( const char *filename, src_file_type typ, bool_ print_error )
+void PrtfFilenameErr( const char *filename, src_file_type typ, bool print_error )
 {
     /* unused parameters */ (void)typ;
 
@@ -343,9 +343,9 @@ void PrtfFilenameErr( const char *filename, src_file_type typ, bool_ print_error
     }
 }
 
-static bool_ openForcePreInclude( void )
+static bool openForcePreInclude( void )
 {
-    bool_    ok;
+    bool    ok;
 
     ok = OpenSrcFile( cvars_state().ForcePreInclude, FT_HEADER_PRE );
     if( !ok )
@@ -590,12 +590,12 @@ void CloseSrcFile( FCB *fcb )
     CloseFCB( fcb );
 }
 
-static bool_ FreeSrcFP( void )
+static bool FreeSrcFP( void )
 /***************************/
 {
     FCB     *fcb;
     FCB     *nextfcb;
-    bool_    ret;
+    bool    ret;
 
     ret = false;
     for( fcb = cvars_state().SrcFiles; fcb != NULL; fcb = nextfcb ) {
@@ -630,7 +630,7 @@ static FNAMEPTR FindFlist( char const *filename )
     return( flist );
 }
 
-static bool_ IsFNameOnce( char const *filename )
+static bool IsFNameOnce( char const *filename )
 {
     FNAMEPTR    flist;
     char        fullfilename[_MAX_PATH];
@@ -651,7 +651,7 @@ static bool_ IsFNameOnce( char const *filename )
     return( flist->once );
 }
 
-static bool_ TryOpen( const char *path, pgroup2 *ff, src_file_type typ )
+static bool TryOpen( const char *path, pgroup2 *ff, src_file_type typ )
 {
     FILE        *fp;
     char        filename[_MAX_PATH];
@@ -888,10 +888,10 @@ void SrcFileReadOnlyDir( char const *dirs )
     }
 }
 
-bool_ SrcFileInRDir( FNAMEPTR flist )
+bool SrcFileInRDir( FNAMEPTR flist )
 {
     RDIRPTR     dirlist;
-    bool_        read_only;      // - true ==> file is in read-only directory
+    bool        read_only;      // - true ==> file is in read-only directory
     char        *fullpath;      // - full path
 
     read_only = false;
@@ -919,7 +919,7 @@ void SrcFileReadOnlyFile( char const *file )
     }
 }
 
-void SrcFileIncludeAlias( const char *alias_name, const char *real_name, bool_ is_lib )
+void SrcFileIncludeAlias( const char *alias_name, const char *real_name, bool is_lib )
 {
     AddIAlias( alias_name, real_name, is_lib );
 }
@@ -950,7 +950,7 @@ static void ParseInit( void )
     cvars_state().ForcePreInclude = CMemStrdup( "_preincl.h" );
 }
 
-static bool_ OpenPgmFile( void )
+static bool OpenPgmFile( void )
 {
     if( ccmain_state().IsStdIn ) {
         if( OpenFCB( stdin, STDIN_NAME, FT_SRC ) ) {
@@ -1135,9 +1135,9 @@ static void DoCCompile( char **cmdline )
     FreeIncFileList();
 }
 
-static bool_ try_open_file( const char *path, pgroup2 *fp, pgroup2 *fa, src_file_type typ )
+static bool try_open_file( const char *path, pgroup2 *fp, pgroup2 *fa, src_file_type typ )
 {
-    bool_    ok;
+    bool    ok;
     char    save_chr_fname;
     char    save_chr_ext;
 
@@ -1186,7 +1186,7 @@ static bool_ try_open_file( const char *path, pgroup2 *fp, pgroup2 *fa, src_file
     return( ok );
 }
 
-static bool_ doOpenSrcFile( pgroup2 *fp, pgroup2 *fa, src_file_type typ )
+static bool doOpenSrcFile( pgroup2 *fp, pgroup2 *fa, src_file_type typ )
 {
     char        *s;
     char        *p;
@@ -1308,7 +1308,7 @@ static void normalizeSep( char *dir )
     }
 }
 
-bool_ OpenSrcFile( const char *filename, src_file_type typ )
+bool OpenSrcFile( const char *filename, src_file_type typ )
 {
     const char  *alias_filename;
     pgroup2     fp;
@@ -1340,7 +1340,7 @@ bool_ OpenSrcFile( const char *filename, src_file_type typ )
 }
 
 
-void CppEmitPoundLine( unsigned line_num, const char *filename, bool_ newline )
+void CppEmitPoundLine( unsigned line_num, const char *filename, bool newline )
 {
     char    buf[30];
     char    c;
@@ -1360,7 +1360,7 @@ void CppEmitPoundLine( unsigned line_num, const char *filename, bool_ newline )
     }
 }
 
-bool_ CppPrinting( void )
+bool CppPrinting( void )
 {
     return( cvars_state().SkipLevel == cvars_state().NestLevel );
 }
@@ -1450,7 +1450,7 @@ void CloseFiles( void )
 }
 
 
-bool_ FrontEnd( char **cmdline )
+bool FrontEnd( char **cmdline )
 {
 #if defined(__WATCOMC__) && defined( _M_IX86 )
     /*

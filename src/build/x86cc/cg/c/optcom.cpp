@@ -51,7 +51,7 @@ typedef struct common_info {
         uint        save;
 } common_info;
 
-static  bool_    JustMoveLabel( common_info *max, ins_entry *ins )
+static  bool    JustMoveLabel( common_info *max, ins_entry *ins )
 /***************************************************************/
 {
     oc_class            cl;
@@ -125,7 +125,7 @@ static  void    TransformJumps( ins_entry *ins, ins_entry *first )
 }
 
 
-static  bool_    CommonInstr( ins_entry *old, ins_entry *add )
+static  bool    CommonInstr( ins_entry *old, ins_entry *add )
 /***********************************************************/
 {
   optbegin
@@ -207,7 +207,7 @@ static  void    FindCommon( common_info *c, ins_entry *p1, ins_entry *p2 )
   optend
 }
 
-bool_    ComTail( ins_entry *list, ins_entry *ins )
+bool    ComTail( ins_entry *list, ins_entry *ins )
 /************************************************/
 {
     ins_entry           *try_;
@@ -266,13 +266,13 @@ bool_    ComTail( ins_entry *list, ins_entry *ins )
 }
 
 
-bool_    ComCode( ins_entry *jmp )
+bool    ComCode( ins_entry *jmp )
 /*******************************/
 {
     ins_entry   *new_ins;
     ins_entry   *com;
     obj_length  align;
-    bool_        common;
+    bool        common;
 
   optbegin
     common = false;

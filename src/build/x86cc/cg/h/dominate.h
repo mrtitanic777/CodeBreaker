@@ -33,6 +33,6 @@
 #ifndef _DOMINATE_H_INCLUDED
 #define _DOMINATE_H_INCLUDED
 
-extern bool_ CalcDominatorInfo( void );
+extern bool CalcDominatorInfo( void );
 
 #endif

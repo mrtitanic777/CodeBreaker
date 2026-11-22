@@ -47,9 +47,9 @@
 
 /* static globals */
 /* is this data element a field in a structure definition? */
-static bool_             struct_field;
+static bool             struct_field;
 /* is this the first initializer for this field? */
-static bool_             first_init;
+static bool             first_init;
 
 #endif
 
@@ -59,7 +59,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct AsmdataState {
-    bool_ More_Array_Element = false;
+    bool More_Array_Element = false;
     unsigned Last_Element_Size;
 };
 
@@ -70,7 +70,7 @@ static inline AsmdataState& asmdata_state() { return cbrun_part<AsmdataState>();
 
 /* data initialization stuff */
 
-static void output_float( token_buffer *tokbuf, token_idx index, unsigned no_of_bytes, bool_ negative )
+static void output_float( token_buffer *tokbuf, token_idx index, unsigned no_of_bytes, bool negative )
 /****************************************************************************************************/
 {
     double              double_value;
@@ -109,7 +109,7 @@ static void output_float( token_buffer *tokbuf, token_idx index, unsigned no_of_
 }
 
 #if defined( _STANDALONE_ )
-static void update_sizes( asm_sym_handle sym, bool_ first, unsigned no_of_bytes )
+static void update_sizes( asm_sym_handle sym, bool first, unsigned no_of_bytes )
 /******************************************************************************/
 {
     sym->total_length++;
@@ -120,7 +120,7 @@ static void update_sizes( asm_sym_handle sym, bool_ first, unsigned no_of_bytes 
     }
 }
 
-static bool_ check_override( token_buffer *tokbuf, token_idx *i )
+static bool check_override( token_buffer *tokbuf, token_idx *i )
 /***************************************************************
  * Check if there is a register, segment or group override
  */
@@ -168,7 +168,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 {
     token_idx           cur_pos = start_pos;
     unsigned            count;
-    bool_                negative = false;
+    bool                negative = false;
 
 #if defined( _STANDALONE_ )
     asm_sym_handle      the_struct;
@@ -394,7 +394,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
             long                data = 0;
             asmfixup            *fixup;
 #if defined( _STANDALONE_ )
-            bool_                expanded;
+            bool                expanded;
 #endif
 
             /* temporary test .. if this works, combine code for id & resid */
@@ -730,7 +730,7 @@ static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token
     token_idx           returned_pos = 0;
     unsigned            count;
 #if defined( _STANDALONE_ )
-    bool_                was_first;
+    bool                was_first;
 #endif
 
     ExpandTheWorld( tokbuf, start_pos, false, true );
@@ -805,7 +805,7 @@ static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token
     return( array_element( sym, struct_sym, tokbuf, cur_pos, no_of_bytes ) );
 }
 
-bool_ data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_loc )
+bool data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_loc )
 /***********************************************************************************
  * parse data initialization assembly line;
  */
@@ -816,7 +816,7 @@ bool_ data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_
     asm_sym_handle  struct_sym = NULL;
 #if defined( _STANDALONE_ )
     uint            old_offset = 0;
-    bool_            label_dir = false;
+    bool            label_dir = false;
 
     struct_field = false;
     first_init = true;
@@ -979,7 +979,7 @@ bool_ data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_
     return( RC_OK );
 }
 
-bool_ NextArrayElement( token_buffer *tokbuf, bool_ *next )
+bool NextArrayElement( token_buffer *tokbuf, bool *next )
 {
     token_idx   rc;
 

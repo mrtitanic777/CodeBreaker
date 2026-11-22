@@ -175,7 +175,7 @@ static dbug_type DoBasedPtr( TYPEPTR typ, cg_type cgtype )
     dbg_loc         dl;
     SYM_HANDLE      sym_handle;
     SYM_ENTRY       sym;
-    bool_            have_retval;
+    bool            have_retval;
 
     have_retval = false;
     ret_val = 0;

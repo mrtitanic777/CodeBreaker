@@ -88,9 +88,9 @@ typedef struct proc_def {
     pointer             frame_index;
     pointer             label;
     int                 ins_id;
-    bool_                block_by_block;
-    bool_                untrimmed;
-    bool_                contains_call;
+    bool                block_by_block;
+    bool                untrimmed;
+    bool                contains_call;
     level_depth         lex_level;
     prolog_state_def    prolog_state;
     name                *lasttemp;

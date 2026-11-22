@@ -180,7 +180,7 @@ static  stack_entry     *ReUsableStack(stack_temp *st_temp,name *temp)
 }
 
 
-static bool_ SetLastUse( name *op, name *temp, stack_temp *new_stk, instruction *ins )
+static bool SetLastUse( name *op, name *temp, stack_temp *new_stk, instruction *ins )
 /***********************************************************************************/
 {
     if( op->n.class_ == N_INDEXED && op->i.base != NULL ) {
@@ -270,7 +270,7 @@ static  void    CalcRange( stack_temp *new_stk, name *temp )
 }
 
 
-static  bool_    In( name *op, name *name )
+static  bool    In( name *op, name *name )
 /****************************************/
 {
     if( op->n.class_ == N_INDEXED ) {
@@ -288,7 +288,7 @@ static  bool_    In( name *op, name *name )
 }
 
 
-static  bool_    UsedByLA( instruction *ins, name *temp )
+static  bool    UsedByLA( instruction *ins, name *temp )
 /******************************************************/
 {
     if( ins->head.opcode == OP_LA || ins->head.opcode == OP_CAREFUL_LA ) {
@@ -300,7 +300,7 @@ static  bool_    UsedByLA( instruction *ins, name *temp )
 }
 
 
-static  instruction     *FindOnlyIns( name *name, bool_ *any_references )
+static  instruction     *FindOnlyIns( name *name, bool *any_references )
 /**********************************************************************/
 {
     block       *blk;
@@ -372,7 +372,7 @@ static  void    AllocNewLocal( name *temp )
     stack_temp  *new_st_temp;
     instruction *ins;
     stack_temp  st_temp;
-    bool_        any_references;
+    bool        any_references;
 
 #if 0
     // this is disabled because users can generate code which

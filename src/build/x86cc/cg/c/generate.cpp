@@ -90,7 +90,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct GenerateState {
-    bool_ abortCG;
+    bool abortCG;
     proc_def *FEMessageCurrProc_lastproc = NULL;
 };
 
@@ -157,7 +157,7 @@ static  void    AddANop( void )
 static  void            PreOptimize( void )
 /*****************************************/
 {
-    bool_        change;
+    bool        change;
 
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
 //        CharsAndShortsToInts();
@@ -364,7 +364,7 @@ static  void    ForceTempsMemory( void )
 }
 
 
-static  void    BlockToCode( bool_ partly_done )
+static  void    BlockToCode( bool partly_done )
 /*********************************************/
 {
     block_num           inputs;
@@ -486,7 +486,7 @@ static  void    BlockToCode( bool_ partly_done )
 }
 
 
-static  void    FlushBlocks( bool_ partly_done )
+static  void    FlushBlocks( bool partly_done )
 /*********************************************/
 /* we're in deep trouble. Try to get out of it using as little memory as*/
 /* possible*/
@@ -591,7 +591,7 @@ static  void    ForceConflictsMemory( void )
 }
 
 
-static  void    Panic( bool_ partly_done )
+static  void    Panic( bool partly_done )
 /***************************************/
 {
     proc_def    *curr_proc;
@@ -615,7 +615,7 @@ static  void    Panic( bool_ partly_done )
 }
 
 
-static  void            GenPartialRoutine( bool_ routine_done )
+static  void            GenPartialRoutine( bool routine_done )
 /************************************************************/
 {
     while( routine_done || _MemLow ) {
@@ -654,7 +654,7 @@ void    FEMessageCurrProc( fe_msg femsg )
 }
 
 
-void    Generate( bool_ routine_done )
+void    Generate( bool routine_done )
 /***********************************/
 /* The big one - here's where most of code generation happens.
  * Follow this routine to see the transformation of code unfold.

@@ -54,9 +54,9 @@ typedef struct {
         STR_HANDLE      str_h;
         SYM_HANDLE      sym_h;
     } u;
-    bool_                is_str;
-    bool_                addr_set;
-    bool_                is_error;
+    bool                is_str;
+    bool                addr_set;
+    bool                is_error;
     fold_state          state;
 } addrfold_info;
 
@@ -72,8 +72,8 @@ typedef struct data_quad_list {
 
 
 static DATA_QUAD_LIST   *NewDataQuad( void );
-static bool_             CharArray( TYPEPTR typ );
-static bool_             WCharArray( TYPEPTR typ );
+static bool             CharArray( TYPEPTR typ );
+static bool             WCharArray( TYPEPTR typ );
 static void             InitCharArray( TYPEPTR typ );
 static void             InitWCharArray( TYPEPTR typ );
 static void             StoreFloat( DATA_TYPE dtype, target_size size );
@@ -89,14 +89,14 @@ struct CdinitState {
     int DataQuadIndex;
     DATA_QUAD_LIST *NewDataQuad_DataQuadPtr;
     DATA_QUAD_LIST *StoreIValue_LastCurDataQuad;
-    bool_ DesignatedInit_new_field = true;
+    bool DesignatedInit_new_field = true;
 };
 
 }  // namespace
 
 static inline CdinitState& cdinit_state() { return cbrun_part<CdinitState>(); }
 
-bool_ DataQuadsAvailable( void )
+bool DataQuadsAvailable( void )
 {
     DATA_QUAD_LIST  *dql = cdinit_state().DataQuadSegs[0];
 
@@ -723,7 +723,7 @@ static void InitBitField( FIELDPTR field )
     uint64              value64;
     const_val           bit_value;
     TOKEN               token;
-    bool_                is64bit;
+    bool                is64bit;
     DATA_TYPE           dtype;
     unsigned            width;
 
@@ -830,7 +830,7 @@ static void *DesignatedInit( TYPEPTR typ, TYPEPTR ctyp, void *field )
     return( field );
 }
 
-static bool_ DesignatedInSubAggregate( DATA_TYPE decl_type )
+static bool DesignatedInSubAggregate( DATA_TYPE decl_type )
 {
     switch( decl_type ) {
     case TYP_ARRAY:
@@ -1124,7 +1124,7 @@ void InitSymData( TYPEPTR typ, TYPEPTR ctyp, int level )
 }
 
 
-static bool_ CharArray( TYPEPTR typ )
+static bool CharArray( TYPEPTR typ )
 {
     if( cvars_state().CurToken == T_STRING ) {
         SKIP_TYPEDEFS( typ );
@@ -1137,7 +1137,7 @@ static bool_ CharArray( TYPEPTR typ )
 }
 
 
-static bool_ WCharArray( TYPEPTR typ )
+static bool WCharArray( TYPEPTR typ )
 {
     if( cvars_state().CurToken == T_STRING ) {
         SKIP_TYPEDEFS( typ );
@@ -1486,7 +1486,7 @@ static void InitStructUnionVar( SYMPTR sym, SYM_HANDLE sym_handle, int index, TY
     }
 }
 
-static bool_ SimpleUnion( TYPEPTR typ )
+static bool SimpleUnion( TYPEPTR typ )
 {
     FIELDPTR    field;
 
@@ -1506,7 +1506,7 @@ static bool_ SimpleUnion( TYPEPTR typ )
     return( true );
 }
 
-static bool_ SimpleStruct( TYPEPTR typ )
+static bool SimpleStruct( TYPEPTR typ )
 {
     FIELDPTR    field;
 

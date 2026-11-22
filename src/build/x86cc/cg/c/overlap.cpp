@@ -37,7 +37,7 @@
 #include "overlap.h"
 
 
-static  bool_    Conflicts( type_length start,  type_length end,
+static  bool    Conflicts( type_length start,  type_length end,
                            type_length start2, type_length end2 )
 /***************************************************************/
 {
@@ -48,7 +48,7 @@ static  bool_    Conflicts( type_length start,  type_length end,
     return( false );
 }
 
-static  bool_    ovNo( name *op1, name *op2 )
+static  bool    ovNo( name *op1, name *op2 )
 /******************************************/
 {
     /* unused parameters */ (void)op1; (void)op2;
@@ -56,7 +56,7 @@ static  bool_    ovNo( name *op1, name *op2 )
     return( false );
 }
 
-static  bool_    ovYes( name *op1, name *op2 )
+static  bool    ovYes( name *op1, name *op2 )
 /*******************************************/
 {
     /* unused parameters */ (void)op1; (void)op2;
@@ -64,7 +64,7 @@ static  bool_    ovYes( name *op1, name *op2 )
     return( true );
 }
 
-static  bool_    ovTemp( name *op1, name *op2 )
+static  bool    ovTemp( name *op1, name *op2 )
 /********************************************/
 {
     if( DeAlias( op1 ) == DeAlias( op2 ) ) {
@@ -74,13 +74,13 @@ static  bool_    ovTemp( name *op1, name *op2 )
     return( false );
 }
 
-static  bool_    ovReg( name *op1, name *op2 )
+static  bool    ovReg( name *op1, name *op2 )
 /*******************************************/
 {
     return( HW_Ovlap( op1->r.reg, op2->r.reg ) );
 }
 
-static  bool_    ovIndex( name *op1, name *op2 )
+static  bool    ovIndex( name *op1, name *op2 )
 /*********************************************/
 {
     /* unused parameters */ (void)op1; (void)op2;
@@ -89,14 +89,14 @@ static  bool_    ovIndex( name *op1, name *op2 )
     return( true );
 }
 
-static  bool_    ovUses( name *op1, name *index )
+static  bool    ovUses( name *op1, name *index )
 /**********************************************/
 {
     return( Overlaps( index->i.index, op1 ) ||
             Overlaps( index->i.base, op1 ) );
 }
 
-static  bool_    (* const OverlapTable[N_CLASS_MAX][N_CLASS_MAX])( name *, name * ) = {
+static  bool    (* const OverlapTable[N_CLASS_MAX][N_CLASS_MAX])( name *, name * ) = {
 /* result       op ->   N_CONST N_MEM   N_TEMP  N_REG   N_INDEX */
 /* N_CONSTANT   */   {  ovNo,   ovNo,   ovNo,   ovNo,   ovNo },
 /* N_MEMORY     */   {  ovNo,   ovYes,  ovNo,   ovNo,   ovNo },
@@ -104,7 +104,7 @@ static  bool_    (* const OverlapTable[N_CLASS_MAX][N_CLASS_MAX])( name *, name 
 /* N_REGISTER   */   {  ovNo,   ovNo,   ovNo,   ovReg,  ovUses },
 /* N_INDEX      */   {  ovNo,   ovNo,   ovNo,   ovNo,   ovIndex } };
 
-bool_    Overlaps( name *result, name *op )
+bool    Overlaps( name *result, name *op )
 /****************************************/
 {
     if( result == NULL || op == NULL )
@@ -114,7 +114,7 @@ bool_    Overlaps( name *result, name *op )
     return( OverlapTable[result->n.class_][op->n.class_]( result, op ) );
 }
 
-bool_    CondOverlaps( name *result, name *ccop )
+bool    CondOverlaps( name *result, name *ccop )
 /*******************************************************
     returns true if modifying "result" could cause "ccop"
     to be modified as well.

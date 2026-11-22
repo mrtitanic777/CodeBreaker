@@ -114,7 +114,7 @@ label_handle AskForLabel( cg_sym_handle sym )
 }
 
 
-bool_    AskIfReachedLabel( label_handle lbl )
+bool    AskIfReachedLabel( label_handle lbl )
 /*******************************************/
 {
   optbegin
@@ -123,7 +123,7 @@ bool_    AskIfReachedLabel( label_handle lbl )
 }
 
 
-bool_    AskIfRTLabel( label_handle lbl )
+bool    AskIfRTLabel( label_handle lbl )
 /**************************************/
 {
   optbegin
@@ -132,7 +132,7 @@ bool_    AskIfRTLabel( label_handle lbl )
 }
 
 
-bool_    AskIfUniqueLabel( label_handle lbl )
+bool    AskIfUniqueLabel( label_handle lbl )
 /******************************************/
 {
   optbegin
@@ -141,7 +141,7 @@ bool_    AskIfUniqueLabel( label_handle lbl )
 }
 
 
-bool_    AskIfCommonLabel( label_handle lbl )
+bool    AskIfCommonLabel( label_handle lbl )
 /******************************************/
 {
   optbegin

@@ -61,7 +61,7 @@ void PrepAnonLabels( void )
 
 }
 
-bool_ IsLabelStruct( const char *name )
+bool IsLabelStruct( const char *name )
 /************************************/
 {
     asm_sym_handle  sym;
@@ -71,7 +71,7 @@ bool_ IsLabelStruct( const char *name )
 }
 #endif
 
-bool_ MakeLabel( token_buffer *tokbuf, token_idx i, memtype mem_type )
+bool MakeLabel( token_buffer *tokbuf, token_idx i, memtype mem_type )
 /*******************************************************************/
 {
     asm_sym_handle  sym;
@@ -183,7 +183,7 @@ bool_ MakeLabel( token_buffer *tokbuf, token_idx i, memtype mem_type )
 }
 
 #if defined( _STANDALONE_ )
-bool_ LabelDirective( token_buffer *tokbuf, token_idx i )
+bool LabelDirective( token_buffer *tokbuf, token_idx i )
 /******************************************************/
 {
     token_idx   n;

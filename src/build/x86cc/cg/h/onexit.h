@@ -29,6 +29,6 @@
 ****************************************************************************/
 
 
-extern bool_ TBreak( void );
+extern bool TBreak( void );
 extern void CauseTBreak( void );
 extern void FatalError( const char *str );

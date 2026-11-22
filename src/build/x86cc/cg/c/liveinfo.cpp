@@ -91,7 +91,7 @@ static  void    ExtendConflicts( block *blk, conflict_node *first_global )
     instruction         *last_ins;
     instruction         *first_ins;
     instruction         *new_ins;
-    bool_                havelive;
+    bool                havelive;
     data_flow_def       *flow;
 
     flow = blk->dataflow;
@@ -228,7 +228,7 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
     opcnt               i;
     opcode_defs         opcode;
     name_set            alive;
-    bool_                result_forced_alive;
+    bool                result_forced_alive;
 
     alive.regs          = last->head.live.regs;
     alive.out_of_block  = last->head.live.out_of_block;
@@ -349,7 +349,7 @@ void    MakeLiveInfo( void )
 {
     block               *blk;
     conflict_node       *first_global;
-    bool_                havelive;
+    bool                havelive;
 
     GlobalConflictsFirst();
     first_global = data_state().ConfList; // assumes conflicts get added at start of list

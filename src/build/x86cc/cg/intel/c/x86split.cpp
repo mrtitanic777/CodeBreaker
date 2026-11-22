@@ -69,7 +69,7 @@ instruction *(* const ReduceTab[])( instruction * ) = {
 };
 
 
-bool_    UnChangeable( instruction *ins )
+bool    UnChangeable( instruction *ins )
 /**************************************/
 {
     return( IsString( ins->table ) );
@@ -264,7 +264,7 @@ instruction      *rHIGHLOWMOVE( instruction *ins )
     #define     MOV_SIZE        5
 #endif
 
-bool_ UseRepForm( unsigned size )
+bool UseRepForm( unsigned size )
 /*************************************
  * Do we want to use "rep movs{w|d}", or string out multiple "movs{w|d}"
  */
@@ -320,7 +320,7 @@ bool_ UseRepForm( unsigned size )
     return( rep_startup + (count * rep_iter) + 4 < movs_cost * count );
 }
 
-static  bool_    CanLoadStringOps( instruction *ins )
+static  bool    CanLoadStringOps( instruction *ins )
 /**************************************************/
 {
     hw_reg_set  needs;
@@ -358,7 +358,7 @@ static name *FakeIndex( name *op, hw_reg_set index )
     return( ScaleIndex( AllocRegName( index ), base, 0, op->n.type_class, op->n.size, SCALE_NONE, flags ) );
 }
 
-static  bool_    SegmentFloats( name *op )
+static  bool    SegmentFloats( name *op )
 /***************************************/
 {
     name        *segname;
@@ -385,8 +385,8 @@ static  instruction     *LoadStringOps( instruction *ins,
     name                *ds_reg;
     name                *es_reg;
     hw_reg_set          new_op1;
-    bool_                ds_needs_save;
-    bool_                es_needs_save;
+    bool                ds_needs_save;
+    bool                es_needs_save;
 
     if( ins->head.opcode == OP_MOV
       && !UseRepForm( (*op1)->n.size ) ) {

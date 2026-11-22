@@ -1,4 +1,4 @@
-bool_ OPT_PROCESS( OPT_STORAGE *data )
+bool OPT_PROCESS( OPT_STORAGE *data )
 {
     switch( OPT_GET_LOWER() ) {
     case 'z':

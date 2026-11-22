@@ -83,22 +83,22 @@ extern  cfloat      *CFCnvI64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
 extern  cfloat      *CFCnvIF( cfhandle h, int data );
 extern  cfloat      *CFCnvUF( cfhandle h, uint data );
 
-extern  bool_        CFIsI8( cfloat *f );
-extern  bool_        CFIsI16( cfloat *f );
-extern  bool_        CFIsI32( cfloat *f );
-extern  bool_        CFIsI64( cfloat *f );
-extern  bool_        CFIsU8( cfloat *f );
-extern  bool_        CFIsU16( cfloat *f );
-extern  bool_        CFIsU32( cfloat *f );
-extern  bool_        CFIsU64( cfloat *f );
-extern  bool_        CFIs32( cfloat *f );
-extern  bool_        CFIs64( cfloat *f );
-extern  bool_        CFIsFloat( cfloat *f );
-extern  bool_        CFIsDouble( cfloat *f );
+extern  bool        CFIsI8( cfloat *f );
+extern  bool        CFIsI16( cfloat *f );
+extern  bool        CFIsI32( cfloat *f );
+extern  bool        CFIsI64( cfloat *f );
+extern  bool        CFIsU8( cfloat *f );
+extern  bool        CFIsU16( cfloat *f );
+extern  bool        CFIsU32( cfloat *f );
+extern  bool        CFIsU64( cfloat *f );
+extern  bool        CFIs32( cfloat *f );
+extern  bool        CFIs64( cfloat *f );
+extern  bool        CFIsFloat( cfloat *f );
+extern  bool        CFIsDouble( cfloat *f );
 
-extern  bool_        CFIsSize( cfloat *f, uint size );
-extern  bool_        CFSignedSize( cfloat *f, uint size );
-extern  bool_        CFUnSignedSize( cfloat *f, uint size );
+extern  bool        CFIsSize( cfloat *f, uint size );
+extern  bool        CFSignedSize( cfloat *f, uint size );
+extern  bool        CFUnSignedSize( cfloat *f, uint size );
 
 extern  signed_16   CFCnvF16( cfloat *f );
 extern  signed_32   CFCnvF32( cfloat *f );
@@ -107,7 +107,7 @@ extern  double      CFToF( cfloat *f );
 
 extern  cfloat      *CFAlloc( cfhandle h, size_t );
 extern  void        CFFree( cfhandle h, cfloat *f );
-extern  bool_        CFFrlFree( cfhandle h );
+extern  bool        CFFrlFree( cfhandle h );
 
 extern  cfloat      *CFMul( cfhandle h, cfloat *f1, cfloat *f2 );
 extern  cfloat      *CFDiv( cfhandle h, cfloat *f1, cfloat *f2 );

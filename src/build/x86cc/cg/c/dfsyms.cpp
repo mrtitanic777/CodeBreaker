@@ -81,7 +81,7 @@ namespace {
 /* the statics of this file, one set for each run of the compiler */
 struct DfsymsFileState {
     short CurrFNo;
-    bool_ CcuDef;
+    bool CcuDef;
     back_handle Pc_High;
     back_handle Pc_Low;
     back_handle Comp_High;

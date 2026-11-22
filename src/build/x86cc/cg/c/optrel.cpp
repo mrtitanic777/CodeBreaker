@@ -55,7 +55,7 @@ struct OptrelState {
 static inline OptrelState& optrel_state() { return cbrun_part<OptrelState>(); }
 
 
-static  bool_    Jmp_to_lbl( ins_entry *instr )
+static  bool    Jmp_to_lbl( ins_entry *instr )
 /********************************************/
 {
   optbegin
@@ -67,7 +67,7 @@ static  bool_    Jmp_to_lbl( ins_entry *instr )
 }
 
 
-static  bool_    CanReach( label_handle lbl, ins_entry **add_ptr,
+static  bool    CanReach( label_handle lbl, ins_entry **add_ptr,
                                 ins_entry **jmp_ptr )
 /************************************************************
     Can a short branch at instruction 'FirstIns' reach label 'lbl'?
@@ -135,7 +135,7 @@ static  void    HndlRedirect( label_handle new_lbl )
 }
 
 
-static  bool_    InRange( void )
+static  bool    InRange( void )
 /*****************************/
 /* Check if redirection is still within range*/
 {
@@ -198,7 +198,7 @@ static  void    SetShort( void )
 {
     ins_entry   *l_ins;
     obj_length  size;
-    bool_        floating;
+    bool        floating;
 
   optbegin
     floating = false;
@@ -236,7 +236,7 @@ void    SetBranches( void )
   ins_entry     *add;
   ins_entry     *jmp;
   ins_entry     *next;
-  bool_          was_keep;
+  bool          was_keep;
 
   optbegin
     optrel_state().Handle = _Label( optdata_state().FirstIns );

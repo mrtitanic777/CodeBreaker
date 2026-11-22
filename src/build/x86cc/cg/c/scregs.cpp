@@ -101,7 +101,7 @@ void    RegInsert( score_hdl scoreboard, int dst_idx, int src_idx )
 }
 
 
-bool_    RegsEqual( score_hdl scoreboard, int i1, int i2 )
+bool    RegsEqual( score_hdl scoreboard, int i1, int i2 )
 /*******************************************************/
 {
     return( scoreboard[i1].list == scoreboard[i2].list );

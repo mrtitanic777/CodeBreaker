@@ -15,6 +15,6 @@ extern void     WriteBufferChar( int c );
 extern void     WriteBufferNullChar( void );
 extern int      WriteBufferCharNextChar( int c );
 extern void     WriteBufferString( const char *s );
-extern void     WriteBufferEscStr( const char **src, bool_ quote );
+extern void     WriteBufferEscStr( const char **src, bool quote );
 extern void     InitBuffer( size_t size );
 extern void     FiniBuffer( void );

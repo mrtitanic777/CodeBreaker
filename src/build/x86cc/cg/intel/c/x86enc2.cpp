@@ -211,7 +211,7 @@ byte    ReverseCondition( byte cond )
     return( rev_condition[cond] );
 }
 
-void    DoCall( label_handle lbl, bool_ imported, bool_ big, bool_ pop )
+void    DoCall( label_handle lbl, bool imported, bool big, bool pop )
 /********************************************************************
  * Call routine "lbl".
  */
@@ -244,7 +244,7 @@ static  void    CodeSequence( const byte *p, byte_seq_len len )
  * the "seg foo", "offset foo" sequences.
  */
 {
-    bool_            first;
+    bool            first;
     const byte      *endp;
     const byte      *startp;
     byte            type;
@@ -375,11 +375,11 @@ void    GenCall( instruction *ins )
 {
     name            *op;
     cg_sym_handle   sym;
-    bool_            imp;
+    bool            imp;
     call_class      cclass;
     const byte_seq  *code;
     label_handle    lbl;
-    bool_            far_call;
+    bool            far_call;
 
     if( ins->flags.u.call_flags & CALL_INTERRUPT ) {
         Pushf();
@@ -492,7 +492,7 @@ void    GenCallRegister( instruction *ins )
 }
 
 
-void    GenSelEntry( bool_ starts )
+void    GenSelEntry( bool starts )
 /*********************************
  * Dump a queue that a select table is starting/ending ("starts") into
  * the code segment queue.
@@ -589,7 +589,7 @@ void    GenLabelReturn( void )
     GenReturn( 0, false );
 }
 
-void    GenReturn( int pop, bool_ is_long )
+void    GenReturn( int pop, bool is_long )
 /*****************************************
  * Generate a return instruction
  */

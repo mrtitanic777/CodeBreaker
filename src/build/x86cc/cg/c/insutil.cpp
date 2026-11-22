@@ -184,7 +184,7 @@ static  void    MakeConflictInfo( instruction *ins1, instruction *ins2 )
 }
 
 
-void    PrefixInsRenum( instruction *ins, instruction *pref, bool_ renum )
+void    PrefixInsRenum( instruction *ins, instruction *pref, bool renum )
 /***********************************************************************/
 {
     conflict_info       *info;

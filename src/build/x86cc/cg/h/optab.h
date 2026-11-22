@@ -32,4 +32,4 @@
 
 extern const opcode_entry   *CodeTable( instruction *ins );
 extern void                 DoNothing( instruction *ins );
-extern bool_                 DoesSomething( instruction *ins );
+extern bool                 DoesSomething( instruction *ins );

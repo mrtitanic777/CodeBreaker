@@ -395,7 +395,7 @@ static  conv_method     AskHow( type_class_def fr, type_class_def to )
     }
 }
 
-bool_    CvtOk( type_class_def fr, type_class_def to )
+bool    CvtOk( type_class_def fr, type_class_def to )
 /************************************************************
     return true if a conversion from "fr" to "to" can be done
 */

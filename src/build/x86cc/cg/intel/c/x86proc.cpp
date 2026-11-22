@@ -119,7 +119,7 @@ namespace {
 
 /* the statics of this file, one set for each run of the compiler */
 struct X86procFileState {
-    bool_ ParmsReferenced = true;
+    bool ParmsReferenced = true;
 };
 
 }  // namespace
@@ -127,7 +127,7 @@ struct X86procFileState {
 static inline X86procFileState& x86proc_file_state() { return cbrun_part<X86procFileState>(); }
 
 
-static  bool_    OpUsesStackParm( name *op )
+static  bool    OpUsesStackParm( name *op )
 /*****************************************/
 {
     if( op == NULL )
@@ -144,13 +144,13 @@ static  bool_    OpUsesStackParm( name *op )
 }
 
 
-static  bool_    ScanInstructions( void )
+static  bool    ScanInstructions( void )
 /**************************************/
 {
     block       *blk;
     instruction *ins;
     name        *addr;
-    bool_        sp_constant;
+    bool        sp_constant;
 
     data_state().CurrProc->contains_call = true;
     x86proc_file_state().ParmsReferenced = true;
@@ -279,7 +279,7 @@ static  block *ScanForLabelReturn( block *blk )
 
 
 #if _TARGET & _TARG_80386
-static  bool_    ScanLabelCalls( void )
+static  bool    ScanLabelCalls( void )
 /*************************************
  * Make sure that all blocks that are called are only called
  * one level deep. Mark output edges of all such blocks as
@@ -317,7 +317,7 @@ static  void    AdjustPushLocals( void )
     }
 }
 
-static  bool_    NeedBPProlog( void )
+static  bool    NeedBPProlog( void )
 /**********************************/
 {
     if( data_state().CurrProc->parms.size != 0 && x86proc_file_state().ParmsReferenced )
@@ -357,7 +357,7 @@ static void FindIfExported( void )
 }
 
 
-static  bool_    NeedStackCheck( void )
+static  bool    NeedStackCheck( void )
 /************************************/
 {
     return( FEStackChk( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) ) != 0 );
@@ -800,7 +800,7 @@ static void    GenLeaSP( int offset )
     _Emit;
 }
 
-bool_    EpilogIsLeaveOnly( void )
+bool    EpilogIsLeaveOnly( void )
 /*************************************
  * The epilog is LEAVE and the return, nothing between: SP is set back from BP whatever it was
  * -- under -zmsc on a 186 or later, a frame with no registers of the caller's to pop
@@ -828,7 +828,7 @@ static  void    DoEpilog( void )
 /******************************/
 {
     hw_reg_set  to_pop;
-    bool_    is_long;
+    bool    is_long;
     type_length size;
 
     if( _RoutineIsInterrupt( data_state().CurrProc->state.attr ) ) {
@@ -920,7 +920,7 @@ static  void    DoEpilog( void )
     }
 }
 
-bool_    CanZapBP( void )
+bool    CanZapBP( void )
 /**********************/
 {
     return( !CHAIN_FRAME );
@@ -971,7 +971,7 @@ void    AddCacheRegs( void )
 }
 
 
-void DoRTCall( rt_class rtindex, bool_ pop )
+void DoRTCall( rt_class rtindex, bool pop )
 /*****************************************/
 {
     DoCall( RTLabel( rtindex ), true, _IsTargetModel( CGSW_X86_BIG_CODE ), pop );
@@ -1031,7 +1031,7 @@ void    GenProlog( void )
 #if _TARGET & _TARG_80386
         if( _RoutineIsFar16( data_state().CurrProc->state.attr ) ) {
             label = GenFar16Thunk( data_state().CurrProc->label, data_state().CurrProc->parms.size,
-                        data_state().CurrProc->state.attr & ROUTINE_REMOVES_PARMS );
+                        ( data_state().CurrProc->state.attr & ROUTINE_REMOVES_PARMS ) != 0 );
 //            CurrProc->label = label; /* ugly mess if following are combined */
         }
 #endif
@@ -1245,7 +1245,7 @@ void     AdjustStackDepthDirect( int adjust )
 }
 
 
-bool_    BaseIsSP( name *op )
+bool    BaseIsSP( name *op )
 /**************************/
 {
     if( !data_state().CurrProc->targ.sp_frame )

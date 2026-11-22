@@ -102,7 +102,7 @@ static unsigned numAuxSymbols( owl_symbol_handle sym) {
     return( num_aux_syms );
 }
 
-static bool_ symComdat( owl_symbol_handle sym ) {
+static bool symComdat( owl_symbol_handle sym ) {
 //*********************************************
 
     if( sym->section != NULL ) {

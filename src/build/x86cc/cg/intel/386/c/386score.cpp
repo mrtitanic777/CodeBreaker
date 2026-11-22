@@ -84,7 +84,7 @@ void    ScoreSegments( score_hdl scoreboard )
 }
 
 
-bool_    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 )
+bool    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 )
 /**********************************************************
     Is it ok to say that "reg1" = "reg2"?  This is not ok for
     unalterable registers since there may be hidden modifications of
@@ -105,7 +105,7 @@ bool_    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 )
 }
 
 
-bool_    ScConvert( instruction *ins )
+bool    ScConvert( instruction *ins )
 /********************************************
     Get rid of instructions like CBW if the high part is not used in the
     next instruction.
@@ -117,7 +117,7 @@ bool_    ScConvert( instruction *ins )
 }
 
 
-bool_    CanReplace( instruction *ins )
+bool    CanReplace( instruction *ins )
 /*********************************************
     an 8086ism
 */
@@ -127,7 +127,7 @@ bool_    CanReplace( instruction *ins )
     return( true );
 }
 
-bool_    ScRealRegister( name *reg )
+bool    ScRealRegister( name *reg )
 /******************************************
     Return "true" if "reg" is a real machine register and not some
     monstrosity like AX:DX:BX used for calls.

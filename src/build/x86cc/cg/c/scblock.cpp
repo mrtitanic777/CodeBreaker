@@ -61,7 +61,7 @@ void    FreeJunk( block *blk )
     }
 }
 
-static bool_ StupidMove( score_hdl scoreboard, instruction *ins )
+static bool StupidMove( score_hdl scoreboard, instruction *ins )
 /**************************************************************/
 {
     score_info  info;
@@ -93,7 +93,7 @@ static bool_ StupidMove( score_hdl scoreboard, instruction *ins )
 }
 
 
-static  bool_    RemDeadCode( block *blk )
+static  bool    RemDeadCode( block *blk )
 /****************************************
  * This removes any instructions in "blk" which assign to a register which
  * dies immediately following that instruction and has no side effects.
@@ -101,7 +101,7 @@ static  bool_    RemDeadCode( block *blk )
  * live information must be updated.
  */
 {
-    bool_        change;
+    bool        change;
     name        *result;
     instruction *ins;
     instruction *next;
@@ -127,7 +127,7 @@ static  bool_    RemDeadCode( block *blk )
     return( change );
 }
 
-bool_    DoScore( block *blk )
+bool    DoScore( block *blk )
 /************************************
  * Do register scoreboarding on a basic block. Remember which
  * registers contain which values as we run through the block and
@@ -138,8 +138,8 @@ bool_    DoScore( block *blk )
     instruction *next;
     score_hdl   scoreboard;
     name        *dst;
-    bool_        change;
-    bool_        had_condition;
+    bool        change;
+    bool        had_condition;
     score_info  info;
     instruction *ins;
     hw_reg_set  tmp;

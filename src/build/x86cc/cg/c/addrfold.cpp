@@ -324,7 +324,7 @@ static  void    AddIndex( an addr, name *index, name *addend ) {
 }
 
 
-bool_    CypAddrPlus( an l_addr, an r_addr, const type_def *tipe )
+bool    CypAddrPlus( an l_addr, an r_addr, const type_def *tipe )
 /***************************************************************/
 {
     mode_action action;
@@ -357,7 +357,7 @@ bool_    CypAddrPlus( an l_addr, an r_addr, const type_def *tipe )
 }
 
 
-static        bool_    AddToTypeLength( type_length x, type_length y ) {
+static        bool    AddToTypeLength( type_length x, type_length y ) {
 /*********************************************************************/
 
     int_32  lx,ly;
@@ -501,7 +501,7 @@ an      AddrPlus( an l_addr, an r_addr, const type_def *tipe )
 }
 
 
-static  bool_    ShiftConst( an r_addr ) {
+static  bool    ShiftConst( an r_addr ) {
 /***************************************/
 
     if( r_addr->format != NF_CONS )
@@ -521,7 +521,7 @@ static  bool_    ShiftConst( an r_addr ) {
 }
 
 
-bool_    CypAddrShift( an l_addr, an r_addr, const type_def *tipe )
+bool    CypAddrShift( an l_addr, an r_addr, const type_def *tipe )
 /****************************************************************/
 {
     /* unused parameters */ (void)tipe;
@@ -539,7 +539,7 @@ bool_    CypAddrShift( an l_addr, an r_addr, const type_def *tipe )
 }
 
 
-static  bool_    ShiftToTypeLength( type_length x, uint_16 y )
+static  bool    ShiftToTypeLength( type_length x, uint_16 y )
 /***********************************************************/
 {
     int_32  lx;

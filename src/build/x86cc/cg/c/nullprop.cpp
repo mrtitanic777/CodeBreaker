@@ -66,7 +66,7 @@ static  instruction     *CompareIns( block *blk )
     return( NULL );
 }
 
-static  bool_            IsZero( name *op )
+static  bool            IsZero( name *op )
 /****************************************/
 {
     return( op->n.class_ == N_CONSTANT && op->c.const_type == CONS_ABSOLUTE && op->c.lo.u.int_value == 0 );
@@ -92,7 +92,7 @@ static  edge_stack      *InitStack( void )
     return( stk );
 }
 
-static  bool_            Empty( edge_stack *stk )
+static  bool            Empty( edge_stack *stk )
 /**********************************************/
 {
     return( stk->top == NULL );
@@ -134,7 +134,7 @@ static  void            FiniStack( edge_stack *stk )
     CGFree( stk );
 }
 
-static  bool_            DereferencedBy( instruction *ins, name *ptr )
+static  bool            DereferencedBy( instruction *ins, name *ptr )
 /********************************************************************
     Return true if the instruction dereferences the given name. Any use as
     an index (with op as index), providing the base is NULL, is considered a deref.
@@ -157,7 +157,7 @@ static  bool_            DereferencedBy( instruction *ins, name *ptr )
     return( false );
 }
 
-static  void            PushTargets( edge_stack *stk, block *blk, bool_ forward )
+static  void            PushTargets( edge_stack *stk, block *blk, bool forward )
 /******************************************************************************/
 {
     block_num           i;
@@ -174,7 +174,7 @@ static  void            PushTargets( edge_stack *stk, block *blk, bool_ forward 
     }
 }
 
-static  instruction     *NextIns( instruction *ins, bool_ forward )
+static  instruction     *NextIns( instruction *ins, bool forward )
 /****************************************************************/
 {
     instruction         *next;
@@ -187,7 +187,7 @@ static  instruction     *NextIns( instruction *ins, bool_ forward )
     return( next );
 }
 
-static  instruction     *FirstIns( block *blk, bool_ forward )
+static  instruction     *FirstIns( block *blk, bool forward )
 /***********************************************************/
 {
     instruction         *first;
@@ -200,7 +200,7 @@ static  instruction     *FirstIns( block *blk, bool_ forward )
     return( first );
 }
 
-static  block           *EdgeBlock( block_edge *edge, bool_ forward )
+static  block           *EdgeBlock( block_edge *edge, bool forward )
 /******************************************************************/
 {
     if( forward ) {
@@ -210,7 +210,7 @@ static  block           *EdgeBlock( block_edge *edge, bool_ forward )
     }
 }
 
-static  bool_            LastBlock( block *blk, bool_ forward )
+static  bool            LastBlock( block *blk, bool forward )
 /***********************************************************/
 {
     if( forward ) {
@@ -235,12 +235,12 @@ typedef struct goofy_struct_so_we_can_use_saferecurse {
     block       *blk;
     instruction *ins;
     name        *op;
-    bool_        forward;
+    bool        forward;
 } parm_struct;
 
 static  void            *DominatingDeref( parm_struct *parms );
 
-static  int             BlockSearch( block *blk, instruction *ins, name *op, bool_ forward )
+static  int             BlockSearch( block *blk, instruction *ins, name *op, bool forward )
 /******************************************************************************************
     Search the block for something interesting - either a dereference or a
     redefinition of the given operand.
@@ -270,7 +270,7 @@ static  int             BlockSearch( block *blk, instruction *ins, name *op, boo
                 parms.ins = curr;
                 parms.op = curr->result;
                 parms.forward = true;
-                if( FROM_SR_VALUE( SafeRecurseCG( (func_sr)DominatingDeref, &parms ), bool_ ) ) {
+                if( FROM_SR_VALUE( SafeRecurseCG( (func_sr)DominatingDeref, &parms ), bool ) ) {
                     return( BLOCK_DEREFS );
                 }
             }
@@ -298,7 +298,7 @@ static  void            *DominatingDeref( parm_struct *parms )
     block_edge          *edge;
     edge_stack          *stk;
     int                 result;
-    bool_                dominated;
+    bool                dominated;
     block               *blk;
 
 
@@ -368,7 +368,7 @@ static void     FloodDown( block *blk, block_class bits )
     FiniStack( stk );
 }
 
-static  bool_            BlockSideEffect( block *blk )
+static  bool            BlockSideEffect( block *blk )
 /***************************************************/
 {
     instruction         *ins;
@@ -383,13 +383,13 @@ static  bool_            BlockSideEffect( block *blk )
     return( false );
 }
 
-static  bool_            EdgeHasSideEffect( block *blk, instruction *cmp, bool_ cmp_result )
+static  bool            EdgeHasSideEffect( block *blk, instruction *cmp, bool cmp_result )
 /****************************************************************************************/
 {
     edge_stack          *stk;
     block               *elim;
     block               *taken;
-    bool_                side_effect;
+    bool                side_effect;
     block_edge          *edge;
 
     if( cmp_result ) {
@@ -430,7 +430,7 @@ static  bool_            EdgeHasSideEffect( block *blk, instruction *cmp, bool_ 
     return( side_effect );
 }
 
-static  bool_            NullProp( block *blk )
+static  bool            NullProp( block *blk )
 /********************************************/
 {
     instruction         *cmp;
@@ -463,7 +463,7 @@ static  bool_            NullProp( block *blk )
     parms.op = *ptr;
     parms.forward = true;
     _MarkBlkAllUnVisited();
-    if( FROM_SR_VALUE( DominatingDeref( &parms ), bool_ ) ) {
+    if( FROM_SR_VALUE( DominatingDeref( &parms ), bool ) ) {
         if( !EdgeHasSideEffect( blk, cmp, cmp->head.opcode == OP_CMP_NOT_EQUAL ) ) {
             // only nuke the edge if the code we are removing
             // does not have a side effect or if the dominators are before the compare
@@ -473,7 +473,7 @@ static  bool_            NullProp( block *blk )
     }
     parms.forward = false;
     _MarkBlkAllUnVisited();
-    if( FROM_SR_VALUE( DominatingDeref( &parms ), bool_ ) ) {
+    if( FROM_SR_VALUE( DominatingDeref( &parms ), bool ) ) {
         KillCondBlk( blk, cmp, dest_idx );
         return( true );
     }
@@ -487,7 +487,7 @@ void            PropNullInfo( void )
 */
 {
     block               *blk;
-    bool_                change;
+    bool                change;
 
     if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) )
         return;

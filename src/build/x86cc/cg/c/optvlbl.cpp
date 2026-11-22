@@ -36,7 +36,7 @@
 #include "zoiks.h"
 
 
-bool_    ValidLbl( label_handle lbl )
+bool    ValidLbl( label_handle lbl )
 /**********************************/
 {
     /* unused parameters */ (void)lbl;

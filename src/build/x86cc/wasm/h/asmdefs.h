@@ -113,12 +113,12 @@ struct AsmdefsState {
     operand_idx Opnd_Count;
 };
 inline AsmdefsState& asmdefs_state() { return cbrun_part<AsmdefsState>(); }
-extern bool_             Modend;         // end of module is reached
-extern bool_             Use32;          // if 32-bit code is use
+extern bool             Modend;         // end of module is reached
+extern bool             Use32;          // if 32-bit code is use
 
 extern void             AsmByte( unsigned char );
 extern void             SetFinalToken( token_buffer *tokbuf, token_idx i );
-extern bool_             AsmScan( token_buffer *tokbuf, const char * );
+extern bool             AsmScan( token_buffer *tokbuf, const char * );
 extern void             RadixSet( unsigned );
 
 #if defined( _STANDALONE_ )

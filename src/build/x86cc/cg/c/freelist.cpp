@@ -77,7 +77,7 @@ void    FrlFreeSize( pointer **head, pointer *what, size_t size )
 }
 
 
-bool_    FrlFreeAll( pointer **head, size_t size )
+bool    FrlFreeAll( pointer **head, size_t size )
 /***********************************************/
 {
     pointer     *next;

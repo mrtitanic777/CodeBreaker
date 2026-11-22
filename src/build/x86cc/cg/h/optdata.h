@@ -38,7 +38,7 @@ struct OptdataState {
     ins_entry *FirstIns;
     ins_entry *LastIns;
     ins_entry *PendingDeletes;
-    bool_ InsDelete;
+    bool InsDelete;
     uint QCount;
     label_handle Handles;
     ins_entry *RetList;

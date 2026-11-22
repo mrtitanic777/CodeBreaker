@@ -51,7 +51,7 @@
 #include "targetin.h"
 
 
-static instruction  *DoReduce( instruction *ins, const opcode_entry *try_, bool_ has_index )
+static instruction  *DoReduce( instruction *ins, const opcode_entry *try_, bool has_index )
 /****************************************************************************************/
 {
     const hw_reg_set    *zap;
@@ -75,7 +75,7 @@ static instruction  *DoReduce( instruction *ins, const opcode_entry *try_, bool_
 }
 
 
-static  bool_    VerifyRegs( instruction *ins, operand_types ops )
+static  bool    VerifyRegs( instruction *ins, operand_types ops )
 /***************************************************************/
 {
 #define _Any( ops, mul )        ( ( ops & (ANY*mul) ) == (ANY*mul) )
@@ -170,7 +170,7 @@ static  bool_    VerifyRegs( instruction *ins, operand_types ops )
 }
 
 
-static  operand_types   ClassifyOps( instruction *ins, bool_ *has_index )
+static  operand_types   ClassifyOps( instruction *ins, bool *has_index )
 /**********************************************************************/
 {
     name                *name;
@@ -284,7 +284,7 @@ static  operand_types   ClassifyOps( instruction *ins, bool_ *has_index )
 }
 
 
-const opcode_entry  *FindGenEntry( instruction *ins, bool_ *has_index )
+const opcode_entry  *FindGenEntry( instruction *ins, bool *has_index )
 /********************************************************************/
 {
     const opcode_entry  *try_;
@@ -332,7 +332,7 @@ void    FixGenEntry( instruction *ins )
 /* update the instruction to reflect new instruction needs*/
 
     const opcode_entry  *old;
-    bool_                dummy;
+    bool                dummy;
 
     old = ins->u.gen_table;
     FindGenEntry( ins, &dummy );
@@ -347,7 +347,7 @@ instruction     *PostExpandIns( instruction *ins )
 /************************************************/
 {
     const opcode_entry  *try_;
-    bool_                dummy;
+    bool                dummy;
 
     try_ = FindGenEntry( ins, &dummy );
     if( try_ == NULL )
@@ -364,7 +364,7 @@ instruction     *ExpandIns( instruction *ins )
 /********************************************/
 {
     const opcode_entry  *try_;
-    bool_                has_index;
+    bool                has_index;
 
     try_ = FindGenEntry( ins, &has_index );
     if( try_ == NULL )
@@ -373,7 +373,7 @@ instruction     *ExpandIns( instruction *ins )
 }
 
 
-int     ExpandOps( bool_ keep_on_truckin )
+int     ExpandOps( bool keep_on_truckin )
 /***************************************/
 {
     block       *blk;

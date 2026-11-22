@@ -137,7 +137,7 @@ static  void    Far16Parms( cn call )
 #endif
 
 
-an      BGCall( cn call, bool_ use_return, bool_ aux_inline )
+an      BGCall( cn call, bool use_return, bool aux_inline )
 /*********************************************************/
 {
     instruction         *call_ins;

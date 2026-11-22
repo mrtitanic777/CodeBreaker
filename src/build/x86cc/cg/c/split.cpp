@@ -372,7 +372,7 @@ instruction      *rOP1RESREG( instruction *ins )
 }
 
 /* 370 */
-static  bool_    CanUseOp1( instruction *ins, name *op1 )
+static  bool    CanUseOp1( instruction *ins, name *op1 )
 /******************************************************/
 {
     name        *name2;

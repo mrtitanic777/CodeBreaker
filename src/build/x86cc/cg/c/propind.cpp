@@ -78,7 +78,7 @@ static  byte    NumRefs( instruction *ins, name *op ) {
     return( refs );
 }
 
-static  bool_    Adjusted( name **pop, name *res, int_32 c )
+static  bool    Adjusted( name **pop, name *res, int_32 c )
 /*********************************************************/
 {
     name        *op;
@@ -95,7 +95,7 @@ static  bool_    Adjusted( name **pop, name *res, int_32 c )
 }
 
 
-static  bool_    AdjustIndex( instruction *ins, name *res, int_32 c )
+static  bool    AdjustIndex( instruction *ins, name *res, int_32 c )
 /*******************************************************************
     If any operands or results of ins refer to res in an index, adjust the
     constant by the given amount and return true.
@@ -119,7 +119,7 @@ static  bool_    AdjustIndex( instruction *ins, name *res, int_32 c )
 }
 
 
-static  bool_    DoProp( block *blk ) {
+static  bool    DoProp( block *blk ) {
 /*************************************
     Propagate constants used in ADD or SUB instructions into
     indexes.

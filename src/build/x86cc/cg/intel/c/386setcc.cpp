@@ -75,7 +75,7 @@ static  instruction     *SetToConst( block *blk, signed_64 *pcons ) {
  * by adding a constant to the result of SETcc to directly obtain
  * the result of the assignment.
  */
-static  bool_    FindFlowOut( block *blk ) {
+static  bool    FindFlowOut( block *blk ) {
 /*****************************************/
 
     signed_64           false_cons;
@@ -91,7 +91,7 @@ static  bool_    FindFlowOut( block *blk ) {
     block               *false_blk;
     block               *join_blk;
     block_edge          *new_edge;
-    bool_                reverse;
+    bool                reverse;
     name                *u1temp;
     name                *temp;
     name                *result;
@@ -188,11 +188,11 @@ static  bool_    FindFlowOut( block *blk ) {
     return( true );
 }
 
-bool_    SetOnCondition( void )
+bool    SetOnCondition( void )
 /****************************/
 {
     block       *blk;
-    bool_        change;
+    bool        change;
 
     if( !_CPULevel( CPU_386 ) )
         return( false );

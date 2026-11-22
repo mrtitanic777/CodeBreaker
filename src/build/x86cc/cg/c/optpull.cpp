@@ -46,7 +46,7 @@
 #include "optpush.h"
 
 
-bool_    FindShort( ins_entry *ins, ins_entry *end )
+bool    FindShort( ins_entry *ins, ins_entry *end )
 /*************************************************/
 {
     for( ; ins != NULL && ins != end; ins = NextIns( ins ) ) {
@@ -178,7 +178,7 @@ ins_entry       *IsolatedCode( ins_entry *instr )
 }
 
 
-bool_    StraightenCode( ins_entry *jump )
+bool    StraightenCode( ins_entry *jump )
 /***************************************/
 {
     ins_entry   *next;

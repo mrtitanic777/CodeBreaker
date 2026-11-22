@@ -129,7 +129,7 @@ typedef struct oc_debug {
 
 typedef struct oc_select {
     oc_header               hdr;
-    bool_                    starts;
+    bool                    starts;
 } oc_select;
 
 typedef struct oc_jcond {
@@ -157,7 +157,7 @@ typedef struct oc_idata {
 typedef struct oc_linenum {
     oc_header               hdr;
     uint_32                 line;
-    bool_                    label_line;
+    bool                    label_line;
 } oc_linenum;
 
 typedef struct oc_riscins {

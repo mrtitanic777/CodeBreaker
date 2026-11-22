@@ -112,7 +112,7 @@ struct PchdrState {
     RDIRPTR PCHRDirNames;   /* list of read-only directories */
     IALIASPTR PCHIAliasNames;   /* list of include aliases */
     INCFILE *PCHOldIncFileList;   /* temporary copy of old include file list */
-    bool_ PCHOldIncListValid;   /* flag to indicate if PCHOldIncFileList is valid */
+    bool PCHOldIncListValid;   /* flag to indicate if PCHOldIncFileList is valid */
 };
 
 }  // namespace
@@ -195,7 +195,7 @@ static void CreatePHeader( const char *filename )
     }
 }
 
-static bool_ pch_write( const char *buf, size_t len )
+static bool pch_write( const char *buf, size_t len )
 {
     size_t     amt_towrite;
 
@@ -225,7 +225,7 @@ static bool_ pch_write( const char *buf, size_t len )
     return( false );
 }
 
-static bool_ pch_align( size_t len )
+static bool pch_align( size_t len )
 {
     len = PCHAlign( len ) - len;
     if( len > 0 ) {
@@ -235,9 +235,9 @@ static bool_ pch_align( size_t len )
     return( false );
 }
 
-static bool_ PCHWrite( const void *bufptr, size_t len )
+static bool PCHWrite( const void *bufptr, size_t len )
 {
-    bool_    rc = false;
+    bool    rc = false;
 
     if( len != 0 ) {
         if( pchdr_state().PH_computing_size ) {
@@ -250,7 +250,7 @@ static bool_ PCHWrite( const void *bufptr, size_t len )
     return( rc );
 }
 
-static bool_ PCHWriteUnalign( const void *bufptr, size_t len )
+static bool PCHWriteUnalign( const void *bufptr, size_t len )
 {
     if( len != 0 ) {
         if( pchdr_state().PH_computing_size ) {
@@ -283,7 +283,7 @@ static void ClosePHeader( void )
 
 static void OutPutHeader( void )
 {
-    bool_            rc;
+    bool            rc;
     pheader         pch;
 
     pch.signature         = PCH_SIGNATURE;
@@ -327,7 +327,7 @@ static void OutPutHeader( void )
 
 static void OutPutIncPathList( void )     // output include paths
 {
-    bool_        rc;
+    bool        rc;
     size_t      len;
 
     len = strlen( cvars_state().IncPathList ) + 1;
@@ -339,7 +339,7 @@ static void OutPutIncPathList( void )     // output include paths
 
 static void OutPutIncFileList( void )   // output primary include files
 {
-    bool_        rc;
+    bool        rc;
     size_t      len;
     INCFILE     *ifile;
     INCFILE     *next_file;
@@ -359,7 +359,7 @@ static void OutPutIncFileList( void )   // output primary include files
 
 static void OutPutLibraries( void )
 {
-    bool_                rc;
+    bool                rc;
     size_t              len;
     library_list        *lib;
     library_list        *lib_next;
@@ -379,7 +379,7 @@ static void OutPutLibraries( void )
 
 static void OutPutAliases( void )
 {
-    bool_            rc;
+    bool            rc;
     size_t          len;
     size_t          alias_len;
     size_t          subst_len;
@@ -417,7 +417,7 @@ static void OutPutAliases( void )
 
 static void OutPutMsgLevels( void )
 {
-    bool_        rc;
+    bool        rc;
 
     rc = PCHWrite( cerrs_state().msg_level, sizeof( cerrs_state().msg_level ) );
     if( rc ) {
@@ -430,7 +430,7 @@ static void OutPutIncludes( void )
     FNAMEPTR    flist;
     FNAMEPTR    next_flist;
     size_t      len;
-    bool_        rc;
+    bool        rc;
 
     // don't want to include the primary source file, skip first item
     for( flist = cvars_state().FNames->next; flist != NULL; flist = next_flist ) {
@@ -451,7 +451,7 @@ static void OutPutRoDirList( void )
     RDIRPTR     dirlist;
     RDIRPTR     next_dirlist;
     size_t      len;
-    bool_        rc;
+    bool        rc;
 
     for( dirlist = pchdr_state().PCHRDirNames; dirlist != NULL; dirlist = next_dirlist ) {
         next_dirlist = dirlist->next;
@@ -473,7 +473,7 @@ static void OutPutIncAliasList( void )
     char        *real_name;
     size_t      len;
     size_t      alias_len;
-    bool_        rc;
+    bool        rc;
 
     for( aliaslist = cvars_state().IAliasNames; aliaslist != NULL; aliaslist = next_aliaslist ) {
         next_aliaslist = aliaslist->next;
@@ -496,7 +496,7 @@ static void OutPutSegInfo( void )
 {
     textsegment     *tseg;
     textsegment     *tseg_next;
-    bool_            rc;
+    bool            rc;
     size_t          len;
 
     for( tseg = cvars_state().TextSegList; tseg != NULL; tseg = tseg_next ) {
@@ -515,7 +515,7 @@ static void OutPutSegInfo( void )
 
 static void OutPutEnums( ENUMPTR ep, TAGPTR parent )
 {
-    bool_        rc;
+    bool        rc;
     size_t      len;
 
     for( ; ep != NULL; ep = ep->thread ) {
@@ -531,7 +531,7 @@ static void OutPutEnums( ENUMPTR ep, TAGPTR parent )
 
 static void OutPutFields( FIELDPTR field )
 {
-    bool_        rc;
+    bool        rc;
     size_t      len;
     TYPEPTR     field_type;
 
@@ -550,7 +550,7 @@ static void OutPutFields( FIELDPTR field )
 
 static void OutPutATag( TAGPTR tag )
 {
-    bool_        rc;
+    bool        rc;
     TYPEPTR     sym_type;
     TAGPTR      next_tag;
     size_t      len;
@@ -619,9 +619,9 @@ static void InitDebugTags( void )
     WalkTagList( SetDebugTag );
 }
 
-static bool_ WriteType( TYPEPTR typ )
+static bool WriteType( TYPEPTR typ )
 {
-    bool_        rc;
+    bool        rc;
     TYPEPTR     object;
 
     object = typ->object;
@@ -644,7 +644,7 @@ typedef struct type_indices {
 static void OutPutTypeIndexes( void )
 {
     TYPEPTR             typ;
-    bool_                rc;
+    bool                rc;
     int                 i;
     type_indices        typ_index;
 
@@ -667,7 +667,7 @@ static void OutPutTypeIndexes( void )
 static void OutPutAType( TYPEPTR typ )
 {
     TAGPTR          tag;
-    bool_            rc;
+    bool            rc;
     array_info      *array;
 
     rc = false;
@@ -700,7 +700,7 @@ static void OutPutAType( TYPEPTR typ )
 static void OutPutAFuncType( TYPEPTR typ, int index )
 {
     TYPEPTR     *parm_types;
-    bool_        rc;
+    bool        rc;
 
     parm_types = typ->u.fn.parms;           // save pointer
     typ->u.fn.parms = static_cast<struct type_definition **>(PCHSetUInt( index ));  // replace with index
@@ -714,7 +714,7 @@ static void OutPutAFuncType( TYPEPTR typ, int index )
 static void OutPutFuncParmList( TYPEPTR typ, int index )
 {
     TYPEPTR     *parm_types;
-    bool_        rc;
+    bool        rc;
     TYPEPTR     parm_type;
 
     /* unused parameters */ (void)index;
@@ -752,7 +752,7 @@ static void OutPutAuxInfo( aux_info *info )
     hw_reg_set          *info_parms;
     char                *info_objname;
     byte_seq            *info_code;
-    bool_                rc;
+    bool                rc;
     size_t              len;
     size_t              objname_len;
     size_t              code_len;
@@ -809,7 +809,7 @@ static void OutPutPragmaInfo( void )
     aux_entry       *ent_next;
     aux_info        *ent_info;
     int             index;
-    bool_            rc;
+    bool            rc;
     size_t          len;
 
     // write built-in aux_info
@@ -851,7 +851,7 @@ static void OutPutPragmaInfo( void )
 static void OutPutMacros( void )
 {
     mac_hash_idx    hash;
-    bool_            rc;
+    bool            rc;
     MEPTR           mentry;
     MEPTR           mentry_next_macro;
 
@@ -888,7 +888,7 @@ static void OutPutSymHashTable( void )
     TYPEPTR         hsym_sym_typ;
     SYM_HASHPTR     sym_list;
     id_hash_idx     hash;
-    bool_            rc;
+    bool            rc;
     size_t          len;
 
     for( hash = 0; hash < ID_HASH_SIZE; hash++ ) {
@@ -925,7 +925,7 @@ static void OutPutSymbols( void )
 {
     SYM_ENTRY   sym;
     SYM_HANDLE  sym_handle;
-    bool_        rc;
+    bool        rc;
 
     if( pchdr_state().PH_computing_size ) {
         pchdr_state().PH_size += SymGetNumSyms() * sizeof( SYM_ENTRY );
@@ -1117,7 +1117,7 @@ static char *FixupIncAliasList( char *p, unsigned list_count )
     return( p );
 }
 
-static bool_ VerifyIncludes( const char *filename )
+static bool VerifyIncludes( const char *filename )
 {
     FNAMEPTR    flist;
     time_t      mtime;
@@ -1247,7 +1247,7 @@ static int VerifyMacros( char *p, unsigned macro_count, unsigned undef_count )
     mac_hash_idx    hash;
     MEPTR           mpch;
     MEPTR           mcur;
-    bool_            macro_compare;
+    bool            macro_compare;
 
     pchdr_state().PCHMacroHash = (MEPTR *)CMemAlloc( MACRO_HASH_SIZE * sizeof( MEPTR ) );
     p = FixupMacros( p, macro_count );
@@ -1634,7 +1634,7 @@ static void FixupFNames( void )
     }
 }
 
-static bool_ ValidHeader( pheader *pch )
+static bool ValidHeader( pheader *pch )
 {
     if( (pch->signature == PCH_SIGNATURE)
       && (pch->version == PCH_VERSION_HOST)
@@ -1683,7 +1683,7 @@ static int FixupDataStructures( char *p, pheader *pch )
     return( 0 );
 }
 
-static bool_ SameCWD( const char *p )
+static bool SameCWD( const char *p )
 {
     char        *cwd;
     int         same;
@@ -1728,7 +1728,7 @@ static void AbortPreCompiledHeader( void )
 //      - all the include files are the same and have not been modified
 //========================================================================
 
-bool_ UsePreCompiledHeader( const char *filename )
+bool UsePreCompiledHeader( const char *filename )
 {
     int                 handle;
     unsigned            size;

@@ -32,7 +32,7 @@
 
 extern void     InputOC( any_oc *oc );
 extern void     OutputOC( any_oc *, any_oc * );
-extern bool_     ShrinkQueue( pointer_uint size );
+extern bool     ShrinkQueue( pointer_uint size );
 extern void     InitQueue( void );
 extern void     EmptyQueue( void );
 extern void     FlushQueue( void );

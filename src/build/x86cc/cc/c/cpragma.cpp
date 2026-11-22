@@ -141,7 +141,7 @@ static void pushPrag( prag_stack **header, unsigned value )
     stackPush( header, stack_entry );
 }
 
-static bool_ popPrag( prag_stack **header, unsigned *pvalue )
+static bool popPrag( prag_stack **header, unsigned *pvalue )
 /**********************************************************/
 {
     prag_stack *stack_entry;
@@ -215,7 +215,7 @@ void CPragmaFini( void )
     }
 }
 
-static void endOfPragma( bool_ check_end )
+static void endOfPragma( bool check_end )
 /***************************************/
 {
     if( check_end ) {
@@ -248,10 +248,10 @@ const char *SkipUnderscorePrefix( const char *str )
     return( str );
 }
 
-bool_ PragRecogId( const char *what )
+bool PragRecogId( const char *what )
 /**********************************/
 {
-    bool_        ok;
+    bool        ok;
     const char  *p;
 
     ok = IS_ID_OR_KEYWORD( cvars_state().CurToken );
@@ -265,10 +265,10 @@ bool_ PragRecogId( const char *what )
     return( ok );
 }
 
-bool_ PragRecogName( const char *what )
+bool PragRecogName( const char *what )
 /************************************/
 {
-    bool_    ok;
+    bool    ok;
 
     ok = IS_ID_OR_KEYWORD( cvars_state().CurToken );
     if( ok ) {
@@ -288,7 +288,7 @@ static void advanceToken( void )
     cvars_state().CurToken = cvars_state().LAToken;
 }
 
-bool_ GetPragmaAuxAliasInfo( void )
+bool GetPragmaAuxAliasInfo( void )
 /********************************/
 {
     if( cvars_state().CurToken != T_LEFT_PAREN )          /* #pragma aux symbol ..... */
@@ -370,7 +370,7 @@ void CreateAux( const char *id )
 }
 
 
-void CreateAuxInlineFunc( bool_ too_many_bytes )
+void CreateAuxInlineFunc( bool too_many_bytes )
 /*********************************************/
 {
     char        name[10];
@@ -593,7 +593,7 @@ TOKEN PragRegSet( void )
     return( T_NULL );
 }
 
-int PragRegIndex( const char *registers, const char *name, bool_ ignorecase )
+int PragRegIndex( const char *registers, const char *name, bool ignorecase )
 /**************************************************************************/
 {
     int             index;
@@ -703,7 +703,7 @@ hw_reg_set *PragManyRegSets( void )
  *
  *******************************************************/
 
-void SetToggleFlag( char const *name, int func, bool_ push )
+void SetToggleFlag( char const *name, int func, bool push )
 /*********************************************************/
 {
 #ifdef DEVBUILD
@@ -1048,7 +1048,7 @@ static void changeLevel( unsigned level, int msg_index )
     }
 }
 
-static void changeStatus( bool_ enabled, int msg_index )
+static void changeStatus( bool enabled, int msg_index )
 /*****************************************************/
 {
     if( cerrs_state().msg_level[msg_index].enabled != enabled ) {
@@ -1056,7 +1056,7 @@ static void changeStatus( bool_ enabled, int msg_index )
     }
 }
 
-bool_ GetMsgNum( const char *str, msg_codes *val )
+bool GetMsgNum( const char *str, msg_codes *val )
 /***********************************************/
 {
     char            c;
@@ -1083,7 +1083,7 @@ bool_ GetMsgNum( const char *str, msg_codes *val )
     return( false );
 }
 
-static bool_ getMessageNum( msg_codes *val )
+static bool getMessageNum( msg_codes *val )
 /*****************************************/
 {
     if( cvars_state().CurToken == T_CONSTANT ) {
@@ -1143,7 +1143,7 @@ static void warnChangeLevels( unsigned level )
     }
 }
 
-void WarnEnableDisable( bool_ enabled, msg_codes msgnum )
+void WarnEnableDisable( bool enabled, msg_codes msgnum )
 /******************************************************/
 {
     unsigned    msg_index;
@@ -1170,7 +1170,7 @@ void WarnEnableDisable( bool_ enabled, msg_codes msgnum )
     }
 }
 
-static bool_ pragWarning( void )
+static bool pragWarning( void )
 /******************************
  * forms:
  *
@@ -1183,8 +1183,8 @@ static bool_ pragWarning( void )
 {
     msg_codes msgnum;           // - message number
     unsigned level;             // - new level
-    bool_ change_all;            // - true ==> change all levels
-    bool_ ignore;
+    bool change_all;            // - true ==> change all levels
+    bool ignore;
 
     ignore = false;
     change_all = false;
@@ -1218,7 +1218,7 @@ static bool_ pragWarning( void )
     return( ignore );
 }
 
-static void pragEnableDisableMessage( bool_ enabled )
+static void pragEnableDisableMessage( bool enabled )
 /***************************************************
  * forms:
  *
@@ -1766,7 +1766,7 @@ static void pragAlias( void )
 void CPragma( void )
 /******************/
 {
-    bool_    check_end;
+    bool    check_end;
 
     /*
      * Note that the include_alias pragma must always be processed

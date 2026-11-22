@@ -80,8 +80,8 @@ static  void    InitVisitedTemps( void )
 }
 
 
-static  bool_            FreeUselessIns( block *tail, bool_ just_the_loop,
-                                        bool_ in_regalloc )
+static  bool            FreeUselessIns( block *tail, bool just_the_loop,
+                                        bool in_regalloc )
 /***********************************************************************
  * Free any instructions which have not been marked
  * with the INS_VISITED bit. See below for the setting
@@ -91,7 +91,7 @@ static  bool_            FreeUselessIns( block *tail, bool_ just_the_loop,
     block       *blk;
     instruction *ins;
     instruction *prev;
-    bool_        change;
+    bool        change;
 
     change = false;
     for( blk = tail; blk != NULL; blk = blk->prev_block ) {
@@ -144,7 +144,7 @@ static  void            FreeUnVisitedTemps( void )
 }
 
 
-bool_    VolatileIns( instruction *ins )
+bool    VolatileIns( instruction *ins )
 /********************************************
  * Does the instruction access/define a volatile variable?
  * This is a utility routine for any module to use.
@@ -166,7 +166,7 @@ bool_    VolatileIns( instruction *ins )
 }
 
 
-bool_    SideEffect( instruction *ins )
+bool    SideEffect( instruction *ins )
 /***************************************************
  * Is an instruction a side effect instruction, such as one
  * that changes the 8087 stack or a SUB with a following SBB.
@@ -186,13 +186,13 @@ bool_    SideEffect( instruction *ins )
 }
 
 
-static  bool_    MarkUseful( name *op )
+static  bool    MarkUseful( name *op )
 /*************************************
  * Mark an operand as useful. If the operand is an indexed name,
  * its base and index become useful as well.
  */
 {
-    bool_        change;
+    bool        change;
     name        *alias;
 
     change = false;
@@ -219,14 +219,14 @@ static  bool_    MarkUseful( name *op )
 }
 
 
-static  bool_    MarkOpsUseful( instruction *ins )
+static  bool    MarkOpsUseful( instruction *ins )
 /************************************************
  * We have decided that an instruction is useful, therefore we must
  * mark all of its operands as useful
  */
 {
     opcnt       i;
-    bool_        change;
+    bool        change;
 
     change = false;
     ins->ins_flags |= INS_VISITED;
@@ -237,7 +237,7 @@ static  bool_    MarkOpsUseful( instruction *ins )
 }
 
 
-static  bool_    CheckUseful( instruction *ins )
+static  bool    CheckUseful( instruction *ins )
 /**********************************************
  * Mark an instruction INS_VISITED if it is useful. A useful
  * instruction is one that causes a branch, defines memory, a register
@@ -247,7 +247,7 @@ static  bool_    CheckUseful( instruction *ins )
 {
     name        *res;
     opcode_defs opcode;
-    bool_        change;
+    bool        change;
 
     opcode = ins->head.opcode;
     change = false;
@@ -292,8 +292,8 @@ static  bool_    CheckUseful( instruction *ins )
 }
 
 
-static  void            FindUsefulIns( block * tail, bool_ just_the_loop,
-                                        bool_ in_regalloc )
+static  void            FindUsefulIns( block * tail, bool just_the_loop,
+                                        bool in_regalloc )
 /***********************************************************************
  * This goes around calling CheckUseful until no more instructions
  * are found to be useful. Initially, instructions which affect
@@ -305,7 +305,7 @@ static  void            FindUsefulIns( block * tail, bool_ just_the_loop,
  * and anything not marked useful gets killed.
  */
 {
-    bool_        change;
+    bool        change;
     block       *blk;
     instruction *ins;
 
@@ -336,7 +336,7 @@ static  void            FindUsefulIns( block * tail, bool_ just_the_loop,
 }
 
 
-static  bool_    RemoveUselessStuff( bool_ just_the_loop, bool_ in_regalloc )
+static  bool    RemoveUselessStuff( bool just_the_loop, bool in_regalloc )
 /************************************************************************
  * This routine removes useless instructions from the routine. Note
  * that if BreakExists(), there are some extra blocks hanging off
@@ -348,7 +348,7 @@ static  bool_    RemoveUselessStuff( bool_ just_the_loop, bool_ in_regalloc )
  */
 {
     block       *tail;
-    bool_        change;
+    bool        change;
 
     InitVisitedTemps();
     FindUsefulIns( data_state().BlockList, just_the_loop, in_regalloc );
@@ -366,7 +366,7 @@ static  bool_    RemoveUselessStuff( bool_ just_the_loop, bool_ in_regalloc )
 }
 
 
-static bool_ DoInsDead( bool_ just_the_loop, bool_ in_regalloc )
+static bool DoInsDead( bool just_the_loop, bool in_regalloc )
 /***********************************************************/
 {
     if( data_state().BlockByBlock && !BreakExists() )
@@ -375,7 +375,7 @@ static bool_ DoInsDead( bool_ just_the_loop, bool_ in_regalloc )
 }
 
 
-bool_    InsDead( void )
+bool    InsDead( void )
 /**********************
  * Remove any dead or useless instructions in the program we can find.
  */
@@ -383,7 +383,7 @@ bool_    InsDead( void )
     return( DoInsDead( false, false ) );
 }
 
-bool_    RegInsDead( void )
+bool    RegInsDead( void )
 /*************************
  * Remove any dead or useless instructions in the program we can find.
  */
@@ -391,7 +391,7 @@ bool_    RegInsDead( void )
     return( DoInsDead( false, true ) );
 }
 
-bool_    LoopInsDead( void )
+bool    LoopInsDead( void )
 /*************************/
 {
     return( DoInsDead( true, false ) );

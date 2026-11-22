@@ -134,7 +134,7 @@ static struct STRUCT_BYTE_SEQ( 6 ) const TryFiniCode = {
 #endif
 
 
-bool_ VarParm( SYMPTR sym )
+bool VarParm( SYMPTR sym )
 /*************************
  * does the specified symbol take variable parameters? manual search.
  */
@@ -160,7 +160,7 @@ bool_ VarParm( SYMPTR sym )
     return( false );
 }
 
-bool_ VarFunc( SYMPTR sym )
+bool VarFunc( SYMPTR sym )
 /*************************
  * does the specified symbol take variable args? hash calc'ed
  */
@@ -307,7 +307,7 @@ aux_info *GetLangInfo( type_modifiers flags )
     }
 }
 
-bool_ ParmsToBeReversed( type_modifiers flags, aux_info *inf )
+bool ParmsToBeReversed( type_modifiers flags, aux_info *inf )
 {
 #ifdef REVERSE
     if( inf == &DefaultInfo ) {
@@ -484,7 +484,7 @@ aux_info *FindInfo( SYMPTR sym, SYM_HANDLE sym_handle )
     return( inf );
 }
 
-bool_ FunctionAborts( SYMPTR sym, SYM_HANDLE sym_handle )
+bool FunctionAborts( SYMPTR sym, SYM_HANDLE sym_handle )
 {
     aux_entry    *ent;
 
