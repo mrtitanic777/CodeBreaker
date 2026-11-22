@@ -18,7 +18,7 @@
 // A source is bytes (Latin-1 or CP437 text of the period's C): nothing here reads it as characters.
 //
 // The beam's history -- which rewrite brought a reading nearer, for which kind of difference -- is `Priors`, kept in
-// state/exact/priors.json and merged with what other processes wrote meanwhile; nothing else is shared.
+// <state>/exact/priors.json and merged with what other processes wrote meanwhile; nothing else is shared.
 #pragma once
 
 #include <compare>

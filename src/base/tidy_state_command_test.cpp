@@ -60,12 +60,12 @@ CB_TEST("base.tidy_state_command.dry_reports_and_removes_nothing", [] {
     Setup s;
     std::string out;
     CB_CHECK_EQ(s.run({"--dry"}, out), 0);
-    CB_CHECK(out.starts_with("state/ ("));
+    CB_CHECK(out.starts_with("state folder ("));
     CB_CHECK(out.find("would remove old caches") != std::string::npos);
     CB_CHECK(out.find("would remove runs") != std::string::npos);
     CB_CHECK(out.find("scratch.txt") != std::string::npos);                           // listed, kept
     CB_CHECK(out.find("kept; --stray removes them") != std::string::npos);
-    CB_CHECK(out.find("state/ now") == std::string::npos);                            // (a dry run does not look again)
+    CB_CHECK(out.find("state folder now") == std::string::npos);                            // (a dry run does not look again)
     CB_CHECK(stdfs::exists(s.env.layout.state / "fingerprints.sqlite"));
     CB_CHECK(stdfs::exists(s.env.layout.state / "phase3" / "runs" / "killed"));
     CB_CHECK(stdfs::exists(s.env.layout.state / "cache" / "decompiled" / "gaaaa.sqlite"));

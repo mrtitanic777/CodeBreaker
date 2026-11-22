@@ -25,7 +25,7 @@
 //   THE CAP      all the caches of one scope together are held under `Config::max_bytes`. As results are written,
 //                past the cap the ones used longest ago go first, from any kind, until four fifths of it is used.
 //
-// SCOPES       a State kind lives in the state folder (state/cache). A Shared kind -- what an assembler or a
+// SCOPES       a State kind lives in the state folder (<state>/cache). A Shared kind -- what an assembler or a
 //              compiler made of its inputs, named by the bytes of the tools and files that went in (tool_bytes_id,
 //              files_bytes_id), never by a path or a date -- lives in the build cache every checkout shares. Shared
 //              kinds are never dropped by generation (another checkout may run other code), only by the cap.
@@ -120,7 +120,7 @@ std::string folder_id(const std::filesystem::path& folder);
 enum class Scope { State, Shared };
 
 struct Config {
-    std::filesystem::path state_dir;                          // where State kinds are kept (state/cache)
+    std::filesystem::path state_dir;                          // where State kinds are kept (<state>/cache)
     std::filesystem::path shared_dir;                         // the shared build cache
     std::uint64_t max_bytes = kDefaultMaxBytes;               // cap on everything under state_dir
     std::uint64_t shared_max_bytes = kDefaultSharedMaxBytes;  // cap on everything under shared_dir

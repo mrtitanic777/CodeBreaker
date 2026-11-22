@@ -271,7 +271,7 @@ clean.
 **The GDI link fault of 2026-11-04 (fixed 2026-11-05).** In a fresh state folder `gdi.exe` did
 not link (`E2052: asm/frame38_00.obj: relocation at 0026:0def not in the same segment`). The
 reproduction builds the corpus's `gdi.exe` -- Windows' full GDI (WINDOWS/SYSTEM, 45 segments), not
-MINI.CAB's 36-segment GDI.EXE that the all-15 boot uses (state/mini/original), which has no 32-bit
+MINI.CAB's 36-segment GDI.EXE that the all-15 boot uses (<win95_boot>/mini/original), which has no 32-bit
 segment and builds from a fresh state (24 gated). The fault is the full GDI's own, not a cache's. The full GDI's segments 36 and 38 are 32-bit
 (NE flag 2000h, its flat thunks), and the frame writer (build/asm16.py) decoded them as 16-bit
 code: `66 B8 iw` took the `66 8E` of the next `mov gs, ax` for the rest of an imm32, and the
@@ -1527,8 +1527,8 @@ batches without changing OpenWatcom.
 
 Done (worktree branch, commits 8967cf243, 2231b87a2 and the one with this note):
 - base/cache.SHARED (wasm16, objects, never_set, masm, assembled16, omf_publics) live in the build
-  cache shared by every state and worktree (setting `build_cache`, default the main checkout's
-  state/build_cache; cap `build_cache_max_gb`, 6). Keys name tools and headers by content
+  cache shared by every state and worktree (setting `build_cache`, default
+  <state>/build_cache; cap `build_cache_max_gb`, 6). Keys name tools and headers by content
   (cache.tool_bytes, files_bytes) and list every input in a comment. Missing inputs fixed: the stem
   (wasm/wcc/MASM objects name their source file -- the old keys served USER, KRNL and others objects
   naming another piece's or another module's file), INCLUDE headers, WCC/WASM/CL variables, the
@@ -1556,7 +1556,7 @@ Not done (stopped to save tokens):
 - Share decompile and gate results across states: their kinds (decompiled, decompiled_fn,
   compilable16, gate16_*) still name tools by path and date, compilable16 pickles a module naming
   state paths, and the native decompiler reads CB_* switches the keys do not list -- audit first.
-- assembly.probe writes state/assembly_probes.json without a temp-and-replace: harmless (a torn read
+- assembly.probe writes <state>/assembly_probes.json without a temp-and-replace: harmless (a torn read
   is a re-probe) but should be atomic now that modules build side by side.
 - The two wcc runs per function (compile, flow check) are the largest cold cost left; one run would
   need proof that -w2 changes no object and that W200 is the same under the compile's options.

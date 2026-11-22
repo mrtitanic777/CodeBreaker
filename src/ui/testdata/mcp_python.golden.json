@@ -1088,7 +1088,7 @@
      "annotations": {
       "readOnlyHint": true
      },
-     "description": "The results `reach` kept (state/reach/<run>.json). Without `run`, the runs there are. With\nit, the programs found: what each is, its platform and lane, and for those judged the tally;\n`platform` and `find` (part of a path) narrow it, plus a count per platform.",
+     "description": "The results `reach` kept (<state>/reach/<run>.json). Without `run`, the runs there are. With\nit, the programs found: what each is, its platform and lane, and for those judged the tally;\n`platform` and `find` (part of a path) narrow it, plus a count per platform.",
      "inputSchema": {
       "properties": {
        "find": {
@@ -1199,7 +1199,7 @@
      "annotations": {
       "readOnlyHint": true
      },
-     "description": "A text file from a project folder, the source tree, state/ or this checkout, from character\n`offset` (a binary file: use hex_dump).",
+     "description": "A text file from a project folder, the source tree, the state folder or this checkout, from character\n`offset` (a binary file: use hex_dump).",
      "inputSchema": {
       "properties": {
        "length": {

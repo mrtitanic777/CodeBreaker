@@ -16,7 +16,7 @@ usage: codebreaker <command> [arguments]
 
 Also:
     settings                        every setting, and whether what it names is there
-    cache                           what the cache keeps; prune or clear it (--tidy cleans state/, --migrate carries
+    cache                           what the cache keeps; prune or clear it (--tidy cleans <state>, --migrate carries
                                     old results over)
     regress <all15|setup|slow>      the milestone regression: the 15 MINI.CAB modules rebuilt and booted to Setup's
                                     License page, the Setup chain, the slow cases

@@ -298,8 +298,8 @@ PCRE2 would be proposed (if profiling shows a regex on a hot path the in-tree en
   exception**, so harnesses stop leaking multi-GB temp folders), `ScopedEnv`, `copy_tree`, `remove_tree`, and a
   `long_path()` that adds the `\\?\` prefix. Windows path comparison is `cb::fs::same_path` (case-insensitive).
 - All file errors are `IoError`. No raw `FILE*`/`std::ifstream` outside `cb/core/fs.cpp` and the process module.
-- Project data stays inside the project folders (`CodeBreaker/state/...`), as the standing rule says; the layout is
-  owned by `cb::paths` (one place that knows `state/`, `Converted/`, the corpus root, `CB_CHECKOUT_ROOT`).
+- Project data stays inside the project folders (`<work folder>/codebreaker/...`), as the standing rule says; the layout is
+  owned by `cb::paths` (one place that knows `<state>/`, `Converted/`, the corpus root, `CB_CHECKOUT_ROOT`).
 
 ### 3.10 Processes
 
@@ -777,7 +777,7 @@ line, which is also how the exe gate stays meaningful.
 4. **PCRE2: not now** (only with profile numbers).
 5. **`nlohmann` forward declaration: by hand** (no download).
 6. **On-disk formats: dropped.** C++-native formats (versioned) replace the Python's pickled caches and repr files;
-   existing `state/` caches are rebuilt once. No pickle code in C++.
+   existing `<state>/` caches are rebuilt once. No pickle code in C++.
 7. **C++20** for the new tree.
 8. **Names:** `src/` and namespace `cb::`.
 

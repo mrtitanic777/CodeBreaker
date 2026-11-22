@@ -354,7 +354,7 @@ void write_one(World& world, const std::string& module, bool verify, std::option
     const std::string name = text::lower(fs::to_text(path->filename()));
     const std::string stem = text::lower(fs::to_text(path->stem()));
     // A product's source tree is for that product's modules. A file from anywhere else (given by path: another product's, a PowerPC image) is
-    // written under state/source/ here.
+    // written under <state>/source/ here.
     stdfs::path out;
     if (out_dir) {
         out = *out_dir;

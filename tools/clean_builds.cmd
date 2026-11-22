@@ -1,22 +1,20 @@
 @echo off
 rem clean_builds.cmd -- delete build output that can be rebuilt, and report the space freed. It never touches source,
-rem git history, or the builds the running program uses (state\cxx\codebreaker, build, native\<lib>\build of this
+rem git history, or the builds the running program uses (build, native\<lib>\build of this
 rem checkout -- the DLLs the Python loads live there).
 rem
-rem   - every worktree under .claude\worktrees: its state\cxx and native\<lib>\build (except src\build, which is source)
+rem   - every worktree under .claude\worktrees: its build and native\<lib>\build (except src\build, which is source)
 rem   - build-asan (the AddressSanitizer build) and old codebreaker.old-*.exe copies
 rem   - compiler output (.obj .exe .pdb .lib .ilk .idb .pch .dll .exp) under work
-rem   - state\test-tmp
 setlocal
 set ROOT=%~dp0..
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$root = (Resolve-Path '%ROOT%').Path; $before = ([IO.DriveInfo]::new($root.Substring(0,2))).AvailableFreeSpace;" ^
   "$dirs = @();" ^
   "$wt = Join-Path $root '.claude\worktrees'; if (Test-Path $wt) { foreach ($d in Get-ChildItem $wt -Directory) {" ^
-  "  $c = Join-Path $d.FullName 'state\cxx'; if (Test-Path $c) { $dirs += $c };" ^
+  "  $c = Join-Path $d.FullName 'build'; if (Test-Path $c) { $dirs += $c };" ^
   "  $n = Join-Path $d.FullName 'native'; if (Test-Path $n) { foreach ($b in Get-ChildItem $n -Directory) { if ($b.Name -ne 'cb') { $bb = Join-Path $b.FullName 'build'; if (Test-Path $bb) { $dirs += $bb } } } } } };" ^
   "$asan = Join-Path $root 'build-asan'; if (Test-Path $asan) { $dirs += $asan };" ^
-  "$tt = Join-Path $root 'state\test-tmp'; if (Test-Path $tt) { $dirs += $tt };" ^
   "foreach ($p in $dirs) { $i = Get-Item $p -Force; if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { Write-Host ('skipped link: ' + $p); continue }; cmd /c rmdir /s /q ('\"' + $p + '\"') 2>$null };" ^
   "Get-ChildItem (Join-Path $root 'build') -Filter 'codebreaker.old-*.exe' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue;" ^
   "$work = Join-Path $root 'work'; if (Test-Path $work) { Get-ChildItem $work -Recurse -File -Include *.obj,*.exe,*.pdb,*.lib,*.ilk,*.idb,*.pch,*.dll,*.exp -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\_tools\\' } | Remove-Item -Force -ErrorAction SilentlyContinue };" ^

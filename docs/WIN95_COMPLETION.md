@@ -7,11 +7,11 @@ output; the commands are listed so the table can be made again.
 
 ```
 codebreaker regress all15 --runs 1                 # PASS in 3m21s; prints, per module: functions / C / asm / stand-ins / gated
-codebreaker build state/mini/original/<M> --no-run # the build report of each of the 15 (gated lines, stand-ins, unresolved)
+codebreaker build <win95_boot>/mini/original/<M> --no-run # the build report of each of the 15 (gated lines, stand-ins, unresolved)
 CB_ASM_KEEP_C=codebreaker_none CB_NO_GATE=1 \
-codebreaker build state/setup/original/<M> --no-run # the 7 Setup programs, as `regress setup` builds them (all assembly, no gate)
+codebreaker build <win95_boot>/setup/original/<M> --no-run # the 7 Setup programs, as `regress setup` builds them (all assembly, no gate)
 codebreaker origin <M>                             # which functions were written in assembly (analyze/origin)
-state/build/<m>/module.l2.json                     # the build's own per-function record: a C function, or a MachineFragment
+<state>/build/<m>/module.l2.json                     # the build's own per-function record: a C function, or a MachineFragment
                                                    #   with its reason ("written in assembly: ..." / "its C does not compile: ...")
 ```
 
@@ -90,7 +90,7 @@ The gated functions the build report names (it prints the first 12 of each modul
 - MSMOUS31: `DISABLE`, `POWEREVENTPROC` ("calls: original INQUIRE(0,DS), ours INQUIRE(0,fff0)")
 - LMOUSE31: `BUGSTOP` (leaves 0/1 in the data segment where the original writes nothing), `CPLAPPLET` (original changes DI, ours keeps it),
   `DISABLE` (as MSMOUS31's)
-- GDI 23 and USER 43: see the module's build report (`codebreaker build state/mini/original/GDI.EXE`); 12 are printed.
+- GDI 23 and USER 43: see the module's build report (`codebreaker build <win95_boot>/mini/original/GDI.EXE`); 12 are printed.
 
 ## Why C-origin functions are kept as assembly (decide_forced, module_build16.cpp)
 
@@ -150,8 +150,8 @@ seven all assembly). Screens: state/phase3/shots/win95track-wep-*.png.
 
 ### 2. Per-function reason for kept-as-assembly functions (module_pack.cpp `note_assembled`)
 
-Written, not yet run: the installed exe of 8:15 PM may predate it. Check with `codebreaker build state/mini/original/WIN87EM.DLL`
-and read `state/build/<m>/module.l2.json`: a function kept without a compiler rejection says "its C is not used: <evidence>".
+Written, not yet run: the installed exe of 8:15 PM may predate it. Check with `codebreaker build <win95_boot>/mini/original/WIN87EM.DLL`
+and read `<state>/build/<m>/module.l2.json`: a function kept without a compiler rejection says "its C is not used: <evidence>".
 
 ### 3. Per-function reasons are in (module_pack.cpp), and the class behind row 3
 
@@ -264,7 +264,7 @@ next: print the holes and sizes it sees for SYSTEM segment 1.
 
 ### 9. Why the install "waited for a free slot - decompile" (not stuck)
 
-`Slots` (base/parallel.cpp) are lock files state/slots/slot-0..3: four decompile slots for every session on the machine. A
+`Slots` (base/parallel.cpp) are lock files <state>/slots/slot-0..3: four decompile slots for every session on the machine. A
 decompile of more than one chunk of functions asks for slots, waits up to 600 s for one, then runs on one regardless. After an
 exe change (describe.cpp's policy, other sessions' builds) the decompile of the big modules is a cache miss; with another
 session's decompiles holding the four slots the install's builds queued, in 10-minute waits, behind them. No deadlock, no
@@ -330,8 +330,8 @@ goes back to assembly by the gate's own rule).
 Proof: direct `build` of USER: never-set 43 -> 28 (15 converted from "kept": `in_AX` all went). `regress all15 --runs 2`:
 PASS, PASS (8m20s): USER C 563 -> 569 / gated 41 (the gate sent back the ones it found different; the net gain is 6),
 every other module unchanged. (A first all15 run of the same exe failed with USER "NOT LINKED ... No such file": a
-collision of two builds in the shared folder state/build/user.exe, mine and another session's, and passed on the rerun;
-builds into state/build/<module> are not isolated between sessions.) `regress install --runs 1` with the same exe (`win95track-install-inax`): **PASS**, 1h30m, Setup to the desktop on all 22 modules, USER C 569 / gated 41; screen state/phase3/shots/win95track-install-inax-install-1.png.
+collision of two builds in the shared folder <state>/build/user.exe, mine and another session's, and passed on the rerun;
+builds into <state>/build/<module> are not isolated between sessions.) `regress install --runs 1` with the same exe (`win95track-install-inax`): **PASS**, 1h30m, Setup to the desktop on all 22 modules, USER C 569 / gated 41; screen state/phase3/shots/win95track-install-inax-install-1.png.
 
 ### 14. USER's 20 "calls a function leaving DS changed" (also GDI 3, KEYBOARD 1): read, not converted
 
@@ -371,7 +371,7 @@ does not see; not found). They are listed in config/build/kept_as_asm.txt (the w
 (`CB_NO_DS_OWN=1` turns it off). `regress all15 --runs 2` with the switch on for all 13 callers and the two kept: PASS, PASS, USER C 574 / gated 40;
 default (no switch), rebuilt exe: PASS, PASS (5m23s), USER C 574 / gated 40 (+5 over 569), GDI unchanged. `regress install --runs 1` of this exe (`win95track-install-ds`): **PASS**, 1h27m, Setup to the desktop on all 22 modules; screen state/phase3/shots/win95track-install-ds-install-1.png.
 
-Also noted: regress has no option for a private state folder (its builds go to state/build/<module> and work/regress), so concurrent runs
+Also noted: regress has no option for a private state folder (its builds go to <state>/build/<module> and work/regress), so concurrent runs
 by two sessions can collide; run them one at a time.
 
 ### 16. The GDI shared-body `in_DX` entries (1:1260 / 1:1268): read by hand, still refused, switch left default off
@@ -562,5 +562,5 @@ isolated16 recorder) and compare the calls it makes from its first divergence; o
 Tools and habits learned this run (for the next agent): `bash work/locked.sh` for shared builds; `work/build_tests.cmd` (cb_tests) and
 `cmake --build build --target codebreaker` (the exe); run regress on a private copy of the exe (`cp build/codebreaker.exe *.dll` into your
 scratch folder) so another session's build cannot replace it; never run two series scripts at once (a stopped task leaves its child running); wait for a free
-decompile slot (state/slots, four for the whole machine: a regress install may queue behind other sessions' decompiles); a regress run prints each module's
-C / asm / gated; `state/build/<m>/module.l2.json` carries each function's recorded reason; `CB_ASM_ONLY` subsets move other functions and are not a reliable bisection.
+decompile slot (<state>/slots, four for the whole machine: a regress install may queue behind other sessions' decompiles); a regress run prints each module's
+C / asm / gated; `<state>/build/<m>/module.l2.json` carries each function's recorded reason; `CB_ASM_ONLY` subsets move other functions and are not a reliable bisection.

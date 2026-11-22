@@ -1,23 +1,23 @@
-// base/tidy_state.hpp -- how big state/ is, part by part, and what of it is stale, gone.
+// base/tidy_state.hpp -- how big the state folder is, part by part, and what of it is stale, gone.
 //
 //     codebreaker tidy-state                 the sizes, and the stale removed
 //     codebreaker tidy-state --dry           the sizes, and what would be removed
 //     codebreaker tidy-state --stray         also remove what no part of CodeBreaker writes
 //     codebreaker tidy-state --keep-builds   leave Converted/*/build/ alone
 //
-// state/ is CodeBreaker's to fill, and once filled 70 GB: fingerprints under comparer revisions long gone, millions of
+// The state folder is CodeBreaker's to fill, and once filled 70 GB: fingerprints under comparer revisions long gone, millions of
 // cache files, the disk and CD copies of killed boot runs. What fills it now looks after itself -- the cache holds its
 // generation of now under a cap, and every run that copies a disk works in a run folder deleted when it ends
 // (base/runs.hpp). This is the look over all of it, and the clean-up of what came before or slipped through. The rules:
 //
 //     cache        older generations of every kind dropped, the cap held (the cache's own prune, given as a hook)
-//     old caches   the fingerprints' own file of before (state/fingerprints.sqlite), now in the cache
+//     old caches   the fingerprints' own file of before (<state>/fingerprints.sqlite), now in the cache
 //     runs         run folders older than a day (killed runs), of every tool that has them, and those of before run
 //                  folders were (phase3/walk_*, setup16_*, t_*; vxdboot/run_*; record16's memory dumps)
 //     kept disks   an installed disk a Setup walk kept to compare (record16/walk/<tag>/hd.img), a week old
 //     builds       the object files of a Converted/<name>/build/ not built for two weeks (the programs and their
 //                  symbols stay; the next build compiles them again)
-//     stray        anything at the top of state/ no part of CodeBreaker writes -- listed, removed only with --stray
+//     stray        anything at the top of the state folder no part of CodeBreaker writes -- listed, removed only with --stray
 //                  (it may be someone's hand work)
 //
 // What a run of the code would make again is all that goes; the stores (results.sqlite, functions.sqlite), hand work
@@ -53,13 +53,13 @@ struct Stale {
     Rule rule = Rule::Runs;
 };
 
-// One top-level part of state/ and its size.
+// One top-level part of the state folder and its size.
 struct Part {
     std::filesystem::path path;
     std::uint64_t bytes = 0;
 };
 
-// The names at the top of state/ that CodeBreaker's code writes. The list is curated here , and a part that writes a new top-level folder adds its name; a name
+// The names at the top of the state folder that CodeBreaker's code writes. The list is curated here , and a part that writes a new top-level folder adds its name; a name
 // that is a SQLite file's also covers its -wal, -shm and -journal.
 const std::set<std::string>& known_names();
 
@@ -80,10 +80,10 @@ using Clock = std::chrono::system_clock;
 // Everything the rules say can go (the cache apart: it prunes itself). `now` is when "older than" is measured from.
 std::vector<Stale> stale(const Layout& layout, Clock::time_point now = Clock::now());
 
-// What is at the top of state/ that no part of CodeBreaker writes.
+// What is at the top of the state folder that no part of CodeBreaker writes.
 std::vector<Part> stray(const Layout& layout);
 
-// state/'s top-level parts, the biggest first.
+// The state folder's top-level parts, the biggest first.
 std::vector<Part> parts(const Layout& layout);
 
 // Every Converted/<name>/build/ folder.

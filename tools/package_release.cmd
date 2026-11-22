@@ -1,5 +1,5 @@
 @echo off
-rem package_release.cmd VERSION -- the release package, state\release\CodeBreaker-VERSION-win64.zip:
+rem package_release.cmd VERSION -- the release package, build\release\CodeBreaker-VERSION-win64.zip:
 rem
 rem     the committed source without its tests (git archive honours .gitattributes' export-ignore: tests\, every
 rem     testdata\ folder and *_test.cpp, docs\history\), plus what runs it:
@@ -14,7 +14,7 @@ set V=%~1
 set HERE=%~dp0
 for %%I in ("%HERE%..") do set ROOT=%%~fI
 set NAME=CodeBreaker-%V%-win64
-set REL=%ROOT%\state\release
+set REL=%ROOT%\build\release
 set OUT=%REL%\%NAME%
 set EXE=%ROOT%\build
 if not exist "%EXE%\codebreaker.exe" (echo the program is not built: run tools\build_codebreaker_exe.cmd& exit /b 1)

@@ -106,7 +106,7 @@ usage: codebreaker <command> [arguments]
     knowledge [platform [kind [key]]]
                                     the knowledge base: every platform's names, prototypes, signatures, structures and
                                     stand-ins, and where each came from
-    tidy-state [--dry] [--stray]    state/'s size by part, and what is stale in it removed (killed runs' disk copies,
+    tidy-state [--dry] [--stray]    <state>'s size by part, and what is stale in it removed (killed runs' disk copies,
                                     old caches, idle build objects)
     regress <all15|setup|slow> [--runs N] [--vms N]
                                     the milestone regression: the 15 MINI.CAB modules rebuilt and booted to Setup's

@@ -259,7 +259,7 @@ struct Services {
     // ---- the corpus and the state
     std::function<std::optional<std::filesystem::path>(std::string_view name)> retail;        // a corpus name to its file
     std::function<std::optional<std::string>(const std::filesystem::path&)> kind_of;          // "ne", "pe" ...
-    std::function<std::filesystem::path(std::string_view name)> build_folder;                 // state/build/<name>
+    std::function<std::filesystem::path(std::string_view name)> build_folder;                 // <state>/build/<name>
     std::filesystem::path kept_as_asm_file;                                                  // build/kept_as_asm.txt
 
     // ---- what is known of a module

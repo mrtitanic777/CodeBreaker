@@ -218,7 +218,7 @@ Report run(Tier tier, const Services& s, const Options& o) {
         ~Cleanup() { base::runs::remove(folder); }
     } cleanup{folder};
 
-    // build: the working folders of a module (state/build/<name>) are one for the checkout, so one regress run builds at a time; the
+    // build: the working folders of a module (<state>/build/<name>) are one for the checkout, so one regress run builds at a time; the
     // lock is let go before the boots (they use this run's own copies of the images)
     file_lock::FileLock build_lock = hold(s, "build", "its build folders are in use");
     setup16::Replace replace;

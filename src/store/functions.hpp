@@ -5,7 +5,7 @@
 // program database (<folder>/<sha>.sqlite), and the store's own file is the index of them (which modules there are, the verifier profiles, a
 // summary per module). This module says where those files are, and gives the questions asked across the corpus.
 //
-//     auto store = functions::open(state);                      // state/functions.sqlite, state/db/      (nullptr: read-only, none yet)
+//     auto store = functions::open(state);                      // <state>/functions.sqlite, <state>/db/      (nullptr: read-only, none yet)
 //     auto glance = functions::overview(state);                 // per module, what its functions came to
 //     auto classes = functions::latest(state, sha);             // {address: class} by each function's latest verdict
 //

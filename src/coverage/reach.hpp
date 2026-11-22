@@ -16,7 +16,7 @@
 //
 // Load stays low on purpose: one program at a time, at most --per-platform programs of each platform (default 5: spread
 // evenly across their sizes, from the smallest to the largest under --max-size KB, default 4096), at most --containers
-// programs taken out of each container (default 20). Results are kept in state/reach/<run>.json by each file's content
+// programs taken out of each container (default 20). Results are kept in <state>/reach/<run>.json by each file's content
 // hash and the tools' revision, so a program already measured with the same tools is not measured again (--again
 // measures it anyway). The report is written beside them, <run>.md.
 //

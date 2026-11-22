@@ -153,7 +153,7 @@ private:
 };
 
 struct Config {
-    std::filesystem::path root;                     // where every binary's database is (state/db)
+    std::filesystem::path root;                     // where every binary's database is (<state>/db)
     std::uint64_t max_bytes = kDefaultMaxBytes;     // the cap on all of them together
 };
 

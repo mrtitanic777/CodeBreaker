@@ -202,7 +202,7 @@ struct Source {
 };
 
 struct CompileOptions {
-    std::filesystem::path work;                 // the folder the compiler runs in (state/<compiler>/work); required
+    std::filesystem::path work;                 // the folder the compiler runs in (<state>/invert/<compiler>/work in production); required
     std::chrono::seconds timeout{900};
     Compiler compiler = Compiler::Msc6;
     std::size_t batch = kBatch;

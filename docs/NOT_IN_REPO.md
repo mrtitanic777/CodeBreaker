@@ -28,7 +28,7 @@ setting for one run.
 | PowerPC binutils that know VMX128 (the recompiler's instruction tests) | `toolchains/powerpc-binutils` | `ppc_binutils` |
 | The Xbox 360 SDK (XDK), for the Java transpiler's console target | `C:/Program Files (x86)/Microsoft Xbox 360 SDK` | `xbox360_sdk` |
 | MSBuild, to build a transpiled game's Visual Studio project | | `msbuild` |
-| Per-project hand fixes laid over transpiled Java | `state/java/overlays` | `java_overlays` |
+| Per-project hand fixes laid over transpiled Java | (no default: set `java_overlays`) | `java_overlays` |
 | The 12 Xbox 360 PowerPC images the store has judged (`*.basefile`) | `../powerpc-samples/images` (moved out of the old `src/xbox/samples` on 2026-10-17; its README says what else was kept) | (the store's module paths) |
 | Real Xbox 360 files the format tests read when present (an STFS theme, a dashboard XZP, a Minecraft PCK) | `../xbox-samples` | (the xbox format unit tests) |
 | The Xbox 360 key store the `crypto` tools read (1BL_pub.bin, SB_prv.bin, ...) | `Keys/` in the current folder | `xbox360_keys` |
@@ -63,8 +63,8 @@ What CodeBreaker makes of a binary goes into that binary's project folder under 
 `resources` and `build` write there unless given `--out` / `-o`. A binary's project is found again
 by its SHA-1, so every command run on one file adds to one folder.
 
-The rest -- the function store, caches, scratch builds, scoreboards -- goes under `state/`
-(setting `state`). Delete it to start over; nothing in it is source. It holds its own size: the
+The rest -- the function store, caches, scratch builds, scoreboards -- goes in the state folder
+(setting `state`; by default the work folder's `codebreaker/`, else `work/state` in the checkout). Delete it to start over; nothing in it is source. It holds its own size: the
 caches stay under `cache_max_gb` (default 2) and keep only the generation of the code of now; boot
 runs delete their disk copies; `codebreaker tidy-state` shows it part by part and clears
 what is stale (README: What is kept, and how big it gets). The reconstructed Windows 95

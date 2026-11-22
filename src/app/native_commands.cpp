@@ -367,7 +367,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // cab list|extract|create: Microsoft cabinets, with no outside tool
     table.set("cab", [](std::span<const std::string> argv) -> int { return cab_command(argv); });
 
-    // le-source <driver> [--out DIR]: a VxD as NASM source that reassembles to it (built by x86asm; out under state/le_source)
+    // le-source <driver> [--out DIR]: a VxD as NASM source that reassembles to it (built by x86asm; out under <state>/le_source)
     source::le_writer::Environment le_env;
     le_env.state = config.state();
     table.set("le-source", [le_env](std::span<const std::string> args) -> int {
@@ -375,7 +375,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     });
 
     // pe-source / ne-source <program> [--out DIR] [--keep-stub]: a Windows module as NASM source that reassembles to it; its DOS
-    // stub written by the DOS writer (OpenWatcom's wasm/wlink, the probes kept in state/assembly_probes.json)
+    // stub written by the DOS writer (OpenWatcom's wasm/wlink, the probes kept in <state>/assembly_probes.json)
     const auto stub_finder = [&config] {
         return source::dos_writer::stub_finder(
             source::dos_writer::options_for(ft_openwatcom_of(config), config.state() / "assembly_probes.json"));
@@ -472,7 +472,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // invert ...: the inverse models (Microsoft C 6, MSVC 2, early C) and the module pass, with the period compilers
     lazy_runner(table, "invert", [&config, corpus] { return invert::command::runner(invert::command::production(config, corpus)); });
 
-    // cache, tidy-state: the result cache (native and older state files) and state/'s clean-up
+    // cache, tidy-state: the result cache (native and older state files) and the state folder's clean-up
     table.set(base::cache::command(base::cache::CommandEnvironment{base::cache::settings_of(config), {}}));
     table.set(base::tidy_state::command(base::tidy_state::environment_of(config)));
     table.set(verify::regress::command(config));

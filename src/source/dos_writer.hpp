@@ -68,7 +68,7 @@ using BuildWindows = std::function<WindowsBuild(const std::filesystem::path& pro
 
 struct Options {
     assembly::Tools tools;                        // OpenWatcom's assembler and linker
-    std::filesystem::path probes;                 // the file what has been probed is kept in (state/assembly_probes.json)
+    std::filesystem::path probes;                 // the file what has been probed is kept in (<state>/assembly_probes.json)
     Log log;                                      // a round's account, when given
     WriteVxd write_vxd;                           // a driver+vxd file needs it (UsageError without)
     BuildWindows build_windows;                   // a DOS+Windows file needs it (UsageError without)

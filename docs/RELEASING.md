@@ -54,7 +54,7 @@ Push only after the gate has passed, as its own step.
 tools\package_release.cmd X.Y.Z
 ```
 
-This makes `state\release\CodeBreaker-X.Y.Z-win64.zip` from the committed source (no tests: `.gitattributes`
+This makes `build\release\CodeBreaker-X.Y.Z-win64.zip` from the committed source (no tests: `.gitattributes`
 export-ignore) and the built program and engines, and checks that the packaged program starts. Then:
 
 ```bash
@@ -66,7 +66,7 @@ git push origin vX.Y.Z
 ```
 
 ```bash
-gh release create vX.Y.Z state\release\CodeBreaker-X.Y.Z-win64.zip --title "CodeBreaker X.Y.Z" --notes-file NOTES.md --latest
+gh release create vX.Y.Z build\release\CodeBreaker-X.Y.Z-win64.zip --title "CodeBreaker X.Y.Z" --notes-file NOTES.md --latest
 ```
 
-`NOTES.md` is the version's CHANGELOG section, with a Download line. Delete `state\release` afterwards.
+`NOTES.md` is the version's CHANGELOG section, with a Download line. Delete `build\release` afterwards.

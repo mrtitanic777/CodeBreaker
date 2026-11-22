@@ -62,7 +62,7 @@ std::string placeholder_label(std::uint32_t device, std::uint32_t service);
 
 struct Options {
     build::driver::Tools tools;          // wasm and wlink (the driver kit's include folder is not needed: nothing here uses its macros)
-    std::filesystem::path probes;        // the file what has been probed is kept in (state/assembly_probes.json); empty: in the out folder
+    std::filesystem::path probes;        // the file what has been probed is kept in (<state>/assembly_probes.json); empty: in the out folder
     Log log;                             // a round's account, when given
     ServiceLabel service_label;          // the kit's names (symbols/driver_services); empty: placeholders
     std::size_t max_rounds = 40;

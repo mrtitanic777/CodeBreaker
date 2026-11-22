@@ -36,7 +36,7 @@ CacheHooks cache_hooks(const cache::CommandEnvironment& environment) {
 cli::Command command(const CommandEnvironment& environment) {
     cli::Command c;
     c.name = "tidy-state";
-    c.summary = "how big state/ is, part by part, and what of it is stale, gone";
+    c.summary = "how big the state folder is, part by part, and what of it is stale, gone";
     c.params = {
         cli::Option{"--dry", "", "the sizes, and what would be removed (nothing is)", cli::Arg::Flag},
         cli::Option{"--stray", "", "also remove what no part of CodeBreaker writes", cli::Arg::Flag},
