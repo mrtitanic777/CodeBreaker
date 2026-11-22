@@ -50,11 +50,11 @@ namespace {
 sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65c02.sla" : "6502.sla"); }
 }  // namespace
 
-bool default_on(Core core) { return core == Core::Mos6502 || core == Core::Z80 || core == Core::R4300; }   // the families whose every lane is proven with no verdict differing
+bool default_on(Core core) { return core == Core::Mos6502 || core == Core::Z80 || core == Core::R4300 || core == Core::SuperH; }   // the families whose every lane is proven with no verdict differing
 
 bool default_on(emulate::arm::System system) { return system == emulate::arm::System::Nds9 || system == emulate::arm::System::Nds7 || system == emulate::arm::System::N3ds; }
 
-bool default_on(ShMachine machine) { return machine == ShMachine::Saturn || machine == ShMachine::Sega32x; }
+bool default_on(M68kMachine machine) { return machine != M68kMachine::SegaCd && machine != M68kMachine::Cdi; }
 
 bool enabled_by(bool lane_default) {
     if (const int f = g_force.load(); f >= 0) return f == 1;

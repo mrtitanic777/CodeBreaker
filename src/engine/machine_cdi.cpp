@@ -114,7 +114,7 @@ vl::Effects cdi_effects(const stdfs::path& path, std::uint32_t entry, const vl::
     for (std::size_t i = 0; i < 7; ++i) a[i] = static_cast<std::uint32_t>(at(state, "a" + std::to_string(i)));
     options.d = d;
     options.a = a;
-    const m68k::RunResult run = cb::engine::pcode_cpu::call(bus, entry, options);
+    const m68k::RunResult run = cb::engine::pcode_cpu::call(bus, entry, options, cb::engine::pcode_cpu::M68kMachine::Cdi);
 
     Bytes dregs, aregs;
     for (std::size_t i = 0; i < 8; ++i) put_long(dregs, run.d[i]);
