@@ -317,7 +317,7 @@ pw::RunResult run(std::span<const pw::Region> regions, std::uint32_t entry, std:
 
 pw::RunResult call(std::span<const pw::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args, const pw::RunOptions& options) {
     const bool lane_run = options.externs == nullptr && !options.span && !options.branches && !options.absent && options.shadow == nullptr;   // (the judge's runs want more)
-    return enabled(Core::PowerPc) && lane_run ? pcode_cpu::run(regions, entry, args, options) : pw::run(regions, entry, args, options);
+    return enabled() && lane_run ? pcode_cpu::run(regions, entry, args, options) : pw::run(regions, entry, args, options);
 }
 
 }  // namespace cb::engine::pcode_cpu

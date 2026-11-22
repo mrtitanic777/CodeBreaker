@@ -410,6 +410,6 @@ rc::RunResult run(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& optio
     return out;
 }
 
-rc::RunResult call(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& options) { return enabled(Core::R4300) ? pcode_cpu::run(bus, entry, options) : rc::run(bus, entry, options); }
+rc::RunResult call(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : rc::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

@@ -50,21 +50,11 @@ namespace {
 sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65c02.sla" : "6502.sla"); }
 }  // namespace
 
-bool default_on(Core core) { return core == Core::Mos6502 || core == Core::Z80 || core == Core::R4300 || core == Core::SuperH; }   // the families whose every lane is proven with no verdict differing
-
-bool default_on(emulate::arm::System system) { return system == emulate::arm::System::Nds9 || system == emulate::arm::System::Nds7 || system == emulate::arm::System::N3ds; }
-
-bool default_on(M68kMachine machine) { return machine != M68kMachine::SegaCd && machine != M68kMachine::Cdi; }
-
-bool enabled_by(bool lane_default) {
+bool enabled() {
     if (const int f = g_force.load(); f >= 0) return f == 1;
     const std::optional<std::string> env = cb::fs::get_env("CB_PCODE_EMU");
-    if (env && (*env == "0" || *env == "false" || *env == "no")) return false;
-    if (env && (*env == "1" || *env == "true" || *env == "yes")) return true;   // CB_PCODE_EMU=1: every core the emulator can run, the defaults aside
-    return lane_default;
+    return !(env && (*env == "0" || *env == "false" || *env == "no"));
 }
-
-bool enabled(Core core) { return enabled_by(default_on(core)); }
 
 void force(std::optional<bool> on) { g_force = on ? (*on ? 1 : 0) : -1; }
 
@@ -362,6 +352,6 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
     return out;
 }
 
-z::RunResult call(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) { return enabled(Core::Z80) ? pcode_cpu::run(bus, entry, options) : z::run(bus, entry, options); }
+z::RunResult call(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : z::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

@@ -24,6 +24,7 @@ namespace sl = cb::decompile::sleigh;
 namespace {
 
 constexpr std::uint32_t kBlock = 0x1000;
+constexpr std::uint32_t kRamWindow = 0x800000;   // the RAM's mirrors, as the bus answers them
 constexpr std::uint32_t kViews[3] = {0x00000000u, 0x80000000u, 0xA0000000u};
 constexpr const char* kNames[32] = {"zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",
                                     "s0",   "s1", "s2", "s3", "s4", "s5", "s6", "s7", "t8", "t9", "k0", "k1", "gp", "sp", "s8", "ra"};
@@ -59,6 +60,30 @@ bool is_branch(std::uint32_t w) {
     const unsigned op = w >> 26;
     if (op == 0) return (w & 0x3F) == 0x08 || (w & 0x3F) == 0x09;
     return op == 0x01 || (op >= 0x02 && op <= 0x07);
+}
+
+// A branch read on its own, for one next to a branch or a coprocessor 0 instruction: the description takes a branch and its slot as one step, and cannot run such a pair.
+struct Branch {
+    bool taken = false;
+    std::uint32_t target = 0;
+    int link = -1;   // the register given the return address
+};
+
+Branch read_branch(std::uint32_t w, std::uint32_t at, std::uint32_t rs_value, std::uint32_t rt_value) {
+    const unsigned op = w >> 26, rt = (w >> 16) & 31;
+    const std::int32_t a = static_cast<std::int32_t>(rs_value);
+    const std::uint32_t relative = at + 4 + (static_cast<std::uint32_t>(sext16(w)) << 2);
+    const std::uint32_t absolute = ((at + 4) & 0xF0000000u) | ((w & 0x03FFFFFFu) << 2);
+    switch (op) {
+        case 0x00: return {true, rs_value, (w & 0x3F) == 0x09 ? static_cast<int>((w >> 11) & 31) : -1};
+        case 0x01: return {(rt == 0 || rt == 16) ? a < 0 : a >= 0, relative, rt >= 16 ? 31 : -1};
+        case 0x02: return {true, absolute, -1};
+        case 0x03: return {true, absolute, 31};
+        case 0x04: return {rs_value == rt_value, relative, -1};
+        case 0x05: return {rs_value != rt_value, relative, -1};
+        case 0x06: return {a <= 0, relative, -1};
+        default: return {a > 0, relative, -1};   // (0x07)
+    }
 }
 
 }  // namespace
@@ -168,7 +193,14 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
         out.end = mp::End::Stopped;
         out.fault = mp::Fault{kind, pc, address, {}, 0};
     };
+    // A branch in a delay slot, one instruction at a time as the own core runs it: `follow` is where the instruction now running hands over to, `then` the one after it.
+    std::optional<std::uint32_t> follow, then;
     while (steps < options.max_steps) {
+        if (follow) {
+            emu.setPc(*follow);
+            follow.reset();
+        }
+        std::swap(follow, then);
         const std::uint32_t pc = static_cast<std::uint32_t>(emu.pc());
         if (pc == mp::kReturnAddress) {
             out.end = mp::End::Return;
@@ -186,6 +218,8 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
                 set_reg(static_cast<unsigned>(pending.reg), pending.value);
                 pending.reg = -1;
             }
+            follow.reset();   // (the return is a plain jump: no branch is still on its way)
+            then.reset();
             emu.setPc(reg(31));
             ++steps;
             continue;
@@ -198,19 +232,24 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
             stop(mp::Fault::Kind::BusError, pc, pc);
             break;
         }
-        if (phys >= memory.size() || (pc >> 29) == 7) {   // (no code of ours: the bus reads zeros there, which is a NOP)
+        if (phys >= kRamWindow || (pc >> 29) == 7) {   // (no code of ours: the bus reads zeros there, which is a NOP)
+            if (pending.reg >= 0) set_reg(static_cast<unsigned>(pending.reg), pending.value);   // (a load in flight arrives across it)
+            pending.reg = -1;
             emu.setPc(pc + 4);
             ++steps;
             continue;
         }
-        const std::uint32_t word = static_cast<std::uint32_t>(memory[phys]) | (static_cast<std::uint32_t>(memory[phys + 1]) << 8) |
-                                   (static_cast<std::uint32_t>(memory[phys + 2]) << 16) | (static_cast<std::uint32_t>(memory[phys + 3]) << 24);
-        const std::uint32_t slot_word = is_branch(word) && phys + 7 < memory.size()
-                                            ? static_cast<std::uint32_t>(memory[phys + 4]) | (static_cast<std::uint32_t>(memory[phys + 5]) << 8) |
-                                                  (static_cast<std::uint32_t>(memory[phys + 6]) << 16) | (static_cast<std::uint32_t>(memory[phys + 7]) << 24)
+        // The RAM is seen four times in its window: code at a later view is the same bytes, handed to the emulator where it will decode them.
+        const std::uint32_t code = phys % static_cast<std::uint32_t>(memory.size());
+        if (code != phys) emu.write(pc, memory.data() + code, std::min<std::size_t>(8, memory.size() - code));
+        const std::uint32_t word = static_cast<std::uint32_t>(memory[code]) | (static_cast<std::uint32_t>(memory[code + 1]) << 8) |
+                                   (static_cast<std::uint32_t>(memory[code + 2]) << 16) | (static_cast<std::uint32_t>(memory[code + 3]) << 24);
+        const std::uint32_t slot_word = is_branch(word) && code + 7 < memory.size()
+                                            ? static_cast<std::uint32_t>(memory[code + 4]) | (static_cast<std::uint32_t>(memory[code + 5]) << 8) |
+                                                  (static_cast<std::uint32_t>(memory[code + 6]) << 16) | (static_cast<std::uint32_t>(memory[code + 7]) << 24)
                                             : 0;
         // What the own core refuses or faults on, for the instruction and for the one in its delay slot (checked before either runs).
-        const auto check = [&](std::uint32_t w, std::uint32_t at, bool in_slot) -> std::optional<mp::Fault> {
+        const auto check = [&](std::uint32_t w, std::uint32_t at) -> std::optional<mp::Fault> {
             const std::optional<decompile::mips::Insn> insn = decompile::mips::decode_word(w, at);
             if (!insn) return mp::Fault{mp::Fault::Kind::NoInstruction, at, 0, {}, 0};
             const unsigned op = w >> 26, rs = (w >> 21) & 31, rt = (w >> 16) & 31;
@@ -222,8 +261,8 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
                 if ((word_access && (address & 3) != 0) || (half_access && (address & 1) != 0)) return mp::Fault{mp::Fault::Kind::AddressError, at, address, {}, 0};
                 if (!bus.mapped(address)) return mp::Fault{mp::Fault::Kind::BusError, at, address, {}, 0};
             }
-            // (coprocessor 0 is run here, not by the description, and not in a delay slot; the FPU and coprocessor 3 are not on this machine; the GTE's are the hooks')
-            if ((op == 0x10 && in_slot) || op == 0x30 || op == 0x31 || op == 0x38 || op == 0x39 || op == 0x11 || op == 0x13)
+            // (coprocessor 0 is run here, not by the description; the FPU and coprocessor 3 are not on this machine; the GTE's are the hooks')
+            if (op == 0x30 || op == 0x31 || op == 0x38 || op == 0x39 || op == 0x11 || op == 0x13 || (op == 0x12 && rs == 8))   // (and the GTE has no branch condition: BC2F, BC2T)
                 return mp::Fault{mp::Fault::Kind::NotRun, at, 0, insn->mnemonic, 0};
             if (op == 0x08 || (op == 0 && ((w & 0x3F) == 0x20 || (w & 0x3F) == 0x22))) {   // ADDI, ADD, SUB trap on overflow
                 const std::int64_t a = static_cast<std::int32_t>(reg(rs));
@@ -233,10 +272,28 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
             }
             return std::nullopt;
         };
-        if (const std::optional<mp::Fault> fault = check(word, pc, false)) {
+        if (const std::optional<mp::Fault> fault = check(word, pc)) {
             out.end = mp::End::Stopped;
             out.fault = *fault;
             break;
+        }
+        // (and a branch that reads a register whose load is in flight: it sees the old value, its slot the new one, which one step of the pair cannot give)
+        const bool reads_pending = pending.reg >= 0 && (static_cast<unsigned>(pending.reg) == ((word >> 21) & 31) || static_cast<unsigned>(pending.reg) == ((word >> 16) & 31));
+        const bool slot_alone = is_branch(slot_word) || (slot_word >> 26) == 0x10 || (slot_word >> 26) == 0x22 || (slot_word >> 26) == 0x26;   // (the adapter makes these itself)
+        if (is_branch(word) && (follow || reads_pending || slot_alone)) {
+            const Branch branch = read_branch(word, pc, reg((word >> 21) & 31), reg((word >> 16) & 31));
+            const std::uint32_t sequential = follow ? *follow : pc + 4;   // what runs next if this branch changes nothing
+            follow.reset();
+            if (branch.link > 0) {
+                set_reg(static_cast<unsigned>(branch.link), pc + 8);
+                if (pending.reg == branch.link) pending.reg = -1;   // (the load in flight is lost to the link)
+            }
+            if (pending.reg >= 0) set_reg(static_cast<unsigned>(pending.reg), pending.value);
+            pending.reg = -1;
+            if (branch.taken) then = branch.target;
+            emu.setPc(sequential);
+            ++steps;
+            continue;
         }
         const bool half = is_branch(word) && steps + 1 >= options.max_steps;   // (the step limit falls between the branch and its slot)
         int link_reg = -1;   // the register the branch links
@@ -249,10 +306,13 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
             if (link_reg == 0) link_reg = -1;
         }
         if (is_branch(word) && !half) {
+            // a load in flight arrives with the branch (which does not read it), so the slot's check sees it; the branch's link overwrites one to the same register
+            if (pending.reg >= 0 && pending.reg != link_reg) set_reg(static_cast<unsigned>(pending.reg), pending.value);
+            pending.reg = -1;
             // the slot is checked as the own core meets it: after the branch has run (its link written)
             const std::uint32_t before = link_reg > 0 ? reg(static_cast<unsigned>(link_reg)) : 0;
             if (link_reg > 0) set_reg(static_cast<unsigned>(link_reg), pc + 8);
-            const std::optional<mp::Fault> fault = check(slot_word, pc + 4, true);
+            const std::optional<mp::Fault> fault = check(slot_word, pc + 4);
             if (fault) {
                 if (pending.reg >= 0 && pending.reg != link_reg) set_reg(static_cast<unsigned>(pending.reg), pending.value);   // (the branch finished: what was in flight arrived)
                 pending.reg = -1;
@@ -291,6 +351,8 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
         if ((cop0[12] & 0x10000u) != 0) {   // the cache is isolated: a load reads nothing and a store writes nothing
             const unsigned o = word >> 26;
             if ((o >= 0x20 && o <= 0x26) || (o >= 0x28 && o <= 0x2B) || o == 0x2E || o == 0x32 || o == 0x3A) {
+                if (pending.reg >= 0) set_reg(static_cast<unsigned>(pending.reg), pending.value);   // (the load before it still arrives)
+                pending.reg = -1;
                 emu.setPc(pc + 4);
                 ++steps;
                 continue;
@@ -305,10 +367,26 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
             ++steps;
             continue;
         }
-        // LWL and LWR merge with a load still in flight to the same register
-        if (((word >> 26) == 0x22 || (word >> 26) == 0x26) && pending.reg == static_cast<int>((word >> 16) & 31)) {
-            set_reg((word >> 16) & 31, pending.value);
-            pending.reg = -1;
+        // LWL and LWR are made here: they merge with a load still in flight to their register, while their address comes from the register as it stands.
+        if ((word >> 26) == 0x22 || (word >> 26) == 0x26) {
+            const unsigned rt = (word >> 16) & 31;
+            const std::uint32_t address = reg((word >> 21) & 31) + static_cast<std::uint32_t>(sext16(word));
+            const std::uint32_t current = pending.reg == static_cast<int>(rt) ? pending.value : reg(rt);
+            const std::uint32_t mem = bus.read(address & ~3u, 4), shift = address & 3;
+            std::uint32_t merged;
+            if ((word >> 26) == 0x22) {
+                static constexpr std::uint32_t kKeep[4] = {0x00FFFFFF, 0x0000FFFF, 0x000000FF, 0};
+                merged = (current & kKeep[shift]) | (mem << (24 - 8 * shift));
+            } else {
+                static constexpr std::uint32_t kKeep[4] = {0, 0xFF000000, 0xFFFF0000, 0xFFFFFF00};
+                merged = (current & kKeep[shift]) | (mem >> (8 * shift));
+            }
+            if (pending.reg >= 0) set_reg(static_cast<unsigned>(pending.reg), pending.value);
+            pending.reg = rt == 0 ? -1 : static_cast<int>(rt);
+            pending.value = merged;
+            emu.setPc(pc + 4);
+            ++steps;
+            continue;
         }
         // A load in flight arrives after the branch, before its delay slot: when the branch does not read that register it arrives before the pair runs
         if (is_branch(word) && !half && pending.reg >= 0 && static_cast<unsigned>(pending.reg) != ((word >> 21) & 31) && static_cast<unsigned>(pending.reg) != ((word >> 16) & 31)) {
@@ -320,11 +398,15 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
         const int last_destination = destination(last);
         // (a load in the slot of a linking branch: the register the branch linked is what it holds until the load arrives)
         std::uint32_t old_value = last_destination > 0 ? reg(static_cast<unsigned>(last_destination)) : 0;
+        // (a load right after a load to the same register: the first arrives while the second is on its way)
+        const unsigned loading_op = last >> 26;
+        const bool last_is_delayed = (loading_op >= 0x20 && loading_op <= 0x26) || (loading_op == 0x12 && (((last >> 21) & 31) == 0 || ((last >> 21) & 31) == 2));
+        if (last_is_delayed && last_destination > 0 && last_destination == pending.reg) old_value = pending.value;
         if (pair && last_destination > 0 && last_destination == link_reg) old_value = pc + 8;
         std::uint8_t nop_saved[4] = {};
         if (half || slot_done) {   // the step limit falls between the branch and its slot, or the slot is done: the branch alone runs (the slot is made a NOP for the step)
             const std::uint8_t zero4[4] = {};
-            for (unsigned i = 0; i < 4; ++i) nop_saved[i] = memory[phys + 4 + i];
+            for (unsigned i = 0; i < 4; ++i) nop_saved[i] = memory[code + 4 + i];
             for (const std::uint32_t base : kViews) emu.write(base + phys + 4, zero4, 4);
         }
         raised.reset();
@@ -383,6 +465,6 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
     return out;
 }
 
-mp::RunResult call(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& options) { return enabled(Core::Mips) ? pcode_cpu::run(bus, entry, options) : mp::run(bus, entry, options); }
+mp::RunResult call(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : mp::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

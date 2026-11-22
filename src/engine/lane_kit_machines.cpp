@@ -206,7 +206,7 @@ lanes::Effects genesis_effects(const stdfs::path& path, std::uint32_t entry, con
     for (std::size_t i = 0; i < 7; ++i) a[i] = static_cast<std::uint32_t>(at(state, ("a" + std::to_string(i)).c_str()));
     options.d = d;
     options.a = a;
-    const emulate::m68k::RunResult run = pcode_cpu::call(bus, entry, options, pcode_cpu::M68kMachine::Genesis);
+    const emulate::m68k::RunResult run = pcode_cpu::call(bus, entry, options);
     Bytes dregs, aregs;
     const auto put = [](Bytes& out, std::uint32_t v) {
         for (int shift = 24; shift >= 0; shift -= 8) out.push_back(static_cast<std::uint8_t>(v >> shift));
