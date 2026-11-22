@@ -1,4 +1,4 @@
-// build/x86cc/x86cc.cpp -- see x86cc.hpp. The host side of the compilers' IDE interface (watcom/h/idedll.h), as wcc.exe's
+// build/x86cc/x86cc.cpp -- see x86cc.hpp. The host side of the compilers' IDE interface (support/idedll.h), as wcc.exe's
 // and wcc386.exe's own driver is (watcom/c/idedrv.c with maindrv.c, STATIC_LINKAGE): init, pass the init info, run once
 // with the command line, fini; messages through the same callbacks, formatted by the same IdeMsgFormat. Each compiler's
 // entry points carry its prefix (generated/<t>/cbnames.h renamed them, so both live in this program).
@@ -16,7 +16,7 @@
 
 #ifdef _WIN32
 extern "C" {
-#include "build/x86cc/watcom/h/idedll.h"
+#include "build/x86cc/support/idedll.h"
 #include "core/working_folder.hpp"
 
 #define CB_WCC_ENTRIES(p)                                                                                                  \
