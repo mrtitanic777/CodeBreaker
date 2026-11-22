@@ -125,7 +125,13 @@ CB_TEST("translate.cpp17.own.names", [] {
 // What the library does not write is declined, with its reason.
 CB_TEST("translate.cpp17.declines.feat", [] { check_declined("feat"); });
 CB_TEST("translate.cpp17.declines.minecraft", [] { check_declined("minecraft"); });
-CB_TEST("translate.cpp17.declines.modernlib", [] { check_declined("modernlib"); });
+CB_TEST("translate.cpp17.modernlib_is_written", [] {   // (held to the JVM by translate.capability's Library)
+    const nl::Library* lib = library();
+    if (lib == nullptr) return;
+    cb::Arena arena;
+    std::vector<ir::Node*> units = corpus_units(arena, "modernlib");
+    CB_CHECK(!c17::program(*lib, arena, units).empty());
+});
 
 // A module of the Python front end: header, source, and where each function's body is.
 CB_TEST("translate.cpp17.write_unit", [] {

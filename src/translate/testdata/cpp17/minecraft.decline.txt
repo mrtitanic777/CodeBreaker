@@ -1,1 +1,1 @@
-library class java.util.Random
+library class NoiseGeneratorOctaves

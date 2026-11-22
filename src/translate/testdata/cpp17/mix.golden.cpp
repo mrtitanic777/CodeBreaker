@@ -201,7 +201,7 @@ void Mix::thrower(int32_t x) {
 void Mix::main(ref<Array<ref<String>>> args) {
 	clinit_();
 	auto m = std::make_shared<Mix>();
-	auto in = [&] { auto o_ = std::make_shared<Mix_Inner>(); o_->outer_ = m; o_->ctor_(3); return o_; }();
+	auto in = [&] { auto o_ = std::make_shared<Mix_Inner>(); o_->outer_ = jrt::nonnull(m); o_->ctor_(3); return o_; }();
 	int32_t j2xo1{};
 	int32_t j2xo2{};
 	int32_t j2xo3{};

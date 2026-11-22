@@ -125,7 +125,7 @@ Judgement compare(const Run& original, const Run& translation, std::span<const s
 std::string first_errors(std::string_view log) {
     std::vector<std::string_view> errors;
     for (const std::string_view line : text::lines(log)) {
-        if (contains(line, ": error ")) errors.push_back(line);
+        if (contains(line, ": error ") || contains(line, ": error:")) errors.push_back(line);
         if (errors.size() == kErrorLines) break;
     }
     return errors.empty() ? std::string(tail(log, kErrorLogTail)) : text::join(errors, "\n");

@@ -71,6 +71,8 @@ const std::vector<std::pair<std::string, Sam>>& sams() {
         TypeP T = T_(), I = P("i32"), B = P("bool"), V = P("void"), L = P("i64"), D = P("f64");
         return std::vector<std::pair<std::string, Sam>>{
             {"java.lang.Runnable", {"run", {}, V}},
+            {"java.lang.AutoCloseable", {"close", {}, V}},
+            {"java.io.Closeable", {"close", {}, V}},
             {"java.util.function.Function", {"apply", {T}, T}},
             {"java.util.function.BiFunction", {"apply", {T, T}, T}},
             {"java.util.function.UnaryOperator", {"apply", {T}, T}},
@@ -168,6 +170,31 @@ Model::Model(const std::vector<NodeP>& units) {
     snapshot = order_;
     for (auto* ci : snapshot)
         if (ci->local || ci->anon) capture(ci);
+    // a class that makes a local class must hand it what it captured, so it captures that too (unless it declares the name itself)
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (auto* ci : snapshot) {
+            if (!(ci->local || ci->anon)) continue;
+            std::set<std::string> declared;
+            auto all = walk(ci->decl);
+            for (auto& n : all)
+                if ((is(n, "Local") || is(n, "Param")) && sym(n)) declared.insert(sname(sym(n)));
+            for (auto& n : all) {
+                if (!is(n, "New")) continue;
+                ClassInfo* target = node(n, "body") ? by_decl(node(n, "body").get()) : (type(n) && type(n)->kind == "class" ? info(tname(type(n))) : nullptr);
+                if (!target || target == ci || !(target->local || target->anon)) continue;
+                const auto wanted = target->captures;
+                for (auto& w : wanted) {
+                    if (declared.count(w.first)) continue;
+                    bool have = false;
+                    for (auto& u : ci->captures) have = have || u.first == w.first;
+                    if (have) continue;
+                    ci->captures.push_back(w);
+                    changed = true;
+                }
+            }
+        }
+    }
 }
 
 std::string Model::cname_of(const std::string& qname, const std::string& package) const {
@@ -283,16 +310,18 @@ void Model::supers_of(ClassInfo* ci) {
 }
 
 void Model::capture(ClassInfo* ci) {
-    std::set<std::string> declared;
-    auto all = walk(ci->decl);
-    for (auto& n : all)
-        if ((is(n, "Local") || is(n, "Param")) && sym(n)) declared.insert(sname(sym(n)));
     std::vector<std::pair<std::string, TypeP>> used;
-    for (auto& n : all) {
-        if (is(n, "Name") && sym(n) && !declared.count(sname(sym(n)))) {
-            bool have = false;
-            for (auto& u : used) have = have || u.first == sname(sym(n));
-            if (!have) used.push_back({sname(sym(n)), type(n)});
+    for (auto& member : nodes(ci->decl, "members")) {   // one method's own `x` does not hide the captured `x` another method reads
+        std::set<std::string> declared;
+        auto all = walk(member);
+        for (auto& n : all)
+            if ((is(n, "Local") || is(n, "Param")) && sym(n)) declared.insert(sname(sym(n)));
+        for (auto& n : all) {
+            if (is(n, "Name") && sym(n) && !declared.count(sname(sym(n)))) {
+                bool have = false;
+                for (auto& u : used) have = have || u.first == sname(sym(n));
+                if (!have) used.push_back({sname(sym(n)), type(n)});
+            }
         }
     }
     ci->captures = used;

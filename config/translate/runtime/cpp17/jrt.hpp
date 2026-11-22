@@ -15,6 +15,7 @@
 #define JRT_HPP
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <csetjmp>
 #include <cstdint>
@@ -344,6 +345,7 @@ struct String : Object {
 	static ref<String> valueOf(const ref<Object>& o) { return o ? o->toString() : lit(u"null"); }
 	static ref<String> valueOf(const ref<Array<char16_t>>& a);
 	template <class... A> static ref<String> format(const ref<String>& f, A... a);
+	template <class... A> ref<String> formatted(A... a);
 	static ref<String> join(const ref<Object>& sep, const ref<Object>& parts);
 };
 
@@ -798,6 +800,23 @@ template <class T> ref<Array<ref<Array<T>>>> new_array2(int32_t n, int32_t m) {
 	for (int32_t i = 0; i < n; ++i) (*r)[i] = new_array<T>(m);
 	return r;
 }
+// new T[a][b][c]...: every size checked first, then each level made; a level with no size stays null.
+template <class T> struct array_ref_of : std::false_type {};
+template <class T> struct array_ref_of<ref<Array<T>>> : std::true_type { using item = T; };
+template <class T> ref<Array<T>> new_array_levels(const std::vector<int32_t>& sizes, size_t at) {
+	auto r = new_array<T>(sizes[at]);
+	if constexpr (array_ref_of<T>::value) {
+		if (at + 1 < sizes.size())
+			for (int32_t i = 0; i < sizes[at]; ++i) (*r)[i] = new_array_levels<typename array_ref_of<T>::item>(sizes, at + 1);
+	}
+	return r;
+}
+template <class T> ref<Array<T>> new_array_n(std::initializer_list<int32_t> given) {
+	std::vector<int32_t> sizes(given);
+	for (int32_t n : sizes) if (n < 0) raise_msg(std::make_shared<NegativeArraySizeException>(), sv(n));
+	return new_array_levels<T>(sizes, 0);
+}
+
 inline ref<Array<char16_t>> String::toCharArray() { auto r = new_array<char16_t>((int32_t)s.size()); std::copy(s.begin(), s.end(), r->a.begin()); return r; }
 inline ref<String> String::valueOf(const ref<Array<char16_t>>& a) { return str(std::u16string(nn(a)->a.begin(), a->a.end())); }
 inline void String::ctor_(const ref<Array<char16_t>>& a) { s.assign(nn(a)->a.begin(), a->a.end()); }
@@ -886,6 +905,7 @@ inline void System::arraycopy(const ref<Object>& src, int32_t sp, const ref<Obje
 	};
 using O = ref<Object>;
 JRT_SAM(Runnable, u"java.lang.Runnable", void, run, (), ())
+JRT_SAM(AutoCloseable, u"java.lang.AutoCloseable", void, close, (), ())
 JRT_SAM(Function, u"java.util.function.Function", O, apply, (O a), (a))
 JRT_SAM(BiFunction, u"java.util.function.BiFunction", O, apply, (O a, O b), (a, b))
 JRT_SAM(UnaryOperator, u"java.util.function.UnaryOperator", O, apply, (O a), (a))
@@ -1193,6 +1213,7 @@ struct Map : virtual Object {
 	virtual void insert_new(O k, O v) { put(k, v); }
 	O merge(O k, O v, ref<BiFunction> f) { O o = get(k); O n = o ? f->apply(o, v) : v; if (n) { if (o || containsKey(k)) put(k, n); else insert_new(k, n); } else remove(k); return n; }
 	O computeIfAbsent(O k, ref<Function> f) { O o = get(k); if (!o) { o = f->apply(k); if (o) { if (containsKey(k)) put(k, o); else insert_new(k, o); } } return o; }
+	O computeIfPresent(O k, ref<BiFunction> f) { O o = get(k); if (!o) return nullptr; O n = f->apply(k, o); if (n) put(k, n); else remove(k); return n; }
 	O compute(O k, ref<BiFunction> f) { bool had = containsKey(k); O n = f->apply(k, get(k)); if (n) { if (had) put(k, n); else insert_new(k, n); } else remove(k); return n; }
 	void forEach(ref<BiConsumer> f) { for (auto& e : entries()) f->accept(e->key, e->value); }
 	void putAll(ref<Map> m) { for (auto& e : nn(m)->entries()) put(e->key, e->value); }
@@ -1218,6 +1239,9 @@ struct HashMap : Map {
 	std::vector<ref<MapEntry>> table;
 	int32_t count = 0;
 	bool linked = false;                                          // LinkedHashMap: insertion order
+	int32_t threshold = 0;                                        // as Java's: the capacity asked for until there is a table
+	float load = 0.75f;
+	bool tree_bin = false;                                        // a bin Java would have made a tree: its order is not reproducible
 	std::vector<ref<MapEntry>> order;
 #ifdef JRT_CYCLES
 	gc::Tracked gc_tracked_{this};
@@ -1226,8 +1250,19 @@ struct HashMap : Map {
 #endif
 	const char16_t* jclass_() const override { return u"java.util.HashMap"; }
 	void ctor_() {}
-	void ctor_(int32_t n) { int32_t c = 1; while (c < n) c <<= 1; if (n > 0) table.resize(c); }
-	void ctor_(ref<Map> m) { putAll(m); }
+	static int32_t capacity_for(int32_t n) { int32_t c = 1; while (c < n) c <<= 1; return c; }
+	void ctor_(int32_t n) { ctor_(n, 0.75f); }
+	void ctor_(int32_t n, float f) {
+		if (n < 0) raise_new<IllegalArgumentException>(u"Illegal initial capacity");
+		if (!(f > 0)) raise_new<IllegalArgumentException>(u"Illegal load factor");
+		load = f;
+		threshold = capacity_for(n);
+	}
+	void ctor_(ref<Map> m) {                                      // Java sizes the table for what is coming
+		int32_t s = nn(m)->size();
+		if (s > 0) { double wanted = std::ceil(s / (double)load); if ((int32_t)wanted > threshold) threshold = capacity_for((int32_t)wanted); }
+		putAll(m);
+	}
 	ref<MapEntry> find(const O& k) {
 		if (table.empty()) return nullptr;
 		int32_t h = hash_key(k);
@@ -1235,7 +1270,12 @@ struct HashMap : Map {
 		return nullptr;
 	}
 	void resize() {
-		size_t n = table.empty() ? 16 : table.size() * 2;
+		size_t n;
+		int32_t next = 0;
+		if (!table.empty()) { n = table.size() * 2; if (table.size() >= 16) next = threshold << 1; }
+		else if (threshold > 0) n = (size_t)threshold;
+		else { n = 16; next = 12; }
+		threshold = next != 0 ? next : (int32_t)((float)n * load);
 		std::vector<ref<MapEntry>> t(n);
 		for (auto& head : table) {                                // split each bin keeping its order, as Java does
 			ref<MapEntry> lo, loT, hi, hiT;
@@ -1263,9 +1303,15 @@ struct HashMap : Map {
 		n->key = k; n->value = v; n->hash = hash_key(k);
 		size_t i = n->hash & (table.size() - 1);
 		if (!table[i]) table[i] = n;
-		else { auto t = table[i]; while (t->next) t = t->next; t->next = n; }
+		else {
+			auto t = table[i];
+			int bin = 0;
+			while (t->next) { t = t->next; ++bin; }
+			t->next = n;
+			if (bin >= 7) grown_bin();
+		}
 		if (linked) order.push_back(n);
-		if (++count > (int32_t)(table.size() * 3 / 4)) resize();
+		if (++count > threshold) resize();
 		return nullptr;
 	}
 	O remove(O k) override {
@@ -1285,18 +1331,26 @@ struct HashMap : Map {
 	}
 	// HashMap.merge / compute / computeIfAbsent: resize first when already past the threshold, then the new
 	// node goes at the head of its bin (put appends at the tail) -- so iteration order is Java's
+	void grown_bin() {                                            // past eight in a bin: a small table grows, a large one makes a tree
+		if (table.size() < 64) resize();
+		else if (!linked) tree_bin = true;
+	}
 	void insert_new(O k, O v) override {
-		if (table.empty() || count > (int32_t)(table.size() * 3 / 4)) resize();
+		if (table.empty() || count > threshold) resize();
 		auto n = std::make_shared<MapEntry>();
 		n->key = k; n->value = v; n->hash = hash_key(k);
 		size_t i = n->hash & (table.size() - 1);
+		int bin = 0;
+		for (auto e = table[i]; e; e = e->next) ++bin;
 		n->next = table[i];
 		table[i] = n;
+		if (bin >= 8) grown_bin();
 		if (linked) order.push_back(n);
 		++count;
 	}
-	void clear() override { for (auto& t : table) t = nullptr; count = 0; order.clear(); }
+	void clear() override { for (auto& t : table) t = nullptr; count = 0; order.clear(); tree_bin = false; }
 	std::vector<ref<MapEntry>> entries() override {
+		if (tree_bin) raise_new<UnsupportedOperationException>(u"this HashMap has a bin Java keeps as a tree: its order cannot be reproduced");
 		if (linked) return order;
 		std::vector<ref<MapEntry>> r;
 		for (auto& head : table) for (auto e = head; e; e = e->next) r.push_back(e);
@@ -1376,11 +1430,14 @@ struct MapSet : Set {
 struct HashSet : MapSet {
 	void ctor_() { m = std::make_shared<HashMap>(); }
 	void ctor_(int32_t n) { auto h = std::make_shared<HashMap>(); h->ctor_(n); m = h; }
-	void ctor_(ref<Collection> c) { ctor_(); for (O x : *nn(c)) add(x); }
+	void ctor_(int32_t n, float f) { auto h = std::make_shared<HashMap>(); h->ctor_(n, f); m = h; }
+	void ctor_(ref<Collection> c) { ctor_(std::max((int32_t)(nn(c)->size() / .75f) + 1, 16)); for (O x : *c) add(x); }
 };
 struct LinkedHashSet : MapSet {
 	const char16_t* jclass_() const override { return u"java.util.LinkedHashSet"; }
 	void ctor_() { m = std::make_shared<LinkedHashMap>(); }
+	void ctor_(int32_t) { ctor_(); }
+	void ctor_(int32_t, float) { ctor_(); }
 	void ctor_(ref<Collection> c) { ctor_(); for (O x : *nn(c)) add(x); }
 };
 struct TreeSet : MapSet {
@@ -1391,7 +1448,15 @@ struct TreeSet : MapSet {
 	O first() { return std::static_pointer_cast<TreeMap>(m)->firstKey(); }
 	O last() { return std::static_pointer_cast<TreeMap>(m)->lastKey(); }
 };
-template <class... A> ref<Set> Set::of(A... a) { auto s = make<LinkedHashSet>(); for (O x : {O(a)...}) s->add(x); return s; }
+template <class... A> ref<Set> Set::of(A... a) {
+	auto s = make<LinkedHashSet>();
+	std::vector<O> items{O(a)...};
+	for (O& x : items) {
+		if (!x) raise_npe();
+		if (!s->add(x)) raise_new<IllegalArgumentException>(u"duplicate element");
+	}
+	return s;
+}
 inline ref<Set> Map::keySet() { auto s = std::make_shared<MapSet>(); s->m = std::dynamic_pointer_cast<Map>(shared_from_this()); s->kind = 0; return s; }
 inline ref<Collection> Map::values() { auto s = std::make_shared<MapSet>(); s->m = std::dynamic_pointer_cast<Map>(shared_from_this()); s->kind = 1; return s; }
 inline ref<Set> Map::entrySet() { auto s = std::make_shared<MapSet>(); s->m = std::dynamic_pointer_cast<Map>(shared_from_this()); s->kind = 2; return s; }
@@ -1480,83 +1545,89 @@ struct Collector;
 struct IntStream;
 struct Stream : Object {
 	Pull<O> pull;
+	bool used_ = false;                                           // a stream runs once: Java throws on a second use
+	void link_() { if (used_) raise_new<IllegalStateException>(u"stream has already been operated upon or closed"); used_ = true; }
+	Pull<O> take_() { link_(); return pull; }
 	const char16_t* jclass_() const override { return u"java.util.stream.ReferencePipeline"; }
 	static ref<Stream> from(Pull<O> p) { auto s = std::make_shared<Stream>(); s->pull = std::move(p); return s; }
 	template <class... A> static ref<Stream> of(A... a) { auto v = std::make_shared<std::vector<O>>(std::initializer_list<O>{O(a)...}); auto i = std::make_shared<size_t>(0); return from([v, i](O& out) { if (*i >= v->size()) return false; out = (*v)[(*i)++]; return true; }); }
 	static ref<Stream> iterate(O seed, ref<UnaryOperator> f) { auto cur = std::make_shared<O>(seed); auto first = std::make_shared<bool>(true); return from([cur, first, f](O& out) { if (!*first) *cur = f->apply(*cur); *first = false; out = *cur; return true; }); }
 	static ref<Stream> generate(ref<Supplier> f) { return from([f](O& out) { out = f->get(); return true; }); }
-	ref<Stream> filter(ref<Predicate> p) { auto up = pull; return from([up, p](O& out) { while (up(out)) if (p->test(out)) return true; return false; }); }
-	ref<Stream> map(ref<Function> f) { auto up = pull; return from([up, f](O& out) { O x; if (!up(x)) return false; out = f->apply(x); return true; }); }
+	ref<Stream> filter(ref<Predicate> p) { auto up = take_(); return from([up, p](O& out) { while (up(out)) if (p->test(out)) return true; return false; }); }
+	ref<Stream> map(ref<Function> f) { auto up = take_(); return from([up, f](O& out) { O x; if (!up(x)) return false; out = f->apply(x); return true; }); }
 	ref<IntStream> mapToInt(ref<ToIntFunction> f);
-	ref<Stream> peek(ref<Consumer> c) { auto up = pull; return from([up, c](O& out) { if (!up(out)) return false; c->accept(out); return true; }); }
-	ref<Stream> limit(int64_t n) { auto up = pull; auto k = std::make_shared<int64_t>(0); return from([up, n, k](O& out) { if (*k >= n) return false; ++*k; return up(out); }); }
-	ref<Stream> skip(int64_t n) { auto up = pull; auto k = std::make_shared<int64_t>(0); return from([up, n, k](O& out) { while (*k < n) { O x; if (!up(x)) return false; ++*k; } return up(out); }); }
+	ref<Stream> peek(ref<Consumer> c) { auto up = take_(); return from([up, c](O& out) { if (!up(out)) return false; c->accept(out); return true; }); }
+	ref<Stream> limit(int64_t n) { auto up = take_(); auto k = std::make_shared<int64_t>(0); return from([up, n, k](O& out) { if (*k >= n) return false; ++*k; return up(out); }); }
+	ref<Stream> skip(int64_t n) { auto up = take_(); auto k = std::make_shared<int64_t>(0); return from([up, n, k](O& out) { while (*k < n) { O x; if (!up(x)) return false; ++*k; } return up(out); }); }
 	ref<Stream> flatMap(ref<Function> f) {
-		auto up = pull; auto inner = std::make_shared<ref<Stream>>();
+		auto up = take_(); auto inner = std::make_shared<ref<Stream>>();
 		return from([up, f, inner](O& out) { for (;;) { if (*inner && (*inner)->pull(out)) return true; O x; if (!up(x)) return false; *inner = cast<Stream>(f->apply(x)); } });
 	}
 	std::vector<O> drain() { std::vector<O> v; O x; while (pull(x)) v.push_back(x); return v; }
-	ref<Stream> sorted() { auto up = pull; auto v = std::make_shared<std::vector<O>>(); auto i = std::make_shared<size_t>(0); auto done = std::make_shared<bool>(false);
+	ref<Stream> sorted() { auto up = take_(); auto v = std::make_shared<std::vector<O>>(); auto i = std::make_shared<size_t>(0); auto done = std::make_shared<bool>(false);
 		return from([up, v, i, done](O& out) { if (!*done) { O x; while (up(x)) v->push_back(x); std::stable_sort(v->begin(), v->end(), [](const O& a, const O& b) { return natural(a, b) < 0; }); *done = true; } if (*i >= v->size()) return false; out = (*v)[(*i)++]; return true; }); }
-	ref<Stream> sorted(ref<Comparator> c) { auto up = pull; auto v = std::make_shared<std::vector<O>>(); auto i = std::make_shared<size_t>(0); auto done = std::make_shared<bool>(false);
+	ref<Stream> sorted(ref<Comparator> c) { auto up = take_(); auto v = std::make_shared<std::vector<O>>(); auto i = std::make_shared<size_t>(0); auto done = std::make_shared<bool>(false);
 		return from([up, c, v, i, done](O& out) { if (!*done) { O x; while (up(x)) v->push_back(x); std::stable_sort(v->begin(), v->end(), [&](const O& a, const O& b) { return c->compare(a, b) < 0; }); *done = true; } if (*i >= v->size()) return false; out = (*v)[(*i)++]; return true; }); }
-	ref<Stream> distinct() { auto up = pull; auto seen = std::make_shared<HashSet>(); seen->ctor_(); return from([up, seen](O& out) { while (up(out)) if (seen->add(out)) return true; return false; }); }
-	void forEach(ref<Consumer> c) { O x; while (pull(x)) c->accept(x); }
-	int64_t count() { int64_t n = 0; O x; while (pull(x)) ++n; return n; }
-	ref<List> toList() { auto l = std::make_shared<ImmutableList>(); l->v = drain(); return l; }
+	ref<Stream> distinct() { auto up = take_(); auto seen = std::make_shared<HashSet>(); seen->ctor_(); return from([up, seen](O& out) { while (up(out)) if (seen->add(out)) return true; return false; }); }
+	void forEach(ref<Consumer> c) { link_(); O x; while (pull(x)) c->accept(x); }
+	int64_t count() { link_(); int64_t n = 0; O x; while (pull(x)) ++n; return n; }
+	ref<List> toList() { link_(); auto l = std::make_shared<ImmutableList>(); l->v = drain(); return l; }
 	O collect(ref<Collector> c);
-	O reduce(O id, ref<BinaryOperator> f) { O acc = id, x; while (pull(x)) acc = f->apply(acc, x); return acc; }
-	ref<Optional> reduce(ref<BinaryOperator> f) { O acc, x; bool any = false; while (pull(x)) { acc = any ? f->apply(acc, x) : x; any = true; } return any ? Optional::of(acc) : Optional::empty(); }
-	bool anyMatch(ref<Predicate> p) { O x; while (pull(x)) if (p->test(x)) return true; return false; }
-	bool allMatch(ref<Predicate> p) { O x; while (pull(x)) if (!p->test(x)) return false; return true; }
+	O reduce(O id, ref<BinaryOperator> f) { link_(); O acc = id, x; while (pull(x)) acc = f->apply(acc, x); return acc; }
+	ref<Optional> reduce(ref<BinaryOperator> f) { link_(); O acc, x; bool any = false; while (pull(x)) { acc = any ? f->apply(acc, x) : x; any = true; } return any ? Optional::of(acc) : Optional::empty(); }
+	bool anyMatch(ref<Predicate> p) { link_(); O x; while (pull(x)) if (p->test(x)) return true; return false; }
+	bool allMatch(ref<Predicate> p) { link_(); O x; while (pull(x)) if (!p->test(x)) return false; return true; }
 	bool noneMatch(ref<Predicate> p) { return !anyMatch(p); }
-	ref<Optional> findFirst() { O x; if (pull(x)) return Optional::of(x); return Optional::empty(); }
+	ref<Optional> findFirst() { link_(); O x; if (pull(x)) return Optional::of(x); return Optional::empty(); }
 	ref<Optional> findAny() { return findFirst(); }
-	ref<Optional> max(ref<Comparator> c) { O best, x; bool any = false; while (pull(x)) { if (!any || c->compare(x, best) > 0) best = x; any = true; } return any ? Optional::of(best) : Optional::empty(); }
-	ref<Optional> min(ref<Comparator> c) { O best, x; bool any = false; while (pull(x)) { if (!any || c->compare(x, best) < 0) best = x; any = true; } return any ? Optional::of(best) : Optional::empty(); }
+	ref<Optional> max(ref<Comparator> c) { link_(); O best, x; bool any = false; while (pull(x)) { if (!any || c->compare(x, best) > 0) best = x; any = true; } return any ? Optional::of(best) : Optional::empty(); }
+	ref<Optional> min(ref<Comparator> c) { link_(); O best, x; bool any = false; while (pull(x)) { if (!any || c->compare(x, best) < 0) best = x; any = true; } return any ? Optional::of(best) : Optional::empty(); }
 };
 inline ref<Stream> Collection::stream() { auto it = iterator(); return Stream::from([it](O& out) { if (!it->hasNext()) return false; out = it->next(); return true; }); }
 template <class T> ref<Stream> Arrays::stream(const ref<Array<T>>& a) { auto i = std::make_shared<int32_t>(0); auto arr = nn(a); return Stream::from([arr, i](O& out) { if (*i >= arr->length) return false; out = arr->a[(*i)++]; return true; }); }
 
 struct IntStream : Object {
 	Pull<int32_t> pull;
+	bool used_ = false;
+	void link_() { if (used_) raise_new<IllegalStateException>(u"stream has already been operated upon or closed"); used_ = true; }
+	Pull<int32_t> take_() { link_(); return pull; }
 	const char16_t* jclass_() const override { return u"java.util.stream.IntPipeline"; }
 	static ref<IntStream> from(Pull<int32_t> p) { auto s = std::make_shared<IntStream>(); s->pull = std::move(p); return s; }
 	static ref<IntStream> range(int32_t a, int32_t b) { auto i = std::make_shared<int64_t>(a); return from([i, b](int32_t& out) { if (*i >= b) return false; out = (int32_t)(*i)++; return true; }); }
 	static ref<IntStream> rangeClosed(int32_t a, int32_t b) { auto i = std::make_shared<int64_t>(a); return from([i, b](int32_t& out) { if (*i > b) return false; out = (int32_t)(*i)++; return true; }); }
 	template <class... A> static ref<IntStream> of(A... a) { auto v = std::make_shared<std::vector<int32_t>>(std::initializer_list<int32_t>{(int32_t)a...}); auto i = std::make_shared<size_t>(0); return from([v, i](int32_t& out) { if (*i >= v->size()) return false; out = (*v)[(*i)++]; return true; }); }
 	static ref<IntStream> iterate(int32_t seed, ref<IntUnaryOperator> f) { auto cur = std::make_shared<int32_t>(seed); auto first = std::make_shared<bool>(true); return from([cur, first, f](int32_t& out) { if (!*first) *cur = f->applyAsInt(*cur); *first = false; out = *cur; return true; }); }
-	ref<IntStream> filter(ref<IntPredicate> p) { auto up = pull; return from([up, p](int32_t& out) { while (up(out)) if (p->test(out)) return true; return false; }); }
-	ref<IntStream> map(ref<IntUnaryOperator> f) { auto up = pull; return from([up, f](int32_t& out) { int32_t x; if (!up(x)) return false; out = f->applyAsInt(x); return true; }); }
-	ref<Stream> mapToObj(ref<IntFunction> f) { auto up = pull; return Stream::from([up, f](O& out) { int32_t x; if (!up(x)) return false; out = f->apply(x); return true; }); }
-	ref<Stream> boxed() { auto up = pull; return Stream::from([up](O& out) { int32_t x; if (!up(x)) return false; out = box(x); return true; }); }
-	ref<IntStream> limit(int64_t n) { auto up = pull; auto k = std::make_shared<int64_t>(0); return from([up, n, k](int32_t& out) { if (*k >= n) return false; ++*k; return up(out); }); }
-	ref<IntStream> skip(int64_t n) { auto up = pull; auto k = std::make_shared<int64_t>(0); return from([up, n, k](int32_t& out) { while (*k < n) { int32_t x; if (!up(x)) return false; ++*k; } return up(out); }); }
-	ref<IntStream> peek(ref<IntConsumer> c) { auto up = pull; return from([up, c](int32_t& out) { if (!up(out)) return false; c->accept(out); return true; }); }
-	ref<IntStream> sorted() { auto up = pull; auto v = std::make_shared<std::vector<int32_t>>(); auto i = std::make_shared<size_t>(0); auto done = std::make_shared<bool>(false);
+	ref<IntStream> filter(ref<IntPredicate> p) { auto up = take_(); return from([up, p](int32_t& out) { while (up(out)) if (p->test(out)) return true; return false; }); }
+	ref<IntStream> map(ref<IntUnaryOperator> f) { auto up = take_(); return from([up, f](int32_t& out) { int32_t x; if (!up(x)) return false; out = f->applyAsInt(x); return true; }); }
+	ref<Stream> mapToObj(ref<IntFunction> f) { auto up = take_(); return Stream::from([up, f](O& out) { int32_t x; if (!up(x)) return false; out = f->apply(x); return true; }); }
+	ref<Stream> boxed() { auto up = take_(); return Stream::from([up](O& out) { int32_t x; if (!up(x)) return false; out = box(x); return true; }); }
+	ref<IntStream> limit(int64_t n) { auto up = take_(); auto k = std::make_shared<int64_t>(0); return from([up, n, k](int32_t& out) { if (*k >= n) return false; ++*k; return up(out); }); }
+	ref<IntStream> skip(int64_t n) { auto up = take_(); auto k = std::make_shared<int64_t>(0); return from([up, n, k](int32_t& out) { while (*k < n) { int32_t x; if (!up(x)) return false; ++*k; } return up(out); }); }
+	ref<IntStream> peek(ref<IntConsumer> c) { auto up = take_(); return from([up, c](int32_t& out) { if (!up(out)) return false; c->accept(out); return true; }); }
+	ref<IntStream> sorted() { auto up = take_(); auto v = std::make_shared<std::vector<int32_t>>(); auto i = std::make_shared<size_t>(0); auto done = std::make_shared<bool>(false);
 		return from([up, v, i, done](int32_t& out) { if (!*done) { int32_t x; while (up(x)) v->push_back(x); std::sort(v->begin(), v->end()); *done = true; } if (*i >= v->size()) return false; out = (*v)[(*i)++]; return true; }); }
-	ref<IntStream> distinct() { auto up = pull; auto seen = std::make_shared<std::vector<int32_t>>(); return from([up, seen](int32_t& out) { while (up(out)) if (std::find(seen->begin(), seen->end(), out) == seen->end()) { seen->push_back(out); return true; } return false; }); }
-	int32_t sum() { int32_t s = 0, x; while (pull(x)) s += x; return s; }
-	int64_t count() { int64_t n = 0; int32_t x; while (pull(x)) ++n; return n; }
-	ref<OptionalInt> max() { auto r = std::make_shared<OptionalInt>(); int32_t x; while (pull(x)) if (!r->v || x > *r->v) r->v = x; return r; }
-	ref<OptionalInt> min() { auto r = std::make_shared<OptionalInt>(); int32_t x; while (pull(x)) if (!r->v || x < *r->v) r->v = x; return r; }
-	ref<OptionalDouble> average() { auto r = std::make_shared<OptionalDouble>(); int64_t s = 0, n = 0; int32_t x; while (pull(x)) { s += x; ++n; } if (n) r->v = (double)s / (double)n; return r; }
-	ref<OptionalInt> findFirst() { auto r = std::make_shared<OptionalInt>(); int32_t x; if (pull(x)) r->v = x; return r; }
-	int32_t reduce(int32_t id, ref<IntBinaryOperator> f) { int32_t acc = id, x; while (pull(x)) acc = f->applyAsInt(acc, x); return acc; }
-	bool anyMatch(ref<IntPredicate> p) { int32_t x; while (pull(x)) if (p->test(x)) return true; return false; }
-	bool allMatch(ref<IntPredicate> p) { int32_t x; while (pull(x)) if (!p->test(x)) return false; return true; }
+	ref<IntStream> distinct() { auto up = take_(); auto seen = std::make_shared<std::vector<int32_t>>(); return from([up, seen](int32_t& out) { while (up(out)) if (std::find(seen->begin(), seen->end(), out) == seen->end()) { seen->push_back(out); return true; } return false; }); }
+	int32_t sum() { link_(); int32_t s = 0, x; while (pull(x)) s += x; return s; }
+	int64_t count() { link_(); int64_t n = 0; int32_t x; while (pull(x)) ++n; return n; }
+	ref<OptionalInt> max() { link_(); auto r = std::make_shared<OptionalInt>(); int32_t x; while (pull(x)) if (!r->v || x > *r->v) r->v = x; return r; }
+	ref<OptionalInt> min() { link_(); auto r = std::make_shared<OptionalInt>(); int32_t x; while (pull(x)) if (!r->v || x < *r->v) r->v = x; return r; }
+	ref<OptionalDouble> average() { link_(); auto r = std::make_shared<OptionalDouble>(); int64_t s = 0, n = 0; int32_t x; while (pull(x)) { s += x; ++n; } if (n) r->v = (double)s / (double)n; return r; }
+	ref<OptionalInt> findFirst() { link_(); auto r = std::make_shared<OptionalInt>(); int32_t x; if (pull(x)) r->v = x; return r; }
+	int32_t reduce(int32_t id, ref<IntBinaryOperator> f) { link_(); int32_t acc = id, x; while (pull(x)) acc = f->applyAsInt(acc, x); return acc; }
+	bool anyMatch(ref<IntPredicate> p) { link_(); int32_t x; while (pull(x)) if (p->test(x)) return true; return false; }
+	bool allMatch(ref<IntPredicate> p) { link_(); int32_t x; while (pull(x)) if (!p->test(x)) return false; return true; }
 	bool noneMatch(ref<IntPredicate> p) { return !anyMatch(p); }
-	void forEach(ref<IntConsumer> c) { int32_t x; while (pull(x)) c->accept(x); }
-	ref<Array<int32_t>> toArray() { std::vector<int32_t> v; int32_t x; while (pull(x)) v.push_back(x); auto r = new_array<int32_t>((int32_t)v.size()); r->a = v; return r; }
+	void forEach(ref<IntConsumer> c) { link_(); int32_t x; while (pull(x)) c->accept(x); }
+	ref<Array<int32_t>> toArray() { link_(); std::vector<int32_t> v; int32_t x; while (pull(x)) v.push_back(x); auto r = new_array<int32_t>((int32_t)v.size()); r->a = v; return r; }
 };
-inline ref<IntStream> Stream::mapToInt(ref<ToIntFunction> f) { auto up = pull; return IntStream::from([up, f](int32_t& out) { O x; if (!up(x)) return false; out = f->applyAsInt(x); return true; }); }
+inline ref<IntStream> Stream::mapToInt(ref<ToIntFunction> f) { auto up = take_(); return IntStream::from([up, f](int32_t& out) { O x; if (!up(x)) return false; out = f->applyAsInt(x); return true; }); }
 inline ref<IntStream> Arrays::stream(const ref<Array<int32_t>>& a) { auto i = std::make_shared<int32_t>(0); auto arr = nn(a); return IntStream::from([arr, i](int32_t& out) { if (*i >= arr->length) return false; out = arr->a[(*i)++]; return true; }); }
 inline ref<IntStream> String::chars() { auto me = std::static_pointer_cast<String>(shared_from_this()); auto i = std::make_shared<size_t>(0); return IntStream::from([me, i](int32_t& out) { if (*i >= me->s.size()) return false; out = me->s[(*i)++]; return true; }); }
 
 struct Collector : Object {
 	std::function<O(Stream&)> run;
 };
-inline O Stream::collect(ref<Collector> c) { return c->run(*this); }
+inline O Stream::collect(ref<Collector> c) { link_(); return c->run(*this); }
 struct Collectors {
 	static ref<Collector> mk(std::function<O(Stream&)> f) { auto c = std::make_shared<Collector>(); c->run = std::move(f); return c; }
 	static ref<Collector> toList() { return mk([](Stream& s) -> O { auto l = std::make_shared<ArrayList>(); l->v = s.drain(); return l; }); }
@@ -1616,7 +1687,6 @@ inline std::string fixed_half_up(double d, int prec) {
 			if (i >= 0) kept[i]++; else { kept = "1" + kept; ++point; }
 		}
 	}
-	if (keep == 0 && !dg.empty() && dg[0] >= '5') { kept = "1"; ++point; }
 	std::string ip, fp;
 	if (point <= 0) { ip = "0"; fp = std::string(-point, '0') + kept; }
 	else { ip = kept.substr(0, std::min<size_t>(kept.size(), point)); while ((int)ip.size() < point) ip += '0'; fp = (int)kept.size() > point ? kept.substr(point) : ""; }
@@ -1625,24 +1695,53 @@ inline std::string fixed_half_up(double d, int prec) {
 	size_t nz = ip.find_first_not_of('0');
 	ip = nz == std::string::npos ? "0" : ip.substr(nz);
 	std::string out = ip + (prec > 0 ? "." + fp : "");
-	bool zero = out.find_first_not_of("0.") == std::string::npos;
-	return (neg && !zero ? "-" : "") + out;
+	return (neg ? "-" : "") + out;
+}
+// %e as Java writes it: the shortest decimal of the double, rounded half up, at least two exponent digits.
+inline std::string exp_half_up(double d, int prec) {
+	if (d != d) return "NaN";
+	if (std::isinf(d)) return d > 0 ? "Infinity" : "-Infinity";
+	const std::string sign = std::signbit(d) ? "-" : "";
+	const double a = std::fabs(d);
+	if (a == 0) return sign + "0" + (prec > 0 ? "." + std::string(prec, '0') : "") + "e+00";
+	char buf[64];
+	auto r = std::to_chars(buf, buf + sizeof buf, a, std::chars_format::scientific);
+	std::string s(buf, r.ptr);
+	const size_t e = s.find('e');
+	int exp = std::atoi(s.c_str() + e + 1);
+	std::string digits;
+	for (size_t i = 0; i < e; ++i) if (s[i] != '.') digits += s[i];
+	const size_t keep = (size_t)prec + 1;
+	if (digits.size() > keep) {
+		const bool up = digits[keep] >= '5';
+		digits.resize(keep);
+		if (up) {
+			int i = (int)keep - 1;
+			while (i >= 0 && digits[i] == '9') digits[i--] = '0';
+			if (i >= 0) digits[i]++;
+			else { digits.insert(digits.begin(), '1'); digits.resize(keep); ++exp; }
+		}
+	}
+	digits.resize(keep, '0');
+	const int shown = exp < 0 ? -exp : exp;
+	return sign + digits.substr(0, 1) + (prec > 0 ? "." + digits.substr(1) : "") + "e" + (exp < 0 ? "-" : "+") + (shown < 10 ? "0" : "") + std::to_string(shown);
 }
 struct FmtArg {
-	enum K { I, F, S, C, B } k; int64_t i = 0; double f = 0; std::u16string s; char16_t c = 0; bool b = false; bool isnull = false;
+	enum K { I, F, S, C, B } k; int64_t i = 0; double f = 0; std::u16string s; char16_t c = 0; bool b = false; bool isnull = false; int bits = 32;
 };
 inline FmtArg fa(int32_t v) { FmtArg a; a.k = FmtArg::I; a.i = v; return a; }
-inline FmtArg fa(int64_t v) { FmtArg a; a.k = FmtArg::I; a.i = v; return a; }
-inline FmtArg fa(int16_t v) { return fa((int32_t)v); }
-inline FmtArg fa(int8_t v) { return fa((int32_t)v); }
+inline FmtArg fa(int64_t v) { FmtArg a; a.k = FmtArg::I; a.i = v; a.bits = 64; return a; }
+inline FmtArg fa(int16_t v) { FmtArg a = fa((int32_t)v); a.bits = 16; return a; }
+inline FmtArg fa(int8_t v) { FmtArg a = fa((int32_t)v); a.bits = 8; return a; }
 inline FmtArg fa(double v) { FmtArg a; a.k = FmtArg::F; a.f = v; return a; }
 inline FmtArg fa(float v) { return fa((double)v); }
 inline FmtArg fa(char16_t v) { FmtArg a; a.k = FmtArg::C; a.c = v; return a; }
 inline FmtArg fa(bool v) { FmtArg a; a.k = FmtArg::B; a.b = v; return a; }
+inline FmtArg fa(std::nullptr_t) { FmtArg a; a.k = FmtArg::S; a.s = u"null"; return a; }
 template <class T> FmtArg fa(const ref<T>& o) {
 	FmtArg a; a.k = FmtArg::S; a.isnull = !o; a.s = sv(o);
 	if (auto i = as<Integer>(o)) { a.k = FmtArg::I; a.i = i->value; }
-	else if (auto l = as<Long>(o)) { a.k = FmtArg::I; a.i = l->value; }
+	else if (auto l = as<Long>(o)) { a.k = FmtArg::I; a.i = l->value; a.bits = 64; }
 	else if (auto d = as<Double>(o)) { a.k = FmtArg::F; a.f = d->value; }
 	else if (auto fl = as<Float>(o)) { a.k = FmtArg::F; a.f = fl->value; }
 	else if (auto c = as<Character>(o)) { a.k = FmtArg::C; a.c = c->value; }
@@ -1652,18 +1751,33 @@ template <class T> FmtArg fa(const ref<T>& o) {
 inline std::u16string format_args(const std::u16string& f, const std::vector<FmtArg>& args) {
 	std::u16string out;
 	size_t ai = 0;
+	int last_arg = 0;
 	for (size_t i = 0; i < f.size(); ++i) {
 		if (f[i] != '%') { out += f[i]; continue; }
 		++i;
+		int chosen = -1;                                          // `%2$s` names its argument, `%<s` repeats the last one
+		size_t digits_end = i;
+		while (digits_end < f.size() && f[digits_end] >= '0' && f[digits_end] <= '9') ++digits_end;
+		if (digits_end > i && digits_end < f.size() && f[digits_end] == '$') {
+			chosen = 0;
+			for (size_t k = i; k < digits_end; ++k) chosen = chosen * 10 + (f[k] - '0');
+			--chosen;
+			i = digits_end + 1;
+		} else if (i < f.size() && f[i] == '<') {
+			chosen = last_arg;
+			++i;
+		}
 		std::string flags;
-		while (i < f.size() && std::strchr("-0+, #", (char)f[i]) && f[i] < 128) flags += (char)f[i++];
+		while (i < f.size() && f[i] < 128 && f[i] != 0 && std::strchr("-0+, #(", (char)f[i])) flags += (char)f[i++];
 		int width = 0, prec = -1;
 		while (i < f.size() && f[i] >= '0' && f[i] <= '9') width = width * 10 + (f[i++] - '0');
 		if (i < f.size() && f[i] == '.') { ++i; prec = 0; while (i < f.size() && f[i] >= '0' && f[i] <= '9') prec = prec * 10 + (f[i++] - '0'); }
 		char conv = i < f.size() ? (char)f[i] : 's';
 		if (conv == 'n') { out += u"\n"; continue; }
 		if (conv == '%') { out += u"%"; continue; }
-		FmtArg a = ai < args.size() ? args[ai++] : FmtArg();
+		const size_t arg_at = chosen >= 0 ? (size_t)chosen : ai++;
+		last_arg = (int)arg_at;
+		FmtArg a = arg_at < args.size() ? args[arg_at] : FmtArg();
 		std::string body;
 		bool upper = conv >= 'A' && conv <= 'Z';
 		char lc = upper ? conv + 32 : conv;
@@ -1678,13 +1792,17 @@ inline std::u16string format_args(const std::u16string& f, const std::vector<Fmt
 			return sign + g + rest;
 		};
 		if (lc == 'd') { body = group(std::to_string(a.i)); if (flags.find('+') != std::string::npos && a.i >= 0) body = "+" + body; else if (flags.find(' ') != std::string::npos && a.i >= 0) body = " " + body; }
-		else if (lc == 'x') { body = utf8(to_radix(a.i < 0 && a.k == FmtArg::I && a.i >= IntegerS::MIN_VALUE ? (uint64_t)(uint32_t)a.i : (uint64_t)a.i, 4)); }
-		else if (lc == 'o') { body = utf8(to_radix((uint64_t)(uint32_t)a.i, 3)); }
+		else if (lc == 'x' || lc == 'o') {                         // a negative number as the bits of its own type
+			const uint64_t bits = a.bits >= 64 ? (uint64_t)a.i : (uint64_t)a.i & ((1ULL << a.bits) - 1);
+			body = utf8(to_radix(bits, lc == 'x' ? 4 : 3));
+			if (flags.find('#') != std::string::npos) body = (lc == 'x' ? "0x" : "0") + body;
+		}
 		else if (lc == 'f') { body = group(fixed_half_up(a.f, prec < 0 ? 6 : prec)); if (flags.find('+') != std::string::npos && !std::signbit(a.f)) body = "+" + body; }
-		else if (lc == 'e') { char b[64]; std::snprintf(b, sizeof b, "%.*e", prec < 0 ? 6 : prec, a.f); body = b; }
+		else if (lc == 'e') { body = exp_half_up(a.f, prec < 0 ? 6 : prec); if (flags.find('+') != std::string::npos && !std::signbit(a.f)) body = "+" + body; }
 		else if (lc == 'c') { body = utf8(std::u16string(1, a.c)); }
 		else if (lc == 'b') { body = a.k == FmtArg::B ? (a.b ? "true" : "false") : (a.isnull ? "false" : "true"); }
 		else { std::u16string s = a.k == FmtArg::I ? sv(a.i) : a.k == FmtArg::F ? sv(a.f) : a.k == FmtArg::C ? sv(a.c) : a.k == FmtArg::B ? sv(a.b) : a.s; if (prec >= 0 && (int)s.size() > prec) s = s.substr(0, prec); body = utf8(s); }
+		if (flags.find('(') != std::string::npos && (lc == 'd' || lc == 'f' || lc == 'e') && !body.empty() && body[0] == '-') body = "(" + body.substr(1) + ")";
 		if (upper) for (auto& ch : body) ch = (char)std::toupper((unsigned char)ch);
 		int len = 0;
 		for (unsigned char ch : body) if ((ch & 0xC0) != 0x80) ++len;
@@ -1746,6 +1864,65 @@ struct Enum : virtual Object {
 	int32_t hashCode() override { return Object::hashCode(); }
 };
 inline int32_t natural_enum(const O& a, const O& b) { if (auto e = as<Enum>(a)) return e->compareTo(b); return INT32_MIN; }
+
+template <class... A> ref<String> String::formatted(A... a) { return format(std::static_pointer_cast<String>(shared_from_this()), a...); }
+
+// The reference itself, where Java throws on a null (`outer.new Inner()`).
+template <class T> const ref<T>& nonnull(const ref<T>& r) { if (!r) raise_npe(); return r; }
+
+// A switch on a String: the place of the label it equals, -1 for none. Java throws on a null.
+inline int32_t string_case(const ref<String>& s, std::initializer_list<ref<String>> labels) {
+	auto x = nn(s);
+	int32_t at = 0;
+	for (const auto& l : labels) {
+		if (x->equals(l)) return at;
+		++at;
+	}
+	return -1;
+}
+
+// ------------------------------------------------------------------------------------------- java.util.Random
+// Java's generator, so a seed gives Java's numbers.
+struct Random : Object {
+	static constexpr uint64_t kMultiplier = 0x5DEECE66DULL, kMask = (1ULL << 48) - 1;
+	uint64_t seed = 0;
+	double spare = 0;
+	bool has_spare = false;
+	const char16_t* jclass_() const override { return u"java.util.Random"; }
+	void ctor_() { ctor_((int64_t)std::chrono::steady_clock::now().time_since_epoch().count()); }
+	void ctor_(int64_t s) { setSeed(s); }
+	void setSeed(int64_t s) { seed = ((uint64_t)s ^ kMultiplier) & kMask; has_spare = false; }
+	int32_t next(int bits) {
+		seed = (seed * kMultiplier + 0xBULL) & kMask;
+		return (int32_t)(uint32_t)(seed >> (48 - bits));
+	}
+	int32_t nextInt() { return next(32); }
+	int32_t nextInt(int32_t bound) {
+		if (bound <= 0) raise_new<IllegalArgumentException>(u"bound must be positive");
+		int32_t r = next(31);
+		const uint32_t m = (uint32_t)bound - 1;
+		if ((bound & (int32_t)m) == 0) return (int32_t)(((int64_t)bound * (int64_t)r) >> 31);
+		for (int32_t u = r; (int32_t)((uint32_t)u - (uint32_t)(r = u % bound) + m) < 0; u = next(31)) {}
+		return r;
+	}
+	int64_t nextLong() { const int64_t high = next(32); const int64_t low = next(32); return (int64_t)(((uint64_t)high << 32) + (uint64_t)low); }
+	bool nextBoolean() { return next(1) != 0; }
+	float nextFloat() { return (float)next(24) / (float)(1 << 24); }
+	double nextDouble() { const int64_t high = next(26); const int64_t low = next(27); return (double)((high << 27) + low) * 0x1.0p-53; }
+	double nextGaussian() {
+		if (has_spare) { has_spare = false; return spare; }
+		double v1, v2, s;
+		do {
+			v1 = 2 * nextDouble() - 1;
+			v2 = 2 * nextDouble() - 1;
+			s = v1 * v1 + v2 * v2;
+		} while (s >= 1 || s == 0);
+		const double scale = std::sqrt(-2 * std::log(s) / s);
+		spare = v2 * scale;
+		has_spare = true;
+		return v1 * scale;
+	}
+};
 
 // ------------------------------------------------------------------------------------------- finally
 // try { ... } finally { f } where f cannot leave by a jump: f runs however the block is left
