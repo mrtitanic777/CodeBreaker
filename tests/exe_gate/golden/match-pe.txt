@@ -1,13 +1,13 @@
 exit: 0
 --- stdout
-lz32.dll: 39 functions compiled with the period compiler: does not compile 39
-  sub_00143C                   does not compile   0% of bytes equal  (0 bytes, original 47)
-  sub_001436                   does not compile   0% of bytes equal  (0 bytes, original 6)
-  sub_001430                   does not compile   0% of bytes equal  (0 bytes, original 6)
-  sub_001424                   does not compile   0% of bytes equal  (0 bytes, original 12)
-  sub_001412                   does not compile   0% of bytes equal  (0 bytes, original 18)
-  sub_00140C                   does not compile   0% of bytes equal  (0 bytes, original 6)
-  sub_001400                   does not compile   0% of bytes equal  (0 bytes, original 12)
-  sub_0013FA                   does not compile   0% of bytes equal  (0 bytes, original 6)
+lz32.dll: 39 functions compiled with the period compiler: different 39
+  LZRead                       different  70% of bytes equal  (128 bytes, original 113)
+  LZInit                       different  61% of bytes equal  (58 bytes, original 55)
+  sub_00116E                   different  56% of bytes equal  (35 bytes, original 40)
+  sub_001057                   different  53% of bytes equal  (33 bytes, original 30)
+  CopyLZFile                   different  50% of bytes equal  (59 bytes, original 51)
+  LZOpenFileA                  different  48% of bytes equal  (169 bytes, original 160)
+  LZCopy                       different  47% of bytes equal  (59 bytes, original 51)
+  sub_001077                   different  46% of bytes equal  (44 bytes, original 46)
 --- files
 --- stderr (not compared)

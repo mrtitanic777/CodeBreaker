@@ -205,6 +205,9 @@ std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const 
     const std::string wide = stdfs::is_regular_file(cl.parent_path() / "C13232.EXE", ec) ? "double" : "__int64";
     std::string header = text::replace_all(text::replace_all(m.header, "unsigned long long", "unsigned " + wide), "long long", wide);
     header = text::replace_all(header, "unsigned double", "double");
+    // (the compiler's math intrinsics are __cdecl: under /Gz an undecorated declaration of one is a redefinition, and every function of the module fails)
+    for (const char* const name : {"sqrt", "sin", "cos", "tan", "atan2", "pow", "ldexp", "log", "floor", "fmod"})
+        header = text::replace_all(header, std::format("double {}(", name), std::format("double __cdecl {}(", name));
     fs::write_text(out_dir / "m.h", header);
 
     const std::string path_now = fs::get_env("PATH").value_or("");
