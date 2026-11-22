@@ -111,6 +111,20 @@ CB_TEST("source.pe_writer.the_programs_build_back_the_same_and_the_source_is_the
     }
 });
 
+CB_TEST("source.pe_writer.two_sections_of_one_name_build_back_the_same", [] {
+    fs::ScopedTempDir dir("cb_pe_writer");
+    Bytes file = fs::read_file(pe_lz32());
+    const std::size_t header = file[0x3C] | file[0x3D] << 8 | file[0x3E] << 16 | static_cast<std::size_t>(file[0x3F]) << 24;
+    const std::size_t table = header + 24 + (file[header + 20] | file[header + 21] << 8);
+    CB_CHECK((file[header + 6] | file[header + 7] << 8) >= 2);
+    std::copy_n(file.begin() + static_cast<std::ptrdiff_t>(table), 8, file.begin() + static_cast<std::ptrdiff_t>(table + 40));
+    const std::filesystem::path twin = dir.path() / "twin.dll";
+    fs::write_file(twin, file);
+    const Result r = reconstruct(twin, dir.path() / "out", {.stub = KeepStub{}});
+    CB_CHECK(r.same);
+    CB_CHECK(fs::read_file(*r.image) == file);
+});
+
 CB_TEST("source.pe_writer.a_stub_given_as_bytes_is_included_in_front_of_the_header", [] {
     fs::ScopedTempDir dir("cb_pe_writer");
     // the program's DOS stub is what lies before its new header

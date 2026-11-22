@@ -69,7 +69,8 @@ stdfs::path cv_scratch(const stdfs::path& work) {
 }
 
 // The writers of whole Windows files assemble with a line `[map symbols <path>]` at the top, naming the map file in their scratch folder; in the kept
-// source it names the map by its file name alone, as the assembler would write it beside the source (the scratch folder goes away).
+// source it names the map by its file name alone, as the assembler would write it beside the source (the scratch folder goes away). A file it
+// pulls in from the scratch folder (`incbin` of a DOS stub) is kept beside it and named the same way, so the kept source builds on its own.
 void cv_keep(const stdfs::path& source, const stdfs::path& work) {
     const Bytes raw = fs::read_file(source);   // (bytes as the writer wrote them: its source text is Latin-1)
     std::string text(reinterpret_cast<const char*>(raw.data()), raw.size());
@@ -80,11 +81,17 @@ void cv_keep(const stdfs::path& source, const stdfs::path& work) {
         if (end != std::string::npos) {
             const std::string name = fs::to_text(fs::from_text(text.substr(at + marker.size(), end - at - marker.size())).filename());
             text = text.substr(0, at + marker.size()) + name + text.substr(end);
-            fs::write_file(work / source.filename(), ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
-            return;
         }
     }
-    stdfs::copy_file(source, work / source.filename(), stdfs::copy_options::overwrite_existing);
+    const std::string pulled = "incbin \"" + fs::to_text(source.parent_path()) + "/";
+    for (std::size_t in = text.find(pulled); in != std::string::npos; in = text.find(pulled, in + 1)) {
+        const std::size_t from = in + 8, close = text.find('"', from);
+        if (close == std::string::npos) break;
+        const stdfs::path file = fs::from_text(text.substr(from, close - from));
+        stdfs::copy_file(file, work / file.filename(), stdfs::copy_options::overwrite_existing);
+        text.replace(from, close - from, fs::to_text(file.filename()));
+    }
+    fs::write_file(work / source.filename(), ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
 }
 
 // ---- Windows and DOS programs ------------------------------------------------------------------------------------------------

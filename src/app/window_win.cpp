@@ -20,7 +20,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cmath>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <format>
@@ -59,6 +61,7 @@
 #include "base/corpus.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
+#include "core/process.hpp"
 #include "formats/media.hpp"
 #include "core/text.hpp"
 
@@ -4026,8 +4029,31 @@ int ww_board_scan(const stdfs::path& image, const std::string& out_folder) {
     }
 }
 
-// `app --board-batch N --board-out BOARD`: convert the next N binaries, what really ran first, each into BOARD/converted, keeping each real result as it ends.
-int ww_board_batch(std::size_t count, const std::string& board_folder) {
+// `app --board-convert-one FILE --board-out BOARD`: one batch worker. Converts FILE into BOARD/converted and says how it ended on its last line; only the batch writes the board's state.
+int ww_board_convert_one(const std::string& file, const std::string& board_folder) {
+    convert::Request request;
+    request.input = fs::from_text(file);
+    request.converted_root = fs::from_text(board_folder) / "converted";
+    const std::atomic<bool> go{false};
+    convert::Outcome outcome;
+    try {
+        fs::make_dirs(request.converted_root);
+        outcome = convert::convert(request, convert::standard_planner("original"), [](const convert::Progress&) {}, go);
+    } catch (const std::exception& e) {
+        outcome.state = convert::State::Failed;
+        outcome.message = e.what();
+    }
+    std::string message = outcome.message;
+    std::replace_if(message.begin(), message.end(), [](char c) { return c == '\t' || c == '\r' || c == '\n'; }, ' ');
+    const char* const state = outcome.state == convert::State::Done ? "done" : outcome.state == convert::State::Unsupported ? "refused" : "failed";
+    out("\nBOARDRESULT\t{}\t{}\t{}\t{}\n", state, outcome.files, fs::to_text(outcome.output), message);
+    return 0;
+}
+
+// `app --board-batch N --board-out BOARD [--board-jobs J]`: convert the next N binaries, what really ran first, J at a time, each in its own process, keeping each real result as it ends.
+// Two files with one name never run together: their output folders and scratch folders are chosen by name, and a second `s3` is given the folder `s3_2`, which a file
+// called s3_2 would ask for too, so a trailing _N does not tell names apart here.
+int ww_board_batch(std::size_t count, const std::string& board_folder, std::size_t jobs) {
     try {
         std::optional<board::Board> b = board::load(fs::from_text(board_folder));
         if (!b) {
@@ -4047,34 +4073,98 @@ int ww_board_batch(std::size_t count, const std::string& board_folder) {
         for (std::size_t i = 0; i < group.size(); ++i) group[i] = index->nodes[i].group;
         options.group = &group;
         const std::vector<std::uint32_t> order = board::batch_order(*b, *index, board::build_stacks(*b, {}, options), &projection);
-        const stdfs::path converted = b->root / "converted";
-        fs::make_dirs(converted);
-        const std::atomic<bool> go{false};
-        std::size_t done = 0, refused = 0, failed = 0;
+        fs::make_dirs(b->root / "converted");
         const std::size_t total = std::min(count, order.size());
-        for (std::size_t i = 0; i < total; ++i) {
-            board::Card& card = b->cards[order[i]];
-            const auto started = std::chrono::steady_clock::now();
-            convert::Request request;
-            request.input = b->file_of(card);
-            request.converted_root = converted;
-            convert::Outcome outcome;
-            try {
-                outcome = convert::convert(request, convert::standard_planner("original"), [](const convert::Progress&) {}, go);
-            } catch (const std::exception& e) {
-                outcome.state = convert::State::Failed;
-                outcome.message = e.what();
+        const auto name_of = [&](std::size_t i) {
+            std::string name = fs::to_text(b->file_of(b->cards[order[i]]).stem());
+            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (const std::size_t bar = name.rfind('_'); bar != std::string::npos && bar > 0 && bar + 1 < name.size() &&
+                                                         std::all_of(name.begin() + static_cast<std::ptrdiff_t>(bar) + 1, name.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
+                name.resize(bar);
+            return name;
+        };
+        std::mutex lock;
+        std::condition_variable freed;
+        std::vector<char> started(total, 0);
+        std::set<std::string> running;
+        std::size_t finished = 0, done = 0, refused = 0, failed = 0;
+        const stdfs::path self = fs::executable_path();
+        const auto worker = [&] {
+            while (true) {
+                std::size_t at = total;
+                std::string name;
+                stdfs::path file;
+                {
+                    std::unique_lock held(lock);
+                    while (true) {
+                        bool waiting = false;
+                        for (std::size_t i = 0; i < total && at == total; ++i) {
+                            if (started[i]) continue;
+                            waiting = true;
+                            if (std::string n = name_of(i); !running.contains(n)) {
+                                at = i;
+                                name = std::move(n);
+                            }
+                        }
+                        if (at != total || !waiting) break;
+                        freed.wait(held);
+                    }
+                    if (at == total) return;
+                    started[at] = 1;
+                    running.insert(name);
+                    file = b->file_of(b->cards[order[at]]);
+                }
+                const auto began = std::chrono::steady_clock::now();
+                std::string state = "failed", files = "0", output, note;
+                try {
+                    process::ProcessSpec spec;
+                    spec.argv = {fs::to_text(self), "app", "--board-convert-one", fs::to_text(file), "--board-out", board_folder};
+                    spec.err = process::Capture::Discard;
+                    spec.priority = process::Priority::BelowNormal;
+                    const process::ProcessResult result = process::run(spec);
+                    const std::string text(reinterpret_cast<const char*>(result.out.data()), result.out.size());
+                    const std::size_t line = text.rfind("BOARDRESULT\t");
+                    if (result.ok() && line != std::string::npos) {
+                        std::vector<std::string> parts;
+                        std::size_t from = line;
+                        const std::size_t stop = std::min(text.find('\n', line), text.size());
+                        while (from <= stop) {
+                            const std::size_t tab = std::min(text.find('\t', from), stop);
+                            parts.push_back(text.substr(from, tab - from));
+                            from = tab + 1;
+                        }
+                        if (parts.size() >= 5) {
+                            state = parts[1];
+                            files = parts[2];
+                            output = parts[3];
+                            note = parts[4];
+                            if (!note.empty() && note.back() == '\r') note.pop_back();
+                        }
+                    } else {
+                        note = std::format("the converter stopped with exit code {:#x}", result.exit_code);
+                    }
+                } catch (const std::exception& e) {
+                    note = e.what();
+                }
+                std::lock_guard held(lock);
+                board::Card& card = b->cards[order[at]];
+                const board::Conv conv = state == "done" ? board::Conv::Done : state == "refused" ? board::Conv::CannotConvert : board::Conv::Failed;
+                board::record(card, conv, conv == board::Conv::Done ? fs::from_text(output) : stdfs::path{}, note);
+                board::save_states(*b);
+                done += conv == board::Conv::Done ? 1 : 0;
+                refused += conv == board::Conv::CannotConvert ? 1 : 0;
+                failed += conv == board::Conv::Failed ? 1 : 0;
+                ++finished;
+                out("[{}/{}] {:<18} {:<14} {:>6.1f} s  {} files  {}/h\n", finished, total, card.name, board::conv_words(card.conv), std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count(), files,
+                    board::rate_words(projection.activity[projection.module_of_card[order[at]]]));
+                if (card.conv != board::Conv::Done && !card.note.empty()) out("        {}\n", card.note.substr(0, 150));
+                running.erase(name);
+                freed.notify_all();
             }
-            const board::Conv conv = outcome.state == convert::State::Done ? board::Conv::Done : outcome.state == convert::State::Unsupported ? board::Conv::CannotConvert : board::Conv::Failed;
-            board::record(card, conv, conv == board::Conv::Done ? outcome.output : stdfs::path{}, outcome.message);
-            board::save_states(*b);
-            done += card.conv == board::Conv::Done ? 1 : 0;
-            refused += card.conv == board::Conv::CannotConvert ? 1 : 0;
-            failed += card.conv == board::Conv::Failed ? 1 : 0;
-            out("[{}/{}] {:<18} {:<14} {:>6.1f} s  {} files  {}/h\n", i + 1, total, card.name, board::conv_words(card.conv), std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count(), outcome.files,
-                board::rate_words(projection.activity[projection.module_of_card[order[i]]]));
-            if (card.conv != board::Conv::Done && !card.note.empty()) out("        {}\n", card.note.substr(0, 150));
-        }
+        };
+        std::vector<std::thread> workers;
+        for (std::size_t i = 0; i < std::clamp<std::size_t>(jobs, 1, 16); ++i) workers.emplace_back(worker);
+        for (std::thread& t : workers) t.join();
         out("converted {}  cannot convert {}  failed {}  of {} (with {} more waiting)\n", done, refused, failed, total, order.size() - total);
         return 0;
     } catch (const std::exception& e) {
@@ -4155,7 +4245,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
     (void)no_command_given;
     WwShot shot;
     bool screenshot = false, in_process = false;
-    std::string open_file, open_board_image, board_scan, board_out, board_trace, board_trace_disk, board_batch;
+    std::string open_file, open_board_image, board_scan, board_out, board_trace, board_trace_disk, board_batch, board_jobs, board_one;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
         const auto value = [&]() -> std::string { return i + 1 < args.size() ? args[++i] : std::string(); };
@@ -4190,6 +4280,10 @@ int run(std::span<const std::string> args, bool no_command_given) {
             board_out = value();
         } else if (a == "--board-batch") {
             board_batch = value();
+        } else if (a == "--board-jobs") {
+            board_jobs = value();
+        } else if (a == "--board-convert-one") {
+            board_one = value();
         } else if (a == "--board-trace") {
             board_trace = value();
         } else if (a == "--board-trace-disk") {
@@ -4203,7 +4297,8 @@ int run(std::span<const std::string> args, bool no_command_given) {
             return 2;
         }
     }
-    if (!board_batch.empty()) return ww_board_batch(static_cast<std::size_t>(std::atoi(board_batch.c_str())), board_out);
+    if (!board_one.empty()) return ww_board_convert_one(board_one, board_out);
+    if (!board_batch.empty()) return ww_board_batch(static_cast<std::size_t>(std::atoi(board_batch.c_str())), board_out, board_jobs.empty() ? 4 : static_cast<std::size_t>(std::max(1, std::atoi(board_jobs.c_str()))));
     if (!board_trace.empty()) return ww_board_trace(board_trace, board_trace_disk, board_out);
     if (!board_scan.empty()) return ww_board_scan(fs::from_text(board_scan), board_out);
     if (screenshot) {

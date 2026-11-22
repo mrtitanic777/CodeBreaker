@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <set>
 #include <iterator>
 
 #include "core/error.hpp"
@@ -171,6 +172,7 @@ Image::Image(formats::pe::Image pe, std::string file_name) : pe_(std::move(pe)),
     const std::span<const formats::pe::Section> table = pe_.sections();
     if (table.empty()) throw FormatError(kReader, 0, "the program has no sections");
     std::size_t stored_end = 0;
+    std::set<std::string> names_in_source;   // (a file may name two sections alike, as a linker's merged `.rsrc` does; NASM would take the second for the first reopened)
     for (std::size_t i = 0; i < table.size(); ++i) {
         const formats::pe::Section& s = table[i];
         Section g;
@@ -186,6 +188,7 @@ Image::Image(formats::pe::Image pe, std::string file_name) : pe_(std::move(pe)),
         g.stored = s.raw_ptr != 0;
         g.code = s.is_code();
         g.nasm_name = section_name_in_source(s.name, i, g.stored);
+        for (std::size_t n = 2; !names_in_source.insert(g.nasm_name).second; ++n) g.nasm_name = std::format("{}_{}", section_name_in_source(s.name, i, g.stored), n);
         sections_.push_back(std::move(g));
         stored_end = std::max<std::size_t>(stored_end, static_cast<std::size_t>(s.raw_ptr) + s.raw_size);
     }
