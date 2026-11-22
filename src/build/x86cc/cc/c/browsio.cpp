@@ -364,7 +364,7 @@ static void dw_reloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
         dw_write( sect, &seg_data, sizeof( seg_data ) );
         break;
     case DW_W_SECTION_POS:
-        sect_no = va_arg( args, dw_sectnum );
+        sect_no = static_cast<dw_sectnum>( va_arg( args, int ) );   /* (an enum passed through ... arrives as int) */
         u32_data = dw_tell( sect_no );
         dw_write( sect, &u32_data, sizeof( u32_data ) );
         break;

@@ -272,7 +272,7 @@ static void CLIReloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
             DataBytes( sizeof( zero ), &zero );
             break;
         case DW_W_SECTION_POS:
-            sect_no = va_arg( args, dw_sectnum );
+            sect_no = static_cast<dw_sectnum>( va_arg( args, int ) );   /* (an enum passed through ... arrives as int) */
             DoSectOffset( sect_no );
             break;
         case DW_W_EXT_REF:
