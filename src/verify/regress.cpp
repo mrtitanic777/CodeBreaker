@@ -438,7 +438,7 @@ Services production_services(const config::Config& config) {
     // FIX95CPU's disk: the Windows 95 design folder's (beside the corpus)
     const std::optional<stdfs::path> corpus = config.path("corpus");
     const stdfs::path design = corpus ? corpus->parent_path().parent_path() : stdfs::path();
-    const stdfs::path fix95cpu = design / "vm" / "FIX95CPU.IMA";
+    const stdfs::path fix95cpu = stdfs::exists(design / "media" / "vm" / "FIX95CPU.IMA") ? design / "media" / "vm" / "FIX95CPU.IMA" : design / "vm" / "FIX95CPU.IMA";
     const bool recognise = config.truthy("install_recognise_screens");
     // FIX95CPU's patched files cached under <state>/cache/fix95cpu and installed by Setup itself (no floppy stage) when the setting
     // install_preapply_fix95cpu is true. Off by default (2026-11-19): with the cache, the first restart still failed at "While
