@@ -105,10 +105,20 @@ typedef struct score {
 
 
 // scdata.c
-extern  score_reg           **ScoreList;
-extern  int                 ScoreCount;
-extern  score_info          *ScZero;
-extern  pointer             *ScListFrl;
+
+#ifndef CB_STATE_SCORE_H
+#define CB_STATE_SCORE_H
+
+/* the variables of score.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct ScoreState {
+    score_reg **ScoreList;
+    int ScoreCount;
+    score_info *ScZero;
+    pointer *ScListFrl;
+};
+inline ScoreState& score_state() { return cbrun_part<ScoreState>(); }
+
+#endif
 
 // scblock.c
 extern bool_    DoScore( block *blk );

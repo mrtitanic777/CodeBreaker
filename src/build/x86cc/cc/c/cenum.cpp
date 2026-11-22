@@ -80,10 +80,10 @@ static uint64 const RangeTable[ENUM_SIZE][2] =
     { i64val( 0x00000000, 0x00000000 ),i64val( 0xFFFFFFFF, 0xFFFFFFFF ) },//u64
 };
 
-struct {
+extern struct {
     DATA_TYPE decl_type;
     target_size size;
-} ItypeTable[ENUM_SIZE] = {
+} const ItypeTable[ENUM_SIZE] = {
     { TYP_CHAR,     TARGET_CHAR },      //S8
     { TYP_UCHAR,    TARGET_CHAR },      //U8
 #if _CPU == 8086
@@ -106,9 +106,9 @@ void EnumInit( void )
     id_hash_idx   hash;
 
     for( hash = 0; hash < ID_HASH_SIZE; hash++ ) {
-        EnumTable[hash] = NULL;
+        cvars_state().EnumTable[hash] = NULL;
     }
-    EnumRecSize = 0;
+    cvars_state().EnumRecSize = 0;
 }
 
 
@@ -118,18 +118,18 @@ static ENUMPTR EnumLkAdd( TAGPTR tag )
     size_t      len;
     id_hash_idx hash;
 
-    hash = CalcHashID( Buffer );
-    VfyNewSym( hash, Buffer );
-    len = sizeof( ENUMDEFN ) + TokenLen;
-    if( EnumRecSize < len )
-        EnumRecSize = len;
+    hash = CalcHashID( cvars_state().Buffer );
+    VfyNewSym( hash, cvars_state().Buffer );
+    len = sizeof( ENUMDEFN ) + cvars_state().TokenLen;
+    if( cvars_state().EnumRecSize < len )
+        cvars_state().EnumRecSize = len;
     esym = (ENUMPTR)CPermAlloc( len );
-    strcpy( esym->name, Buffer );
+    strcpy( esym->name, cvars_state().Buffer );
     esym->parent = tag;
     esym->hash = hash;
-    esym->src_loc = TokenLoc;
-    esym->next_enum = EnumTable[hash];
-    ++EnumCount;
+    esym->src_loc = cvars_state().TokenLoc;
+    esym->next_enum = cvars_state().EnumTable[hash];
+    ++cvars_state().EnumCount;
     if( tag->u.enum_list == NULL ) {
         tag->u.enum_list = esym;
     }
@@ -158,15 +158,15 @@ TYPEPTR EnumDecl( type_modifiers flags )
     /* unused parameters */ (void)flags;
 
     NextToken();
-    if( CurToken == T_ID ) {
+    if( cvars_state().CurToken == T_ID ) {
         /*
          * could be: (1) "enum" <id> ";"
          *           (2) "enum" <id> <variable_name> ";"
          *           (3) "enum" <id> "{" <enum_const_decl> ... "}"
          */
-        tag = TagLookup( Buffer );
+        tag = TagLookup( cvars_state().Buffer );
         NextToken();
-        if( CurToken != T_LEFT_BRACE ) {
+        if( cvars_state().CurToken != T_LEFT_BRACE ) {
             typ = tag->sym_type;
             if( typ == NULL ) {
                 CErr1( ERR_INCOMPLETE_ENUM_DECL );
@@ -188,7 +188,7 @@ TYPEPTR EnumDecl( type_modifiers flags )
     tag->sym_type = typ;
     tag->size = TARGET_INT;
     tag->u.enum_list = NULL;
-    if( CurToken == T_LEFT_BRACE ) {
+    if( cvars_state().CurToken == T_LEFT_BRACE ) {
         const_val       val;
         enum enum_rng   index;
         enum enum_rng   const_index;
@@ -203,14 +203,14 @@ TYPEPTR EnumDecl( type_modifiers flags )
         source_loc      error_loc;
         char            buff[50];
 
-        if( CompFlags.make_enums_an_int ) {
+        if( cvars_state().CompFlags.make_enums_an_int ) {
             start_index = ENUM_INT;
         } else {
             start_index = ENUM_S8;
         }
         const_index = ENUM_UNDEF;
         NextToken();
-        if( CurToken == T_RIGHT_BRACE ) {
+        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
             CErr1( ERR_EMPTY_ENUM_LIST );
         }
         Set64ValZero( n );
@@ -219,15 +219,15 @@ TYPEPTR EnumDecl( type_modifiers flags )
         step = static_cast<enum enum_rng>(1);
         prev_lnk = &esym;
         esym = NULL;
-        while( CurToken == T_ID ) {
+        while( cvars_state().CurToken == T_ID ) {
             esym = EnumLkAdd( tag );
             *prev_lnk = esym;
             prev_lnk = &esym->thread;
-            error_loc = TokenLoc;
+            error_loc = cvars_state().TokenLoc;
             NextToken();
-            if( CurToken == T_EQUAL ) {
+            if( cvars_state().CurToken == T_EQUAL ) {
                 NextToken();
-                error_loc = TokenLoc;
+                error_loc = cvars_state().TokenLoc;
                 ConstExprAndType( &val );
                 switch( val.type ) {
                 case TYP_ULONG:
@@ -265,7 +265,7 @@ TYPEPTR EnumDecl( type_modifiers flags )
             }
             error = ENUM_UNDEF;
             if( index > ENUM_INT ) {
-                if( !CompFlags.extensions_enabled ) {
+                if( !cvars_state().CompFlags.extensions_enabled ) {
                     error = ENUM_INT;
                 }
             }
@@ -306,14 +306,14 @@ TYPEPTR EnumDecl( type_modifiers flags )
                 InitErrLoc();
             }
             esym->value = n;
-            EnumTable[esym->hash] = esym;
-            if( CurToken == T_RIGHT_BRACE )
+            cvars_state().EnumTable[esym->hash] = esym;
+            if( cvars_state().CurToken == T_RIGHT_BRACE )
                 break;
             U64Inc( n );
             MustRecog( T_COMMA );
-            if( !CompFlags.extensions_enabled
-              && ( CompVars.cstd < STD_C99 )
-              && ( CurToken == T_RIGHT_BRACE )) {
+            if( !cvars_state().CompFlags.extensions_enabled
+              && ( cvars_state().CompVars.cstd < STD_C99 )
+              && ( cvars_state().CurToken == T_RIGHT_BRACE )) {
                 ExpectIdentifier();
             }
         }
@@ -327,7 +327,7 @@ ENUMPTR EnumLookup( id_hash_idx hash, const char *name )
 {
     ENUMPTR     esym;
 
-    for( esym = EnumTable[hash]; esym != NULL; esym = esym->next_enum ) {
+    for( esym = cvars_state().EnumTable[hash]; esym != NULL; esym = esym->next_enum ) {
         if( strcmp( esym->name, name ) == 0 ) {
             break;
         }
@@ -342,7 +342,7 @@ void FreeEnums( void )
     id_hash_idx     hash;
 
     for( hash = 0; hash < ID_HASH_SIZE; hash++ ) {
-        for( ; (esym = EnumTable[hash]) != NULL; EnumTable[hash] = esym->next_enum ) {
+        for( ; (esym = cvars_state().EnumTable[hash]) != NULL; cvars_state().EnumTable[hash] = esym->next_enum ) {
             if( !CheckEqSymLevel( esym->parent ) ) {
                 break;
             }

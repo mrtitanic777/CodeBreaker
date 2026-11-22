@@ -38,7 +38,7 @@ void CUsage( void )
     char const  *p;
 
     CBanner();
-    if( !CompFlags.quiet_mode ) {
+    if( !cvars_state().CompFlags.quiet_mode ) {
         NoteMsg( "" );
     }
     for( p = UsageText(); *p != '\0'; ) {

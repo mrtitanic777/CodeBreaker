@@ -36,7 +36,17 @@
 
 #define MAX_DIGIT 21
 
-static char     buf[80];
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct FtoaState {
+    char buf[80];
+};
+
+}  // namespace
+
+static inline FtoaState& ftoa_state() { return cbrun_part<FtoaState>(); }
+
 
 char *ftoa( FLOATVAL *flt )
 {
@@ -61,7 +71,7 @@ char *ftoa( FLOATVAL *flt )
         cvt.decimal_place--;
     sprintf( buf, "%c%c.%sE%+1d", ( cvt.sign ) ? '-' : '+', *mant, mant + 1, cvt.decimal_place );
 #else
-    sprintf( buf, "%.19e", flt->ld.u.value );
+    sprintf( ftoa_state().buf, "%.19e", flt->ld.u.value );
 #endif
-    return( buf );
+    return( ftoa_state().buf );
 }

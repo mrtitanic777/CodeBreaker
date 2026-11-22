@@ -48,32 +48,32 @@ static void InitDBType( void )
 {
     TYPEPTR     typ;
 
-    ScopeStruct = DBScope( "struct" );
-    ScopeUnion = DBScope( "union" );
-    ScopeEnum = DBScope( "enum" );
+    cvars_state().ScopeStruct = DBScope( "struct" );
+    cvars_state().ScopeUnion = DBScope( "union" );
+    cvars_state().ScopeEnum = DBScope( "enum" );
     typ = GetType( TYP_PLAIN_CHAR );
     if( typ->decl_type == TYP_UCHAR ) {
         typ->u1.debug_type = DBScalar( "char", TY_UINT_1 );
     } else {
         typ->u1.debug_type = DBScalar( "char", TY_INT_1 );
     }
-    B_Int_1  = DBScalar( "signed char", TY_INT_1 );
-    B_UInt_1 = DBScalar( "unsigned char", TY_UINT_1 );
-    B_Short  = DBScalar( "short", TY_INT_2 );
-    B_UShort = DBScalar( "unsigned short", TY_UINT_2 );
+    cvars_state().B_Int_1  = DBScalar( "signed char", TY_INT_1 );
+    cvars_state().B_UInt_1 = DBScalar( "unsigned char", TY_UINT_1 );
+    cvars_state().B_Short  = DBScalar( "short", TY_INT_2 );
+    cvars_state().B_UShort = DBScalar( "unsigned short", TY_UINT_2 );
 #if TARGET_INT == 4
-    B_Int    = DBScalar( "int", TY_INT_4 );
-    B_UInt   = DBScalar( "unsigned int", TY_UINT_4 );
+    cvars_state().B_Int    = DBScalar( "int", TY_INT_4 );
+    cvars_state().B_UInt   = DBScalar( "unsigned int", TY_UINT_4 );
 #else
-    B_Int    = DBScalar( "int", TY_INT_2 );
-    B_UInt   = DBScalar( "unsigned int", TY_UINT_2 );
+    cvars_state().B_Int    = DBScalar( "int", TY_INT_2 );
+    cvars_state().B_UInt   = DBScalar( "unsigned int", TY_UINT_2 );
 #endif
-    B_Int32  = DBScalar( "long", TY_INT_4 );
-    B_UInt32 = DBScalar( "unsigned long", TY_UINT_4 );
-    B_Int64  = DBScalar( "__int64", TY_INT_8 );
-    B_UInt64 = DBScalar( "unsigned __int64", TY_UINT_8 );
-    B_Bool   = DBScalar( "_Bool", TY_UINT_1 );
-    DebugNameList = NULL;
+    cvars_state().B_Int32  = DBScalar( "long", TY_INT_4 );
+    cvars_state().B_UInt32 = DBScalar( "unsigned long", TY_UINT_4 );
+    cvars_state().B_Int64  = DBScalar( "__int64", TY_INT_8 );
+    cvars_state().B_UInt64 = DBScalar( "unsigned __int64", TY_UINT_8 );
+    cvars_state().B_Bool   = DBScalar( "_Bool", TY_UINT_1 );
+    cvars_state().DebugNameList = NULL;
 }
 
 #if 0
@@ -99,12 +99,12 @@ static void EmitADBType( TYPEPTR typ )
     case TYP_STRUCT:
     case TYP_UNION:
     case TYP_ENUM:
-        if( !CompFlags.dump_types_with_names ) break;
+        if( !cvars_state().CompFlags.dump_types_with_names ) break;
         if( typ->u.tag->name[0] == '\0' ) break;
         goto dump_type;
     case TYP_TYPEDEF:
-        if( !CompFlags.dump_types_with_names ) break;
-        if( CompFlags.no_debug_type_names ) break;
+        if( !cvars_state().CompFlags.dump_types_with_names ) break;
+        if( cvars_state().CompFlags.no_debug_type_names ) break;
     dump_type:
 #if 0
         if( DebugFlag >= 2 ) {
@@ -132,38 +132,38 @@ static dbug_type DBIntegralType( DATA_TYPE decl_type )
 
     switch( decl_type ) {
     case TYP_CHAR:
-        ret_val = B_Int_1;
+        ret_val = cvars_state().B_Int_1;
         break;
     case TYP_UCHAR:
-        ret_val = B_UInt_1;
+        ret_val = cvars_state().B_UInt_1;
         break;
     case TYP_SHORT:
-        ret_val = B_Short;
+        ret_val = cvars_state().B_Short;
         break;
     case TYP_USHORT:
-        ret_val = B_UShort;
+        ret_val = cvars_state().B_UShort;
         break;
     case TYP_INT:
     default:
-        ret_val = B_Int;
+        ret_val = cvars_state().B_Int;
         break;
     case TYP_UINT:
-        ret_val = B_UInt;
+        ret_val = cvars_state().B_UInt;
         break;
     case TYP_LONG:
-        ret_val = B_Int32;
+        ret_val = cvars_state().B_Int32;
         break;
     case TYP_ULONG:
-        ret_val = B_UInt32;
+        ret_val = cvars_state().B_UInt32;
         break;
     case TYP_LONG64:
-        ret_val = B_Int64;
+        ret_val = cvars_state().B_Int64;
         break;
     case TYP_ULONG64:
-        ret_val = B_UInt64;
+        ret_val = cvars_state().B_UInt64;
         break;
     case TYP_BOOL:
-        ret_val = B_Bool;
+        ret_val = cvars_state().B_Bool;
         break;
     }
     return( ret_val );
@@ -185,10 +185,10 @@ static dbug_type DoBasedPtr( TYPEPTR typ, cg_type cgtype )
         dl = DBLocConst( dl, 0 );
         dl = DBLocOp( dl, DB_OP_MK_FP, 0 );
     } else {
-        if( sym_handle == Sym_CS ) {
+        if( sym_handle == cvars_state().Sym_CS ) {
             ret_val = DBPtr( cgtype, DBType( typ->object ) );
             have_retval = true;
-        } else if( sym_handle == Sym_SS ) {
+        } else if( sym_handle == cvars_state().Sym_SS ) {
             ret_val = DBPtr( cgtype, DBType( typ->object ) );
             have_retval = true;
         } else {
@@ -223,7 +223,7 @@ dbug_type DBType( TYPEPTR typ )
     cg_type         cgtype;
 
     if( typ->u1.debug_type == DBG_FWD_TYPE ) {
-        fip = DebugNameList;
+        fip = cvars_state().DebugNameList;
         while( fip->typ != typ )  fip = fip->next;
         if( fip->debug_name == NULL ) {
             fip->debug_name = DBBegName( "", fip->scope );
@@ -232,14 +232,14 @@ dbug_type DBType( TYPEPTR typ )
     }
     if( typ->u1.debug_type != DBG_NIL_TYPE )  return( typ->u1.debug_type );
 
-    fwd_info.next = DebugNameList;
+    fwd_info.next = cvars_state().DebugNameList;
     fwd_info.typ = typ;
     fwd_info.debug_name = NULL;
     fwd_info.scope = DBG_NIL_TYPE;
     /*
      * default is INT
      */
-    ret_val = B_Int;
+    ret_val = cvars_state().B_Int;
     switch( typ->decl_type ) {
     case TYP_VOID:
         ret_val = DBScalar( "void", TY_DEFAULT );
@@ -271,18 +271,18 @@ dbug_type DBType( TYPEPTR typ )
     case TYP_STRUCT:
     case TYP_UNION:
         fwd_info.scope = (typ->decl_type == TYP_STRUCT)
-                                    ? ScopeStruct : ScopeUnion;
+                                    ? cvars_state().ScopeStruct : cvars_state().ScopeUnion;
         if( typ->u.tag->name[0] != '\0' ) {
             fwd_info.debug_name = DBBegName( typ->u.tag->name,
                                         fwd_info.scope );
         }
-        DebugNameList = &fwd_info;
+        cvars_state().DebugNameList = &fwd_info;
         typ->u1.debug_type = DBG_FWD_TYPE;
         ret_val = DBTypeStruct( typ );
         if( fwd_info.debug_name != NULL ) {
             ret_val = DBEndName( fwd_info.debug_name, ret_val );
         }
-        DebugNameList = fwd_info.next;
+        cvars_state().DebugNameList = fwd_info.next;
         break;
     case TYP_FUNCTION:
         cgtype = TY_CODE_PTR;
@@ -302,19 +302,19 @@ dbug_type DBType( TYPEPTR typ )
             ret_val = DBType( typ->object );
         } else {
             SymGet( &sym, typ->u.typedefn );
-            if( !CompFlags.no_debug_type_names ) {
+            if( !cvars_state().CompFlags.no_debug_type_names ) {
                 fwd_info.debug_name = DBBegName( sym.name, DBG_NIL_TYPE );
             }
             typ->u1.debug_type = DBG_FWD_TYPE;
-            DebugNameList = &fwd_info;
+            cvars_state().DebugNameList = &fwd_info;
             ret_val = DBType( typ->object );
             if( fwd_info.debug_name != NULL ) {
                 ret_val = DBEndName( fwd_info.debug_name, ret_val );
-                if( GenSwitches & CGSW_GEN_DBG_CV ) {
+                if( cvars_state().GenSwitches & CGSW_GEN_DBG_CV ) {
                     DBTypeDef( sym.name, ret_val ); //get codeview typedef out
                 }
             }
-            DebugNameList = fwd_info.next;
+            cvars_state().DebugNameList = fwd_info.next;
         }
         break;
     case TYP_ENUM:
@@ -402,7 +402,7 @@ static dbug_type DBTypeEnum( TYPEPTR typ )
     }
     ret_val = DBEndEnum( e );
     if( typ->u.tag->name[0] != '\0' ) {
-        DBEndName( DBBegName( typ->u.tag->name, ScopeEnum ), ret_val );
+        DBEndName( DBBegName( typ->u.tag->name, cvars_state().ScopeEnum ), ret_val );
     }
     return( ret_val );
 }

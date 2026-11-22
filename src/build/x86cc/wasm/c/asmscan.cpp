@@ -53,7 +53,17 @@ bool_                    EnumDirective;
 
 #endif
 
-static unsigned         radix_base = 10;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct AsmscanState {
+    unsigned radix_base = 10;
+};
+
+}  // namespace
+
+static inline AsmscanState& asmscan_state() { return cbrun_part<AsmscanState>(); }
+
 
 static bool_ get_float( asm_tok *tok, const char **input, char **output )
 /**********************************************************************/
@@ -250,7 +260,7 @@ static bool_ get_number( asm_tok *tok, const char **input, char **output, bool_ 
             /*
              * process only a-fA-F characters, 0-9 are already processed
              */
-            if( base != 16 && radix_base != 16 ) {
+            if( base != 16 && asmscan_state().radix_base != 16 ) {
                 if( c == 'b' ) {
                     if( base == 0 && OK_NUM( BINARY ) ) {
                         c2 = ((unsigned char *)ptr)[1];
@@ -313,7 +323,7 @@ static bool_ get_number( asm_tok *tok, const char **input, char **output, bool_ 
         if( base10 ) {
             base = 10;
         } else {
-            base = radix_base;
+            base = asmscan_state().radix_base;
         }
     }
     switch( base ) {
@@ -803,5 +813,5 @@ bool_ AsmScan( token_buffer *tokbuf, const char *string )
 
 void RadixSet( unsigned new_base )
 {
-    radix_base = new_base;
+    asmscan_state().radix_base = new_base;
 }

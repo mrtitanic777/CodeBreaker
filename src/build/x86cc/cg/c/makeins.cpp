@@ -41,14 +41,24 @@
 #include "optab.h"
 
 
-static  pointer         *InsFrl;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct MakeinsState {
+    pointer *InsFrl;
+};
+
+}  // namespace
+
+static inline MakeinsState& makeins_state() { return cbrun_part<MakeinsState>(); }
+
 
 void    InitIns( void )
 /********************************
  * Initialize the free list of "instruction"
  */
 {
-    InitFrl( &InsFrl );
+    InitFrl( &makeins_state().InsFrl );
 }
 
 
@@ -57,7 +67,7 @@ bool_    InsFrlFree( void )
  * Free up the "instruction" free list.
  */
 {
-    return( FrlFreeAll( &InsFrl, INS_SIZE ) );
+    return( FrlFreeAll( &makeins_state().InsFrl, INS_SIZE ) );
 }
 
 
@@ -85,7 +95,7 @@ void    FreeIns( instruction *ins )
 
     ins->head.prev->head.next = next;
     next->head.prev = ins->head.prev;
-    FrlFreeSize( &InsFrl, (pointer *)ins, INS_SIZE );
+    FrlFreeSize( &makeins_state().InsFrl, (pointer *)ins, INS_SIZE );
 }
 
 
@@ -100,7 +110,7 @@ instruction     *NewIns( opcnt num )
     if( num > MAX_OPS_PER_INS ) {
         _Zoiks( ZOIKS_026 );
     }
-    new_ins = static_cast<instruction *>(AllocFrl( &InsFrl, INS_SIZE ));
+    new_ins = static_cast<instruction *>(AllocFrl( &makeins_state().InsFrl, INS_SIZE ));
     new_ins->head.state = INS_NEEDS_WORK;
     new_ins->u2.index_needs = RL_;
     new_ins->num_operands = num;

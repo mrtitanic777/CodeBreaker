@@ -1,3 +1,4 @@
+#pragma once
 /****************************************************************************
 *
 *                            Open Watcom Project
@@ -32,25 +33,36 @@
 
 #include "cgswitch.h"
 
-extern  cg_switches         Model;
-extern  cg_target_switches  TargetModel, SaveTargetModel;
-extern  proc_revision       CGProcessorVersion;
 
-#define _IsModel( mdl )         ( ( Model & (mdl) ) != 0 )
-#define _IsntModel( mdl )       ( ( Model & (mdl) ) == 0 )
+#ifndef CB_STATE_MODEL_H
+#define CB_STATE_MODEL_H
 
-#define _IsTargetModel( mdl )   ( ( TargetModel & (mdl) ) != 0 )
-#define _IsntTargetModel( mdl ) ( ( TargetModel & (mdl) ) == 0 )
+/* the variables of model.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct ModelState {
+    cg_switches Model;
+    cg_target_switches TargetModel;
+    cg_target_switches SaveTargetModel;
+    proc_revision CGProcessorVersion;
+};
+inline ModelState& model_state() { return cbrun_part<ModelState>(); }
+
+#endif
+
+#define _IsModel( mdl )         ( ( model_state().Model & (mdl) ) != 0 )
+#define _IsntModel( mdl )       ( ( model_state().Model & (mdl) ) == 0 )
+
+#define _IsTargetModel( mdl )   ( ( model_state().TargetModel & (mdl) ) != 0 )
+#define _IsntTargetModel( mdl ) ( ( model_state().TargetModel & (mdl) ) == 0 )
 
 #ifdef GET_CPU
-    #define _CPULevel( v )  ( GET_CPU( CGProcessorVersion ) >= (v) )
+    #define _CPULevel( v )  ( GET_CPU( model_state().CGProcessorVersion ) >= (v) )
 #else
-    #define _CPULevel( v )  ( CGProcessorVersion >= (v) )
+    #define _CPULevel( v )  ( model_state().CGProcessorVersion >= (v) )
 #endif
 
 #ifdef GET_FPU
-    #define _FPULevel( v )  ((GET_FPU(CGProcessorVersion) & ~FPU_EMU) >= (v) )
-    #define _IsEmulation()  ((CGProcessorVersion & FPU_EMU) != 0)
+    #define _FPULevel( v )  ((GET_FPU(model_state().CGProcessorVersion) & ~FPU_EMU) >= (v) )
+    #define _IsEmulation()  ((model_state().CGProcessorVersion & FPU_EMU) != 0)
 #else
     #define _FPULevel( v )  0
 #endif

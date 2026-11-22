@@ -29,7 +29,16 @@
 ****************************************************************************/
 
 
-extern bool_     BlipsOn;
+#ifndef CB_STATE_BLIPS_H
+#define CB_STATE_BLIPS_H
+
+/* the variables of blips.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct BlipsState {
+    bool_ BlipsOn;
+};
+inline BlipsState& blips_state() { return cbrun_part<BlipsState>(); }
+
+#endif
 
 extern void     Blip( unsigned short loc, char ch );
 extern void     BlipInit( void );

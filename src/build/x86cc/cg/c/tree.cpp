@@ -77,7 +77,6 @@
 static  void    FreeTreeNode( tn node );
 static  void    Control( cg_op opcode, tn node, label_handle lbl, bool_ gen );
 
-static  pointer *TreeFrl;
 
 static const type_class_def BinMat[] = {
 /*********************************
@@ -99,29 +98,42 @@ static const type_class_def BinMat[] = {
     FL,FL,FL,FL,FL,FL,FL,FL,ER,ER,FL,FL,FL /* FL*/
 };
 
-static type_class_def SubMat[] = {
-/*********************************
- * what is the result type of a subtraction
- *
- *  U1 I1 U2 I2 U4 I4 U8 I8 CP PT FS FD FL      */
-    U1,U1,U2,I2,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* U1*/
-    U1,I1,U2,I2,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* I1*/
-    U2,U2,U2,U2,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* U2*/
-    I2,I2,U2,I2,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* I2*/
-    U4,U4,U4,U4,U4,U4,U8,I8,CP,PT,FS,FD,FL,/* U4*/
-    I4,I4,I4,I4,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* I4*/
-    U8,U8,U8,U8,U8,U8,U8,U8,CP,PT,FD,FD,FL,/* U8*/
-    I8,I8,I8,I8,I8,I8,U8,I8,CP,PT,FD,FD,FL,/* I8*/
-    CP,CP,CP,CP,CP,CP,CP,CP,XX,PT,ER,ER,ER,/* CP*/
-    PT,PT,PT,PT,PT,PT,PT,PT,PT,XX,ER,ER,ER,/* PT*/
-    FS,FS,FS,FS,FS,FS,FD,FD,ER,ER,FS,FD,FL,/* FS*/
-    FD,FD,FD,FD,FD,FD,FD,FD,ER,ER,FD,FD,FL,/* FD*/
-    FL,FL,FL,FL,FL,FL,FL,FL,ER,ER,FL,FL,FL,/* FL*/
-};
 
 /*
  * Routines TGxxxx build up the expression trees. TNxxx tear them down.
  */
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct TreeState {
+    pointer *TreeFrl;
+    type_class_def SubMat[169] = {
+    /*********************************
+     * what is the result type of a subtraction
+     *
+     *  U1 I1 U2 I2 U4 I4 U8 I8 CP PT FS FD FL      */
+        U1,U1,U2,I2,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* U1*/
+        U1,I1,U2,I2,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* I1*/
+        U2,U2,U2,U2,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* U2*/
+        I2,I2,U2,I2,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* I2*/
+        U4,U4,U4,U4,U4,U4,U8,I8,CP,PT,FS,FD,FL,/* U4*/
+        I4,I4,I4,I4,U4,I4,U8,I8,CP,PT,FS,FD,FL,/* I4*/
+        U8,U8,U8,U8,U8,U8,U8,U8,CP,PT,FD,FD,FL,/* U8*/
+        I8,I8,I8,I8,I8,I8,U8,I8,CP,PT,FD,FD,FL,/* I8*/
+        CP,CP,CP,CP,CP,CP,CP,CP,XX,PT,ER,ER,ER,/* CP*/
+        PT,PT,PT,PT,PT,PT,PT,PT,PT,XX,ER,ER,ER,/* PT*/
+        FS,FS,FS,FS,FS,FS,FD,FD,ER,ER,FS,FD,FL,/* FS*/
+        FD,FD,FD,FD,FD,FD,FD,FD,ER,ER,FD,FD,FL,/* FD*/
+        FL,FL,FL,FL,FL,FL,FL,FL,ER,ER,FL,FL,FL,/* FL*/
+    };
+    bool_ IsAddress;
+    tn NodesToZap;
+};
+
+}  // namespace
+
+static inline TreeState& tree_state() { return cbrun_part<TreeState>(); }
 
 static  tn  NewTreeNode( void )
 /******************************
@@ -130,7 +142,7 @@ static  tn  NewTreeNode( void )
 {
     tn  new_tn;
 
-    new_tn = static_cast<tn>(AllocFrl( &TreeFrl, sizeof( tree_node ) ));
+    new_tn = static_cast<tn>(AllocFrl( &tree_state().TreeFrl, sizeof( tree_node ) ));
     new_tn->flags = TF_USED;
 #ifdef DEVBUILD
     new_tn->useinfo.hdltype = NO_HANDLE;
@@ -157,7 +169,7 @@ tn  TGLeaf( an addr )
     node->tipe = addr->tipe;
     node->class_ = TN_LEAF;
     if( addr->format == NF_BOOL ) {
-        node->tipe = TypeBoolean;
+        node->tipe = data_state().TypeBoolean;
     } else if( addr->format == NF_CONS ) {
         node->class_ = TN_CONS;
         node->u.name = addr->u.n.name;
@@ -216,7 +228,6 @@ tn  TGNode( tn_class class_, cg_op opcode, tn left, tn rite, const type_def *tip
     }
     return( node );
 }
-
 
 
 tn  TGWarp( tn before, label_handle label, tn after )
@@ -294,12 +305,12 @@ static const type_def   *ResultType( tn left, tn rite, const type_def *tipe,
         rite = temp;
     }
     ltipe = left->tipe;
-    if( ltipe == TypeBoolean ) {
-        ltipe = TypeInteger;
+    if( ltipe == data_state().TypeBoolean ) {
+        ltipe = data_state().TypeInteger;
     }
     rtipe = rite->tipe;
-    if( rtipe == TypeBoolean ) {
-        rtipe = TypeInteger;
+    if( rtipe == data_state().TypeBoolean ) {
+        rtipe = data_state().TypeInteger;
     }
     if( tipe->refno == TY_DEFAULT ) {
         return( TypeOfTypeClass( mat_type_class[TypeClass( ltipe ) * XX + TypeClass( rtipe )] ) );
@@ -315,7 +326,7 @@ static const type_def   *ResultType( tn left, tn rite, const type_def *tipe,
         return( tipe );
     if( rite->tipe->attr & TYPE_FLOAT )
         return( tipe );
-    if( tipe->length > TypeClassSize[U4] )
+    if( tipe->length > data_state().TypeClassSize[U4] )
         return( tipe );
     if( left->tipe->attr & TYPE_SIGNED ) {
         if( !CFSignedSize( rite->u.name->c.u.cfval, left->tipe->length ) ) {
@@ -377,7 +388,7 @@ tn  TGCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
     }
 #endif
     if( ( left->tipe == rite->tipe )
-      && ( left->tipe != TypeBoolean )
+      && ( left->tipe != data_state().TypeBoolean )
       && ( (left->tipe->attr & ~TYPE_SIGNED) == (tipe->attr & ~TYPE_SIGNED) ) ) {
         tipe = left->tipe;
     } else {
@@ -394,7 +405,7 @@ tn  TGCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
     new_tn = FoldPostGetsCompare( opcode, left, rite, tipe );
     if( new_tn != NULL )
         return( new_tn );
-    new_tn = TGNode( TN_COMPARE, opcode, left, rite, TypeBoolean );
+    new_tn = TGNode( TN_COMPARE, opcode, left, rite, data_state().TypeBoolean );
     return( new_tn );
 }
 
@@ -404,7 +415,7 @@ static  an  Int( uint_32 num )
  * return an address name for an integer
  */
 {
-    return( BGInteger( num, TypeInteger ) );
+    return( BGInteger( num, data_state().TypeInteger ) );
 }
 
 
@@ -413,7 +424,7 @@ static  an  Int64( unsigned_64 num )
  * return an address name for a 64-bit integer
  */
 {
-    return( BGInt64( num, TypeLongLongInteger ) );
+    return( BGInt64( num, data_state().TypeLongLongInteger ) );
 }
 
 uint_32    TGMask32( tn node )
@@ -478,12 +489,12 @@ tn  TGConvert( tn name, const type_def *tipe )
     node_type = name->tipe;
     new_tn = name;
     if( tipe->refno != TY_DEFAULT && tipe != node_type ) {
-        if( tipe == TypeBoolean ) {
-            if( node_type != TypeBoolean ) {
+        if( tipe == data_state().TypeBoolean ) {
+            if( node_type != data_state().TypeBoolean ) {
                 new_tn = TGCompare( O_NE, new_tn, TGLeaf( Int( 0 ) ), node_type );
             }
         } else {
-            if( node_type == TypeBoolean ) {
+            if( node_type == data_state().TypeBoolean ) {
                 new_tn = TGNode( TN_FLOW_OUT, O_NOP, new_tn, NULL, tipe );
             } else {
                 new_tn = FoldCnvRnd( O_CONVERT, new_tn, tipe );
@@ -523,15 +534,15 @@ static const type_def   *BinResult( cg_op opcode, tn *l, tn *r, const type_def *
     case O_RSHIFT:
         left = TGConvert( left, tipe );
         tipe = left->tipe;
-        rite = TGConvert( rite, TypeUnsigned );
+        rite = TGConvert( rite, data_state().TypeUnsigned );
         break;
     case O_DIV:
     case O_MOD:
         otipe = tipe;
         tipe = ResultType( left, rite, tipe, BinMat, false );
-        if( otipe == TypeNone ) { /* do integer divide to make C happy.*/
+        if( otipe == data_state().TypeNone ) { /* do integer divide to make C happy.*/
             if( tipe->refno == TY_UINT_1 || tipe->refno == TY_INT_1 ) {
-                tipe = TypeInteger;
+                tipe = data_state().TypeInteger;
             }
         }
         left = TGConvert( left, tipe );
@@ -560,13 +571,13 @@ static const type_def   *BinResult( cg_op opcode, tn *l, tn *r, const type_def *
 #endif
     case O_PLUS: /* pointer arithmetic is a pain*/
         if( left->class_ == TN_CALL ) { /* address of return value*/
-            tipe = TypePtr;
+            tipe = data_state().TypePtr;
             if( tipe->refno == TY_HUGE_POINTER ) {
-                rite = TGConvert( rite, TypeHugeInteger );
+                rite = TGConvert( rite, data_state().TypeHugeInteger );
             } else if( tipe->refno == TY_LONG_POINTER ) {
-                rite = TGConvert( rite, TypeLongInteger );
+                rite = TGConvert( rite, data_state().TypeLongInteger );
             } else {
-                rite = TGConvert( rite, TypeNearInteger );
+                rite = TGConvert( rite, data_state().TypeNearInteger );
             }
         } else {
             tipe = ResultType( left, rite, tipe, BinMat, false );
@@ -577,11 +588,11 @@ static const type_def   *BinResult( cg_op opcode, tn *l, tn *r, const type_def *
                     left = temp;
                 }
                 if( tipe->refno == TY_HUGE_POINTER ) {
-                    rite = TGConvert( rite, TypeHugeInteger );
+                    rite = TGConvert( rite, data_state().TypeHugeInteger );
                 } else if( tipe->refno == TY_LONG_POINTER ) {
-                    rite = TGConvert( rite, TypeLongInteger );
+                    rite = TGConvert( rite, data_state().TypeLongInteger );
                 } else {
-                    rite = TGConvert( rite, TypeNearInteger );
+                    rite = TGConvert( rite, data_state().TypeNearInteger );
                 }
                 if( left->class_ == TN_LEAF ) {
                     if( NeedPtrConvert( left->u.addr, tipe ) ) {
@@ -619,26 +630,26 @@ static const type_def   *BinResult( cg_op opcode, tn *l, tn *r, const type_def *
         }
         break;
     case O_MINUS:
-        tipe = ResultType( left, rite, tipe, SubMat, false );
+        tipe = ResultType( left, rite, tipe, tree_state().SubMat, false );
         /* pointer subtraction yields a different result type than ops!*/
-        if( tipe->refno == TypeHugeInteger->refno
+        if( tipe->refno == data_state().TypeHugeInteger->refno
           && left->tipe->refno == TY_HUGE_POINTER
           && rite->tipe->refno == TY_HUGE_POINTER ) {
             /* nothing*/
-        } else if( tipe->refno == TypeLongInteger->refno
+        } else if( tipe->refno == data_state().TypeLongInteger->refno
           && left->tipe->refno == TY_LONG_POINTER
           && rite->tipe->refno == TY_LONG_POINTER ) {
              /* nothing*/
-        } else if( tipe->refno == TypeNearInteger->refno
+        } else if( tipe->refno == data_state().TypeNearInteger->refno
           && left->tipe->refno == TY_NEAR_POINTER
           && rite->tipe->refno == TY_NEAR_POINTER ) {
              /* nothing*/
         } else if( tipe->refno == TY_HUGE_POINTER ) {
-            rite = TGConvert( rite, TypeHugeInteger );
+            rite = TGConvert( rite, data_state().TypeHugeInteger );
         } else if( tipe->refno == TY_LONG_POINTER ) {
-            rite = TGConvert( rite, TypeLongInteger );
+            rite = TGConvert( rite, data_state().TypeLongInteger );
         } else if( tipe->refno == TY_NEAR_POINTER ) {
-            rite = TGConvert( rite, TypeNearInteger );
+            rite = TGConvert( rite, data_state().TypeNearInteger );
         } else {
 #if _TARGET & _TARG_370
             if( tipe->refno != TY_INT_4 || rite->tipe->refno != TY_INT_2 ) {
@@ -656,7 +667,7 @@ static const type_def   *BinResult( cg_op opcode, tn *l, tn *r, const type_def *
         if( tipe->refno == TY_INT_4
           && left->tipe->length <= 2
           && rite->tipe->length <= 2 ) {
-            left = TGConvert( left, TypeInteger );
+            left = TGConvert( left, data_state().TypeInteger );
         } else {
             left = TGConvert( left, tipe );
             rite = TGConvert( rite, tipe );
@@ -780,7 +791,7 @@ tn  TGUnary( cg_op opcode, tn left, const type_def *tipe )
     new_tn = NULL;
 
     if( opcode != O_POINTS ) { /* for O_POINTS, the tipe given is always correct*/
-        if( tipe == TypeNone ) {
+        if( tipe == data_state().TypeNone ) {
             tipe = left->tipe;
         }
     }
@@ -886,8 +897,8 @@ tn  TGAddParm( call_handle call, tn parm, const type_def *tipe )
 
     if( tipe->refno == TY_DEFAULT ) {
         tipe = parm->tipe;
-        if( tipe == TypeBoolean ) {
-            tipe = TypeInteger;
+        if( tipe == data_state().TypeBoolean ) {
+            tipe = data_state().TypeInteger;
         }
     }
     parm = TGConvert( parm, tipe );
@@ -1077,7 +1088,7 @@ tn  TGDuplicate( tn node )
     if( node != NULL ) {
         switch( node->class_ ) {
         case TN_CONS:
-            new_tn = TGConst( CFCopy( &cgh, node->u.name->c.u.cfval ), node->tipe );
+            new_tn = TGConst( CFCopy( &cfloat_state().cgh, node->u.name->c.u.cfval ), node->tipe );
             break;
         case TN_LEAF:
             new_tn = TGLeaf( AddrCopy( node->u.addr ) );
@@ -1135,7 +1146,7 @@ tn  DoTGPreGets( cg_op opcode, tn left, tn rite, const type_def *tipe,
     l = leftp;
     r = rite;
     /* ok to use defaults here since we're assining the result to left*/
-    optipe = BinResult( opcode, &l, &r, TypeNone, false );
+    optipe = BinResult( opcode, &l, &r, data_state().TypeNone, false );
     rite = r;
     leftp = l;
     if( dupleft == NULL ) {
@@ -1264,11 +1275,11 @@ tn  TGFlow( cg_op opcode, tn left, tn rite )
     }
     if( result != NULL )
         return( result );
-    left = TGConvert( left, TypeBoolean );
+    left = TGConvert( left, data_state().TypeBoolean );
     if( rite != NULL ) {  /* O_FLOW_NOT*/
-        rite = TGConvert( rite, TypeBoolean );
+        rite = TGConvert( rite, data_state().TypeBoolean );
     }
-    return( TGNode( TN_FLOW, opcode, left, rite, TypeBoolean ) );
+    return( TGNode( TN_FLOW, opcode, left, rite, data_state().TypeBoolean ) );
 }
 
 
@@ -1328,7 +1339,6 @@ tn  TGVolatile( tn node )
     return( TGAttr( node, CG_SYM_VOLATILE ) );
 }
 
-static  bool_    IsAddress;
 
 static  bool_    SetAddress( bool_ value )
 /***************************************
@@ -1338,8 +1348,8 @@ static  bool_    SetAddress( bool_ value )
 {
     bool_    old_value;
 
-    old_value = IsAddress;
-    IsAddress = value;
+    old_value = tree_state().IsAddress;
+    tree_state().IsAddress = value;
     return( old_value );
 }
 
@@ -1398,7 +1408,7 @@ static  void    Control( cg_op opcode, tn node, label_handle lbl, bool_ gen )
 {
     an  addr;
 
-    addr = NotAddrGen( TGConvert( node, TypeBoolean ) );
+    addr = NotAddrGen( TGConvert( node, data_state().TypeBoolean ) );
     if( addr->format == NF_CONS ) { /* will either be NF_CONS or NF_BOOL*/
         if( CFTest( addr->u.n.name->c.u.cfval ) != 0 ) {
             if( opcode == O_IF_TRUE ) {
@@ -1629,7 +1639,6 @@ static  an  TNCallback( tn node )
     FreeTreeNode( node->u1.t.rite );
     return( BGInteger( 0, TypeAddress( TY_UINT_2 ) ) );
 }
-
 
 
 an  TNFlow( tn node )
@@ -2015,7 +2024,7 @@ an  TNCompare( tn node )
         }
         retv = BGCompare( node->u1.t.op, left, rite, entry, left->tipe );
     } else {
-        retv = Boolean( Arithmetic( retv, TypeInteger ), entry );
+        retv = Boolean( Arithmetic( retv, data_state().TypeInteger ), entry );
     }
     return( retv );
 }
@@ -2071,7 +2080,7 @@ static an   MakeBased( an left, an rite, const type_def *tipe )
         BGDone( BGAssign( AddrCopy( temp ), left, near_type ) );
         seg = AddrName( SegName( rite->u.n.name ), short_type );
         BGDone( rite );
-        seg_dest = BGBinary( O_PLUS, AddrCopy(temp), Int(near_type->length), TypePtr, true );
+        seg_dest = BGBinary( O_PLUS, AddrCopy(temp), Int(near_type->length), data_state().TypePtr, true );
         BGDone( BGAssign( seg_dest, seg, short_type ) );
     } else {
         switch( rite->tipe->refno ) {
@@ -2083,7 +2092,7 @@ static an   MakeBased( an left, an rite, const type_def *tipe )
             break;
         default:
             BGDone( BGAssign( AddrCopy( temp ), left, near_type ) );
-            seg_dest = BGBinary( O_PLUS, AddrCopy(temp), Int(near_type->length), TypePtr, true );
+            seg_dest = BGBinary( O_PLUS, AddrCopy(temp), Int(near_type->length), data_state().TypePtr, true );
             BGDone( BGAssign( seg_dest, rite, short_type ) );
             break;
         }
@@ -2205,8 +2214,6 @@ static  an  TNQuestion( tn node )
     return( temp );
 }
 
-
-static  tn  NodesToZap;
 
 static  bool_    FunctionModifiesSP( tn call )
 /********************************************
@@ -2345,7 +2352,7 @@ static  an  TNCall( tn callhandle, bool_ ignore_return )
                 BGDone( BGAssign( BGDuplicate( temp ), parman, parman->tipe ) );
                 parman = temp;
             }
-            tipe = TypePtr;
+            tipe = data_state().TypePtr;
         } else {
             parman = NotAddrGen( parmtn );
             tipe = scan->tipe;
@@ -2353,8 +2360,8 @@ static  an  TNCall( tn callhandle, bool_ ignore_return )
         if( tipe->refno == TY_DEFAULT ) {
             tipe = parman->tipe;
         }
-        if( tipe == TypeProcParm ) {
-            if( parman->tipe != TypeProcParm ) {
+        if( tipe == data_state().TypeProcParm ) {
+            if( parman->tipe != data_state().TypeProcParm ) {
                 retv = PassProcParm( parman );
                 BGDone( parman );
                 parman = retv;
@@ -2383,10 +2390,10 @@ static  an  TNCall( tn callhandle, bool_ ignore_return )
     FreeTreeNode( addr );
     if( call_inline ) {
         retv = BGStopInline( callhandle, callhandle->tipe );
-        NodesToZap = callhandle->u1.t.rite;
+        tree_state().NodesToZap = callhandle->u1.t.rite;
         TNZapParms();
     } else {
-        NodesToZap = callhandle->u1.t.rite;
+        tree_state().NodesToZap = callhandle->u1.t.rite;
         retv = BGCall( callnode, (callhandle->flags & TF_USED) != 0, aux_inline );
         retv->flags |= FL_STACKABLE;
         BGFiniCall( callnode );
@@ -2401,7 +2408,7 @@ void    TNZapParms( void )
     tn      next;
     tn      scan;
 
-    for( scan = NodesToZap; scan != NULL; scan = next ) {
+    for( scan = tree_state().NodesToZap; scan != NULL; scan = next ) {
         next = scan->u1.t.rite;
         BGZapBase( scan->u.name, scan->tipe );
         FreeTreeNode( scan );
@@ -2414,7 +2421,7 @@ bool_    TGIsAddress( void )
  * Are we processing an address expression?
  */
 {
-    return( IsAddress );
+    return( tree_state().IsAddress );
 }
 
 tn  TGQuestion( tn sel, tn left, tn rite, const type_def *tipe )
@@ -2424,7 +2431,7 @@ tn  TGQuestion( tn sel, tn left, tn rite, const type_def *tipe )
 {
     tn  result;
 
-    sel = TGConvert( sel, TypeBoolean );
+    sel = TGConvert( sel, data_state().TypeBoolean );
     left = TGConvert( left, tipe );
     rite = TGConvert( rite, tipe );
     result = TGNode( TN_COLON, O_NOP, left, rite, tipe );
@@ -2475,7 +2482,7 @@ static  void    FreeTreeNode( tn node )
  * free one tree node.
  */
 {
-    FrlFreeSize( &TreeFrl, (pointer *)node, sizeof( tree_node ) );
+    FrlFreeSize( &tree_state().TreeFrl, (pointer *)node, sizeof( tree_node ) );
 }
 
 
@@ -2485,16 +2492,16 @@ void    TInit( void )
  */
 {
     SetAddress( false );
-    SubMat[CP + XX * CP] = TypeClass( TypeLongInteger );
-    SubMat[PT + XX * PT] = TypeClass( TypeHugeInteger );
-    InitFrl( &TreeFrl );
+    tree_state().SubMat[CP + XX * CP] = TypeClass( data_state().TypeLongInteger );
+    tree_state().SubMat[PT + XX * PT] = TypeClass( data_state().TypeHugeInteger );
+    InitFrl( &tree_state().TreeFrl );
 }
 
 
 bool_    TreeFrlFree( void )
 /*************************/
 {
-    return( FrlFreeAll( &TreeFrl, sizeof( tree_node ) ) );
+    return( FrlFreeAll( &tree_state().TreeFrl, sizeof( tree_node ) ) );
 }
 
 

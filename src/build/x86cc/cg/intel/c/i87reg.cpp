@@ -51,8 +51,6 @@
 #include "x86regn.h"
 
 
-static fp_patches   FPPatchType;
-
 static const byte StackReq8087[LAST_IFUNC - FIRST_IFUNC + 1] = {
 /*********************************************************
     how much stack over and above the parm
@@ -80,31 +78,42 @@ static const byte StackReq8087[LAST_IFUNC - FIRST_IFUNC + 1] = {
     2         /* OP_TANH */
 };
 
-static byte StackReq387[LAST_IFUNC - FIRST_IFUNC + 1] = {
-/********************************************************
-    how much stack over and above the parm
-    does the operation require? NB: this number + number parms must be <= 4
-*/
-    2,        /* OP_POW */
-    0,        /* OP_ATAN2 */
-    0,        /* OP_FMOD */
-    0,        /* OP_NEGATE */
-    0,        /* OP_COMPLEMENT */
-    1,        /* OP_LOG */
-    1,        /* OP_COS */
-    1,        /* OP_SIN */
-    1,        /* OP_TAN */
-    0,        /* OP_SQRT */
-    0,        /* OP_FABS */
-    2,        /* OP_ACOS */
-    2,        /* OP_ASIN */
-    1,        /* OP_ATAN */
-    2,        /* OP_COSH */
-    2,        /* OP_EXP */
-    1,        /* OP_LOG10 */
-    2,        /* OP_SINH */
-    2         /* OP_TANH */
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct I87regState {
+    fp_patches FPPatchType;
+    byte StackReq387[LAST_IFUNC - FIRST_IFUNC + 1] = {
+    /********************************************************
+        how much stack over and above the parm
+        does the operation require? NB: this number + number parms must be <= 4
+    */
+        2,        /* OP_POW */
+        0,        /* OP_ATAN2 */
+        0,        /* OP_FMOD */
+        0,        /* OP_NEGATE */
+        0,        /* OP_COMPLEMENT */
+        1,        /* OP_LOG */
+        1,        /* OP_COS */
+        1,        /* OP_SIN */
+        1,        /* OP_TAN */
+        0,        /* OP_SQRT */
+        0,        /* OP_FABS */
+        2,        /* OP_ACOS */
+        2,        /* OP_ASIN */
+        1,        /* OP_ATAN */
+        2,        /* OP_COSH */
+        2,        /* OP_EXP */
+        1,        /* OP_LOG10 */
+        2,        /* OP_SINH */
+        2         /* OP_TANH */
+    };
 };
+
+}  // namespace
+
+static inline I87regState& i87reg_state() { return cbrun_part<I87regState>(); }
+
 
 static const fp_patches SegPatchTab[] = {
     #define _SR_(h,f)   f,
@@ -116,15 +125,15 @@ static const fp_patches SegPatchTab[] = {
 void SetFPPatchSegm( int i )
 /**************************/
 {
-    if( FPPatchType != FPP_NONE ) {
-        FPPatchType = SegPatchTab[i];
+    if( i87reg_state().FPPatchType != FPP_NONE ) {
+        i87reg_state().FPPatchType = SegPatchTab[i];
     }
 }
 
 void SetFPPatchType( fp_patches type )
 /************************************/
 {
-    FPPatchType = type;
+    i87reg_state().FPPatchType = type;
 }
 
 void FPPatchTypeRef( void )
@@ -132,15 +141,15 @@ void FPPatchTypeRef( void )
 {
     int         i;
 
-    if( FPPatchType != FPP_NONE ) {
-        for( i = Temp.hdr.reclen - offsetof( template_, data ) + 2; i > 2; i-- ) {
-            Temp.data[i] = Temp.data[i - 3];
+    if( i87reg_state().FPPatchType != FPP_NONE ) {
+        for( i = pcencode_state().Temp.hdr.reclen - offsetof( template_, data ) + 2; i > 2; i-- ) {
+            pcencode_state().Temp.data[i] = pcencode_state().Temp.data[i - 3];
         }
-        Temp.data[0] = ESC;
-        Temp.data[1] = ESC_FUN;
-        Temp.data[2] = FPPatchType;
-        Temp.hdr.reclen += 3;
-        FPPatchType = FPP_NONE;
+        pcencode_state().Temp.data[0] = ESC;
+        pcencode_state().Temp.data[1] = ESC_FUN;
+        pcencode_state().Temp.data[2] = i87reg_state().FPPatchType;
+        pcencode_state().Temp.hdr.reclen += 3;
+        i87reg_state().FPPatchType = FPP_NONE;
     }
 }
 
@@ -177,7 +186,7 @@ static  bool_    MathOpsBlowStack( conflict_node *conf, int stk_level )
     if( ins == last )
         return( true );
     for( ins = ins->head.next; ins != last; ins = ins->head.next ) {
-        if( FPStkReq( ins ) + stk_level + OpcodeNumOperands( ins ) >= Max87Stk ) {
+        if( FPStkReq( ins ) + stk_level + OpcodeNumOperands( ins ) >= i87data_state().Max87Stk ) {
             return( true );
         }
     }
@@ -219,7 +228,7 @@ static  bool_    AssignFPResult( block *blk, instruction *ins, int *stk_level )
         return( false );
     if( *stk_level < 0 )
         return( false );
-    if( *stk_level >= ( Max87Stk - 1 ) )
+    if( *stk_level >= ( i87data_state().Max87Stk - 1 ) )
         return( false );
     conf = FindConflictNode( op, blk, ins );
     if( conf == NULL )
@@ -423,7 +432,7 @@ static  void    FPConvert( void )
     instruction *ins;
     instruction *next;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
             if( ins->head.opcode == OP_CONVERT ) {
@@ -457,11 +466,11 @@ static  void    FPAlloc( void )
     name                *name;
     instruction         *new_ins;
 
-    HW_CTurnOn( CurrProc->state.unalterable, HW_FLTS );
-    FPStatWord = NULL;
+    HW_CTurnOn( data_state().CurrProc->state.unalterable, HW_FLTS );
+    i87data_state().FPStatWord = NULL;
     stk_level = 0;
     need_live_update = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         ins = blk->ins.head.next;
         if( ins->head.opcode == OP_BLOCK )
             continue;
@@ -566,7 +575,7 @@ static  void    StackShortLivedTemps( void )
     instruction         *ins2;
     name                *temp;
 
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         ins1 = conf->ins_range.first;
         ins2 = conf->ins_range.last;
         if( ins1 == NULL )
@@ -622,7 +631,7 @@ static  void    NoStackAcrossCalls( void )
     instruction *ins;
     opcnt       i;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 CheckForStack( ins->operands[i] );
@@ -666,7 +675,7 @@ static  void    FSinCos( void )
     block       *blk;
     instruction *ins;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode == OP_SIN ) {
                 FindSinCos( ins, OP_COS );
@@ -696,8 +705,8 @@ void    FPInitStkReq( void )
 /**************************/
 {
     if( _IsModel( CGSW_GEN_I_MATH_INLINE ) ) {
-        StackReq387[OP_SIN - FIRST_IFUNC] = 0;
-        StackReq387[OP_COS - FIRST_IFUNC] = 0;
+        i87reg_state().StackReq387[OP_SIN - FIRST_IFUNC] = 0;
+        i87reg_state().StackReq387[OP_COS - FIRST_IFUNC] = 0;
     }
 }
 
@@ -708,7 +717,7 @@ int     FPStkReq( instruction *ins )
     if( !_OpIsIFunc( ins->head.opcode ) )
         return( 0 );
     if( _FPULevel( FPU_387 ) ) {
-        return( StackReq387[ins->head.opcode - FIRST_IFUNC] );
+        return( i87reg_state().StackReq387[ins->head.opcode - FIRST_IFUNC] );
     } else {
         return( StackReq8087[ins->head.opcode - FIRST_IFUNC] );
     }

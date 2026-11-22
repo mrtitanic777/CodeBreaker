@@ -52,7 +52,17 @@
 static  void            NewType( temp_buff *temp, uint ty_def );
 static  void            EndType( bool_ check_too_big );
 
-static dbg_patch        CueInfoOffset;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct WvtypesState {
+    dbg_patch CueInfoOffset;
+};
+
+}  // namespace
+
+static inline WvtypesState& wvtypes_state() { return cbrun_part<WvtypesState>(); }
+
 
 static  byte    GetScalar( cg_type tipe ) {
 /*****************************************/
@@ -111,7 +121,7 @@ void    WVSrcCueLoc( void  )
     temp_buff   temp;
 
     BuffStart( &temp, WT_NAME + NAME_CUEINFO );
-    BuffForward( &CueInfoOffset ); /* does a  0 word */
+    BuffForward( &wvtypes_state().CueInfoOffset ); /* does a  0 word */
     BuffWord( 0 ); /* another 0 word */
     EndType( false );
 }
@@ -135,7 +145,7 @@ dbg_type        WVFtnType( const char *name, dbg_ftn_type tipe )
     BuffByte( tipe );
     BuffWSLString( name );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -148,7 +158,7 @@ dbg_type        WVScalar( const char *name, cg_type tipe )
     BuffByte( GetScalar( tipe ) );
     BuffWSLString( name );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -160,7 +170,7 @@ dbg_type        WVScope( const char *name )
     NewType( &temp, WT_NAME + NAME_SCOPE );
     BuffWSLString( name );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -170,7 +180,7 @@ void    WVDumpName( dbg_name name, dbg_type tipe )
     temp_buff   temp;
 
     NewType( &temp, WT_NAME + NAME_NAME );
-    name->refno = TypeIdx;
+    name->refno = data_state().TypeIdx;
     if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
         BuffIndex( name->scope );
         if( tipe == DBG_FWD_TYPE ) {
@@ -206,7 +216,7 @@ dbg_type        WVCharBlock( uint_32 len )
     NewType( &temp, WT_CHAR_BLOCK + NAME_CHAR_BYTE + class_ );
     BuffValue( len, class_ );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 dbg_type    WVIndCharBlock( back_handle len, cg_type len_type, int off )
@@ -218,7 +228,7 @@ dbg_type    WVIndCharBlock( back_handle len, cg_type len_type, int off )
     BuffByte( GetScalar( len_type ) );
     BuffBack( len, off );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 dbg_type        WVLocCharBlock( dbg_loc loc, cg_type len_type )
@@ -230,7 +240,7 @@ dbg_type        WVLocCharBlock( dbg_loc loc, cg_type len_type )
     BuffByte( GetScalar( len_type ) );
     LocDump( LocDupl( loc ) );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -245,7 +255,7 @@ dbg_type    WVFtnArray( back_handle dims, cg_type lo_bound_tipe, cg_type num_ele
     BuffBack( dims, off );
     BuffIndex( base );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -258,7 +268,7 @@ dbg_type        WVArray( dbg_type idx, dbg_type base )
     BuffIndex( idx );
     BuffIndex( base );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -273,7 +283,7 @@ dbg_type        WVIntArray( uint_32 hi, dbg_type base )
     BuffValue( hi, class_ );
     BuffIndex( base );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 dbg_type    WVSubRange( int_32 lo, int_32 hi, dbg_type base )
@@ -293,7 +303,7 @@ dbg_type    WVSubRange( int_32 lo, int_32 hi, dbg_type base )
     BuffValue( hi, class_hi );
     BuffIndex( base );
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 #if 0
@@ -364,7 +374,7 @@ static  dbg_type        DbgPtr( cg_type ptr_type, dbg_type base, int adjust,
         LocDump( LocDupl( loc_segment ) );
     }
     EndType( true );
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -506,7 +516,7 @@ dbg_type        WVEndStruct( dbg_struct st )
         st->list = field->entry.next;
         CGFree( field  );
     }
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -540,7 +550,7 @@ dbg_type        WVEndEnum( dbg_enum en )
         en->list = cons->next;
         CGFree( cons );
     }
-    return( TypeIdx );
+    return( data_state().TypeIdx );
 }
 
 
@@ -556,7 +566,7 @@ dbg_type        WVEndProc( dbg_proc pr )
     } else {
         NewType( &temp, WT_PROCEDURE + PROC_FAR );
     }
-    proc_type = TypeIdx;
+    proc_type = data_state().TypeIdx;
     BuffIndex( pr->ret );
     BuffByte( pr->num );
     for( ;; ) {
@@ -577,11 +587,10 @@ dbg_type        WVEndProc( dbg_proc pr )
 }
 
 
-
 static  void    NewType( temp_buff *temp, uint ty_def ) {
 /*******************************************************/
 
-    ++TypeIdx;
+    ++data_state().TypeIdx;
     BuffStart( temp, ty_def );
 }
 
@@ -593,7 +602,7 @@ static  void    EndType( bool_ check_too_big ) {
     if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
         if( check_too_big )
             ChkDbgSegSize( MAX_TYPE_SIZE, true );
-        BuffEnd( DbgTypes );
+        BuffEnd( data_state().DbgTypes );
     }
 }
 
@@ -603,13 +612,13 @@ static void DmpFileInfo( void )
     fname_lst   *lst;
     uint_16     index;
 
-    DataShort( DBFiles.count );
+    DataShort( dbsyms_state().DBFiles.count );
     index = 0;
-    for( lst = DBFiles.lst; lst != NULL; lst = lst->next ) {
+    for( lst = dbsyms_state().DBFiles.lst; lst != NULL; lst = lst->next ) {
         DataShort( index );
         index += lst->len;
     }
-    for( lst = DBFiles.lst; lst != NULL; lst = lst->next ) {
+    for( lst = dbsyms_state().DBFiles.lst; lst != NULL; lst = lst->next ) {
         DataBytes( lst->len, lst->fname );
     }
 }
@@ -626,13 +635,13 @@ void WVDmpCueInfo( long_offset where )
     offset      here;
 
 
-    PUSH_OP( CueInfoOffset.segid );
+    PUSH_OP( wvtypes_state().CueInfoOffset.segid );
         here = AskLocation();
-        SetLocation( CueInfoOffset.offset );
+        SetLocation( wvtypes_state().CueInfoOffset.offset );
         DataLong( where );  // current location in DbgTypes segment
         SetLocation( here );
     POP_OP();
-    ctl = &LineInfo;
+    ctl = &dbsyms_state().LineInfo;
     blk = ctl->head;
     DataShort( ctl->count );  // number of entries
     if( ctl->count > 0 ) {

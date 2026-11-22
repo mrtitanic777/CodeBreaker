@@ -42,8 +42,17 @@
 #include "feprotos.h"
 
 
-static  pointer         *ConfFrl;
-static  pointer         *ConfAliasVarsFrl;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct ConflictVarsState {
+    pointer *ConfFrl;
+    pointer *ConfAliasVarsFrl;
+};
+
+}  // namespace
+
+static inline ConflictVarsState& conflict_vars_state() { return cbrun_part<ConflictVarsState>(); }
 
 
 conflict_node   *AddConflictNode( name *opnd )
@@ -56,9 +65,9 @@ conflict_node   *AddConflictNode( name *opnd )
 
     if( opnd->n.class_ == N_TEMP )
         opnd = DeAlias( opnd );
-    new_cn = static_cast<conflict_node *>(AllocFrl( &ConfFrl, sizeof( conflict_node ) ));
+    new_cn = static_cast<conflict_node *>(AllocFrl( &conflict_vars_state().ConfFrl, sizeof( conflict_node ) ));
     new_cn->name           = opnd;
-    new_cn->next_conflict  = ConfList;
+    new_cn->next_conflict  = data_state().ConfList;
     new_cn->next_for_name  = opnd->v.conflict;
     _GBitInit( new_cn->id.out_of_block, EMPTY );
     _LBitInit( new_cn->id.within_block, EMPTY );
@@ -95,7 +104,7 @@ conflict_node   *AddConflictNode( name *opnd )
         }
         opnd->v.conflict = new_cn;
     }
-    ConfList = new_cn;
+    data_state().ConfList = new_cn;
     return( new_cn );
 }
 
@@ -257,7 +266,7 @@ static  possible_for_alias *MakePossibleForAlias( conflict_node *conf, name *opn
 
     aposs = FindPossibleForAlias( conf, opnd );
     if( aposs == NULL ) {
-        aposs = static_cast<possible_for_alias *>(AllocFrl( &ConfAliasVarsFrl, sizeof( possible_for_alias ) ));
+        aposs = static_cast<possible_for_alias *>(AllocFrl( &conflict_vars_state().ConfAliasVarsFrl, sizeof( possible_for_alias ) ));
         aposs->next     = conf->possible_for_alias_list;
         aposs->temp     = opnd;
         aposs->possible = RL_NUMBER_OF_SETS;
@@ -343,7 +352,7 @@ void    FreePossibleForAlias( conflict_node *conf )
 
     for( aposs = conf->possible_for_alias_list; aposs != NULL; aposs = next ) {
         next = aposs->next;
-        FrlFreeSize( &ConfAliasVarsFrl, (pointer *)aposs, sizeof( possible_for_alias ) );
+        FrlFreeSize( &conflict_vars_state().ConfAliasVarsFrl, (pointer *)aposs, sizeof( possible_for_alias ) );
     }
     conf->possible_for_alias_list = NULL;
 }
@@ -352,8 +361,8 @@ void    FreePossibleForAlias( conflict_node *conf )
 void    FreeConflicts( void )
 /***************************/
 {
-    while( ConfList != NULL ) {
-        FreeAConflict( ConfList );
+    while( data_state().ConfList != NULL ) {
+        FreeAConflict( data_state().ConfList );
     }
 }
 
@@ -390,9 +399,9 @@ void    FreeAConflict( conflict_node *conf )
         }
         prev->next_for_name = conf->next_for_name;
     }
-    prev = ConfList;
+    prev = data_state().ConfList;
     if( prev == conf ) {
-        ConfList = conf->next_conflict;
+        data_state().ConfList = conf->next_conflict;
     } else {
         while( prev->next_conflict != conf ) {
             prev = prev->next_conflict;
@@ -410,16 +419,16 @@ void    FreeAConflict( conflict_node *conf )
         }
     }
     FreePossibleForAlias( conf );
-    FrlFreeSize( &ConfFrl, (pointer *)conf, sizeof( conflict_node ) );
+    FrlFreeSize( &conflict_vars_state().ConfFrl, (pointer *)conf, sizeof( conflict_node ) );
 }
 
 
 void    InitConflict( void )
 /**************************/
 {
-    InitFrl( &ConfFrl );
-    InitFrl( &ConfAliasVarsFrl );
-    ConfList = NULL;
+    InitFrl( &conflict_vars_state().ConfFrl );
+    InitFrl( &conflict_vars_state().ConfAliasVarsFrl );
+    data_state().ConfList = NULL;
 }
 
 
@@ -428,7 +437,7 @@ bool_    ConfFrlFree( void )
 {
     bool_    ret;
 
-    ret  = FrlFreeAll( &ConfFrl, sizeof( conflict_node ) );
-    ret |= FrlFreeAll( &ConfAliasVarsFrl, sizeof( possible_for_alias ) );
+    ret  = FrlFreeAll( &conflict_vars_state().ConfFrl, sizeof( conflict_node ) );
+    ret |= FrlFreeAll( &conflict_vars_state().ConfAliasVarsFrl, sizeof( possible_for_alias ) );
     return( ret );
 }

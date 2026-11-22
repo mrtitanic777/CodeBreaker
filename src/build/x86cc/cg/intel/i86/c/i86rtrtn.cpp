@@ -78,34 +78,42 @@ const rtn_info RTInfo[] = {
     #undef PICK
 };
 
-static const struct STRUCT_BYTE_SEQ( 6 ) Scn1 = {
-     6, false,
-    {0xF2,              /*      repne           */
-     0xAE,              /*      scasb           */
-     0xD1, 0xE1,        /*      shl     cx,1    */
-     0x89, 0xCF}        /*      mov     di,cx   */
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct RtrtnState {
+    const struct STRUCT_BYTE_SEQ( 6 ) Scn1 = {
+         6, false,
+        {0xF2,              /*      repne           */
+         0xAE,              /*      scasb           */
+         0xD1, 0xE1,        /*      shl     cx,1    */
+         0x89, 0xCF}        /*      mov     di,cx   */
+    };
+    const struct STRUCT_BYTE_SEQ( 2 ) Scn2 = {
+         2, false,
+        {0xF2,              /*      repne           */
+         0xAF}              /*      scasw           */
+    };
+    const struct STRUCT_BYTE_SEQ( 18 ) Scn4 = {
+         18, false,
+        {0x83, 0xC7, 0x02,  /* L1:  add     d1,2    */
+         0x49,              /* L2:  dec     cx      */
+         0x74, 0x08,        /*      je      L3      */
+         0xAF,              /*      scasw           */
+         0x75, 0xF7,        /*      jne     L1      */
+         0x92,              /*      xchg    dx,ax   */
+         0xAF,              /*      scasw           */
+         0x92,              /*      xchg    dx,ax   */
+         0x75, 0xF5,        /*      jne     L2      */
+         0xD1, 0xE1,        /* L3:  shl     cx,1    */
+         0x89, 0xCF}        /*      mov     di,cx   */
+    };
 };
 
-static const struct STRUCT_BYTE_SEQ( 2 ) Scn2 = {
-     2, false,
-    {0xF2,              /*      repne           */
-     0xAF}              /*      scasw           */
-};
+}  // namespace
 
-static const struct STRUCT_BYTE_SEQ( 18 ) Scn4 = {
-     18, false,
-    {0x83, 0xC7, 0x02,  /* L1:  add     d1,2    */
-     0x49,              /* L2:  dec     cx      */
-     0x74, 0x08,        /*      je      L3      */
-     0xAF,              /*      scasw           */
-     0x75, 0xF7,        /*      jne     L1      */
-     0x92,              /*      xchg    dx,ax   */
-     0xAF,              /*      scasw           */
-     0x92,              /*      xchg    dx,ax   */
-     0x75, 0xF5,        /*      jne     L2      */
-     0xD1, 0xE1,        /* L3:  shl     cx,1    */
-     0x89, 0xCF}        /*      mov     di,cx   */
-};
+static inline RtrtnState& rtrtn_state() { return cbrun_part<RtrtnState>(); }
 
 
 const char  *AskRTName( rt_class rtindex )
@@ -566,11 +574,11 @@ pointer BEAuxInfo( pointer hdl, aux_class request )
     case FEINF_AUX_LOOKUP:
         switch( FindRTLabel( static_cast<label_handle>(hdl) ) ) {
         case RT_SCAN1:
-            return( (pointer)&Scn1 );
+            return( (pointer)&rtrtn_state().Scn1 );
         case RT_SCAN2:
-            return( (pointer)&Scn2 );
+            return( (pointer)&rtrtn_state().Scn2 );
         case RT_SCAN4:
-            return( (pointer)&Scn4 );
+            return( (pointer)&rtrtn_state().Scn4 );
         default:
             break;
         }

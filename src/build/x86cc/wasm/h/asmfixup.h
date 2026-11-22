@@ -34,8 +34,13 @@
 
 #include "fppatch.h"
 
-extern asmfixup     *InsFixups[OPND_MAX];
-extern asmfixup     *FixupHead;
+
+/* the variables of asmfixup.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct AsmfixupState {
+    asmfixup *InsFixups[OPND_MAX];
+};
+inline AsmfixupState& asmfixup_state() { return cbrun_part<AsmfixupState>(); }
+#include "asminlin.h"
 extern asmfixup     *AddFixup( asm_sym_handle sym, fixup_types fixup_type, fixup_options fixup_option );
 extern void         add_frame( void );
 extern bool_         BackPatch( asm_sym_handle sym );

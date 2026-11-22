@@ -49,7 +49,17 @@
 #include "i64.h"
 
 
-static const type_def   *SortTipe;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct BldselState {
+    const type_def *SortTipe;
+};
+
+}  // namespace
+
+static inline BldselState& bldsel_state() { return cbrun_part<BldselState>(); }
+
 
 static  select_list *NewCase( const signed_64 *lo, const signed_64 *hi, label_handle label )
 /******************************************************************************************/
@@ -122,7 +132,7 @@ void    BGSelOther( sel_handle s_node, label_handle other )
 int SelCompare( const signed_64 *lo1, const signed_64 *lo2 )
 /**********************************************************/
 {
-    if( SortTipe->attr & TYPE_SIGNED ) {
+    if( bldsel_state().SortTipe->attr & TYPE_SIGNED ) {
         return( I64Cmp( lo1, lo2 ) );
     }
     return( U64Cmp( lo1, lo2 ) );
@@ -136,13 +146,12 @@ static bool_     NodeLess( void *s1, void *s2 )
 }
 
 
-
 static void     SortNodeList( an node, sel_handle s_node, bool_ is_signed )
 /************************************************************************/
 {
     const select_list   *list;
 
-    SortTipe = SelNodeType( node, is_signed );
+    bldsel_state().SortTipe = SelNodeType( node, is_signed );
     s_node->list = static_cast<struct select_list *>(SortList( s_node->list, offsetof( select_list, next ), NodeLess ));
     list = s_node->list;
     s_node->lower = list->low;
@@ -225,8 +234,8 @@ cg_type SelType( const unsigned_64 *value_range )
     } else {
         tipe = TY_UINT_1;
     }
-    if( tipe > SortTipe->refno ) {
-        switch( SortTipe->refno ) {
+    if( tipe > bldsel_state().SortTipe->refno ) {
+        switch( bldsel_state().SortTipe->refno ) {
         case TY_UINT_1:
         case TY_INT_1:
             tipe = TY_UINT_1;
@@ -314,7 +323,7 @@ static  void    ScanBlock( tbl_control *table, an node, type_class_def type_clas
     }
     Generate( false );
     EnLink( AskForNewLabel() );
-    CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
 }
 
 
@@ -380,7 +389,7 @@ static  void    SelectBlock( tbl_control *table, an node, label_handle other )
     }
     Generate( false );
     EnLink( AskForNewLabel() );
-    CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
 }
 
 
@@ -584,7 +593,7 @@ void    BGSelect( sel_handle s_node, an node, cg_switch_type allowed )
         allowed = CG_SWITCH_ALL;
     }
     kind = static_cast<sel_kind>(0);
-    node = Arithmetic( node, TypeInteger );
+    node = Arithmetic( node, data_state().TypeInteger );
     if( U64isntZero( s_node->num_cases ) ) {
         best = MAX_COST;
         /*
@@ -647,7 +656,7 @@ void    BGSelect( sel_handle s_node, an node, cg_switch_type allowed )
             SortNodeList( node, s_node, true );
             break;
         }
-        node = BGConvert( node, SortTipe );
+        node = BGConvert( node, bldsel_state().SortTipe );
         /*
          * We generate this bogus add 0 node so that we have a temporary
          * for the actual value to switch on. If we don't do this, a
@@ -657,22 +666,22 @@ void    BGSelect( sel_handle s_node, an node, cg_switch_type allowed )
          * changed in between.
          */
         Set64ValZero( tmp );
-        node = BGBinary( O_PLUS, node, BGIntegerSel( &tmp, SortTipe ), SortTipe, true );
+        node = BGBinary( O_PLUS, node, BGIntegerSel( &tmp, bldsel_state().SortTipe ), bldsel_state().SortTipe, true );
 
         MergeListEntries( s_node );
 
         switch( kind ) {
         case S_SCAN:
         case U_SCAN:
-            node = GenScanTable( node, s_node, SortTipe );
+            node = GenScanTable( node, s_node, bldsel_state().SortTipe );
             break;
         case S_JUMP:
         case U_JUMP:
-            node = GenSelTable( node, s_node, SortTipe );
+            node = GenSelTable( node, s_node, bldsel_state().SortTipe );
             break;
         case S_IF:
         case U_IF:
-            node = GenIfStmts( node, s_node, SortTipe );
+            node = GenIfStmts( node, s_node, bldsel_state().SortTipe );
             break;
         }
     } else if( s_node->other_wise != NULL ) {

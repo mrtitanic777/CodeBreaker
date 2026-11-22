@@ -64,21 +64,27 @@ struct return_info {
     bool_                with_expr;
 };
 
-extern unsigned     NodeCount;
 
-LABEL_INDEX         LabelIndex;
-SYM_LIST_HEADS      *SymListHeads;
+namespace {
 
-static TREEPTR      LastStmt;
-static BLOCKPTR     BlockStack;
-static BLOCKPTR     LoopStack;
-static SWITCHPTR    SwitchStack;
+/* the statics of this file, one set for each run of the compiler */
+struct CstmtState {
+    TREEPTR LastStmt;
+    BLOCKPTR BlockStack;
+    BLOCKPTR LoopStack;
+    SWITCHPTR SwitchStack;
+};
+
+}  // namespace
+
+static inline CstmtState& cstmt_state() { return cbrun_part<CstmtState>(); }
+
 
 void StmtInit( void )
 {
-    FirstStmt = NULL;
-    LastStmt = NULL;
-    SymListHeads = NULL;
+    cvars_state().FirstStmt = NULL;
+    cstmt_state().LastStmt = NULL;
+    cvars_state().SymListHeads = NULL;
 }
 
 
@@ -92,7 +98,7 @@ static void CheckStringLeaf( TREEPTR leaf )
 
 static void CheckUseful( void )
 {
-    if( CompFlags.useful_side_effect ) {
+    if( cvars_state().CompFlags.useful_side_effect ) {
         CWarn1( ERR_USEFUL_SIDE_EFFECT );
     } else {
         CWarn1( ERR_MEANINGLESS );
@@ -105,27 +111,27 @@ static void CheckStmtExpr( void )
     TREEPTR     tree;
 
     tree = Expr();
-    if( CompFlags.meaningless_stmt ) {
+    if( cvars_state().CompFlags.meaningless_stmt ) {
         CheckUseful();
     }
     AddStmt( tree );
-    if( CompFlags.pending_dead_code ) {
-        DeadCode = 1;
+    if( cvars_state().CompFlags.pending_dead_code ) {
+        cvars_state().DeadCode = 1;
     }
 }
 
 
 SYM_HANDLE GetBlockSymList( void )
 {
-    return( BlockStack->sym_list );
+    return( cstmt_state().BlockStack->sym_list );
 }
 
 
 void InitStmt( void )
 {
-    BlockStack = NULL;
-    LoopStack = NULL;
-    SwitchStack = NULL;
+    cstmt_state().BlockStack = NULL;
+    cstmt_state().LoopStack = NULL;
+    cstmt_state().SwitchStack = NULL;
 }
 
 
@@ -135,8 +141,8 @@ void SwitchPurge( void )
     CASEPTR     c_entry;
     CASEPTR     c_tmp;
 
-    while( (sw = SwitchStack) != NULL ) {
-        SwitchStack = sw->prev_switch;
+    while( (sw = cstmt_state().SwitchStack) != NULL ) {
+        cstmt_state().SwitchStack = sw->prev_switch;
         c_entry = sw->case_list;
         while( c_entry != NULL ) {
             c_tmp = c_entry->next_case;
@@ -152,14 +158,14 @@ void AddStmt( TREEPTR stmt )
 {
     WalkExprTree( stmt, CheckStringLeaf, NoOp, NoOp, DoConstFold );
     stmt = ExprNode( NULL, OPR_STMT, stmt );
-    stmt->op.u2.src_loc = SrcLoc;
-    stmt->op.u1.unroll_count = UnrollCount;
-    if( FirstStmt == NULL )
-        FirstStmt = stmt;
-    if( LastStmt != NULL ) {
-        LastStmt->left = stmt;
+    stmt->op.u2.src_loc = cvars_state().SrcLoc;
+    stmt->op.u1.unroll_count = cvars_state().UnrollCount;
+    if( cvars_state().FirstStmt == NULL )
+        cvars_state().FirstStmt = stmt;
+    if( cstmt_state().LastStmt != NULL ) {
+        cstmt_state().LastStmt->left = stmt;
     }
-    LastStmt = stmt;
+    cstmt_state().LastStmt = stmt;
 }
 
 
@@ -168,9 +174,9 @@ static void AddSymList( SYM_HANDLE sym_handle )
     SYM_LIST_HEADS   *symlisthead;
 
     symlisthead = (SYM_LIST_HEADS *)CMemAlloc( sizeof( SYM_LIST_HEADS ) );
-    symlisthead->next = SymListHeads;
+    symlisthead->next = cvars_state().SymListHeads;
     symlisthead->sym_head = sym_handle;
-    SymListHeads = symlisthead;
+    cvars_state().SymListHeads = symlisthead;
 }
 
 
@@ -197,9 +203,9 @@ void GenFunctionNode( SYM_HANDLE sym_handle )
     /*
      * Evil, evil globals! But we need this for later lookups in cgen.c
      */
-    sym->u.func.start_of_func = LastStmt;
-    CurFuncNode = tree;
-    NodeCount = 0;
+    sym->u.func.start_of_func = cstmt_state().LastStmt;
+    cvars_state().CurFuncNode = tree;
+    cvars_state().NodeCount = 0;
 }
 
 
@@ -220,7 +226,7 @@ __declspec(noinline)
 #endif
 LABEL_INDEX NextLabel( void )
 {
-    return( ++LabelIndex );
+    return( ++cvars_state().LabelIndex );
 }
 
 
@@ -228,8 +234,8 @@ static void DropLabel( LABEL_INDEX label )
 {
     TREEPTR     tree;
 
-    CompFlags.label_dropped = true;
-    DeadCode = 0;
+    cvars_state().CompFlags.label_dropped = true;
+    cvars_state().DeadCode = 0;
     tree = LeafNode( OPR_LABEL );
     tree->op.u2.label_index = label;
     AddStmt( tree );
@@ -238,16 +244,16 @@ static void DropLabel( LABEL_INDEX label )
 
 static void DropBreakLabel( void )
 {
-    if( BlockStack->break_label != 0 ) {
-        DropLabel( BlockStack->break_label );
+    if( cstmt_state().BlockStack->break_label != 0 ) {
+        DropLabel( cstmt_state().BlockStack->break_label );
     }
 }
 
 
 static void DropContinueLabel( void )
 {
-    if( BlockStack->continue_label != 0 ) {
-        DropLabel( BlockStack->continue_label );
+    if( cstmt_state().BlockStack->continue_label != 0 ) {
+        DropLabel( cstmt_state().BlockStack->continue_label );
     }
 }
 
@@ -286,11 +292,11 @@ static void Jump( LABEL_INDEX label )
 {
     TREEPTR     tree;
 
-    if( DeadCode == 0 ) {
+    if( cvars_state().DeadCode == 0 ) {
         tree = LeafNode( OPR_JUMP );
         tree->op.u2.label_index = label;
         AddStmt( tree );
-        DeadCode = 1;
+        cvars_state().DeadCode = 1;
     }
 }
 
@@ -329,11 +335,11 @@ static void JumpTrue( TREEPTR expr, LABEL_INDEX label )
 
 void LookAhead( void )
 {
-    SavedId = CMemStrdup( Buffer );     /* save current id */
-    SavedTokenLoc = TokenLoc;           /* save linenum and fno */
+    cvars_state().SavedId = CMemStrdup( cvars_state().Buffer );     /* save current id */
+    cvars_state().SavedTokenLoc = cvars_state().TokenLoc;           /* save linenum and fno */
     NextToken();                        /* get next token */
-    LAToken = CurToken;                 /* save it in look ahead */
-    CurToken = T_SAVED_ID;              /* go back to saved id */
+    cvars_state().LAToken = cvars_state().CurToken;                 /* save it in look ahead */
+    cvars_state().CurToken = T_SAVED_ID;              /* go back to saved id */
 }
 
 
@@ -343,29 +349,29 @@ static bool_ GrabLabels( void )
 
     label = NULL;
     for( ;; ) {
-        if( CurToken == T_SAVED_ID ) {
-            SrcLoc = SavedTokenLoc;
+        if( cvars_state().CurToken == T_SAVED_ID ) {
+            cvars_state().SrcLoc = cvars_state().SavedTokenLoc;
         } else {
-            SrcLoc = TokenLoc;
-            if( CurToken != T_ID )
+            cvars_state().SrcLoc = cvars_state().TokenLoc;
+            if( cvars_state().CurToken != T_ID )
                 break;
             LookAhead();
         }
-        if( LAToken != T_COLON )
+        if( cvars_state().LAToken != T_COLON )
             break; /* quit if look ahead not : */
-        label = LkLabel( SavedId );
+        label = LkLabel( cvars_state().SavedId );
         if( label->defined ) {
             CErr2p( ERR_LABEL_ALREADY_DEFINED, label->name );
         } else {
             DropLabel( label->ref_list );
             label->defined = true;      /* indicate label defined now */
         }
-        CMemFree( SavedId );            /* free the saved id */
-        SavedId = NULL;
+        CMemFree( cvars_state().SavedId );            /* free the saved id */
+        cvars_state().SavedId = NULL;
         NextToken();                    /* get next token */
     }
     if( label != NULL ) {               /* label was found */
-        if( CurToken == T_RIGHT_BRACE ) {
+        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
             CErr1( ERR_STMT_REQUIRED_AFTER_LABEL );
         }
         return( true );                    // indicate label found
@@ -395,10 +401,10 @@ static void ReturnStmt( SYM_HANDLE func_result_handle, struct return_info *info 
     enum return_with    with;
 
     NextToken();
-    if( CurToken != T_SEMI_COLON ) {
+    if( cvars_state().CurToken != T_SEMI_COLON ) {
         TYPEPTR     func_type;
 
-        func_type = CurFunc->sym_type->object;
+        func_type = cvars_state().CurFunc->sym_type->object;
         SKIP_TYPEDEFS( func_type );
         tree = RValue( Expr() );
         CheckRetType( tree );
@@ -418,7 +424,7 @@ static void ReturnStmt( SYM_HANDLE func_result_handle, struct return_info *info 
     if( info->with != with ) {
         CErr1( ERR_INCONSISTENT_USE_OF_RETURN );
     }
-    for( block = BlockStack; block != NULL; block = block->prev_block ) {
+    for( block = cstmt_state().BlockStack; block != NULL; block = block->prev_block ) {
         if( (block->block_type == T__TRY)
           || (block->block_type == T___TRY) ) {
             UnWindTry( TRYSCOPE_NONE );
@@ -432,7 +438,7 @@ static void SetFuncReturnNode( TREEPTR tree )
 {
     TYPEPTR     typ;
 
-    typ = CurFunc->sym_type->object;
+    typ = cvars_state().CurFunc->sym_type->object;
     tree->u.expr_type = typ;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type == TYP_STRUCT
@@ -447,11 +453,11 @@ static void CheckRetValue( void )
 {
     TYPEPTR     typ;
 
-    typ = CurFunc->sym_type;
+    typ = cvars_state().CurFunc->sym_type;
     typ = typ->object;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type != TYP_VOID ) {
-        CWarn2p( ERR_MISSING_RETURN_VALUE, CurFunc->name );
+        CWarn2p( ERR_MISSING_RETURN_VALUE, cvars_state().CurFunc->name );
     }
 }
 
@@ -463,7 +469,7 @@ static SYM_HANDLE GetLocalVarDecls( void )
 
     DeclList( &symlist );
     if( symlist != SYM_NULL ) {
-        symhandle = CurFunc->u.func.locals;
+        symhandle = cvars_state().CurFunc->u.func.locals;
         /*
          * symhandle will be non-zero if MakeNewDotSym was called while
          * parsing the declaration list.
@@ -478,7 +484,7 @@ static SYM_HANDLE GetLocalVarDecls( void )
             sym.handle = symlist;
             SymReplace( &sym, symhandle );
         } else {
-            CurFunc->u.func.locals = symlist;
+            cvars_state().CurFunc->u.func.locals = symlist;
         }
     }
     return( symlist );
@@ -489,7 +495,7 @@ static void DeadMsg( void )
 /*************************/
 {
     CWarn1( ERR_DEAD_CODE );
-    DeadCode = 2;   /* so we don't get more messages */
+    cvars_state().DeadCode = 2;   /* so we don't get more messages */
 }
 
 
@@ -498,14 +504,14 @@ static void StartNewBlock( void )
     BLOCKPTR    block;
 
     block = (BLOCKPTR)CMemAlloc( sizeof( BLOCKDEFN ) );
-    block->block_type = CurToken;
+    block->block_type = cvars_state().CurToken;
     block->top_label = 0;
     block->continue_label = 0;
     block->break_label = 0;
-    block->prev_block = BlockStack;
-    block->prev_loop = LoopStack;
+    block->prev_block = cstmt_state().BlockStack;
+    block->prev_loop = cstmt_state().LoopStack;
     block->gen_endblock = false;
-    BlockStack = block;
+    cstmt_state().BlockStack = block;
 }
 
 
@@ -524,19 +530,19 @@ static void LeftBrace( void )
      */
     StartNewBlock();
     NextToken();
-    ++SymLevel;
+    ++cvars_state().SymLevel;
     tree = LeafNode( OPR_NEWBLOCK );
     AddStmt( tree );
-    BlockStack->sym_list = SYM_NULL;
-    BlockStack->gen_endblock = true;
-    DeclList( &BlockStack->sym_list );
-    tree->op.u2.sym_handle = BlockStack->sym_list;
+    cstmt_state().BlockStack->sym_list = SYM_NULL;
+    cstmt_state().BlockStack->gen_endblock = true;
+    DeclList( &cstmt_state().BlockStack->sym_list );
+    tree->op.u2.sym_handle = cstmt_state().BlockStack->sym_list;
 }
 
 
 static void JumpBreak( BLOCKPTR block )
 {
-    if( DeadCode == 0 ) {
+    if( cvars_state().DeadCode == 0 ) {
         if( block->break_label == 0 ) {
             block->break_label = NextLabel();
         }
@@ -552,9 +558,9 @@ static void BreakStmt( void )
 
     NextToken();
     try_scope = TRYSCOPE_UNDEF;
-    block = BlockStack;
+    block = cstmt_state().BlockStack;
     if( block != NULL ) {
-        while( block != LoopStack ) {
+        while( block != cstmt_state().LoopStack ) {
             if( block->block_type == T_SWITCH )
                 break;
             if( (block->block_type == T__TRY)
@@ -582,7 +588,7 @@ static void LeaveStmt( void )
     BLOCKPTR    block;
 
     NextToken();
-    block = BlockStack;
+    block = cstmt_state().BlockStack;
     while( block != NULL ) {
         if( (block->block_type == T__TRY)
           || (block->block_type == T___TRY) )
@@ -605,11 +611,11 @@ static void ContinueStmt( void )
     tryindex_t  try_scope;
 
     NextToken();
-    if( LoopStack != NULL ) {
-        if( DeadCode == 0 ) {
+    if( cstmt_state().LoopStack != NULL ) {
+        if( cvars_state().DeadCode == 0 ) {
             try_scope = TRYSCOPE_UNDEF;
-            block = BlockStack;
-            while( block != LoopStack ) {
+            block = cstmt_state().BlockStack;
+            while( block != cstmt_state().LoopStack ) {
                 if( ( block->block_type == T__TRY )
                   || ( block->block_type == T___TRY ) ) {
                     try_scope = block->parent_index;
@@ -619,10 +625,10 @@ static void ContinueStmt( void )
             if( try_scope != TRYSCOPE_UNDEF ) {
                 UnWindTry( try_scope );
             }
-            if( LoopStack->continue_label == 0 ) {
-                LoopStack->continue_label = NextLabel();
+            if( cstmt_state().LoopStack->continue_label == 0 ) {
+                cstmt_state().LoopStack->continue_label = NextLabel();
             }
-            Jump( LoopStack->continue_label );
+            Jump( cstmt_state().LoopStack->continue_label );
         }
     } else {
         CErr1( ERR_MISPLACED_CONTINUE );
@@ -635,14 +641,14 @@ static void DefaultStmt( void )
 {
     NextToken();
     MustRecog( T_COLON );
-    if( SwitchStack ) {
-        if( SwitchStack->default_label == 0 ) {
-            SwitchStack->default_label = NextLabel();
-            DropLabel( SwitchStack->default_label );
+    if( cstmt_state().SwitchStack ) {
+        if( cstmt_state().SwitchStack->default_label == 0 ) {
+            cstmt_state().SwitchStack->default_label = NextLabel();
+            DropLabel( cstmt_state().SwitchStack->default_label );
         } else {
             CErr1( ERR_ONLY_1_DEFAULT );
         }
-        if( CurToken == T_RIGHT_BRACE ) {
+        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
             CErr1( ERR_STMT_REQUIRED_AFTER_DEFAULT );
         }
     } else {
@@ -655,15 +661,15 @@ static void ElseStmt( void )
 {
     LABEL_INDEX if_label;
 
-    SrcLoc = TokenLoc;
+    cvars_state().SrcLoc = cvars_state().TokenLoc;
     NextToken();
-    BlockStack->block_type = T_ELSE;
-    if_label = BlockStack->break_label;
-    if( DeadCode == 0 ) {
-        BlockStack->break_label = NextLabel();
-        Jump( BlockStack->break_label );
+    cstmt_state().BlockStack->block_type = T_ELSE;
+    if_label = cstmt_state().BlockStack->break_label;
+    if( cvars_state().DeadCode == 0 ) {
+        cstmt_state().BlockStack->break_label = NextLabel();
+        Jump( cstmt_state().BlockStack->break_label );
     } else {
-        BlockStack->break_label = 0;
+        cstmt_state().BlockStack->break_label = 0;
     }
     DropLabel( if_label );
 }
@@ -674,10 +680,10 @@ static void GotoStmt( void )
     LABELPTR    label;
 
     NextToken();
-    if( CurToken != T_ID ) {
+    if( cvars_state().CurToken != T_ID ) {
         CErr1( ERR_EXPECTING_LABEL );
     } else {
-        label = LkLabel( Buffer );
+        label = LkLabel( cvars_state().Buffer );
         label->referenced = true;
         Jump( label->ref_list );
     }
@@ -689,18 +695,18 @@ static void GotoStmt( void )
 static void PushBlock( void )
 {
     StartNewBlock();
-    ++SymLevel;
-    BlockStack->sym_list = SYM_NULL;
+    ++cvars_state().SymLevel;
+    cstmt_state().BlockStack->sym_list = SYM_NULL;
 }
 
 
 static void NewLoop( void )
 {
     StartNewBlock();
-    LoopStack = BlockStack;
-    LoopStack->top_label = NextLabel();
-    DropLabel( LoopStack->top_label );
-    ++LoopDepth;
+    cstmt_state().LoopStack = cstmt_state().BlockStack;
+    cstmt_state().LoopStack->top_label = NextLabel();
+    DropLabel( cstmt_state().LoopStack->top_label );
+    ++cvars_state().LoopDepth;
 }
 
 
@@ -710,22 +716,22 @@ static void ForStmt( void )
 
     NextToken();
     MustRecog( T_LEFT_PAREN );
-    if( CompVars.cstd > STD_C89 ) {
+    if( cvars_state().CompVars.cstd > STD_C89 ) {
         PushBlock();    // 'for' opens new scope
     }
-    if( CurToken != T_SEMI_COLON ) {
-        if( CompVars.cstd > STD_C89 ) {
+    if( cvars_state().CurToken != T_SEMI_COLON ) {
+        if( cvars_state().CompVars.cstd > STD_C89 ) {
             TREEPTR     tree;
 
             tree = LeafNode( OPR_NEWBLOCK );
             AddStmt( tree );
-            BlockStack->gen_endblock = true;
-            if( !LoopDecl( &BlockStack->sym_list ) ) {
+            cstmt_state().BlockStack->gen_endblock = true;
+            if( !LoopDecl( &cstmt_state().BlockStack->sym_list ) ) {
                 CheckStmtExpr();    // no declarator, try init_expr
             } else {
                 parsed_semi_colon = true;   // LoopDecl ate it up
             }
-            tree->op.u2.sym_handle = BlockStack->sym_list;
+            tree->op.u2.sym_handle = cstmt_state().BlockStack->sym_list;
         } else {
             CheckStmtExpr();        // init_expr
         }
@@ -734,18 +740,18 @@ static void ForStmt( void )
         MustRecog( T_SEMI_COLON );
     }
     NewLoop();
-    BlockStack->block_type = T_FOR;
-    if( CurToken != T_SEMI_COLON ) {
-        BlockStack->break_label = NextLabel();
-        if( !JumpFalse( Expr(), BlockStack->break_label ) ) {
-            BlockStack->break_label = 0;
+    cstmt_state().BlockStack->block_type = T_FOR;
+    if( cvars_state().CurToken != T_SEMI_COLON ) {
+        cstmt_state().BlockStack->break_label = NextLabel();
+        if( !JumpFalse( Expr(), cstmt_state().BlockStack->break_label ) ) {
+            cstmt_state().BlockStack->break_label = 0;
         }
     }
     MustRecog( T_SEMI_COLON );
-    BlockStack->inc_var = NULL;
-    if( CurToken != T_RIGHT_PAREN ) {
-        BlockStack->inc_var = Expr();                   // save this
-        if( CompFlags.meaningless_stmt ) {
+    cstmt_state().BlockStack->inc_var = NULL;
+    if( cvars_state().CurToken != T_RIGHT_PAREN ) {
+        cstmt_state().BlockStack->inc_var = Expr();                   // save this
+        if( cvars_state().CompFlags.meaningless_stmt ) {
             CheckUseful();
         }
     }
@@ -756,10 +762,10 @@ static void ForStmt( void )
 static void EndForStmt( void )
 {
     DropContinueLabel();
-    if( BlockStack->inc_var ) {
-        AddStmt( BlockStack->inc_var );
+    if( cstmt_state().BlockStack->inc_var ) {
+        AddStmt( cstmt_state().BlockStack->inc_var );
     }
-    Jump( BlockStack->top_label );
+    Jump( cstmt_state().BlockStack->top_label );
 }
 
 
@@ -794,7 +800,7 @@ static void AddCaseLabel( signed_64 value )
 #endif
     old_value = converted_value;
     U64Inc( old_value ); /* make old_value different */
-    for( ce = SwitchStack->case_list; ce != NULL; ce = ce->next_case ) {
+    for( ce = cstmt_state().SwitchStack->case_list; ce != NULL; ce = ce->next_case ) {
         old_value = ce->value;
         if( I64Cmp( &old_value, &converted_value ) >= 0 )
             break;
@@ -810,8 +816,8 @@ static void AddCaseLabel( signed_64 value )
         new_ce = (CASEPTR)CMemAlloc( sizeof( CASEDEFN ) );
         new_ce->value = converted_value;
         if( prev_ce == NULL ) {
-            new_ce->next_case = SwitchStack->case_list;
-            SwitchStack->case_list = new_ce;
+            new_ce->next_case = cstmt_state().SwitchStack->case_list;
+            cstmt_state().SwitchStack->case_list = new_ce;
         } else {
             prev_ce->next_case = new_ce;
             new_ce->next_case = ce;
@@ -820,22 +826,22 @@ static void AddCaseLabel( signed_64 value )
          * too many labels seriously slows down code generation.
          */
         if( prev_ce
-          && LastStmt->op.opr == OPR_STMT
-          && LastStmt->right->op.opr == OPR_CASE ) {
-            new_ce->label = SwitchStack->last_case_label;
+          && cstmt_state().LastStmt->op.opr == OPR_STMT
+          && cstmt_state().LastStmt->right->op.opr == OPR_CASE ) {
+            new_ce->label = cstmt_state().SwitchStack->last_case_label;
             new_ce->gen_label = false;
         } else {
             new_ce->label = NextLabel();
             new_ce->gen_label = true;
         }
-        SwitchStack->number_of_cases++;
-        if( I64Cmp( &converted_value, &SwitchStack->low_value ) < 0 ) {
-            SwitchStack->low_value = converted_value;
+        cstmt_state().SwitchStack->number_of_cases++;
+        if( I64Cmp( &converted_value, &cstmt_state().SwitchStack->low_value ) < 0 ) {
+            cstmt_state().SwitchStack->low_value = converted_value;
         }
-        if( I64Cmp( &converted_value, &SwitchStack->high_value ) > 0 ) {
-            SwitchStack->high_value = converted_value;
+        if( I64Cmp( &converted_value, &cstmt_state().SwitchStack->high_value ) > 0 ) {
+            cstmt_state().SwitchStack->high_value = converted_value;
         }
-        SwitchStack->last_case_label = new_ce->label;
+        cstmt_state().SwitchStack->last_case_label = new_ce->label;
         tree = LeafNode( OPR_CASE );
         tree->op.u2.case_info = new_ce;
         AddStmt( tree );
@@ -848,12 +854,12 @@ static void CaseStmt( void )
     const_val   val;
 
     NextToken();
-    if( SwitchStack ) {
+    if( cstmt_state().SwitchStack ) {
         if( ConstExprAndType( &val ) ) {
             AddCaseLabel( val.value );
         }
         MustRecog( T_COLON );
-        if( CurToken == T_RIGHT_BRACE ) {
+        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
             CErr1( ERR_STMT_REQUIRED_AFTER_CASE );
         }
     } else {
@@ -881,20 +887,20 @@ static void TryStmt( void )
 {
     TREEPTR     tree;
 
-    MarkTryVolatile( CurFunc->u.func.parms );
-    MarkTryVolatile( CurFunc->u.func.locals );
-    CurFuncNode->op.u2.func.flags |=  FUNC_USES_SEH;
-    CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
-    CurToken = T__TRY;
+    MarkTryVolatile( cvars_state().CurFunc->u.func.parms );
+    MarkTryVolatile( cvars_state().CurFunc->u.func.locals );
+    cvars_state().CurFuncNode->op.u2.func.flags |=  FUNC_USES_SEH;
+    cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+    cvars_state().CurToken = T__TRY;
     StartNewBlock();
     NextToken();
-    BlockStack->parent_index = TryScope;
-    ++TryCount;
-    BlockStack->try_index = TryCount;
-    TryScope = TryCount;
+    cstmt_state().BlockStack->parent_index = cvars_state().TryScope;
+    ++cvars_state().TryCount;
+    cstmt_state().BlockStack->try_index = cvars_state().TryCount;
+    cvars_state().TryScope = cvars_state().TryCount;
     tree = LeafNode( OPR_TRY );
     tree->op.u2.st.u.try_index = 0;
-    tree->op.u2.st.parent_scope = TryCount;
+    tree->op.u2.st.parent_scope = cvars_state().TryCount;
     AddStmt( tree );
 }
 
@@ -920,26 +926,26 @@ static bool_ EndTry( void )
     DATA_TYPE   expr_type;
 
     DropBreakLabel();           /* _leave jumps to this label */
-    parent_scope = BlockStack->parent_index;
+    parent_scope = cstmt_state().BlockStack->parent_index;
     tree = LeafNode( OPR_TRY );
-    tree->op.u2.st.u.try_index = BlockStack->try_index;
+    tree->op.u2.st.u.try_index = cstmt_state().BlockStack->try_index;
     tree->op.u2.st.parent_scope = parent_scope;
     AddStmt( tree );
-    if( (CurToken == T__EXCEPT)
-      || (CurToken == T___EXCEPT) ) {
+    if( (cvars_state().CurToken == T__EXCEPT)
+      || (cvars_state().CurToken == T___EXCEPT) ) {
         NextToken();
-        BlockStack->block_type = T__EXCEPT;
-        BlockStack->break_label = NextLabel();
-        Jump( BlockStack->break_label );
-        DeadCode = 0;
+        cstmt_state().BlockStack->block_type = T__EXCEPT;
+        cstmt_state().BlockStack->break_label = NextLabel();
+        Jump( cstmt_state().BlockStack->break_label );
+        cvars_state().DeadCode = 0;
         tree = LeafNode( OPR_EXCEPT );
         tree->op.u2.st.u.try_sym_handle = DummyTrySymbol();
         tree->op.u2.st.parent_scope = parent_scope;
         AddStmt( tree );
-        CompFlags.exception_filter_expr = true;
+        cvars_state().CompFlags.exception_filter_expr = true;
         expr = RValue( BracketExpr() );
-        CompFlags.exception_filter_expr = false;
-        CompFlags.exception_handler = true;
+        cvars_state().CompFlags.exception_filter_expr = false;
+        cvars_state().CompFlags.exception_handler = true;
         typ = TypeOf( expr );
         expr_type = DataTypeOf( typ );
         if( expr_type != TYP_VOID ) {
@@ -947,7 +953,7 @@ static bool_ EndTry( void )
                 CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
             }
         }
-        func = VarLeaf( SymGetPtr( SymExcept ), SymExcept );
+        func = VarLeaf( SymGetPtr( cvars_state().SymExcept ), cvars_state().SymExcept );
         func->op.opr = OPR_FUNCNAME;
         expr = ExprNode( NULL, OPR_PARM, expr );
         expr->u.expr_type = typ;
@@ -956,12 +962,12 @@ static bool_ EndTry( void )
         tree->u.expr_type = GetType( TYP_VOID );
         AddStmt( tree );
         return( true );
-    } else if( (CurToken == T__FINALLY)
-      || (CurToken == T___FINALLY) ) {
-        CompFlags.in_finally_block = true;
+    } else if( (cvars_state().CurToken == T__FINALLY)
+      || (cvars_state().CurToken == T___FINALLY) ) {
+        cvars_state().CompFlags.in_finally_block = true;
         NextToken();
-        BlockStack->block_type = T__FINALLY;
-        DeadCode = 0;
+        cstmt_state().BlockStack->block_type = T__FINALLY;
+        cvars_state().DeadCode = 0;
         tree = LeafNode( OPR_FINALLY );
         tree->op.u2.st.u.try_sym_handle = DummyTrySymbol();
         tree->op.u2.st.parent_scope = parent_scope;
@@ -978,17 +984,17 @@ static void PopBlock( void )
     BLOCKPTR    block;
     TREEPTR     tree;
 
-    if( BlockStack->gen_endblock ) {
+    if( cstmt_state().BlockStack->gen_endblock ) {
         tree = LeafNode( OPR_ENDBLOCK );
-        tree->op.u2.sym_handle = BlockStack->sym_list;
+        tree->op.u2.sym_handle = cstmt_state().BlockStack->sym_list;
         AddStmt( tree );
     }
-    if( BlockStack->sym_list != SYM_NULL ) {
-        AddSymList( BlockStack->sym_list );
+    if( cstmt_state().BlockStack->sym_list != SYM_NULL ) {
+        AddSymList( cstmt_state().BlockStack->sym_list );
     }
-    block = BlockStack;
-    LoopStack = block->prev_loop;
-    BlockStack = block->prev_block;
+    block = cstmt_state().BlockStack;
+    cstmt_state().LoopStack = block->prev_loop;
+    cstmt_state().BlockStack = block->prev_block;
     CMemFree( block );
 }
 
@@ -1002,10 +1008,10 @@ static void SwitchStmt( void )
     StartNewBlock();
     NextToken();
     sw = (SWITCHPTR)CMemAlloc( sizeof( SWITCHDEFN ) );
-    sw->prev_switch = SwitchStack;
+    sw->prev_switch = cstmt_state().SwitchStack;
     Set64Val1m( sw->low_value );
     Set64ValZero( sw->high_value );
-    SwitchStack = sw;
+    cstmt_state().SwitchStack = sw;
     tree = RValue( BracketExpr() );
     typ = TypeOf( tree );
     SKIP_ENUM( typ );
@@ -1038,14 +1044,14 @@ static void EndSwitch( void )
     SWITCHPTR   sw;
 //    CASEPTR   ce;
 
-    sw = SwitchStack;
-    SwitchStack = sw->prev_switch;
+    sw = cstmt_state().SwitchStack;
+    cstmt_state().SwitchStack = sw->prev_switch;
     if( sw->default_label == 0 ) {
-        if( BlockStack->break_label == 0 ) {
+        if( cstmt_state().BlockStack->break_label == 0 ) {
             sw->default_label = NextLabel();
             DropLabel( sw->default_label );
         } else {
-            sw->default_label = BlockStack->break_label;
+            sw->default_label = cstmt_state().BlockStack->break_label;
         }
     }
 //    if( sw->case_list == NULL ) {
@@ -1064,12 +1070,12 @@ static void EndSwitch( void )
 static void EndOfStmt( void )
 {
     do {
-        switch( BlockStack->block_type ) {
+        switch( cstmt_state().BlockStack->block_type ) {
         case T_LEFT_BRACE:
             EndBlock();
             break;
         case T_IF:
-            if( CurToken == T_ELSE ) {
+            if( cvars_state().CurToken == T_ELSE ) {
                 ElseStmt();
                 return;
             }
@@ -1080,15 +1086,15 @@ static void EndOfStmt( void )
             break;
         case T_WHILE:
             DropContinueLabel();
-            Jump( BlockStack->top_label );
-            --LoopDepth;
+            Jump( cstmt_state().BlockStack->top_label );
+            --cvars_state().LoopDepth;
             DropBreakLabel();
             break;
         case T_FOR:
             EndForStmt();
-            --LoopDepth;
+            --cvars_state().LoopDepth;
             DropBreakLabel();
-            if( CompVars.cstd > STD_C89 ) {
+            if( cvars_state().CompVars.cstd > STD_C89 ) {
                 EndBlock();     /* Terminate the scope introduced by 'for' */
                 PopBlock();
             }
@@ -1096,11 +1102,11 @@ static void EndOfStmt( void )
         case T_DO:
             DropContinueLabel();
             MustRecog( T_WHILE );
-            SrcLoc = TokenLoc;
-            JumpTrue( BracketExpr(), BlockStack->top_label );
+            cvars_state().SrcLoc = cvars_state().TokenLoc;
+            JumpTrue( BracketExpr(), cstmt_state().BlockStack->top_label );
             MustRecog( T_SEMI_COLON );
-            SrcLoc = TokenLoc;
-            --LoopDepth;
+            cvars_state().SrcLoc = cvars_state().TokenLoc;
+            --cvars_state().LoopDepth;
             DropBreakLabel();
             break;
         case T_SWITCH:
@@ -1116,22 +1122,22 @@ static void EndOfStmt( void )
         case T__EXCEPT:
         case T___EXCEPT:
             DropBreakLabel();
-            TryScope = BlockStack->parent_index;
-            CompFlags.exception_handler = false;
+            cvars_state().TryScope = cstmt_state().BlockStack->parent_index;
+            cvars_state().CompFlags.exception_handler = false;
             break;
         case T__FINALLY:
         case T___FINALLY:
             AddStmt( LeafNode( OPR_END_FINALLY ) );
-            CompFlags.in_finally_block = false;
-            TryScope = BlockStack->parent_index;
+            cvars_state().CompFlags.in_finally_block = false;
+            cvars_state().TryScope = cstmt_state().BlockStack->parent_index;
             break;
 #endif
         }
         PopBlock();
-        if( BlockStack == NULL ) {
+        if( cstmt_state().BlockStack == NULL ) {
             break;
         }
-    } while( BlockStack->block_type != T_LEFT_BRACE );
+    } while( cstmt_state().BlockStack->block_type != T_LEFT_BRACE );
 }
 
 
@@ -1149,12 +1155,12 @@ static bool_ IsDeclarator( TOKEN token )
     }
 
     /* If token is an ID, it might be a typedef */
-    if( (CurToken == T_ID)
-      || (CurToken == T_SAVED_ID) ) {
-        if( CurToken == T_ID ) {
-            sym_handle = SymLookTypedef( CalcHashID( Buffer ), Buffer, &sym );
+    if( (cvars_state().CurToken == T_ID)
+      || (cvars_state().CurToken == T_SAVED_ID) ) {
+        if( cvars_state().CurToken == T_ID ) {
+            sym_handle = SymLookTypedef( CalcHashID( cvars_state().Buffer ), cvars_state().Buffer, &sym );
         } else {    /* T_SAVED_ID */
-            sym_handle = SymLookTypedef( CalcHashID( SavedId ), SavedId, &sym );
+            sym_handle = SymLookTypedef( CalcHashID( cvars_state().SavedId ), cvars_state().SavedId, &sym );
         }
         if( sym_handle != SYM_NULL
           && sym.attribs.stg_class == SC_TYPEDEF ) {
@@ -1171,7 +1177,7 @@ static void FixupC99MainReturn( SYM_HANDLE func_result_handle, struct return_inf
     TYPEPTR             main_type;
 
     /* In C99 mode, return statement need not be explicit for main()... */
-    main_type = CurFunc->sym_type->object;
+    main_type = cvars_state().CurFunc->sym_type->object;
     SKIP_TYPEDEFS( main_type );
     /* ... as long as return type is compatible with int */
     if( main_type->decl_type == TYP_INT ) {
@@ -1202,59 +1208,59 @@ void Statement( void )
         PrintStats();
     }
 #endif
-    ++FuncCount;
+    ++cvars_state().FuncCount;
     return_info.with = RETURN_WITH_NONE; /* indicate no return statements */
     return_info.with_expr = false;
-    CompFlags.label_dropped = false;
-    CompFlags.addr_of_auto_taken = false;
+    cvars_state().CompFlags.label_dropped = false;
+    cvars_state().CompFlags.addr_of_auto_taken = false;
     end_of_func_label = 0;
     return_at_outer_level = false;
     declaration_allowed = false;
-    DeadCode = 0;
-    LoopDepth = 0;
-    LabelIndex = 0;
-    BlockStack = NULL;
-    LoopStack = NULL;
-    SwitchStack = NULL;
+    cvars_state().DeadCode = 0;
+    cvars_state().LoopDepth = 0;
+    cvars_state().LabelIndex = 0;
+    cstmt_state().BlockStack = NULL;
+    cstmt_state().LoopStack = NULL;
+    cstmt_state().SwitchStack = NULL;
 #ifdef __SEH__
-    TryCount = TRYSCOPE_NONE;
-    TryScope = TRYSCOPE_NONE;
+    cvars_state().TryCount = TRYSCOPE_NONE;
+    cvars_state().TryScope = TRYSCOPE_NONE;
 #endif
     StartNewBlock();
     NextToken();                        // skip over {
-    ++SymLevel;
+    ++cvars_state().SymLevel;
     tree = LeafNode( OPR_LABELCOUNT );
     AddStmt( tree );
     if( GrabLabels() == 0 ) {
         GetLocalVarDecls();
     }
-    func_result_handle = MakeNewDotSym( &sym, 'R', CurFunc->sym_type->object, SC_AUTO );
+    func_result_handle = MakeNewDotSym( &sym, 'R', cvars_state().CurFunc->sym_type->object, SC_AUTO );
     sym.flags |= SYM_FUNC_RETURN_VAR;
     SymReplace( &sym, func_result_handle );
     for( ;; ) {
-        CompFlags.pending_dead_code = false;
+        cvars_state().CompFlags.pending_dead_code = false;
         if( GrabLabels() == 0
           && declaration_allowed
-          && IsDeclarator( CurToken ) ) {
+          && IsDeclarator( cvars_state().CurToken ) ) {
             GetLocalVarDecls();
         }
-        if( CompVars.cstd > STD_C89 ) {
+        if( cvars_state().CompVars.cstd > STD_C89 ) {
             declaration_allowed = true;
         }
         skip_to_next_token = false;
-        switch( CurToken ) {
+        switch( cvars_state().CurToken ) {
         case T_IF:
             StartNewBlock();
             NextToken();
-            BlockStack->break_label = NextLabel();
-            JumpFalse( BracketExpr(), BlockStack->break_label );
+            cstmt_state().BlockStack->break_label = NextLabel();
+            JumpFalse( BracketExpr(), cstmt_state().BlockStack->break_label );
             /* only issue msg if ';' is on same line as 'if' */
-            if( CurToken == T_SEMI_COLON
-              && SrcLoc.line == TokenLoc.line
-              && SrcLoc.fno == TokenLoc.fno ) {
-                SetErrLoc( &TokenLoc );
+            if( cvars_state().CurToken == T_SEMI_COLON
+              && cvars_state().SrcLoc.line == cvars_state().TokenLoc.line
+              && cvars_state().SrcLoc.fno == cvars_state().TokenLoc.fno ) {
+                SetErrLoc( &cvars_state().TokenLoc );
                 NextToken();    /* look ahead for else keyword */
-                if( CurToken != T_ELSE ) {
+                if( cvars_state().CurToken != T_ELSE ) {
                     CheckUseful();
                 }
                 InitErrLoc();
@@ -1270,12 +1276,12 @@ void Statement( void )
         case T_WHILE:
             NewLoop();
             NextToken();
-            BlockStack->break_label = NextLabel();
-            if( !JumpFalse( BracketExpr(), BlockStack->break_label ) ) {
-                BlockStack->break_label = 0;
+            cstmt_state().BlockStack->break_label = NextLabel();
+            if( !JumpFalse( BracketExpr(), cstmt_state().BlockStack->break_label ) ) {
+                cstmt_state().BlockStack->break_label = 0;
             }
-            if( CurToken == T_SEMI_COLON ) {
-                if( !CompFlags.useful_side_effect ) {
+            if( cvars_state().CurToken == T_SEMI_COLON ) {
+                if( !cvars_state().CompFlags.useful_side_effect ) {
                     CWarn1( ERR_MEANINGLESS );
                 }
             }
@@ -1284,7 +1290,7 @@ void Statement( void )
         case T_DO:
             NewLoop();
             NextToken();
-            if( CurToken == T_RIGHT_BRACE ) {
+            if( cvars_state().CurToken == T_RIGHT_BRACE ) {
                 CErr1( ERR_STMT_REQUIRED_AFTER_DO );
                 break;
             }
@@ -1296,11 +1302,11 @@ void Statement( void )
             continue;
         case T_SWITCH:
             SwitchStmt();
-            DeadCode = 1;
+            cvars_state().DeadCode = 1;
             declaration_allowed = false;
             continue;
         case T_CASE:
-            DeadCode = 0;
+            cvars_state().DeadCode = 0;
             CaseStmt();
             declaration_allowed = false;
             continue;
@@ -1310,51 +1316,51 @@ void Statement( void )
             continue;
         case T_BREAK:
             BreakStmt();
-            DeadCode = 1;
-            if( BlockStack->block_type != T_LEFT_BRACE )
+            cvars_state().DeadCode = 1;
+            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
         case T_CONTINUE:
             ContinueStmt();
-            DeadCode = 1;
-            if( BlockStack->block_type != T_LEFT_BRACE )
+            cvars_state().DeadCode = 1;
+            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
 #ifdef __SEH__
         case T__LEAVE:
         case T___LEAVE:
             LeaveStmt();
-            DeadCode = 1;
-            if( BlockStack->block_type != T_LEFT_BRACE )
+            cvars_state().DeadCode = 1;
+            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
 #endif
         case T_RETURN:
             ReturnStmt( func_result_handle, &return_info );
-            if( BlockStack->prev_block == NULL ) {
+            if( cstmt_state().BlockStack->prev_block == NULL ) {
                 return_at_outer_level = true;
             }
             MustRecog( T_SEMI_COLON );
-            if( SymLevel != 1
-              || CurToken != T_RIGHT_BRACE
-              || BlockStack->block_type != T_LEFT_BRACE ) {
+            if( cvars_state().SymLevel != 1
+              || cvars_state().CurToken != T_RIGHT_BRACE
+              || cstmt_state().BlockStack->block_type != T_LEFT_BRACE ) {
                 if( end_of_func_label == 0 ) {
                     end_of_func_label = NextLabel();
                 }
                 Jump( end_of_func_label );
             }
-            if( BlockStack->block_type != T_LEFT_BRACE )
+            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
         case T_GOTO:
             GotoStmt();
-            if( BlockStack->block_type != T_LEFT_BRACE )
+            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
         case T_SEMI_COLON:
             NextToken();
-            if( BlockStack->block_type != T_LEFT_BRACE ) {
-                if( CurToken == T_ELSE ) {
+            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE ) {
+                if( cvars_state().CurToken == T_ELSE ) {
                     declaration_allowed = false;
                 }
                 break;
@@ -1364,10 +1370,10 @@ void Statement( void )
             LeftBrace();
             continue;
         case T_RIGHT_BRACE:
-            if( BlockStack->block_type != T_LEFT_BRACE ) {
+            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE ) {
                 CErr1( ERR_MISPLACED_RIGHT_BRACE );
             }
-            if( BlockStack->prev_block == NULL ) {
+            if( cstmt_state().BlockStack->prev_block == NULL ) {
                 skip_to_next_token = true;
             } else {
                 NextToken();
@@ -1386,7 +1392,7 @@ void Statement( void )
         case T_DOUBLE:
         case T_SIGNED:
         case T_UNSIGNED:
-            if( CompVars.cstd < STD_C99 ) {
+            if( cvars_state().CompVars.cstd < STD_C99 ) {
                 CErr1( ERR_MISSING_RIGHT_BRACE );
             } else {
                 CErr1( ERR_UNEXPECTED_DECLARATION );
@@ -1405,45 +1411,45 @@ void Statement( void )
             AsmStmt();
             continue;
         default:
-            if( DeadCode == 1 ) {
+            if( cvars_state().DeadCode == 1 ) {
                 DeadMsg();
             }
             StmtExpr();
-            if( BlockStack->block_type != T_LEFT_BRACE )
+            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
         }
         EndOfStmt();
-        if( BlockStack == NULL )
+        if( cstmt_state().BlockStack == NULL )
             break;
         if( skip_to_next_token ) {
             NextToken();
         }
     }
     /* C99 has special semantics for return value of main() */
-    if( ( CompVars.cstd > STD_C89 )
-      && strcmp( CurFunc->name, "main" ) == 0 ) {
+    if( ( cvars_state().CompVars.cstd > STD_C89 )
+      && strcmp( cvars_state().CurFunc->name, "main" ) == 0 ) {
         if( !return_at_outer_level ) {
             FixupC99MainReturn( func_result_handle, &return_info );
             return_at_outer_level = true;
         }
     }
     if( !return_info.with_expr ) {   /* no return values present */
-        if( DeadCode == 0
-          && !CurFunc->attribs.naked ) {
+        if( cvars_state().DeadCode == 0
+          && !cvars_state().CurFunc->attribs.naked ) {
             CheckRetValue();
         }
     } else if( !return_at_outer_level ) {
-        if( DeadCode == 0
-          && !CurFunc->attribs.naked ) {
-            CWarn2p( ERR_MISSING_RETURN_VALUE, CurFunc->name );
+        if( cvars_state().DeadCode == 0
+          && !cvars_state().CurFunc->attribs.naked ) {
+            CWarn2p( ERR_MISSING_RETURN_VALUE, cvars_state().CurFunc->name );
         }
     }
     if( end_of_func_label != 0 ) {
         DropLabel( end_of_func_label );
     }
-    DeadCode = 0;
-    tree->op.u2.label_count = LabelIndex;
+    cvars_state().DeadCode = 0;
+    tree->op.u2.label_count = cvars_state().LabelIndex;
     tree = LeafNode( OPR_FUNCEND );
     if( !return_info.with_expr ) {
         tree->u.expr_type = NULL;
@@ -1453,33 +1459,33 @@ void Statement( void )
         SetFuncReturnNode( tree );
     }
     AddStmt( tree );
-    AddSymList( CurFunc->u.func.locals );
-    SrcLoc = TokenLoc;
+    AddSymList( cvars_state().CurFunc->u.func.locals );
+    cvars_state().SrcLoc = cvars_state().TokenLoc;
     FreeLabels();
     if( skip_to_next_token ) {
         NextToken();
     }
-    if( CompFlags.generate_prototypes ) {
-        if( DefFile == NULL ) {
+    if( cvars_state().CompFlags.generate_prototypes ) {
+        if( cvars_state().DefFile == NULL ) {
             OpenDefFile();
         }
-        if( DefFile != NULL
-          && CurFunc->attribs.stg_class == SC_NONE ) {
+        if( cvars_state().DefFile != NULL
+          && cvars_state().CurFunc->attribs.stg_class == SC_NONE ) {
             /* function exported */
             DumpFuncDefn();
         }
     }
 
     if( TOGGLE( inline ) ) {
-        if( Inline_Threshold < NodeCount ) {
-            CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+        if( cvars_state().Inline_Threshold < cvars_state().NodeCount ) {
+            cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
         }
     }
-    if( VarParm( CurFunc ) ) {
-        CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+    if( VarParm( cvars_state().CurFunc ) ) {
+        cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
     }
-    NodeCount = 0;
-    if( CompFlags.addr_of_auto_taken ) {
-        CurFunc->flags &= ~ SYM_OK_TO_RECURSE;
+    cvars_state().NodeCount = 0;
+    if( cvars_state().CompFlags.addr_of_auto_taken ) {
+        cvars_state().CurFunc->flags &= ~ SYM_OK_TO_RECURSE;
     }
 }

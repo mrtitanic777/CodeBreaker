@@ -41,8 +41,4 @@
 #include "addrname.h"
 #include "i87data.h"
 
-
-name            *FPStatWord;
-name            *Parm8087[MAX_8087_REG + 1];
-bool_            Used87;
-int             Max87Stk;
+

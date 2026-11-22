@@ -62,7 +62,7 @@ static instruction  *DoReduce( instruction *ins, const opcode_entry *try_, bool_
     if( try_->generate >= FIRST_REDUCT )
         return( Reduce( ins ) );
     zap_all = ins->zap->reg;
-    for( zap = RegSets[RegList[try_->reg_set].zap]; !HW_CEqual( *zap, HW_EMPTY ); ++zap ) {
+    for( zap = RegSetList(RegList[try_->reg_set].zap); !HW_CEqual( *zap, HW_EMPTY ); ++zap ) {
         HW_TurnOn( zap_all, *zap );
     }
     ins->zap = (register_name *)AllocRegName( zap_all );
@@ -103,7 +103,7 @@ static  bool_    VerifyRegs( instruction *ins, operand_types ops )
             result_index = need->result;
         } else if( !_Any( try_->op_type, RESULT_MUL ) ) {
             regs = name->r.reg;
-            for( possible = RegSets[need->result]; ; ++possible ) {
+            for( possible = RegSetList(need->result); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
                 if( HW_Equal( *possible, regs ) ) {
@@ -123,7 +123,7 @@ static  bool_    VerifyRegs( instruction *ins, operand_types ops )
             left_index = need->left;
         } else if( !_Any( try_->op_type, OP1_MUL ) ) {
             regs = name->r.reg;
-            for( possible = RegSets[need->left]; ; ++possible ) {
+            for( possible = RegSetList(need->left); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
                 if( HW_Equal( *possible, regs ) ) {
@@ -143,7 +143,7 @@ static  bool_    VerifyRegs( instruction *ins, operand_types ops )
             right_index = need->right;
         } else if( !_Any( try_->op_type, OP2_MUL ) ) {
             regs = name->r.reg;
-            for( possible = RegSets[need->right]; ; ++possible ) {
+            for( possible = RegSetList(need->right); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
                 if( HW_Equal( *possible, regs ) ) {
@@ -381,7 +381,7 @@ int     ExpandOps( bool_ keep_on_truckin )
     int         unknowns;
 
     unknowns = 0;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         EXBlip();
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ) {
             if( !keep_on_truckin && _MemLow ) {

@@ -67,6 +67,7 @@
 #include "trmem.h"
 #include "feprotos.h"
 #include "cgprotos.h"
+#include "_cfloat.h"
 
 #ifdef DEVBUILD
 #include "echoapi.h"
@@ -92,10 +93,6 @@ typedef struct bck_info_block {
 unsigned        OrigModel;
 #endif
 
-uback_info      *BckInfoHead;           // linked list of available bck_info's
-bck_info_block  *BckInfoCarveHead;      // list of big blocks of bck_info's
-
-cfstruct        cgh;
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 /*%                                              %%*/
@@ -103,19 +100,33 @@ cfstruct        cgh;
 /*%                                              %%*/
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-static  bool_            memStarted = false;
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct IntrfaceState {
+    uback_info *BckInfoHead;   // linked list of available bck_info's
+    bck_info_block *BckInfoCarveHead;   // list of big blocks of bck_info's
+    bool_ memStarted = false;
+    back_handle NewBackReturn = NULL;
+    cg_name CGDuplicateArray[2];
+};
+
+}  // namespace
+
+static inline IntrfaceState& intrface_state() { return cbrun_part<IntrfaceState>(); }
 
 void _CGAPI     BEMemInit( pointer trmemhdl )
 /*******************************************/
 {
-    BckInfoHead = NULL;
-    BckInfoCarveHead = NULL;
+    intrface_state().BckInfoHead = NULL;
+    intrface_state().BckInfoCarveHead = NULL;
     InitBlip();
     CGMemInit( trmemhdl );
-    cgh.alloc = CGAlloc;
-    cgh.free = CGFree;
-    CFInit( &cgh );
-    memStarted = true;
+    cfloat_state().cgh.alloc = CGAlloc;
+    cfloat_state().cgh.free = CGFree;
+    CFInit( &cfloat_state().cgh );
+    intrface_state().memStarted = true;
 }
 
 cg_init_info _CGAPI     BEInitCg( cg_switches switches,
@@ -126,8 +137,8 @@ cg_init_info _CGAPI     BEInitCg( cg_switches switches,
 {
     cg_init_info        cg_info;
 
-    OptForSize = (byte)optsize;
-    CGProcessorVersion = proc; /* so _CPULevel works */
+    data_state().OptForSize = (byte)optsize;
+    model_state().CGProcessorVersion = proc; /* so _CPULevel works */
 #if _TARGET & _TARG_8086
     /* if it ain't a 386 or better, FS and GS aren't there */
     if( !_CPULevel( CPU_386 ) ) {
@@ -139,8 +150,8 @@ cg_init_info _CGAPI     BEInitCg( cg_switches switches,
     }
     proc &= ~FPU_EMU;   /* don't need funny fixups for 386 */
 #endif
-    Model = switches;
-    TargetModel = platform;
+    model_state().Model = switches;
+    model_state().TargetModel = platform;
 #ifdef QNX_FLAKEY
     OrigModel = switches;
 #endif
@@ -149,7 +160,7 @@ cg_init_info _CGAPI     BEInitCg( cg_switches switches,
     EchoAPI( "BEInit( %x, %x, %i, %x )\n", switches, platform, optsize, proc );
     // must be after Model is set and before InitDBGInfo call
 #endif
-    CGProcessorVersion = proc;
+    model_state().CGProcessorVersion = proc;
     InitWeights( optsize );
     InitSegDefs();
     InitDbgInfo();
@@ -238,7 +249,7 @@ void _CGAPI     BEMemFree( pointer ptr )
 void _CGAPI     BEMemFini( void )
 /*******************************/
 {
-    CFFini( &cgh );
+    CFFini( &cfloat_state().cgh );
     CGMemFini();
 }
 
@@ -246,11 +257,11 @@ static void FreeBckInfoCarveBlocks( void )
 {
     bck_info_block      *carve_block;
 
-    for( ; (carve_block = BckInfoCarveHead) != NULL; ) {
-        BckInfoCarveHead = carve_block->next;
+    for( ; (carve_block = intrface_state().BckInfoCarveHead) != NULL; ) {
+        intrface_state().BckInfoCarveHead = carve_block->next;
         CGFree( carve_block );
     }
-    BckInfoHead = NULL;
+    intrface_state().BckInfoHead = NULL;
 }
 
 void _CGAPI     BEFiniCg( void )
@@ -440,16 +451,15 @@ void _CGAPI     BEFiniPatch( patch_handle patch )
 /*%                                              %%*/
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-static back_handle      NewBackReturn = NULL;
 
 name * cg_internal LkAddBackUserTemp( cg_sym_handle sym, name *temp )
 /*******************************************************************/
 {
     back_handle bck;
 
-    NewBackReturn = TO_FAKE_BACK( (back_handle)temp );
+    intrface_state().NewBackReturn = TO_FAKE_BACK( (back_handle)temp );
     bck = FEBack( sym );
-    NewBackReturn = NULL;
+    intrface_state().NewBackReturn = NULL;
     return( (name *)TO_REAL_BACK( bck ) );
 }
 
@@ -471,10 +481,10 @@ static void AllocMoreBckInfo( void )
 
     carve_block = static_cast<bck_info_block *>(CGAlloc( sizeof( bck_info_block ) ));
     if( carve_block != NULL ) {
-        carve_block->next = BckInfoCarveHead;   // link into big list
-        BckInfoCarveHead = carve_block;
+        carve_block->next = intrface_state().BckInfoCarveHead;   // link into big list
+        intrface_state().BckInfoCarveHead = carve_block;
         p = &carve_block->bck_infos[0];
-        BckInfoHead = p;
+        intrface_state().BckInfoHead = p;
         for( i = 0; i < (MAX_BCK_INFO - 1); i++ ) {
             p->u.link = p + 1;
             ++p;
@@ -491,24 +501,24 @@ back_handle _CGAPI      BENewBack( cg_sym_handle sym )
 #ifdef DEVBUILD
     EchoAPI( "BENewBack( %s )", sym );
 #endif
-    if( NewBackReturn == FAKE_NULL ) {
+    if( intrface_state().NewBackReturn == FAKE_NULL ) {
 #ifdef DEVBUILD
         EchoAPI( " -> %B\n", NULL );
 #endif
         return( NULL );
     }
-    if( NewBackReturn != NULL ) {
+    if( intrface_state().NewBackReturn != NULL ) {
 #ifdef DEVBUILD
     EchoAPI( " -> %B\n", NewBackReturn );
 #endif
-        return( NewBackReturn );
+        return( intrface_state().NewBackReturn );
     }
 //    bck = CGAlloc( sizeof( bck_info ) );
-    if( BckInfoHead == NULL ) {
+    if( intrface_state().BckInfoHead == NULL ) {
         AllocMoreBckInfo();
     }
-    bck = &BckInfoHead->u.bck;
-    BckInfoHead = BckInfoHead->u.link;
+    bck = &intrface_state().BckInfoHead->u.bck;
+    intrface_state().BckInfoHead = intrface_state().BckInfoHead->u.link;
     bck->lbl = AskForLabel( sym );
     bck->imp = NOT_IMPORTED;
     bck->imp_alt = NOT_IMPORTED;
@@ -547,8 +557,8 @@ void _CGAPI     BEFreeBack( back_handle bck )
         uback_info      *p;
 
         p = (uback_info *)bck;
-        p->u.link = BckInfoHead;
-        BckInfoHead = p;
+        p->u.link = intrface_state().BckInfoHead;
+        intrface_state().BckInfoHead = p;
     }
 }
 
@@ -1397,7 +1407,6 @@ cg_name _CGAPI CGAlign( cg_name name, uint alignment )
 }
 #endif
 
-static  cg_name CGDuplicateArray[2];
 
 cg_name * _CGAPI CGDuplicate( cg_name name )
 /******************************************/
@@ -1411,8 +1420,8 @@ cg_name * _CGAPI CGDuplicate( cg_name name )
 #endif
 
     addr = TGen( name, TypeAddress( TY_DEFAULT ) );
-    CGDuplicateArray[0] = TGReLeaf( BGCopy( addr ) );
-    CGDuplicateArray[1] = TGReLeaf( addr );
+    intrface_state().CGDuplicateArray[0] = TGReLeaf( BGCopy( addr ) );
+    intrface_state().CGDuplicateArray[1] = TGReLeaf( addr );
 
 #ifdef DEVBUILD
     retn = CGDuplicateArray;
@@ -1421,7 +1430,7 @@ cg_name * _CGAPI CGDuplicate( cg_name name )
     hdlAdd( CG_NAMES, retn[1] );
     return retn;
 #else
-    return( CGDuplicateArray );
+    return( intrface_state().CGDuplicateArray );
 #endif
 }
 
@@ -1572,9 +1581,9 @@ void _CGAPI     DGFloat( cchar_ptr value, cg_type tipe )
 #ifdef DEVBUILD
     EchoAPI( "DGFloat( %c, %t )\n", value, tipe );
 #endif
-    cf = CFCnvSF( &cgh, value );
+    cf = CFCnvSF( &cfloat_state().cgh, value );
     CFCnvTarget( cf, &buff, TypeLength( tipe ) );
-    CFFree( &cgh, cf );
+    CFFree( &cfloat_state().cgh, cf );
     DGBytes( TypeLength( tipe ), &buff );
 }
 

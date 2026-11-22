@@ -62,7 +62,7 @@ bool_     IsTrickyPointerConv( instruction *ins )
     if( (ins->head.opcode == OP_CONVERT)
       && _IsPointer( ins->type_class ) ) {
         if( ins->base_type_class == U2
-          && TypeClassSize[ins->type_class] > WORD_SIZE ) {
+          && data_state().TypeClassSize[ins->type_class] > WORD_SIZE ) {
             return( true );
         }
     }
@@ -317,11 +317,11 @@ static  instruction    *FoldAbsolute( instruction *ins ) {
             ins->table = NULL;
             /* look out for scary DIV U4 EDX:EAX, c1 -> t1 type instructions */
             if( result->n.class_ != N_CONSTANT
-              && result->n.size != TypeClassSize[ins->type_class] )
+              && result->n.size != data_state().TypeClassSize[ins->type_class] )
                 return( NULL );
             /* look out for scary MUL U4 EDX:EAX, c1 -> t1 type instructions */
             if( result->n.class_ != N_CONSTANT
-              && ins->result->n.size != TypeClassSize[ins->type_class] )
+              && ins->result->n.size != data_state().TypeClassSize[ins->type_class] )
                 return( NULL );
             new_ins = MakeMove( result, ins->result, ins->type_class );
             SetCSEBits( ins, new_ins );
@@ -412,7 +412,6 @@ instruction    *FoldIns( instruction *ins ) {
     }
     return( NULL );
 }
-
 
 
 bool_    ConstFold( block *root ) {

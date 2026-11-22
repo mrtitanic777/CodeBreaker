@@ -57,7 +57,7 @@ RL(     LongIndexRegs,  RL_LONG_INDEX,  SIX_BYTE,       1       ),
 RL(     FarPointerRegs, RL_FAR_POINTER, SIX_BYTE,       2       ),
 
 RL(     EDXEAXReg,      RL_EDX_EAX,     EIGHT_BYTE,     0       ),
-RL(     FPParm2Reg,     RL_FPPARM2,     EIGHT_BYTE,     1       ),
+RL(     NULL,           RL_FPPARM2,     EIGHT_BYTE,     1       ),
 RL(     QuadReg,        RL_8,           EIGHT_BYTE,     2       ),
 
 RL(     ST0Reg,         RL_ST0,         FLOATING,       0       ),

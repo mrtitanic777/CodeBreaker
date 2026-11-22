@@ -132,6 +132,16 @@ typedef struct template_ {
         byte            data[INSSIZE];
 } template_;
 
-extern  byte            Inst[INSSIZE];  /* template for instructions */
-extern  byte            ILen;           /* length of object instruction */
-extern  template_        Temp;           /* template for oc_entries*/
+
+#ifndef CB_STATE_PCENCODE_H
+#define CB_STATE_PCENCODE_H
+
+/* the variables of pcencode.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct PcencodeState {
+    template_ Temp;   /* template for oc_entries */
+    byte Inst[INSSIZE];   /* template for instructions */
+    byte ILen;   /* length of object instruction */
+};
+inline PcencodeState& pcencode_state() { return cbrun_part<PcencodeState>(); }
+
+#endif

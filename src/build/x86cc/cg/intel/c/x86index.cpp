@@ -293,7 +293,7 @@ void    FixMemRefs( void )
     block       *blk;
     instruction *ins;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
 #if _TARGET & _TARG_80386
             ExpandThreadDataRef( ins );
@@ -313,7 +313,7 @@ void    FixSegments( void )
     block       *blk;
     instruction *ins;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             AddSegment( ins );
             /*
@@ -337,7 +337,7 @@ void    FixSegments( void )
                  * throw away override
                  */
                 ins->num_operands--;
-                FEMessage( FEMSG_NO_SEG_REGS, AskForLblSym( static_cast<label_handle>(CurrProc->label) ) );
+                FEMessage( FEMSG_NO_SEG_REGS, AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) );
             }
         }
     }
@@ -371,7 +371,7 @@ void    MergeIndex( void )
     name        **name;
     bool_        dec;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( OpcodeNumOperands( ins ) < ins->num_operands ) {
                 dec = false;
@@ -433,7 +433,7 @@ void    FixChoices( void )
 #endif
 
     PropSegments();
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         if( _Isnt( conf, CST_VALID_SEGMENT ) ) {
             conf->possible = NoSegments( static_cast<reg_set_index>(conf->possible) );
 #if 0 /* 2007-07-10 RomanT -- This method is not used anymore */
@@ -470,14 +470,14 @@ static  void    PropSegments( void )
     conflict_node       *dst;
     bool_                change;
 
-    for( src = ConfList; src != NULL; src = src->next_conflict ) {
+    for( src = data_state().ConfList; src != NULL; src = src->next_conflict ) {
         if( _Is( src, CST_VALID_SEGMENT ) ) {
             _SetTrue( src, CST_WAS_SEGMENT );
         }
     }
     for( change = true; change; ) {
         change = false;
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
             for( ins = blk->ins.head.prev; ins->head.opcode != OP_BLOCK; ins = ins->head.prev ) {
                 if( ins->head.opcode == OP_MOV ) {
                     dst = NameConflict( ins, ins->result );

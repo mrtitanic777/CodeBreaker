@@ -35,7 +35,16 @@
 #include "spawn.h"
 
 
-static  jmp_buf *SpawnStack;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct SpawnState {
+    jmp_buf *SpawnStack;
+};
+
+}  // namespace
+
+static inline SpawnState& spawn_state() { return cbrun_part<SpawnState>(); }
 
 
 int     Spawn( void (*fn)( void ) )
@@ -45,13 +54,13 @@ int     Spawn( void (*fn)( void ) )
     jmp_buf     env;
     int         status;
 
-    save_env = SpawnStack;
-    SpawnStack = JMPBUF_PTR( env );
+    save_env = spawn_state().SpawnStack;
+    spawn_state().SpawnStack = JMPBUF_PTR( env );
     status = setjmp( env );
     if( status == 0 ) {
         (*fn)();
     }
-    SpawnStack = save_env;
+    spawn_state().SpawnStack = save_env;
     return( status );
 }
 
@@ -59,5 +68,5 @@ int     Spawn( void (*fn)( void ) )
 void    Suicide( void )
 //=====================
 {
-    longjmp( *SpawnStack, 1 );
+    longjmp( *spawn_state().SpawnStack, 1 );
 }

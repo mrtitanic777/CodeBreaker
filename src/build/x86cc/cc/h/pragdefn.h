@@ -54,7 +54,7 @@ typedef struct aux_entry {
 typedef struct inline_funcs {
     char       *name;       /* func name */
     byte_seq   *code;       /* sequence of bytes */
-    hw_reg_set *parms;      /* parameter information */
+    const hw_reg_set *parms;   /* parameter information (read-only) */
     hw_reg_set returns;     /* function return information */
     hw_reg_set save;        /* registers not modified */
 } inline_funcs;
@@ -68,13 +68,22 @@ typedef struct alt_inline_funcs {
 #define global  extern
 #endif
 
-global aux_entry        *AuxList;
-global aux_info         *CurrAlias;
-global aux_entry        *CurrEntry;
-global aux_info         *CurrInfo;
 
+#ifndef CB_STATE_PRAGDEFN_H
+#define CB_STATE_PRAGDEFN_H
+
+/* the variables of pragdefn.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct PragdefnState {
+    aux_entry *AuxList;
+    aux_info *CurrAlias;
+    aux_entry *CurrEntry;
+    aux_info *CurrInfo;
 #if _CPU == 386
-global aux_info         STOSBInfo;
+    aux_info STOSBInfo;
+#endif
+};
+inline PragdefnState& pragdefn_state() { return cbrun_part<PragdefnState>(); }
+
 #endif
 
 #define MAX_POSSIBLE_REG        8

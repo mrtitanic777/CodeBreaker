@@ -291,17 +291,6 @@ static const hw_reg_set     STIReg[] = {
     HW_D_1( HW_ST7 ),
     HW_D_1( HW_EMPTY )
 };
-static hw_reg_set           STParmReg[] = {
-    HW_D_1( HW_ST1 ),
-    HW_D_1( HW_ST2 ),
-    HW_D_1( HW_ST3 ),
-    HW_D_1( HW_ST4 ),
-    HW_D_1( HW_ST5 ),
-    HW_D_1( HW_ST6 ),
-    HW_D_1( HW_ST7 ),
-    HW_D_1( HW_EMPTY ),
-    HW_D_1( HW_EMPTY )
-};
 static const hw_reg_set     EEch[] = {
     HW_D_3( HW_DX, HW_AX, HW_CX ),
     HW_D_3( HW_DX, HW_BX, HW_CX ),
@@ -324,7 +313,7 @@ static const hw_reg_set     AHCLReg[] = {
     HW_D_1( HW_EMPTY )
 };
 
-const hw_reg_set            * const RegSets[] = {
+static const hw_reg_set      * const RegSets[] = {
     #define RL(a,b,c,d) a
     #include "rl.h"
     #undef RL
@@ -373,22 +362,43 @@ static const hw_reg_set     * const ParmSets[] = {
     __FP80BIT(Empty,QuadReg),/* FL */
     Empty                   /* XX */
 };
-static const hw_reg_set     * const ParmSets8087[] = {
-    ByteRegs,               /* U1 */
-    ByteRegs,               /* I1 */
-    WordRegs,               /* U2 */
-    WordRegs,               /* I2 */
-    DoubleRegs,             /* U4 */
-    DoubleRegs,             /* I4 */
-    QuadReg,                /* U8 */
-    QuadReg,                /* I8 */
-    DblPtrRegs,             /* CP */
-    DblPtrRegs,             /* PT */
-    STParmReg,              /* FS */
-    STParmReg,              /* FD */
-    STParmReg,              /* FL */
-    Empty                   /* XX */
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct RgtblState {
+    hw_reg_set STParmReg[9] = {
+        HW_D_1( HW_ST1 ),
+        HW_D_1( HW_ST2 ),
+        HW_D_1( HW_ST3 ),
+        HW_D_1( HW_ST4 ),
+        HW_D_1( HW_ST5 ),
+        HW_D_1( HW_ST6 ),
+        HW_D_1( HW_ST7 ),
+        HW_D_1( HW_EMPTY ),
+        HW_D_1( HW_EMPTY )
+    };
+    const hw_reg_set * const ParmSets8087[14] = {
+        ByteRegs,               /* U1 */
+        ByteRegs,               /* I1 */
+        WordRegs,               /* U2 */
+        WordRegs,               /* I2 */
+        DoubleRegs,             /* U4 */
+        DoubleRegs,             /* I4 */
+        QuadReg,                /* U8 */
+        QuadReg,                /* I8 */
+        DblPtrRegs,             /* CP */
+        DblPtrRegs,             /* PT */
+        STParmReg,              /* FS */
+        STParmReg,              /* FD */
+        STParmReg,              /* FL */
+        Empty                   /* XX */
+    };
 };
+
+}  // namespace
+
+static inline RgtblState& rgtbl_state() { return cbrun_part<RgtblState>(); }
+
 static const reg_set_index  IsSets[] = {
     RL_BYTE,                /* U1 */
     RL_BYTE,                /* I1 */
@@ -562,8 +572,17 @@ void            InitRegTbl( void )
 /********************************/
 {
     if( _FPULevel( FPU_87 ) ) {
-        HW_CAsgn( STParmReg[Max87Stk], HW_EMPTY );
+        HW_CAsgn( rgtbl_state().STParmReg[i87data_state().Max87Stk], HW_EMPTY );
     }
+}
+
+
+const hw_reg_set   *RegSetList( unsigned index )
+/***********************************************
+ * the registers of register list "index"
+ */
+{
+    return( RegSets[index] );
 }
 
 
@@ -597,7 +616,7 @@ const hw_reg_set    *ParmChoices( type_class_def type_class )
     const hw_reg_set    *list;
 
     if( _FPULevel( FPU_87 ) ) {
-        list = ParmSets8087[type_class];
+        list = rgtbl_state().ParmSets8087[type_class];
     } else {
         list = ParmSets[type_class];
     }
@@ -639,9 +658,9 @@ hw_reg_set  ReturnReg( type_class_def type_class, bool_ use_87 )
     const hw_reg_set    *list;
 
     if( _FPULevel( FPU_87 ) && use_87 ) {
-        list = RegSets[Return8087[type_class]];
+        list = RegSetList(Return8087[type_class]);
     } else {
-        list = RegSets[ReturnSets[type_class]];
+        list = RegSetList(ReturnSets[type_class]);
     }
     return( *list );
 }
@@ -682,9 +701,9 @@ bool_    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool_ is_temp_in
     const hw_reg_set    *list;
 
     if( is_temp_index ) {
-        list = RegSets[RL_TEMP_INDEX];
+        list = RegSetList(RL_TEMP_INDEX);
     } else {
-        list = RegSets[IndexSets[type_class]];
+        list = RegSetList(IndexSets[type_class]);
     }
     for( ; !HW_CEqual( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, reg ) ) {
@@ -711,7 +730,7 @@ type_class_def  RegClass( hw_reg_set regs )
         }
     } else {
         for( type_class = U1; type_class < XX; ++type_class ) {
-            for( possible = RegSets[ClassSets[type_class]]; !HW_CEqual( *possible, HW_EMPTY ); ++possible ) {
+            for( possible = RegSetList(ClassSets[type_class]); !HW_CEqual( *possible, HW_EMPTY ); ++possible ) {
                 if( HW_Equal( *possible, regs ) ) {
                     return( type_class );
                 }
@@ -728,11 +747,11 @@ bool_    IndexRegOk( hw_reg_set reg, bool_ is_temp_index )
     const hw_reg_set    *list;
 
     if( RegClass( reg ) != U2 ) {
-        list = RegSets[RL_LONG_INDEX];
+        list = RegSetList(RL_LONG_INDEX);
     } else if( is_temp_index ) {
-        list = RegSets[RL_TEMP_INDEX];
+        list = RegSetList(RL_TEMP_INDEX);
     } else {
-        list = RegSets[RL_INDEX];
+        list = RegSetList(RL_INDEX);
     }
     for( ; !HW_CEqual( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, reg ) ) {
@@ -893,7 +912,7 @@ bool_    IsRegClass( hw_reg_set regs, type_class_def type_class )
 {
     const hw_reg_set    *list;
 
-    for( list = RegSets[IsSets[type_class]]; !HW_CEqual( *list, HW_EMPTY ); ++list ) {
+    for( list = RegSetList(IsSets[type_class]); !HW_CEqual( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, regs ) ) {
             return( true );
         }
@@ -1005,5 +1024,5 @@ hw_reg_set      FirstReg( reg_set_index regs_idx )
  * register list and returns it.
  */
 {
-    return( *RegSets[regs_idx] );
+    return( *RegSetList(regs_idx) );
 }

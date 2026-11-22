@@ -30,7 +30,16 @@
 ****************************************************************************/
 
 
-extern type_length  StackDepth;
+#ifndef CB_STATE_X86PROC_H
+#define CB_STATE_X86PROC_H
+
+/* the variables of x86proc.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct X86procState {
+    type_length StackDepth;
+};
+inline X86procState& x86proc_state() { return cbrun_part<X86procState>(); }
+
+#endif
 
 extern bool_         CanZapBP( void );
 extern void         DoRTCall( rt_class rtindex, bool_ pop );

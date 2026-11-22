@@ -62,7 +62,17 @@
     #define DbgNever()
 #endif
 
-static const char   *switch_start = "";
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CoptionsState {
+    const char *switch_start = "";
+};
+
+}  // namespace
+
+static inline CoptionsState& coptions_state() { return cbrun_part<CoptionsState>(); }
+
 
 static void BadCmdLine( int error_code )
 /***************************************
@@ -75,10 +85,10 @@ static void BadCmdLine( int error_code )
     for( CmdScanChar(); !CmdScanSwEnd(); CmdScanChar() ) {
         ;
     }
-    len = CmdScanAddr() - switch_start;
+    len = CmdScanAddr() - coptions_state().switch_start;
     if( len > sizeof( buffer ) - 1 )
         len = sizeof( buffer ) - 1;
-    strncpy( buffer, switch_start, len );
+    strncpy( buffer, coptions_state().switch_start, len );
     buffer[len] = '\0';
     CErr2p( static_cast<msg_codes>(error_code), buffer );
 }
@@ -230,8 +240,8 @@ static bool_ scanDefine( OPT_STRING **p )
 {
     /* unused parameters */ (void)p;
 
-    CmdScanLineInit( Define_UserMacro( CmdScanAddr(), CompFlags.extended_defines ) );
-    switch_start = CmdScanAddr();
+    CmdScanLineInit( Define_UserMacro( CmdScanAddr(), cvars_state().CompFlags.extended_defines ) );
+    coptions_state().switch_start = CmdScanAddr();
     return( true );
 }
 
@@ -240,10 +250,10 @@ static bool_ scanDefinePlus( OPT_STRING **p )
     /* unused parameters */ (void)p;
 
     if( CmdScanSwEnd() ) {
-        CompFlags.extended_defines = true;
+        cvars_state().CompFlags.extended_defines = true;
     } else {
         CmdScanLineInit( Define_UserMacro( CmdScanAddr(), true ) );
-        switch_start = CmdScanAddr();
+        coptions_state().switch_start = CmdScanAddr();
     }
     return( true );
 }
@@ -267,7 +277,7 @@ static void handleOptionEQ( OPT_STORAGE *data, bool_ value )
 {
     /* unused parameters */ (void)data;
 
-    CompFlags.eq_switch_used = value;
+    cvars_state().CompFlags.eq_switch_used = value;
 }
 
 static unsigned verifyWarnLevel( unsigned level )
@@ -329,14 +339,14 @@ static void AddIncList( const char *path_list )
     if( path_list != NULL
       && *path_list != '\0' ) {
         len = strlen( path_list );
-        old_list = IncPathList;
+        old_list = cvars_state().IncPathList;
         old_len = strlen( old_list );
-        IncPathList = static_cast<char *>(CMemAlloc( old_len + 1 + len + 1 ));
-        strcpy( IncPathList, old_list );
+        cvars_state().IncPathList = static_cast<char *>(CMemAlloc( old_len + 1 + len + 1 ));
+        strcpy( cvars_state().IncPathList, old_list );
         CMemFree( old_list );
-        p = IncPathList + old_len;
+        p = cvars_state().IncPathList + old_len;
         while( *path_list != '\0' ) {
-            if( p != IncPathList )
+            if( p != cvars_state().IncPathList )
                 *p++ = PATH_LIST_SEP;
             path_list = GetPathElement( path_list, NULL, &p );
         }
@@ -346,33 +356,33 @@ static void AddIncList( const char *path_list )
 
 static void SetCharacterEncoding( OPT_STORAGE *data )
 {
-    CompFlags.jis_to_unicode = false;
+    cvars_state().CompFlags.jis_to_unicode = false;
 
     switch( data->char_set ) {
     case OPT_ENUM_char_set_zku:
         LoadUnicodeTable( data->zku_value );
         break;
     case OPT_ENUM_char_set_zk0u:
-        CompFlags.jis_to_unicode = true;
+        cvars_state().CompFlags.jis_to_unicode = true;
         /* fall through */
     case OPT_ENUM_char_set_zk0:
-        CompFlags.use_double_byte = true;
+        cvars_state().CompFlags.use_double_byte = true;
         SetDBChar( 0 );
         break;
     case OPT_ENUM_char_set_zk1:
-        CompFlags.use_double_byte = true;
+        cvars_state().CompFlags.use_double_byte = true;
         SetDBChar( 1 );
         break;
     case OPT_ENUM_char_set_zk2:
-        CompFlags.use_double_byte = true;
+        cvars_state().CompFlags.use_double_byte = true;
         SetDBChar( 2 );
         break;
     case OPT_ENUM_char_set_zk3:
-        CompFlags.use_double_byte = true;
+        cvars_state().CompFlags.use_double_byte = true;
         SetDBChar( 3 );
         break;
     case OPT_ENUM_char_set_zkl:
-        CompFlags.use_double_byte = true;
+        cvars_state().CompFlags.use_double_byte = true;
         SetDBChar( -1 );
         break;
     case OPT_ENUM_char_set_default:
@@ -415,17 +425,17 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
      */
     if( data->q
       || data->zq ) {
-        CompFlags.quiet_mode = true;
+        cvars_state().CompFlags.quiet_mode = true;
     }
     switch( data->warn_level ) {
     case OPT_ENUM_warn_level_w:
-        WngLevel = data->w_value;
+        cvars_state().WngLevel = data->w_value;
         break;
     case OPT_ENUM_warn_level_wx:
-        WngLevel = WLEVEL_WX;
+        cvars_state().WngLevel = WLEVEL_WX;
         break;
     case OPT_ENUM_warn_level_default:
-        WngLevel = WLEVEL_DEFAULT;
+        cvars_state().WngLevel = WLEVEL_DEFAULT;
         break;
     default:
         DbgNever();
@@ -433,11 +443,11 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->file_83 ) {
     case OPT_ENUM_file_83_fx:
-        CompFlags.check_truncated_fnames = false;
+        cvars_state().CompFlags.check_truncated_fnames = false;
         break;
     case OPT_ENUM_file_83_ft:
     case OPT_ENUM_file_83_default:
-        CompFlags.check_truncated_fnames = true;
+        cvars_state().CompFlags.check_truncated_fnames = true;
         break;
     default:
         DbgNever();
@@ -445,18 +455,18 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->opt_level ) {
     case OPT_ENUM_opt_level_ox:  /* -ox => -obmiler -s */
-        GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
-        GenSwitches |= CGSW_GEN_BRANCH_PREDICTION;  // -ob
-        GenSwitches |= CGSW_GEN_I_MATH_INLINE;      // -om
+        cvars_state().GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
+        cvars_state().GenSwitches |= CGSW_GEN_BRANCH_PREDICTION;  // -ob
+        cvars_state().GenSwitches |= CGSW_GEN_I_MATH_INLINE;      // -om
         data->oi = true;                            // -oi
-        GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;  // -ol
-        Inline_Threshold = 20;                      // -oe=20
+        cvars_state().GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;  // -ol
+        cvars_state().Inline_Threshold = 20;                      // -oe=20
         TOGGLE( inline ) = true;                    // ...
-        GenSwitches |= CGSW_GEN_INS_SCHEDULING;     // -or
+        cvars_state().GenSwitches |= CGSW_GEN_INS_SCHEDULING;     // -or
         TOGGLE( check_stack ) = false;              // -s
         break;
     case OPT_ENUM_opt_level_od:
-        GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
+        cvars_state().GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
         break;
     case OPT_ENUM_opt_level_default:
         break;
@@ -466,15 +476,15 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->opt_size_time ) {
     case OPT_ENUM_opt_size_time_ot:
-        OptSize = 0;
-        GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
+        cvars_state().OptSize = 0;
+        cvars_state().GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
         break;
     case OPT_ENUM_opt_size_time_os:
-        OptSize = 100;
-        GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
+        cvars_state().OptSize = 100;
+        cvars_state().GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
         break;
     case OPT_ENUM_opt_size_time_default:
-        OptSize = 50;
+        cvars_state().OptSize = 50;
         break;
     default:
         DbgNever();
@@ -482,11 +492,11 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->cstd ) {
     case OPT_ENUM_cstd_za99:
-        CompVars.cstd = STD_C99;
+        cvars_state().CompVars.cstd = STD_C99;
         break;
     case OPT_ENUM_cstd_zastd:
         if( data->zastd_value != STD_NONE )
-            CompVars.cstd = static_cast<cstd_ver>(data->zastd_value);
+            cvars_state().CompVars.cstd = static_cast<cstd_ver>(data->zastd_value);
         break;
     case OPT_ENUM_cstd_default:
         break;
@@ -496,17 +506,17 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->iso ) {
     case OPT_ENUM_iso_zA:
-        CompFlags.strict_ANSI = true;
+        cvars_state().CompFlags.strict_ANSI = true;
         /* fall through */
     case OPT_ENUM_iso_za:
-        CompFlags.extensions_enabled = false;
-        CompFlags.non_iso_compliant_names_enabled = false;
-        CompFlags.unique_functions = true;
+        cvars_state().CompFlags.extensions_enabled = false;
+        cvars_state().CompFlags.non_iso_compliant_names_enabled = false;
+        cvars_state().CompFlags.unique_functions = true;
         break;
     case OPT_ENUM_iso_ze:
     case OPT_ENUM_iso_default:
-        CompFlags.extensions_enabled = true;
-        CompFlags.non_iso_compliant_names_enabled = true;
+        cvars_state().CompFlags.extensions_enabled = true;
+        cvars_state().CompFlags.non_iso_compliant_names_enabled = true;
         break;
     default:
         DbgNever();
@@ -515,38 +525,38 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     // following must precede processing of data->oe
     switch( data->debug_info ) {
     case OPT_ENUM_debug_info_d9:
-        CompFlags.use_full_codegen_od = true;
+        cvars_state().CompFlags.use_full_codegen_od = true;
         break;
     case OPT_ENUM_debug_info_d3:
-        GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
-        CompFlags.dump_types_with_names = true;
+        cvars_state().GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
+        cvars_state().CompFlags.dump_types_with_names = true;
         if( debugOptionAfterOptOption( data ) ) {
-            GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
+            cvars_state().GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
 //            data->oe = false;
 //            TOGGLE( inline ) = false;
         }
-        GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
+        cvars_state().GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
         data->oi = false;
         break;
     case OPT_ENUM_debug_info_d2_tilde:
-        CompFlags.no_debug_type_names = true;
+        cvars_state().CompFlags.no_debug_type_names = true;
         /* fall through */
     case OPT_ENUM_debug_info_d2:
-        GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
+        cvars_state().GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
         if( debugOptionAfterOptOption( data ) ) {
 //            data->oe = false;
 //            TOGGLE( inline ) = false;
 //            data->oi = false;
         }
-        GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
+        cvars_state().GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
         data->oi = false;
         break;
     case OPT_ENUM_debug_info_d1_plus:
-        GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
-        CompFlags.debug_info_some = true;
+        cvars_state().GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
+        cvars_state().CompFlags.debug_info_some = true;
         break;
     case OPT_ENUM_debug_info_d1:
-        GenSwitches |= CGSW_GEN_DBG_NUMBERS;
+        cvars_state().GenSwitches |= CGSW_GEN_DBG_NUMBERS;
         break;
     case OPT_ENUM_debug_info_d0:
         break;
@@ -559,12 +569,12 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
 
     switch( data->enum_size ) {
     case OPT_ENUM_enum_size_ei:
-        CompFlags.make_enums_an_int = true;
-        CompFlags.original_enum_setting = true;
+        cvars_state().CompFlags.make_enums_an_int = true;
+        cvars_state().CompFlags.original_enum_setting = true;
         break;
     case OPT_ENUM_enum_size_em:
-        CompFlags.make_enums_an_int = false;
-        CompFlags.original_enum_setting = false;
+        cvars_state().CompFlags.make_enums_an_int = false;
+        cvars_state().CompFlags.original_enum_setting = false;
         break;
     case OPT_ENUM_enum_size_default:
         /* default set in CmdSysInit() */
@@ -575,95 +585,95 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
 
     if( data->aa ) {
-        CompFlags.auto_agg_inits = true;
+        cvars_state().CompFlags.auto_agg_inits = true;
     }
     if( data->ad ) {
-        SetStringOption( &DependFileName, &(data->ad_value) );
-        CompFlags.generate_auto_depend = true;
+        SetStringOption( &cvars_state().DependFileName, &(data->ad_value) );
+        cvars_state().CompFlags.generate_auto_depend = true;
     }
     if( data->adbs ) {
-        DependForceSlash = '\\';
+        cvars_state().DependForceSlash = '\\';
     }
     if( data->add ) {
-        SetStringOption( &SrcDepName, &(data->add_value) );
-        CompFlags.generate_auto_depend = true;
+        SetStringOption( &cvars_state().SrcDepName, &(data->add_value) );
+        cvars_state().CompFlags.generate_auto_depend = true;
     }
     if( data->adfs ) {
-        DependForceSlash = '/';
+        cvars_state().DependForceSlash = '/';
     }
     if( data->adhp ) {
-        SetStringOption( &DependHeaderPath, &(data->adhp_value) );
-        CompFlags.generate_auto_depend = true;
+        SetStringOption( &cvars_state().DependHeaderPath, &(data->adhp_value) );
+        cvars_state().CompFlags.generate_auto_depend = true;
     }
     if( data->adt ) {
-        SetStringOption( &DependTarget, &(data->adt_value) );
-        CompFlags.generate_auto_depend = true;
+        SetStringOption( &cvars_state().DependTarget, &(data->adt_value) );
+        cvars_state().CompFlags.generate_auto_depend = true;
     }
     if( data->ai ) {
-        CompFlags.no_check_inits = true;
+        cvars_state().CompFlags.no_check_inits = true;
     }
     if( data->aq ) {
-        CompFlags.no_check_qualifiers = true;
+        cvars_state().CompFlags.no_check_qualifiers = true;
     }
     if( data->bc ) {
-        CompFlags.bc_switch_used = true;
+        cvars_state().CompFlags.bc_switch_used = true;
     }
     if( data->bd ) {
-        CompFlags.bd_switch_used = true;
-        GenSwitches |= CGSW_GEN_DLL_RESIDENT_CODE;
+        cvars_state().CompFlags.bd_switch_used = true;
+        cvars_state().GenSwitches |= CGSW_GEN_DLL_RESIDENT_CODE;
     }
     if( data->bg ) {
-        CompFlags.bg_switch_used = true;
+        cvars_state().CompFlags.bg_switch_used = true;
     }
     if( data->bm ) {
-        CompFlags.bm_switch_used = true;
+        cvars_state().CompFlags.bm_switch_used = true;
     }
     if( data->bw ) {
-        CompFlags.bw_switch_used = true;
+        cvars_state().CompFlags.bw_switch_used = true;
     }
     if( data->db ) {
-        CompFlags.emit_browser_info = true;
+        cvars_state().CompFlags.emit_browser_info = true;
     }
     if( data->e ) {
-        ErrLimit = data->e_value;
+        cvars_state().ErrLimit = data->e_value;
     }
     if( data->ef ) {
-        CompFlags.ef_switch_used = true;
+        cvars_state().CompFlags.ef_switch_used = true;
     }
     if( data->en ) {
-        CompFlags.emit_names = true;
+        cvars_state().CompFlags.emit_names = true;
     }
     if( data->ep ) {
-        CompFlags.ep_switch_used = true;
-        ProEpiDataSize = data->ep_value;
+        cvars_state().CompFlags.ep_switch_used = true;
+        cvars_state().ProEpiDataSize = data->ep_value;
     }
     if( data->fh || data->fhq ) {
         if( data->fhq ) {
-            CompFlags.no_pch_warnings = true;
+            cvars_state().CompFlags.no_pch_warnings = true;
         }
         if( data->fh && ( !data->fhq || data->fh_timestamp > data->fhq_timestamp ) ) {
-            SetStringOption( &PCH_FileName, &(data->fh_value) );
+            SetStringOption( &cvars_state().PCH_FileName, &(data->fh_value) );
             OPT_CLEAN_STRING( &(data->fhq_value) );
         } else if( data->fhq && ( !data->fh || data->fhq_timestamp > data->fh_timestamp ) ) {
-            SetStringOption( &PCH_FileName, &(data->fhq_value) );
+            SetStringOption( &cvars_state().PCH_FileName, &(data->fhq_value) );
             OPT_CLEAN_STRING( &(data->fh_value) );
         }
     }
     if( data->fi ) {
-        SetStringOption( &ForceInclude, &(data->fi_value) );
+        SetStringOption( &cvars_state().ForceInclude, &(data->fi_value) );
     }
     if( data->fip ) {
-        SetStringOption( &ForcePreInclude, &(data->fip_value) );
+        SetStringOption( &cvars_state().ForcePreInclude, &(data->fip_value) );
     }
     if( data->fo ) {
-        SetStringOption( &ObjectFileName, &(data->fo_value) );
-        CompFlags.cpp_output_to_file = true;    /* in case '-p' option */
+        SetStringOption( &cvars_state().ObjectFileName, &(data->fo_value) );
+        cvars_state().CompFlags.cpp_output_to_file = true;    /* in case '-p' option */
     }
     if( data->fr ) {
-        SetStringOption( &ErrorFileName, &(data->fr_value) );
+        SetStringOption( &cvars_state().ErrorFileName, &(data->fr_value) );
     }
     if( data->fti ) {
-        CompFlags.track_includes = true;
+        cvars_state().CompFlags.track_includes = true;
     }
     if( data->i ) {
         OPT_STRING *s;
@@ -676,7 +686,7 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     if( data->j ) {
         SetSignedChar();
-        CompFlags.signed_char = true;
+        cvars_state().CompFlags.signed_char = true;
     }
 #ifdef DEVBUILD
     if( data->lc ) {
@@ -684,65 +694,65 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
 #endif
     if( data->oa ) {
-        GenSwitches |= CGSW_GEN_RELAX_ALIAS;
+        cvars_state().GenSwitches |= CGSW_GEN_RELAX_ALIAS;
     }
     if( data->ob ) {
-        GenSwitches |= CGSW_GEN_BRANCH_PREDICTION;
+        cvars_state().GenSwitches |= CGSW_GEN_BRANCH_PREDICTION;
     }
     // following must follow processing of debug options
     if( data->oe ) {
-        Inline_Threshold = data->oe_value;
+        cvars_state().Inline_Threshold = data->oe_value;
         TOGGLE( inline ) = true;
     }
     if( data->oh ) {
-        GenSwitches |= CGSW_GEN_SUPER_OPTIMAL;
+        cvars_state().GenSwitches |= CGSW_GEN_SUPER_OPTIMAL;
     }
     if( data->oi ) {
-        CompFlags.inline_functions = true;
+        cvars_state().CompFlags.inline_functions = true;
     }
     if( data->ok ) {
-        GenSwitches |= CGSW_GEN_FLOW_REG_SAVES;
+        cvars_state().GenSwitches |= CGSW_GEN_FLOW_REG_SAVES;
     }
     if( data->ol ) {
-        GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;
+        cvars_state().GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;
     }
     if( data->ol_plus ) {
-        GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION | CGSW_GEN_LOOP_UNROLLING;
+        cvars_state().GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION | CGSW_GEN_LOOP_UNROLLING;
     }
     if( data->on ) {
-        GenSwitches |= CGSW_GEN_FP_UNSTABLE_OPTIMIZATION;
+        cvars_state().GenSwitches |= CGSW_GEN_FP_UNSTABLE_OPTIMIZATION;
     }
     if( data->oo ) {
-        GenSwitches &= ~CGSW_GEN_MEMORY_LOW_FAILS;
+        cvars_state().GenSwitches &= ~CGSW_GEN_MEMORY_LOW_FAILS;
     }
     if( data->or_ ) {
-        GenSwitches |= CGSW_GEN_INS_SCHEDULING;
+        cvars_state().GenSwitches |= CGSW_GEN_INS_SCHEDULING;
     }
     if( data->ou ) {
-        CompFlags.unique_functions = true;
+        cvars_state().CompFlags.unique_functions = true;
     }
     if( data->oz ) {
-        GenSwitches |= CGSW_GEN_NULL_DEREF_OK;
+        cvars_state().GenSwitches |= CGSW_GEN_NULL_DEREF_OK;
     }
     if( data->p ) {
-        CompFlags.cpp_mode = true;
+        cvars_state().CompFlags.cpp_mode = true;
     }
     if( data->p_sharp ) {
-        PreProcChar = (char)data->p_sharp_value;
+        cvars_state().PreProcChar = (char)data->p_sharp_value;
     }
     if( data->pil ) {
-        CompFlags.cpp_ignore_line = true;
+        cvars_state().CompFlags.cpp_ignore_line = true;
     }
     if( data->pl ) {
-        CompFlags.cpp_mode = true;
-        CompFlags.cpp_line_wanted = true;
+        cvars_state().CompFlags.cpp_mode = true;
+        cvars_state().CompFlags.cpp_line_wanted = true;
     }
     if( data->pc ) {
-        CompFlags.cpp_mode = true;
-        CompFlags.cpp_keep_comments = true;
+        cvars_state().CompFlags.cpp_mode = true;
+        cvars_state().CompFlags.cpp_keep_comments = true;
     }
     if( data->pw ) {
-        CompFlags.cpp_mode = true;
+        cvars_state().CompFlags.cpp_mode = true;
         SetPPWidth( data->pw_value );
     } else {
         /*
@@ -753,13 +763,13 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
             SetPPWidth( 0 );
         }
     }
-    if( CompFlags.cpp_mode ) {
-        CompFlags.cpp_output = true;
-        CompFlags.quiet_mode = true;
+    if( cvars_state().CompFlags.cpp_mode ) {
+        cvars_state().CompFlags.cpp_output = true;
+        cvars_state().CompFlags.quiet_mode = true;
     }
     if( data->pm ) {
-        CompFlags.cpp_dump_macros = true;
-        CompFlags.quiet_mode = true;
+        cvars_state().CompFlags.cpp_dump_macros = true;
+        cvars_state().CompFlags.quiet_mode = true;
     }
     if( data->rod ) {
         OPT_STRING *s;
@@ -771,7 +781,7 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
         TOGGLE( check_stack ) = false;
     }
     if( data->v ) {
-        CompFlags.dump_prototypes = true;
+        cvars_state().CompFlags.dump_prototypes = true;
     }
     if( data->wcd ) {
         setMessageStatus( data->wcd_value, false );
@@ -780,51 +790,51 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
         setMessageStatus( data->wce_value, true );
     }
     if( data->we ) {
-        CompFlags.warnings_cause_bad_exit = true;
+        cvars_state().CompFlags.warnings_cause_bad_exit = true;
     }
     if( data->wpx ) {
-        Check_global_prototype = true;
+        cvars_state().Check_global_prototype = true;
     }
     if( data->x ) {
-        CompFlags.cpp_ignore_env = true;
+        cvars_state().CompFlags.cpp_ignore_env = true;
     }
     if( data->xbsa ) {
-        CompFlags.unaligned_segs = true;
+        cvars_state().CompFlags.unaligned_segs = true;
     }
     if( data->xx ) {
-        CompFlags.ignore_default_dirs = true;
+        cvars_state().CompFlags.ignore_default_dirs = true;
     }
     if( data->zam ) {
-        CompFlags.non_iso_compliant_names_enabled = false;
+        cvars_state().CompFlags.non_iso_compliant_names_enabled = false;
     }
     if( data->zev ) {
-        CompFlags.unix_ext = true;
+        cvars_state().CompFlags.unix_ext = true;
     }
     if( data->zg ) {
-        CompFlags.generate_prototypes = true;
-        CompFlags.dump_prototypes = true;
+        cvars_state().CompFlags.generate_prototypes = true;
+        cvars_state().CompFlags.dump_prototypes = true;
     }
     if( data->zl ) {
-        CompFlags.emit_library_names = false;
+        cvars_state().CompFlags.emit_library_names = false;
     }
     if( data->zld ) {
-        CompFlags.emit_dependencies = false;
+        cvars_state().CompFlags.emit_dependencies = false;
     }
     if( data->zlf ) {
-        CompFlags.emit_all_default_libs = true;
+        cvars_state().CompFlags.emit_all_default_libs = true;
     }
     if( data->zls ) {
-        CompFlags.emit_targimp_symbols = false;
+        cvars_state().CompFlags.emit_targimp_symbols = false;
     }
     if( data->zp ) {
-        PackAmount = data->zp_value;
-        GblPackAmount = PackAmount;
+        cvars_state().PackAmount = data->zp_value;
+        cvars_state().GblPackAmount = cvars_state().PackAmount;
     }
     if( data->zpw ) {
-        CompFlags.slack_byte_warning = true;
+        cvars_state().CompFlags.slack_byte_warning = true;
     }
     if( data->zs ) {
-        CompFlags.check_syntax = true;
+        cvars_state().CompFlags.check_syntax = true;
     }
 #ifdef DEVBUILD
     if( data->tp ) {
@@ -848,7 +858,7 @@ bool_ MergeIncludeFromEnv( const char *env )
 {
     const char  *env_value;
 
-    if( CompFlags.cpp_ignore_env )
+    if( cvars_state().CompFlags.cpp_ignore_env )
         return( false );
     env_value = FEGetEnv( env );
     if( env_value != NULL ) {
@@ -916,7 +926,7 @@ static void ProcOptions( OPT_STORAGE *data, const char *str )
             CmdScanSkipWhiteSpace();
             ch = CmdScanChar();
             if( ch == '@' ) {
-                switch_start = CmdScanAddr() - 1;
+                coptions_state().switch_start = CmdScanAddr() - 1;
                 CmdScanSkipWhiteSpace();
                 fname = NULL;
                 if( OPT_GET_FILE( &fname ) ) {
@@ -950,7 +960,7 @@ static void ProcOptions( OPT_STORAGE *data, const char *str )
                 continue;
             }
             if( CmdScanSwitchChar( ch ) ) {
-                switch_start = CmdScanAddr() - 1;
+                coptions_state().switch_start = CmdScanAddr() - 1;
                 if( OPT_PROCESS( data ) ) {
                     /*
                      * incorrect option
@@ -960,17 +970,17 @@ static void ProcOptions( OPT_STORAGE *data, const char *str )
                 }
             } else {  /* collect  file name */
                 CmdScanUngetChar();
-                switch_start = CmdScanAddr();
+                coptions_state().switch_start = CmdScanAddr();
                 fname = NULL;
                 if( OPT_GET_FILE( &fname ) ) {
-                    if( WholeFName != NULL ) {
+                    if( cvars_state().WholeFName != NULL ) {
                         /*
                          * more than one file to compile ?
                          */
                         CBanner();
                         CErr1( ERR_CAN_ONLY_COMPILE_ONE_FILE );
                     }
-                    SetStringOption( &WholeFName, &fname );
+                    SetStringOption( &cvars_state().WholeFName, &fname );
                     OPT_CLEAN_STRING( &fname );
                 }
             }
@@ -1019,9 +1029,9 @@ void GenCOptions( char **cmdline )
     for( ;*cmdline != NULL; ++cmdline ) {
         ProcOptions( &data, *cmdline );
     }
-    if( CompFlags.cpp_mode ) {
-        CompFlags.cpp_output = true;
-        CompFlags.quiet_mode = true;
+    if( cvars_state().CompFlags.cpp_mode ) {
+        cvars_state().CompFlags.cpp_output = true;
+        cvars_state().CompFlags.quiet_mode = true;
     }
     /*
      * print banner if -zq not specified

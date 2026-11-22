@@ -38,7 +38,7 @@
 #define FIRST_USER_SECTION              0
 
 // must correspond to owl_cpu enums in owl.h - first entry is for PowerPC
-static uint_16 cpuTypes[] = {
+static uint_16 const cpuTypes[] = {
     #define OWL_CPU(c,e,o) o,
     OWL_CPUS
     #undef OWL_CPU
@@ -404,7 +404,7 @@ static void calcSectionOffsets( owl_file_handle file ) {
 #define _CoffSectionIndex( x )          ( (x) + 1 )
 
 // WARNING: Must correspond to stuff in owl_sym_type and owl_sym_linkage enums
-static uint_8 complexType[] = {
+static uint_8 const complexType[] = {
         COFF_IMAGE_SYM_DTYPE_FUNCTION,
         COFF_IMAGE_SYM_DTYPE_NULL
 };
@@ -435,7 +435,6 @@ static image_sym_class storageClass( owl_sym_linkage kind ) {
     }
     return( ret );
 }
-
 
 
 static void formatSectionSymbol( owl_symbol_info *symbol,
@@ -470,9 +469,21 @@ static void formatSectionSymbol( owl_symbol_info *symbol,
     }
 }
 
-_WCUNALIGNED uint_32     *lastFunc;
-_WCUNALIGNED uint_32     *lastBf;
-_WCUNALIGNED uint_32     *lastFile;
+_WCUNALIGNED 
+_WCUNALIGNED 
+_WCUNALIGNED namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct OwcoffState {
+    uint_32 *lastFunc;
+    uint_32 *lastBf;
+    uint_32 *lastFile;
+};
+
+}  // namespace
+
+static inline OwcoffState& owcoff_state() { return cbrun_part<OwcoffState>(); }
+
 
 static unsigned doFileRecord( _WCUNALIGNED coff_symbol *buffer,
                                 owl_symbol_index index, char const *name )
@@ -481,10 +492,10 @@ static unsigned doFileRecord( _WCUNALIGNED coff_symbol *buffer,
     unsigned            num_aux;
 
     strncpy( buffer->name.u.name_string, ".file", COFF_SYM_NAME_LEN );
-    if( lastFile != NULL ) {
-        *lastFile = index;
+    if( owcoff_state().lastFile != NULL ) {
+        *owcoff_state().lastFile = index;
     }
-    lastFile = &buffer->value;
+    owcoff_state().lastFile = &buffer->value;
     buffer->value = 0;
     buffer->sec_num = COFF_IMAGE_SYM_DEBUG;
     buffer->type = COFF_IMAGE_SYM_DTYPE_NULL;
@@ -526,10 +537,10 @@ static void doBfRecord( _WCUNALIGNED coff_symbol *buffer,
     aux = (_WCUNALIGNED coff_sym_bfef *)( buffer + 1 );
     aux->linenum = info->first_line;
     aux->next_func = 0;
-    if( lastBf != NULL ) {
-        *lastBf = symbol->index + 2;
+    if( owcoff_state().lastBf != NULL ) {
+        *owcoff_state().lastBf = symbol->index + 2;
     }
-    lastBf = &aux->next_func;
+    owcoff_state().lastBf = &aux->next_func;
     buffer += 2;
 }
 
@@ -588,10 +599,10 @@ static void formatFunctionSymbol( owl_symbol_info *symbol,
         aux->size = info->end - info->start;
         aux->linenum = functionLineNumOffset( symbol );
         aux->next_func = 0;
-        if( lastFunc != NULL ) {
-            *lastFunc = symbol->index;
+        if( owcoff_state().lastFunc != NULL ) {
+            *owcoff_state().lastFunc = symbol->index;
         }
-        lastFunc = &aux->next_func;
+        owcoff_state().lastFunc = &aux->next_func;
         // emit .bf,.lf and .ef and whatnot
         buffer += 2;
         doBfRecord( buffer, symbol, info );
@@ -680,9 +691,9 @@ static void emitSymbolTable( owl_file_handle file ) {
 
     symbol_table_size = numSymbols( file ) * sizeof( coff_symbol );
     if( symbol_table_size != 0 ) {
-        lastFunc = NULL;
-        lastBf = NULL;
-        lastFile = NULL;
+        owcoff_state().lastFunc = NULL;
+        owcoff_state().lastBf = NULL;
+        owcoff_state().lastFile = NULL;
         symbol_buffer = static_cast<coff_symbol *>(_ClientAlloc( file, symbol_table_size ));
     #if 1
         memset( symbol_buffer, 0, symbol_table_size );

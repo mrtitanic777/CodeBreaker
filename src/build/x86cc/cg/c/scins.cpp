@@ -103,7 +103,7 @@ bool_    ChangeIns( instruction *ins, name *to, name **op, change_type flags )
         type_class = ins->type_class;
     }
     if( to->n.class_ != N_CONSTANT ) {
-        if( TypeClassSize[type_class] != to->n.size ) {
+        if( data_state().TypeClassSize[type_class] != to->n.size ) {
             return( false );
         }
     }
@@ -174,7 +174,7 @@ static  bool_    TryOldIndex( score_hdl scoreboard, instruction *ins, name **opp
     this_reg = &scoreboard[op->i.index->r.reg_index];
     for( curr_reg = this_reg->next_reg; curr_reg != this_reg; curr_reg = curr_reg->next_reg ) {
         if( curr_reg->generation < this_reg->generation ) {
-            reg_name = ScoreList[curr_reg->index]->reg_name;
+            reg_name = score_state().ScoreList[curr_reg->index]->reg_name;
             /*
              * OOPS! what about "op [edx] -> [edx]" which zaps edx...
              */
@@ -218,16 +218,16 @@ static  bool_    TryRegOp( score_hdl scoreboard, instruction *ins, name **opp )
         this_reg = &scoreboard[op->r.reg_index];
         if( !HW_Ovlap( live, op->r.reg ) ) {
             for( curr_reg = this_reg->next_reg; curr_reg != this_reg; curr_reg = curr_reg->next_reg ) {
-                if( HW_Ovlap( live, ScoreList[curr_reg->index]->reg )
+                if( HW_Ovlap( live, score_state().ScoreList[curr_reg->index]->reg )
                 && curr_reg->generation < this_reg->generation
-                && ChangeIns( ins, ScoreList[curr_reg->index]->reg_name, opp, CHANGE_GEN ) ) {
+                && ChangeIns( ins, score_state().ScoreList[curr_reg->index]->reg_name, opp, CHANGE_GEN ) ) {
                      return( true );
                 }
             }
         }
         for( curr_reg = this_reg->next_reg; curr_reg != this_reg; curr_reg = curr_reg->next_reg ) {
             if( curr_reg->generation < this_reg->generation
-             && ChangeIns( ins, ScoreList[curr_reg->index]->reg_name, opp, CHANGE_GEN ) ) {
+             && ChangeIns( ins, score_state().ScoreList[curr_reg->index]->reg_name, opp, CHANGE_GEN ) ) {
                 return( true );
             }
         }
@@ -249,8 +249,8 @@ static  bool_    TryRegOp( score_hdl scoreboard, instruction *ins, name **opp )
                 return( false );
             }
         }
-        for( i = ScoreCount; i-- > 0; ) {
-            if( ScoreEqual( scoreboard, i, &info ) && ChangeIns( ins, ScoreList[i]->reg_name, opp, CHANGE_GEN ) ) {
+        for( i = score_state().ScoreCount; i-- > 0; ) {
+            if( ScoreEqual( scoreboard, i, &info ) && ChangeIns( ins, score_state().ScoreList[i]->reg_name, opp, CHANGE_GEN ) ) {
                 return( true );
             }
         }
@@ -313,7 +313,7 @@ void    ScoreMakeEqual( score_hdl scoreboard, name *op1, name *op2 )
              * NB: reg can never have the value x[reg]
              */
             if( info.reg_index == NO_INDEX
-                || !HW_Ovlap( op2->r.reg, ScoreList[info.reg_index]->reg ) ) {
+                || !HW_Ovlap( op2->r.reg, score_state().ScoreList[info.reg_index]->reg ) ) {
                 ScoreAssign( scoreboard, op2_index, &info );
             }
         }
@@ -359,7 +359,7 @@ bool_    ScoreMove( score_hdl scoreboard, instruction *ins )
                  * NB: reg can never have the value x[reg]
                  */
                 if( info.reg_index == NO_INDEX
-                  || !HW_Ovlap( dst->r.reg, ScoreList[info.reg_index]->reg ) ) {
+                  || !HW_Ovlap( dst->r.reg, score_state().ScoreList[info.reg_index]->reg ) ) {
                     if( !FPIsConvert( ins ) ) {
                         ScoreAssign( scoreboard, dst_index, &info );
                     }
@@ -437,5 +437,5 @@ void    ScZeroCheck( score_hdl scoreboard, instruction *ins )
     if( ins->operands[0]->n.class_ != N_REGISTER )
         return;
     i = ins->result->r.reg_index;
-    ScoreAssign( scoreboard, i, ScZero );
+    ScoreAssign( scoreboard, i, score_state().ScZero );
 }

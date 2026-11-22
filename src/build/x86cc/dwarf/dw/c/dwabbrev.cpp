@@ -39,25 +39,34 @@
 #include "dwabinfo.gh"
 
 
-static const struct {
-    abbrev_code                 bit;
-    char                        data[2];
-} bitEncodings[] = {
-    { AB_DECLARATION,           { DW_AT_declaration,    DW_FORM_flag } },
-    { AB_ACCESSIBILITY,         { DW_AT_accessibility,  DW_FORM_data1 } },
-    { AB_OPACCESS,              { DW_AT_accessibility,  DW_FORM_data1 } },
-    { AB_TYPE,                  { DW_AT_type,           DW_FORM_ref4  } },
-    { AB_NAME,                  { DW_AT_name,           DW_FORM_string } },
-    { AB_START_SCOPE,           { DW_AT_start_scope,    DW_FORM_udata } },
-    { AB_BYTE_SIZE,             { DW_AT_byte_size,      DW_FORM_udata } },
-    { AB_DATA_LOCATION,         { DW_AT_data_member_location, DW_FORM_block1 } },
-    { AB_RETURN_ADDR,           { DW_AT_return_addr,    DW_FORM_block1 } },
-    { AB_ARTIFICIAL,            { DW_AT_artificial,     DW_FORM_flag } },
-    { AB_MEMBER,                { DW_AT_containing_type,DW_FORM_ref4 } },
-    { AB_SEGMENT,               { DW_AT_segment,        DW_FORM_block1 } },
-    { AB_ADDRESS_CLASS,         { DW_AT_address_class,  DW_FORM_data1 } },
-    { AB_VTABLE_LOC,            { DW_AT_vtable_elem_location, DW_FORM_block1 } }
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct DwabbrevState {
+    const struct {
+        abbrev_code                 bit;
+        char                        data[2];
+    } bitEncodings[14] = {
+        { AB_DECLARATION,           { DW_AT_declaration,    DW_FORM_flag } },
+        { AB_ACCESSIBILITY,         { DW_AT_accessibility,  DW_FORM_data1 } },
+        { AB_OPACCESS,              { DW_AT_accessibility,  DW_FORM_data1 } },
+        { AB_TYPE,                  { DW_AT_type,           DW_FORM_ref4  } },
+        { AB_NAME,                  { DW_AT_name,           DW_FORM_string } },
+        { AB_START_SCOPE,           { DW_AT_start_scope,    DW_FORM_udata } },
+        { AB_BYTE_SIZE,             { DW_AT_byte_size,      DW_FORM_udata } },
+        { AB_DATA_LOCATION,         { DW_AT_data_member_location, DW_FORM_block1 } },
+        { AB_RETURN_ADDR,           { DW_AT_return_addr,    DW_FORM_block1 } },
+        { AB_ARTIFICIAL,            { DW_AT_artificial,     DW_FORM_flag } },
+        { AB_MEMBER,                { DW_AT_containing_type,DW_FORM_ref4 } },
+        { AB_SEGMENT,               { DW_AT_segment,        DW_FORM_block1 } },
+        { AB_ADDRESS_CLASS,         { DW_AT_address_class,  DW_FORM_data1 } },
+        { AB_VTABLE_LOC,            { DW_AT_vtable_elem_location, DW_FORM_block1 } }
+    };
 };
+
+}  // namespace
+
+static inline DwabbrevState& dwabbrev_state() { return cbrun_part<DwabbrevState>(); }
 
 
 /*
@@ -144,9 +153,9 @@ unsigned DW_MarkAbbrevAsUsed( dw_client cli, abbrev_code *abbrev )
     }
 
     /* now emit the extra attributes */
-    for( i = 0; i < sizeof( bitEncodings ) / sizeof( bitEncodings[0] ); ++i ) {
-        if( *abbrev & bitEncodings[i].bit ) {
-            CLIWrite( cli, DW_DEBUG_ABBREV, bitEncodings[i].data, sizeof( bitEncodings[0].data ) );
+    for( i = 0; i < sizeof( dwabbrev_state().bitEncodings ) / sizeof( dwabbrev_state().bitEncodings[0] ); ++i ) {
+        if( *abbrev & dwabbrev_state().bitEncodings[i].bit ) {
+            CLIWrite( cli, DW_DEBUG_ABBREV, dwabbrev_state().bitEncodings[i].data, sizeof( dwabbrev_state().bitEncodings[0].data ) );
         }
     }
 

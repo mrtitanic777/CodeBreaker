@@ -35,45 +35,6 @@
 #include "coderep.h"
 #include "cgswitch.h"
 #include "data.h"
+#include "model.h"
+#include "optmac.h"
 
-block                   *HeadBlock;
-block                   *BlockList;
-block                   *CurrBlock;
-int                     InsId;
-int                     TempId;
-conflict_node           *ConfList;
-proc_def                *CurrProc;
-name                    *Names[N_CLASS_MAX];
-name                    *LastTemp;
-name                    *DummyIndex;
-source_line_number      SrcLine;
-cg_switches             Model;
-cg_target_switches      TargetModel;
-cg_target_switches      SaveTargetModel;
-global_bit_set          MemoryBits;
-type_class_def          ClassPointer;
-bool_                    BlockByBlock;
-type_length             MaxStack;
-const type_def          *TypeBoolean;
-const type_def          *TypeInteger;
-const type_def          *TypeUnsigned;
-const type_def          *TypePtr;
-const type_def          *TypeNone;
-const type_def          *TypeProcParm;
-const type_def          *TypeNearInteger;
-const type_def          *TypeLongInteger;
-const type_def          *TypeLongLongInteger;
-const type_def          *TypeHugeInteger;
-hw_reg_set              GivenRegisters;
-bool_                    BlocksUnTrimmed;
-an                      AddrList;
-segment_id              DbgLocals;
-segment_id              DbgTypes;
-uint_16                 TypeIdx;
-int                     InOptimizer;
-byte                    OptForSize;
-bool_                    HaveLiveInfo;
-bool_                    HaveDominatorInfo;
-pointer_uint            FrlSize;
-bool_                    HaveCurrBlock;
-proc_revision           CGProcessorVersion;

@@ -50,37 +50,37 @@ void ParsePgm( void )
 {
     SYM_HANDLE      dummysym;
 
-    CompFlags.external_defn_found = false;
-    CompFlags.initializing_data = false;
+    cvars_state().CompFlags.external_defn_found = false;
+    cvars_state().CompFlags.initializing_data = false;
     dummysym = SYM_NULL;
-    GlobalSym = SYM_NULL;
+    cvars_state().GlobalSym = SYM_NULL;
 
     do {
         if( DeclList( &dummysym ) ) {  /* if this is a function defn */
-            FuncDefn( CurFunc );
-            SrcLoc = CurFunc->src_loc;
-            GenFunctionNode( CurFuncHandle );
+            FuncDefn( cvars_state().CurFunc );
+            cvars_state().SrcLoc = cvars_state().CurFunc->src_loc;
+            GenFunctionNode( cvars_state().CurFuncHandle );
 
-            SymLevel = 1;
+            cvars_state().SymLevel = 1;
             ParmDeclList();
-            SymLevel = 0;
-            if( CurToken == T_LEFT_BRACE ) {
+            cvars_state().SymLevel = 0;
+            if( cvars_state().CurToken == T_LEFT_BRACE ) {
                 BeginFunc();
                 Statement();
-                CMemFree( CurFunc->name );
-                CurFunc->name = NULL;
-                SymReplace( CurFunc, CurFuncHandle );
-                CurFunc = NULL;
-                CurFuncNode = NULL;
-                CurFuncHandle = SYM_NULL;
+                CMemFree( cvars_state().CurFunc->name );
+                cvars_state().CurFunc->name = NULL;
+                SymReplace( cvars_state().CurFunc, cvars_state().CurFuncHandle );
+                cvars_state().CurFunc = NULL;
+                cvars_state().CurFuncNode = NULL;
+                cvars_state().CurFuncHandle = SYM_NULL;
             } else {
                 MustRecog( T_LEFT_BRACE );
             }
         }
-    } while( CurToken != T_EOF );
+    } while( cvars_state().CurToken != T_EOF );
 
-    if( !CompFlags.external_defn_found ) {
-        if( !CompFlags.extensions_enabled ) {
+    if( !cvars_state().CompFlags.external_defn_found ) {
+        if( !cvars_state().CompFlags.extensions_enabled ) {
             CErr1( ERR_NO_EXTERNAL_DEFNS_FOUND );
         }
     }
@@ -95,7 +95,7 @@ static void FuncDefn( SYMPTR sym )
     /*
      * duplicate name in near space
      */
-    sym_name = SymName( sym, CurFuncHandle );
+    sym_name = SymName( sym, cvars_state().CurFuncHandle );
     sym->name = CMemStrdup( sym_name );
     if( sym->flags & SYM_DEFINED ) {
         CErr2p( ERR_SYM_ALREADY_DEFINED, sym->name );
@@ -110,7 +110,7 @@ static void FuncDefn( SYMPTR sym )
     }
     sym->flags |= SYM_DEFINED /* | SYM_REFERENCED */;
 
-    if( (GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
+    if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
         sym->flags |= SYM_OK_TO_RECURSE;
     }
 
@@ -118,25 +118,25 @@ static void FuncDefn( SYMPTR sym )
         sym->attribs.stg_class = SC_NONE;       /* indicate exported function */
     }
 
-    CompFlags.external_defn_found = true;
+    cvars_state().CompFlags.external_defn_found = true;
     if( TOGGLE( check_stack ) )
         sym->flags |= SYM_CHECK_STACK;
 
 #if _INTEL_CPU
-    if( !CompFlags.zu_switch_used ) {
+    if( !cvars_state().CompFlags.zu_switch_used ) {
         if( sym->mods & FLAG_FARSS ) {          /* function use far stack */
-            TargetSwitches |= CGSW_X86_FLOATING_SS;
+            cvars_state().TargetSwitches |= CGSW_X86_FLOATING_SS;
         } else {
-            TargetSwitches &= ~CGSW_X86_FLOATING_SS;
+            cvars_state().TargetSwitches &= ~CGSW_X86_FLOATING_SS;
         }
     }
 #endif
-    if( strcmp( CurFunc->name, "main" ) == 0
-      || strcmp( CurFunc->name, "wmain" ) == 0 ) {
+    if( strcmp( cvars_state().CurFunc->name, "main" ) == 0
+      || strcmp( cvars_state().CurFunc->name, "wmain" ) == 0 ) {
         sym->mods &= ~MASK_LANGUAGES;  // Turn off any language flags
         sym->mods |= FLAG_WATCALL;     // Turn on __watcall calling convention for main
     }
-    SymReplace( sym, CurFuncHandle );
+    SymReplace( sym, cvars_state().CurFuncHandle );
 }
 
 #define NAMELIT(c) c, sizeof( c )
@@ -161,7 +161,7 @@ enum main_names {
 static struct {
     char const      *name;
     unsigned char   len;
-} MainNames[] = {
+} const MainNames[] = {
     #define pick(e,n) { NAMELIT( n ) },
     MAIN_NAMES
     #undef pick
@@ -184,54 +184,54 @@ static void BeginFunc( void )
     char                *name;
     char                *segname;
 
-    if( CurFunc->seginfo == NULL ) {
-        CurFunc->seginfo = DefCodeSegment;
-        if( CurFunc->seginfo == NULL ) {
-            if( CompFlags.zm_switch_used ) {
+    if( cvars_state().CurFunc->seginfo == NULL ) {
+        cvars_state().CurFunc->seginfo = cvars_state().DefCodeSegment;
+        if( cvars_state().CurFunc->seginfo == NULL ) {
+            if( cvars_state().CompFlags.zm_switch_used ) {
                 name = const_cast<char *>("");
 #if _INTEL_CPU
-                if( TargetSwitches & CGSW_X86_BIG_CODE )
-                    name = CurFunc->name;
+                if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE )
+                    name = cvars_state().CurFunc->name;
 #endif
                 segname = const_cast<char *>(TS_SEG_CODE); /* "_TEXT" */
-                if( TextSegName[0] != '\0' ) {
-                    segname = TextSegName;
+                if( cvars_state().TextSegName[0] != '\0' ) {
+                    segname = cvars_state().TextSegName;
                 }
-                CurFunc->seginfo = NewTextSeg( name, segname, "" );
+                cvars_state().CurFunc->seginfo = NewTextSeg( name, segname, "" );
             }
         }
     }
-    switch( checkMain( CurFunc->name ) ) {
+    switch( checkMain( cvars_state().CurFunc->name ) ) {
     case MAIN_WMAIN:
-        CompFlags.has_wchar_entry = true;
+        cvars_state().CompFlags.has_wchar_entry = true;
         /* fall through */
     case MAIN_MAIN:
-        if( CurFunc->u.func.parms != SYM_NULL ) {
-            CompFlags.main_has_parms = true;
+        if( cvars_state().CurFunc->u.func.parms != SYM_NULL ) {
+            cvars_state().CompFlags.main_has_parms = true;
         } else {
-            CompFlags.main_has_parms = false;
+            cvars_state().CompFlags.main_has_parms = false;
         }
-        CompFlags.has_main = true;
+        cvars_state().CompFlags.has_main = true;
         break;
 
     case MAIN_WWINMAIN:
-        CompFlags.has_wchar_entry = true;
+        cvars_state().CompFlags.has_wchar_entry = true;
         /* fall through */
     case MAIN_WINMAIN:
-        if( TargetSystem == TS_WINDOWS || TargetSystem == TS_CHEAP_WINDOWS || TargetSystem == TS_NT ) {
-            CompFlags.has_winmain = true;
+        if( cvars_state().TargetSystem == TS_WINDOWS || cvars_state().TargetSystem == TS_CHEAP_WINDOWS || cvars_state().TargetSystem == TS_NT ) {
+            cvars_state().CompFlags.has_winmain = true;
         } else {
-            CompFlags.has_wchar_entry = false;
+            cvars_state().CompFlags.has_wchar_entry = false;
         }
         break;
 
     case MAIN_WLIBMAIN:
     case MAIN_WDLLMAIN:
-        CompFlags.has_wchar_entry = true;
+        cvars_state().CompFlags.has_wchar_entry = true;
         /* fall through */
     case MAIN_LIBMAIN:
     case MAIN_DLLMAIN:
-        CompFlags.has_libmain = true;
+        cvars_state().CompFlags.has_libmain = true;
         break;
 
     case MAIN_NUM:
@@ -303,11 +303,11 @@ static void ParmDeclList( void )     /* process old style function definitions *
     SYM_ENTRY           sym;
     decl_info           info;
 
-    while( CurToken != T_LEFT_BRACE ) {
+    while( cvars_state().CurToken != T_LEFT_BRACE ) {
         FullDeclSpecifier( &info );
         if( info.stg == SC_NONE && info.typ == NULL ) {
-            if( CurToken == T_ID ) {
-                CErr2p( ERR_MISSING_DATA_TYPE, Buffer );
+            if( cvars_state().CurToken == T_ID ) {
+                CErr2p( ERR_MISSING_DATA_TYPE, cvars_state().Buffer );
             }
         }
         if( info.stg != SC_NONE && info.stg != SC_REGISTER ) {
@@ -324,7 +324,7 @@ static void ParmDeclList( void )     /* process old style function definitions *
             info.stg = SC_AUTO;
 
         for( ;; ) {
-            if( CurToken == T_SEMI_COLON ) {
+            if( cvars_state().CurToken == T_SEMI_COLON ) {
                 Check_Struct_Union_Enum( typ );
             } else {
                 sym.name = NULL;
@@ -332,7 +332,7 @@ static void ParmDeclList( void )     /* process old style function definitions *
                 if( sym.name == NULL || sym.name[0] == '\0' ) {
                     InvDecl();
                 } else {
-                    for( parm = ParmList; parm != NULL; parm = parm->next_parm ) {
+                    for( parm = cvars_state().ParmList; parm != NULL; parm = parm->next_parm ) {
                         if( parm->sym.name != NULL ) {
                             if( strcmp( parm->sym.name, sym.name ) == 0 ) {
                                 break;
@@ -352,29 +352,29 @@ static void ParmDeclList( void )     /* process old style function definitions *
                 CMemFree( sym.name );
             }
 
-            if( CurToken == T_SEMI_COLON ) {
+            if( cvars_state().CurToken == T_SEMI_COLON ) {
                 NextToken();
                 break;
             }
-            if( CurToken == T_LEFT_BRACE ) {
+            if( cvars_state().CurToken == T_LEFT_BRACE ) {
                 CErr1( ERR_MISSING_SEMICOLON );
                 break;
             }
-            if( CurToken == T_EOF )
+            if( cvars_state().CurToken == T_EOF )
                 return;
             MustRecog( T_COMMA );
         }
     }
     ReverseParms();
-    if( CurFunc->sym_type->u.fn.parms == NULL ) {
-        CurFunc->flags |= SYM_OLD_STYLE_FUNC;
+    if( cvars_state().CurFunc->sym_type->u.fn.parms == NULL ) {
+        cvars_state().CurFunc->flags |= SYM_OLD_STYLE_FUNC;
         AddParms();
     } else {
         CheckParms();
     }
-    ParmList = NULL;
-    if( VarParm( CurFunc ) ) {
-        CurFunc->flags &= ~ SYM_OK_TO_RECURSE;
+    cvars_state().ParmList = NULL;
+    if( VarParm( cvars_state().CurFunc ) ) {
+        cvars_state().CurFunc->flags &= ~ SYM_OK_TO_RECURSE;
     }
 }
 
@@ -383,14 +383,14 @@ static void ReverseParms( void )       /* reverse order of parms */
 {
     PARMPTR     prev_parm, parm, next_parm;
 
-    if( ParmsToBeReversed( CurFunc->mods, NULL ) ) {
+    if( ParmsToBeReversed( cvars_state().CurFunc->mods, NULL ) ) {
         prev_parm = NULL;
-        for( parm = ParmList; parm != NULL; parm = next_parm ) {
+        for( parm = cvars_state().ParmList; parm != NULL; parm = next_parm ) {
             next_parm = parm->next_parm;
             parm->next_parm = prev_parm;
             prev_parm = parm;
         }
-        ParmList = prev_parm;
+        cvars_state().ParmList = prev_parm;
     }
 }
 
@@ -402,15 +402,15 @@ static void CheckProtoType( void )
     TYPEPTR     typ1;
     TYPEPTR     typ2;
 
-    typ1 = CurFunc->sym_type;
+    typ1 = cvars_state().CurFunc->sym_type;
     SKIP_TYPEDEFS( typ1 );
     ret1 = typ1->object;
-    typ2 = PrevProtoType;
+    typ2 = cvars_state().PrevProtoType;
     SKIP_TYPEDEFS( typ2 );
     ret2 = typ2->object;
     typ1->object = NULL;
     typ2->object = NULL;
-    VerifyType( CurFunc->sym_type, PrevProtoType, CurFunc );
+    VerifyType( cvars_state().CurFunc->sym_type, cvars_state().PrevProtoType, cvars_state().CurFunc );
     typ1->object = ret1;
     typ2->object = ret2;
 }
@@ -429,13 +429,13 @@ static void AddParms( void )
     parm_list           *parmlist;
     SYM_ENTRY           new_sym;
 
-    CurFunc->u.func.locals = SYM_NULL;
-    CurFunc->u.func.parms = SYM_NULL;
+    cvars_state().CurFunc->u.func.locals = SYM_NULL;
+    cvars_state().CurFunc->u.func.parms = SYM_NULL;
     parmlist = NULL;
     prev_sym_handle = SYM_NULL;
     parm_count = 0;
     prev_parm = NULL;
-    for( parm = ParmList; parm != NULL; parm = parm->next_parm ) {
+    for( parm = cvars_state().ParmList; parm != NULL; parm = parm->next_parm ) {
         new_sym_handle = SYM_NULL;
         parm->sym.flags |= SYM_DEFINED | SYM_ASSIGNED;
         parm->sym.attribs.is_parm = true;
@@ -462,13 +462,13 @@ static void AddParms( void )
             case TYP_CHAR:
             case TYP_UCHAR:
             case TYP_SHORT:
-                if( CompFlags.strict_ANSI ) {
+                if( cvars_state().CompFlags.strict_ANSI ) {
                     parm->sym.sym_type = GetType( TYP_INT );
                 }
                 break;
 
             case TYP_USHORT:
-                if( CompFlags.strict_ANSI ) {
+                if( cvars_state().CompFlags.strict_ANSI ) {
 #if TARGET_SHORT == TARGET_INT
                     parm->sym.sym_type = GetType( TYP_UINT );
 #else
@@ -479,9 +479,9 @@ static void AddParms( void )
 
             case TYP_FLOAT:
                 memcpy( &new_sym, &parm->sym, sizeof( SYM_ENTRY ) );
-                new_sym.handle = CurFunc->u.func.locals;
+                new_sym.handle = cvars_state().CurFunc->u.func.locals;
                 new_sym_handle = SymAdd( hash, &new_sym );
-                CurFunc->u.func.locals = new_sym_handle;
+                cvars_state().CurFunc->u.func.locals = new_sym_handle;
                 SymReplace( &new_sym, new_sym_handle );
                 parm->sym.name = const_cast<char *>(".P");
                 parm->sym.flags |= SYM_REFERENCED;
@@ -504,7 +504,7 @@ static void AddParms( void )
         }
 
         if( prev_parm == NULL ) {
-            CurFunc->u.func.parms = sym_handle;
+            cvars_state().CurFunc->u.func.parms = sym_handle;
         } else {
             prev_parm->sym.handle = sym_handle;
             SymReplace( &prev_parm->sym, prev_sym_handle );
@@ -520,14 +520,14 @@ static void AddParms( void )
         SymReplace( &prev_parm->sym, prev_sym_handle );
         CMemFree( prev_parm );
     }
-    typ = CurFunc->sym_type;
+    typ = cvars_state().CurFunc->sym_type;
     /*
      * TODO not following my scheme
      */
-    CurFunc->sym_type = FuncNode( typ->object, FLAG_NONE,
-        MakeParmList( parmlist, ParmsToBeReversed( CurFunc->mods, NULL ) ) );
+    cvars_state().CurFunc->sym_type = FuncNode( typ->object, FLAG_NONE,
+        MakeParmList( parmlist, ParmsToBeReversed( cvars_state().CurFunc->mods, NULL ) ) );
 
-    if( PrevProtoType != NULL ) {
+    if( cvars_state().PrevProtoType != NULL ) {
         CheckProtoType();
     }
 }
@@ -541,14 +541,14 @@ static void CheckParms( void )
     SYM_HANDLE          prev_sym_handle;
     TYPEPTR             typ;
 
-    CurFunc->u.func.locals = SYM_NULL;
-    CurFunc->u.func.parms = SYM_NULL;
-    typ = *(CurFunc->sym_type->u.fn.parms);
+    cvars_state().CurFunc->u.func.locals = SYM_NULL;
+    cvars_state().CurFunc->u.func.parms = SYM_NULL;
+    typ = *(cvars_state().CurFunc->sym_type->u.fn.parms);
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type != TYP_VOID ) {
         prev_sym_handle = SYM_NULL;
         prev_parm = NULL;
-        for( parm = ParmList; parm != NULL; parm = parm->next_parm ) {
+        for( parm = cvars_state().ParmList; parm != NULL; parm = parm->next_parm ) {
             if( parm->sym.name == NULL ) {
                 parm->sym.name = const_cast<char *>(".J");
                 parm->sym.flags |= SYM_REFERENCED;
@@ -565,7 +565,7 @@ static void CheckParms( void )
              */
             sym_handle = SymAdd( parm->sym.u1.hash, &parm->sym );
             if( prev_parm == NULL ) {
-                CurFunc->u.func.parms = sym_handle;
+                cvars_state().CurFunc->u.func.parms = sym_handle;
             } else {
                 prev_parm->sym.handle = sym_handle;
                 SymReplace( &prev_parm->sym, prev_sym_handle );

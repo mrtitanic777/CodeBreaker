@@ -119,7 +119,7 @@ static  void    LoadStoreIfCall( global_bit_set *id )
     block               *blk;
     data_flow_def       *flow;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_CONTAINS_CALL )
           && !_IsBlkMarked( blk ) ) {
             flow = blk->dataflow;
@@ -140,7 +140,7 @@ static  void    TurnOffLoadStoreBits( global_bit_set *id )
     block               *blk;
     data_flow_def       *flow;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( !_IsBlkMarked( blk ) ) {
             flow = blk->dataflow;
             if( _GBitOverlap( flow->need_load, *id )
@@ -222,7 +222,7 @@ static  void    CalculateLoadStore( conflict_node *conf )
     data_flow_def       *flow;
 
     _GBitAssign( id, conf->id.out_of_block );
-    blk = HeadBlock;
+    blk = data_state().HeadBlock;
     if( blk != NULL ) {
         _MarkBlkAllAttrClr( BLK_CONTAINS_CALL | BLK_BLOCK_MARKED | BLK_BLOCK_VISITED );
         _MarkBlkAttrSet( blk, BLK_BIG_LABEL );
@@ -279,7 +279,7 @@ static  void    CalculateLoadStore( conflict_node *conf )
         TurnOffLoadStoreBits( &id );
         if( NameIsConstant( conf->name ) ) {
             id = conf->id.out_of_block;
-            for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+            for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
                 flow = blk->dataflow;
                 _GBitTurnOff( flow->need_store, id );
             }
@@ -296,7 +296,7 @@ void    CalcLoadStore( conflict_node *conf )
  * see below
  */
 {
-    if( !BlockByBlock ) {
+    if( !data_state().BlockByBlock ) {
         CalculateLoadStore( conf );
     }
 }

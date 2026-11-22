@@ -79,7 +79,7 @@ void    CodeLabel( label_handle label, unsigned align )
     Drop label into the queue
 */
 {
-    if( OptForSize > 50 || align == 0 )
+    if( data_state().OptForSize > 50 || align == 0 )
         align = 1;
     CodeHandle( OC_LABEL, align - 1, label );
 #if _TARGET_RISC

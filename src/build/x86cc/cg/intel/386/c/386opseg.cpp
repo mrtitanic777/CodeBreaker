@@ -41,8 +41,6 @@
 #include "x86opseg.h"
 
 
-zero_page_scheme        ZPageType;
-
 static  void    CheckName( name **pop, name *gblreg )
 /****************************************************
     add gblreg to a memory reference. eg: x[EAX*2] -> x[gblreg+EAX*2]
@@ -86,7 +84,7 @@ static  void    AddGlobalIndex( void )
     name        *gblreg;
 
     gblreg = AllocRegName( HW_EBX );
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 CheckName( &ins->operands[i], gblreg );
@@ -107,7 +105,7 @@ void    InitZeroPage( void )
     right time, and wasn't used by the 386 compiler
 */
 {
-    ZPageType = ZP_USES_SS;
+    x86opseg_state().ZPageType = ZP_USES_SS;
     if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) ) {
         AddGlobalIndex();
     }

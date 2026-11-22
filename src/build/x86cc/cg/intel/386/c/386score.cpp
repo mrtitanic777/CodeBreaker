@@ -91,12 +91,12 @@ bool_    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 )
     these registers.
 */
 {
-    if( HW_Ovlap( reg1, CurrProc->state.unalterable ) ) {
+    if( HW_Ovlap( reg1, data_state().CurrProc->state.unalterable ) ) {
         if( !HW_CEqual( reg1, HW_DS ) && !HW_CEqual( reg1, HW_SS ) ) {
             return( false );
         }
     }
-    if( HW_Ovlap( reg2, CurrProc->state.unalterable ) ) {
+    if( HW_Ovlap( reg2, data_state().CurrProc->state.unalterable ) ) {
         if( !HW_Equal( reg2, HW_DS ) && !HW_Equal( reg2, HW_SS ) ) {
             return( false );
         }

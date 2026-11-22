@@ -39,7 +39,7 @@
 #endif
 
 
-#define USE_FPU_EMUL    ((SWData.fpt==DO_FP_EMULATION)&&(!rCode->use32)&&(ins->cpu & P_FPU_MASK)!=P_NO87)
+#define USE_FPU_EMUL    ((asmglob_state().SWData.fpt==DO_FP_EMULATION)&&(!rCode->use32)&&(ins->cpu & P_FPU_MASK)!=P_NO87)
 
 static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTYPE determinant );
 
@@ -48,9 +48,9 @@ static bool_ output_3DNow( const asm_ins ASMI86FAR *ins )
 {
     if( ins->byte1_info == F_0F0F ) {
         if( !ins->wds ) {
-            Code->info.opcode &= ~W_BIT;
+            asmdefs_state().Code->info.opcode &= ~W_BIT;
         }
-        AsmCodeByte( ins->opcode | Code->info.opcode );
+        AsmCodeByte( ins->opcode | asmdefs_state().Code->info.opcode );
     }
     return( RC_OK );
 }
@@ -63,7 +63,7 @@ static bool_ output( const asm_ins ASMI86FAR *ins )
   , opcode, "mod r/m" byte and "s-i-b" byte;
 */
 {
-    asm_code        *rCode = Code;
+    asm_code        *rCode = asmdefs_state().Code;
     unsigned_8      tmp;
     fp_patches      patch = FPP_NONE;
 
@@ -103,7 +103,7 @@ static bool_ output( const asm_ins ASMI86FAR *ins )
                 patch = FPP_WAIT;
             }
         } else if( ins->allowed_prefix != NO_FWAIT ) {
-            switch( Code->prefix.seg ) {
+            switch( asmdefs_state().Code->prefix.seg ) {
             case PREFIX_EMPTY: patch = FPP_NORMAL; break;
             case PREFIX_ES: patch = FPP_ES;     break;
             case PREFIX_CS: patch = FPP_CS;     break;
@@ -328,7 +328,7 @@ static bool_ output_data( OPNDTYPE determinant, operand_idx index )
     int                 out = 0;
 
     mark_fixupp( determinant, index );
-    switch( Code->info.token ) {
+    switch( asmdefs_state().Code->info.token ) {
     case T_CMPS:
     case T_LODS:
     case T_MOVS:
@@ -355,15 +355,15 @@ static bool_ output_data( OPNDTYPE determinant, operand_idx index )
         out = 6;
     } else if( determinant & OP_M_ANY ) {
         // switch on the mode ( the leftmost 2 bits )
-        switch( Code->info.rm_byte & BIT_67 ) {
+        switch( asmdefs_state().Code->info.rm_byte & BIT_67 ) {
         case MOD_01:  // mode = 01
             out = 1;
             break;
         case MOD_00:
-            if( IS_ADRSIZ_32( Code ) ) {
-                switch( Code->info.rm_byte & BIT_012 ) {
+            if( IS_ADRSIZ_32( asmdefs_state().Code ) ) {
+                switch( asmdefs_state().Code->info.rm_byte & BIT_012 ) {
                 case S_I_B:
-                    if( (Code->sib & BIT_012) != D32 ) {
+                    if( (asmdefs_state().Code->sib & BIT_012) != D32 ) {
                         break;  // out = 0
                     }
                     // no break
@@ -371,13 +371,13 @@ static bool_ output_data( OPNDTYPE determinant, operand_idx index )
                     out = 4;
                 }
             } else {
-                if( (Code->info.rm_byte & BIT_012) == D16 ) {
+                if( (asmdefs_state().Code->info.rm_byte & BIT_012) == D16 ) {
                      out = 2;
                 }
             }
             break;
         case MOD_10:  // mode = 10
-            if( IS_ADRSIZ_32( Code ) ) {
+            if( IS_ADRSIZ_32( asmdefs_state().Code ) ) {
                 out = 4;
             } else {
                 out = 2;
@@ -385,8 +385,8 @@ static bool_ output_data( OPNDTYPE determinant, operand_idx index )
         }
     }
     while( out > 0 ) {
-        AsmCodeByte( (uint_8)Code->data[index] );
-        Code->data[index] >>= 8;
+        AsmCodeByte( (uint_8)asmdefs_state().Code->data[index] );
+        asmdefs_state().Code->data[index] >>= 8;
         out--;
     }
     return( RC_OK );
@@ -402,7 +402,7 @@ static bool_ match_phase_2( bool_ *found, const asm_ins ASMI86FAR **pins )
     const asm_ins   ASMI86FAR *ins;
 
     ins = *pins;
-    if( Code->info.opnd_type[OPND2] != OP_NONE ) {
+    if( asmdefs_state().Code->info.opnd_type[OPND2] != OP_NONE ) {
         // 2 opnds instruction
         return( match_phase_3( found, pins, ins->opnd_type1 ) );
     } else {
@@ -413,7 +413,7 @@ static bool_ match_phase_2( bool_ *found, const asm_ins ASMI86FAR **pins )
                 return( RC_ERROR );
             }
             // output idata or disp ( if first opnd is OP_M / OP_I )
-            return( output_data( Code->info.opnd_type[OPND1], OPND1 ) );
+            return( output_data( asmdefs_state().Code->info.opnd_type[OPND1], OPND1 ) );
         } else {
             // still cannot find match
             *found = false;
@@ -438,12 +438,12 @@ bool_ match_phase_1( void )
     const asm_ins   ASMI86FAR *ins;
 
     // if nothing inside, no need to output anything
-    if( Code->info.token == T_NULL ) {
-        if( Code->prefix.seg != PREFIX_EMPTY ) {
+    if( asmdefs_state().Code->info.token == T_NULL ) {
+        if( asmdefs_state().Code->prefix.seg != PREFIX_EMPTY ) {
             /* we have:     REG: on line */
             AsmError( SYNTAX_ERROR );
             return( RC_ERROR );
-        } else if( Code->info.opnd_type[OPND1] == OP_NONE ) {
+        } else if( asmdefs_state().Code->info.opnd_type[OPND1] == OP_NONE ) {
             return( RC_OK );
         } else {
             AsmError( SYNTAX_ERROR );
@@ -451,21 +451,21 @@ bool_ match_phase_1( void )
         }
     }
     // look up the hash table to get the real position of instruction
-    ins = AsmOpTable + AsmOpcode[Code->info.token].position;
+    ins = AsmOpTable + AsmOpcode[asmdefs_state().Code->info.token].position;
 
     // make sure the user want 80x87 ins
     if( (ins->cpu & P_FPU_MASK) != P_NO87 ) {
-        if( (Code->info.cpu & P_FPU_MASK) == P_NO87 ) {
+        if( (asmdefs_state().Code->info.cpu & P_FPU_MASK) == P_NO87 ) {
             AsmError( INVALID_INSTRUCTION_WITH_CURRENT_CPU_SETTING );
             return( RC_ERROR );
         } else {
-            SET_OPSIZ_OFF( Code );
+            SET_OPSIZ_OFF( asmdefs_state().Code );
         }
     }
 
     // make sure the user want 80x86 protected mode ins
     if( ins->cpu & P_PM ) {
-        if( (Code->info.cpu & P_PM) == 0 ) {
+        if( (asmdefs_state().Code->info.cpu & P_PM) == 0 ) {
             AsmError( INVALID_INSTRUCTION_WITH_CURRENT_CPU_SETTING );
             return( RC_ERROR );
         }
@@ -473,33 +473,33 @@ bool_ match_phase_1( void )
 
     // fixme
     // moved down 4 lines cur_opnd = Code->info.opnd_type[OPND1];
-    while( ins->token == Code->info.token ) {
+    while( ins->token == asmdefs_state().Code->info.token ) {
         // get the real opnd
         asm_op1 = ins->opnd_type1;
-        cur_opnd = Code->info.opnd_type[OPND1];
+        cur_opnd = asmdefs_state().Code->info.opnd_type[OPND1];
 
         /* fixme -- temporary fix for all OP_M types */
         // if( cur_opnd & OP_M ) { I think there is a problem here
         if( cur_opnd & OP_M_ANY ) {
             if( !( (asm_op1 & cur_opnd) && ( (asm_op1 & OP_M_DFT) == (cur_opnd & OP_M_DFT) ) ) ) {
-                if( MEM_TYPE( Code->mem_type, BYTE ) ) {
+                if( MEM_TYPE( asmdefs_state().Code->mem_type, BYTE ) ) {
                     cur_opnd = OP_M_B;
-                } else if( MEM_TYPE( Code->mem_type, WORD ) ) {
+                } else if( MEM_TYPE( asmdefs_state().Code->mem_type, WORD ) ) {
                     cur_opnd = OP_M_W;
-                } else if( MEM_TYPE( Code->mem_type, DWORD ) ) {
+                } else if( MEM_TYPE( asmdefs_state().Code->mem_type, DWORD ) ) {
                     cur_opnd = OP_M_DW;
-                } else if( Code->mem_type == MT_FWORD ) {
+                } else if( asmdefs_state().Code->mem_type == MT_FWORD ) {
                     cur_opnd = OP_M_FW;
-                } else if( Code->mem_type == MT_QWORD ) {
+                } else if( asmdefs_state().Code->mem_type == MT_QWORD ) {
                     cur_opnd = OP_M_QW;
-                } else if( Code->mem_type == MT_TBYTE ) {
+                } else if( asmdefs_state().Code->mem_type == MT_TBYTE ) {
                     cur_opnd = OP_M_TB;
-                } else if( Code->mem_type == MT_OWORD ) {
+                } else if( asmdefs_state().Code->mem_type == MT_OWORD ) {
                     cur_opnd = OP_M_OW;
-                } else if( Code->mem_type == MT_FAR ) {
-                    cur_opnd = ( Code->use32 ) ? OP_M_FW : OP_M_DW ;
-                } else if( Code->mem_type == MT_NEAR ) {
-                    cur_opnd = ( Code->use32 ) ? OP_M_DW : OP_M_W ;
+                } else if( asmdefs_state().Code->mem_type == MT_FAR ) {
+                    cur_opnd = ( asmdefs_state().Code->use32 ) ? OP_M_FW : OP_M_DW ;
+                } else if( asmdefs_state().Code->mem_type == MT_NEAR ) {
+                    cur_opnd = ( asmdefs_state().Code->use32 ) ? OP_M_DW : OP_M_W ;
                 }
             }
         }
@@ -526,29 +526,29 @@ bool_ match_phase_1( void )
             break;
         case OP_R16:
             if( cur_opnd & asm_op1 ) {
-                temp_opsiz = Code->prefix.opsiz;
-                SET_OPSIZ_OFF( Code );
+                temp_opsiz = asmdefs_state().Code->prefix.opsiz;
+                SET_OPSIZ_OFF( asmdefs_state().Code );
                 rc = match_phase_2( &found, &ins );
                 if( found )
                     return( rc );
                 found = true;
-                Code->prefix.opsiz = temp_opsiz;
+                asmdefs_state().Code->prefix.opsiz = temp_opsiz;
             }
             break;
         case OP_M16:
             if( cur_opnd & asm_op1 ) {
-                temp_opsiz = Code->prefix.opsiz;
+                temp_opsiz = asmdefs_state().Code->prefix.opsiz;
                 rc = match_phase_2( &found, &ins );
                 if( found )
                     return( rc );
                 found = true;
-                Code->prefix.opsiz = temp_opsiz;
+                asmdefs_state().Code->prefix.opsiz = temp_opsiz;
             }
             break;
         case OP_I32:
         case OP_I16:
             if( cur_opnd & asm_op1 ) {
-                Code->info.opnd_type[OPND1] = asm_op1;
+                asmdefs_state().Code->info.opnd_type[OPND1] = asm_op1;
                 rc = match_phase_2( &found, &ins );
                 if( found )
                     return( rc );
@@ -557,26 +557,26 @@ bool_ match_phase_1( void )
             break;
         case OP_U8:
             if( cur_opnd & OP_I ) {
-                if( Code->data[OPND1] <= UCHAR_MAX ) {
-                    temp_opsiz = Code->prefix.opsiz;
-                    Code->info.opnd_type[OPND1] = OP_I8;
+                if( asmdefs_state().Code->data[OPND1] <= UCHAR_MAX ) {
+                    temp_opsiz = asmdefs_state().Code->prefix.opsiz;
+                    asmdefs_state().Code->info.opnd_type[OPND1] = OP_I8;
                     rc = match_phase_2( &found, &ins );
                     if( found )
                         return( rc );
                     found = true;
-                    Code->prefix.opsiz = temp_opsiz;
+                    asmdefs_state().Code->prefix.opsiz = temp_opsiz;
                 }
             }
             break;
         case OP_I_3:                    // for INT only
-            if( ( (cur_opnd & OP_I8) && Code->data[OPND1] == 3 ) &&
-                                Code->info.opnd_type[OPND2] == OP_NONE ) {
+            if( ( (cur_opnd & OP_I8) && asmdefs_state().Code->data[OPND1] == 3 ) &&
+                                asmdefs_state().Code->info.opnd_type[OPND2] == OP_NONE ) {
                 return( output( ins ) );
             }
             break;
         case OP_NONE:
             if( cur_opnd == OP_NONE &&
-                    Code->info.opnd_type[OPND2] == OP_NONE ) {
+                    asmdefs_state().Code->info.opnd_type[OPND2] == OP_NONE ) {
                 return( output( ins ) );
             }
             break;
@@ -605,7 +605,7 @@ static bool_ check_3rd_operand( const asm_ins ASMI86FAR *ins )
 {
     OPNDTYPE    cur_opnd;
 
-    cur_opnd = Code->info.opnd_type[OPND3];
+    cur_opnd = asmdefs_state().Code->info.opnd_type[OPND3];
     if( ( ins->opnd_type_3rd == OP3_NONE )
         || (ins->opnd_type_3rd & OP3_HID) ) {
         if( cur_opnd == OP_NONE ) {
@@ -626,13 +626,13 @@ static bool_ output_3rd_operand( const asm_ins ASMI86FAR *ins )
     if( ins->opnd_type_3rd == OP3_NONE ) {
         return( RC_OK );
     } else if( ins->opnd_type_3rd == OP3_I8_U ) {
-        if( Code->info.opnd_type[OPND3] & OP_I ) {
+        if( asmdefs_state().Code->info.opnd_type[OPND3] & OP_I ) {
             return( output_data( OP_I8, OPND3 ) );
         } else {
             return( RC_ERROR );
         }
     } else if( ins->opnd_type_3rd & OP3_HID ) {
-        Code->data[OPND3] = ins->opnd_type_3rd & ~OP3_HID;
+        asmdefs_state().Code->data[OPND3] = ins->opnd_type_3rd & ~OP3_HID;
         return( output_data( OP_I8, OPND3 ) );
     } else {
         return( RC_OK );
@@ -656,8 +656,8 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
 
     ins = *pins;
     instruction = ins->token;
-    last_opnd = Code->info.opnd_type[OPND1];
-    cur_opnd  = Code->info.opnd_type[OPND2];
+    last_opnd = asmdefs_state().Code->info.opnd_type[OPND1];
+    cur_opnd  = asmdefs_state().Code->info.opnd_type[OPND2];
 
     while( ins->opnd_type1 == determinant && ins->token == instruction ) {
         asm_op2 = ins->opnd_type2;
@@ -691,7 +691,7 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
             if( cur_opnd & asm_op2 ) {
                 // CL is encoded in bit 345 of rm_byte, but we don't need it
                 // so clear it here
-                Code->info.rm_byte &= NOT_BIT_345;
+                asmdefs_state().Code->info.rm_byte &= NOT_BIT_345;
                 if( output( ins ) )
                     return( RC_ERROR );
                 return( output_data( last_opnd, OPND1 ) );
@@ -699,7 +699,7 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
             break;
         case OP_R16:
             if( cur_opnd & asm_op2 ) {
-                SET_OPSIZ_OFF( Code );
+                SET_OPSIZ_OFF( asmdefs_state().Code );
                 if( output( ins ) )
                     return( RC_ERROR );
                 return( output_data( last_opnd, OPND1 ) );
@@ -717,10 +717,10 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
                         AsmWarn( 1, IMMEDIATE_CONSTANT_TOO_LARGE );
                     }
 #endif
-                    SET_OPSIZ_OFF( Code );
+                    SET_OPSIZ_OFF( asmdefs_state().Code );
                     cur_opnd = OP_I8;
-                    if( InsFixups[OPND2] != NULL ) {
-                        InsFixups[OPND2]->fixup_type = FIX_LOBYTE;
+                    if( asmfixup_state().InsFixups[OPND2] != NULL ) {
+                        asmfixup_state().InsFixups[OPND2]->fixup_type = FIX_LOBYTE;
                     }
                 } else if( last_opnd & OP_R16 ) {
                     // 16-bit register, so output 16-bit data
@@ -732,22 +732,22 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
                     cur_opnd = OP_I16;
                 } else if( last_opnd & OP_R32 ) {
                     // 32-bit register, so output 32-bit data
-                    SET_OPSIZ_32( Code );
+                    SET_OPSIZ_32( asmdefs_state().Code );
                     cur_opnd = OP_I32;
                 } else if( last_opnd & OP_M_ANY ) {
                     /* there is no reason this should be only for T_MOV */
                     switch( OperandSize( last_opnd ) ) {
                     case 1:
                         cur_opnd = OP_I8;
-                        SET_OPSIZ_OFF( Code );
+                        SET_OPSIZ_OFF( asmdefs_state().Code );
                         break;
                     case 2:
                         cur_opnd = OP_I16;
-                        SET_OPSIZ_16( Code );
+                        SET_OPSIZ_16( asmdefs_state().Code );
                         break;
                     case 4:
                         cur_opnd = OP_I32;
-                        SET_OPSIZ_32( Code );
+                        SET_OPSIZ_32( asmdefs_state().Code );
                         break;
                     default:
                         AsmError( INVALID_INSTRUCTION_OPERANDS );
@@ -768,7 +768,7 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
                 break;
             }
             // range of unsigned 8-bit is 0 - 255
-            if( Code->data[OPND2] > UCHAR_MAX ) {
+            if( asmdefs_state().Code->data[OPND2] > UCHAR_MAX ) {
                 break;
             }
             if( output( ins ) )
@@ -779,26 +779,26 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
         case OP_I8:
             if( cur_opnd == OP_I8 ) {
                 /* do nothing yet */
-                if( InsFixups[OPND2] != NULL ) {
+                if( asmfixup_state().InsFixups[OPND2] != NULL ) {
                     break;
                 }
             } else if( (cur_opnd & OP_I)
-                && ( InsFixups[OPND2] == NULL )
+                && ( asmfixup_state().InsFixups[OPND2] == NULL )
                 && ( (last_opnd & OP_R16)
-                || (last_opnd & OP_M16) && ( MEM_TYPE( Code->mem_type, WORD ) ) ) ) {
-                if( (int_8)Code->data[OPND2] == (int_16)Code->data[OPND2] ) {
-                    Code->info.opnd_type[OPND2] = OP_I8;
-                    Code->data[OPND2] = (int_8)Code->data[OPND2];
+                || (last_opnd & OP_M16) && ( MEM_TYPE( asmdefs_state().Code->mem_type, WORD ) ) ) ) {
+                if( (int_8)asmdefs_state().Code->data[OPND2] == (int_16)asmdefs_state().Code->data[OPND2] ) {
+                    asmdefs_state().Code->info.opnd_type[OPND2] = OP_I8;
+                    asmdefs_state().Code->data[OPND2] = (int_8)asmdefs_state().Code->data[OPND2];
                 } else {
                     break;
                 }
             } else if( (cur_opnd & OP_I)
-                && ( InsFixups[OPND2] == NULL )
+                && ( asmfixup_state().InsFixups[OPND2] == NULL )
                 && ( (last_opnd & OP_R32)
-                || (last_opnd & OP_M32) && ( MEM_TYPE( Code->mem_type, DWORD ) ) ) ) {
-                if( (int_8)Code->data[OPND2] == (int_32)Code->data[OPND2] ) {
-                    Code->info.opnd_type[OPND2] = OP_I8;
-                    Code->data[OPND2] = (int_8)Code->data[OPND2];
+                || (last_opnd & OP_M32) && ( MEM_TYPE( asmdefs_state().Code->mem_type, DWORD ) ) ) ) {
+                if( (int_8)asmdefs_state().Code->data[OPND2] == (int_32)asmdefs_state().Code->data[OPND2] ) {
+                    asmdefs_state().Code->info.opnd_type[OPND2] = OP_I8;
+                    asmdefs_state().Code->data[OPND2] = (int_8)asmdefs_state().Code->data[OPND2];
                 } else {
                     break;
                 }
@@ -811,7 +811,7 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
                 return( RC_ERROR );
             return( output_data( OP_I8, OPND2 ) );
         case OP_I_1:
-            if( cur_opnd == OP_I8 && Code->data[OPND2] == 1 ) {
+            if( cur_opnd == OP_I8 && asmdefs_state().Code->data[OPND2] == 1 ) {
                 if( output( ins ) )
                     return( RC_ERROR );
                 return( output_data( last_opnd, OPND1 ) );
@@ -819,8 +819,8 @@ static bool_ match_phase_3( bool_ *found, const asm_ins ASMI86FAR **pins, OPNDTY
             break;
         case OP_M16:
             if( (cur_opnd & OP_M)
-              && ( MEM_TYPE( Code->mem_type, WORD )
-                || Code->mem_type == MT_EMPTY ) ) {
+              && ( MEM_TYPE( asmdefs_state().Code->mem_type, WORD )
+                || asmdefs_state().Code->mem_type == MT_EMPTY ) ) {
                 if( output( ins ) )
                     return( RC_ERROR );
                 if( output_data( last_opnd, OPND1 ) )

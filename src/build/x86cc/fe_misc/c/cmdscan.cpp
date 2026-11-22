@@ -42,17 +42,27 @@ typedef struct cmd_scan_ctl {
     bool_        unix_mode;      // scan mode
 } cmd_scan_ctl;
 
-static cmd_scan_ctl cmd;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CmdscanState {
+    cmd_scan_ctl cmd;
+};
+
+}  // namespace
+
+static inline CmdscanState& cmdscan_state() { return cbrun_part<CmdscanState>(); }
+
 
 char const *CmdScanLineInit(    // INITIALIZE FOR COMMAND SCANNING
     char const *cmd_line )      // - new command line
 {                               // RETURN OLD COMMAND-LINE SCAN ADDRESS
     char const *old;
 
-    old = cmd.curr_ptr;
-    cmd.curr_ptr = cmd_line;
-    cmd.switch_ptr = NULL;
-    cmd.unix_mode = false;
+    old = cmdscan_state().cmd.curr_ptr;
+    cmdscan_state().cmd.curr_ptr = cmd_line;
+    cmdscan_state().cmd.switch_ptr = NULL;
+    cmdscan_state().cmd.unix_mode = false;
     return( old );
 }
 
@@ -60,21 +70,21 @@ char const *CmdScanLineInit(    // INITIALIZE FOR COMMAND SCANNING
 char const *CmdScanAddr(        // RETURN COMMAND-LINE SCAN ADDRESS
     void )
 {
-    return( cmd.curr_ptr );
+    return( cmdscan_state().cmd.curr_ptr );
 }
 
 
 int CmdScanChar(                // SCAN THE NEXT CHARACTER
     void )
 {
-    return( *(unsigned char *)cmd.curr_ptr++ );
+    return( *(unsigned char *)cmdscan_state().cmd.curr_ptr++ );
 }
 
 
 bool_ CmdScanBufferEnd(          // TEST IF END OF BUFFER
     void )
 {
-    return( *cmd.curr_ptr == '\0' );
+    return( *cmdscan_state().cmd.curr_ptr == '\0' );
 }
 
 
@@ -83,7 +93,7 @@ bool_ CmdScanSwEnd(              // TEST IF END OF SWITCH
 {
     int c;                     // - current character
 
-    c = *(unsigned char *)cmd.curr_ptr;
+    c = *(unsigned char *)cmdscan_state().cmd.curr_ptr;
     if( c == '\0' ) {
         return( true );
     }
@@ -195,7 +205,7 @@ bool_ CmdPathDelim(              // SKIP EQUALCHAR # or ' ' IN COMMAND LINE
 void CmdScanSwitchBegin(        // REMEMBER START OF SWITCH
     void )
 {
-    cmd.switch_ptr = cmd.curr_ptr - 1;
+    cmdscan_state().cmd.switch_ptr = cmdscan_state().cmd.curr_ptr - 1;
 }
 
 
@@ -215,23 +225,23 @@ size_t CmdScanQuotedString(     // SCAN AN OPTION
     int c;
     int quote;
 
-    quote = *(unsigned char *)cmd.curr_ptr++;
-    *option = str_beg = cmd.curr_ptr;
-    while( (c = *(unsigned char *)cmd.curr_ptr) != '\0' ) {
-        cmd.curr_ptr++;
+    quote = *(unsigned char *)cmdscan_state().cmd.curr_ptr++;
+    *option = str_beg = cmdscan_state().cmd.curr_ptr;
+    while( (c = *(unsigned char *)cmdscan_state().cmd.curr_ptr) != '\0' ) {
+        cmdscan_state().cmd.curr_ptr++;
         if( c == quote ) {
             str_beg++;
             break;
         }
         // '"\\"' means '\', not '\"'
         if( c == '\\' ) {
-            c = *(unsigned char *)cmd.curr_ptr;
+            c = *(unsigned char *)cmdscan_state().cmd.curr_ptr;
             if( c == '\\' || c == '"' ) {
-                cmd.curr_ptr++;
+                cmdscan_state().cmd.curr_ptr++;
             }
         }
     }
-    return( cmd.curr_ptr - str_beg );
+    return( cmdscan_state().cmd.curr_ptr - str_beg );
 }
 
 size_t CmdScanOption(           // SCAN AN OPTION
@@ -240,22 +250,22 @@ size_t CmdScanOption(           // SCAN AN OPTION
 {
     char const *str_beg;        // - start of string
 
-    if( *cmd.curr_ptr == '"' ) {
+    if( *cmdscan_state().cmd.curr_ptr == '"' ) {
         *quoted = true;
         return( CmdScanQuotedString( option ) );
     }
-    *option = str_beg = cmd.curr_ptr;
+    *option = str_beg = cmdscan_state().cmd.curr_ptr;
     while( !CmdScanSwEnd() ) {
-        cmd.curr_ptr++;
+        cmdscan_state().cmd.curr_ptr++;
     }
     *quoted = false;
-    return( cmd.curr_ptr - str_beg );
+    return( cmdscan_state().cmd.curr_ptr - str_beg );
 }
 
 char const *CmdScanUngetChar(   // UNGET THE LAST CMD SCAN CHARACTER
     void )
 {
-    return( --cmd.curr_ptr );
+    return( --cmdscan_state().cmd.curr_ptr );
 }
 
 
@@ -266,13 +276,13 @@ size_t CmdScanNumber(           // SCAN A NUMBER
     unsigned value;             // - base 10 value
 
     value = 0;
-    str_beg = cmd.curr_ptr;
-    for( ; isdigit( *(unsigned char *)cmd.curr_ptr ); cmd.curr_ptr++ ) {
+    str_beg = cmdscan_state().cmd.curr_ptr;
+    for( ; isdigit( *(unsigned char *)cmdscan_state().cmd.curr_ptr ); cmdscan_state().cmd.curr_ptr++ ) {
         value *= 10;
-        value += *(unsigned char *)cmd.curr_ptr - '0';
+        value += *(unsigned char *)cmdscan_state().cmd.curr_ptr - '0';
     }
     *pvalue = value;
-    return( cmd.curr_ptr - str_beg );
+    return( cmdscan_state().cmd.curr_ptr - str_beg );
 }
 
 
@@ -281,11 +291,11 @@ size_t CmdScanId(               // SCAN AN IDENTIFIER
 {
     char const *str_beg;        // - start of string
 
-    *option = str_beg = cmd.curr_ptr;
-    while( isalnum( *(unsigned char *)cmd.curr_ptr ) || *(unsigned char *)cmd.curr_ptr == '_' ) {
-        cmd.curr_ptr++;
+    *option = str_beg = cmdscan_state().cmd.curr_ptr;
+    while( isalnum( *(unsigned char *)cmdscan_state().cmd.curr_ptr ) || *(unsigned char *)cmdscan_state().cmd.curr_ptr == '_' ) {
+        cmdscan_state().cmd.curr_ptr++;
     }
-    return( cmd.curr_ptr - str_beg );
+    return( cmdscan_state().cmd.curr_ptr - str_beg );
 }
 
 
@@ -296,31 +306,31 @@ size_t CmdScanFilename(         // SCAN A FILE NAME
     char const *str_beg;        // - start of string
     int c;
 
-    *option = str_beg = cmd.curr_ptr;
-    if( cmd.unix_mode ) {
-        while( *cmd.curr_ptr != '\0' ) {
-            cmd.curr_ptr++;
+    *option = str_beg = cmdscan_state().cmd.curr_ptr;
+    if( cmdscan_state().cmd.unix_mode ) {
+        while( *cmdscan_state().cmd.curr_ptr != '\0' ) {
+            cmdscan_state().cmd.curr_ptr++;
         }
-    } else if( *cmd.curr_ptr == '"' ) {
+    } else if( *cmdscan_state().cmd.curr_ptr == '"' ) {
         *quoted = true;
         return( CmdScanQuotedString( option ) );
     } else {
-        for( ; (c = *(unsigned char *)cmd.curr_ptr) != '\0'; cmd.curr_ptr++ ) {
+        for( ; (c = *(unsigned char *)cmdscan_state().cmd.curr_ptr) != '\0'; cmdscan_state().cmd.curr_ptr++ ) {
             if( isspace( c ) ) {
                 break;
             }
         }
     }
     *quoted = false;
-    return( cmd.curr_ptr - str_beg );
+    return( cmdscan_state().cmd.curr_ptr - str_beg );
 }
 
 
 void CmdScanSkipWhiteSpace(     // SKIP OVER WHITE SPACES
     void )
 {
-    while( isspace( *(unsigned char *)cmd.curr_ptr ) ) {
-        cmd.curr_ptr++;
+    while( isspace( *(unsigned char *)cmdscan_state().cmd.curr_ptr ) ) {
+        cmdscan_state().cmd.curr_ptr++;
     }
 }
 

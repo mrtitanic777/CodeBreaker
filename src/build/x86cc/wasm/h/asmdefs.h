@@ -103,10 +103,16 @@
 #endif
 
 /* global variables */
-extern asm_code         *Code;
 extern asm_sym_handle   Frame;
 extern char             Parse_Pass;     // phase of parsing
-extern operand_idx      Opnd_Count;
+
+/* the variables of asmdefs.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct AsmdefsState {
+    asm_code Code_Info;
+    asm_code *Code = &Code_Info;
+    operand_idx Opnd_Count;
+};
+inline AsmdefsState& asmdefs_state() { return cbrun_part<AsmdefsState>(); }
 extern bool_             Modend;         // end of module is reached
 extern bool_             Use32;          // if 32-bit code is use
 

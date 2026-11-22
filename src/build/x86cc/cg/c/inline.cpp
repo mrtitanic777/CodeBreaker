@@ -60,7 +60,17 @@ typedef struct inline_stack {
         an                      addr;
 } inline_stack;
 
-static inline_stack     *InlineStack = NULL; // fix this!
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct InlineState {
+    inline_stack *InlineStack = NULL;   // fix this!
+};
+
+}  // namespace
+
+static inline InlineState& inline_state() { return cbrun_part<InlineState>(); }
+
 
 void    BGStartInline( cg_sym_handle proc_sym )
 /*********************************************/
@@ -72,8 +82,8 @@ void    BGStartInline( cg_sym_handle proc_sym )
     stk->tipe = NULL;
     stk->addr = NULL;
     stk->proc_sym = proc_sym;
-    stk->next = InlineStack;
-    InlineStack = stk;
+    stk->next = inline_state().InlineStack;
+    inline_state().InlineStack = stk;
 }
 
 
@@ -84,8 +94,8 @@ void    BGAddInlineParm( an addr )
 
     parm = static_cast<inline_parm *>(CGAlloc( sizeof( *parm ) ));
     parm->addr = addr;
-    parm->next = InlineStack->parms;
-    InlineStack->parms = parm;
+    parm->next = inline_state().InlineStack->parms;
+    inline_state().InlineStack->parms = parm;
 }
 
 
@@ -98,21 +108,21 @@ an      BGStopInline( call_handle call, const type_def *tipe )
     inline_stack    *junk;
     an              retv;
 
-    if( !HaveCurrBlock ) {
+    if( !data_state().HaveCurrBlock ) {
         EnLink( AskForNewLabel() );
-        CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
-        HaveCurrBlock = true;
+        data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+        data_state().HaveCurrBlock = true;
     }
     lbl = AskForNewLabel();
     GenBlock( BLK_JUMP, 1 );
     AddTarget( lbl, false );
     EnLink( lbl );
-    CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
-    InlineStack->tipe = tipe;
-    FEGenProc( InlineStack->proc_sym, call );
-    retv = InlineStack->addr;
-    junk = InlineStack;
-    InlineStack = InlineStack->next;
+    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    inline_state().InlineStack->tipe = tipe;
+    FEGenProc( inline_state().InlineStack->proc_sym, call );
+    retv = inline_state().InlineStack->addr;
+    junk = inline_state().InlineStack;
+    inline_state().InlineStack = inline_state().InlineStack->next;
     CGFree( junk );
     return( retv );
 }
@@ -132,7 +142,7 @@ static bool_ NotEquiv( const type_def *a, const type_def *b )
 void    BGProcInline( cg_sym_handle proc_sym, const type_def *tipe )
 /******************************************************************/
 {
-    if( InlineStack->proc_sym != proc_sym || NotEquiv( InlineStack->tipe, tipe ) ) {
+    if( inline_state().InlineStack->proc_sym != proc_sym || NotEquiv( inline_state().InlineStack->tipe, tipe ) ) {
         _Zoiks( ZOIKS_072 );
     }
 }
@@ -145,8 +155,8 @@ void    BGParmInline( cg_sym_handle sym, const type_def *tipe )
     name                *parm_value;
     inline_parm         *parm;
 
-    parm = InlineStack->parms;
-    InlineStack->parms = InlineStack->parms->next;
+    parm = inline_state().InlineStack->parms;
+    inline_state().InlineStack->parms = inline_state().InlineStack->parms->next;
 //  if( NotEquiv( parm->addr->tipe, tipe ) ) {
 //      _Zoiks( ZOIKS_070 );
 //  }
@@ -164,14 +174,14 @@ void    BGRetInline( an addr, const type_def *tipe )
 {
     an  tempaddr;
 
-    if( NotEquiv( tipe, InlineStack->tipe ) ) {
+    if( NotEquiv( tipe, inline_state().InlineStack->tipe ) ) {
         _Zoiks( ZOIKS_070 );
     }
     if( addr == NULL ) {
-        InlineStack->addr = MakeTempAddr( BGNewTemp(TypeInteger) );
+        inline_state().InlineStack->addr = MakeTempAddr( BGNewTemp(data_state().TypeInteger) );
     } else {
         tempaddr = MakeTempAddr( BGNewTemp( tipe ) );
-        InlineStack->addr = BGCopy( tempaddr );
+        inline_state().InlineStack->addr = BGCopy( tempaddr );
         BGDone( BGAssign( tempaddr, addr, tipe ) );
     }
 }
@@ -180,7 +190,7 @@ void    BGRetInline( an addr, const type_def *tipe )
 bool_    BGInInline( void )
 /************************/
 {
-    return( InlineStack != NULL );
+    return( inline_state().InlineStack != NULL );
 }
 
 int     BGInlineDepth( void )
@@ -190,7 +200,7 @@ int     BGInlineDepth( void )
     inline_stack        *curr;
 
     depth = 0;
-    for( curr = InlineStack; curr != NULL; curr = curr->next ) {
+    for( curr = inline_state().InlineStack; curr != NULL; curr = curr->next ) {
         depth++;
     }
     return( depth );

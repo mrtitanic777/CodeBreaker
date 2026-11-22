@@ -106,7 +106,7 @@ bool_    DoVerify( vertype kind, instruction *ins )
             return( false );
         return( OtherVerify( V_OP2ONE, ins, op1, op2, result ) );
     case V_OP2TWO_SIZE:
-        if( OptForSize <= 50 )
+        if( data_state().OptForSize <= 50 )
             return( false );
         return( OtherVerify( V_OP2TWO, ins, op1, op2, result ) );
     case V_BYTESHIFT:
@@ -174,7 +174,7 @@ bool_    DoVerify( vertype kind, instruction *ins )
             return( true );
         break;
     case V_LEA_GOOD:
-        if( OptForSize > 50 )
+        if( data_state().OptForSize > 50 )
             return( false );
         /* fall through */
     case V_LEA:
@@ -195,7 +195,7 @@ bool_    DoVerify( vertype kind, instruction *ins )
               && (_CPULevel( CPU_586 )
               && !_CPULevel( CPU_686 )) )
                 return( false );
-            if( OptForSize > 50 )
+            if( data_state().OptForSize > 50 )
                 return( false );
             switch( op2->c.lo.u.int_value ) {
             case 1:
@@ -227,7 +227,7 @@ bool_    DoVerify( vertype kind, instruction *ins )
 #endif
         case OP_ADD:
         case OP_SUB:
-            if( OptForSize < 50
+            if( data_state().OptForSize < 50
               && !_CPULevel( CPU_286 ) )
                 return( false );
             return( true );
@@ -236,7 +236,7 @@ bool_    DoVerify( vertype kind, instruction *ins )
         }
         break;
     case V_SIZE:
-        if( OptForSize > 50 )
+        if( data_state().OptForSize > 50 )
             return( true );
         break;
     case V_DIV_BUG: /* cant do idiv from mem on 80186 (or 8086 for compatibility) */
@@ -303,7 +303,7 @@ bool_    DoVerify( vertype kind, instruction *ins )
         if( !_CPULevel( CPU_486 )
           || _CPULevel( CPU_686 ) )
             break;
-        if( OptForSize > 50 )
+        if( data_state().OptForSize > 50 )
             break;
         if( result->n.class_ == N_REGISTER ) {
             if( HW_Ovlap( result->r.reg, HW_xBP ) ) {
@@ -320,19 +320,19 @@ bool_    DoVerify( vertype kind, instruction *ins )
         if( _CPULevel( CPU_686 )
           || !_CPULevel( CPU_586 ) )
             return( true );
-        if( OptForSize >= 50 )
+        if( data_state().OptForSize >= 50 )
             return( true );
         break;
     case V_P5_FXCH:
         if( !_CPULevel( CPU_586 ) )
             return( false );
-        if( OptForSize <= 50 )
+        if( data_state().OptForSize <= 50 )
             return( true );
         break;
     case V_CYP_SEX:
         if( !_CPULevel( CPU_586 ) )
             return( false );
-        if( OptForSize > 50 )
+        if( data_state().OptForSize > 50 )
             return( false );
         op1 = ins->operands[0];
         {

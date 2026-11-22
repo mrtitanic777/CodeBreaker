@@ -31,7 +31,16 @@
 ****************************************************************************/
 
 
-extern savings      Save;
+#ifndef CB_STATE_REGSAVE_H
+#define CB_STATE_REGSAVE_H
+
+/* the variables of regsave.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct RegsaveState {
+    savings Save;
+};
+inline RegsaveState& regsave_state() { return cbrun_part<RegsaveState>(); }
+
+#endif
 
 extern void         AdjTimeSize( uint *time, uint *size );
 extern void         SetLoopCost( uint time );

@@ -53,7 +53,17 @@
 #include "cgprotos.h"
 
 
-static  offset          CodeOffset;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct WvsymsState {
+    offset CodeOffset;
+};
+
+}  // namespace
+
+static inline WvsymsState& wvsyms_state() { return cbrun_part<WvsymsState>(); }
+
 
 static  void    DumpDbgBlkStart( dbg_block *blk, offset lc ) {
 /************************************************************/
@@ -74,7 +84,7 @@ static  void    DumpDbgBlkStart( dbg_block *blk, offset lc ) {
         CGFree( bpatch );
     }
     SetOP( old_segid );
-    BuffOffset( blk->start - CodeOffset );
+    BuffOffset( blk->start - wvsyms_state().CodeOffset );
     BuffOffset( lc - blk->start );
 }
 
@@ -116,7 +126,7 @@ static  void    DumpLocals( dbg_local *local ) {
         LocDump( local->loc );
         BuffIndex( (uint) tipe );
         BuffWSLString( FEName( static_cast<cg_sym_handle>(local->sym) ) );
-        BuffEnd( DbgLocals );
+        BuffEnd( data_state().DbgLocals );
         junk = local;
         local = local->link;
         CGFree( junk );
@@ -126,9 +136,9 @@ static  void    DumpLocals( dbg_local *local ) {
 void    WVInitDbgInfo( void )
 /***************************/
 {
-    TypeIdx   = 0;
-    DbgLocals = 0;
-    DbgTypes  = 0;
+    data_state().TypeIdx   = 0;
+    data_state().DbgLocals = 0;
+    data_state().DbgTypes  = 0;
 }
 
 void    WVObjInitDbgInfo( void )
@@ -164,7 +174,7 @@ void    WVGenStatic( cg_sym_handle sym, dbg_loc loc )
     }
     BuffIndex( (uint) tipe );
     BuffWSLString( FEName( sym ) );
-    BuffEnd( DbgLocals );
+    BuffEnd( data_state().DbgLocals );
 }
 
 void    WVSetBase( void )
@@ -177,10 +187,10 @@ void    WVSetBase( void )
         bck = BENewBack( NULL );
         bck->segid = AskOP();
         OutLabel( bck->lbl );
-        CodeOffset = AskAddress( bck->lbl );
+        wvsyms_state().CodeOffset = AskAddress( bck->lbl );
         BuffStart( &temp, NEW_BASE+SET_BASE );
         BuffBack( bck, 0 );
-        BuffEnd( DbgLocals );
+        BuffEnd( data_state().DbgLocals );
         BEFreeBack( bck );
         SetUpObj( false );
     }
@@ -192,10 +202,10 @@ void    WVObjectPtr(  cg_type ptr_type )
     switch( TypeAddress( ptr_type )->refno ) {
     case TY_NEAR_POINTER:
     case TY_NEAR_CODE_PTR:
-        CurrProc->targ.debug->obj_ptr_type = POINTER_NEAR;
+        data_state().CurrProc->targ.debug->obj_ptr_type = POINTER_NEAR;
         break;
     default:
-        CurrProc->targ.debug->obj_ptr_type = POINTER_FAR;
+        data_state().CurrProc->targ.debug->obj_ptr_type = POINTER_FAR;
         break;
     }
 }
@@ -205,11 +215,9 @@ void    WVObjectPtr(  cg_type ptr_type )
 /**/
 
 
-
 /**/
 /* Coming out of optimizer queue*/
 /**/
-
 
 
 void    WVBlkEnd( dbg_block *blk, offset lc )
@@ -219,7 +227,7 @@ void    WVBlkEnd( dbg_block *blk, offset lc )
 
     BuffStart( &temp, SYM_CODE + CODE_BLOCK );
     DumpDbgBlk( blk, lc );
-    BuffEnd( DbgLocals );
+    BuffEnd( data_state().DbgLocals );
     DumpLocals( blk->locals );
 }
 
@@ -238,7 +246,7 @@ void    WVRtnEnd( dbg_rtn *rtn, offset lc )
     off = 0;
     if( rtn->obj_type != DBG_NIL_TYPE ) {
         /* is a member function */
-        PUSH_OP( DbgLocals );
+        PUSH_OP( data_state().DbgLocals );
             off = AskLocation();
             BuffStart( &temp, SYM_CODE + CODE_MEMBER_SCOPE );
             DumpParentPtr( rtn->blk );
@@ -247,10 +255,10 @@ void    WVRtnEnd( dbg_rtn *rtn, offset lc )
                 BuffByte( rtn->obj_ptr_type ); /* 'this' pointer type */
                 LocDump( rtn->obj_loc );
             }
-            BuffEnd( DbgLocals );
+            BuffEnd( data_state().DbgLocals );
         POP_OP();
     }
-    sym = AskForLblSym( static_cast<label_handle>(CurrProc->label) );
+    sym = AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) );
     tipe = FEDbgType( sym );
     if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
         BuffStart( &temp, SYM_CODE + CODE_FAR_RTN );
@@ -286,7 +294,7 @@ void    WVRtnEnd( dbg_rtn *rtn, offset lc )
         parm = parm->link;
         CGFree( junk );
     }
-    BuffWSLString( FEName( AskForLblSym( static_cast<label_handle>(CurrProc->label) ) ) );
-    BuffEnd( DbgLocals );
+    BuffWSLString( FEName( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) ) );
+    BuffEnd( data_state().DbgLocals );
     DumpLocals( rtn->blk->locals );
 }

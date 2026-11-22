@@ -38,33 +38,41 @@
 #include "asmstmt.h"
 
 
-static  aux_info        AuxInfo;
+namespace {
 
+/* the statics of this file, one set for each run of the compiler */
+struct Cpragx86State {
+    aux_info AuxInfo;
 #if _CPU == 386
-static  hw_reg_set      STOSBParms[] = {
-    HW_D( HW_EAX ), HW_D( HW_EDX ), HW_D( HW_ECX ),
-    HW_D( HW_EMPTY )
-};
+    hw_reg_set STOSBParms[4] = {
+        HW_D( HW_EAX ), HW_D( HW_EDX ), HW_D( HW_ECX ),
+        HW_D( HW_EMPTY )
+    };
 #endif
+    struct {
+        boolbit     f_near          : 1;
+        boolbit     f_routine_pops  : 1;
+        boolbit     f_caller_return : 1;
+        boolbit     f_8087_returns  : 1;
+    } AuxInfoFlg;
+};
 
-static struct {
-    boolbit     f_near          : 1;
-    boolbit     f_routine_pops  : 1;
-    boolbit     f_caller_return : 1;
-    boolbit     f_8087_returns  : 1;
-} AuxInfoFlg;
+}  // namespace
+
+static inline Cpragx86State& cpragx86_state() { return cbrun_part<Cpragx86State>(); }
+
 
 static void pragmaAuxInfoInit( void )
 /***********************************/
 {
-    HW_CTurnOff( AsmRegsSaved, HW_xAX );
-    HW_CTurnOff( AsmRegsSaved, HW_xBX );
-    HW_CTurnOff( AsmRegsSaved, HW_xCX );
-    HW_CTurnOff( AsmRegsSaved, HW_xDX );
-    HW_CTurnOff( AsmRegsSaved, HW_xSI );
-    HW_CTurnOff( AsmRegsSaved, HW_xDI );
+    HW_CTurnOff( pdefn2_state().AsmRegsSaved, HW_xAX );
+    HW_CTurnOff( pdefn2_state().AsmRegsSaved, HW_xBX );
+    HW_CTurnOff( pdefn2_state().AsmRegsSaved, HW_xCX );
+    HW_CTurnOff( pdefn2_state().AsmRegsSaved, HW_xDX );
+    HW_CTurnOff( pdefn2_state().AsmRegsSaved, HW_xSI );
+    HW_CTurnOff( pdefn2_state().AsmRegsSaved, HW_xDI );
 #if _CPU == 8086
-    HW_CTurnOff( AsmRegsSaved, HW_ES );
+    HW_CTurnOff( pdefn2_state().AsmRegsSaved, HW_ES );
 #endif
 
 #if _CPU == 386
@@ -73,14 +81,14 @@ static void pragmaAuxInfoInit( void )
      * an aux_entry, so we don't have to worry about them
      * or their fields being freed
      */
-    STOSBInfo = WatcallInfo;
-    STOSBInfo.cclass        = FECALL_GEN_NONE;
-    STOSBInfo.cclass_target = FECALL_X86_NO_FLOAT_REG_RETURNS |
+    pragdefn_state().STOSBInfo = WatcallInfo;
+    pragdefn_state().STOSBInfo.cclass        = FECALL_GEN_NONE;
+    pragdefn_state().STOSBInfo.cclass_target = FECALL_X86_NO_FLOAT_REG_RETURNS |
                               FECALL_X86_NO_STRUCT_REG_RETURNS |
                               FECALL_X86_SPECIAL_STRUCT_RETURN |
                               FECALL_X86_NONE;
-    STOSBInfo.parms = STOSBParms;
-    STOSBInfo.objname = const_cast<char *>("*");
+    pragdefn_state().STOSBInfo.parms = cpragx86_state().STOSBParms;
+    pragdefn_state().STOSBInfo.objname = const_cast<char *>("*");
 #endif
 }
 
@@ -92,7 +100,7 @@ void PragmaInit( void )
 
     pragmaAuxInfoInit();
 
-    switch( GET_CPU( ProcRevision ) ) {
+    switch( GET_CPU( cvars_state().ProcRevision ) ) {
     case CPU_86:    cpu = 0; break;
     case CPU_186:   cpu = 1; break;
     case CPU_286:   cpu = 2; break;
@@ -106,7 +114,7 @@ void PragmaInit( void )
     default:        cpu = 3; break;
 #endif
     }
-    switch( GET_FPU_LEVEL( ProcRevision ) ) {
+    switch( GET_FPU_LEVEL( cvars_state().ProcRevision ) ) {
     case FPU_NONE:  fpu = 0; break;
     case FPU_87:    fpu = 1; break;
 //    case FPU_287:   fpu = 2; break;
@@ -121,7 +129,7 @@ void PragmaInit( void )
     }
 
 #if _CPU == 8086
-    AsmEnvInit( 0, cpu, fpu, GET_FPU_EMU( ProcRevision ) );
+    AsmEnvInit( 0, cpu, fpu, GET_FPU_EMU( cvars_state().ProcRevision ) );
 #else
     AsmEnvInit( 1, cpu, fpu, false );
 #endif
@@ -136,16 +144,16 @@ void PragmaFini( void )
 static void InitAuxInfo( void )
 /*****************************/
 {
-    CurrAlias = NULL;
-    CurrInfo = NULL;
-    CurrEntry = NULL;
+    pragdefn_state().CurrAlias = NULL;
+    pragdefn_state().CurrInfo = NULL;
+    pragdefn_state().CurrEntry = NULL;
 
-    memset( &AuxInfo, 0, sizeof( AuxInfo ) );
+    memset( &cpragx86_state().AuxInfo, 0, sizeof( cpragx86_state().AuxInfo ) );
 
-    AuxInfoFlg.f_near = false;
-    AuxInfoFlg.f_routine_pops = false;
-    AuxInfoFlg.f_caller_return = false;
-    AuxInfoFlg.f_8087_returns = false;
+    cpragx86_state().AuxInfoFlg.f_near = false;
+    cpragx86_state().AuxInfoFlg.f_routine_pops = false;
+    cpragx86_state().AuxInfoFlg.f_caller_return = false;
+    cpragx86_state().AuxInfoFlg.f_8087_returns = false;
 }
 
 static void PragmaAuxEnd( void )
@@ -154,53 +162,53 @@ static void PragmaAuxEnd( void )
     hw_reg_set      default_flt_n_seg;
     hw_reg_set      flt_n_seg;
 
-    if( CurrEntry == NULL ) {
+    if( pragdefn_state().CurrEntry == NULL ) {
         /*
          * Redefining a built-in calling convention
          */
     } else {
-        CurrInfo = (aux_info *)CMemAlloc( sizeof( aux_info ) );
-        *CurrInfo = *CurrAlias;
+        pragdefn_state().CurrInfo = (aux_info *)CMemAlloc( sizeof( aux_info ) );
+        *pragdefn_state().CurrInfo = *pragdefn_state().CurrAlias;
     }
-    if( AuxInfo.code != NULL ) {
-        CurrInfo->code = AuxInfo.code;
+    if( cpragx86_state().AuxInfo.code != NULL ) {
+        pragdefn_state().CurrInfo->code = cpragx86_state().AuxInfo.code;
     }
-    if( AuxInfoFlg.f_near ) {
-        CurrInfo->cclass_target &= ~FECALL_X86_FAR_CALL;
+    if( cpragx86_state().AuxInfoFlg.f_near ) {
+        pragdefn_state().CurrInfo->cclass_target &= ~FECALL_X86_FAR_CALL;
     }
-    if( AuxInfoFlg.f_routine_pops ) {
-        CurrInfo->cclass &= ~FECALL_GEN_CALLER_POPS;
+    if( cpragx86_state().AuxInfoFlg.f_routine_pops ) {
+        pragdefn_state().CurrInfo->cclass &= ~FECALL_GEN_CALLER_POPS;
     }
-    if( AuxInfoFlg.f_caller_return ) {
-        CurrInfo->cclass_target &= ~FECALL_X86_ROUTINE_RETURN;
+    if( cpragx86_state().AuxInfoFlg.f_caller_return ) {
+        pragdefn_state().CurrInfo->cclass_target &= ~FECALL_X86_ROUTINE_RETURN;
     }
-    if( AuxInfoFlg.f_8087_returns ) {
-        CurrInfo->cclass_target &= ~FECALL_X86_NO_8087_RETURNS;
+    if( cpragx86_state().AuxInfoFlg.f_8087_returns ) {
+        pragdefn_state().CurrInfo->cclass_target &= ~FECALL_X86_NO_8087_RETURNS;
     }
-    CurrInfo->cclass        |= AuxInfo.cclass;
-    CurrInfo->cclass_target |= AuxInfo.cclass_target;
+    pragdefn_state().CurrInfo->cclass        |= cpragx86_state().AuxInfo.cclass;
+    pragdefn_state().CurrInfo->cclass_target |= cpragx86_state().AuxInfo.cclass_target;
 
-    CurrInfo->flags |= AuxInfo.flags;
-    if( AuxInfo.objname != NULL )
-        CurrInfo->objname = AuxInfo.objname;
-    if( AuxInfo.cclass_target & FECALL_X86_SPECIAL_RETURN )
-        CurrInfo->returns = AuxInfo.returns;
-    if( AuxInfo.cclass_target & FECALL_X86_SPECIAL_STRUCT_RETURN )
-        CurrInfo->streturn = AuxInfo.streturn;
-    if( AuxInfo.parms != NULL )
-        CurrInfo->parms = AuxInfo.parms;
+    pragdefn_state().CurrInfo->flags |= cpragx86_state().AuxInfo.flags;
+    if( cpragx86_state().AuxInfo.objname != NULL )
+        pragdefn_state().CurrInfo->objname = cpragx86_state().AuxInfo.objname;
+    if( cpragx86_state().AuxInfo.cclass_target & FECALL_X86_SPECIAL_RETURN )
+        pragdefn_state().CurrInfo->returns = cpragx86_state().AuxInfo.returns;
+    if( cpragx86_state().AuxInfo.cclass_target & FECALL_X86_SPECIAL_STRUCT_RETURN )
+        pragdefn_state().CurrInfo->streturn = cpragx86_state().AuxInfo.streturn;
+    if( cpragx86_state().AuxInfo.parms != NULL )
+        pragdefn_state().CurrInfo->parms = cpragx86_state().AuxInfo.parms;
 
-    if( !HW_CEqual( AuxInfo.save, HW_EMPTY ) ) {
-        HW_CTurnOn( CurrInfo->save, HW_FULL );
-        if( (AuxInfo.cclass_target & FECALL_X86_MODIFY_EXACT) == 0 && !CompFlags.save_restore_segregs ) {
+    if( !HW_CEqual( cpragx86_state().AuxInfo.save, HW_EMPTY ) ) {
+        HW_CTurnOn( pragdefn_state().CurrInfo->save, HW_FULL );
+        if( (cpragx86_state().AuxInfo.cclass_target & FECALL_X86_MODIFY_EXACT) == 0 && !cvars_state().CompFlags.save_restore_segregs ) {
             HW_Asgn( default_flt_n_seg, WatcallInfo.save );
             HW_CAsgn( flt_n_seg, HW_FLTS );
             HW_CTurnOn( flt_n_seg, HW_SEGS );
-            HW_TurnOff( CurrInfo->save, flt_n_seg );
+            HW_TurnOff( pragdefn_state().CurrInfo->save, flt_n_seg );
             HW_OnlyOn( default_flt_n_seg, flt_n_seg );
-            HW_TurnOn( CurrInfo->save, default_flt_n_seg );
+            HW_TurnOn( pragdefn_state().CurrInfo->save, default_flt_n_seg );
         }
-        HW_TurnOff( CurrInfo->save, AuxInfo.save );
+        HW_TurnOff( pragdefn_state().CurrInfo->save, cpragx86_state().AuxInfo.save );
     }
     PragmaAuxEnding();
 }
@@ -210,14 +218,14 @@ bool_ GetPragmaAuxAlias( void )
     bool_    isfar16;
 
     isfar16 = PragRecogId( "far16" );
-    if( IS_ID_OR_KEYWORD( CurToken ) ) {
-        CurrAlias = PragmaAuxAlias( Buffer );
+    if( IS_ID_OR_KEYWORD( cvars_state().CurToken ) ) {
+        pragdefn_state().CurrAlias = PragmaAuxAlias( cvars_state().Buffer );
         PPNextToken();
     }
-    if( CurToken == T_RIGHT_PAREN )
+    if( cvars_state().CurToken == T_RIGHT_PAREN )
         PPNextToken();
     if( isfar16 )
-        AuxInfo.flags |= AUX_FLAG_FAR16;
+        cpragx86_state().AuxInfo.flags |= AUX_FLAG_FAR16;
     PragmaAuxEnd();
     return( true );
 }
@@ -271,7 +279,7 @@ static int AsmCodePtrType( type_modifiers flags )
         return( SYM_FFAR );
     } else if( flags & FLAG_NEAR ) {
         return( SYM_FNEAR );
-    } else if( TargetSwitches & CGSW_X86_BIG_CODE ) {
+    } else if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
         return( SYM_FFAR );
     } else {
         return( SYM_FNEAR );
@@ -290,7 +298,7 @@ static int AsmPtrType( TYPEPTR typ, type_modifiers flags )
         return( SYM_DFAR );
     } else if( flags & FLAG_NEAR ) {
         return( SYM_DNEAR );
-    } else if( TargetSwitches & CGSW_X86_BIG_DATA ) {
+    } else if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
         return( SYM_DFAR );
     } else {
         return( SYM_DNEAR );
@@ -300,7 +308,7 @@ static int AsmPtrType( TYPEPTR typ, type_modifiers flags )
 /*
  * matches enum DataType in ctypes.h
  */
-static enum sym_type AsmDataType[] = {
+static enum sym_type const AsmDataType[] = {
     #define pick1(type,dtype,cgtype,x86asmtype,name,size) x86asmtype,
     #include "cdatatyp.h"
     #undef  pick1
@@ -376,19 +384,19 @@ bool_ AsmInsertFixups( aux_info *info )
     bool_                fixup_padding;
 #endif
 
-    src = AsmCodeBuffer;
-    len = AsmCodeAddress;
+    src = asminlin_state().AsmCodeBuffer;
+    len = asminlin_state().AsmCodeAddress;
     sym_handle = SYM_NULL;
     uses_auto = false;
     perform_fixups = false;
-    head = FixupHead;
+    head = asminlin_state().FixupHead;
     if( head != NULL ) {
-        FixupHead = NULL;
+        asminlin_state().FixupHead = NULL;
         /*
          * sort the fixup list in increasing fixup_loc's
          */
         for( fix = head; fix != NULL; fix = next ) {
-            for( owner = &FixupHead; (chk = *owner) != NULL; owner = &chk->next ) {
+            for( owner = &asminlin_state().FixupHead; (chk = *owner) != NULL; owner = &chk->next ) {
                 if( chk->fixup_loc > fix->fixup_loc ) {
                     break;
                 }
@@ -399,13 +407,13 @@ bool_ AsmInsertFixups( aux_info *info )
         }
         dst = temp;
         end = src + len;
-        fix = FixupHead;
-        owner = &FixupHead;
+        fix = asminlin_state().FixupHead;
+        owner = &asminlin_state().FixupHead;
         /*
          * insert fixup escape sequences
          */
         while( src < end ) {
-            if( fix != NULL && fix->fixup_loc == (src - AsmCodeBuffer) ) {
+            if( fix != NULL && fix->fixup_loc == (src - asminlin_state().AsmCodeBuffer) ) {
                 name = fix->name;
                 if( name != NULL ) {
                     sym_handle = SymLook( CalcHashID( name ), name );
@@ -419,7 +427,7 @@ bool_ AsmInsertFixups( aux_info *info )
                     case SC_REGISTER:
                     case SC_AUTO:
                         sym.flags |= SYM_USED_IN_PRAGMA;
-                        CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+                        cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
                         uses_auto = true;
                         break;
                     }
@@ -588,15 +596,15 @@ static void AddAFix( unsigned loc, char *name, unsigned type, unsigned off )
     fix->name = name;
     fix->u_offset = off;
     fix->fixup_type = static_cast<fixup_types>(type);
-    fix->next = FixupHead;
-    FixupHead = fix;
+    fix->next = asminlin_state().FixupHead;
+    asminlin_state().FixupHead = fix;
 }
 
 void AsmSysLine( const char *buff )
 /*********************************/
 {
 #if _CPU == 8086
-    AsmLine( buff, GET_FPU_EMU( ProcRevision ) );
+    AsmLine( buff, GET_FPU_EMU( cvars_state().ProcRevision ) );
 #else
     AsmLine( buff, false );
 #endif
@@ -609,11 +617,11 @@ static bool_ checkEnum( unsigned char *byte_value )
     SYM_HANDLE  sym_handle;
     ENUMPTR     ep;
 
-    if( CurToken == T_ID ) {
-        hash = CalcHashID( Buffer );
-        sym_handle = SymLook( hash, Buffer );
+    if( cvars_state().CurToken == T_ID ) {
+        hash = CalcHashID( cvars_state().Buffer );
+        sym_handle = SymLook( hash, cvars_state().Buffer );
         if( sym_handle == NULL ) {
-            ep = EnumLookup( hash, Buffer );
+            ep = EnumLookup( hash, cvars_state().Buffer );
             if( ep != NULL ) {
                 *byte_value = (unsigned char)ep->value.u._64[0];
                 return( true );
@@ -643,28 +651,28 @@ static bool_ GetByteSeq( aux_info *info )
     offset = 0;
     name = NULL;
     for( ;; ) {
-        if( CurToken == T_STRING ) {
+        if( cvars_state().CurToken == T_STRING ) {
 #if _CPU == 8086
-            AsmLine( Buffer, use_fpu_emu );
+            AsmLine( cvars_state().Buffer, use_fpu_emu );
             use_fpu_emu = false;
 #else
-            AsmLine( Buffer, false );
+            AsmLine( cvars_state().Buffer, false );
 #endif
             PPNextToken();
-            if( CurToken == T_COMMA ) {
+            if( cvars_state().CurToken == T_COMMA ) {
                 PPNextToken();
             }
-        } else if( CurToken == T_CONSTANT ) {
+        } else if( cvars_state().CurToken == T_CONSTANT ) {
 #if _CPU == 8086
             if( use_fpu_emu ) {
-                AddAFix( AsmCodeAddress, NULL, FIX_SEG, 0 );
+                AddAFix( asminlin_state().AsmCodeAddress, NULL, FIX_SEG, 0 );
                 use_fpu_emu = false;
             }
 #endif
-            AsmCodeBuffer[AsmCodeAddress++] = U8FetchTrunc( Constant64 );
+            asminlin_state().AsmCodeBuffer[asminlin_state().AsmCodeAddress++] = U8FetchTrunc( cvars_state().Constant64 );
             PPNextToken();
         } else if( checkEnum( &byte_value ) ) {
-            AsmCodeBuffer[AsmCodeAddress++] = byte_value;
+            asminlin_state().AsmCodeBuffer[asminlin_state().AsmCodeAddress++] = byte_value;
             PPNextToken();
         } else {
 #if _CPU == 8086
@@ -675,26 +683,26 @@ static bool_ GetByteSeq( aux_info *info )
                 break;
             if( fixword == FIXWORD_FLOAT ) {
 #if _CPU == 8086
-                if( GET_FPU_EMU( ProcRevision ) ) {
+                if( GET_FPU_EMU( cvars_state().ProcRevision ) ) {
                     use_fpu_emu = true;
                 }
 #endif
             } else { /* seg or offset */
-                if( !IS_ID_OR_KEYWORD( CurToken ) ) {
+                if( !IS_ID_OR_KEYWORD( cvars_state().CurToken ) ) {
                     CErr1( ERR_EXPECTING_ID );
                 } else {
-                    name = CMemStrdup( Buffer );
+                    name = CMemStrdup( cvars_state().Buffer );
                     PPNextToken();
-                    if( CurToken == T_PLUS ) {
+                    if( cvars_state().CurToken == T_PLUS ) {
                         PPNextToken();
-                        if( CurToken == T_CONSTANT ) {
-                            offset = U32FetchTrunc( Constant64 );
+                        if( cvars_state().CurToken == T_CONSTANT ) {
+                            offset = U32FetchTrunc( cvars_state().Constant64 );
                             PPNextToken();
                         }
-                    } else if( CurToken == T_MINUS ) {
+                    } else if( cvars_state().CurToken == T_MINUS ) {
                         PPNextToken();
-                        if( CurToken == T_CONSTANT ) {
-                            offset = -(int)U32FetchTrunc( Constant64 );
+                        if( cvars_state().CurToken == T_CONSTANT ) {
+                            offset = -(int)U32FetchTrunc( cvars_state().Constant64 );
                             PPNextToken();
                         }
                     }
@@ -702,35 +710,35 @@ static bool_ GetByteSeq( aux_info *info )
                 switch( fixword ) {
                 case FIXWORD_RELOFF:
 #if _CPU == 8086
-                    AddAFix( AsmCodeAddress, name, FIX_RELOFF16, offset );
-                    AsmCodeAddress += 2;
+                    AddAFix( asminlin_state().AsmCodeAddress, name, FIX_RELOFF16, offset );
+                    asminlin_state().AsmCodeAddress += 2;
 #else
-                    AddAFix( AsmCodeAddress, name, FIX_RELOFF32, offset );
-                    AsmCodeAddress += 4;
+                    AddAFix( asminlin_state().AsmCodeAddress, name, FIX_RELOFF32, offset );
+                    asminlin_state().AsmCodeAddress += 4;
 #endif
                     break;
                 case FIXWORD_OFFSET:
 #if _CPU == 8086
-                    AddAFix( AsmCodeAddress, name, FIX_OFF16, offset );
-                    AsmCodeAddress += 2;
+                    AddAFix( asminlin_state().AsmCodeAddress, name, FIX_OFF16, offset );
+                    asminlin_state().AsmCodeAddress += 2;
 #else
-                    AddAFix( AsmCodeAddress, name, FIX_OFF32, offset );
-                    AsmCodeAddress += 4;
+                    AddAFix( asminlin_state().AsmCodeAddress, name, FIX_OFF32, offset );
+                    asminlin_state().AsmCodeAddress += 4;
 #endif
                     break;
                 case FIXWORD_SEGMENT:
-                    AddAFix( AsmCodeAddress, name, FIX_SEG, 0 );
-                    AsmCodeAddress += 2;
+                    AddAFix( asminlin_state().AsmCodeAddress, name, FIX_SEG, 0 );
+                    asminlin_state().AsmCodeAddress += 2;
                     break;
                 }
             }
         }
-        if( AsmCodeAddress > MAXIMUM_BYTESEQ ) {
+        if( asminlin_state().AsmCodeAddress > MAXIMUM_BYTESEQ ) {
             if( !too_many_bytes ) {
                 CErr1( ERR_TOO_MANY_BYTES_IN_PRAGMA );
                 too_many_bytes = true;
             }
-            AsmCodeAddress = 0;          // reset index to we don't overrun buffer
+            asminlin_state().AsmCodeAddress = 0;          // reset index to we don't overrun buffer
         }
     }
     if( too_many_bytes ) {
@@ -774,13 +782,13 @@ hw_reg_set PragReg( void )
     size_t          len;
     const char      *p;
 
-    p = SkipUnderscorePrefix( Buffer );
+    p = SkipUnderscorePrefix( cvars_state().Buffer );
     if( p == NULL ) {
         /*
          * error, missing undercore prefix
          */
-        PragRegNameErr( Buffer );
-        p = Buffer;
+        PragRegNameErr( cvars_state().Buffer );
+        p = cvars_state().Buffer;
     }
     len = 0;
     while( *p != '\0' && len < ( sizeof( buffer ) - 1 ) ) {
@@ -808,23 +816,23 @@ static void GetParmInfo( void )
     have.f_list = false;
     for( ;; ) {
         if( !have.f_pop && PragRecogId( "caller" ) ) {
-            AuxInfo.cclass |= FECALL_GEN_CALLER_POPS;
+            cpragx86_state().AuxInfo.cclass |= FECALL_GEN_CALLER_POPS;
             have.f_pop = true;
         } else if( !have.f_pop && PragRecogId( "routine" ) ) {
-            AuxInfo.cclass &= ~ FECALL_GEN_CALLER_POPS;
-            AuxInfoFlg.f_routine_pops = true;
+            cpragx86_state().AuxInfo.cclass &= ~ FECALL_GEN_CALLER_POPS;
+            cpragx86_state().AuxInfoFlg.f_routine_pops = true;
             have.f_pop = true;
         } else if( !have.f_reverse && PragRecogId( "reverse" ) ) {
-            AuxInfo.cclass |= FECALL_GEN_REVERSE_PARMS;
+            cpragx86_state().AuxInfo.cclass |= FECALL_GEN_REVERSE_PARMS;
             have.f_reverse = true;
         } else if( !have.f_nomemory && PragRecogId( "nomemory" ) ) {
-            AuxInfo.cclass |= FECALL_GEN_NO_MEMORY_READ;
+            cpragx86_state().AuxInfo.cclass |= FECALL_GEN_NO_MEMORY_READ;
             have.f_nomemory = true;
         } else if( !have.f_loadds && PragRecogId( "loadds" ) ) {
-            AuxInfo.cclass_target |= FECALL_X86_LOAD_DS_ON_CALL;
+            cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_LOAD_DS_ON_CALL;
             have.f_loadds = true;
         } else if( !have.f_list && PragRegSet() != T_NULL ) {
-            AuxInfo.parms = PragManyRegSets();
+            cpragx86_state().AuxInfo.parms = PragManyRegSets();
             have.f_list = true;
         } else {
             break;
@@ -850,21 +858,21 @@ static void GetSTRetInfo( void )
     for( ;; ) {
         if( !have.f_float && PragRecogId( "float" ) ) {
             have.f_float = true;
-            AuxInfo.cclass_target |= FECALL_X86_NO_FLOAT_REG_RETURNS;
+            cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_NO_FLOAT_REG_RETURNS;
         } else if( !have.f_struct && PragRecogId( "struct" ) ) {
             have.f_struct = true;
-            AuxInfo.cclass_target |= FECALL_X86_NO_STRUCT_REG_RETURNS;
+            cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_NO_STRUCT_REG_RETURNS;
         } else if( !have.f_allocs && PragRecogId( "routine" ) ) {
             have.f_allocs = true;
-            AuxInfo.cclass_target |= FECALL_X86_ROUTINE_RETURN;
+            cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_ROUTINE_RETURN;
         } else if( !have.f_allocs && PragRecogId( "caller" ) ) {
             have.f_allocs = true;
-            AuxInfo.cclass_target &= ~FECALL_X86_ROUTINE_RETURN;
-            AuxInfoFlg.f_caller_return = true;
+            cpragx86_state().AuxInfo.cclass_target &= ~FECALL_X86_ROUTINE_RETURN;
+            cpragx86_state().AuxInfoFlg.f_caller_return = true;
         } else if( !have.f_list && PragRegSet() != T_NULL ) {
             have.f_list = true;
-            AuxInfo.cclass_target |= FECALL_X86_SPECIAL_STRUCT_RETURN;
-            AuxInfo.streturn = PragRegList();
+            cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_SPECIAL_STRUCT_RETURN;
+            cpragx86_state().AuxInfo.streturn = PragRegList();
         } else {
             break;
         }
@@ -884,17 +892,17 @@ static void GetRetInfo( void )
     have.f_no8087 = false;
     have.f_list = false;
     have.f_struct = false;
-    AuxInfo.cclass_target &= ~ FECALL_X86_NO_8087_RETURNS;
-    AuxInfoFlg.f_8087_returns = true;
+    cpragx86_state().AuxInfo.cclass_target &= ~ FECALL_X86_NO_8087_RETURNS;
+    cpragx86_state().AuxInfoFlg.f_8087_returns = true;
     for( ;; ) {
         if( !have.f_no8087 && PragRecogId( "no8087" ) ) {
             have.f_no8087 = true;
-            HW_CTurnOff( AuxInfo.returns, HW_FLTS );
-            AuxInfo.cclass_target |= FECALL_X86_NO_8087_RETURNS;
+            HW_CTurnOff( cpragx86_state().AuxInfo.returns, HW_FLTS );
+            cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_NO_8087_RETURNS;
         } else if( !have.f_list && PragRegSet() != T_NULL ) {
             have.f_list = true;
-            AuxInfo.cclass_target |= FECALL_X86_SPECIAL_RETURN;
-            AuxInfo.returns = PragRegList();
+            cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_SPECIAL_RETURN;
+            cpragx86_state().AuxInfo.returns = PragRegList();
         } else if( !have.f_struct && PragRecogId( "struct" ) ) {
             have.f_struct = true;
             GetSTRetInfo();
@@ -919,13 +927,13 @@ static void GetSaveInfo( void )
     have.f_list = false;
     for( ;; ) {
         if( !have.f_exact && PragRecogId( "exact" ) ) {
-            AuxInfo.cclass_target |= FECALL_X86_MODIFY_EXACT;
+            cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_MODIFY_EXACT;
             have.f_exact = true;
         } else if( !have.f_nomemory && PragRecogId( "nomemory" ) ) {
-            AuxInfo.cclass |= FECALL_GEN_NO_MEMORY_CHANGED;
+            cpragx86_state().AuxInfo.cclass |= FECALL_GEN_NO_MEMORY_CHANGED;
             have.f_nomemory = true;
         } else if( !have.f_list && PragRegSet() != T_NULL ) {
-            HW_TurnOn( AuxInfo.save, PragRegList() );
+            HW_TurnOn( cpragx86_state().AuxInfo.save, PragRegList() );
             have.f_list = true;
         } else {
             break;
@@ -952,9 +960,9 @@ void PragAux( void )
     PPCTL_ENABLE_MACROS();
     PPNextToken();
     if( GetPragmaAuxAliasInfo() ) {
-        SetCurrInfo( Buffer );
+        SetCurrInfo( cvars_state().Buffer );
         PPNextToken();
-        PragObjNameInfo( &AuxInfo.objname );
+        PragObjNameInfo( &cpragx86_state().AuxInfo.objname );
         have.f_call = false;
         have.f_loadds = false;
         have.f_rdosdev = false;
@@ -965,24 +973,24 @@ void PragAux( void )
         have.f_frame = false;
         have.uses_auto = false;
         for( ;; ) {
-            if( !have.f_call && CurToken == T_EQUAL ) {
-                have.uses_auto = GetByteSeq( &AuxInfo );
+            if( !have.f_call && cvars_state().CurToken == T_EQUAL ) {
+                have.uses_auto = GetByteSeq( &cpragx86_state().AuxInfo );
                 have.f_call = true;
             } else if( !have.f_call && PragRecogId( "far" ) ) {
-                AuxInfo.cclass_target |= FECALL_X86_FAR_CALL;
+                cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_FAR_CALL;
                 have.f_call = true;
             } else if( !have.f_call && PragRecogId( "near" ) ) {
-                AuxInfo.cclass_target &= ~FECALL_X86_FAR_CALL;
-                AuxInfoFlg.f_near = true;
+                cpragx86_state().AuxInfo.cclass_target &= ~FECALL_X86_FAR_CALL;
+                cpragx86_state().AuxInfoFlg.f_near = true;
                 have.f_call = true;
             } else if( !have.f_loadds && PragRecogId( "loadds" ) ) {
-                AuxInfo.cclass_target |= FECALL_X86_LOAD_DS_ON_ENTRY;
+                cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_LOAD_DS_ON_ENTRY;
                 have.f_loadds = true;
             } else if( !have.f_rdosdev && PragRecogId( "rdosdev" ) ) {
-                AuxInfo.cclass_target |= FECALL_X86_LOAD_RDOSDEV_ON_ENTRY;
+                cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_LOAD_RDOSDEV_ON_ENTRY;
                 have.f_rdosdev = true;
             } else if( !have.f_export && PragRecogId( "export" ) ) {
-                AuxInfo.cclass |= FECALL_GEN_DLL_EXPORT;
+                cpragx86_state().AuxInfo.cclass |= FECALL_GEN_DLL_EXPORT;
                 have.f_export = true;
             } else if( !have.f_parm && PragRecogId( "parm" ) ) {
                 GetParmInfo();
@@ -991,20 +999,20 @@ void PragAux( void )
                 GetRetInfo();
                 have.f_value = true;
             } else if( !have.f_value && PragRecogId( "aborts" ) ) {
-                AuxInfo.cclass |= FECALL_GEN_ABORTS;
+                cpragx86_state().AuxInfo.cclass |= FECALL_GEN_ABORTS;
                 have.f_value = true;
             } else if( !have.f_modify && PragRecogId( "modify" ) ) {
                 GetSaveInfo();
                 have.f_modify = true;
             } else if( !have.f_frame && PragRecogId( "frame" ) ) {
-                AuxInfo.cclass_target |= FECALL_X86_GENERATE_STACK_FRAME;
+                cpragx86_state().AuxInfo.cclass_target |= FECALL_X86_GENERATE_STACK_FRAME;
                 have.f_frame = true;
             } else {
                 break;
             }
         }
         if( have.uses_auto ) {
-            AsmUsesAuto( &AuxInfo );
+            AsmUsesAuto( &cpragx86_state().AuxInfo );
         }
         PragmaAuxEnd();
     }
@@ -1015,9 +1023,9 @@ void AsmSysInit( unsigned char *buf )
 /***********************************/
 {
     AsmInit();
-    AsmCodeBuffer = buf;
-    AsmCodeLimit = MAXIMUM_BYTESEQ;
-    AsmCodeAddress = 0;
+    asminlin_state().AsmCodeBuffer = buf;
+    asminlin_state().AsmCodeLimit = MAXIMUM_BYTESEQ;
+    asminlin_state().AsmCodeAddress = 0;
 }
 
 void AsmSysFini( void )

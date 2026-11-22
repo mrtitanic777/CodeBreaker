@@ -49,7 +49,7 @@
 void    ScoreInit( void )
 /***********************/
 {
-    InitFrl( &ScListFrl );
+    InitFrl( &score_state().ScListFrl );
 }
 
 void    ScoreFini( void )
@@ -126,8 +126,8 @@ static  void    ScoreCopy( score_hdl other_scoreboard, score_hdl scoreboard )
     int         i;
 
     FreeScoreBoard( scoreboard );
-    sc_heads = (list_head **)&scoreboard[ScoreCount];
-    for( i = ScoreCount; i-- > 0; ) {
+    sc_heads = (list_head **)&scoreboard[score_state().ScoreCount];
+    for( i = score_state().ScoreCount; i-- > 0; ) {
         scoreboard[i].next_reg = &scoreboard[other_scoreboard[i].next_reg->index];
         scoreboard[i].prev_reg = &scoreboard[other_scoreboard[i].prev_reg->index];
         scoreboard[i].generation = other_scoreboard[i].generation;
@@ -136,8 +136,8 @@ static  void    ScoreCopy( score_hdl other_scoreboard, score_hdl scoreboard )
         ++sc_heads;
     }
     *sc_heads = NULL;
-    sc_heads = (list_head **)&scoreboard[ScoreCount];
-    for( i = ScoreCount; i-- > 0; ) {
+    sc_heads = (list_head **)&scoreboard[score_state().ScoreCount];
+    for( i = score_state().ScoreCount; i-- > 0; ) {
         CopyList( other_scoreboard, scoreboard, sc_heads, i );
     }
 }
@@ -153,7 +153,7 @@ static  void *ScoreDescendants( block *blk )
     for( i = blk->targets; i-- > 0; ) {
         son = blk->edge[i].destination.u.blk;
         if( ( son->inputs == 1 ) && !_IsBlkVisited( son ) ) {
-            son->u1.scoreboard = static_cast<score_hdl>(ScAlloc( ScoreCount * sizeof( score ) + ( ScoreCount + 1 ) * sizeof( list_head ) ));
+            son->u1.scoreboard = static_cast<score_hdl>(ScAlloc( score_state().ScoreCount * sizeof( score ) + ( score_state().ScoreCount + 1 ) * sizeof( list_head ) ));
             ScoreClear( son->u1.scoreboard );
             for( ;; ) {
                 ScoreCopy( blk->u1.scoreboard, son->u1.scoreboard );
@@ -189,12 +189,12 @@ static  void    InitZero( void )
 /* Must be allocd. Could be modified by ScoreAssign but that's ok */
 /* since it will just set offset to 0 */
 {
-    ScZero = static_cast<score_info *>(ScAlloc( sizeof( score_info ) ));
-    ScZero->class_       = SC_N_CONSTANT;
-    ScZero->offset      = 0;
-    ScZero->symbol.u.p  = NULL;
-    ScZero->reg_index   = NO_INDEX;
-    ScZero->base        = NULL;
+    score_state().ScZero = static_cast<score_info *>(ScAlloc( sizeof( score_info ) ));
+    score_state().ScZero->class_       = SC_N_CONSTANT;
+    score_state().ScZero->offset      = 0;
+    score_state().ScZero->symbol.u.p  = NULL;
+    score_state().ScZero->reg_index   = NO_INDEX;
+    score_state().ScZero->base        = NULL;
 }
 
 
@@ -205,14 +205,14 @@ static  void    ScoreRoutine( void )
 //    bool        change;
 
     ScoreCalcList();
-    if( ScoreCount != 0 ) {
+    if( score_state().ScoreCount != 0 ) {
         InitZero();
         _MarkBlkAllUnVisited();
         MakeLiveInfo();
 //        change = false;
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
             if( !_IsBlkVisited( blk ) ) {
-                blk->u1.scoreboard = static_cast<score_hdl>(ScAlloc( ScoreCount * sizeof( score ) + ( ScoreCount + 1 ) * sizeof( list_head ) ));
+                blk->u1.scoreboard = static_cast<score_hdl>(ScAlloc( score_state().ScoreCount * sizeof( score ) + ( score_state().ScoreCount + 1 ) * sizeof( list_head ) ));
                 ScoreClear( blk->u1.scoreboard );
                 for( ;; ) {
                     FreeScoreBoard( blk->u1.scoreboard );
@@ -237,13 +237,13 @@ static  void    CleanUp( void )
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         FreeScoreBoard( blk->u1.scoreboard );
         ScFree( blk->u1.scoreboard );
         blk->u1.scoreboard = NULL;
     }
-    ScFree( ScoreList );
-    ScFree( ScZero );
+    ScFree( score_state().ScoreList );
+    ScFree( score_state().ScZero );
 }
 
 
@@ -252,7 +252,7 @@ static  void    ConstSizes( void )
 {
     name        *cons;
 
-    for( cons = Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
+    for( cons = data_state().Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
         if( cons->c.const_type == CONS_ABSOLUTE ) {
             if( CFIsU16( cons->c.u.cfval ) ) {
                 cons->n.size = 2;
@@ -272,9 +272,9 @@ void    Score( void )
 
     ConstSizes();
     old_memout = SetMemOut( MO_SUICIDE );
-    ScZero = NULL;               /* in case of Suicide*/
-    ScoreList = NULL;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    score_state().ScZero = NULL;               /* in case of Suicide*/
+    score_state().ScoreList = NULL;
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         blk->u1.scoreboard = NULL;
     }
     if( Spawn( &ScoreRoutine ) != 0 ) {

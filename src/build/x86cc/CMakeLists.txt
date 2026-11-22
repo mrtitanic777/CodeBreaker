@@ -31,12 +31,12 @@ function(cb_wcc target t prefix)
   endif()
   # the front end: cc, fe_misc, the inline assembler (wasm), watcom/c (cc/master.mif)
   set(front "${X}/generated/${t}" "${X}/cc/${t}" "${X}/cc/h" "${X}/cg/intel/${t}/h" "${X}/cg/intel/h" "${X}/cg/h" "${X}/wasm/h"
-            "${X}/owl/h" "${X}/dwarf/dw/h" "${X}/comp_cfg/h" "${X}/fe_misc/h" "${X}/watcom/h" "${X}/watcom/c")
+            "${X}/owl/h" "${X}/dwarf/dw/h" "${X}/comp_cfg/h" "${X}/fe_misc/h" "${X}/watcom/h" "${X}/watcom/c" "${X}/run")
   # the code generator (cg/mif/rules.mif, cg/intel/master.mif)
   set(back "${X}/generated/${t}" "${X}/cg/intel/${t}/h" "${X}/cg/intel/h" "${X}/owl/h" "${X}/cg/h" "${X}/cfloat/h" "${X}/dwarf/dw/h"
-           "${X}/comp_cfg/h" "${X}/trmem" "${X}/watcom/h" "${X}/watcom/c")
+           "${X}/comp_cfg/h" "${X}/trmem" "${X}/watcom/h" "${X}/watcom/c" "${X}/run")
   # the libraries both use (cfloat, dwarf/dw, owl): their own headers
-  set(libs "${X}/generated/${t}" "${X}/cfloat/h" "${X}/dwarf/dw/h" "${X}/owl/h" "${X}/watcom/h" "${X}/watcom/c")
+  set(libs "${X}/generated/${t}" "${X}/cfloat/h" "${X}/dwarf/dw/h" "${X}/owl/h" "${X}/watcom/h" "${X}/watcom/c" "${X}/run")
   foreach(src IN LISTS sources)
     if(src MATCHES "/cg/")
       set_property(SOURCE "${src}" TARGET_DIRECTORY ${target} PROPERTY INCLUDE_DIRECTORIES ${back})

@@ -43,8 +43,19 @@ extern "C" {
 
 extern char             *_LpDllName;    /* pointer to dll name */
 
-extern int              _argc;          /* arguments count */
-extern char             **_argv;        /* arguments vector */
+
+/* the variables of clibint.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct ClibintState {
+#ifdef __WATCOMC__
+#else /* !__WATCOMC__ */
+    char **_argv;
+#endif
+#ifdef __WATCOMC__
+#else /* !__WATCOMC__ */
+    int _argc;
+#endif
+};
+inline ClibintState& clibint_state() { return cbrun_part<ClibintState>(); }
 
 #if defined( __WATCOMC__ )
 

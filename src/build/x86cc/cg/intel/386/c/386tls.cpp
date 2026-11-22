@@ -94,7 +94,7 @@ static  name    *GetNTTLSDataRef( instruction *ins, name *op, type_class_def typ
     temp_index = AllocIndex( t1, NULL, 0, WD );
     new_ins = MakeMove( temp_index, t3, WD );
     PrefixIns( ins, new_ins );
-    result_index = ScaleIndex( t3, op, op->v.offset, type_class, TypeClassSize[type_class], SCALE_NONE, static_cast<i_flags>(0) );
+    result_index = ScaleIndex( t3, op, op->v.offset, type_class, data_state().TypeClassSize[type_class], SCALE_NONE, static_cast<i_flags>(0) );
     return( result_index );
 }
 
@@ -130,26 +130,26 @@ static  name    *GetGenericTLSDataRef( instruction *ins, name *op, type_class_de
     instruction         *new_ins;
 
 
-    tls = CurrProc->targ.tls_index;
+    tls = data_state().CurrProc->targ.tls_index;
     if( tls == NULL ) {
         tls = AllocTemp( WD );
-        CurrProc->targ.tls_index = tls;
-        if( !BlockByBlock ) {
+        data_state().CurrProc->targ.tls_index = tls;
+        if( !data_state().BlockByBlock ) {
             /* 2007-06-28 RomanT
              * Grrr... DropCall() inserts new ins _before_ old one, screwing
              * startup sequence. So keep call in first block, but make it
              * before next instruction of last one  (== after last one).
              */
-            DropCall( HeadBlock->ins.head.prev->head.next, tls );
+            DropCall( data_state().HeadBlock->ins.head.prev->head.next, tls );
         }
     }
-    if( BlockByBlock ) {
+    if( data_state().BlockByBlock ) {
         DropCall( ins, tls );
     }
     temp = AllocTemp( WD );
     new_ins = MakeMove( tls, temp, WD );
     PrefixIns( ins, new_ins );
-    result_index = ScaleIndex( temp, op, op->v.offset, type_class, TypeClassSize[type_class], SCALE_NONE, static_cast<i_flags>(0) );
+    result_index = ScaleIndex( temp, op, op->v.offset, type_class, data_state().TypeClassSize[type_class], SCALE_NONE, static_cast<i_flags>(0) );
     return( result_index );
 }
 
@@ -223,7 +223,7 @@ static  void    ExpandTlsOp( instruction *ins, name **pop )
             PrefixIns( ins, new_ins );
             *pop = ScaleIndex( temp, NULL, 0,
                             _OpClass(ins),
-                            TypeClassSize[_OpClass(ins)],
+                            data_state().TypeClassSize[_OpClass(ins)],
                             SCALE_NONE, static_cast<i_flags>(0) );
         }
         break;

@@ -39,25 +39,25 @@
 static bool_ EndOfAsmStmt( void )
 /******************************/
 {
-    if( CurToken == T_SEMI_COLON ) {
+    if( cvars_state().CurToken == T_SEMI_COLON ) {
         /*
          * ; .ASM comment
          */
         for( ;; ) {
             NextToken();
-            if( ( CurToken == T_EOF ) || ( CurToken == T_NULL ) ) {
+            if( ( cvars_state().CurToken == T_EOF ) || ( cvars_state().CurToken == T_NULL ) ) {
                 break;
             }
         }
         return( true );
     }
-    if( CurToken == T_EOF )
+    if( cvars_state().CurToken == T_EOF )
         return( true );
-    if( CurToken == T_NULL )
+    if( cvars_state().CurToken == T_NULL )
         return( true );
-    if( CurToken == T___ASM )
+    if( cvars_state().CurToken == T___ASM )
         return( true );
-    if( CurToken == T_RIGHT_BRACE )
+    if( cvars_state().CurToken == T_RIGHT_BRACE )
         return( true );
     return( false );
 }
@@ -70,9 +70,9 @@ static void GetAsmLine( void )
     char        buf[MAX_ASM_LINE_LEN + 1];
 
     PPCTL_ENABLE_EOL();
-    AsmErrLine = TokenLoc.line;
+    AsmErrLine = cvars_state().TokenLoc.line;
     *buf = '\0';
-    if( strcmp( Buffer, "_emit" ) == 0 ) {
+    if( strcmp( cvars_state().Buffer, "_emit" ) == 0 ) {
         strcpy( buf, AsmSysDefineByte() );
         NextToken();
     }
@@ -80,15 +80,15 @@ static void GetAsmLine( void )
     for( ;; ) {
         if( EndOfAsmStmt() )
             break;
-        if(( LastToken != T_DOT ) && ( LastToken != T_BAD_CHAR ) && ( CurToken != T_XOR ))
+        if(( LastToken != T_DOT ) && ( LastToken != T_BAD_CHAR ) && ( cvars_state().CurToken != T_XOR ))
             strncat( buf, " ", MAX_ASM_LINE_LEN );
-        strncat( buf, Buffer, MAX_ASM_LINE_LEN );
-        LastToken = CurToken;
+        strncat( buf, cvars_state().Buffer, MAX_ASM_LINE_LEN );
+        LastToken = cvars_state().CurToken;
         NextToken();
     }
     buf[MAX_ASM_LINE_LEN] = '\0';
     if( *buf != '\0' ) {
-        TokenLoc.line = AsmErrLine;
+        cvars_state().TokenLoc.line = AsmErrLine;
         AsmSysLine( buf );
     }
     PPCTL_DISABLE_EOL();
@@ -103,7 +103,7 @@ void AsmStmt( void )
     ppctl_t         old_ppctl;
     TREEPTR         tree;
 
-    old_ppctl = PPControl;
+    old_ppctl = cvars_state().PPControl;
     /*
      * indicate that we are inside an __asm statement so scanner will
      * allow tokens unique to the assembler. e.g. 21h
@@ -113,11 +113,11 @@ void AsmStmt( void )
     NextToken();
     AsmSysInit( buff );
     too_many_bytes = false;
-    if( CurToken == T_LEFT_BRACE ) {
+    if( cvars_state().CurToken == T_LEFT_BRACE ) {
         NextToken();
         for( ;; ) {             // grab assembler lines
             GetAsmLine();
-            if( AsmCodeAddress > MAXIMUM_BYTESEQ ) {
+            if( asminlin_state().AsmCodeAddress > MAXIMUM_BYTESEQ ) {
                 if( !too_many_bytes ) {
                     CErr1( ERR_TOO_MANY_BYTES_IN_PRAGMA );
                     too_many_bytes = true;
@@ -125,11 +125,11 @@ void AsmStmt( void )
                 /*
                  * reset index to we don't overrun buffer
                  */
-                AsmCodeAddress = 0;
+                asminlin_state().AsmCodeAddress = 0;
             }
-            if( CurToken == T_RIGHT_BRACE )
+            if( cvars_state().CurToken == T_RIGHT_BRACE )
                 break;
-            if( CurToken == T_EOF )
+            if( cvars_state().CurToken == T_EOF )
                 break;
             NextToken();
         }
@@ -138,12 +138,12 @@ void AsmStmt( void )
         GetAsmLine();           // grab single assembler instruction
         skip_token = T_NULL;
     }
-    PPControl = old_ppctl;
-    if( AsmCodeAddress > 0 ) {
+    cvars_state().PPControl = old_ppctl;
+    if( asminlin_state().AsmCodeAddress > 0 ) {
         CreateAuxInlineFunc( too_many_bytes );
-        CurrEntry = NULL;
+        pragdefn_state().CurrEntry = NULL;
         tree = LeafNode( OPR_FUNCNAME );
-        tree->op.u2.sym_handle = MakeFunction( AuxList->name, FuncNode( GetType( TYP_VOID ), FLAG_NONE, NULL ) );
+        tree->op.u2.sym_handle = MakeFunction( pragdefn_state().AuxList->name, FuncNode( GetType( TYP_VOID ), FLAG_NONE, NULL ) );
         tree = ExprNode( tree, OPR_CALL, NULL );
         tree->u.expr_type = GetType( TYP_VOID );
         AddStmt( tree );
@@ -151,7 +151,7 @@ void AsmStmt( void )
 //        expr = NULL;
     }
     AsmSysFini();
-    if( CurToken == skip_token ) {
+    if( cvars_state().CurToken == skip_token ) {
         NextToken();
     }
 }

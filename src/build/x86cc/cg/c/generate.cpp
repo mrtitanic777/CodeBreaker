@@ -86,19 +86,29 @@
 #include "feprotos.h"
 
 
-static  bool_            abortCG;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct GenerateState {
+    bool_ abortCG;
+    proc_def *FEMessageCurrProc_lastproc = NULL;
+};
+
+}  // namespace
+
+static inline GenerateState& generate_state() { return cbrun_part<GenerateState>(); }
 
 void    InitCG( void )
 /********************/
 {
-    InOptimizer = 0;
-    InsId = 0;
-    CurrProc = NULL;
-    CurrBlock = NULL;
-    BlockList = NULL;
-    HeadBlock = NULL;
-    BlockByBlock = false;
-    abortCG = false;
+    optmac_state().InOptimizer = 0;
+    data_state().InsId = 0;
+    data_state().CurrProc = NULL;
+    data_state().CurrBlock = NULL;
+    data_state().BlockList = NULL;
+    data_state().HeadBlock = NULL;
+    data_state().BlockByBlock = false;
+    generate_state().abortCG = false;
     FPInit();/* must be before InitRegTbl */
     InitRegTbl();
     ScoreInit();
@@ -110,7 +120,7 @@ void    InitCG( void )
     InitRT();
     InitNames();
     ObjInit();
-    ClassPointer = TypeClass( TypePtr );
+    data_state().ClassPointer = TypeClass( data_state().TypePtr );
     InitSegment();
 }
 
@@ -118,7 +128,7 @@ void    InitCG( void )
 void    AbortCG( void )
 /*********************/
 {
-    abortCG = true;
+    generate_state().abortCG = true;
 }
 
 
@@ -127,7 +137,7 @@ void    FiniCG( void )
 {
     FiniQueue();
     FiniSegment();
-    if( abortCG ) {
+    if( generate_state().abortCG ) {
         AbortObj();
     }
     ObjFini();
@@ -140,7 +150,7 @@ void    FiniCG( void )
 static  void    AddANop( void )
 /*****************************/
 {
-    AddAnIns( BlockList, MakeNop() );
+    AddAnIns( data_state().BlockList, MakeNop() );
 }
 
 
@@ -222,7 +232,7 @@ static  void            PostOptimize( void )
          * new instructions can be directly generated because RegAlloc is
          * done by now. PeepOpt() is responsible for verifying that.
          */
-        if( PeepOpt( HeadBlock, NextBlock, NULL, true ) ) {
+        if( PeepOpt( data_state().HeadBlock, NextBlock, NULL, true ) ) {
             LiveInfoUpdate();
         }
         /*
@@ -267,7 +277,7 @@ static  void            PostOptimize( void )
          */
         Score();
         DeadInstructions(); /* cleanup junk after Score() */
-        if( !BlockByBlock )
+        if( !data_state().BlockByBlock )
             LoopRegInvariant();
 #if !_TARGET_RISC
         /*
@@ -285,15 +295,15 @@ static  void            PostOptimize( void )
          * Run scheduler last, when all instructions are stable
          */
         if( _IsModel( CGSW_GEN_INS_SCHEDULING ) ) {
-            HaveLiveInfo = false;
+            data_state().HaveLiveInfo = false;
             Schedule(); /* NOTE: Schedule messes up live information */
             LiveInfoUpdate();
-            HaveLiveInfo = true;
+            data_state().HaveLiveInfo = true;
         }
         /*
          * run this again in case Scheduler messed around with indices
          */
-        if( PeepOpt( HeadBlock, NextBlock, NULL, true ) ) {
+        if( PeepOpt( data_state().HeadBlock, NextBlock, NULL, true ) ) {
             LiveInfoUpdate();
         }
     }
@@ -307,7 +317,7 @@ static  void    FreeExtraTemps( name *last, block_id blk_id )
     name        **owner;
     name        *temp;
 
-    owner = &Names[N_TEMP];
+    owner = &data_state().Names[N_TEMP];
     for( ;; ) {
         temp = *owner;
         if( temp == last )
@@ -331,7 +341,7 @@ static  void    ForceTempsMemory( void )
     name        *next;
 
     ParmPropagate();
-    for( op = Names[N_TEMP]; op != LastTemp; op = next ) {
+    for( op = data_state().Names[N_TEMP]; op != data_state().LastTemp; op = next ) {
         next = op->n.next_name;
         if( (op->v.usage & USE_IN_ANOTHER_BLOCK)
           || _FrontEndTmp( op ) ) {
@@ -343,14 +353,14 @@ static  void    ForceTempsMemory( void )
         }
     }
     AssignOtherLocals();
-    for( op = Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
+    for( op = data_state().Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
         op->v.usage |= USE_IN_ANOTHER_BLOCK | USE_MEMORY;
         if( op->v.conflict != NULL ) {
             FreeAConflict( op->v.conflict );
             op->v.conflict = NULL;
         }
     }
-    LastTemp = Names[N_TEMP];
+    data_state().LastTemp = data_state().Names[N_TEMP];
 }
 
 
@@ -366,34 +376,33 @@ static  void    BlockToCode( bool_ partly_done )
     block_id            blk_id;
 
 
-
     /* try to get back some memory*/
     _MemLow;
 
     /* make the block look like an entire procedure*/
 
-    HeadBlock = CurrBlock;
-    BlockList = CurrBlock;
-    HeadBlock->prev_block = NULL;
-    if( HeadBlock->next_block != NULL ) {
-        HeadBlock->next_block->prev_block = NULL;
+    data_state().HeadBlock = data_state().CurrBlock;
+    data_state().BlockList = data_state().CurrBlock;
+    data_state().HeadBlock->prev_block = NULL;
+    if( data_state().HeadBlock->next_block != NULL ) {
+        data_state().HeadBlock->next_block->prev_block = NULL;
     }
     /* Kludge - need a pointer to the next block for CALL_LABEL - puke! */
-    if( _IsBlkAttr( HeadBlock, BLK_CALL_LABEL ) ) {
-        HeadBlock->u2.next = HeadBlock->next_block;
+    if( _IsBlkAttr( data_state().HeadBlock, BLK_CALL_LABEL ) ) {
+        data_state().HeadBlock->u2.next = data_state().HeadBlock->next_block;
     }
-    HeadBlock->next_block = NULL;
+    data_state().HeadBlock->next_block = NULL;
 
     /* force anything that spans blocks to memory */
 
-    HeadBlock->u.partition = HeadBlock;
-    ConstFold( HeadBlock );
-    HeadBlock->u.partition = NULL;
+    data_state().HeadBlock->u.partition = data_state().HeadBlock;
+    ConstFold( data_state().HeadBlock );
+    data_state().HeadBlock->u.partition = NULL;
 
     ForceTempsMemory();
     if( !partly_done ) {
         FixMemRefs();
-        HaveLiveInfo = false;
+        data_state().HaveLiveInfo = false;
         if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
           && _IsntModel( CGSW_GEN_FORTRAN_ALIASING ) ) {
             FindReferences();
@@ -403,27 +412,27 @@ static  void    BlockToCode( bool_ partly_done )
         FindReferences();
         DeadTemps();
         if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-            SetInOut( HeadBlock );
+            SetInOut( data_state().HeadBlock );
         } else {
             MakeConflicts();
         }
         MakeLiveInfo();
-        HaveLiveInfo = true;
+        data_state().HaveLiveInfo = true;
         AxeDeadCode();
         FixIndex();
         FixSegments();
         FPRegAlloc();
         RegAlloc( true );
         FreeConflicts();
-        HaveLiveInfo = false;
+        data_state().HaveLiveInfo = false;
     } else {
         conflist = NULL;
-        owner = &ConfList;
+        owner = &data_state().ConfList;
         for( ;; ) {
             curr = *owner;
             if( curr == NULL )
                 break;
-            if( curr->start_block == HeadBlock ) {
+            if( curr->start_block == data_state().HeadBlock ) {
                 *owner = curr->next_conflict;
                 curr->next_conflict = conflist;
                 conflist = curr;
@@ -431,38 +440,38 @@ static  void    BlockToCode( bool_ partly_done )
                 owner = &curr->next_conflict;
             }
         }
-        curr = ConfList;
-        ConfList = conflist;
+        curr = data_state().ConfList;
+        data_state().ConfList = conflist;
         RegAlloc( true );
         FreeConflicts();
-        ConfList = curr;
+        data_state().ConfList = curr;
     }
-    input_edges = HeadBlock->input_edges;
-    inputs = HeadBlock->inputs;
-    targets = HeadBlock->targets;
-    HeadBlock->inputs = 0;
-    HeadBlock->input_edges = NULL;
-    HeadBlock->targets = 0;
+    input_edges = data_state().HeadBlock->input_edges;
+    inputs = data_state().HeadBlock->inputs;
+    targets = data_state().HeadBlock->targets;
+    data_state().HeadBlock->inputs = 0;
+    data_state().HeadBlock->input_edges = NULL;
+    data_state().HeadBlock->targets = 0;
     FPParms();
     PostOptimize();
-    HeadBlock->input_edges = input_edges;
-    HeadBlock->inputs = inputs;
-    HeadBlock->targets = targets;
+    data_state().HeadBlock->input_edges = input_edges;
+    data_state().HeadBlock->inputs = inputs;
+    data_state().HeadBlock->targets = targets;
 
     /* generate a prolog that saves all registers*/
 
-    if( (CurrProc->prolog_state & PST_PROLOG_GENERATED) == 0 ) {
-        CurrProc->state.used = AllCacheRegs();
+    if( (data_state().CurrProc->prolog_state & PST_PROLOG_GENERATED) == 0 ) {
+        data_state().CurrProc->state.used = AllCacheRegs();
         GenProlog();
     }
 
-    blk_id = CurrBlock->blk_id;
+    blk_id = data_state().CurrBlock->blk_id;
     AssgnMoreTemps( blk_id );
     OptSegs();
 
     /* generate the code for the block*/
 
-    if( _IsBlkAttr( CurrBlock, BLK_RETURN ) ) {
+    if( _IsBlkAttr( data_state().CurrBlock, BLK_RETURN ) ) {
         GenObject();
         FiniStackMap();
         FreeProc();
@@ -472,7 +481,7 @@ static  void    BlockToCode( bool_ partly_done )
     if( partly_done ) {
         FreeExtraTemps( NULL, blk_id );
     } else {
-        FreeExtraTemps( LastTemp, blk_id );
+        FreeExtraTemps( data_state().LastTemp, blk_id );
     }
 }
 
@@ -487,25 +496,25 @@ static  void    FlushBlocks( bool_ partly_done )
     block       *curr;
     block_class classes;
 
-    if( !BlockByBlock ) {
+    if( !data_state().BlockByBlock ) {
         FEMessageCurrProc( FEMSG_REGALLOC_DIED );
     }
     if( !partly_done ) {
         Renumber();
     }
-    curr = CurrBlock;
-    BlockByBlock = true;
+    curr = data_state().CurrBlock;
+    data_state().BlockByBlock = true;
     classes = static_cast<block_class>(0);
-    for( blk = HeadBlock; blk != NULL; blk = next ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = next ) {
         next = blk->next_block;
         classes |= blk->class_;
-        CurrBlock = blk;
+        data_state().CurrBlock = blk;
         BlockToCode( partly_done );
         FlushOpt();
     }
-    CurrBlock = curr;
-    HeadBlock = NULL;
-    BlockList = NULL;
+    data_state().CurrBlock = curr;
+    data_state().HeadBlock = NULL;
+    data_state().BlockList = NULL;
 }
 
 
@@ -516,7 +525,7 @@ static  void    FreeExtraSyms( name *last )
     name        *temp;
     name        *next;
 
-    owner = &Names[N_TEMP];
+    owner = &data_state().Names[N_TEMP];
     for( ;; ) {
         temp = *owner;
         if( temp == last )
@@ -529,16 +538,16 @@ static  void    FreeExtraSyms( name *last )
             owner = &temp->n.next_name;
         }
     }
-    for( temp = Names[N_CONSTANT]; temp != NULL; temp = next ) {
+    for( temp = data_state().Names[N_CONSTANT]; temp != NULL; temp = next ) {
         next = temp->n.next_name;
         FreeAName( temp );
     }
-    Names[N_CONSTANT] = NULL;
-    for( temp = Names[N_INDEXED]; temp != NULL; temp = next ) {
+    data_state().Names[N_CONSTANT] = NULL;
+    for( temp = data_state().Names[N_INDEXED]; temp != NULL; temp = next ) {
         next = temp->n.next_name;
         FreeAName( temp );
     }
-    Names[N_INDEXED] = NULL;
+    data_state().Names[N_INDEXED] = NULL;
 }
 
 
@@ -549,7 +558,7 @@ static  void    FinishIndex( void )
     instruction *ins;
     instruction *next;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = NeedIndex( ins );
             if( next == ins ) {
@@ -567,10 +576,10 @@ static  void    ForceConflictsMemory( void )
     conflict_node       *next;
 
     ParmPropagate();
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         _SetFalse( conf, CST_NEEDS_INDEX_SPLIT | CST_NEEDS_SEGMENT_SPLIT );
     }
-    for( conf = ConfList; conf != NULL; conf = next ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = next ) {
         next = conf->next_conflict;
         if( !_GBitEmpty( conf->id.out_of_block )
           || ( conf->name->n.class_ == N_TEMP && _FrontEndTmp( conf->name ) )
@@ -595,10 +604,10 @@ static  void    Panic( bool_ partly_done )
     UnFixEdges();
     InitStackMap();
     AssgnMoreTemps( BLK_ID_NONE );
-    curr_proc = CurrProc;
+    curr_proc = data_state().CurrProc;
     FlushBlocks( partly_done );
-    if( curr_proc == CurrProc /* if not freed (dummy!) */
-      && (CurrProc->prolog_state & PST_EPILOG_GENERATED) == 0 ) {
+    if( curr_proc == data_state().CurrProc /* if not freed (dummy!) */
+      && (data_state().CurrProc->prolog_state & PST_EPILOG_GENERATED) == 0 ) {
         GenEpilog();
         FiniStackMap();
         FreeProc();
@@ -611,17 +620,17 @@ static  void            GenPartialRoutine( bool_ routine_done )
 {
     while( routine_done || _MemLow ) {
         if( CreateBreak() ) {
-            BlockByBlock = true;
+            data_state().BlockByBlock = true;
             BlockTrim();
             FindReferences();
             PreOptimize();
             FixBreak();
             SortBlocks();
             /* so the front gets told we're panicking */
-            BlockByBlock = false;
+            data_state().BlockByBlock = false;
             FlushBlocks( false );
             RemoveBreak();
-            if( HeadBlock == NULL ) {
+            if( data_state().HeadBlock == NULL ) {
                 FreeExtraSyms( NULL );
             }
         } else {
@@ -636,12 +645,11 @@ static  void            GenPartialRoutine( bool_ routine_done )
 void    FEMessageCurrProc( fe_msg femsg )
 /***************************************/
 {
-    static proc_def *lastproc = NULL;
 
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
-      && lastproc != CurrProc ) {
-        FEMessage( femsg, AskForLblSym( static_cast<label_handle>(CurrProc->label) ) );
-        lastproc = CurrProc;
+      && generate_state().FEMessageCurrProc_lastproc != data_state().CurrProc ) {
+        FEMessage( femsg, AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) );
+        generate_state().FEMessageCurrProc_lastproc = data_state().CurrProc;
     }
 }
 
@@ -654,20 +662,20 @@ void    Generate( bool_ routine_done )
 {
     if( BGInInline() )
         return;
-    HaveLiveInfo = false;
-    HaveDominatorInfo = false;
+    data_state().HaveLiveInfo = false;
+    data_state().HaveDominatorInfo = false;
 #if _TARGET_RISC == 0 && ( _TARGET & _TARG_370 ) == 0
     /*
      * if we want to go fast, generate statement at a time
      */
     if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-        if( !BlockByBlock ) {
+        if( !data_state().BlockByBlock ) {
             InitStackMap();
-            BlockByBlock = true;
+            data_state().BlockByBlock = true;
         }
-        LNBlip( SrcLine );
+        LNBlip( data_state().SrcLine );
         FlushBlocks( false );
-        FreeExtraSyms( LastTemp );
+        FreeExtraSyms( data_state().LastTemp );
         if( _MemLow ) {
             BlowAwayFreeLists();
         }
@@ -677,7 +685,7 @@ void    Generate( bool_ routine_done )
     /*
      * if we couldn't get the whole procedure in memory, generate part of it
      */
-    if( BlockByBlock ) {
+    if( data_state().BlockByBlock ) {
         if( _MemLow
           || routine_done ) {
             GenPartialRoutine( routine_done );
@@ -728,7 +736,7 @@ void    Generate( bool_ routine_done )
     }
     AddCacheRegs();
     MakeLiveInfo();
-    HaveLiveInfo = true;
+    data_state().HaveLiveInfo = true;
     AxeDeadCode();
     /*
      * AxeDeadCode() may have emptied some blocks. Run BlockTrim() to get rid
@@ -746,7 +754,7 @@ void    Generate( bool_ routine_done )
     FPRegAlloc();
     if( !RegAlloc( false ) ) {
         Panic( true );
-        HaveLiveInfo = false;
+        data_state().HaveLiveInfo = false;
         return;
     }
     FPParms();
@@ -758,17 +766,17 @@ void    Generate( bool_ routine_done )
     FreeConflicts();
     SortBlocks();
     if( CalcDominatorInfo() ) {
-        HaveDominatorInfo = true;
+        data_state().HaveDominatorInfo = true;
     }
     GenProlog();
     UnFixEdges();
     OptSegs();
     GenObject();
-    if( (CurrProc->prolog_state & PST_EPILOG_GENERATED) == 0 ) {
+    if( (data_state().CurrProc->prolog_state & PST_EPILOG_GENERATED) == 0 ) {
         GenEpilog();
     }
     FreeProc();
-    HaveLiveInfo = false;
+    data_state().HaveLiveInfo = false;
 #if _TARGET_INTEL
     if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
         FlushQueue();

@@ -37,8 +37,18 @@
 #include "data.h"
 #include "rtrtn.h"
 
-static  import_handle   RTHdls[RTSIZE];
-static  label_handle    RTLbls[RTSIZE];
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct RtrtnState {
+    import_handle RTHdls[RTSIZE];
+    label_handle RTLbls[RTSIZE];
+};
+
+}  // namespace
+
+static inline RtrtnState& rtrtn_state() { return cbrun_part<RtrtnState>(); }
+
 
 rt_class    LookupRoutine( instruction *ins )
 /*******************************************/
@@ -71,8 +81,8 @@ void    InitRT( void )
     rt_class    rtindex;
 
     for( rtindex = static_cast<rt_class>(0); rtindex < RTSIZE; ++rtindex ) {
-        RTHdls[rtindex] = NOT_IMPORTED;
-        RTLbls[rtindex] = NULL;
+        rtrtn_state().RTHdls[rtindex] = NOT_IMPORTED;
+        rtrtn_state().RTLbls[rtindex] = NULL;
     }
 }
 
@@ -80,14 +90,14 @@ void    InitRT( void )
 import_handle   AskRTHandle( rt_class rtindex )
 /*********************************************/
 {
-    return( RTHdls[rtindex] );
+    return( rtrtn_state().RTHdls[rtindex] );
 }
 
 
 void    TellRTHandle( rt_class rtindex, import_handle imphdl )
 /************************************************************/
 {
-    RTHdls[rtindex] = imphdl;
+    rtrtn_state().RTHdls[rtindex] = imphdl;
 }
 
 
@@ -96,10 +106,10 @@ label_handle RTLabel( rt_class rtindex )
 {
     label_handle    lbl;
 
-    lbl = RTLbls[rtindex];
+    lbl = rtrtn_state().RTLbls[rtindex];
     if( lbl == NULL ) {
         lbl = AskForRTLabel( rtindex );
-        RTLbls[rtindex] = lbl;
+        rtrtn_state().RTLbls[rtindex] = lbl;
     }
     return( lbl );
 }
@@ -111,7 +121,7 @@ rt_class    FindRTLabel( label_handle lbl )
     rt_class    rtindex;
 
     for( rtindex = static_cast<rt_class>(0); rtindex < RTSIZE; ++rtindex ) {
-        if( RTLbls[rtindex] == lbl ) {
+        if( rtrtn_state().RTLbls[rtindex] == lbl ) {
             break;
         }
     }

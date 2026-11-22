@@ -337,7 +337,7 @@ static  void    FlowConditions( void )
     zero = AllocIntConst( 0 );
     do {
         change = false;
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
             GatherSources( blk );
             change |= Traverse( blk, zero );
         }
@@ -368,7 +368,7 @@ void    Conditions( void )
     block       *blk;
     cc_handle   cc;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         cc = static_cast<cc_handle>(CGAlloc( sizeof( *cc ) ));
         cc->state = UNKNOWN_STATE;
         cc->left_op = NULL;
@@ -380,7 +380,7 @@ void    Conditions( void )
         _MarkBlkUnVisited( blk );
     }
     FlowConditions();
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         CGFree( blk->u1.cc );
     }
 }

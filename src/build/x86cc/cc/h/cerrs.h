@@ -1,3 +1,4 @@
+#pragma once
 /****************************************************************************
 *
 *                            Open Watcom Project
@@ -75,4 +76,18 @@ typedef struct msg_level_info {
     unsigned    enabled     : 1;
 } msg_level_info;
 
-extern msg_level_info   msg_level[MESSAGE_COUNT];
+
+#ifndef CB_STATE_CERRS_H
+#define CB_STATE_CERRS_H
+
+/* the variables of cerrs.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct CerrsState {
+    msg_level_info msg_level[MESSAGE_COUNT] = {
+    #define MSG_DEF( name, group, kind, level, group_index ) { MSG_TYPE_##kind, level, true },
+            MSG_DEFS
+    #undef MSG_DEF
+    };
+};
+inline CerrsState& cerrs_state() { return cbrun_part<CerrsState>(); }
+
+#endif

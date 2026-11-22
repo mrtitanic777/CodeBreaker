@@ -109,10 +109,10 @@ void    GenObject( void )
     PUSH_OP( AskCodeSeg() );
         InitZeroPage();
         last_line = 0;
-        attr = FEAttr( AskForLblSym( static_cast<label_handle>(CurrProc->label) ) );
-        for( blk = HeadBlock; blk != NULL; blk = next_block ) {
+        attr = FEAttr( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) );
+        for( blk = data_state().HeadBlock; blk != NULL; blk = next_block ) {
             next_block = blk->next_block;
-            if( blk->label != CurrProc->label && blk->label != NULL ) {
+            if( blk->label != data_state().CurrProc->label && blk->label != NULL ) {
                 last_line = DumpLineNum( blk->ins.head.line_num, last_line, true );
                 if( _IsBlkAttr( blk, BLK_ITERATIONS_KNOWN ) && blk->iterations >= 10 ) {
                     align = DepthAlign( DEEP_LOOP_ALIGN );
@@ -120,7 +120,7 @@ void    GenObject( void )
                     align = DepthAlign( blk->depth );
                 }
                 CodeLabel( blk->label, align );
-                if( (blk->edge[0].flags & BEF_BLOCK_LABEL_DIES) && BlocksUnTrimmed ) {
+                if( (blk->edge[0].flags & BEF_BLOCK_LABEL_DIES) && data_state().BlocksUnTrimmed ) {
                     TellCondemnedLabel( blk->label );
                 }
             }
@@ -150,7 +150,7 @@ void    GenObject( void )
             }
             EndBlockProfiling();
             if( _IsBlkAttr( blk, BLK_JUMP | BLK_BIG_JUMP ) ) {
-                if( BlockByBlock
+                if( data_state().BlockByBlock
                  || next_block == NULL
                  || blk->edge[0].destination.u.lbl != next_block->label ) {
                     /*
@@ -165,7 +165,7 @@ void    GenObject( void )
                 GenEpilog();
             } else if( _IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
                 GenCallLabel( blk->edge[0].destination.u.blk );
-                if( BlockByBlock ) {
+                if( data_state().BlockByBlock ) {
                     if( next_block == NULL ) {
                         GenJumpLabel( blk->u2.next->label );
                     } else {
@@ -179,7 +179,7 @@ void    GenObject( void )
                 for( j = blk->targets; j-- > 0; ) {
                     lbl = blk->edge[j].destination.u.lbl;
                     TellReachedLabel( lbl );
-                    if( (blk->edge[j].flags & BEF_DEST_LABEL_DIES) && BlocksUnTrimmed ) {
+                    if( (blk->edge[j].flags & BEF_DEST_LABEL_DIES) && data_state().BlocksUnTrimmed ) {
                         TellCondemnedLabel( lbl );
                         for( i = j; i-- > 0; ) {
                             if( blk->edge[i].destination.u.lbl == lbl ) {
@@ -189,14 +189,14 @@ void    GenObject( void )
                     }
                 }
             }
-            if( !BlocksUnTrimmed && blk->label != CurrProc->label && blk->label != NULL ) {
+            if( !data_state().BlocksUnTrimmed && blk->label != data_state().CurrProc->label && blk->label != NULL ) {
                 TellCondemnedLabel( blk->label );
             }
-            CurrBlock = blk;
+            data_state().CurrBlock = blk;
             FreeBlock();
         }
-        HeadBlock = blk;
-        BlockList = blk;
+        data_state().HeadBlock = blk;
+        data_state().BlockList = blk;
     POP_OP();
 }
 
@@ -215,23 +215,23 @@ static  void    BlocksSortedBy( bool_ (*bigger)( block *, block * ) )
     block       *next;
     bool_        change;
 
-    for( change = ( HeadBlock->next_block != NULL ); change; ) {
+    for( change = ( data_state().HeadBlock->next_block != NULL ); change; ) {
         change = false;
-        for( blk = HeadBlock->next_block; (next = blk->next_block) != NULL; blk = next ) {
+        for( blk = data_state().HeadBlock->next_block; (next = blk->next_block) != NULL; blk = next ) {
             if( bigger( blk, next ) ) {
                 blk->prev_block->next_block = next;
                 if( next->next_block != NULL ) {
                     next->next_block->prev_block = blk;
                 }
                 blk->next_block = next->next_block;
-                if( blk->prev_block == HeadBlock ) {
-                    HeadBlock->next_block = next;
+                if( blk->prev_block == data_state().HeadBlock ) {
+                    data_state().HeadBlock->next_block = next;
                 }
                 next->prev_block = blk->prev_block;
                 blk->prev_block = next;
                 next->next_block = blk;
-                if( BlockList == next ) {
-                    BlockList = blk;
+                if( data_state().BlockList == next ) {
+                    data_state().BlockList = blk;
                 }
                 change = true;
             }
@@ -811,7 +811,7 @@ void    SortBlocks( void )
         return;
     if( _IsntModel( CGSW_GEN_BRANCH_PREDICTION ) )
         return;
-    if( OptForSize > 50 )
+    if( data_state().OptForSize > 50 )
         return;
     /*
      * we can't screw about with the placement of the return
@@ -822,7 +822,7 @@ void    SortBlocks( void )
         return;
     BQInit( &unplaced );
     BQInit( &placed );
-    for( curr = HeadBlock; curr != NULL; curr = next ) {
+    for( curr = data_state().HeadBlock; curr != NULL; curr = next ) {
         next = curr->next_block;
         BQAdd( &unplaced, curr );
         if( _IsBlkAttr( curr, BLK_RETURNED_TO ) ) {
@@ -849,6 +849,6 @@ void    SortBlocks( void )
             BQRemove( &unplaced, curr );
         }
     }
-    HeadBlock = placed.first;
+    data_state().HeadBlock = placed.first;
     _MarkBlkAllUnVisited();
 }

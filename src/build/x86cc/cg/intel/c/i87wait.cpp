@@ -128,7 +128,7 @@ void    Wait8087( void )
       && _IsntTargetModel( CGSW_X86_GEN_FWAIT_386 ) )
         return;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         last_fpins = NULL;
         past_jump = false;
         for( ins = blk->ins.head.next; ; ins = ins->head.next ) {

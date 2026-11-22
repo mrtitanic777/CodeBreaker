@@ -37,12 +37,17 @@
 global  linkage_regs    DefaultLinkage;
 global  linkage_regs    OSLinkage;
 #endif
-global  hw_reg_set      DefaultVarParms[];
-global  hw_reg_set      RegBits[];
-global  hw_reg_set      AsmRegsSaved;
-global  char            Registers[];
-global  unsigned char   RegMap[];
-global  aux_info        InlineInfo;
+global  hw_reg_set      const DefaultVarParms[];
+global  hw_reg_set      const RegBits[];
+global  char            const Registers[];
+global  unsigned char   const RegMap[];
+
+/* the variables of pdefn2.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct Pdefn2State {
+    hw_reg_set AsmRegsSaved = HW_D( HW_FULL );
+    aux_info InlineInfo;
+};
+inline Pdefn2State& pdefn2_state() { return cbrun_part<Pdefn2State>(); }
 
 global  const inline_funcs    SInline_Functions[];
 global  const inline_funcs    Inline_Functions[];

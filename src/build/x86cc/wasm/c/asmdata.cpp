@@ -55,8 +55,18 @@ static bool_             first_init;
 
 static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token_buffer *tokbuf, token_idx start_pos, unsigned no_of_bytes );
 
-static bool_             More_Array_Element = false;
-static unsigned         Last_Element_Size;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct AsmdataState {
+    bool_ More_Array_Element = false;
+    unsigned Last_Element_Size;
+};
+
+}  // namespace
+
+static inline AsmdataState& asmdata_state() { return cbrun_part<AsmdataState>(); }
+
 
 /* data initialization stuff */
 
@@ -306,8 +316,8 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                 return( INVALID_IDX );
             }
             if( cur_pos == ( tokbuf->count - 1 ) ) {
-                More_Array_Element = true;
-                Last_Element_Size = no_of_bytes;
+                asmdata_state().More_Array_Element = true;
+                asmdata_state().Last_Element_Size = no_of_bytes;
             }
             break;
         case TC_STRING:
@@ -434,7 +444,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                     fixup_type = FIX_OFF16;
                     break;
                 case 4:
-                    if( Code->use32 ) {
+                    if( asmdefs_state().Code->use32 ) {
                         fixup_type = FIX_OFF32;
                     } else {
                         fixup_type = FIX_PTR16;
@@ -443,7 +453,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                 case 6:
                     // fixme -- this needs work .... check USE32, etc
                     fixup_type = FIX_PTR32;
-                    Code->info.opnd_type[OPND1] = OP_J48;
+                    asmdefs_state().Code->info.opnd_type[OPND1] = OP_J48;
                     break;
                 default:
                     AsmError( NOT_IMPLEMENTED );
@@ -457,7 +467,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
             fixup = AddFixup( init_sym, fixup_type, OPTJ_NONE );
             //          if( fixup == NULL ) return( INVALID_IDX );
             // fixme
-            InsFixups[OPND1] = fixup;
+            asmfixup_state().InsFixups[OPND1] = fixup;
             data += fixup->u_offset;
 
             for( cur_pos++;
@@ -615,7 +625,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                         find_frame( init_sym );
 #endif
                         fixup = AddFixup( init_sym, fixup_type, OPTJ_NONE );
-                        InsFixups[OPND1] = fixup;
+                        asmfixup_state().InsFixups[OPND1] = fixup;
                         if( tokbuf->tokens[seg_off_operator_loc].u.token == T_OFFSET
                           || tokbuf->tokens[seg_off_operator_loc].u.token == T_OFFSET32 ) {
                             data += fixup->u_offset;
@@ -908,8 +918,8 @@ bool_ data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_
     }
 #endif
 
-    if( More_Array_Element ) {
-        More_Array_Element = false;
+    if( asmdata_state().More_Array_Element ) {
+        asmdata_state().More_Array_Element = false;
     } else if( ISVALID_IDX( sym_loc ) ) {
 #if defined( _STANDALONE_ )
         /* defining a field in a structure */
@@ -974,9 +984,9 @@ bool_ NextArrayElement( token_buffer *tokbuf, bool_ *next )
     token_idx   rc;
 
     *next = false;
-    if( More_Array_Element ) {
-        More_Array_Element = false;
-        rc = dup_array( NULL, NULL, tokbuf, 0, Last_Element_Size );
+    if( asmdata_state().More_Array_Element ) {
+        asmdata_state().More_Array_Element = false;
+        rc = dup_array( NULL, NULL, tokbuf, 0, asmdata_state().Last_Element_Size );
         if( ISINVALID_IDX( rc ) )
             return( RC_ERROR );
         *next = true;

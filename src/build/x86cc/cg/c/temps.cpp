@@ -60,7 +60,17 @@ typedef struct stack_entry {
         type_length             size;
 } stack_entry;
 
-static    stack_entry   *StackMap;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct TempsState {
+    stack_entry *StackMap;
+};
+
+}  // namespace
+
+static inline TempsState& temps_state() { return cbrun_part<TempsState>(); }
+
 
 /* borrow some bits for FindOnlyIns stuff */
 #define USED_NEVER      static_cast<var_usage>(EMPTY)
@@ -79,15 +89,15 @@ static  void    StackEntry( stack_temp *st_temp, name *temp )
     new_stk->temp.first = st_temp->first;
     new_stk->temp.last = st_temp->last;
     new_stk->temp.others = NULL;
-    new_stk->link = StackMap;
-    StackMap = new_stk;
+    new_stk->link = temps_state().StackMap;
+    temps_state().StackMap = new_stk;
 }
 
 
 void    InitStackMap( void )
 /**************************/
 {
-    StackMap = NULL;
+    temps_state().StackMap = NULL;
 }
 
 
@@ -100,7 +110,7 @@ static  void    ReInitStackMap( void )
     stack_temp  *other;
     stack_temp  *next;
 
-    for( stack = StackMap; stack != NULL; stack = stack->link ) {
+    for( stack = temps_state().StackMap; stack != NULL; stack = stack->link ) {
         for( other = stack->temp.others; other != NULL; other = next ) {
             next = other->others;
             CGFree( other );
@@ -131,7 +141,7 @@ static  void    TellTempLocs( void )
     name        *temp;
     int         ans;
 
-    for( temp = Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->v.symbol != NULL && (temp->t.temp_flags & ALIAS) == 0 ) {
             ans = (int)(pointer_uint)FEAuxInfo( temp->v.symbol, FEINF_TEMP_LOC_NAME );
             if( ans == TEMP_LOC_QUIT )
@@ -154,7 +164,7 @@ static  stack_entry     *ReUsableStack(stack_temp *st_temp,name *temp)
     stack_temp  *other;
 
     size = temp->n.size;
-    for( stack = StackMap; stack != NULL; stack = stack->link ) {
+    for( stack = temps_state().StackMap; stack != NULL; stack = stack->link ) {
         if( size <= stack->size ) {
             for( other = &stack->temp; other != NULL; other = other->others ) {
                 if( other->first <= st_temp->last && other->last >= st_temp->first ) {
@@ -252,7 +262,7 @@ static  void    CalcRange( stack_temp *new_stk, name *temp )
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk->blk_id != temp->t.u.blk_id; ) {
+    for( blk = data_state().HeadBlock; blk->blk_id != temp->t.u.blk_id; ) {
         blk = blk->next_block;
     }
     ScanForFirstDefn( blk, new_stk, temp );
@@ -308,7 +318,7 @@ static  instruction     *FindOnlyIns( name *name, bool_ *any_references )
     }
     *any_references = true;
     onlyins = NULL;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 if( In( ins->operands[i], name ) ) {
@@ -410,7 +420,7 @@ static  void    AllocNewLocal( name *temp )
             temp->v.usage &= ~NEEDS_MEMORY;
         }
     } else {
-        if( BlockByBlock || (temp->v.usage & USE_ADDRESS) ) {
+        if( data_state().BlockByBlock || (temp->v.usage & USE_ADDRESS) ) {
             NewLocation( temp, size );
             return;
         }
@@ -458,14 +468,14 @@ static  void    CalcNumberOfUses( void )
     instruction *ins;
     opcnt       i;
 
-    for( temp = Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->t.temp_flags & STACK_PARM ) {
             temp->v.block_usage = USED_TWICE;
         } else {
             temp->v.block_usage = USED_NEVER;
         }
     }
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 MarkUsage( ins->operands[i] );
@@ -486,21 +496,21 @@ void    AssignOtherLocals( void )
     name        *rest;
 
     rest = NULL;
-    if( LastTemp != NULL ) {
-        rest = LastTemp->n.next_name;
-        LastTemp->n.next_name = NULL;
+    if( data_state().LastTemp != NULL ) {
+        rest = data_state().LastTemp->n.next_name;
+        data_state().LastTemp->n.next_name = NULL;
     }
-    Names[N_TEMP] = static_cast<name *>(SortList( Names[N_TEMP], offsetof( name, n.next_name ), TempAllocBefore ));
-    if( LastTemp != NULL ) {
-        for( owner = &Names[N_TEMP]; *owner != NULL; ) {
+    data_state().Names[N_TEMP] = static_cast<name *>(SortList( data_state().Names[N_TEMP], offsetof( name, n.next_name ), TempAllocBefore ));
+    if( data_state().LastTemp != NULL ) {
+        for( owner = &data_state().Names[N_TEMP]; *owner != NULL; ) {
             owner = &(*owner)->n.next_name;
         }
         *owner = rest;
     }
-    if( !BlockByBlock ) {
+    if( !data_state().BlockByBlock ) {
         CalcNumberOfUses();
     }
-    for( temp = Names[N_TEMP]; temp != LastTemp; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != data_state().LastTemp; temp = temp->n.next_name ) {
         if( (temp->v.usage & NEEDS_MEMORY) == 0 )
             continue;
         if( temp->v.usage & HAS_MEMORY )
@@ -545,7 +555,7 @@ void    ParmPropagate( void )
     block       *blk;
     opcnt       i;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 PropAParm( ins->operands[i] );
@@ -600,7 +610,7 @@ void    FiniStackMap( void )
     stack_temp  *next2;
     name        *temp;
 
-    for( temp = Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->t.temp_flags & ALIAS )
             continue;
         if( (temp->v.usage & USE_ADDRESS) == 0 )
@@ -610,8 +620,8 @@ void    FiniStackMap( void )
         AllocNewLocal( temp );
     }
 
-    while( (stack = StackMap) != NULL ) {
-        StackMap = StackMap->link;
+    while( (stack = temps_state().StackMap) != NULL ) {
+        temps_state().StackMap = temps_state().StackMap->link;
         for( other = stack->temp.others; other != NULL; other = next2 ) {
             next2 = other->others;
             CGFree( other );
@@ -630,7 +640,7 @@ void    AssgnMoreTemps( block_id blk_id )
     block       *blk;
     opcnt       i;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 AssgnATemp( ins->operands[i], blk_id );
@@ -657,10 +667,10 @@ void            CountTempRefs( void )
     opcnt               i;
     name                *temp;
 
-    for( temp = Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         temp->t.u.ref_count = 0;
     }
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 if( ins->operands[i]->n.class_ == N_TEMP ) {

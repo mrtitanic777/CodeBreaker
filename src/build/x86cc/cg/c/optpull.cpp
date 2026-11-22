@@ -140,8 +140,8 @@ void    CloneCode( label_handle lbl )
         max_size = _ObjLen( jmp );
         if( size > max_size && FindShort( jmp, NULL ) )
             continue;
-        if( OptForSize < 50 ) {
-            max_size *= ( 100 - OptForSize ) / 25;
+        if( data_state().OptForSize < 50 ) {
+            max_size *= ( 100 - data_state().OptForSize ) / 25;
         }
         if( size > max_size )
             continue;
@@ -192,7 +192,7 @@ bool_    StraightenCode( ins_entry *jump )
     hoist = _Label( jump )->ins;
     if( hoist == NULL )
         optreturn( false );
-    if( hoist == LastIns )
+    if( hoist == optdata_state().LastIns )
         optreturn( false );
     cl = PrevClass( hoist );
     if( !_TransferClass( cl ) )
@@ -222,8 +222,8 @@ bool_    StraightenCode( ins_entry *jump )
     insert = jump;
     for( ;; ) {
         if( hoist == NULL ) {
-            ChgLblRef( jump, AddNewLabel( LastIns, align ) );
-            next = LastIns;
+            ChgLblRef( jump, AddNewLabel( optdata_state().LastIns, align ) );
+            next = optdata_state().LastIns;
             break;
         }
         next = NextIns( hoist );
@@ -239,7 +239,7 @@ bool_    StraightenCode( ins_entry *jump )
         }
         hoist = next;
     }
-    InsDelete = true;
+    optdata_state().InsDelete = true;
     Untangle( next );
     if( _Class( jump ) != OC_DEAD ) {
         Untangle( _Label( jump )->ins );
@@ -296,7 +296,7 @@ void    JmpRet( ins_entry *instr )
     ins_entry   *ret;
 
   optbegin
-    if( InsDelete )
+    if( optdata_state().InsDelete )
         optreturnvoid;
     ret = _Label( instr )->ins;
     if( ret == NULL )

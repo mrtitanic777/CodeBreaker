@@ -137,7 +137,7 @@ static  void    UseDefGlobals( block *blk )
     conflict_node       *conf;
     var_usage           usage;
 
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         if( conf->name->n.class_ == N_MEMORY ) {
             usage = conf->name->v.block_usage;
             Use( conf->name, blk, static_cast<var_usage>(EMPTY) );
@@ -221,7 +221,7 @@ static  void    TransferAllMemBlockUsage( void )
 {
     name        *mem;
 
-    for( mem = Names[N_MEMORY]; mem != NULL; mem = mem->n.next_name ) {
+    for( mem = data_state().Names[N_MEMORY]; mem != NULL; mem = mem->n.next_name ) {
         TransferBlockUsage( mem );
     }
 }
@@ -303,7 +303,7 @@ void    TransferTempFlags( void )
     instruction *ins;
     opcnt       i;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 TransferOneTempFlag( ins->operands[i] );
@@ -313,7 +313,7 @@ void    TransferTempFlags( void )
             }
         }
     }
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         TransferTempBlockUsage( blk );
     }
 }
@@ -329,11 +329,11 @@ static  void    TransferMemoryFlags( void )
     name        *same_sym;
     var_usage   usage;
 
-    for( m = Names[N_MEMORY]; m != NULL; m = m->n.next_name ) {
+    for( m = data_state().Names[N_MEMORY]; m != NULL; m = m->n.next_name ) {
         m->m.memory_flags = MF_EMPTY;
     }
 
-    for( m = Names[N_MEMORY]; m != NULL; m = m->n.next_name ) {
+    for( m = data_state().Names[N_MEMORY]; m != NULL; m = m->n.next_name ) {
         if( ( m->m.memory_flags & MF_VISITED ) == 0 ) {
             if( m->m.same_sym != NULL ) {
                 // union together mem flags from all symbols that
@@ -369,7 +369,7 @@ static  void    SearchDefUse( void )
     opcnt       i;
     bool_        touched_non_op;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         touched_non_op = false;
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ( ins->head.opcode == OP_CALL
@@ -413,7 +413,7 @@ static  void    SearchDefUse( void )
             }
         }
         /* in/out/def/use ignored if BlockByBlock so don't worry about it */
-        if( touched_non_op && !BlockByBlock ) {
+        if( touched_non_op && !data_state().BlockByBlock ) {
             TransferAllMemBlockUsage();
         } else {
             TransferMemBlockUsage( blk );
@@ -440,7 +440,7 @@ void    FindReferences( void )
 {
     block       *curr;
 
-    for( curr = HeadBlock; curr != NULL; curr = curr->next_block ) {
+    for( curr = data_state().HeadBlock; curr != NULL; curr = curr->next_block ) {
         if( curr->dataflow == NULL ) {
             curr->dataflow = static_cast<struct data_flow_def *>(CGAlloc( sizeof( data_flow_def ) ));
         }

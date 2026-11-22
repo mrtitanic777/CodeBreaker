@@ -52,7 +52,7 @@
 #include "scan.h"
 
 
-#define SET_CHARSET_DB(x)   CharSet[x] = C_DB | C_EX
+#define SET_CHARSET_DB(x)   scan_state().CharSet[x] = C_DB | C_EX
 
 static void setRange( unsigned low, unsigned high )
 /*************************************************/

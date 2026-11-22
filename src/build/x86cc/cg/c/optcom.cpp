@@ -125,7 +125,6 @@ static  void    TransformJumps( ins_entry *ins, ins_entry *first )
 }
 
 
-
 static  bool_    CommonInstr( ins_entry *old, ins_entry *add )
 /***********************************************************/
 {
@@ -242,7 +241,7 @@ bool_    ComTail( ins_entry *list, ins_entry *ins )
         optreturn( false );
     if( JustMoveLabel( &max, ins ) )
         optreturn( true );
-    if( OptForSize < 25 )
+    if( data_state().OptForSize < 25 )
         optreturn( false );
     if( max.save <= OptInsSize( OC_JMP, OC_DEST_NEAR ) )
         optreturn( false );

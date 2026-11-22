@@ -45,11 +45,21 @@
 #include "i64.h"
 
 
-static  pointer         *FrlHead[N_CLASS_MAX];
-static  pointer         *ConstDefnFrl;
-static  name            *NullReg;
-static  name            *ConstZero;
-static  name            *ConstOne;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct NamelistState {
+    pointer *FrlHead[N_CLASS_MAX];
+    pointer *ConstDefnFrl;
+    name *NullReg;
+    name *ConstZero;
+    name *ConstOne;
+};
+
+}  // namespace
+
+static inline NamelistState& namelist_state() { return cbrun_part<NamelistState>(); }
+
 
 static const int    Size[] = {
     #define pick(e,s)   s,
@@ -74,19 +84,18 @@ static const type_class_def OneClass[] = {
     XX              /* XX */
 };
 
-type_length     TypeClassSize[XX + 1];
 
 static name *AllocName( name_class_def class_, type_class_def type_class, type_length size )
 /*****************************************************************************************/
 {
     name        *new_name;
 
-    new_name = static_cast<name *>(AllocFrl( &FrlHead[class_], Size[class_] ));
+    new_name = static_cast<name *>(AllocFrl( &namelist_state().FrlHead[class_], Size[class_] ));
     new_name->n.class_ = class_;
-    new_name->n.next_name = Names[class_];
-    Names[class_] = new_name;
+    new_name->n.next_name = data_state().Names[class_];
+    data_state().Names[class_] = new_name;
     new_name->n.type_class = type_class;
-    new_name->n.size = TypeClassSize[type_class];
+    new_name->n.size = data_state().TypeClassSize[type_class];
     if( new_name->n.size == 0 ) {
         new_name->n.size = size;
     }
@@ -99,16 +108,16 @@ static name *findConst64( uint_32 low, uint_32 high, float_handle cf_value )
     name        *new_c;
     name        **last;
 
-    last = &Names[N_CONSTANT];
-    for( new_c = Names[N_CONSTANT]; new_c != NULL; new_c = new_c->n.next_name ) {
+    last = &data_state().Names[N_CONSTANT];
+    for( new_c = data_state().Names[N_CONSTANT]; new_c != NULL; new_c = new_c->n.next_name ) {
         if( new_c->c.const_type == CONS_ABSOLUTE ) {
             if( new_c->c.lo.u.uint_value == low
               && new_c->c.hi.u.uint_value == high ) {
                 if( CFCompare( new_c->c.u.cfval, cf_value ) == 0 ) {
                     // move constant found to front of list
                     *last = new_c->n.next_name;
-                    new_c->n.next_name = Names[N_CONSTANT];
-                    Names[N_CONSTANT] = new_c;
+                    new_c->n.next_name = data_state().Names[N_CONSTANT];
+                    data_state().Names[N_CONSTANT] = new_c;
                     break;
                 }
             }
@@ -124,7 +133,7 @@ static void ZapXX( name *xx, type_class_def type_class, type_length size )
 {
     if( type_class != XX ) {                     /* if he's making a type with same size as xx */
         xx->n.type_class = type_class;           /* zap the XX one to be a real type */
-        xx->n.size = TypeClassSize[type_class];
+        xx->n.size = data_state().TypeClassSize[type_class];
     } else if( size != 0 ) {
         xx->n.size = size;
     }
@@ -142,25 +151,25 @@ name    *AllocConst( float_handle cf_value )
     int_value = CFCnvF32( cf_value );
     test = CFTest( cf_value );
     if( test == 0
-      && ConstZero != NULL ) {
-        CFFree( &cgh, cf_value );
-        return( ConstZero );
+      && namelist_state().ConstZero != NULL ) {
+        CFFree( &cfloat_state().cgh, cf_value );
+        return( namelist_state().ConstZero );
     }
     if( int_value == 1
-      && ConstOne != NULL ) {
-        CFFree( &cgh, cf_value );
-        return( ConstOne );
+      && namelist_state().ConstOne != NULL ) {
+        CFFree( &cfloat_state().cgh, cf_value );
+        return( namelist_state().ConstOne );
     }
-    last = &Names[N_CONSTANT];
-    for( new_c = Names[N_CONSTANT]; new_c != NULL; new_c = new_c->n.next_name ) {
+    last = &data_state().Names[N_CONSTANT];
+    for( new_c = data_state().Names[N_CONSTANT]; new_c != NULL; new_c = new_c->n.next_name ) {
         if( new_c->c.const_type == CONS_ABSOLUTE ) {
             if( new_c->c.lo.u.int_value == int_value ) {
                 if( CFCompare( new_c->c.u.cfval, cf_value ) == 0 ) {
-                    CFFree( &cgh, cf_value );
+                    CFFree( &cfloat_state().cgh, cf_value );
                     // move constant found to front of list
                     *last = new_c->n.next_name;
-                    new_c->n.next_name = Names[N_CONSTANT];
-                    Names[N_CONSTANT] = new_c;
+                    new_c->n.next_name = data_state().Names[N_CONSTANT];
+                    data_state().Names[N_CONSTANT] = new_c;
                     return( new_c );
                 }
             }
@@ -177,14 +186,14 @@ name    *AllocConst( float_handle cf_value )
     }
     new_c->c.static_defn = NULL;
     new_c->c.const_type = CONS_ABSOLUTE;
-    if( ConstOne == NULL
+    if( namelist_state().ConstOne == NULL
       && new_c->c.lo.u.int_value == 1 ) {
-        ConstOne = new_c;
+        namelist_state().ConstOne = new_c;
     }
-    if( ConstZero == NULL
+    if( namelist_state().ConstZero == NULL
       && new_c->c.lo.u.int_value == 0
       && test == 0 ) {
-        ConstZero = new_c;
+        namelist_state().ConstZero = new_c;
     }
     if( int_value == 0 ) {
         if( CFIsI64( cf_value )
@@ -204,7 +213,7 @@ name    *AllocAddrConst( name *op, int seg, constant_type_class const_type, type
 {
     name        *new_c;
 
-    for( new_c = Names[N_CONSTANT]; new_c != NULL; new_c = new_c->n.next_name ) {
+    for( new_c = data_state().Names[N_CONSTANT]; new_c != NULL; new_c = new_c->n.next_name ) {
         if( new_c->c.const_type == const_type
           && new_c->c.u.op == op
           && new_c->n.type_class == type_class
@@ -225,11 +234,11 @@ name    *FindIntValue( int_32 value )
 /***********************************/
 {
     if( value == 0
-      && ConstZero != NULL )
-        return( ConstZero );
+      && namelist_state().ConstZero != NULL )
+        return( namelist_state().ConstZero );
     if( value == 1
-      && ConstOne != NULL )
-        return( ConstOne );
+      && namelist_state().ConstOne != NULL )
+        return( namelist_state().ConstOne );
     return( NULL );
 }
 
@@ -242,7 +251,7 @@ name    *AllocIntConst( int value )
     konst = FindIntValue( value );
     if( konst != NULL )
         return( konst );
-    return( AllocConst( CFCnvIF( &cgh, value ) ) );
+    return( AllocConst( CFCnvIF( &cfloat_state().cgh, value ) ) );
 }
 
 
@@ -254,7 +263,7 @@ name    *AllocUIntConst( uint value )
     konst = FindIntValue( value );
     if( konst != NULL )
         return( konst );
-    return( AllocConst( CFCnvUF( &cgh, value ) ) );
+    return( AllocConst( CFCnvUF( &cfloat_state().cgh, value ) ) );
 }
 
 
@@ -266,7 +275,7 @@ name    *AllocS32Const( int_32 value )
     konst = FindIntValue( value );
     if( konst != NULL )
         return( konst );
-    return( AllocConst( CFCnvI32F( &cgh, value ) ) );
+    return( AllocConst( CFCnvI32F( &cfloat_state().cgh, value ) ) );
 }
 
 name    *AllocU32Const( uint_32 value )
@@ -277,14 +286,14 @@ name    *AllocU32Const( uint_32 value )
     konst = FindIntValue( value );
     if( konst != NULL )
         return( konst );
-    return( AllocConst( CFCnvU32F( &cgh, value ) ) );
+    return( AllocConst( CFCnvU32F( &cfloat_state().cgh, value ) ) );
 }
 
 name    *AllocS64Const( uint_32 low, uint_32 high )
 /*************************************************/
 {
     name            *new_c;
-    float_handle    cf_value = CFCnvI64F( &cgh, low, high );
+    float_handle    cf_value = CFCnvI64F( &cfloat_state().cgh, low, high );
 
     new_c = findConst64( low, high, cf_value );
     if( new_c == NULL ) {
@@ -295,7 +304,7 @@ name    *AllocS64Const( uint_32 low, uint_32 high )
         new_c->c.static_defn = NULL;
         new_c->c.const_type = CONS_ABSOLUTE;
     } else {
-        CFFree( &cgh, cf_value );
+        CFFree( &cfloat_state().cgh, cf_value );
     }
     return( new_c );
 }
@@ -304,7 +313,7 @@ name    *AllocU64Const( uint_32 low, uint_32 high )
 /*************************************************/
 {
     name            *new_c;
-    float_handle    cf_value = CFCnvU64F( &cgh, low, high );
+    float_handle    cf_value = CFCnvU64F( &cfloat_state().cgh, low, high );
 
     new_c = findConst64( low, high, cf_value );
     if( new_c == NULL ) {
@@ -315,7 +324,7 @@ name    *AllocU64Const( uint_32 low, uint_32 high )
         new_c->c.static_defn = NULL;
         new_c->c.const_type = CONS_ABSOLUTE;
     } else {
-        CFFree( &cgh, cf_value );
+        CFFree( &cfloat_state().cgh, cf_value );
     }
     return( new_c );
 }
@@ -330,10 +339,10 @@ constant_defn   *GetFloat( name *cons, type_class_def type_class )
             return( defn );
         }
     }
-    defn = static_cast<constant_defn *>(AllocFrl( &ConstDefnFrl, sizeof( constant_defn ) ));
+    defn = static_cast<constant_defn *>(AllocFrl( &namelist_state().ConstDefnFrl, sizeof( constant_defn ) ));
     defn->const_class = type_class;
     defn->label = NULL;
-    CFCnvTarget( cons->c.u.cfval, &defn->buffer, TypeClassSize[type_class] );
+    CFCnvTarget( cons->c.u.cfval, &defn->buffer, data_state().TypeClassSize[type_class] );
     defn->next_defn = cons->c.static_defn;
     cons->c.static_defn = defn;
     return( defn );
@@ -350,7 +359,7 @@ name    *SAllocMemory( pointer symbol, type_length offset, cg_class class_,
 
     other = NULL;
     xx = NULL;
-    for( new_m = Names[N_MEMORY]; new_m != NULL; new_m = new_m->m._v._n.next_name ) {
+    for( new_m = data_state().Names[N_MEMORY]; new_m != NULL; new_m = new_m->m._v._n.next_name ) {
         if( new_m->m._v.symbol == symbol
           && new_m->m.memory_type == class_ ) {
             if( new_m->m._v.offset != offset ) {
@@ -476,7 +485,7 @@ name    *SAllocTemp( type_class_def type_class, type_length size )
 
     type_class = OneClass[type_class];
     new_t = AllocName( N_TEMP, type_class, size );
-    new_t->t.v.id = ++TempId;
+    new_t->t.v.id = ++data_state().TempId;
     new_t->v.symbol = NULL;
     new_t->v.offset = 0;
     new_t->v.usage = static_cast<var_usage>(0);
@@ -545,22 +554,21 @@ name    *DeAlias( name *temp )
 }
 
 
-
 name    *AllocRegName( hw_reg_set regs )
 /**************************************/
 {
     name        *new_r;
 
     if( HW_CEqual( regs, HW_EMPTY ) ) { /* here for speed. we grab this a lot! */
-        if( NullReg == NULL ) {
+        if( namelist_state().NullReg == NULL ) {
             new_r = AllocName( N_REGISTER, RegClass( regs ), 0 );
             HW_CAsgn( new_r->r.reg, HW_EMPTY );
             new_r->r.reg_index = -1;
-            NullReg = new_r;
+            namelist_state().NullReg = new_r;
         }
-        return( NullReg );
+        return( namelist_state().NullReg );
     }
-    for( new_r = Names[N_REGISTER]; new_r != NULL; new_r = new_r->n.next_name ) {
+    for( new_r = data_state().Names[N_REGISTER]; new_r != NULL; new_r = new_r->n.next_name ) {
         if( HW_Equal( new_r->r.reg, regs ) ) {
             return( new_r );
         }
@@ -582,7 +590,7 @@ name    *ScaleIndex( name *index, name *base, type_length offset, type_class_def
     name        *new_x;
 
     type_class = OneClass[type_class];
-    for( new_x = Names[N_INDEXED]; new_x != NULL; new_x = new_x->n.next_name ) {
+    for( new_x = data_state().Names[N_INDEXED]; new_x != NULL; new_x = new_x->n.next_name ) {
         if( new_x->i.base == base
           && new_x->i.index == index
           && new_x->i.constant == offset
@@ -594,7 +602,7 @@ name    *ScaleIndex( name *index, name *base, type_length offset, type_class_def
           && new_x->n.size == size ) ) ) {
             if( type_class != XX ) {
                 new_x->n.type_class = type_class;
-                new_x->n.size = TypeClassSize[type_class];
+                new_x->n.size = data_state().TypeClassSize[type_class];
             }
             if( index->n.class_ == N_TEMP ) {
                 index->t.temp_flags |= INDEXED;
@@ -638,11 +646,11 @@ void    InitNames( void )
     type_class_def      type_class;
 
     for( class_ = static_cast<name_class_def>(0); class_ < N_CLASS_MAX; ++class_ ) {
-        InitFrl( &FrlHead[class_] );
+        InitFrl( &namelist_state().FrlHead[class_] );
     }
-    InitFrl( &ConstDefnFrl );
+    InitFrl( &namelist_state().ConstDefnFrl );
     for( type_class = U1; type_class <= XX; ++type_class ) {
-        TypeClassSize[type_class] = TypeOfTypeClass( type_class )->length;
+        data_state().TypeClassSize[type_class] = TypeOfTypeClass( type_class )->length;
     }
     ReInitNames();
 }
@@ -653,14 +661,14 @@ void    ReInitNames( void )
 {
     name_class_def  class_;
 
-    TempId = 0;
-    NullReg = NULL;
-    ConstOne = NULL;
-    ConstZero = NULL;
-    LastTemp = NULL;
-    DummyIndex = NULL;
+    data_state().TempId = 0;
+    namelist_state().NullReg = NULL;
+    namelist_state().ConstOne = NULL;
+    namelist_state().ConstZero = NULL;
+    data_state().LastTemp = NULL;
+    data_state().DummyIndex = NULL;
     for( class_ = static_cast<name_class_def>(0); class_ < N_CLASS_MAX; ++class_ ) {
-        Names[class_] = NULL;
+        data_state().Names[class_] = NULL;
     }
 }
 
@@ -673,11 +681,11 @@ void    FreeNames( void )
     name            *next;
 
     for( class_ = static_cast<name_class_def>(0); class_ < N_CLASS_MAX; ++class_ ) {
-        for( temp = Names[class_]; temp != NULL; temp = next ) {
+        for( temp = data_state().Names[class_]; temp != NULL; temp = next ) {
             next = temp->n.next_name;
             FreeAName( temp );
         }
-        Names[class_] = NULL;
+        data_state().Names[class_] = NULL;
     }
 }
 
@@ -689,17 +697,17 @@ void    FreeAName( name *op )
     constant_defn       *next;
 
     if( op->n.class_ == N_CONSTANT ) {
-        if( op == ConstZero ) {
-            ConstZero = NULL;
+        if( op == namelist_state().ConstZero ) {
+            namelist_state().ConstZero = NULL;
         }
-        if( op == ConstOne ) {
-            ConstOne = NULL;
+        if( op == namelist_state().ConstOne ) {
+            namelist_state().ConstOne = NULL;
         }
         if( op->c.const_type == CONS_ABSOLUTE ) {
-            CFFree( &cgh, op->c.u.cfval );
+            CFFree( &cfloat_state().cgh, op->c.u.cfval );
             for( defn = op->c.static_defn; defn != NULL; defn = next ) {
                 next = defn->next_defn;
-                FrlFreeSize( &ConstDefnFrl, (pointer *)defn, sizeof( constant_defn ) );
+                FrlFreeSize( &namelist_state().ConstDefnFrl, (pointer *)defn, sizeof( constant_defn ) );
             }
         }
     } else if( op->n.class_ == N_MEMORY ) {
@@ -707,17 +715,17 @@ void    FreeAName( name *op )
             FreeTable( static_cast<tbl_control *>(op->v.symbol) );
         }
     } else if( op->n.class_ == N_REGISTER ) {
-        if( op == NullReg ) {
-            NullReg = NULL;
+        if( op == namelist_state().NullReg ) {
+            namelist_state().NullReg = NULL;
         }
     } else if( op->n.class_ == N_TEMP ) {
-        if( op == LastTemp )
-            LastTemp = op->n.next_name;
-        if( op == DummyIndex ) {
-            DummyIndex = NULL;
+        if( op == data_state().LastTemp )
+            data_state().LastTemp = op->n.next_name;
+        if( op == data_state().DummyIndex ) {
+            data_state().DummyIndex = NULL;
         }
     }
-    FrlFreeSize( &FrlHead[op->n.class_], (pointer *)op, Size[op->n.class_] );
+    FrlFreeSize( &namelist_state().FrlHead[op->n.class_], (pointer *)op, Size[op->n.class_] );
 }
 
 
@@ -729,9 +737,9 @@ bool_    NameFrlFree( void )
 
     freed = false;
     for( class_ = static_cast<name_class_def>(0); class_ < N_CLASS_MAX; ++class_ ) {
-        freed |= FrlFreeAll( &FrlHead[class_], Size[class_] );
+        freed |= FrlFreeAll( &namelist_state().FrlHead[class_], Size[class_] );
     }
-    freed |= FrlFreeAll( &ConstDefnFrl, sizeof( constant_defn ) );
+    freed |= FrlFreeAll( &namelist_state().ConstDefnFrl, sizeof( constant_defn ) );
     return( freed );
 }
 

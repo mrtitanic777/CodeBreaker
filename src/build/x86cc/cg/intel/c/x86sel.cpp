@@ -112,7 +112,7 @@ static cost_val Balance( uint_32 size, uint_32 time )
     uint_32     balance;
     byte        opt_size;
 
-    opt_size = OptForSize;
+    opt_size = data_state().OptForSize;
     if( opt_size < 25 ) {
         opt_size = 25;
     }

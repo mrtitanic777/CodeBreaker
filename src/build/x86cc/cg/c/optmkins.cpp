@@ -49,7 +49,7 @@ ins_entry       *NewInstr( any_oc *oc )
   optbegin
     len = oc->oc_header.reclen + sizeof( ins_link );
     if( len <= OCENTRY_SIZE ) {
-        instr = static_cast<ins_entry *>(AllocFrl( &InstrFrl, OCENTRY_SIZE ));
+        instr = static_cast<ins_entry *>(AllocFrl( &optdata_state().InstrFrl, OCENTRY_SIZE ));
     } else {
         instr = static_cast<ins_entry *>(CGAlloc( len ));
     }
@@ -67,7 +67,7 @@ void    FreeInstr( ins_entry *instr )
 
     len = instr->oc.oc_header.reclen + sizeof( ins_link );
     if( len <= OCENTRY_SIZE ) {
-        FrlFreeSize( &InstrFrl, (pointer *)instr, OCENTRY_SIZE );
+        FrlFreeSize( &optdata_state().InstrFrl, (pointer *)instr, OCENTRY_SIZE );
     } else {
         CGFree( instr );
     }
@@ -77,7 +77,7 @@ void    FreeInstr( ins_entry *instr )
 bool_    InstrFrlFree( void )
 /**************************/
 {
-    return( FrlFreeAll( &InstrFrl, OCENTRY_SIZE ) );
+    return( FrlFreeAll( &optdata_state().InstrFrl, OCENTRY_SIZE ) );
 }
 
 

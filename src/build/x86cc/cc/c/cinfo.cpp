@@ -74,12 +74,6 @@ typedef struct spc_info {
     seg_type        segtype;
 } spc_info;
 
-static seg_name Predefined_Segs[] = {
-    { "_CODE",      SEG_CODE,       SYM_NULL },
-    { "_CONST",     SEG_CONST,      SYM_NULL },
-    { "_DATA",      SEG_DATA,       SYM_NULL },
-    { "_STACK",     SEG_STACK,      SYM_NULL },
-};
 
 static const spc_info InitFiniSegs[][3] = {
     {
@@ -104,11 +98,27 @@ static const spc_info InitFiniSegs[][3] = {
     }
 };
 
-static user_seg     *userSegments;
-static segment_id   userSegId;
 
-static segment_id   import_segid      = SEG_NULL;       /* next segment # for import sym */
-static segment_id   import_near_segid = SEG_NULL;       /* data seg # for -nd option */
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CinfoState {
+    seg_name Predefined_Segs[4] = {
+        { "_CODE",      SEG_CODE,       SYM_NULL },
+        { "_CONST",     SEG_CONST,      SYM_NULL },
+        { "_DATA",      SEG_DATA,       SYM_NULL },
+        { "_STACK",     SEG_STACK,      SYM_NULL },
+    };
+    user_seg *userSegments;
+    segment_id userSegId;
+    segment_id import_segid = SEG_NULL;   /* next segment # for import sym */
+    segment_id import_near_segid = SEG_NULL;   /* data seg # for -nd option */
+};
+
+}  // namespace
+
+static inline CinfoState& cinfo_state() { return cbrun_part<CinfoState>(); }
+
 
 void AssignSeg( SYMPTR sym )
 {
@@ -127,14 +137,14 @@ void AssignSeg( SYMPTR sym )
             }
             if( sym->u.var.segid == SEG_DATA ) {
                 sym->u.var.segid = SEG_BSS;
-                CompFlags.bss_segment_used = true;
+                cvars_state().CompFlags.bss_segment_used = true;
             }
             SetSegAlign( sym );
         }
     } else if( sym->mods & (FLAG_FAR | FLAG_HUGE) ) {
-        sym->u.var.segid = import_segid--;
-    } else if( (import_near_segid != SEG_NULL) && (sym->mods & FLAG_NEAR) ) {  // imported and near
-        sym->u.var.segid = import_near_segid;
+        sym->u.var.segid = cinfo_state().import_segid--;
+    } else if( (cinfo_state().import_near_segid != SEG_NULL) && (sym->mods & FLAG_NEAR) ) {  // imported and near
+        sym->u.var.segid = cinfo_state().import_near_segid;
     }
 }
 
@@ -159,7 +169,7 @@ void SetFarHuge( SYMPTR sym, bool_ report )
     }
   #endif
     size = SizeOfArg( sym->sym_type );
-    if( TargetSwitches & CGSW_X86_BIG_DATA ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
         attrib = sym->mods;
         if( (attrib & MASK_ALL_MEM_MODELS) == 0 ) {
             if( size == 0 ) {   /* unspecified array size */
@@ -169,9 +179,9 @@ void SetFarHuge( SYMPTR sym, bool_ report )
                         attrib |= FLAG_FAR;
                     }
                 }
-            } else if( size > DataThreshold ) {
+            } else if( size > cvars_state().DataThreshold ) {
                 attrib |= FLAG_FAR;
-            } else if( CompFlags.strings_in_code_segment && (sym->mods & FLAG_CONST) ) {
+            } else if( cvars_state().CompFlags.strings_in_code_segment && (sym->mods & FLAG_CONST) ) {
                 attrib |= FLAG_FAR;
             }
   #if _CPU == 8086
@@ -222,7 +232,7 @@ static fe_attr FESymAttr( SYMPTR sym )
         attr |= FE_PROC | FE_STATIC;
         if( VarFunc( sym ) )
             attr |= FE_VARARGS;
-        if( CompFlags.unique_functions ) {
+        if( cvars_state().CompFlags.unique_functions ) {
             if( (attr & FE_GLOBAL) || (sym->flags & SYM_ADDR_TAKEN) ) {
                 attr |= FE_UNIQUE;
             }
@@ -241,7 +251,7 @@ static fe_attr FESymAttr( SYMPTR sym )
     }
     switch( sym->attribs.declspec ) {
     case DECLSPEC_DLLIMPORT:
-        if( (attr & FE_IMPORT) || CompFlags.rent ) {
+        if( (attr & FE_IMPORT) || cvars_state().CompFlags.rent ) {
             attr |= FE_DLLIMPORT;
         }
         break;
@@ -290,7 +300,7 @@ segment_id SymSegId( SYMPTR sym )
     attr = FESymAttr( sym );
     if( attr & FE_PROC )
         return( SEG_CODE );
-    if( !CompFlags.rent ) {
+    if( !cvars_state().CompFlags.rent ) {
         if( attr & FE_CONSTANT ) {
             return( SEG_CONST2 );
         }
@@ -306,7 +316,7 @@ void SetSegment( SYMPTR sym )
 
 #if _INTEL_CPU
   #if _CPU == 8086
-    if( (sym->mods & FLAG_FAR) && CompFlags.zc_switch_used ) {
+    if( (sym->mods & FLAG_FAR) && cvars_state().CompFlags.zc_switch_used ) {
         if( CONSTANT( sym->mods )
           || (sym->attribs.stg_class == SC_STATIC && (sym->flags & SYM_TEMP)) ) {
             sym->u.var.segid = SEG_CODE;
@@ -314,9 +324,9 @@ void SetSegment( SYMPTR sym )
         }
     }
   #else /* _CPU == 386 */
-    if( !CompFlags.rent ) {
-        if( (sym->mods & FLAG_FAR) || (TargetSwitches & CGSW_X86_FLAT_MODEL) ) {
-           if( CONSTANT( sym->mods ) && CompFlags.zc_switch_used ) {
+    if( !cvars_state().CompFlags.rent ) {
+        if( (sym->mods & FLAG_FAR) || (cvars_state().TargetSwitches & CGSW_X86_FLAT_MODEL) ) {
+           if( CONSTANT( sym->mods ) && cvars_state().CompFlags.zc_switch_used ) {
                 sym->u.var.segid = SEG_CODE;
                 return;
            }
@@ -333,31 +343,31 @@ void SetSegment( SYMPTR sym )
         seg = NULL;
 #if _CPU == 8086
         if( size < 0x10000 ) {
-            for( seg = SegListHead; seg != NULL; seg = seg->next_segment ) {
+            for( seg = cvars_state().SegListHead; seg != NULL; seg = seg->next_segment ) {
                 if( seg->size_left >= size ) {
                     break;
                 }
             }
         }
 #else
-        seg = SegListHead;
+        seg = cvars_state().SegListHead;
 #endif
         if( seg == NULL ) {
-            if( SegListHead == NULL ) {
-                SegListHead = static_cast<segment_list *>(CMemAlloc( sizeof( segment_list ) ));
-                seg = SegListHead;
+            if( cvars_state().SegListHead == NULL ) {
+                cvars_state().SegListHead = static_cast<segment_list *>(CMemAlloc( sizeof( segment_list ) ));
+                seg = cvars_state().SegListHead;
             } else {
-                for( seg = SegListHead; seg->next_segment; ) {
+                for( seg = cvars_state().SegListHead; seg->next_segment; ) {
                     seg = seg->next_segment;
                 }
                 seg->next_segment = static_cast<struct segment_list *>(CMemAlloc( sizeof( segment_list ) ));
                 seg = seg->next_segment;
             }
-            seg->segid = SegmentNum++;
+            seg->segid = cvars_state().SegmentNum++;
 #if _CPU == 8086
             if( size > 0xFFFF ) {
                 while( size > 0x0FFFF ) {       /* while >= 64K */
-                    ++SegmentNum;
+                    ++cvars_state().SegmentNum;
                     size -= 0x10000;
                 }
                 seg->size_left = 0;
@@ -386,7 +396,7 @@ static user_seg *AllocUserSeg( const char *segname, const char *class_name, seg_
     if( class_name != NULL ) {
         useg->class_name = CMemStrdup( class_name );
     }
-    useg->segid = userSegId++;
+    useg->segid = cinfo_state().userSegId++;
     return( useg );
 }
 
@@ -416,9 +426,9 @@ static segment_id AddSeg( const char *segname, const char *class_name, int segty
     const char      *p;
 #endif
 
-    for( i = 0; i < ARRAY_SIZE( Predefined_Segs ); i++ ) {
-        if( strcmp( segname, Predefined_Segs[i].name ) == 0 ) {
-            return( Predefined_Segs[i].segid );
+    for( i = 0; i < ARRAY_SIZE( cinfo_state().Predefined_Segs ); i++ ) {
+        if( strcmp( segname, cinfo_state().Predefined_Segs[i].name ) == 0 ) {
+            return( cinfo_state().Predefined_Segs[i].segid );
         }
     }
 #if _INTEL_CPU
@@ -448,7 +458,7 @@ static segment_id AddSeg( const char *segname, const char *class_name, int segty
         }
     }
 #endif
-    for( lnk = &userSegments; (useg = *lnk) != NULL; lnk = &useg->next ) {
+    for( lnk = &cinfo_state().userSegments; (useg = *lnk) != NULL; lnk = &useg->next ) {
         if( strcmp( segname, useg->name ) == 0 ) {
             return( useg->segid ); /* was return( segment ) */
         }
@@ -493,7 +503,7 @@ void SetFuncSegment( SYMPTR sym, segment_id segid )
 {
     user_seg    *useg;
 
-    for( useg = userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
         if( useg->segid == segid ) {
             sym->seginfo = LkSegName( useg->name, "CODE" );
             break;
@@ -510,9 +520,9 @@ char *SegClassName( segment_id segid )
     size_t          len;
 
     if( segid == SEG_CODE ) {
-        return( CodeClassName );
+        return( cvars_state().CodeClassName );
     }
-    for( useg = userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
         if( useg->segid == segid && useg->class_name != NULL ) {
             classname = useg->class_name;
             if( classname[0] == '\0' ) {
@@ -532,7 +542,7 @@ char *SegClassName( segment_id segid )
             return( classname );
         }
     }
-    for( tseg = TextSegList; tseg != NULL; tseg = tseg->next ) {
+    for( tseg = cvars_state().TextSegList; tseg != NULL; tseg = tseg->next ) {
         if( tseg->segid == segid )  {
             /*
              * class name appears after the segment name
@@ -542,11 +552,11 @@ char *SegClassName( segment_id segid )
              * if class name not specified, then use the default
              */
             if( *classname == '\0' )
-                classname = CodeClassName;
+                classname = cvars_state().CodeClassName;
             return( classname );
         }
     }
-    if( DataSegName != NULL && *DataSegName != '\0' ) {
+    if( cvars_state().DataSegName != NULL && *cvars_state().DataSegName != '\0' ) {
         return const_cast<char *>(( "FAR_DATA" ));
     }
     return( NULL );
@@ -557,9 +567,9 @@ void SetSegSymHandle( SYM_HANDLE sym_handle, segment_id segid )
 {
     int     i;
 
-    for( i = 0; i < ARRAY_SIZE( Predefined_Segs ); i++ ) {
-        if( Predefined_Segs[i].segid == segid ) {
-            Predefined_Segs[i].sym_handle = sym_handle;
+    for( i = 0; i < ARRAY_SIZE( cinfo_state().Predefined_Segs ); i++ ) {
+        if( cinfo_state().Predefined_Segs[i].segid == segid ) {
+            cinfo_state().Predefined_Segs[i].sym_handle = sym_handle;
             break;
         }
     }
@@ -571,12 +581,12 @@ SYM_HANDLE SegSymHandle( segment_id segid )
     int             i;
     user_seg        *useg;
 
-    for( i = 0; i < ARRAY_SIZE( Predefined_Segs ); i++ ) {
-        if( Predefined_Segs[i].segid == segid ) {
-            return( Predefined_Segs[i].sym_handle );
+    for( i = 0; i < ARRAY_SIZE( cinfo_state().Predefined_Segs ); i++ ) {
+        if( cinfo_state().Predefined_Segs[i].segid == segid ) {
+            return( cinfo_state().Predefined_Segs[i].sym_handle );
         }
     }
-    for( useg = userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
         if( useg->segid == segid ) {
             if( useg->sym_handle == SYM_NULL ) {
                 useg->sym_handle = SegSymbol( useg->name, SEG_NULL );
@@ -592,7 +602,7 @@ hw_reg_set *SegPeggedReg( segment_id segid )
 {
     user_seg    *useg;
 
-    for( useg = userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
         if( useg->segid == segid ) {
             return( &useg->pegged_register );
         }
@@ -607,7 +617,7 @@ static align_type SegAlign( align_type suggested )
     align_type     align;
 
     align = suggested;
-    if( CompFlags.unaligned_segs ) {
+    if( cvars_state().CompFlags.unaligned_segs ) {
         align = 1;
     }
     return( align );
@@ -623,36 +633,36 @@ void    SetSegs( void )
     const char      *module_name;
     align_type      optsize_segalign;
 
-    CompFlags.low_on_memory_printed = false;
-    optsize_segalign = ( OptSize == 0 ) ? (align_type)BETypeLength( TY_INTEGER ) : 1;
+    cvars_state().CompFlags.low_on_memory_printed = false;
+    optsize_segalign = ( cvars_state().OptSize == 0 ) ? (align_type)BETypeLength( TY_INTEGER ) : 1;
 
-    if( *TextSegName == '\0' ) {
+    if( *cvars_state().TextSegName == '\0' ) {
         BEDefSeg( SEG_CODE, GLOBAL | INIT | EXEC, TS_SEG_CODE, SegAlign( optsize_segalign ) );
     } else {
-        BEDefSeg( SEG_CODE, GLOBAL | INIT | EXEC | GIVEN_NAME, TextSegName, SegAlign( optsize_segalign ) );
+        BEDefSeg( SEG_CODE, GLOBAL | INIT | EXEC | GIVEN_NAME, cvars_state().TextSegName, SegAlign( optsize_segalign ) );
     }
-    BEDefSeg( SEG_CONST, BACK|INIT|ROM, TS_SEG_CONST, SegAlign( SegAlignment[SEG_CONST] ) );
-    BEDefSeg( SEG_CONST2, INIT | ROM, TS_SEG_CONST2, SegAlign( SegAlignment[SEG_CONST2] ) );
-    BEDefSeg( SEG_DATA,  GLOBAL | INIT, TS_SEG_DATA, SegAlign( SegAlignment[SEG_DATA] ) );
-    if( CompFlags.ec_switch_used ) {
+    BEDefSeg( SEG_CONST, BACK|INIT|ROM, TS_SEG_CONST, SegAlign( cvars_state().SegAlignment[SEG_CONST] ) );
+    BEDefSeg( SEG_CONST2, INIT | ROM, TS_SEG_CONST2, SegAlign( cvars_state().SegAlignment[SEG_CONST2] ) );
+    BEDefSeg( SEG_DATA,  GLOBAL | INIT, TS_SEG_DATA, SegAlign( cvars_state().SegAlignment[SEG_DATA] ) );
+    if( cvars_state().CompFlags.ec_switch_used ) {
         BEDefSeg( SEG_YIB,      GLOBAL | INIT,  TS_SEG_YIB, 2 );
         BEDefSeg( SEG_YI,       GLOBAL | INIT,  TS_SEG_YI,  2 );
         BEDefSeg( SEG_YIE,      GLOBAL | INIT,  TS_SEG_YIE, 2 );
     }
-    if( CompFlags.bss_segment_used ) {
-        BEDefSeg( SEG_BSS, GLOBAL, TS_SEG_BSS, SegAlign( SegAlignment[SEG_BSS] ) );
+    if( cvars_state().CompFlags.bss_segment_used ) {
+        BEDefSeg( SEG_BSS, GLOBAL, TS_SEG_BSS, SegAlign( cvars_state().SegAlignment[SEG_BSS] ) );
     }
-    if( CompFlags.far_strings ) {
-        FarStringSegId = SegmentNum++;
+    if( cvars_state().CompFlags.far_strings ) {
+        cvars_state().FarStringSegId = cvars_state().SegmentNum++;
     }
     module_name = FEModuleName();
     name = static_cast<char *>(CMemAlloc( strlen( module_name ) + 10 + sizeof( "_DATA" ) ));
-    for( segid = FIRST_PRIVATE_SEGMENT; segid < SegmentNum; ++segid ) {
+    for( segid = FIRST_PRIVATE_SEGMENT; segid < cvars_state().SegmentNum; ++segid ) {
         sprintf( name, "%s%d_DATA", module_name, segid );
         BEDefSeg( segid, INIT | PRIVATE, name, SegAlign( 16 ) );
     }
     CMemFree( name );
-    for( useg = userSegments; useg != NULL ; useg = useg->next ) {
+    for( useg = cinfo_state().userSegments; useg != NULL ; useg = useg->next ) {
         segid = useg->segid;
         switch( useg->segtype ) {
 #if 0
@@ -674,8 +684,8 @@ void    SetSegs( void )
             break;
         }
     }
-    for( tseg = TextSegList; tseg != NULL; tseg = tseg->next ) {
-        tseg->segid = ++SegmentNum;
+    for( tseg = cvars_state().TextSegList; tseg != NULL; tseg = tseg->next ) {
+        tseg->segid = ++cvars_state().SegmentNum;
         BEDefSeg( tseg->segid,  GLOBAL | INIT | EXEC | GIVEN_NAME, tseg->segname, SegAlign( optsize_segalign ) );
     }
 }
@@ -688,7 +698,7 @@ void EmitSegLabels( void )
     SYM_ENTRY           sym;
 
     segid = FIRST_USER_SEGMENT;
-    for( useg = userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
         if( useg->sym_handle != SYM_NULL ) {
             SymGet( &sym, useg->sym_handle );
             bck = BENewBack( (CGSYM_HANDLE)useg->sym_handle );
@@ -707,7 +717,7 @@ void FiniSegLabels( void )
     user_seg        *useg;
     SYM_ENTRY       sym;
 
-    for( useg = userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
         if( useg->sym_handle != SYM_NULL ) {
             SymGet( &sym, useg->sym_handle );
             BEFiniBack( sym.u1.backinfo );
@@ -721,7 +731,7 @@ void FiniSegBacks( void )
     user_seg        *useg;
     SYM_ENTRY       sym;
 
-    for( useg = userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
         if( useg->sym_handle != SYM_NULL ) {
             SymGet( &sym, useg->sym_handle );
             BEFreeBack( sym.u1.backinfo );
@@ -762,8 +772,8 @@ void FEMessage( fe_msg femsg, CGPOINTER parm )
         }
         break;
     case FEMSG_BLIP:
-        if( GlobalCompFlags.ide_console_output ) {
-            if( !CompFlags.quiet_mode ) {
+        if( cvars_state().GlobalCompFlags.ide_console_output ) {
+            if( !cvars_state().CompFlags.quiet_mode ) {
                 ConBlip();
             }
         }
@@ -771,15 +781,15 @@ void FEMessage( fe_msg femsg, CGPOINTER parm )
     case FEMSG_INFO:
     case FEMSG_INFO_FILE:
     case FEMSG_INFO_PROC:
-        if( GlobalCompFlags.ide_console_output ) {
-            if( !CompFlags.quiet_mode ) {
+        if( cvars_state().GlobalCompFlags.ide_console_output ) {
+            if( !cvars_state().CompFlags.quiet_mode ) {
                 NoteMsg( static_cast<const char *>(parm) );
             }
         }
         break;
     case FEMSG_CODE_SIZE:
-        if( GlobalCompFlags.ide_console_output ) {
-            if( !CompFlags.quiet_mode ) {
+        if( cvars_state().GlobalCompFlags.ide_console_output ) {
+            if( !cvars_state().CompFlags.quiet_mode ) {
                 CGetMsg( msgtxt, PHRASE_CODE_SIZE );
                 sprintf( msgbuf, "%s: %u", msgtxt, (unsigned)(pointer_uint)parm );
                 NoteMsg( msgbuf );
@@ -808,18 +818,18 @@ void FEMessage( fe_msg femsg, CGPOINTER parm )
     case FEMSG_SCHEDULER_DIED:
     case FEMSG_REGALLOC_DIED:
     case FEMSG_SCOREBOARD_DIED:
-        if( (GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
-            if( LastFuncOutOfMem != parm ) {
+        if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
+            if( cvars_state().LastFuncOutOfMem != parm ) {
                 CInfoMsg( INFO_NOT_ENOUGH_MEMORY_TO_FULLY_OPTIMIZE, FEName( (CGSYM_HANDLE)parm ) );
-                LastFuncOutOfMem = parm;
+                cvars_state().LastFuncOutOfMem = parm;
             }
         }
         break;
     case FEMSG_PEEPHOLE_FLUSHED:
-        if( (GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
-            if( !CompFlags.low_on_memory_printed ) {
+        if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
+            if( !cvars_state().CompFlags.low_on_memory_printed ) {
                 CInfoMsg( INFO_NOT_ENOUGH_MEMORY_TO_MAINTAIN_PEEPHOLE);
-                CompFlags.low_on_memory_printed = true;
+                cvars_state().CompFlags.low_on_memory_printed = true;
             }
         }
         break;
@@ -847,9 +857,9 @@ void FEMessage( fe_msg femsg, CGPOINTER parm )
 const char *FEModuleName( void )
 /******************************/
 {
-    if( ModuleName != NULL && ModuleName[0] != '\0' )
-        return( ModuleName );
-    return( SrcFName );
+    if( cvars_state().ModuleName != NULL && cvars_state().ModuleName[0] != '\0' )
+        return( cvars_state().ModuleName );
+    return( cvars_state().SrcFName );
 }
 
 
@@ -887,9 +897,9 @@ segment_id FESegID( CGSYM_HANDLE cgsym_handle )
                 segid = sym->seginfo->segid;
     #if _INTEL_CPU
             } else if( attr & FE_IMPORT ) {
-                if( (sym->mods & FLAG_FAR) || (TargetSwitches & CGSW_X86_BIG_CODE) ) {
+                if( (sym->mods & FLAG_FAR) || (cvars_state().TargetSwitches & CGSW_X86_BIG_CODE) ) {
                     if( sym->flags & SYM_ADDR_TAKEN ) {
-                        segid = import_segid--;
+                        segid = cinfo_state().import_segid--;
                     }
                 }
     #endif
@@ -1013,10 +1023,10 @@ void SegInit( void )
 {
     segment_id  segid;
 
-    userSegments = NULL;
-    userSegId = FIRST_USER_SEGMENT;
+    cinfo_state().userSegments = NULL;
+    cinfo_state().userSegId = FIRST_USER_SEGMENT;
     for( segid = 0; segid < FIRST_PRIVATE_SEGMENT; segid++ ) {
-        SegAlignment[segid] = TARGET_INT;
+        cvars_state().SegAlignment[segid] = TARGET_INT;
     }
 }
 
@@ -1024,8 +1034,8 @@ void SegFini( void )
 {
     user_seg    *useg;
 
-    while( (useg = userSegments) != NULL ) {
-        userSegments = useg->next;
+    while( (useg = cinfo_state().userSegments) != NULL ) {
+        cinfo_state().userSegments = useg->next;
         CMemFree( useg );
     }
 }
@@ -1036,24 +1046,24 @@ void SetSegAlign( SYMPTR sym )
     segment_id          segid;
 
     segid = sym->u.var.segid;
-    if( segid < FIRST_PRIVATE_SEGMENT && OptSize == 0 ) {
+    if( segid < FIRST_PRIVATE_SEGMENT && cvars_state().OptSize == 0 ) {
         align = GetTypeAlignment( sym->sym_type );
-        if( SegAlignment[segid] < align ) {
-            SegAlignment[segid] = align;
+        if( cvars_state().SegAlignment[segid] < align ) {
+            cvars_state().SegAlignment[segid] = align;
         }
     }
 }
 
 void ImportNearSegIdInit( void )
 {
-    import_near_segid = -1;
+    cinfo_state().import_near_segid = -1;
 }
 
 void ImportSegIdInit( void )
 {
-    if( import_near_segid != SEG_NULL ) {
-        import_segid = import_near_segid - 1;
+    if( cinfo_state().import_near_segid != SEG_NULL ) {
+        cinfo_state().import_segid = cinfo_state().import_near_segid - 1;
     } else {
-        import_segid = -1;
+        cinfo_state().import_segid = -1;
     }
 }

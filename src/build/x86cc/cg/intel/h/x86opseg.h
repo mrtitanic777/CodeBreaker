@@ -31,4 +31,13 @@
 ****************************************************************************/
 
 
-extern zero_page_scheme ZPageType;
+#ifndef CB_STATE_X86OPSEG_H
+#define CB_STATE_X86OPSEG_H
+
+/* the variables of x86opseg.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct X86opsegState {
+    zero_page_scheme ZPageType;
+};
+inline X86opsegState& x86opseg_state() { return cbrun_part<X86opsegState>(); }
+
+#endif

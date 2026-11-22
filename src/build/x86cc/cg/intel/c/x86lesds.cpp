@@ -56,7 +56,7 @@ static  bool_    AdjacentMem( name *s, name *r, type_class_def type_class )
     int         locn_r;
     int         stride;
 
-    stride = TypeClassSize[type_class];
+    stride = data_state().TypeClassSize[type_class];
     if( s->n.class_ != r->n.class_ )
         return( false );
     if( s->n.class_ == N_MEMORY ) {
@@ -125,7 +125,7 @@ static bool_     OptMemMove( instruction *ins, instruction *next )
              ins->operands[0]->c.const_type == CONS_ABSOLUTE &&
             next->operands[0]->n.class_ == N_CONSTANT &&
             next->operands[0]->c.const_type == CONS_ABSOLUTE ) {
-            switch( TypeClassSize[ins->type_class] ) {
+            switch( data_state().TypeClassSize[ins->type_class] ) {
             case 1:
                 shift = 8;
                 result_type_class = U2;
@@ -325,7 +325,7 @@ void    OptSegs( void )
 
     do {
         redo = false;
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
                 next = ins->head.next;
                 if( NotByteMove( ins ) && NotByteMove( next ) ) {

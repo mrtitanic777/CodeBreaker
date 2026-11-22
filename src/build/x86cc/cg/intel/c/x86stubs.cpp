@@ -72,7 +72,7 @@ hw_reg_set ParmRegConflicts( hw_reg_set r )
 
 type_length TempLocation( name *temp )
 {
-    return( temp->t.location + CurrProc->locals.size );
+    return( temp->t.location + data_state().CurrProc->locals.size );
 }
 
 hw_reg_set      VarargsHomePtr( void )

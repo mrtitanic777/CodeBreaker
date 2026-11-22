@@ -65,26 +65,36 @@
     #define DbgNever()
 #endif
 
-static bool_     nd_used = false;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct Cmdlnx86State {
+    bool_ nd_used = false;
+};
+
+}  // namespace
+
+static inline Cmdlnx86State& cmdlnx86_state() { return cbrun_part<Cmdlnx86State>(); }
+
 
 void CmdSysInit( void )
 {
     SetAuxWatcallInfo();
 
-    GenSwitches = CGSW_GEN_MEMORY_LOW_FAILS;
+    cvars_state().GenSwitches = CGSW_GEN_MEMORY_LOW_FAILS;
 #if _CPU == 8086
-    TargetSwitches = static_cast<cg_target_switches>(0);
-    PackAmount = TARGET_INT;                /* pack structs on word boundaries */
+    cvars_state().TargetSwitches = static_cast<cg_target_switches>(0);
+    cvars_state().PackAmount = TARGET_INT;                /* pack structs on word boundaries */
 #else
-    TargetSwitches = CGSW_X86_USE_32;
-    PackAmount = 8;
+    cvars_state().TargetSwitches = CGSW_X86_USE_32;
+    cvars_state().PackAmount = 8;
 #endif
-    GblPackAmount = PackAmount;
-    DataThreshold = TARGET_INT_MAX;
-    Inline_Threshold = 20;
-    TextSegName = const_cast<char *>("");
-    DataSegName = const_cast<char *>("");
-    GenCodeGroup = const_cast<char *>("");
+    cvars_state().GblPackAmount = cvars_state().PackAmount;
+    cvars_state().DataThreshold = TARGET_INT_MAX;
+    cvars_state().Inline_Threshold = 20;
+    cvars_state().TextSegName = const_cast<char *>("");
+    cvars_state().DataSegName = const_cast<char *>("");
+    cvars_state().GenCodeGroup = const_cast<char *>("");
 }
 
 static char *setTargetSystem( OPT_STORAGE *data )
@@ -110,11 +120,11 @@ static char *setTargetSystem( OPT_STORAGE *data )
         break;
     case OPT_ENUM_win_zws:
         SetTargetName( &target_name, "WINDOWS" );
-        TargetSwitches |= CGSW_X86_SMART_WINDOWS;
+        cvars_state().TargetSwitches |= CGSW_X86_SMART_WINDOWS;
         break;
     case OPT_ENUM_win_zWs:
         SetTargetName( &target_name, "CHEAP_WINDOWS" );
-        TargetSwitches |= CGSW_X86_SMART_WINDOWS;
+        cvars_state().TargetSwitches |= CGSW_X86_SMART_WINDOWS;
         break;
 #endif
     case OPT_ENUM_win_default:
@@ -154,36 +164,36 @@ static char *setTargetSystem( OPT_STORAGE *data )
 
     if( target_name != NULL ) {
         if( strcmp( target_name, "DOS" ) == 0 ) {
-            TargetSystem = TS_DOS;
+            cvars_state().TargetSystem = TS_DOS;
         } else if( strcmp( target_name, "NETWARE" ) == 0 ) {
-            TargetSystem = TS_NETWARE;
+            cvars_state().TargetSystem = TS_NETWARE;
         } else if( strcmp( target_name, "NETWARE5" ) == 0 ) {
-            TargetSystem = TS_NETWARE5;
+            cvars_state().TargetSystem = TS_NETWARE5;
             SetTargetName( &target_name, "NETWARE" );
         } else if( strcmp( target_name, "WINDOWS" ) == 0 ) {
-            TargetSystem = TS_WINDOWS;
+            cvars_state().TargetSystem = TS_WINDOWS;
         } else if( strcmp( target_name, "CHEAP_WINDOWS" ) == 0 ) {
 #if _CPU == 8086
-            TargetSystem = TS_CHEAP_WINDOWS;
+            cvars_state().TargetSystem = TS_CHEAP_WINDOWS;
 #else
-            TargetSystem = TS_WINDOWS;
+            cvars_state().TargetSystem = TS_WINDOWS;
 #endif
             SetTargetName( &target_name, "WINDOWS" );
         } else if( strcmp( target_name, "NT" ) == 0 ) {
-            TargetSystem = TS_NT;
+            cvars_state().TargetSystem = TS_NT;
         } else if( strcmp( target_name, "LINUX" ) == 0 ) {
-            TargetSystem = TS_LINUX;
+            cvars_state().TargetSystem = TS_LINUX;
         } else if( strcmp( target_name, "QNX" ) == 0 ) {
-            TargetSystem = TS_QNX;
+            cvars_state().TargetSystem = TS_QNX;
         } else if( strcmp( target_name, "OS2" ) == 0 ) {
-            TargetSystem = TS_OS2;
+            cvars_state().TargetSystem = TS_OS2;
         } else if( strcmp( target_name, "RDOS" ) == 0 ) {
-            TargetSystem = TS_RDOS;
+            cvars_state().TargetSystem = TS_RDOS;
         } else if( strcmp( target_name, "HAIKU" ) == 0
                 || strcmp( target_name, "OSX" ) == 0
                 || strcmp( target_name, "SOLARIS" ) == 0
                 || strcmp( target_name, "BSD" ) == 0 ) {
-            TargetSystem = TS_UNIX;
+            cvars_state().TargetSystem = TS_UNIX;
         }
     }
     return( target_name );
@@ -198,25 +208,25 @@ static void setIntelArchitecture( OPT_STORAGE *data )
     switch( data->arch_i86 ) {
     case OPT_ENUM_arch_i86_default:
     case OPT_ENUM_arch_i86__0:
-        SET_CPU( ProcRevision, CPU_86 );
+        SET_CPU( cvars_state().ProcRevision, CPU_86 );
         break;
     case OPT_ENUM_arch_i86__1:
-        SET_CPU( ProcRevision, CPU_186 );
+        SET_CPU( cvars_state().ProcRevision, CPU_186 );
         break;
     case OPT_ENUM_arch_i86__2:
-        SET_CPU( ProcRevision, CPU_286 );
+        SET_CPU( cvars_state().ProcRevision, CPU_286 );
         break;
     case OPT_ENUM_arch_i86__3:
-        SET_CPU( ProcRevision, CPU_386 );
+        SET_CPU( cvars_state().ProcRevision, CPU_386 );
         break;
     case OPT_ENUM_arch_i86__4:
-        SET_CPU( ProcRevision, CPU_486 );
+        SET_CPU( cvars_state().ProcRevision, CPU_486 );
         break;
     case OPT_ENUM_arch_i86__5:
-        SET_CPU( ProcRevision, CPU_586 );
+        SET_CPU( cvars_state().ProcRevision, CPU_586 );
         break;
     case OPT_ENUM_arch_i86__6:
-        SET_CPU( ProcRevision, CPU_686 );
+        SET_CPU( cvars_state().ProcRevision, CPU_686 );
         break;
     default:
         DbgNever();
@@ -228,33 +238,33 @@ static void setIntelArchitecture( OPT_STORAGE *data )
      */
     switch( data->arch_386 ) {
     case OPT_ENUM_arch_386__3s:
-        SET_CPU( ProcRevision, CPU_386 );
+        SET_CPU( cvars_state().ProcRevision, CPU_386 );
         break;
     case OPT_ENUM_arch_386__3r:
-        CompFlags.register_conventions = true;
-        SET_CPU( ProcRevision, CPU_386 );
+        cvars_state().CompFlags.register_conventions = true;
+        SET_CPU( cvars_state().ProcRevision, CPU_386 );
         break;
     case OPT_ENUM_arch_386__4s:
-        SET_CPU( ProcRevision, CPU_486 );
+        SET_CPU( cvars_state().ProcRevision, CPU_486 );
         break;
     case OPT_ENUM_arch_386__4r:
-        CompFlags.register_conventions = true;
-        SET_CPU( ProcRevision, CPU_486 );
+        cvars_state().CompFlags.register_conventions = true;
+        SET_CPU( cvars_state().ProcRevision, CPU_486 );
         break;
     case OPT_ENUM_arch_386__5s:
-        SET_CPU( ProcRevision, CPU_586 );
+        SET_CPU( cvars_state().ProcRevision, CPU_586 );
         break;
     case OPT_ENUM_arch_386__5r:
-        CompFlags.register_conventions = true;
-        SET_CPU( ProcRevision, CPU_586 );
+        cvars_state().CompFlags.register_conventions = true;
+        SET_CPU( cvars_state().ProcRevision, CPU_586 );
         break;
     case OPT_ENUM_arch_386__6s:
-        SET_CPU( ProcRevision, CPU_686 );
+        SET_CPU( cvars_state().ProcRevision, CPU_686 );
         break;
     case OPT_ENUM_arch_386_default:
     case OPT_ENUM_arch_386__6r:
-        CompFlags.register_conventions = true;
-        SET_CPU( ProcRevision, CPU_686 );
+        cvars_state().CompFlags.register_conventions = true;
+        SET_CPU( cvars_state().ProcRevision, CPU_686 );
         break;
     default:
         DbgNever();
@@ -264,9 +274,9 @@ static void setIntelArchitecture( OPT_STORAGE *data )
      * NETWARE uses stack based calling conventions
      * by default - silly people.
      */
-    if( TargetSystem == TS_NETWARE
-      || TargetSystem == TS_NETWARE5 ) {
-        CompFlags.register_conventions = false;
+    if( cvars_state().TargetSystem == TS_NETWARE
+      || cvars_state().TargetSystem == TS_NETWARE5 ) {
+        cvars_state().CompFlags.register_conventions = false;
     }
 #endif
 
@@ -275,22 +285,22 @@ static void setIntelArchitecture( OPT_STORAGE *data )
      */
     switch( data->intel_fpu_level ) {
     case OPT_ENUM_intel_fpu_level_fp6:
-        SET_FPU_LEVEL( ProcRevision, FPU_686 );
+        SET_FPU_LEVEL( cvars_state().ProcRevision, FPU_686 );
         break;
     case OPT_ENUM_intel_fpu_level_fp5:
-        SET_FPU_LEVEL( ProcRevision, FPU_586 );
+        SET_FPU_LEVEL( cvars_state().ProcRevision, FPU_586 );
         break;
 #if _CPU == 386
     case OPT_ENUM_intel_fpu_level_default:
 #endif
     case OPT_ENUM_intel_fpu_level_fp3:
-        SET_FPU_LEVEL( ProcRevision, FPU_387 );
+        SET_FPU_LEVEL( cvars_state().ProcRevision, FPU_387 );
         break;
 #if _CPU == 8086
     case OPT_ENUM_intel_fpu_level_default:
 #endif
     case OPT_ENUM_intel_fpu_level_fp2:
-        SET_FPU_LEVEL( ProcRevision, FPU_87 );
+        SET_FPU_LEVEL( cvars_state().ProcRevision, FPU_87 );
         break;
     default:
         DbgNever();
@@ -303,20 +313,20 @@ static void setIntelArchitecture( OPT_STORAGE *data )
     case OPT_ENUM_intel_fpu_model_default:
     case OPT_ENUM_intel_fpu_model_fpi:
 #if _CPU == 386
-        if( TargetSystem != TS_WINDOWS ) {
+        if( cvars_state().TargetSystem != TS_WINDOWS ) {
 #endif
-            SET_FPU_EMU( ProcRevision );
+            SET_FPU_EMU( cvars_state().ProcRevision );
             break;
 #if _CPU == 386
         }
         /* fall through */
 #endif
     case OPT_ENUM_intel_fpu_model_fpi87:
-        SET_FPU_INLINE( ProcRevision );
+        SET_FPU_INLINE( cvars_state().ProcRevision );
         break;
     case OPT_ENUM_intel_fpu_model_fpc:
-        SET_FPU_FPC( ProcRevision );
-        CompFlags.op_switch_used = false;
+        SET_FPU_FPC( cvars_state().ProcRevision );
+        cvars_state().CompFlags.op_switch_used = false;
         break;
     default:
         DbgNever();
@@ -327,33 +337,33 @@ static void setIntelArchitecture( OPT_STORAGE *data )
      * is NetWare 5 or higher.
      */
     if( data->fpr ) {
-        Stack87 = 4;
-    } else if( TargetSystem == TS_NETWARE ) {
-        Stack87 = 4;
+        cvars_state().Stack87 = 4;
+    } else if( cvars_state().TargetSystem == TS_NETWARE ) {
+        cvars_state().Stack87 = 4;
     } else {
-        Stack87 = 8;
+        cvars_state().Stack87 = 8;
     }
 
     if( data->fld ) {
-        CompFlags.use_long_double = true;
+        cvars_state().CompFlags.use_long_double = true;
     }
     if( data->fpd ) {
-        TargetSwitches |= CGSW_X86_P5_DIVIDE_CHECK;
+        cvars_state().TargetSwitches |= CGSW_X86_P5_DIVIDE_CHECK;
     }
     if( data->zfw ) {
-        TargetSwitches |= CGSW_X86_GEN_FWAIT_386;
+        cvars_state().TargetSwitches |= CGSW_X86_GEN_FWAIT_386;
     }
 #if _CPU == 8086
     if( data->zmsc ) {
-        TargetSwitches |= CGSW_X86_MSC8;
+        cvars_state().TargetSwitches |= CGSW_X86_MSC8;
     }
 #endif
     switch( data->fp_rounding ) {
     case OPT_ENUM_fp_rounding_zri:
-        GenSwitches |= CGSW_GEN_FPU_ROUNDING_INLINE;
+        cvars_state().GenSwitches |= CGSW_GEN_FPU_ROUNDING_INLINE;
         break;
     case OPT_ENUM_fp_rounding_zro:
-        GenSwitches |= CGSW_GEN_FPU_ROUNDING_OMIT;
+        cvars_state().GenSwitches |= CGSW_GEN_FPU_ROUNDING_OMIT;
         break;
     case OPT_ENUM_fp_rounding_default:
         break;
@@ -370,29 +380,29 @@ static void SetDftCallConv( OPT_STORAGE *data )
      */
     switch( data->intel_call_conv ) {
     case OPT_ENUM_intel_call_conv_ecc:
-        DftCallConv = &CdeclInfo;
+        callinfo_state().DftCallConv = &CdeclInfo;
         break;
     case OPT_ENUM_intel_call_conv_ecd:
-        DftCallConv = &StdcallInfo;
+        callinfo_state().DftCallConv = &StdcallInfo;
         break;
     case OPT_ENUM_intel_call_conv_ecf:
-        DftCallConv = &FastcallInfo;
+        callinfo_state().DftCallConv = &FastcallInfo;
         break;
     case OPT_ENUM_intel_call_conv_eco:
-        DftCallConv = &OptlinkInfo;
+        callinfo_state().DftCallConv = &OptlinkInfo;
         break;
     case OPT_ENUM_intel_call_conv_ecp:
-        DftCallConv = &PascalInfo;
+        callinfo_state().DftCallConv = &PascalInfo;
         break;
     case OPT_ENUM_intel_call_conv_ecr:
-        DftCallConv = &FortranInfo;
+        callinfo_state().DftCallConv = &FortranInfo;
         break;
     case OPT_ENUM_intel_call_conv_ecs:
-        DftCallConv = &SyscallInfo;
+        callinfo_state().DftCallConv = &SyscallInfo;
         break;
     case OPT_ENUM_intel_call_conv_default:
     case OPT_ENUM_intel_call_conv_ecw:
-        DftCallConv = &WatcallInfo;
+        callinfo_state().DftCallConv = &WatcallInfo;
         break;
     default:
         DbgNever();
@@ -412,7 +422,7 @@ static void SetFinalTargetSystem( OPT_STORAGE *data, char *target_name )
     }
 
     PreDefine_Macro( UIMX86 );
-    if( CompFlags.non_iso_compliant_names_enabled ) {
+    if( cvars_state().CompFlags.non_iso_compliant_names_enabled ) {
         PreDefine_Macro( IMX86 );
     }
     PreDefine_Macro( "__X86__" );
@@ -426,10 +436,10 @@ static void SetFinalTargetSystem( OPT_STORAGE *data, char *target_name )
     PreDefine_Macro( "__WATCOM_INT64__" );
     PreDefine_Macro( "_INTEGRAL_MAX_BITS=64" );
 
-    switch( TargetSystem ) {
+    switch( cvars_state().TargetSystem ) {
     case TS_DOS:
         PreDefine_Macro( "_DOS" );
-        if( CompFlags.non_iso_compliant_names_enabled ) {
+        if( cvars_state().CompFlags.non_iso_compliant_names_enabled ) {
             PreDefine_Macro( "MSDOS" );
         }
         break;
@@ -438,12 +448,12 @@ static void SetFinalTargetSystem( OPT_STORAGE *data, char *target_name )
         break;
     case TS_CHEAP_WINDOWS:
         PreDefine_Macro( "__CHEAP_WINDOWS__" );
-        TargetSwitches |= CGSW_X86_CHEAP_WINDOWS;
+        cvars_state().TargetSwitches |= CGSW_X86_CHEAP_WINDOWS;
         /* fall through */
     case TS_WINDOWS:
 #if _CPU == 8086
         PreDefine_Macro( "_WINDOWS" );
-        TargetSwitches |= CGSW_X86_WINDOWS;
+        cvars_state().TargetSwitches |= CGSW_X86_WINDOWS;
 #else
         PreDefine_Macro( "__WINDOWS_386__" );
 #endif
@@ -470,23 +480,23 @@ static void SetFinalTargetSystem( OPT_STORAGE *data, char *target_name )
         break;
     }
 
-    if( GET_CPU( ProcRevision ) < CPU_386 ) {
+    if( GET_CPU( cvars_state().ProcRevision ) < CPU_386 ) {
         /*
          * issue warning message if /zf[f|p] or /zg[f|p] spec'd?
          */
-        TargetSwitches &= ~(CGSW_X86_FLOATING_FS | CGSW_X86_FLOATING_GS);
+        cvars_state().TargetSwitches &= ~(CGSW_X86_FLOATING_FS | CGSW_X86_FLOATING_GS);
     }
-    if( !CompFlags.save_restore_segregs ) {
-        if( TargetSwitches & CGSW_X86_FLOATING_DS ) {
+    if( !cvars_state().CompFlags.save_restore_segregs ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
             HW_CTurnOff( WatcallInfo.save, HW_DS );
         }
-        if( TargetSwitches & CGSW_X86_FLOATING_ES ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_ES ) {
             HW_CTurnOff( WatcallInfo.save, HW_ES );
         }
-        if( TargetSwitches & CGSW_X86_FLOATING_FS ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_FS ) {
             HW_CTurnOff( WatcallInfo.save, HW_FS );
         }
-        if( TargetSwitches & CGSW_X86_FLOATING_GS ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_GS ) {
             HW_CTurnOff( WatcallInfo.save, HW_GS );
         }
     }
@@ -494,7 +504,7 @@ static void SetFinalTargetSystem( OPT_STORAGE *data, char *target_name )
         WatcallInfo.cclass_target |= FECALL_X86_GENERATE_STACK_FRAME;
     }
   #if _CPU == 386
-    if( !CompFlags.register_conventions ) {
+    if( !cvars_state().CompFlags.register_conventions ) {
         SetAuxStackConventions();
     }
   #endif
@@ -517,24 +527,24 @@ static void SetFinalTargetSystem( OPT_STORAGE *data, char *target_name )
 
 static void SetDebugInfoFormat( OPT_STORAGE *data )
 {
-    GenSwitches &= ~(CGSW_GEN_DBG_CV | CGSW_GEN_DBG_DF | CGSW_GEN_DBG_PREDEF);
+    cvars_state().GenSwitches &= ~(CGSW_GEN_DBG_CV | CGSW_GEN_DBG_DF | CGSW_GEN_DBG_PREDEF);
     switch( data->dbg_output ) {
     case OPT_ENUM_dbg_output_hc:
-        GenSwitches |= CGSW_GEN_DBG_CV;
+        cvars_state().GenSwitches |= CGSW_GEN_DBG_CV;
         break;
     case OPT_ENUM_dbg_output_hw:
         break;
     case OPT_ENUM_dbg_output_hda:
-        GenSwitches |= CGSW_GEN_DBG_DF | CGSW_GEN_DBG_PREDEF;
-        SymDFAbbr = SpcSymbol( "__DFABBREV", GetType( TYP_USHORT ), SC_EXTERN );
+        cvars_state().GenSwitches |= CGSW_GEN_DBG_DF | CGSW_GEN_DBG_PREDEF;
+        cvars_state().SymDFAbbr = SpcSymbol( "__DFABBREV", GetType( TYP_USHORT ), SC_EXTERN );
         break;
     case OPT_ENUM_dbg_output_hdg:
-        GenSwitches |= CGSW_GEN_DBG_DF | CGSW_GEN_DBG_PREDEF;
-        SymDFAbbr = SpcSymbol( "__DFABBREV", GetType( TYP_USHORT ), SC_NONE );
+        cvars_state().GenSwitches |= CGSW_GEN_DBG_DF | CGSW_GEN_DBG_PREDEF;
+        cvars_state().SymDFAbbr = SpcSymbol( "__DFABBREV", GetType( TYP_USHORT ), SC_NONE );
         break;
     case OPT_ENUM_dbg_output_hd:
     case OPT_ENUM_dbg_output_default:
-        GenSwitches |= CGSW_GEN_DBG_DF;
+        cvars_state().GenSwitches |= CGSW_GEN_DBG_DF;
         break;
     default:
         DbgNever();
@@ -546,127 +556,127 @@ static void SetGenSwitches( OPT_STORAGE *data )
 {
 #if _CPU == 386
     if( data->br ) {
-        CompFlags.br_switch_used = true;
+        cvars_state().CompFlags.br_switch_used = true;
     }
 #endif
     if( data->ec ) {
-        CompFlags.ec_switch_used = true;
+        cvars_state().CompFlags.ec_switch_used = true;
     }
     if( data->ee ) {
-        CompFlags.ee_switch_used = true;
+        cvars_state().CompFlags.ee_switch_used = true;
     }
     if( data->eoo ) {
-        GenSwitches &= ~(CGSW_GEN_OBJ_ELF | CGSW_GEN_OBJ_COFF);
+        cvars_state().GenSwitches &= ~(CGSW_GEN_OBJ_ELF | CGSW_GEN_OBJ_COFF);
     }
 #if _CPU == 386
     if( data->eoe ) {
-        GenSwitches = (GenSwitches & ~CGSW_GEN_OBJ_COFF) | CGSW_GEN_OBJ_ELF;
+        cvars_state().GenSwitches = (cvars_state().GenSwitches & ~CGSW_GEN_OBJ_COFF) | CGSW_GEN_OBJ_ELF;
     }
     if( data->eoc ) {
-        GenSwitches = (GenSwitches & ~CGSW_GEN_OBJ_ELF) | CGSW_GEN_OBJ_COFF;
+        cvars_state().GenSwitches = (cvars_state().GenSwitches & ~CGSW_GEN_OBJ_ELF) | CGSW_GEN_OBJ_COFF;
     }
 #endif
     if( data->eq ) {
-        CompFlags.eq_switch_used = true;
+        cvars_state().CompFlags.eq_switch_used = true;
     }
 #if _CPU == 386
     if( data->et ) {
-        TargetSwitches |= CGSW_X86_P5_PROFILING;
+        cvars_state().TargetSwitches |= CGSW_X86_P5_PROFILING;
     }
     if( data->esp ) {
-        TargetSwitches |= CGSW_X86_STATEMENT_COUNTING;
+        cvars_state().TargetSwitches |= CGSW_X86_STATEMENT_COUNTING;
     }
     if( data->et0 ) {
-        TargetSwitches |= CGSW_X86_P5_PROFILING | CGSW_X86_P5_PROFILING_CTR0;
+        cvars_state().TargetSwitches |= CGSW_X86_P5_PROFILING | CGSW_X86_P5_PROFILING_CTR0;
     }
     if( data->etp ) {
-        TargetSwitches |= CGSW_X86_NEW_P5_PROFILING;
+        cvars_state().TargetSwitches |= CGSW_X86_NEW_P5_PROFILING;
     }
     if( data->ez ) {
-        TargetSwitches |= CGSW_X86_EZ_OMF;
+        cvars_state().TargetSwitches |= CGSW_X86_EZ_OMF;
     }
 #endif
     if( data->g ) {
-        SetStringOption( &GenCodeGroup, &(data->g_value) );
+        SetStringOption( &cvars_state().GenCodeGroup, &(data->g_value) );
     }
     if( data->nc ) {
-        SetStringOption( &CodeClassName, &(data->nc_value) );
+        SetStringOption( &cvars_state().CodeClassName, &(data->nc_value) );
     }
     if( data->nd ) {
-        nd_used = true;
-        SetStringOption( &DataSegName, &(data->nd_value) );
+        cmdlnx86_state().nd_used = true;
+        SetStringOption( &cvars_state().DataSegName, &(data->nd_value) );
         ImportNearSegIdInit();
-        if( *DataSegName == '\0' ) {
-            CMemFree( DataSegName );
-            DataSegName = NULL;
+        if( *cvars_state().DataSegName == '\0' ) {
+            CMemFree( cvars_state().DataSegName );
+            cvars_state().DataSegName = NULL;
         }
     }
     if( data->nm ) {
-        SetStringOption( &ModuleName, &(data->nm_value) );
+        SetStringOption( &cvars_state().ModuleName, &(data->nm_value) );
     }
     if( data->nt ) {
-        SetStringOption( &TextSegName, &(data->nt_value) );
+        SetStringOption( &cvars_state().TextSegName, &(data->nt_value) );
     }
     if( data->oc ) {
-        GenSwitches |= CGSW_GEN_NO_CALL_RET_TRANSFORM;
+        cvars_state().GenSwitches |= CGSW_GEN_NO_CALL_RET_TRANSFORM;
     }
     if( data->of ) {
-        TargetSwitches |= CGSW_X86_NEED_STACK_FRAME;
+        cvars_state().TargetSwitches |= CGSW_X86_NEED_STACK_FRAME;
     }
     if( data->of_plus ) {
-        TargetSwitches |= CGSW_X86_NEED_STACK_FRAME;
+        cvars_state().TargetSwitches |= CGSW_X86_NEED_STACK_FRAME;
     }
     if( data->om ) {
-        GenSwitches |= CGSW_GEN_I_MATH_INLINE;
+        cvars_state().GenSwitches |= CGSW_GEN_I_MATH_INLINE;
     }
     if( data->op ) {
-        CompFlags.op_switch_used = true;
+        cvars_state().CompFlags.op_switch_used = true;
     }
     if( data->r ) {
-        CompFlags.save_restore_segregs = true;
+        cvars_state().CompFlags.save_restore_segregs = true;
     }
 #if _CPU == 386
     if( data->re ) {
-        CompFlags.rent = true;
+        cvars_state().CompFlags.rent = true;
     }
 #endif
     if( data->ri ) {
-        CompFlags.returns_promoted = true;
+        cvars_state().CompFlags.returns_promoted = true;
     }
     if( data->sg ) {
-        CompFlags.sg_switch_used = true;
+        cvars_state().CompFlags.sg_switch_used = true;
     }
     if( data->st ) {
-        CompFlags.st_switch_used = true;
+        cvars_state().CompFlags.st_switch_used = true;
     }
 #if _CPU == 8086
     if( data->wo ) {
-        CompFlags.using_overlays = true;
+        cvars_state().CompFlags.using_overlays = true;
     }
 #endif
 #if _CPU == 386
     if( data->xgv ) {
-        TargetSwitches |= CGSW_X86_INDEXED_GLOBALS;
+        cvars_state().TargetSwitches |= CGSW_X86_INDEXED_GLOBALS;
     }
 #endif
     if( data->zc ) {
-        CompFlags.strings_in_code_segment = true;
-        CompFlags.zc_switch_used = true;
-        TargetSwitches |= CGSW_X86_CONST_IN_CODE;
+        cvars_state().CompFlags.strings_in_code_segment = true;
+        cvars_state().CompFlags.zc_switch_used = true;
+        cvars_state().TargetSwitches |= CGSW_X86_CONST_IN_CODE;
     }
     if( data->zm ) {
-        CompFlags.multiple_code_segments = true;
-        CompFlags.zm_switch_used = true;
+        cvars_state().CompFlags.multiple_code_segments = true;
+        cvars_state().CompFlags.zm_switch_used = true;
     }
     if( data->zt ) {
-        DataThreshold = data->zt_value;
+        cvars_state().DataThreshold = data->zt_value;
     }
     if( data->zu ) {
-        CompFlags.zu_switch_used = true;
+        cvars_state().CompFlags.zu_switch_used = true;
     }
 #if _CPU == 386
     if( data->zz ) {
-        CompFlags.use_stdcall_at_number = false;
+        cvars_state().CompFlags.use_stdcall_at_number = false;
     }
 #endif
 }
@@ -676,7 +686,7 @@ static void PreDefine_UMIX86_Macro( void )
     unsigned    cpu;
     char        buff[32];
 
-    switch( GET_CPU( ProcRevision ) ) {
+    switch( GET_CPU( cvars_state().ProcRevision ) ) {
     case CPU_86:        cpu = 0;   break;
     case CPU_186:       cpu = 100; break;
     case CPU_286:       cpu = 200; break;
@@ -692,7 +702,7 @@ static void PreDefine_UMIX86_Macro( void )
 
 static void MacroDefs( OPT_STORAGE *data )
 {
-    if( GenSwitches & CGSW_GEN_I_MATH_INLINE ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_I_MATH_INLINE ) {
         DefSwitchMacro( "OM" );
     }
     switch( data->mem_model ) {
@@ -732,7 +742,7 @@ static void MacroDefs( OPT_STORAGE *data )
     default:
         break;
     }
-    if( CompFlags.non_iso_compliant_names_enabled ) {
+    if( cvars_state().CompFlags.non_iso_compliant_names_enabled ) {
         switch( data->mem_model ) {
         case OPT_ENUM_mem_model_ms:
             PreDefine_Macro( MX86 "SM" );
@@ -760,149 +770,149 @@ static void MacroDefs( OPT_STORAGE *data )
         }
     }
 
-    if( TargetSwitches & CGSW_X86_FLOATING_FS ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_FS ) {
         DefSwitchMacro( "ZFF" );
     } else {
         DefSwitchMacro( "ZFP" );
     }
-    if( TargetSwitches & CGSW_X86_FLOATING_GS ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_GS ) {
         DefSwitchMacro( "ZGF" );
     } else {
         DefSwitchMacro( "ZGP" );
     }
-    if( TargetSwitches & CGSW_X86_FLOATING_DS ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
         DefSwitchMacro( "ZDF" );
     } else {
         DefSwitchMacro( "ZDP" );
     }
-    if( TargetSwitches & CGSW_X86_FLOATING_SS ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_SS ) {
         DefSwitchMacro( "ZU" );
     }
-    if( TargetSwitches & CGSW_X86_INDEXED_GLOBALS ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_INDEXED_GLOBALS ) {
         DefSwitchMacro( "XGV" );
     }
-    if( TargetSwitches & CGSW_X86_WINDOWS ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_WINDOWS ) {
         DefSwitchMacro( "ZW" );
     }
-    if( TargetSwitches & CGSW_X86_NEED_STACK_FRAME ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_NEED_STACK_FRAME ) {
         DefSwitchMacro( "OF" );
     }
-    if( TargetSwitches & CGSW_X86_GEN_FWAIT_386 ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_GEN_FWAIT_386 ) {
         DefSwitchMacro( "ZFW" );
     }
-    if( GenSwitches & CGSW_GEN_NO_CALL_RET_TRANSFORM ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_NO_CALL_RET_TRANSFORM ) {
         DefSwitchMacro( "OC" );
     }
-    if( GenSwitches & CGSW_GEN_SUPER_OPTIMAL ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_SUPER_OPTIMAL ) {
         DefSwitchMacro( "OH" );
     }
-    if( GenSwitches & CGSW_GEN_FLOW_REG_SAVES ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_FLOW_REG_SAVES ) {
         DefSwitchMacro( "OK" );
     }
-    if( GenSwitches & CGSW_GEN_NO_OPTIMIZATION ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION ) {
         DefSwitchMacro( "OD" );
     }
-    if( GenSwitches & CGSW_GEN_RELAX_ALIAS ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_RELAX_ALIAS ) {
         DefSwitchMacro( "OA" );
     }
-    if( GenSwitches & CGSW_GEN_LOOP_OPTIMIZATION ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_LOOP_OPTIMIZATION ) {
         DefSwitchMacro( "OL" );
     }
-    if( GenSwitches & CGSW_GEN_INS_SCHEDULING ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_INS_SCHEDULING ) {
         DefSwitchMacro( "OR" );
     }
-    if( GenSwitches & CGSW_GEN_FP_UNSTABLE_OPTIMIZATION ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_FP_UNSTABLE_OPTIMIZATION ) {
         DefSwitchMacro( "ON" );
     }
-    if( GenSwitches & CGSW_GEN_FPU_ROUNDING_OMIT ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_FPU_ROUNDING_OMIT ) {
         DefSwitchMacro( "ZRO" );
     }
-    if( GenSwitches & CGSW_GEN_FPU_ROUNDING_INLINE ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_FPU_ROUNDING_INLINE ) {
         DefSwitchMacro( "ZRI" );
     }
-    if( CompFlags.use_long_double ) {
+    if( cvars_state().CompFlags.use_long_double ) {
         DefSwitchMacro( "FLD" );
     }
-    if( CompFlags.signed_char ) {
+    if( cvars_state().CompFlags.signed_char ) {
         DefSwitchMacro( "J" );
     }
-    if( PCH_FileName != NULL ) {
+    if( cvars_state().PCH_FileName != NULL ) {
         DefSwitchMacro( "FH" );
     }
-    if( CompFlags.no_pch_warnings ) {
+    if( cvars_state().CompFlags.no_pch_warnings ) {
         DefSwitchMacro( "FHQ" );
     }
-    if( CompFlags.inline_functions ) {
+    if( cvars_state().CompFlags.inline_functions ) {
         DefSwitchMacro( "OI" );
     }
-    if( CompFlags.unique_functions ) {
+    if( cvars_state().CompFlags.unique_functions ) {
         DefSwitchMacro( "OU" );
     }
 #if _CPU == 386
-    if( CompFlags.register_conventions ) {
+    if( cvars_state().CompFlags.register_conventions ) {
         DefSwitchMacro( "3R" );
     } else {
         DefSwitchMacro( "3S" );
     }
 #endif
-    if( CompFlags.emit_names ) {
+    if( cvars_state().CompFlags.emit_names ) {
         DefSwitchMacro( "EN" );
     }
-    if( CompFlags.make_enums_an_int ) {
+    if( cvars_state().CompFlags.make_enums_an_int ) {
         DefSwitchMacro( "EI" );
     }
-    if( CompFlags.zc_switch_used ) {
+    if( cvars_state().CompFlags.zc_switch_used ) {
         DefSwitchMacro( "ZC" );
     }
-    if( CompFlags.use_double_byte ) {
+    if( cvars_state().CompFlags.use_double_byte ) {
         DefSwitchMacro( "ZK" );
     }
-    if( CompFlags.save_restore_segregs ) {
+    if( cvars_state().CompFlags.save_restore_segregs ) {
         DefSwitchMacro( "R" );
     }
-    if( CompFlags.sg_switch_used ) {
+    if( cvars_state().CompFlags.sg_switch_used ) {
         DefSwitchMacro( "SG" );
     }
-    if( CompFlags.st_switch_used ) {
+    if( cvars_state().CompFlags.st_switch_used ) {
         DefSwitchMacro( "ST" );
     }
-    if( CompFlags.zu_switch_used ) {
+    if( cvars_state().CompFlags.zu_switch_used ) {
         DefSwitchMacro( "ZU" );
     }
-    if( CompFlags.bm_switch_used ) {
+    if( cvars_state().CompFlags.bm_switch_used ) {
         DefSwitchMacro( "BM" );
         Define_Macro( "_MT" );
     }
-    if( CompFlags.bd_switch_used ) {
+    if( cvars_state().CompFlags.bd_switch_used ) {
         DefSwitchMacro( "BD" );
     }
-    if( CompFlags.bc_switch_used ) {
+    if( cvars_state().CompFlags.bc_switch_used ) {
         DefSwitchMacro( "BC" );
     }
-    if( CompFlags.bg_switch_used ) {
+    if( cvars_state().CompFlags.bg_switch_used ) {
         DefSwitchMacro( "BG" );
     }
-    if( CompFlags.br_switch_used ) {
+    if( cvars_state().CompFlags.br_switch_used ) {
         DefSwitchMacro( "BR" );
         Define_Macro( "_DLL" );
     }
-    if( CompFlags.bw_switch_used ) {
+    if( cvars_state().CompFlags.bw_switch_used ) {
         DefSwitchMacro( "BW" );
     }
-    if( CompFlags.zm_switch_used ) {
+    if( cvars_state().CompFlags.zm_switch_used ) {
         DefSwitchMacro( "ZM" );
     }
-    if( CompFlags.ep_switch_used ) {
+    if( cvars_state().CompFlags.ep_switch_used ) {
         DefSwitchMacro( "EP" );
     }
-    if( CompFlags.ee_switch_used ) {
+    if( cvars_state().CompFlags.ee_switch_used ) {
         DefSwitchMacro( "EE" );
     }
-    if( CompFlags.ec_switch_used ) {
+    if( cvars_state().CompFlags.ec_switch_used ) {
         DefSwitchMacro( "EC" );
     }
 
-    switch( GET_CPU( ProcRevision ) ) {
+    switch( GET_CPU( cvars_state().ProcRevision ) ) {
     case CPU_86:
         DefSwitchMacro( "0" );
         break;
@@ -930,7 +940,7 @@ static void MacroDefs( OPT_STORAGE *data )
 
     PreDefine_UMIX86_Macro();
 
-    switch( GET_FPU_LEVEL( ProcRevision ) ) {
+    switch( GET_FPU_LEVEL( cvars_state().ProcRevision ) ) {
     case FPU_87:
         DefSwitchMacro( "FP2" );
         break;
@@ -946,10 +956,10 @@ static void MacroDefs( OPT_STORAGE *data )
     default:
         break;
     }
-    if( GET_FPU_FPC( ProcRevision ) ) {
+    if( GET_FPU_FPC( cvars_state().ProcRevision ) ) {
         DefSwitchMacro( "FPC" );
     } else {
-        if( GET_FPU_EMU( ProcRevision ) ) {
+        if( GET_FPU_EMU( cvars_state().ProcRevision ) ) {
             DefSwitchMacro( "FPI" );
         } else {
             DefSwitchMacro( "FPI87" );
@@ -957,10 +967,10 @@ static void MacroDefs( OPT_STORAGE *data )
         PreDefine_Macro( "__FPI__" );
     }
 
-    if( nd_used ) {
+    if( cmdlnx86_state().nd_used ) {
         DefSwitchMacro( "ND" );
     }
-    if( CompFlags.op_switch_used ) {
+    if( cvars_state().CompFlags.op_switch_used ) {
         DefSwitchMacro( "OP" );
     }
     if( !TOGGLE( check_stack ) ) {
@@ -973,15 +983,15 @@ static void Define_Memory_Model( OPT_STORAGE *data )
     char lib_model = '\0';
     unsigned bit;
 
-    DataPtrSize = TARGET_POINTER;
-    CodePtrSize = TARGET_POINTER;
+    cvars_state().DataPtrSize = TARGET_POINTER;
+    cvars_state().CodePtrSize = TARGET_POINTER;
     bit = 0;
     if( data->mem_model == OPT_ENUM_mem_model_default ) {
 #if _CPU == 8086
         data->mem_model = OPT_ENUM_mem_model_ms;
 #else
-        if( TargetSystem == TS_NETWARE
-          || TargetSystem == TS_NETWARE5 ) {
+        if( cvars_state().TargetSystem == TS_NETWARE
+          || cvars_state().TargetSystem == TS_NETWARE5 ) {
             data->mem_model = OPT_ENUM_mem_model_ms;
         } else {
             data->mem_model = OPT_ENUM_mem_model_mf;
@@ -991,36 +1001,36 @@ static void Define_Memory_Model( OPT_STORAGE *data )
     switch( data->mem_model ) {
     case OPT_ENUM_mem_model_ms:
         lib_model = 's';
-        CompFlags.strings_in_code_segment = false;
-        TargetSwitches &= ~CGSW_X86_CONST_IN_CODE;
+        cvars_state().CompFlags.strings_in_code_segment = false;
+        cvars_state().TargetSwitches &= ~CGSW_X86_CONST_IN_CODE;
         bit |= CGSW_X86_CHEAP_POINTER;
         break;
     case OPT_ENUM_mem_model_mm:
         lib_model = 'm';
         WatcallInfo.cclass_target |= FECALL_X86_FAR_CALL;
-        CodePtrSize = TARGET_FAR_POINTER;
-        CompFlags.strings_in_code_segment = false;
-        TargetSwitches &= ~CGSW_X86_CONST_IN_CODE;
+        cvars_state().CodePtrSize = TARGET_FAR_POINTER;
+        cvars_state().CompFlags.strings_in_code_segment = false;
+        cvars_state().TargetSwitches &= ~CGSW_X86_CONST_IN_CODE;
         bit |= CGSW_X86_BIG_CODE | CGSW_X86_CHEAP_POINTER;
         break;
     case OPT_ENUM_mem_model_mc:
         lib_model = 'c';
-        DataPtrSize = TARGET_FAR_POINTER;
+        cvars_state().DataPtrSize = TARGET_FAR_POINTER;
         bit |= CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER;
         break;
     case OPT_ENUM_mem_model_ml:
         lib_model = 'l';
         WatcallInfo.cclass_target |= FECALL_X86_FAR_CALL;
-        CodePtrSize = TARGET_FAR_POINTER;
-        DataPtrSize = TARGET_FAR_POINTER;
+        cvars_state().CodePtrSize = TARGET_FAR_POINTER;
+        cvars_state().DataPtrSize = TARGET_FAR_POINTER;
         bit |= CGSW_X86_BIG_CODE | CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER;
         break;
 #if _CPU == 8086
     case OPT_ENUM_mem_model_mh:
         lib_model = 'h';
         WatcallInfo.cclass_target |= FECALL_X86_FAR_CALL;
-        CodePtrSize = TARGET_FAR_POINTER;
-        DataPtrSize = TARGET_FAR_POINTER;
+        cvars_state().CodePtrSize = TARGET_FAR_POINTER;
+        cvars_state().DataPtrSize = TARGET_FAR_POINTER;
         bit |= CGSW_X86_BIG_CODE | CGSW_X86_BIG_DATA;
         break;
 #else
@@ -1063,7 +1073,7 @@ static void Define_Memory_Model( OPT_STORAGE *data )
      * 32-bit code with zdl option has DS pegged
      */
     if( data->zdl ) {
-        TargetSwitches |= CGSW_X86_LOAD_DS_DIRECTLY;
+        cvars_state().TargetSwitches |= CGSW_X86_LOAD_DS_DIRECTLY;
         bit &= ~CGSW_X86_FLOATING_DS;
     }
 #endif
@@ -1071,18 +1081,18 @@ static void Define_Memory_Model( OPT_STORAGE *data )
     /*
      * any model of 16-bit Windows has DS pegged
      */
-    if( TargetSystem == TS_WINDOWS
-      || TargetSystem == TS_CHEAP_WINDOWS ) {
+    if( cvars_state().TargetSystem == TS_WINDOWS
+      || cvars_state().TargetSystem == TS_CHEAP_WINDOWS ) {
         bit &= ~CGSW_X86_FLOATING_DS;
     }
 #endif
     switch( data->ds_peg ) {
     case OPT_ENUM_ds_peg_zdp:
-        TargetSwitches &= ~CGSW_X86_FLOATING_DS;
+        cvars_state().TargetSwitches &= ~CGSW_X86_FLOATING_DS;
         bit &= ~CGSW_X86_FLOATING_DS;
         break;
     case OPT_ENUM_ds_peg_zdf:
-        TargetSwitches |= CGSW_X86_FLOATING_DS;
+        cvars_state().TargetSwitches |= CGSW_X86_FLOATING_DS;
         bit &= ~CGSW_X86_FLOATING_DS;
         break;
     case OPT_ENUM_ds_peg_default:
@@ -1097,23 +1107,23 @@ static void Define_Memory_Model( OPT_STORAGE *data )
      * FS segment register is used by 32-bit FLAT memory model
      * except Windows 32-bit Extender
      */
-    if( GET_CPU( ProcRevision ) >= CPU_386 ) {
+    if( GET_CPU( cvars_state().ProcRevision ) >= CPU_386 ) {
 #if _CPU == 8086
         bit |= CGSW_X86_FLOATING_FS;
 #else
         if( (bit & CGSW_X86_FLAT_MODEL) == 0
-          || TargetSystem == TS_WINDOWS ) {
+          || cvars_state().TargetSystem == TS_WINDOWS ) {
             bit |= CGSW_X86_FLOATING_FS;
         }
 #endif
     }
     switch( data->fs_peg ) {
     case OPT_ENUM_fs_peg_zfp:
-        TargetSwitches &= ~CGSW_X86_FLOATING_FS;
+        cvars_state().TargetSwitches &= ~CGSW_X86_FLOATING_FS;
         bit &= ~CGSW_X86_FLOATING_FS;
         break;
     case OPT_ENUM_fs_peg_zff:
-        TargetSwitches |= CGSW_X86_FLOATING_FS;
+        cvars_state().TargetSwitches |= CGSW_X86_FLOATING_FS;
         bit &= ~CGSW_X86_FLOATING_FS;
         break;
     case OPT_ENUM_fs_peg_default:
@@ -1125,16 +1135,16 @@ static void Define_Memory_Model( OPT_STORAGE *data )
     /*
      * setup GS segment register floating
      */
-    if( GET_CPU( ProcRevision ) >= CPU_386 ) {
+    if( GET_CPU( cvars_state().ProcRevision ) >= CPU_386 ) {
         bit |= CGSW_X86_FLOATING_GS;
     }
     switch( data->gs_peg ) {
     case OPT_ENUM_gs_peg_zgp:
-        TargetSwitches &= ~CGSW_X86_FLOATING_GS;
+        cvars_state().TargetSwitches &= ~CGSW_X86_FLOATING_GS;
         bit &= ~CGSW_X86_FLOATING_GS;
         break;
     case OPT_ENUM_gs_peg_zgf:
-        TargetSwitches |= CGSW_X86_FLOATING_GS;
+        cvars_state().TargetSwitches |= CGSW_X86_FLOATING_GS;
         bit &= ~CGSW_X86_FLOATING_GS;
         break;
     case OPT_ENUM_gs_peg_default:
@@ -1144,74 +1154,74 @@ static void Define_Memory_Model( OPT_STORAGE *data )
         break;
     }
 
-    TargetSwitches &= ~(CGSW_X86_FLAT_MODEL | CGSW_X86_BIG_CODE | CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER);
-    TargetSwitches |= static_cast<cg_target_switches>(bit);
+    cvars_state().TargetSwitches &= ~(CGSW_X86_FLAT_MODEL | CGSW_X86_BIG_CODE | CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER);
+    cvars_state().TargetSwitches |= static_cast<cg_target_switches>(bit);
 
-    if( GET_CPU( ProcRevision ) < CPU_386 ) {
+    if( GET_CPU( cvars_state().ProcRevision ) < CPU_386 ) {
         /*
          * issue warning message if /zf[f|p] or /zg[f|p] spec'd?
          */
-        TargetSwitches &= ~(CGSW_X86_FLOATING_FS | CGSW_X86_FLOATING_GS);
+        cvars_state().TargetSwitches &= ~(CGSW_X86_FLOATING_FS | CGSW_X86_FLOATING_GS);
     }
 
 #if _CPU == 8086
-    strcpy( CLIB_Name, "1clib?" );
-    if( CompFlags.bm_switch_used ) {
-        strcpy( CLIB_Name, "1clibmt?" );
+    strcpy( cvars_state().CLIB_Name, "1clib?" );
+    if( cvars_state().CompFlags.bm_switch_used ) {
+        strcpy( cvars_state().CLIB_Name, "1clibmt?" );
     }
-    if( CompFlags.bd_switch_used ) {
-        if( TargetSystem == TS_WINDOWS || TargetSystem == TS_CHEAP_WINDOWS ) {
-            strcpy( CLIB_Name, "1clib?" );
+    if( cvars_state().CompFlags.bd_switch_used ) {
+        if( cvars_state().TargetSystem == TS_WINDOWS || cvars_state().TargetSystem == TS_CHEAP_WINDOWS ) {
+            strcpy( cvars_state().CLIB_Name, "1clib?" );
         } else {
-            strcpy( CLIB_Name, "1clibdl?" );
+            strcpy( cvars_state().CLIB_Name, "1clibdl?" );
         }
     }
-    if( GET_FPU_FPC( ProcRevision ) ) {
-        strcpy( MATHLIB_Name, "5math?" );
-        EmuLib_Name = NULL;
+    if( GET_FPU_FPC( cvars_state().ProcRevision ) ) {
+        strcpy( cvars_state().MATHLIB_Name, "5math?" );
+        cvars_state().EmuLib_Name = NULL;
     } else {
-        strcpy( MATHLIB_Name, "7math87?" );
-        if( GET_FPU_EMU( ProcRevision ) ) {
-            EmuLib_Name = const_cast<char *>("8emu87");
+        strcpy( cvars_state().MATHLIB_Name, "7math87?" );
+        if( GET_FPU_EMU( cvars_state().ProcRevision ) ) {
+            cvars_state().EmuLib_Name = const_cast<char *>("8emu87");
         } else {
-            EmuLib_Name = const_cast<char *>("8noemu87");
+            cvars_state().EmuLib_Name = const_cast<char *>("8noemu87");
         }
     }
 #else
-    if( CompFlags.register_conventions ) {
+    if( cvars_state().CompFlags.register_conventions ) {
         lib_model = 'r';
         PreDefine_Macro( "__3R__" );
     } else {
         lib_model = 's';
         PreDefine_Macro( "__3S__" );
     }
-    if( CompFlags.br_switch_used ) {
-        strcpy( CLIB_Name, "1clb?dll" );
+    if( cvars_state().CompFlags.br_switch_used ) {
+        strcpy( cvars_state().CLIB_Name, "1clb?dll" );
     } else {
-        strcpy( CLIB_Name, "1clib3?" );     /* There is only 1 CLIB now! */
+        strcpy( cvars_state().CLIB_Name, "1clib3?" );     /* There is only 1 CLIB now! */
     }
-    if( GET_FPU_FPC( ProcRevision ) ) {
-        if( CompFlags.br_switch_used ) {
-            strcpy( MATHLIB_Name, "5mth?dll" );
+    if( GET_FPU_FPC( cvars_state().ProcRevision ) ) {
+        if( cvars_state().CompFlags.br_switch_used ) {
+            strcpy( cvars_state().MATHLIB_Name, "5mth?dll" );
         } else {
-            strcpy( MATHLIB_Name, "5math3?" );
+            strcpy( cvars_state().MATHLIB_Name, "5math3?" );
         }
-        EmuLib_Name = NULL;
+        cvars_state().EmuLib_Name = NULL;
     } else {
-        if( CompFlags.br_switch_used ) {
-            strcpy( MATHLIB_Name, "7mt7?dll" );
+        if( cvars_state().CompFlags.br_switch_used ) {
+            strcpy( cvars_state().MATHLIB_Name, "7mt7?dll" );
         } else {
-            strcpy( MATHLIB_Name, "7math387?" );
+            strcpy( cvars_state().MATHLIB_Name, "7math387?" );
         }
-        if( GET_FPU_EMU( ProcRevision ) ) {
-            EmuLib_Name = const_cast<char *>("8emu387");
+        if( GET_FPU_EMU( cvars_state().ProcRevision ) ) {
+            cvars_state().EmuLib_Name = const_cast<char *>("8emu387");
         } else {
-            EmuLib_Name = const_cast<char *>("8noemu387");
+            cvars_state().EmuLib_Name = const_cast<char *>("8noemu387");
         }
     }
 #endif
-    *strchr( CLIB_Name, '?' ) = lib_model;
-    *strchr( MATHLIB_Name, '?' ) = lib_model;
+    *strchr( cvars_state().CLIB_Name, '?' ) = lib_model;
+    *strchr( cvars_state().MATHLIB_Name, '?' ) = lib_model;
 }
 
 void CmdSysAnalyse( OPT_STORAGE *data )
@@ -1230,5 +1240,5 @@ void CmdSysAnalyse( OPT_STORAGE *data )
 
 void CmdSysSetMaxOptimization( void )
 {
-    GenSwitches |= CGSW_GEN_I_MATH_INLINE;
+    cvars_state().GenSwitches |= CGSW_GEN_I_MATH_INLINE;
 }

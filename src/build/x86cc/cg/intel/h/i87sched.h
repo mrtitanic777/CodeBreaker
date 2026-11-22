@@ -88,11 +88,21 @@ typedef struct temp_entry {
     unsigned            whole_block : 1;
 } temp_entry;
 
-extern st_seq           *STLocations;
-extern int              MaxSeq;
-extern byte             *SeqMaxDepth;
-extern byte             *SeqCurDepth;
-extern temp_entry       *TempList;
 
-#define RegSTLoc( seq, vir )    ( STLocations + (seq) )->actual_locn[vir]
+#ifndef CB_STATE_I87SCHED_H
+#define CB_STATE_I87SCHED_H
+
+/* the variables of i87sched.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct I87schedState {
+    st_seq *STLocations;
+    int MaxSeq;
+    byte *SeqMaxDepth;
+    byte *SeqCurDepth;
+    temp_entry *TempList;
+};
+inline I87schedState& i87sched_state() { return cbrun_part<I87schedState>(); }
+
+#endif
+
+#define RegSTLoc( seq, vir )    ( i87sched_state().STLocations + (seq) )->actual_locn[vir]
 #define InsSTLoc( ins, vir )    RegSTLoc( (ins)->sequence, vir )

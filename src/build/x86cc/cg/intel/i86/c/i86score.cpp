@@ -50,11 +50,19 @@
 #define I_DI    1
 #define I_SI    2
 
-static  name    *PtrRegs[S_MAX][I_MAX];
-static  name    *DS;
-static  name    *SS;
-static  name    *ES;
+namespace {
 
+/* the statics of this file, one set for each run of the compiler */
+struct ScoreFileState {
+    name *PtrRegs[S_MAX][I_MAX];
+    name *DS;
+    name *SS;
+    name *ES;
+};
+
+}  // namespace
+
+static inline ScoreFileState& score_file_state() { return cbrun_part<ScoreFileState>(); }
 
 
 void    ScInitRegs( score_hdl scoreboard )
@@ -100,32 +108,32 @@ void    AddRegs( void )
     int         i;
     int         j;
 
-    DS = AllocRegName( HW_DS );
-    SS = AllocRegName( HW_SS );
-    ES = AllocRegName( HW_ES );
+    score_file_state().DS = AllocRegName( HW_DS );
+    score_file_state().SS = AllocRegName( HW_SS );
+    score_file_state().ES = AllocRegName( HW_ES );
     for( i = S_MAX; i-- > 0; ) {
         for( j = I_MAX; j-- > 0; ) {
-            PtrRegs[i][j] = NULL;
+            score_file_state().PtrRegs[i][j] = NULL;
         }
     }
-    for( reg_name = Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
+    for( reg_name = data_state().Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
         if( IsIndexReg( reg_name->r.reg, CP, false ) ) {
             if( HW_COvlap( reg_name->r.reg, HW_DS )
              || HW_COvlap( reg_name->r.reg, HW_ES )
              || HW_COvlap( reg_name->r.reg, HW_SS ) ) {
                 lo_part = LowReg( reg_name->r.reg );
                 if( HW_COvlap( lo_part, HW_BX ) ) {
-                    PtrRegs[S_DS][I_BX] = NewRegName( HW_DS_BX );
-                    PtrRegs[S_SS][I_BX] = NewRegName( HW_SS_BX );
-                    PtrRegs[S_ES][I_BX] = NewRegName( HW_ES_BX );
+                    score_file_state().PtrRegs[S_DS][I_BX] = NewRegName( HW_DS_BX );
+                    score_file_state().PtrRegs[S_SS][I_BX] = NewRegName( HW_SS_BX );
+                    score_file_state().PtrRegs[S_ES][I_BX] = NewRegName( HW_ES_BX );
                 } else if( HW_COvlap( lo_part, HW_SI ) ) {
-                    PtrRegs[S_DS][I_SI] = NewRegName( HW_DS_SI );
-                    PtrRegs[S_SS][I_SI] = NewRegName( HW_SS_SI );
-                    PtrRegs[S_ES][I_SI] = NewRegName( HW_ES_SI );
+                    score_file_state().PtrRegs[S_DS][I_SI] = NewRegName( HW_DS_SI );
+                    score_file_state().PtrRegs[S_SS][I_SI] = NewRegName( HW_SS_SI );
+                    score_file_state().PtrRegs[S_ES][I_SI] = NewRegName( HW_ES_SI );
                 } else if( HW_COvlap( lo_part, HW_DI ) ) {
-                    PtrRegs[S_DS][I_DI] = NewRegName( HW_DS_DI );
-                    PtrRegs[S_SS][I_DI] = NewRegName( HW_SS_DI );
-                    PtrRegs[S_ES][I_DI] = NewRegName( HW_ES_DI );
+                    score_file_state().PtrRegs[S_DS][I_DI] = NewRegName( HW_DS_DI );
+                    score_file_state().PtrRegs[S_SS][I_DI] = NewRegName( HW_SS_DI );
+                    score_file_state().PtrRegs[S_ES][I_DI] = NewRegName( HW_ES_DI );
                 }
             }
         }
@@ -145,22 +153,22 @@ void    ScoreSegments( score_hdl scoreboard )
     name        *dst;
     name        *src;
 
-    ds = &scoreboard[DS->r.reg_index];
+    ds = &scoreboard[score_file_state().DS->r.reg_index];
     for( xs = ds->next_reg; xs != ds; xs = xs->next_reg ) {
-        if( xs->index == SS->r.reg_index ) {
+        if( xs->index == score_file_state().SS->r.reg_index ) {
             for( i = I_MAX; i-- > 0; ) {
-                dst = PtrRegs[S_SS][i];
-                src = PtrRegs[S_DS][i];
+                dst = score_file_state().PtrRegs[S_SS][i];
+                src = score_file_state().PtrRegs[S_DS][i];
                 if( dst != NULL && src != NULL ) {
                     if( !RegsEqual( scoreboard, dst->r.reg_index, src->r.reg_index ) ) {
                         RegInsert( scoreboard, dst->r.reg_index, src->r.reg_index );
                     }
                 }
             }
-        } else if( xs->index == ES->r.reg_index ) {
+        } else if( xs->index == score_file_state().ES->r.reg_index ) {
             for( i = I_MAX; i-- > 0; ) {
-                dst = PtrRegs[S_ES][i];
-                src = PtrRegs[S_DS][i];
+                dst = score_file_state().PtrRegs[S_ES][i];
+                src = score_file_state().PtrRegs[S_DS][i];
                 if( dst != NULL && src != NULL ) {
                     if( !RegsEqual( scoreboard, dst->r.reg_index, src->r.reg_index ) ) {
                         RegInsert( scoreboard, dst->r.reg_index, src->r.reg_index );
@@ -179,12 +187,12 @@ bool_    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 )
  * these registers.
  */
 {
-    if( HW_Ovlap( reg1, CurrProc->state.unalterable ) ) {
+    if( HW_Ovlap( reg1, data_state().CurrProc->state.unalterable ) ) {
         if( !HW_CEqual( reg1, HW_DS ) && !HW_CEqual( reg1, HW_SS ) ) {
             return( false );
         }
     }
-    if( HW_Ovlap( reg2, CurrProc->state.unalterable ) ) {
+    if( HW_Ovlap( reg2, data_state().CurrProc->state.unalterable ) ) {
         if( !HW_CEqual( reg2, HW_DS ) && !HW_CEqual( reg2, HW_SS ) ) {
             return( false );
         }

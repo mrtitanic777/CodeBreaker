@@ -50,27 +50,27 @@ void    TargTypeInit( void )
 {
     TypeAlias( TY_UNSIGNED, TY_UINT_2 );
     TypeAlias( TY_INTEGER, TY_INT_2 );
-    PTInteger = TypeAddress( TY_INT_2 );
-    PTUnsigned = TypeAddress( TY_UINT_2 );
+    types_state().PTInteger = TypeAddress( TY_INT_2 );
+    types_state().PTUnsigned = TypeAddress( TY_UINT_2 );
 
     if( _IsTargetModel( CGSW_X86_BIG_CODE ) ) {
         TypeAlias( TY_CODE_PTR, TY_LONG_CODE_PTR );
-        PTCodePointer = TypeAddress( TY_LONG_CODE_PTR );
+        types_state().PTCodePointer = TypeAddress( TY_LONG_CODE_PTR );
     } else {
         TypeAlias( TY_CODE_PTR, TY_NEAR_CODE_PTR );
-        PTCodePointer = TypeAddress( TY_NEAR_CODE_PTR );
+        types_state().PTCodePointer = TypeAddress( TY_NEAR_CODE_PTR );
     }
     if( _IsTargetModel( CGSW_X86_BIG_DATA ) ) {
         if( _IsTargetModel( CGSW_X86_CHEAP_POINTER ) ) {
             TypeAlias( TY_POINTER, TY_LONG_POINTER );
-            PTPointer = TypeAddress( TY_LONG_POINTER );
+            types_state().PTPointer = TypeAddress( TY_LONG_POINTER );
         } else {
             TypeAlias( TY_POINTER, TY_HUGE_POINTER );
-            PTPointer = TypeAddress( TY_HUGE_POINTER );
+            types_state().PTPointer = TypeAddress( TY_HUGE_POINTER );
         }
     } else {
         TypeAlias( TY_POINTER, TY_NEAR_POINTER );
-        PTPointer = TypeAddress( TY_NEAR_POINTER );
+        types_state().PTPointer = TypeAddress( TY_NEAR_POINTER );
     }
     TypeAlias( TY_NEAR_INTEGER, TY_INT_2 );
     TypeAlias( TY_LONG_INTEGER, TY_INT_2 );

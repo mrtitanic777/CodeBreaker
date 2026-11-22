@@ -58,7 +58,7 @@ static  void            GlobalConflictsFirst( void )
     conflict_node       *list;
     conflict_node       *conf;
 
-    conf_owner = &ConfList;
+    conf_owner = &data_state().ConfList;
     list_owner = &list;
     for( ;; ) {
         conf = *conf_owner;
@@ -73,8 +73,8 @@ static  void            GlobalConflictsFirst( void )
         }
     }
     if( list_owner != &list ) {
-        *list_owner = ConfList;
-        ConfList = list;
+        *list_owner = data_state().ConfList;
+        data_state().ConfList = list;
     }
 }
 
@@ -109,13 +109,13 @@ static  void    ExtendConflicts( block *blk, conflict_node *first_global )
             if( conf->ins_range.last == NULL || conf->ins_range.last->id <= last_ins->id ) {
                 if( last_ins->head.opcode != OP_NOP ) {
                     new_ins = MakeNop();
-                    havelive = HaveLiveInfo;
-                    HaveLiveInfo = false;
+                    havelive = data_state().HaveLiveInfo;
+                    data_state().HaveLiveInfo = false;
                     SuffixIns( last_ins, new_ins );
                     new_ins->head.live.regs = blk->ins.head.live.regs;
                     new_ins->head.live.within_block = blk->ins.head.live.within_block;
                     new_ins->head.live.out_of_block = blk->ins.head.live.out_of_block;
-                    HaveLiveInfo = havelive;
+                    data_state().HaveLiveInfo = havelive;
                     last_ins = new_ins;
                 }
                 conf->ins_range.last = last_ins;
@@ -134,13 +134,13 @@ static  void    ExtendConflicts( block *blk, conflict_node *first_global )
             if( conf->ins_range.first == NULL || conf->ins_range.first->id >= first_ins->id ) {
                 if( first_ins->head.opcode != OP_NOP ) {
                     new_ins = MakeNop();
-                    havelive = HaveLiveInfo;
-                    HaveLiveInfo = false;
+                    havelive = data_state().HaveLiveInfo;
+                    data_state().HaveLiveInfo = false;
                     PrefixIns( first_ins, new_ins );
                     new_ins->head.live.regs = blk->ins.head.live.regs;
                     new_ins->head.live.within_block = first_ins->head.live.within_block;
                     new_ins->head.live.out_of_block = first_ins->head.live.out_of_block;
-                    HaveLiveInfo = havelive;
+                    data_state().HaveLiveInfo = havelive;
                     first_ins = new_ins;
                 }
                 conf->ins_range.first = first_ins;
@@ -276,7 +276,7 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
             /*
              * all memory names are operands of a call instruction
              */
-            _GBitTurnOn( alive.out_of_block, MemoryBits );
+            _GBitTurnOn( alive.out_of_block, data_state().MemoryBits );
         }
         /*
          * Move information into current instruction
@@ -284,7 +284,7 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
          * previous instruction & this instruction)
          */
         ins->head.live.regs = alive.regs;
-        HW_TurnOn( ins->head.live.regs, CurrProc->state.unalterable );
+        HW_TurnOn( ins->head.live.regs, data_state().CurrProc->state.unalterable );
 
         ins->head.live.out_of_block = alive.out_of_block;
         ins->head.live.within_block = alive.within_block;
@@ -352,17 +352,17 @@ void    MakeLiveInfo( void )
     bool_                havelive;
 
     GlobalConflictsFirst();
-    first_global = ConfList; // assumes conflicts get added at start of list
-    havelive = HaveLiveInfo;
-    HaveLiveInfo = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    first_global = data_state().ConfList; // assumes conflicts get added at start of list
+    havelive = data_state().HaveLiveInfo;
+    data_state().HaveLiveInfo = false;
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->ins.head.prev->head.opcode != OP_NOP ) {
             PrefixInsRenum( (instruction *)&blk->ins, MakeNop(), false );
         }
     }
-    HaveLiveInfo = havelive;
+    data_state().HaveLiveInfo = havelive;
     Renumber();
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         FlowConflicts( (instruction *)&blk->ins, (instruction *)&blk->ins, blk );
         ExtendConflicts( blk, first_global );
     }
@@ -374,7 +374,7 @@ void    LiveInfoUpdate( void )
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->ins.head.next != (instruction *)&blk->ins ) {
             FlowConflicts( (instruction *)&blk->ins, (instruction *)&blk->ins, blk );
         }

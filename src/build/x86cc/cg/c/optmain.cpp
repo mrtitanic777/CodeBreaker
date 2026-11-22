@@ -57,22 +57,22 @@ static  void    PullQueue( void )
     for( ;; ) {
         PLBlip();
         OptPull();
-        if( FirstIns == NULL )
+        if( optdata_state().FirstIns == NULL )
             break;
-        if( _Class( FirstIns ) == OC_LABEL ) {
-            if( UniqueLabel( _Label( FirstIns ) ) ) {
+        if( _Class( optdata_state().FirstIns ) == OC_LABEL ) {
+            if( UniqueLabel( _Label( optdata_state().FirstIns ) ) ) {
                 /*
                  * take off extra byte added when the ins went into queue
                  */
-                FirstIns->oc.oc_header.objlen--;
+                optdata_state().FirstIns->oc.oc_header.objlen--;
             }
             /*
              * We want to order the alias list so that the labels with
              * symbols dump out first. They might be FE_COMMON labels.
              */
             be_lbls = NULL;
-            owner = &_Label( FirstIns );
-            for( lbl = _Label( FirstIns ); lbl != NULL; lbl = next ) {
+            owner = &_Label( optdata_state().FirstIns );
+            for( lbl = _Label( optdata_state().FirstIns ); lbl != NULL; lbl = next ) {
                 next = lbl->alias;
                 if( lbl->lbl.sym != NULL ) {
                     *owner = lbl;
@@ -85,25 +85,25 @@ static  void    PullQueue( void )
             *owner = be_lbls;
         }
         for( ;; ) {
-            next_ins = NextIns( FirstIns );
+            next_ins = NextIns( optdata_state().FirstIns );
             if( next_ins != NULL && _Class( next_ins ) == OC_LABEL ) {
-                OutputOC( &FirstIns->oc, &next_ins->oc );
+                OutputOC( &optdata_state().FirstIns->oc, &next_ins->oc );
             } else {
-                OutputOC( &FirstIns->oc, NULL );
+                OutputOC( &optdata_state().FirstIns->oc, NULL );
             }
-            cl = _Class( FirstIns );
+            cl = _Class( optdata_state().FirstIns );
             if( cl != OC_LABEL )
                 break;
-            lbl = _Label( FirstIns );
+            lbl = _Label( optdata_state().FirstIns );
             lbl->ins = NULL;
             next = lbl->alias;
             if( next == NULL )
                 break;
             lbl->alias = NULL;
             TryScrapLabel( lbl );
-            _Label( FirstIns ) = next;
+            _Label( optdata_state().FirstIns ) = next;
         }
-        DelInstr( FirstIns );
+        DelInstr( optdata_state().FirstIns );
         FreePendingDeletes();
         /*
          * Head of queue must be immediately after an unconditional control
@@ -112,7 +112,7 @@ static  void    PullQueue( void )
          */
         if( _TransferClass( cl ) )
             break;
-        if( FirstIns == NULL ) {
+        if( optdata_state().FirstIns == NULL ) {
             break;
         }
     }
@@ -152,24 +152,24 @@ void    InputOC( any_oc *oc )
                 optreturnvoid; /*dead code*/
             }
         }
-        while( QCount >= Q_MAX ) {
+        while( optdata_state().QCount >= Q_MAX ) {
             PullQueue();
         }
-        AddInstr( NewInstr( oc ), LastIns );
-        switch( _Class( LastIns ) ) {
+        AddInstr( NewInstr( oc ), optdata_state().LastIns );
+        switch( _Class( optdata_state().LastIns ) ) {
         case OC_LABEL:
-            if( _TstStatus( _Label( LastIns ), UNIQUE ) ) {
+            if( _TstStatus( _Label( optdata_state().LastIns ), UNIQUE ) ) {
                 /*
                  * Unique labels might need an addition byte of spacing
                  */
-                LastIns->oc.oc_header.objlen++;
+                optdata_state().LastIns->oc.oc_header.objlen++;
             }
             /* fall through */
         case OC_LREF:
         case OC_JCOND:
         case OC_JMP:
         case OC_CALL:
-            _ClrStatus( _Label( LastIns ), DYINGLABEL );
+            _ClrStatus( _Label( optdata_state().LastIns ), DYINGLABEL );
             break;
         }
         OptPush();
@@ -190,7 +190,7 @@ bool_    ShrinkQueue( pointer_uint size )
     for( ;; ) {
         if( freed >= need )
             break;
-        if( QCount <= Q_MIN )
+        if( optdata_state().QCount <= Q_MIN )
             break;
         freed += MemInUse();
         PullQueue();
@@ -204,14 +204,14 @@ void    InitQueue( void )
 /***********************/
 {
   optbegin
-    QCount = 0;
-    FirstIns = NULL;
-    LastIns = NULL;
-    RetList = NULL;
-    NoRetList = NULL;
-    PendingDeletes = NULL;
-    Handles = NULL;
-    InitFrl( &InstrFrl );
+    optdata_state().QCount = 0;
+    optdata_state().FirstIns = NULL;
+    optdata_state().LastIns = NULL;
+    optdata_state().RetList = NULL;
+    optdata_state().NoRetList = NULL;
+    optdata_state().PendingDeletes = NULL;
+    optdata_state().Handles = NULL;
+    InitFrl( &optdata_state().InstrFrl );
 #if( OPTIONS & SAVINGS )
     Savings = 0;
 #endif
@@ -223,7 +223,7 @@ void    EmptyQueue( void )
 /************************/
 {
   optbegin
-    while( QCount != 0 ) {
+    while( optdata_state().QCount != 0 ) {
         PullQueue();
     }
   optend
@@ -257,9 +257,9 @@ void    AbortQueue( void )
     ins_entry   *next;
 
   optbegin
-    for( ; FirstIns != NULL; FirstIns = next ) {
-        next = FirstIns->ins.next;
-        FreeInstr( FirstIns );
+    for( ; optdata_state().FirstIns != NULL; optdata_state().FirstIns = next ) {
+        next = optdata_state().FirstIns->ins.next;
+        FreeInstr( optdata_state().FirstIns );
     }
   optend
 }

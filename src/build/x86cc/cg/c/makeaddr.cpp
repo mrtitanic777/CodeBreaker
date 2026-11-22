@@ -50,7 +50,17 @@
 #include "feprotos.h"
 
 
-static    pointer       *AddrNameFrl;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct MakeaddrState {
+    pointer *AddrNameFrl;
+};
+
+}  // namespace
+
+static inline MakeaddrState& makeaddr_state() { return cbrun_part<MakeaddrState>(); }
+
 
 static  void    CopyAddr( an src, an dst )
 /****************************************/
@@ -68,9 +78,9 @@ an      NewAddrName( void )
 {
     an  addr;
 
-    addr = static_cast<an>(AllocFrl( &AddrNameFrl, sizeof( address_name ) ));
-    addr->link = AddrList;
-    AddrList = addr;
+    addr = static_cast<an>(AllocFrl( &makeaddr_state().AddrNameFrl, sizeof( address_name ) ));
+    addr->link = data_state().AddrList;
+    data_state().AddrList = addr;
     addr->tipe = NULL;
     addr->u.n.index = NULL;
     addr->u.n.offset = 0;
@@ -88,7 +98,7 @@ an      NewBoolNode( void )
 {
     an  addr;
 
-    addr = static_cast<an>(AllocFrl( &AddrNameFrl, sizeof( address_name ) ));
+    addr = static_cast<an>(AllocFrl( &makeaddr_state().AddrNameFrl, sizeof( address_name ) ));
     addr->tipe = NULL;
     addr->format = NF_BOOL;
     addr->flags = static_cast<addr_flags>(0);
@@ -117,8 +127,8 @@ an      MakeTempAddr( name *op )
 void    InitMakeAddr( void )
 /**************************/
 {
-    InitFrl( &AddrNameFrl );
-    AddrList = NULL;
+    InitFrl( &makeaddr_state().AddrNameFrl );
+    data_state().AddrList = NULL;
 }
 
 
@@ -135,7 +145,7 @@ void    AddrFree( an node )
     an  *owner;
 
     if( node->format != NF_BOOL ) {
-        owner = &AddrList;
+        owner = &data_state().AddrList;
         for( ;; ) {
             if( *owner == node ) {
                 *owner = node->link;
@@ -147,7 +157,7 @@ void    AddrFree( an node )
             FreeIns( node->u.i.ins );
         }
     }
-    FrlFreeSize( &AddrNameFrl, (pointer *)node, sizeof( address_name ) );
+    FrlFreeSize( &makeaddr_state().AddrNameFrl, (pointer *)node, sizeof( address_name ) );
 }
 
 
@@ -181,7 +191,7 @@ void    NamesCrossBlocks( void )
     /*
      * Careful. The list shifts under our feet.
      */
-    for( addr = AddrList; addr != NULL; addr = next ) {
+    for( addr = data_state().AddrList; addr != NULL; addr = next ) {
         next = addr->link;
         if( addr->flags & FL_ADDR_OK_ACROSS_BLOCKS ) {
             addr->flags |= FL_ADDR_CROSSED_BLOCKS;
@@ -213,7 +223,7 @@ void    NamesCrossBlocks( void )
 bool_    AddrFrlFree( void )
 /*************************/
 {
-    return( FrlFreeAll( &AddrNameFrl, sizeof( address_name ) ) );
+    return( FrlFreeAll( &makeaddr_state().AddrNameFrl, sizeof( address_name ) ) );
 }
 
 
@@ -224,19 +234,19 @@ static  name    *Display( cg_sym_handle symbol, level_depth level )
     name        *old_names;
     name        *op;
 
-    old_currproc = CurrProc;
-    old_names = Names[N_TEMP];
-    while( level != CurrProc->lex_level ) {
-        CurrProc = CurrProc->next_proc;
+    old_currproc = data_state().CurrProc;
+    old_names = data_state().Names[N_TEMP];
+    while( level != data_state().CurrProc->lex_level ) {
+        data_state().CurrProc = data_state().CurrProc->next_proc;
     }
-    Names[N_TEMP] = CurrProc->names[N_TEMP];
-    for( op = Names[N_TEMP]; op->v.symbol != symbol; ) {
+    data_state().Names[N_TEMP] = data_state().CurrProc->names[N_TEMP];
+    for( op = data_state().Names[N_TEMP]; op->v.symbol != symbol; ) {
         op = op->n.next_name;
     }
     op->v.usage |= ( NEEDS_MEMORY | USE_MEMORY | USE_IN_ANOTHER_BLOCK);
     AllocALocal( op );
-    CurrProc = old_currproc;
-    Names[N_TEMP] = old_names;
+    data_state().CurrProc = old_currproc;
+    data_state().Names[N_TEMP] = old_names;
     return( MakeDisplay( op, level ) );
 }
 
@@ -253,7 +263,7 @@ an      MakeGets( an dst, an src, const type_def *tipe )
     InsToAddr( dst );
     dst_name = Points( dst, tipe );
     ins = src->u.i.ins;
-    if( src->format == NF_INS && CurrBlock->ins.head.prev == ins ) {
+    if( src->format == NF_INS && data_state().CurrBlock->ins.head.prev == ins ) {
         ins->result = dst_name;
         src->format = NF_ADDR;  /* so instruction doesn't get freed! */
     } else {
@@ -578,7 +588,7 @@ an      MakeAddrName( cg_class class_, cg_sym_handle sym, const type_def *tipe )
             if( attr & FE_CONSTANT ) {
                 op->v.usage |= VAR_CONSTANT;
             }
-        } else if( level != CurrProc->lex_level ) {
+        } else if( level != data_state().CurrProc->lex_level ) {
             op = Display( sym, level );
             addr->u.n.name = op;
             addr->format = NF_NAME;

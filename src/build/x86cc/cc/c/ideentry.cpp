@@ -49,18 +49,29 @@
 #include "clibext.h"
 
 
-#define IDEFN(x)        IdeCbs->x
+#define IDEFN(x)        ideentry_state().IdeCbs->x
 
-static   IDECBHdl       IdeHdl;      // - handle for this instantiation
-static   IDECallBacks   *IdeCbs;       // - call backs into IDE
 //static   IDEInitInfo   Info;
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct IdeentryState {
+    IDECBHdl IdeHdl;   // - handle for this instantiation
+    IDECallBacks *IdeCbs;   // - call backs into IDE
+    jmp_buf *FatalEnv;
+};
+
+}  // namespace
+
+static inline IdeentryState& ideentry_state() { return cbrun_part<IdeentryState>(); }
 
 void ConBlip( void )
 /*******************
  * C compiler do a blip to console
  */
 {
-    IDEFN( PrintWithCRLF )( IdeHdl, "." );
+    IDEFN( PrintWithCRLF )( ideentry_state().IdeHdl, "." );
     /*
      * we are ignoring return for now
      */
@@ -95,7 +106,7 @@ void ConsErrMsg( cmsg_info *cinfo )
     if( cinfo->line != 0 ) {
         IdeMsgSetSrcLine( &info, cinfo->line );
     }
-    IDEFN( PrintWithInfo )( IdeHdl, &info );
+    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -109,7 +120,7 @@ void ConsErrMsgVerbatim( char const *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_ERROR, line );
-    IDEFN( PrintWithInfo )( IdeHdl, &info );
+    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -123,7 +134,7 @@ void BannerMsg( char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_BANNER, line );
-    IDEFN( PrintWithInfo )( IdeHdl, &info );
+    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -137,7 +148,7 @@ void DebugMsg( char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_DEBUG, line );
-    IDEFN( PrintWithInfo )( IdeHdl, &info );
+    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -151,7 +162,7 @@ void NoteMsg( char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_NOTE_MSG, line );
-    IDEFN( PrintWithInfo )( IdeHdl, &info );
+    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -165,20 +176,19 @@ const char *FEGetEnv( char const *name )
     const char *ret;
 
     ret = NULL;
-    if( !GlobalCompFlags.ignore_environment ) {
-        if( IDEFN( GetInfo )( IdeHdl, IDE_GET_ENV_VAR, (IDEGetInfoWParam)name, (IDEGetInfoLParam)&ret ) ) {
+    if( !cvars_state().GlobalCompFlags.ignore_environment ) {
+        if( IDEFN( GetInfo )( ideentry_state().IdeHdl, IDE_GET_ENV_VAR, (IDEGetInfoWParam)name, (IDEGetInfoLParam)&ret ) ) {
             ret = NULL;
         }
     }
     return( ret );
 }
 
-static   jmp_buf *FatalEnv;
 
 void MyExit( int ret )
 /********************/
 {
-    longjmp( *FatalEnv, ret );
+    longjmp( *ideentry_state().FatalEnv, ret );
 }
 
 // IDE INTERFACE
@@ -205,8 +215,8 @@ IDEBool IDEAPI IDEInitDLL
 /************************
  * DLL INITIALIZATION
  ************************/
-    IdeHdl = idehdl;
-    IdeCbs = idecbs;
+    ideentry_state().IdeHdl = idehdl;
+    ideentry_state().IdeCbs = idecbs;
     *dllhdl = NULL;
 #if HEAP_CHK == 1
     HeapUsedHi = 0;
@@ -295,13 +305,13 @@ static void getFrontEndArgv( char **argv, char *infile, char *outfile )
 {
     char    *p;
 
-    if( !GlobalCompFlags.ide_cmd_line_has_files ) {
+    if( !cvars_state().GlobalCompFlags.ide_cmd_line_has_files ) {
         infile[0] = '\0';
-        IDEFN( GetInfo )( IdeHdl, IDE_GET_SOURCE_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)infile );
+        IDEFN( GetInfo )( ideentry_state().IdeHdl, IDE_GET_SOURCE_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)infile );
         *argv++ = infile;
         outfile[0] = '\0';
         p = outfile + 4;
-        if( !IDEFN( GetInfo )( IdeHdl, IDE_GET_TARGET_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)p ) ) {
+        if( !IDEFN( GetInfo )( ideentry_state().IdeHdl, IDE_GET_TARGET_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)p ) ) {
             outfile[0] = '-';
             outfile[1] = 'f';
             outfile[2] = 'o';
@@ -331,7 +341,7 @@ int IDEAPI IDERunYourSelf       // COMPILE A PROGRAM
 
     TBreak();   // clear any pending IDEStopRunning's
     *fatal_error = false;
-    FatalEnv = JMPBUF_PTR( env );
+    ideentry_state().FatalEnv = JMPBUF_PTR( env );
     /*
      * initialize argv array
      */
@@ -441,19 +451,19 @@ IDEBool IDEAPI IDEPassInitInfo( IDEDllHdl hdl, IDEInitInfo *info )
         return( true );
     }
     if( info->ignore_env ) {
-        GlobalCompFlags.ignore_environment = true;
-        GlobalCompFlags.ignore_current_dir = true;
+        cvars_state().GlobalCompFlags.ignore_environment = true;
+        cvars_state().GlobalCompFlags.ignore_current_dir = true;
     }
     if( info->cmd_line_has_files ) {
-        GlobalCompFlags.ide_cmd_line_has_files = true;
+        cvars_state().GlobalCompFlags.ide_cmd_line_has_files = true;
     }
     if( info->ver > 2 ) {
         if( info->console_output ) {
-            GlobalCompFlags.ide_console_output = true;
+            cvars_state().GlobalCompFlags.ide_console_output = true;
         }
         if( info->ver > 3 ) {
             if( info->progress_messages ) {
-                GlobalCompFlags.progress_messages = true;
+                cvars_state().GlobalCompFlags.progress_messages = true;
             }
         }
     }

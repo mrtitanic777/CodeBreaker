@@ -51,20 +51,30 @@
 #include "feprotos.h"
 
 
-static    pointer_uint  MemLimit;
-static    bool_          IckyWicky;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct MemlimitState {
+    pointer_uint MemLimit;
+    bool_ IckyWicky;
+};
+
+}  // namespace
+
+static inline MemlimitState& memlimit_state() { return cbrun_part<MemlimitState>(); }
+
 
 static  bool_    FlushSomeOpt( pointer_uint size )
 /***********************************************/
 {
     bool_        freed;
 
-    if( InOptimizer == 0 && HaveCodeSeg() ) {
+    if( optmac_state().InOptimizer == 0 && HaveCodeSeg() ) {
         PUSH_OP( AskCodeSeg() );
             freed = ShrinkQueue( size );
         POP_OP();
-        if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !IckyWicky ) {
-            IckyWicky = true;
+        if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !memlimit_state().IckyWicky ) {
+            memlimit_state().IckyWicky = true;
             FEMessage( FEMSG_PEEPHOLE_FLUSHED, NULL );
         }
     } else {
@@ -79,10 +89,10 @@ static  bool_    ChkMemLimit( pointer_uint limit )
 {
     if( _IsModel( CGSW_GEN_MEMORY_LOW_FAILS ) )
         return( false );
-    if( MemInUse() - FrlSize <= limit )
+    if( MemInUse() - data_state().FrlSize <= limit )
         return( false );
-    FlushSomeOpt( MemInUse() - limit - FrlSize );
-    if( MemInUse() - FrlSize <= limit )
+    FlushSomeOpt( MemInUse() - limit - data_state().FrlSize );
+    if( MemInUse() - data_state().FrlSize <= limit )
         return( false );
     return( true );
 }
@@ -94,8 +104,8 @@ void    CalcMemLimit( void )
     pointer_uint    size;
 
     size = MemSize();
-    MemLimit = size - size / 4;
-    IckyWicky = false;
+    memlimit_state().MemLimit = size - size / 4;
+    memlimit_state().IckyWicky = false;
 }
 
 
@@ -109,14 +119,14 @@ void    FlushOpt( void )
 bool_    MemCritical( void )
 /*************************/
 {
-    return( ChkMemLimit( MemLimit - MemLimit/4 ) );
+    return( ChkMemLimit( memlimit_state().MemLimit - memlimit_state().MemLimit/4 ) );
 }
 
 
 bool_    MemLow( void )
 /********************/
 {
-    return( ChkMemLimit( MemLimit ) );
+    return( ChkMemLimit( memlimit_state().MemLimit ) );
 }
 
 
@@ -129,7 +139,7 @@ void    BlowAwayFreeLists( void )
     RegTreeFrlFree();
     InsFrlFree();
     InstrFrlFree();
-    CFFrlFree( &cgh );
+    CFFrlFree( &cfloat_state().cgh );
     ConfFrlFree();
     NameFrlFree();
     SchedFrlFree();
@@ -149,7 +159,7 @@ bool_    MemCheck( size_t size )
         return( true );
     if( RegTreeFrlFree() )
         return( true );
-    if( CFFrlFree( &cgh ) )
+    if( CFFrlFree( &cfloat_state().cgh ) )
         return( true );
     if( InsFrlFree() )
         return( true );

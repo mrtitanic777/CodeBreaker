@@ -250,7 +250,7 @@ void    ScrapCodeLabel( label_handle lbl )
     bool_            code;
 
   optbegin
-    owner = &Handles;
+    owner = &optdata_state().Handles;
     for( ;; ) {
         if( *owner == NULL )
             optreturnvoid;

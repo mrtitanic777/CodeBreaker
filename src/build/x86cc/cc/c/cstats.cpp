@@ -35,27 +35,27 @@
 
 void InitStats( void )
 {
-    CompFlags.stats_printed = false;
-    CompFlags.extra_stats_wanted = false;
-    SrcLineCount = 0;
-    IncLineCount = 0;
-    WngCount = 0;
-    ErrCount = 0;
-    GblSymCount = 0;
-    LclSymCount = 0;
-    MacroCount = 0;
-    MacroSize = 0;
-    EnumCount = 0;
-    TagCount = 0;
-    FieldCount = 0;
-    TypeCount = 0;
-    TmpSymCount = 0;
-    LitPoolSize = 0;
-    LitCount = 0;
+    cvars_state().CompFlags.stats_printed = false;
+    cvars_state().CompFlags.extra_stats_wanted = false;
+    cvars_state().SrcLineCount = 0;
+    cvars_state().IncLineCount = 0;
+    cvars_state().WngCount = 0;
+    cvars_state().ErrCount = 0;
+    cvars_state().GblSymCount = 0;
+    cvars_state().LclSymCount = 0;
+    cvars_state().MacroCount = 0;
+    cvars_state().MacroSize = 0;
+    cvars_state().EnumCount = 0;
+    cvars_state().TagCount = 0;
+    cvars_state().FieldCount = 0;
+    cvars_state().TypeCount = 0;
+    cvars_state().TmpSymCount = 0;
+    cvars_state().LitPoolSize = 0;
+    cvars_state().LitCount = 0;
     /*
      * still useful for internal debugging
      */
-    FuncCount = 0;
+    cvars_state().FuncCount = 0;
 }
 
 void PrintStats( void )
@@ -65,29 +65,29 @@ void PrintStats( void )
     char        msgbuf[MAX_MSG_LEN];
     int         len;
 
-    if( !CompFlags.stats_printed ) {
+    if( !cvars_state().CompFlags.stats_printed ) {
         len = 0;
-        fname = WholeFName;
+        fname = cvars_state().WholeFName;
         if( fname == NULL )
             fname = const_cast<char *>("");
         len += sprintf( &msgbuf[len], "%s: ", fname );
-        if( SrcLineCount == 0 ) {
-            nest_fcb = SrcFiles;
+        if( cvars_state().SrcLineCount == 0 ) {
+            nest_fcb = cvars_state().SrcFiles;
             if( nest_fcb != NULL ) {
                 while( nest_fcb->prev_file != NULL ) {
-                    IncLineCount += nest_fcb->src_line_cnt;
+                    cvars_state().IncLineCount += nest_fcb->src_line_cnt;
                     nest_fcb = nest_fcb->prev_file;
                 }
-                SrcLineCount = nest_fcb->src_line_cnt;
+                cvars_state().SrcLineCount = nest_fcb->src_line_cnt;
             }
         }
-        len += sprintf( &msgbuf[len], "%u lines, ", SrcLineCount );
-        if( IncLineCount != 0 ) {
-            len += sprintf( &msgbuf[len], "included %u, ", IncLineCount );
+        len += sprintf( &msgbuf[len], "%u lines, ", cvars_state().SrcLineCount );
+        if( cvars_state().IncLineCount != 0 ) {
+            len += sprintf( &msgbuf[len], "included %u, ", cvars_state().IncLineCount );
         }
-        len += sprintf( &msgbuf[len], "%u warnings, ", WngCount );
-        len += sprintf( &msgbuf[len], "%u errors", ErrCount );
+        len += sprintf( &msgbuf[len], "%u warnings, ", cvars_state().WngCount );
+        len += sprintf( &msgbuf[len], "%u errors", cvars_state().ErrCount );
         BannerMsg( msgbuf );
-        CompFlags.stats_printed = true;
+        cvars_state().CompFlags.stats_printed = true;
     }
 }

@@ -51,10 +51,10 @@ static  void    InitVisitedTemps( void )
     name        *op;
     name        *alias;
 
-    for( op = Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
+    for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
         op->t.temp_flags &= ~VISITED;
     }
-    for( op = Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
+    for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
         if( op->v.usage & (USE_ADDRESS | VAR_VOLATILE) ) {
             alias = op;
             do {
@@ -64,14 +64,14 @@ static  void    InitVisitedTemps( void )
         }
     }
     if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-        for( op = Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
+        for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
             if( _FrontEndTmp( op ) ) {
                 op->t.temp_flags |= VISITED;
             }
         }
     }
-    if( BlockByBlock || _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-        for( op = Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
+    if( data_state().BlockByBlock || _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+        for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
             if( op->v.usage & USE_IN_ANOTHER_BLOCK ) {
                 op->t.temp_flags |= VISITED;
             }
@@ -128,7 +128,7 @@ static  void            FreeUnVisitedTemps( void )
     name        *op;
     name        **owner;
 
-    owner = &Names[N_TEMP];
+    owner = &data_state().Names[N_TEMP];
     for( ;; ) {
         op = *owner;
         if( op == NULL )
@@ -351,12 +351,12 @@ static  bool_    RemoveUselessStuff( bool_ just_the_loop, bool_ in_regalloc )
     bool_        change;
 
     InitVisitedTemps();
-    FindUsefulIns( BlockList, just_the_loop, in_regalloc );
+    FindUsefulIns( data_state().BlockList, just_the_loop, in_regalloc );
     tail = TailBlocks();
     if( tail != NULL ) {
         FindUsefulIns( tail, just_the_loop, in_regalloc );
     }
-    change = FreeUselessIns( BlockList, just_the_loop, in_regalloc );
+    change = FreeUselessIns( data_state().BlockList, just_the_loop, in_regalloc );
     if( tail != NULL ) {
         change |= FreeUselessIns( tail, just_the_loop, in_regalloc );
     }
@@ -369,7 +369,7 @@ static  bool_    RemoveUselessStuff( bool_ just_the_loop, bool_ in_regalloc )
 static bool_ DoInsDead( bool_ just_the_loop, bool_ in_regalloc )
 /***********************************************************/
 {
-    if( BlockByBlock && !BreakExists() )
+    if( data_state().BlockByBlock && !BreakExists() )
         return( false );
     return( RemoveUselessStuff( just_the_loop, in_regalloc ) );
 }

@@ -40,7 +40,17 @@
 #include "dominate.h"
 
 
-static block    *ReturnBlock;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct DominateState {
+    block *ReturnBlock;
+};
+
+}  // namespace
+
+static inline DominateState& dominate_state() { return cbrun_part<DominateState>(); }
+
 
 static bool_             AssignDominatorBits( void )
 /*************************************************/
@@ -48,20 +58,20 @@ static bool_             AssignDominatorBits( void )
     block       *blk;
     dom_bit_set id;
 
-    ReturnBlock = NULL;
+    dominate_state().ReturnBlock = NULL;
     _DBitFirst( id );
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_RETURN ) ) {
-            if( ReturnBlock != NULL )
+            if( dominate_state().ReturnBlock != NULL )
                 return( false );
-            ReturnBlock = blk;
+            dominate_state().ReturnBlock = blk;
         }
         _DBitAssign( blk->dom.id, id );
         if( _DBitEmpty( id ) )
             return( false );
         _DBitNext( &id );
     }
-    return( ReturnBlock != NULL );
+    return( dominate_state().ReturnBlock != NULL );
 }
 
 bool_ CalcDominatorInfo( void )
@@ -83,16 +93,16 @@ bool_ CalcDominatorInfo( void )
     if( AssignDominatorBits() ) {
         have_info = true;
         _DBitInit( full_set, ~0U );
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
             _DBitAssign( blk->dom.dominator,      full_set );
             _DBitAssign( blk->dom.post_dominator, full_set );
         }
-        _DBitAssign( HeadBlock->dom.dominator, HeadBlock->dom.id );
-        _DBitAssign( ReturnBlock->dom.post_dominator, ReturnBlock->dom.id );
+        _DBitAssign( data_state().HeadBlock->dom.dominator, data_state().HeadBlock->dom.id );
+        _DBitAssign( dominate_state().ReturnBlock->dom.post_dominator, dominate_state().ReturnBlock->dom.id );
         do {
             change = false;
-            for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
-                if( blk != HeadBlock ) {
+            for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+                if( blk != data_state().HeadBlock ) {
                     _DBitAssign( old_dominator, blk->dom.dominator );
                     _DBitAssign( predecessors, full_set );
                     for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
@@ -106,7 +116,7 @@ bool_ CalcDominatorInfo( void )
                         change = true;
                     }
                 }
-                if( blk != ReturnBlock ) {
+                if( blk != dominate_state().ReturnBlock ) {
                     _DBitAssign( old_dominator, blk->dom.post_dominator );
                     _DBitAssign( successors, full_set );
                     edge = &blk->edge[0];

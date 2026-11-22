@@ -60,7 +60,7 @@
 struct sf_info {
     char       size;
     s_values   code;
-} sf_info;
+};
 
 struct cv_lang_map {
      int        cv_lang;
@@ -68,8 +68,6 @@ struct cv_lang_map {
 };
 
 // global variables
-segment_id              CVSyms;
-segment_id              CVTypes;
 
 static const struct sf_info SInfo[SG_LAST] = {
     #define SLMAC( n, N, c )    { sizeof( s_##n ), static_cast<s_values>( c ) },
@@ -168,7 +166,7 @@ void    CVInitDbgInfo( void )
 /***************************/
 /* called after ObjInit */
 {
-    TypeIdx   = CV_FIRST_USER_TYPE - 1;
+    data_state().TypeIdx   = CV_FIRST_USER_TYPE - 1;
 }
 
 static int SetCvLang( void )
@@ -193,12 +191,12 @@ static  void    InitSegBck( void )
 /********************************/
 {
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
-        PUSH_OP( CVSyms );
+        PUSH_OP( cvdbg_state().CVSyms );
             DataLong( CV_OMF_SIG );
         POP_OP();
     }
     if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        PUSH_OP( CVTypes );
+        PUSH_OP( cvdbg_state().CVTypes );
             DataLong( CV_OMF_SIG );
         POP_OP();
     }
@@ -216,14 +214,14 @@ void    CVObjInitDbgInfo( void )
 
     InitSegBck();
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
-        NewBuff( out, CVSyms );
+        NewBuff( out, cvdbg_state().CVSyms );
         optr = static_cast<cs_objname *>(StartSym(  out, SG_OBJNAME ));
         optr->signature = 0;
         name =  static_cast<char *>(FEAuxInfo( NULL, FEINF_OBJECT_FILE_NAME ));
         CVPutStr( out, name );
         EndSym( out );
         buffEnd( out );
-        NewBuff( out, CVSyms );
+        NewBuff( out, cvdbg_state().CVSyms );
         cptr = static_cast<cs_compile *>(StartSym(  out, SG_COMPILE ));
         cptr->language  = SetCvLang();
         cptr->flags.s = 0; /* set default */
@@ -280,7 +278,6 @@ void    CVObjFiniDbgInfo( void )
 /******************************/
 {
 }
-
 
 
 static void     SymReloc( segment_id segid, cg_sym_handle sym, offset lc )
@@ -393,7 +390,7 @@ void    CVGenStatic( cg_sym_handle sym, dbg_loc loc, bool_ mem )
 
     attr = FEAttr( sym );
     tipe = FEDbgType( sym );
-    NewBuff( out, CVSyms );
+    NewBuff( out, cvdbg_state().CVSyms );
     attr = FEAttr( sym );
     if( attr & FE_GLOBAL ) {
         kind = SG_GDATA;
@@ -413,7 +410,7 @@ void    CVGenStatic( cg_sym_handle sym, dbg_loc loc, bool_ mem )
     EndSym( out );
     if( LocSimpStatic( loc ) == sym ) {
         BuffWrite( out, &ptr->offset );
-        SymReloc( CVSyms, sym, 0 );
+        SymReloc( cvdbg_state().CVSyms, sym, 0 );
         BuffSkip( out, &ptr->type );
     } else {
         /*TODO:can't handle locs */
@@ -428,7 +425,7 @@ void    CVTypedef( const char *nm, dbg_type tipe )
     cv_out      out[1];
     cs_udt       *ptr;
 
-    NewBuff( out, CVSyms );
+    NewBuff( out, cvdbg_state().CVSyms );
     ptr = static_cast<cs_udt *>(StartSym(  out, SG_UDT ));
     ptr->type = tipe;
     CVPutStr( out, nm );
@@ -460,7 +457,7 @@ void    CVSymIConst( const char *nm, int val, dbg_type tipe )
     cv_out      out[1];
     cs_constant *ptr;
 
-    NewBuff( out, CVSyms );
+    NewBuff( out, cvdbg_state().CVSyms );
     ptr = static_cast<cs_constant *>(StartSym(  out, SG_CONSTANT ));
     ptr->type = tipe;
     CVPutINum( out, val );
@@ -476,7 +473,7 @@ void    CVSymIConst64( const char *nm, signed_64 val, dbg_type tipe )
     cv_out      out[1];
     cs_constant *ptr;
 
-    NewBuff( out, CVSyms );
+    NewBuff( out, cvdbg_state().CVSyms );
     ptr = static_cast<cs_constant *>(StartSym(  out, SG_CONSTANT ));
     ptr->type = tipe;
     CVPutINum64( out, val );
@@ -502,7 +499,18 @@ void    CVRtnBeg( dbg_rtn *rtn, offset lc )
     /* unused parameters */ (void)rtn; (void)lc;
 }
 
-static dbg_patch    RtnPatch[1];
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CvsymsState {
+    struct sf_info sf_info;
+    dbg_patch RtnPatch[1];
+};
+
+}  // namespace
+
+static inline CvsymsState& cvsyms_state() { return cbrun_part<CvsymsState>(); }
+
 
 static  name    *LocSymBP( dbg_loc loc )
 /**************************************/
@@ -550,7 +558,7 @@ static  void DumpParms( dbg_local *parm, dbg_local **locals )
                 t = LocSymBP( alt->loc );
                 if( t != NULL ) {
                     offset = NewBase( t );
-                    NewBuff( out, CVSyms );
+                    NewBuff( out, cvdbg_state().CVSyms );
                     FrameVar( out, FEName( static_cast<cg_sym_handle>(alt->sym) ), tipe, offset );
                     buffEnd( out );
                 } else {
@@ -590,7 +598,7 @@ static  void    DumpLocals( dbg_local *local )
             t = LocSymBP( local->loc );
             if( t != NULL ) {
                 offset = NewBase( t );
-                NewBuff( out, CVSyms );
+                NewBuff( out, cvdbg_state().CVSyms );
                 FrameVar( out, FEName( static_cast<cg_sym_handle>(local->sym) ), tipe, offset );
                 buffEnd( out );
             } else {
@@ -622,14 +630,14 @@ void    CVProEnd( dbg_rtn *rtn, offset lc )
 
     /* unused parameters */ (void)lc;
 
-    sym = AskForLblSym( static_cast<label_handle>(CurrProc->label) );
+    sym = AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) );
     attr = FEAttr( sym );
     if( attr & FE_GLOBAL ) {
         kind = SG_GPROC;
     } else {
         kind = SG_LPROC;
     }
-    NewBuff( out, CVSyms );
+    NewBuff( out, cvdbg_state().CVSyms );
     ptr = static_cast<cs_gproc *>(StartSym(  out, kind ));
     ptr->pParent = 0;
     ptr->pEnd = 0;
@@ -654,9 +662,9 @@ void    CVProEnd( dbg_rtn *rtn, offset lc )
     }
     CVPutStr( out, name );
     EndSym( out );
-    BuffPatchSet( CVSyms, RtnPatch );
+    BuffPatchSet( cvdbg_state().CVSyms, cvsyms_state().RtnPatch );
     BuffWrite( out, &ptr->offset );
-    SymReloc( CVSyms, sym, 0 );
+    SymReloc( cvdbg_state().CVSyms, sym, 0 );
     BuffSkip( out, &ptr->proctype );
     buffEnd( out );
     DBLocFini( rtn->return_loc );
@@ -681,7 +689,7 @@ void    CVBlkBeg( dbg_block *blk, offset lc )
 
     bpatch = static_cast<block_patch *>(CGAlloc( sizeof( block_patch ) ));
     blk->bpatches = bpatch;
-    NewBuff( out, CVSyms );
+    NewBuff( out, cvdbg_state().CVSyms );
     ptr = static_cast<cs_block *>(StartSym(  out, SG_BLOCK ));
     ptr->pParent = 0;
     ptr->pEnd = 0;
@@ -692,11 +700,11 @@ void    CVBlkBeg( dbg_block *blk, offset lc )
     CVPutNullStr( out );
     EndSym( out );
     dpatch = &blk->bpatches->dpatch;
-    BuffPatchSet( CVSyms, dpatch );
+    BuffPatchSet( cvdbg_state().CVSyms, dpatch );
     BuffWrite( out, &ptr->offset );
-    sym = AskForLblSym( static_cast<label_handle>(CurrProc->label) );
-    start = lc - CurrProc->targ.debug->blk->start;
-    SymReloc( CVSyms, sym, start );
+    sym = AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) );
+    start = lc - data_state().CurrProc->targ.debug->blk->start;
+    SymReloc( cvdbg_state().CVSyms, sym, start );
     BuffSkip( out, nm );      /* skip addr */
     buffEnd( out );
     DumpLocals( blk->locals );
@@ -718,7 +726,7 @@ void    CVBlkEnd( dbg_block *blk, offset lc )
         DataBytes( sizeof( length ), &length );
         SetBigLocation( here );
     POP_OP();
-    NewBuff( out, CVSyms );
+    NewBuff( out, cvdbg_state().CVSyms );
     StartSym(  out, SG_END );
     EndSym( out );
     buffEnd( out );
@@ -740,7 +748,7 @@ void    CVRtnEnd( dbg_rtn *rtn, offset lc )
     dbg_patch           *dpatch;
     long_offset         here;
 
-    dpatch = RtnPatch;
+    dpatch = cvsyms_state().RtnPatch;
     PUSH_OP( dpatch->segid );
         here = AskBigLocation();
         SetBigLocation( dpatch->offset + offsetof( s_gproc, f.proc_length ) );
@@ -751,7 +759,7 @@ void    CVRtnEnd( dbg_rtn *rtn, offset lc )
         DataBytes( sizeof( debug_end ), &debug_end );
         SetBigLocation( here );
     POP_OP();
-    NewBuff( out, CVSyms );
+    NewBuff( out, cvdbg_state().CVSyms );
     StartSym(  out, SG_END );
     EndSym( out );
     buffEnd( out );

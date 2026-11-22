@@ -67,10 +67,18 @@ typedef enum {
 } dep_type;
 
 
-data_dag                *DataDag;   /* global for dump routines */
-static pointer          *DepFrl;
-static dep_list_block   *CurrDepBlock;
-static block            *SBlock;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct InsschedFileState {
+    pointer *DepFrl;
+    dep_list_block *CurrDepBlock;
+    block *SBlock;
+};
+
+}  // namespace
+
+static inline InsschedFileState& inssched_file_state() { return cbrun_part<InsschedFileState>(); }
 
 
 bool_    SchedFrlFree( void )
@@ -78,7 +86,7 @@ bool_    SchedFrlFree( void )
  * Free the instruction schedulers dependancy link lists.
  */
 {
-    return( FrlFreeAll( &DepFrl, sizeof( dep_list_block ) ) );
+    return( FrlFreeAll( &inssched_file_state().DepFrl, sizeof( dep_list_block ) ) );
 }
 
 static dep_list_entry *AllocDep( void )
@@ -88,13 +96,13 @@ static dep_list_entry *AllocDep( void )
 {
     dep_list_block  *new_dlb;
 
-    if( CurrDepBlock == NULL || CurrDepBlock->used >= DEPS_IN_BLOCK ) {
-        new_dlb = static_cast<dep_list_block *>(AllocFrl( &DepFrl, sizeof( dep_list_block ) ));
-        new_dlb->next = CurrDepBlock;
+    if( inssched_file_state().CurrDepBlock == NULL || inssched_file_state().CurrDepBlock->used >= DEPS_IN_BLOCK ) {
+        new_dlb = static_cast<dep_list_block *>(AllocFrl( &inssched_file_state().DepFrl, sizeof( dep_list_block ) ));
+        new_dlb->next = inssched_file_state().CurrDepBlock;
         new_dlb->used = 0;
-        CurrDepBlock = new_dlb;
+        inssched_file_state().CurrDepBlock = new_dlb;
     }
-    return( &CurrDepBlock->entries[CurrDepBlock->used++] );
+    return( &inssched_file_state().CurrDepBlock->entries[inssched_file_state().CurrDepBlock->used++] );
 }
 
 
@@ -141,7 +149,7 @@ static void InitDag( void )
     instruction *ins;
 
     head = NULL;
-    for( ins = SBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+    for( ins = inssched_file_state().SBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
         ins->ins_flags &= ~INS_INDEX_ADJUST;
         switch( ins->head.opcode ) {
         case OP_ADD:
@@ -173,7 +181,7 @@ static void InitDag( void )
         dag->prev = head;
         head = dag;
     }
-    DataDag = head;
+    inssched_state().DataDag = head;
 }
 
 static bool_ StackOp( instruction *ins )
@@ -258,7 +266,7 @@ static bool_ OkToSlide( instruction *ins, name *op )
         return( true );
     if( op->i.constant != 0 )
         return( true );
-    if( OptForSize >= 50 )
+    if( data_state().OptForSize >= 50 )
         return( false );
 #if  _TARGET_INTEL
     /*
@@ -539,7 +547,7 @@ static void BuildDag( void )
     bool_        link_all;
     bool_        used_cc;
 
-    for( dag_i = DataDag; dag_i != NULL; dag_i = dag_i->prev ) {
+    for( dag_i = inssched_state().DataDag; dag_i != NULL; dag_i = dag_i->prev ) {
         used_cc = (dag_i->ins->ins_flags & INS_CC_USED) != 0;
         link_all = false;
         link_multi = false;
@@ -643,7 +651,7 @@ static void AnnointDag( void )
 {
     data_dag    *dag;
 
-    for( dag = DataDag; dag != NULL; dag = dag->prev ) {
+    for( dag = inssched_state().DataDag; dag != NULL; dag = dag->prev ) {
         if( !dag->visited ) {
             AnnointADag( dag );
         }
@@ -872,7 +880,7 @@ static void ScheduleIns( void )
      * get initial 'ready' list
      */
     ready = NULL;
-    for( curr = DataDag; curr != NULL; curr = curr->prev ) {
+    for( curr = inssched_state().DataDag; curr != NULL; curr = curr->prev ) {
         curr->visited = false;
         if( curr->anc_count == 0 ) {
             curr->ready = ready;
@@ -881,12 +889,12 @@ static void ScheduleIns( void )
     }
     last_seq = 0;
     top = NULL;
-    stk_depth = FPStackExit( SBlock );
+    stk_depth = FPStackExit( inssched_file_state().SBlock );
     /*
      * so we can dump!
      */
-    SBlock->ins.head.next = (instruction *)&SBlock->ins;
-    SBlock->ins.head.prev = (instruction *)&SBlock->ins;
+    inssched_file_state().SBlock->ins.head.next = (instruction *)&inssched_file_state().SBlock->ins;
+    inssched_file_state().SBlock->ins.head.prev = (instruction *)&inssched_file_state().SBlock->ins;
     while( ready != NULL ) {
         /*
          * find best instruction to schedule
@@ -995,10 +1003,10 @@ static void ScheduleIns( void )
             }
         }
     }
-    SBlock->ins.head.next = top;
-    SBlock->ins.head.prev = top->head.prev;
-    top->head.prev->head.next = (instruction *)&SBlock->ins;
-    top->head.prev = (instruction *)&SBlock->ins;
+    inssched_file_state().SBlock->ins.head.next = top;
+    inssched_file_state().SBlock->ins.head.prev = top->head.prev;
+    top->head.prev->head.next = (instruction *)&inssched_file_state().SBlock->ins;
+    top->head.prev = (instruction *)&inssched_file_state().SBlock->ins;
     /*
      * We have to run backwards through the block, adjusting all
      * the index offsets that were scheduled before their corresponding
@@ -1006,7 +1014,7 @@ static void ScheduleIns( void )
      * adjustment being moved before the use of the index register was
      * handled when we scheduled the INS_INDEX_ADJUST instruction.
      */
-    for( top = SBlock->ins.head.prev; top->head.opcode != OP_BLOCK; top = top->head.prev ) {
+    for( top = inssched_file_state().SBlock->ins.head.prev; top->head.opcode != OP_BLOCK; top = top->head.prev ) {
         if( top->ins_flags & INS_INDEX_ADJUST ) {
             FixIndexAdjust( top, false );
         }
@@ -1023,16 +1031,16 @@ static  void    FreeDataDag( void )
     data_dag            *dag;
     data_dag            *prev;
 
-    for( dag = DataDag; dag != NULL; dag = prev ) {
+    for( dag = inssched_state().DataDag; dag != NULL; dag = prev ) {
         prev = dag->prev;
         CGFree( dag );
     }
-    DataDag = NULL;
-    for( dep = CurrDepBlock; dep != NULL; dep = next ) {
+    inssched_state().DataDag = NULL;
+    for( dep = inssched_file_state().CurrDepBlock; dep != NULL; dep = next ) {
         next = dep->next;
-        FrlFreeSize( &DepFrl, (pointer *)dep, sizeof( dep_list_block ) );
+        FrlFreeSize( &inssched_file_state().DepFrl, (pointer *)dep, sizeof( dep_list_block ) );
     }
-    CurrDepBlock = NULL;
+    inssched_file_state().CurrDepBlock = NULL;
 }
 
 static  void    SchedBlock( void )
@@ -1042,10 +1050,10 @@ static  void    SchedBlock( void )
 {
     unsigned    num_instrs;
 
-    num_instrs = CountIns( SBlock );
+    num_instrs = CountIns( inssched_file_state().SBlock );
     if( num_instrs > 2 ) {
         InitDag();
-        FPPreSched( SBlock );
+        FPPreSched( inssched_file_state().SBlock );
         BuildDag();
         AnnointDag();
         /*
@@ -1059,7 +1067,7 @@ static  void    SchedBlock( void )
          * likely that we'll run out of memory when doing the FPPostSched
          */
         FreeDataDag();
-        FPPostSched( SBlock );
+        FPPostSched( inssched_file_state().SBlock );
         SetMemOut( MO_SUICIDE );
     }
 }
@@ -1074,9 +1082,9 @@ void    Schedule( void )
     bool_                first_time;
 
     first_time = true;
-    InitFrl( &DepFrl );
+    InitFrl( &inssched_file_state().DepFrl );
     old_memout = SetMemOut( MO_SUICIDE );
-    for( SBlock = HeadBlock; SBlock != NULL; SBlock = SBlock->next_block ) {
+    for( inssched_file_state().SBlock = data_state().HeadBlock; inssched_file_state().SBlock != NULL; inssched_file_state().SBlock = inssched_file_state().SBlock->next_block ) {
         if( Spawn( &SchedBlock ) != 0 ) {
             if( first_time ) {
                 FEMessageCurrProc( FEMSG_SCHEDULER_DIED );

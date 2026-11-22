@@ -32,7 +32,16 @@
 #include "cvars.h"
 
 
-unsigned        NodeTimeStamp;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct TreewalkState {
+    unsigned NodeTimeStamp;
+};
+
+}  // namespace
+
+static inline TreewalkState& treewalk_state() { return cbrun_part<TreewalkState>(); }
 
 
 int WalkExprTree( TREEPTR p,
@@ -44,12 +53,12 @@ int WalkExprTree( TREEPTR p,
     TREEPTR     parent;
     TREEPTR     temp;
 
-    NodeTimeStamp = 0;
+    treewalk_state().NodeTimeStamp = 0;
     parent = NULL;
     for( ;; ) {
         for( ;; ) {
             if( p->left == 0 && p->right == 0 ) break;
-            ++NodeTimeStamp;
+            ++treewalk_state().NodeTimeStamp;
             (*prefix_operator)( p );
             if( p->left == 0 ) break;
             temp = p;
@@ -59,15 +68,15 @@ int WalkExprTree( TREEPTR p,
             parent = temp;
         }
         if( parent == NULL ) {
-            ++NodeTimeStamp;
+            ++treewalk_state().NodeTimeStamp;
             (*prefix_operator)( p );
         } else if( p->right == NULL ) {
-            ++NodeTimeStamp;
+            ++treewalk_state().NodeTimeStamp;
             (*operand)( p );
             goto move_up_to_parent;
         }
         for( ;; ) {
-            ++NodeTimeStamp;
+            ++treewalk_state().NodeTimeStamp;
             (*infix_operator)( p );     /* - perform infix operation */
             if( p->right != NULL ) {    /* - if present */
                 temp = p;
@@ -77,7 +86,7 @@ int WalkExprTree( TREEPTR p,
                 break;                  /* - - get out to visit right */
             }                           /* - endif */
 do_postfix_call:
-            ++NodeTimeStamp;
+            ++treewalk_state().NodeTimeStamp;
             (*postfix_operator)( p );   /* perform postfix operation */
             if( parent == NULL )        /* quit if at root node */
                 return( 0 );

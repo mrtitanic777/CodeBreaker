@@ -145,7 +145,7 @@ static  void    AssignMoreBits( void )
 {
     conflict_node       *conf;
 
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         _SetFalse( conf, CST_CONFLICT_ON_HOLD );
     }
     if( MoreConflicts() ) {
@@ -196,7 +196,7 @@ static  void    InitChoices( void )
     opcnt               i;
 #endif
 
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         conf->possible = RL_NUMBER_OF_SETS;
         FreePossibleForAlias( conf );  /* 2007-07-10 RomanT */
     }
@@ -285,7 +285,7 @@ static  bool_    SplitConflicts( void )
     bool_                change;
 
     change = false;
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         BuildNameTree( conf );
         if( conf->tree != NULL && conf->tree->idx == RL_NUMBER_OF_SETS ) {
             change = true;
@@ -317,7 +317,7 @@ void    NullConflicts( var_usage off )
 {
     name        *temp;
 
-    for( temp = Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         temp->v.conflict = NULL;
         temp->v.usage &= (USE_IN_ANOTHER_BLOCK | USE_MEMORY | USE_ADDRESS | VAR_VOLATILE | NEEDS_MEMORY | HAS_MEMORY);
         if( (temp->v.usage & (USE_MEMORY | USE_ADDRESS | VAR_VOLATILE | NEEDS_MEMORY)) == 0 ) {
@@ -556,7 +556,7 @@ static int_32   CountRegMoves( conflict_node *conf,
         count <<= levels;
         if( count != 0 || levels == 0 )
             return( count );
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
                 if( ins->head.opcode == OP_MOV ) {
                     other_opnd = NULL;
@@ -623,7 +623,7 @@ static  bool_    StealsSeg( instruction *ins,
         return( false );
     if( ( op == actual_op ) && IsSegReg( reg ) )
         return( false );
-    index_needs = RegSets[SegIndex()];
+    index_needs = RegSetList(SegIndex());
     if( HW_CEqual( *index_needs, HW_EMPTY ) )
         return( false );
     for( ;; ) {
@@ -669,7 +669,7 @@ static bool_ StealsIdx( instruction *ins, hw_reg_set except, name *actual_op )
             is_result = true;
         }
     }
-    index_needs = RegSets[ins->u2.index_needs];
+    index_needs = RegSetList(ins->u2.index_needs);
     if( HW_CEqual( *index_needs, HW_EMPTY ) )
         return( false );
     for( ;; ) {
@@ -741,7 +741,7 @@ static  bool_maybe TooGreedy( conflict_node *conf, hw_reg_set reg, name *op )
         } else {
             needs = ins->u.gen_table->reg_set;
         }
-        ins_needs = RegSets[RegList[needs].need];
+        ins_needs = RegSetList(RegList[needs].need);
         if( HW_CEqual( *ins_needs, HW_EMPTY ) || _Is( conf, CST_NEVER_TOO_GREEDY ) || UnaryOpGetsReg( ins, reg, op ) ) {
             rc = CheckIndecies( ins, reg, HW_EMPTY, op );
         } else { /* can the instruction and indecies still get needed regs?*/
@@ -978,8 +978,8 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
             given = gave_hi;
             HW_TurnOn( given, gave_lo );
         }
-        HW_TurnOn( GivenRegisters, gave_hi );
-        HW_TurnOn( GivenRegisters, gave_lo );
+        HW_TurnOn( data_state().GivenRegisters, gave_hi );
+        HW_TurnOn( data_state().GivenRegisters, gave_lo );
     } else {
         best = HW_EMPTY;
         best_saves = -1;
@@ -993,8 +993,8 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
                     saves = CountRegMoves( conf, reg, conf->tree, 3 );
                     if( ( saves > best_saves )
                      || ( saves == best_saves
-                       && HW_Subset( GivenRegisters, reg )
-                       && !HW_Subset( GivenRegisters, best ) ) ) {
+                       && HW_Subset( data_state().GivenRegisters, reg )
+                       && !HW_Subset( data_state().GivenRegisters, best ) ) ) {
                         best = reg;
                         best_saves = saves;
                     }
@@ -1019,7 +1019,7 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
         } else if( needs_one || WorthProlog( conf, best ) ) {
             FixInstructions( conf, tree, best, true );
             given = best;
-            HW_TurnOn( GivenRegisters, given );
+            HW_TurnOn( data_state().GivenRegisters, given );
         } else {
             HW_CAsgn( given, HW_EMPTY );
         }
@@ -1166,7 +1166,7 @@ conflict_node   *GiveRegister( conflict_node *conf, bool_ needs_one )
     if( _Is( conf, CST_INDEX_SPLIT | CST_SEGMENT_SPLIT ) ) {
         needs_one = true;
     }
-    given = GiveBestReg( conf, tree, CurrProc->state.unalterable, needs_one );
+    given = GiveBestReg( conf, tree, data_state().CurrProc->state.unalterable, needs_one );
     if( tree != NULL && ( tree->hi != NULL || tree->lo != NULL ) ) {
         LiveInfoUpdate(); /* the live info is FAR to conservative. */
     }
@@ -1207,7 +1207,7 @@ static  void    SortConflicts( void )
     Sort the conflicts in order of descending savings.
 */
 {
-    ConfList = static_cast<conflict_node *>(SortList( ConfList, offsetof( conflict_node, next_conflict ), ConfBefore ));
+    data_state().ConfList = static_cast<conflict_node *>(SortList( data_state().ConfList, offsetof( conflict_node, next_conflict ), ConfBefore ));
 }
 
 
@@ -1225,7 +1225,7 @@ static  enum allocation_state    AssignConflicts( void )
     name                        *opnd;
     bool_                        only_const_temps;
 
-    for( conf = ConfList; conf != NULL; conf = next ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = next ) {
         next = conf->next_conflict;
         if( conf->start_block == NULL ) {
             FreeAConflict( conf );
@@ -1245,7 +1245,7 @@ static  enum allocation_state    AssignConflicts( void )
 
     SortConflicts();
     state = ALLOC_BITS;
-    conf = ConfList;
+    conf = data_state().ConfList;
     if( conf == NULL )
         return( state );
     opnd = conf->name;
@@ -1291,7 +1291,7 @@ void    ReConstFold( void )
     instruction                 *next;
     block                       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
             FoldIns( ins );
@@ -1318,8 +1318,8 @@ bool_    RegAlloc( bool_ keep_on_truckin )
     int unknowns;
     enum allocation_state       last;
 
-    HW_CAsgn( GivenRegisters, HW_EMPTY );
-    if( !BlockByBlock ) {
+    HW_CAsgn( data_state().GivenRegisters, HW_EMPTY );
+    if( !data_state().BlockByBlock ) {
         InitChoices();
         unknowns = ExpandOps( keep_on_truckin );
         if( unknowns <= 0 )
@@ -1327,7 +1327,7 @@ bool_    RegAlloc( bool_ keep_on_truckin )
         if( SplitConflicts() ) {
             FreeConflicts();
             NullConflicts( static_cast<var_usage>(EMPTY) );
-            HaveLiveInfo = false;
+            data_state().HaveLiveInfo = false;
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
                 DeadInstructions();
                 FindReferences();
@@ -1338,7 +1338,7 @@ bool_    RegAlloc( bool_ keep_on_truckin )
             FindReferences();
             MakeConflicts();
             MakeLiveInfo();
-            HaveLiveInfo = true;
+            data_state().HaveLiveInfo = true;
             AxeDeadCode();
         }
     }

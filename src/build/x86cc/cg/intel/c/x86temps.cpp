@@ -51,9 +51,9 @@ void    PushLocals( void )
     Assign locals which can have their initial value pushed onto the stack
 */
 {
-    if( BlockByBlock )
+    if( data_state().BlockByBlock )
         return;
-    if( Save.store_cost[WD] <= Save.push_cost[WD] )
+    if( regsave_state().Save.store_cost[WD] <= regsave_state().Save.push_cost[WD] )
         return;
     AssignPushLocals();
 }
@@ -75,8 +75,8 @@ static  void    AssignPushLocals( void ) {
     type_length curr_offset;
 
     curr_offset = 0;
-    for( ins = HeadBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        if( CurrProc->prolog_state & PST_PROLOG_GENERATED )
+    for( ins = data_state().HeadBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+        if( data_state().CurrProc->prolog_state & PST_PROLOG_GENERATED )
             break;
         if( DoesSomething( ins ) ) {
             if( ins->head.opcode != OP_MOV )
@@ -106,8 +106,8 @@ static  void    AssignPushLocals( void ) {
                     break;
                 }
             } else {
-                CurrProc->targ.push_local_size += PushSize( dst->n.size );
-                dst->t.location = - CurrProc->targ.push_local_size;
+                data_state().CurrProc->targ.push_local_size += PushSize( dst->n.size );
+                dst->t.location = - data_state().CurrProc->targ.push_local_size;
                 dst->v.usage |= HAS_MEMORY;
                 PropLocal( dst );
             }
@@ -131,7 +131,7 @@ void    AdjustPushLocal( name *temp )
     name        *scan;
 
     if( (temp->t.temp_flags & PUSH_LOCAL) == 0 ) { /* if not already adjusted*/
-        temp->t.location += -CurrProc->locals.size - CurrProc->locals.base;
+        temp->t.location += -data_state().CurrProc->locals.size - data_state().CurrProc->locals.base;
         for( scan = temp->t.alias; scan != temp; scan = scan->t.alias ) {
             scan->t.location = temp->t.location;
             scan->v.usage |= HAS_MEMORY;
@@ -146,9 +146,9 @@ void    SetTempLocation( name *temp, type_length size )
     Snag a temporary with length "size" off the stack and set it's location
 */
 {
-    CurrProc->locals.size += size;
-    temp->t.location = - CurrProc->locals.size
-                      - CurrProc->locals.base;
+    data_state().CurrProc->locals.size += size;
+    temp->t.location = - data_state().CurrProc->locals.size
+                      - data_state().CurrProc->locals.base;
 }
 
 
@@ -161,9 +161,9 @@ void    RelocParms( void )
 {
     name        *name;
 
-    for( name = Names[N_TEMP]; name != NULL; name = name->n.next_name ) {
+    for( name = data_state().Names[N_TEMP]; name != NULL; name = name->n.next_name ) {
         if( ( name->v.usage & HAS_MEMORY ) && ( name->t.temp_flags & STACK_PARM ) ) {
-            name->t.location += CurrProc->parms.base;
+            name->t.location += data_state().CurrProc->parms.base;
         }
     }
 }
@@ -173,12 +173,12 @@ bool_    TempAllocBefore( void *t1, void *t2 )
 /*******************************************/
 {
     if( (((name *)t1)->t.temp_flags & USED_AS_FD) && (((name *)t2)->t.temp_flags & USED_AS_FD) == 0 ) {
-        if( CurrProc->targ.sp_align )
+        if( data_state().CurrProc->targ.sp_align )
             return( false );
         return( true );
     }
     if( (((name *)t2)->t.temp_flags & USED_AS_FD) && (((name *)t1)->t.temp_flags & USED_AS_FD) == 0 ) {
-        if( CurrProc->targ.sp_align )
+        if( data_state().CurrProc->targ.sp_align )
             return( true );
         return( false );
     }

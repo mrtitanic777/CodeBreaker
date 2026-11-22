@@ -57,12 +57,22 @@ typedef bool_    (ONE_OP)(instruction *,instruction *);
 typedef bool_    (TWO_OP)(instruction *,instruction *);
 typedef bool_    (THREE_OP)(instruction *,instruction *);
 
-static  bool_    AfterRegAlloc;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct PeepoptState {
+    bool_ AfterRegAlloc;
+};
+
+}  // namespace
+
+static inline PeepoptState& peepopt_state() { return cbrun_part<PeepoptState>(); }
+
 
 static  bool_    InsChangeable( instruction *ins, name *new_op, name **op )
 /************************************************************************/
 {
-    if( AfterRegAlloc ) {
+    if( peepopt_state().AfterRegAlloc ) {
         return( ChangeIns( ins, new_op, op, CHANGE_GEN | CHANGE_CHECK ) );
     }
     return( true );
@@ -71,7 +81,7 @@ static  bool_    InsChangeable( instruction *ins, name *new_op, name **op )
 static  void    InsReset( instruction *ins )
 /******************************************/
 {
-    if( AfterRegAlloc ) {
+    if( peepopt_state().AfterRegAlloc ) {
         ResetGenEntry( ins );
     }
 }
@@ -691,7 +701,7 @@ bool_ PeepOptBlock( block *blk, bool_ after_reg_alloc )
     bool_        change;
 
     change = false;
-    AfterRegAlloc = after_reg_alloc;
+    peepopt_state().AfterRegAlloc = after_reg_alloc;
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
         next = ins->head.next;
         if( VolatileIns( ins ) )

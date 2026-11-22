@@ -42,9 +42,19 @@
  * following 3 variables are used as unique addresses
  * to indicate special type of relocatable constant
  */
-static  pointer SegConstSymbol;
-static  pointer HighAddrSymbol;
-static  pointer HighAddrConst;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct ScinfoState {
+    pointer SegConstSymbol;
+    pointer HighAddrSymbol;
+    pointer HighAddrConst;
+};
+
+}  // namespace
+
+static inline ScinfoState& scinfo_state() { return cbrun_part<ScinfoState>(); }
+
 
 static  bool_    ScoreSame( score_info *x, score_info *y )
 /*******************************************************/
@@ -163,7 +173,7 @@ bool_    ScoreEqual( score_hdl scoreboard, int index, score_info *info )
         bool_        is_equal;
         type_length half_size;
 
-        entry = ScoreList[index];
+        entry = score_state().ScoreList[index];
         if( entry->high == NO_INDEX || entry->low == NO_INDEX )
             return( false );
         /*
@@ -192,13 +202,13 @@ static void     ScoreInsert( score_hdl scoreboard, int i, score_info *info )
 
     if( info->class_ == SC_N_VOLATILE )
         return;
-    if( HW_Ovlap( ScoreList[i]->reg, CurrProc->state.unalterable ) )
+    if( HW_Ovlap( score_state().ScoreList[i]->reg, data_state().CurrProc->state.unalterable ) )
         return;
     new_sc = NewScListEntry();
     Copy( info, &new_sc->info, sizeof( score_info ) );
     new_sc->next = *scoreboard[i].list;
     *scoreboard[i].list = new_sc;
-    for( j = ScoreCount; j-- > 0; ) {
+    for( j = score_state().ScoreCount; j-- > 0; ) {
         if( ( j != i ) && ScoreEqual( scoreboard, j, info ) ) {
             RegAdd( scoreboard, i, j );
             break;
@@ -218,7 +228,7 @@ static  void    ScoreAdd( score_hdl scoreboard, int i, score_info *info )
             first = &scoreboard[info->reg_index];
             curr = first;
             for( ;; ) {
-                info->reg_index = ScoreList[curr->index]->reg_name->r.reg_index;
+                info->reg_index = score_state().ScoreList[curr->index]->reg_name->r.reg_index;
                 if( !ScoreLookup( &scoreboard[i], info ) ) {
                     ScoreInsert( scoreboard, i, info );
                 }
@@ -250,7 +260,7 @@ void    ScoreAssign( score_hdl scoreboard, int index, score_info *info )
         uint        lo_off;
         uint        offset;
 
-        entry = ScoreList[index];
+        entry = score_state().ScoreList[index];
         if( entry->high != NO_INDEX && entry->low != NO_INDEX ) {
             if( info->class_ == SC_N_CONSTANT ) {
                 if( info->symbol.u.p != NULL )
@@ -291,7 +301,7 @@ void    ScoreInfo( score_info *info, name *op )
             info->offset = op->c.lo.u.int_value;
             break;
         case CONS_SEGMENT:
-            info->symbol.u.p = &SegConstSymbol;
+            info->symbol.u.p = &scinfo_state().SegConstSymbol;
             info->offset = op->c.lo.u.int_value;
             break;
         case CONS_OFFSET:
@@ -302,10 +312,10 @@ void    ScoreInfo( score_info *info, name *op )
         case CONS_HIGH_ADDR:
             /* FIXME: not sure what to do here */
             if( op->c.u.op != NULL ) {
-                info->symbol.u.p = &HighAddrSymbol;
+                info->symbol.u.p = &scinfo_state().HighAddrSymbol;
                 info->offset = (int_32)(pointer_uint)op->c.u.op;
             } else {
-                info->symbol.u.p = &HighAddrConst;
+                info->symbol.u.p = &scinfo_state().HighAddrConst;
                 info->offset = op->c.lo.u.int_value;
             }
             break;
@@ -375,8 +385,8 @@ void    ScoreKillInfo( score_hdl scoreboard, name *op, score_info *info, hw_reg_
      * has been overwritten
      */
     last_offset = info->offset + op->n.size;
-    entry = ScoreList[0];
-    for( i = ScoreCount; i > 0; --i ) {
+    entry = score_state().ScoreList[0];
+    for( i = score_state().ScoreCount; i > 0; --i ) {
         if( !HW_Subset( except, entry->reg ) ) {
             for( owner = scoreboard->list; (curr = *owner) != NULL; ) {
                 /*

@@ -47,19 +47,29 @@ typedef struct macro_seg_list {
     MACADDR_T               macro_seg;
 } macro_seg_list;
 
-static MACADDR_T        MacroSegment;       /* segment for macro definitions */
-static size_t           MacroSegmentLimit;  /* remaining free bytes in MacroSegment */
-static MACADDR_T        MacroOffset;        /* first free byte in MacroSegment */
-static macro_seg_list   *MacSegList;        /* pointer to list of macro segments */
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CmacaddState {
+    MACADDR_T MacroSegment;   /* segment for macro definitions */
+    size_t MacroSegmentLimit;   /* remaining free bytes in MacroSegment */
+    MACADDR_T MacroOffset;   /* first free byte in MacroSegment */
+    macro_seg_list *MacSegList;   /* pointer to list of macro segments */
+};
+
+}  // namespace
+
+static inline CmacaddState& cmacadd_state() { return cbrun_part<CmacaddState>(); }
+
 
 static void *MacroAllocateInSeg( size_t size )
 {
     void *retn;
 
-    retn = MacroOffset;
+    retn = cmacadd_state().MacroOffset;
     size = macroSizeAlign( size );
-    MacroOffset += size;
-    MacroSegmentLimit -= size;
+    cmacadd_state().MacroOffset += size;
+    cmacadd_state().MacroSegmentLimit -= size;
     return( retn );
 }
 
@@ -69,31 +79,31 @@ static void AllocMacroSegment( size_t minimum )
     size_t amount;
 
     amount = _RoundUp( minimum + 2, 0x8000 );
-    MacroSegment = static_cast<MACADDR_T>(FEmalloc( amount ));
-    MacroOffset = MacroSegment;
-    MacroSegmentLimit = amount - 2;
-    if( MacroSegment == NULL ) {
+    cmacadd_state().MacroSegment = static_cast<MACADDR_T>(FEmalloc( amount ));
+    cmacadd_state().MacroOffset = cmacadd_state().MacroSegment;
+    cmacadd_state().MacroSegmentLimit = amount - 2;
+    if( cmacadd_state().MacroSegment == NULL ) {
         CErr1( ERR_OUT_OF_MACRO_MEMORY );
         CSuicide();
     }
     msl = static_cast<struct macro_seg_list *>(CMemAlloc( sizeof( struct macro_seg_list ) ));
-    msl->macro_seg = MacroSegment;
-    msl->next = MacSegList;
-    MacSegList = msl;
+    msl->macro_seg = cmacadd_state().MacroSegment;
+    msl->next = cmacadd_state().MacSegList;
+    cmacadd_state().MacSegList = msl;
 }
 
 void InitMacroSegments( void )
 {
-    MacSegList = NULL;
+    cmacadd_state().MacSegList = NULL;
 }
 
 void FreeMacroSegments( void )
 {
     struct macro_seg_list *msl;
 
-    for( ; (msl = MacSegList) != NULL; ) {
+    for( ; (msl = cmacadd_state().MacSegList) != NULL; ) {
         FEfree( (void *)(msl->macro_seg) );
-        MacSegList = msl->next;
+        cmacadd_state().MacSegList = msl->next;
         CMemFree( msl );
     }
 }
@@ -109,11 +119,11 @@ static void MacroReallocOverflow( size_t amount_needed, size_t amount_used )
     MACADDR_T old_offset;
 
     amount_needed = macroSizeAlign( amount_needed );
-    if( amount_needed > MacroSegmentLimit ) {
-        old_offset = MacroOffset;
+    if( amount_needed > cmacadd_state().MacroSegmentLimit ) {
+        old_offset = cmacadd_state().MacroOffset;
         AllocMacroSegment( amount_needed );
         if( amount_used > 0 ) {
-            MacroCopy( old_offset, MacroOffset, amount_used );
+            MacroCopy( old_offset, cmacadd_state().MacroOffset, amount_used );
         }
     }
 }
@@ -123,7 +133,7 @@ static MEPTR *MacroLkUp( mac_hash_idx hash, const char *name )
     MEPTR       mentry;
     MEPTR       *lnk;
 
-    for( lnk = &MacHash[hash]; (mentry = *lnk) != NULL; lnk = &mentry->next_macro ) {
+    for( lnk = &cvars_state().MacHash[hash]; (mentry = *lnk) != NULL; lnk = &mentry->next_macro ) {
         if( strcmp( mentry->macro_name, name ) == 0 ) {
             break;
         }
@@ -142,7 +152,7 @@ MEPTR MacroDefine( size_t mlen, macro_flags mflags )
     mac_hash_idx    hash;
 
     new_mentry = NULL;
-    mentry = (MEPTR)MacroOffset;
+    mentry = (MEPTR)cmacadd_state().MacroOffset;
     mentry->macro_len = mlen;
     name = mentry->macro_name;
     hash = CalcHashMacro( name );
@@ -166,11 +176,11 @@ MEPTR MacroDefine( size_t mlen, macro_flags mflags )
         }
     }
     if( old_mentry == NULL ) {  //add new entry
-        ++MacroCount;
+        ++cvars_state().MacroCount;
         new_mentry = static_cast<MEPTR>(MacroAllocateInSeg( mlen ));
-        new_mentry->macro_flags = InitialMacroFlags | mflags;
-        new_mentry->next_macro = MacHash[hash];
-        MacHash[hash] = new_mentry;
+        new_mentry->macro_flags = cvars_state().InitialMacroFlags | mflags;
+        new_mentry->next_macro = cvars_state().MacHash[hash];
+        cvars_state().MacHash[hash] = new_mentry;
     }
     return( new_mentry );
 }
@@ -178,7 +188,7 @@ MEPTR MacroDefine( size_t mlen, macro_flags mflags )
 void *PermMemAlloc( size_t amount )
 {
     amount = macroSizeAlign( amount );
-    if( amount > MacroSegmentLimit ) {
+    if( amount > cmacadd_state().MacroSegmentLimit ) {
         AllocMacroSegment( amount );
     }
     return( MacroAllocateInSeg( amount ) );
@@ -207,7 +217,7 @@ void MacroSegmentAddChar(           // MacroSegment: ADD A CHARACTER
 
     clen = *mlen;
     MacroReallocOverflow( clen + 1, clen );
-    MacroOffset[clen] = chr;
+    cmacadd_state().MacroOffset[clen] = chr;
     *mlen = clen + 1;
 }
 
@@ -219,7 +229,7 @@ void MacroSegmentAddToken(          // MacroSegment: ADD A TOKEN
 
     clen = *mlen;
     MacroReallocOverflow( clen + SIZE_MTOKEN, clen );
-    SET_MTOKEN( MacroOffset + clen, token );
+    SET_MTOKEN( cmacadd_state().MacroOffset + clen, token );
     *mlen = clen + SIZE_MTOKEN;
 }
 
@@ -233,7 +243,7 @@ void MacroSegmentAddMem(            // MacroSegment: ADD A SEQUENCE OF BYTES
 
     clen = *mlen;
     MacroReallocOverflow( clen + len, clen );
-    memcpy( MacroOffset + clen, buff, len );
+    memcpy( cmacadd_state().MacroOffset + clen, buff, len );
     *mlen += len;
 }
 
@@ -247,7 +257,7 @@ MEPTR CreateMEntry( const char *name, size_t len )
     }
     size = offsetof( MEDEFN, macro_name ) + len + 1;
     MacroReallocOverflow( size, 0 );
-    mentry = (MEPTR)MacroOffset;
+    mentry = (MEPTR)cmacadd_state().MacroOffset;
     memcpy( mentry->macro_name, name, len );
     mentry->macro_name[len] = '\0';
     mentry->macro_len = size;

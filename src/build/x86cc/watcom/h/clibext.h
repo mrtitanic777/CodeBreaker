@@ -262,10 +262,6 @@
 
     extern int      getopt( int argc, char * const argv[], const char *optstring );
     /* Globals used and set by getopt() */
-    extern char     *optarg;
-    extern int      optind;
-    extern int      opterr;
-    extern int      optopt;
 
     extern int      fnmatch( const char *__pattern, const char *__string, int __flags );
     extern int      mkstemp( char *__template );
@@ -282,6 +278,32 @@
  #endif
 
 #endif  /* !__WATCOMC__ */
+
+#ifndef CB_STATE_CLIBEXT_H
+#define CB_STATE_CLIBEXT_H
+
+/* the variables of clibext.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct ClibextState {
+#ifdef __WATCOMC__
+#elif defined(_MSC_VER)
+    char *optarg;   /* pointer to option argument */
+#endif
+#ifdef __WATCOMC__
+#elif defined(_MSC_VER)
+    int optind = 1;   /* current argv[] index */
+#endif
+#ifdef __WATCOMC__
+#elif defined(_MSC_VER)
+    int optopt;   /* currently processed chracter */
+#endif
+#ifdef __WATCOMC__
+#elif defined(_MSC_VER)
+    int opterr = 1;   /* error output control flag */
+#endif
+};
+inline ClibextState& clibext_state() { return cbrun_part<ClibextState>(); }
+
+#endif
 
 /*
  * this enable to use new OW 2.0 ...dir() functions

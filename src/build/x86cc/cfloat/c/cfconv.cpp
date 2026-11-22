@@ -43,7 +43,7 @@
 #define I32DIGITS       10
 //#define I64DIGITS       21
 
-static struct STRUCT_cfloat( 4 )    MaxNegI8 = {
+static struct STRUCT_cfloat( 4 )    const MaxNegI8 = {
     3,              /* exponent ten */
     3,              /* mantissa length ten */
     0,              /* allocation length */
@@ -51,7 +51,7 @@ static struct STRUCT_cfloat( 4 )    MaxNegI8 = {
     { '1','2','8',0 }
 };
 
-static struct STRUCT_cfloat( 4 )    MaxU8 = {
+static struct STRUCT_cfloat( 4 )    const MaxU8 = {
     3,              /* exponent ten */
     3,              /* mantissa length ten */
     0,              /* allocation length */
@@ -59,7 +59,7 @@ static struct STRUCT_cfloat( 4 )    MaxU8 = {
     { '2','5','5',0 }
 };
 
-static struct STRUCT_cfloat( 6 )    MaxNegI16 = {
+static struct STRUCT_cfloat( 6 )    const MaxNegI16 = {
     5,              /* exponent ten */
     5,              /* mantissa length ten */
     0,              /* allocation length */
@@ -67,7 +67,7 @@ static struct STRUCT_cfloat( 6 )    MaxNegI16 = {
     { '3','2','7','6','8',0 }
 };
 
-static struct STRUCT_cfloat( 6 )    MaxU16 = {
+static struct STRUCT_cfloat( 6 )    const MaxU16 = {
     5,              /* exponent ten */
     5,              /* mantissa length ten */
     0,              /* allocation length */
@@ -75,7 +75,7 @@ static struct STRUCT_cfloat( 6 )    MaxU16 = {
     { '6','5','5','3','5',0 }
 };
 
-static struct STRUCT_cfloat( 11 )   MaxNegI32 = {
+static struct STRUCT_cfloat( 11 )   const MaxNegI32 = {
     10,             /* exponent ten */
     10,             /* mantissa length ten */
     0,              /* allocation length */
@@ -83,7 +83,7 @@ static struct STRUCT_cfloat( 11 )   MaxNegI32 = {
     { '2','1','4','7','4','8','3','6','4','8',0 }
 };
 
-static struct STRUCT_cfloat( 11 )   MaxU32 = {
+static struct STRUCT_cfloat( 11 )   const MaxU32 = {
     10,             /* exponent ten */
     10,             /* mantissa length ten */
     0,              /* allocation length */
@@ -91,7 +91,7 @@ static struct STRUCT_cfloat( 11 )   MaxU32 = {
     { '4','2','9','4','9','6','7','2','9','5',0 }
 };
 
-static struct STRUCT_cfloat( 20 )   MaxNegI64 = {
+static struct STRUCT_cfloat( 20 )   const MaxNegI64 = {
     19,             /* exponent ten */
     19,             /* mantissa length ten */
     0,              /* allocation length */
@@ -99,7 +99,7 @@ static struct STRUCT_cfloat( 20 )   MaxNegI64 = {
     { '9','2','2','3','3','7','2','9','3','6','8','5','4','7','7','5','8','0','7',0 }
 };
 
-static struct STRUCT_cfloat( 21 )   MaxU64 = {
+static struct STRUCT_cfloat( 21 )   const MaxU64 = {
     20,             /* exponent ten */
     20,             /* mantissa length ten */
     0,              /* allocation length */
@@ -110,7 +110,7 @@ static struct STRUCT_cfloat( 21 )   MaxU64 = {
 /*
  * this is MaxU32 + 1 - just don't want to calc it at runtime
  */
-static struct STRUCT_cfloat( 11 )   High64Mult = {
+static struct STRUCT_cfloat( 11 )   const High64Mult = {
     10,             /* exponent ten */
     10,             /* mantissa length ten */
     0,              /* allocation length */
@@ -125,7 +125,7 @@ static struct STRUCT_cfloat( 11 )   High64Mult = {
 /*
  * MaxPosFloat 3.40282347e+38
  */
-static struct STRUCT_cfloat( 10 )   MaxPosFloat = {
+static struct STRUCT_cfloat( 10 )   const MaxPosFloat = {
     39,         /* exponent ten */
     9,          /* mantissa length ten */
     0,          /* allocation length */
@@ -136,7 +136,7 @@ static struct STRUCT_cfloat( 10 )   MaxPosFloat = {
 /*
  * MinPosFloat 1.17549435e-38
  */
-static struct STRUCT_cfloat( 10 )   MinPosFloat = {
+static struct STRUCT_cfloat( 10 )   const MinPosFloat = {
     -37,        /* exponent ten */
     9,          /* mantissa length ten */
     0,          /* allocation length */
@@ -147,7 +147,7 @@ static struct STRUCT_cfloat( 10 )   MinPosFloat = {
 /*
  * MaxPosDouble 1.7976931348623157e+308
  */
-static struct STRUCT_cfloat( 18 )   MaxPosDouble = {
+static struct STRUCT_cfloat( 18 )   const MaxPosDouble = {
     309,        /* exponent ten */
     17,         /* mantissa length ten */
     0,          /* allocation length */
@@ -158,7 +158,7 @@ static struct STRUCT_cfloat( 18 )   MaxPosDouble = {
 /*
  * MinPosDouble 2.2250738585072014e-308
  */
-static struct STRUCT_cfloat( 18 )   MinPosDouble = {
+static struct STRUCT_cfloat( 18 )   const MinPosDouble = {
     -307,       /* exponent ten */
     17,         /* mantissa length ten */
     0,          /* allocation length */

@@ -60,7 +60,7 @@ ins_entry       *PrevIns( ins_entry *instr )
 {
   optbegin
     if( instr == NULL ) {
-        instr = LastIns;
+        instr = optdata_state().LastIns;
     } else if( _Class( instr ) == OC_DEAD ) {
         instr = NULL;
     } else {
@@ -98,7 +98,7 @@ ins_entry       *NextIns( ins_entry *instr )
 {
   optbegin
     if( instr == NULL ) {
-        instr = FirstIns;
+        instr = optdata_state().FirstIns;
     } else if( _Class( instr ) == OC_DEAD ) {
         instr = NULL;
     } else {
@@ -149,12 +149,12 @@ void    AddInstr( ins_entry *instr, ins_entry *insert )
         AddLblRef( instr );
         break;
     case OC_RET:
-        _LblRef( instr ) = RetList;
-        RetList = instr;
+        _LblRef( instr ) = optdata_state().RetList;
+        optdata_state().RetList = instr;
         break;
     case OC_NORET:
-        _LblRef( instr ) = NoRetList;
-        NoRetList = instr;
+        _LblRef( instr ) = optdata_state().NoRetList;
+        optdata_state().NoRetList = instr;
         break;
     }
   optend
@@ -182,10 +182,10 @@ void    UnLinkInstr( ins_entry *old )
 /***********************************/
 {
   optbegin
-    InsDelete = true;
+    optdata_state().InsDelete = true;
     DeleteQueue( old );
-    old->ins.prev = PendingDeletes;
-    PendingDeletes = old;
+    old->ins.prev = optdata_state().PendingDeletes;
+    optdata_state().PendingDeletes = old;
   optend
 }
 
@@ -221,10 +221,10 @@ static  ins_entry *DelInstr_Helper( ins_entry *old )
         DelLblRef( old );
         break;
     case OC_RET:
-        DelRef( &RetList, old );
+        DelRef( &optdata_state().RetList, old );
         break;
     case OC_NORET:
-        DelRef( &NoRetList, old );
+        DelRef( &optdata_state().NoRetList, old );
         break;
     }
     _ResetClass( old, OC_DEAD );
@@ -259,9 +259,9 @@ void    FreePendingDeletes( void )
     ins_entry   *next;
 
   optbegin
-    for( ; PendingDeletes != NULL; PendingDeletes = next ) {
-        next = PendingDeletes->ins.prev;
-        FreeInstr( PendingDeletes );
+    for( ; optdata_state().PendingDeletes != NULL; optdata_state().PendingDeletes = next ) {
+        next = optdata_state().PendingDeletes->ins.prev;
+        FreeInstr( optdata_state().PendingDeletes );
     }
   optend
 }

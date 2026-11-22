@@ -73,7 +73,7 @@ static  void    MarkReachableBlocks( void )
 
     do {
         change = false;
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
             if( _IsBlkVisited( blk )
               || _IsBlkAttr( blk, BLK_BIG_LABEL | BLK_SELECT ) ) {
                 _MarkBlkVisited( blk );
@@ -109,7 +109,7 @@ static  bool_    FindBlock( block *blk )
 {
     block       *curr;
 
-    for( curr = HeadBlock; curr != NULL; curr = curr->next_block ) {
+    for( curr = data_state().HeadBlock; curr != NULL; curr = curr->next_block ) {
         if( curr == blk ) {
             return( true );
         }
@@ -164,7 +164,7 @@ void    RemoveBlock( block *blk )
         next = blk->next_block;
     } else {
         next = NULL;
-        for( chk = HeadBlock; chk != NULL; chk = chk->next_block ) {
+        for( chk = data_state().HeadBlock; chk != NULL; chk = chk->next_block ) {
             if( (chk != blk)
               && (chk->gen_blk_id > blk->gen_blk_id)
               && (next == NULL
@@ -177,13 +177,13 @@ void    RemoveBlock( block *blk )
       && next->ins.head.line_num == 0 ) {
         next->ins.head.line_num = last_line;
     }
-    if( HeadBlock == blk ) {
-        HeadBlock = blk->next_block;
+    if( data_state().HeadBlock == blk ) {
+        data_state().HeadBlock = blk->next_block;
     }
-    if( BlockList == blk ) {
-        BlockList = blk->prev_block;
-        if( BlockList == NULL ) {
-            BlockList = HeadBlock;
+    if( data_state().BlockList == blk ) {
+        data_state().BlockList = blk->prev_block;
+        if( data_state().BlockList == NULL ) {
+            data_state().BlockList = data_state().HeadBlock;
         }
     }
     TellScrapLabel( blk->label );
@@ -226,7 +226,7 @@ void    MoveHead( block *old, block *new_ )
 
     if( !_IsBlkAttr( old, BLK_LOOP_HEADER ) )
         return;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->loop_head == old ) {
             blk->loop_head = new_;
         }
@@ -383,7 +383,7 @@ static  bool_    DoBlockTrim( void )
     do {
         change = false;
         MarkReachableBlocks();
-        for( blk = HeadBlock->next_block; blk != NULL; blk = next ) {
+        for( blk = data_state().HeadBlock->next_block; blk != NULL; blk = next ) {
             next = blk->next_block;
             if( !_IsBlkVisited( blk )
               && !_IsBlkAttr( blk, BLK_UNKNOWN_DESTINATION ) ) {
@@ -425,12 +425,12 @@ static  bool_    DoBlockTrim( void )
         }
         _MarkBlkAllUnVisited();
         if( change ) {
-            BlocksUnTrimmed = false;
+            data_state().BlocksUnTrimmed = false;
             any_change = true;
         }
     } while( change );
     blk_id = 1;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         blk->blk_id = blk_id++;
     }
     return( any_change );
@@ -468,7 +468,7 @@ bool_    DeadBlocks( void )
     bool_            change;
 
     change = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
             ins = FindOneCond( blk );
             if( ins == NULL )
@@ -495,7 +495,7 @@ bool_    BlockTrim( void )
 {
     bool_    change = false;
 
-    if( ( CurrProc->state.attr & ROUTINE_WANTS_DEBUGGING ) == 0 ) {
+    if( ( data_state().CurrProc->state.attr & ROUTINE_WANTS_DEBUGGING ) == 0 ) {
         change = DoBlockTrim();
         Renumber();
     }

@@ -71,8 +71,18 @@ typedef struct {
     short       count;
 } fname_ctl;
 
-extern cue_ctl      LineInfo;
-extern fname_ctl    DBFiles;
+
+#ifndef CB_STATE_DBSYMS_H
+#define CB_STATE_DBSYMS_H
+
+/* the variables of dbsyms.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct DbsymsState {
+    cue_ctl LineInfo;
+    fname_ctl DBFiles;
+};
+inline DbsymsState& dbsyms_state() { return cbrun_part<DbsymsState>(); }
+
+#endif
 
 extern  const char  *SrcFNoFind( uint fno );
 extern  bool_        CueFind( cue_idx cue, cue_state *ret );

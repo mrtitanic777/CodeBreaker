@@ -8,8 +8,10 @@
 // It behaves as the program given the same arguments, in the same working folder, with the same environment: the same
 // object and error file, the same messages (banner and notes on stdout, warnings and errors on stderr, as the drivers split
 // them: watcom/c/idedrv.c) and the same exit code (0, or 1). `environment` overrides variables for the run (INCLUDE,
-// WATCOM, WCC386, ...); the rest are the process's. Each compiler keeps its state in globals and works in the process's
-// current folder, so compiles run one at a time (a lock), each in its folder. Windows only for now.
+// WATCOM, WCC386, ...); the rest are the process's. Each compiler works in the process's
+// current folder, so compiles run one at a time (a lock), each in its folder. Each compile has a state of its own
+// (run/cbrun.hpp), new at its start and gone at its end: a process that compiles many times gives each compile what a
+// process of its own would. Windows only for now.
 #pragma once
 
 #include <filesystem>

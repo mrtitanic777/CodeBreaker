@@ -47,13 +47,23 @@ static void DoDumpType( TYPEPTR realtype, SYMPTR sym, STRCHUNK *pch );
 /*
  * matches table of type in ctypes.h
  */
-static const char   *CTypeNames[] = {
+static const char   *const CTypeNames[] = {
     #define pick1(type,dtype,cgtype,x86asmtype,name,size) name,
     #include "cdatatyp.h"
     #undef  pick1
 };
 
-static bool_     do_message_output;  /* Optimize output for human */
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CdumpState {
+    bool_ do_message_output;   /* Optimize output for human */
+};
+
+}  // namespace
+
+static inline CdumpState& cdump_state() { return cbrun_part<CdumpState>(); }
+
 
 static void ChunkInit( STRCHUNK *pch )
 {
@@ -156,7 +166,7 @@ static TYPEPTR TrueType( TYPEPTR typ )
     if ( typ == NULL )
         return typ;
 
-    if( do_message_output ) {
+    if( cdump_state().do_message_output ) {
         /*
          * For human: smart typedef expansion. Stop before unnamed struct
          */
@@ -171,7 +181,7 @@ static TYPEPTR TrueType( TYPEPTR typ )
             typ = newtyp;
         }
     } else {
-        if( !CompFlags.dump_prototypes ) {
+        if( !cvars_state().CompFlags.dump_prototypes ) {
             /*
              * -zg, not -v
              */
@@ -285,7 +295,7 @@ static void DumpArray( TYPEPTR typ, STRCHUNK *pch )
 static void DumpTagName( const char *tag_name, STRCHUNK *pch )
 {
     if( *tag_name == '\0' ) {
-        if( do_message_output ) {
+        if( cdump_state().do_message_output ) {
             tag_name = "{...}";
         } else {
             tag_name = "_no_name_";
@@ -575,27 +585,27 @@ void DumpFuncDefn( void )
     STRCHUNK    chunk;
     char        *result;
 
-    typ = CurFunc->sym_type;
-    DumpParmTags( typ->u.fn.parms, DefFile );
-    flist = FileIndexToFName( CurFunc->src_loc.fno );
-    fprintf( DefFile, "//#line \"%s\" %u\n",
+    typ = cvars_state().CurFunc->sym_type;
+    DumpParmTags( typ->u.fn.parms, cvars_state().DefFile );
+    flist = FileIndexToFName( cvars_state().CurFunc->src_loc.fno );
+    fprintf( cvars_state().DefFile, "//#line \"%s\" %u\n",
                 flist->name,
-                CurFunc->src_loc.line );
+                cvars_state().CurFunc->src_loc.line );
 
     ChunkInit( &chunk );
 
-    if( CurFunc->attribs.stg_class == SC_STATIC ) {
+    if( cvars_state().CurFunc->attribs.stg_class == SC_STATIC ) {
         put_keyword( T_STATIC, &chunk );
     } else {
         put_keyword( T_EXTERN, &chunk );
     }
-    if( CurFunc->flags & SYM_TYPE_GIVEN ) {
+    if( cvars_state().CurFunc->flags & SYM_TYPE_GIVEN ) {
         DumpBaseType( Object( typ ), &chunk );
     }
-    DumpDecl( typ, CurFunc, &chunk );
+    DumpDecl( typ, cvars_state().CurFunc, &chunk );
 
     result = ChunkToStr( &chunk );
-    fprintf( DefFile, "%s;\n", result );
+    fprintf( cvars_state().DefFile, "%s;\n", result );
     CMemFree( result );
 }
 
@@ -604,8 +614,8 @@ char *DiagGetTypeName( TYPEPTR typ )
     STRCHUNK    chunk;
 
     ChunkInit( &chunk );
-    do_message_output = true;
+    cdump_state().do_message_output = true;
     DoDumpType( typ, NULL, &chunk );
-    do_message_output = false;
+    cdump_state().do_message_output = false;
     return( ChunkToStr( &chunk ) );
 }

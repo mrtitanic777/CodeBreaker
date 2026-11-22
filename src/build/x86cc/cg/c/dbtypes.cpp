@@ -56,7 +56,17 @@
 
 #define MAX_TYPE_SIZE  (1024 * 16)
 
-static bool_ Nested;     /* set when types are nested by others */
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct DbtypesState {
+    bool_ Nested;   /* set when types are nested by others */
+};
+
+}  // namespace
+
+static inline DbtypesState& dbtypes_state() { return cbrun_part<DbtypesState>(); }
+
 
 /*
   need to fix dbg_type so it's a handle that can be used
@@ -115,7 +125,6 @@ dbg_type _CGAPI DBScalar( cchar_ptr name, cg_type tipe )
 }
 
 
-
 dbg_type _CGAPI DBScope( cchar_ptr name )
 /***********************************************/
 {
@@ -140,7 +149,6 @@ dbg_type _CGAPI DBScope( cchar_ptr name )
 #endif
     return( ret );
 }
-
 
 
 dbg_name _CGAPI DBBegName( cchar_ptr nm, dbg_type scope )
@@ -647,8 +655,8 @@ bool_ _CGAPI DBNested( bool_ nested )
 #ifdef DEVBUILD
     EchoAPI( "DBNested(%i)", nested );
 #endif
-    ret = Nested;
-    Nested = nested;
+    ret = dbtypes_state().Nested;
+    dbtypes_state().Nested = nested;
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", ret );
 #endif
@@ -673,7 +681,7 @@ dbg_struct _CGAPI DBBegNameStruct( cchar_ptr nm, cg_type tipe, bool_ is_struct )
     st->size = TypeAddress( tipe )->length;
     st->is_struct = is_struct;   /* v.s. union */
     st->is_class = false;
-    st->is_nested = Nested;
+    st->is_nested = dbtypes_state().Nested;
     st->is_cnested = false;
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         DFBegStruct( st );
@@ -944,7 +952,7 @@ dbg_enum _CGAPI DBBegEnum( cg_type tipe )
     en->num = 0;
     en->list = NULL;
     en->tipe = tipe;
-    en->is_nested = Nested;
+    en->is_nested = dbtypes_state().Nested;
     en->is_c  = true;
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", en );

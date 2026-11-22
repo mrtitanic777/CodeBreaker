@@ -45,15 +45,13 @@
 
 static void             NewInterval( block *blk, level_depth level );
 
-static interval_def     *Intervals;
-
 
 static  void    Irreducable( void )
 /*********************************/
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         _MarkBlkAttrClr( blk, BLK_ITERATIONS_KNOWN | BLK_LOOP_HEADER );
         blk->loop_head = NULL;
         blk->depth = 1;
@@ -72,7 +70,7 @@ static  void    NoBlocksToSelf( void )
     block_edge  **owner;
     block_edge  *next;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( edge = blk->input_edges; edge != NULL; edge = next ) {
             next = edge->next_source;
             if( edge->source == blk ) {
@@ -141,7 +139,7 @@ static  void    ReturnsToBottom( void )
     block       *prev;
     block       *last;
 
-    for( last = HeadBlock; last->next_block != NULL; ) {
+    for( last = data_state().HeadBlock; last->next_block != NULL; ) {
         last = last->next_block;
     }
     for( curr = last->prev_block; curr != NULL; curr = prev ) {
@@ -157,7 +155,7 @@ static  void    ReturnsToBottom( void )
             last = curr;
         }
     }
-    BlockList = last;
+    data_state().BlockList = last;
 }
 
 static  void *MarkVisited( block *blk )
@@ -171,8 +169,8 @@ static  void *MarkVisited( block *blk )
             continue;
         SafeRecurseCG( (func_sr)MarkVisited, blk->edge[i].destination.u.blk );
     }
-    blk->prev_block = BlockList;
-    BlockList = blk;
+    blk->prev_block = data_state().BlockList;
+    data_state().BlockList = blk;
     return NULL;
 }
 
@@ -182,13 +180,13 @@ static  bool_    DepthFirstSearch( void )
     block       *blk;
     bool_        reducible;
 
-    BlockList = NULL;
-    MarkVisited( HeadBlock );
+    data_state().BlockList = NULL;
+    MarkVisited( data_state().HeadBlock );
     reducible = true;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( !_IsBlkVisited( blk ) ) {
-            blk->prev_block = BlockList;
-            BlockList = blk;
+            blk->prev_block = data_state().BlockList;
+            data_state().BlockList = blk;
             reducible = false;
         }
         _MarkBlkUnVisited( blk );
@@ -204,11 +202,11 @@ static  void    RestoreLinks( void )
     block       *prev;
 
     prev = NULL;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         blk->prev_block = prev;
         prev = blk;
     }
-    BlockList = prev;
+    data_state().BlockList = prev;
 }
 
 
@@ -221,14 +219,14 @@ static  void    FixLinks( void )
 
     prev = NULL;
     blk_id = 1;
-    for( blk = BlockList; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().BlockList; blk != NULL; blk = blk->next_block ) {
         blk->next_block = blk->prev_block;
         blk->prev_block = prev;
         blk->blk_id = blk_id++;
         prev = blk;
     }
-    HeadBlock = BlockList;
-    BlockList = prev;
+    data_state().HeadBlock = data_state().BlockList;
+    data_state().BlockList = prev;
 }
 
 
@@ -245,6 +243,18 @@ static  interval_def    *IntervalNo( block *blk, level_depth level )
 }
 
 
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct FlographState {
+    interval_def *Intervals;
+    bool_ functionDegenerate;
+};
+
+}  // namespace
+
+static inline FlographState& flograph_state() { return cbrun_part<FlographState>(); }
+
 static  bool_    FindIntervals( void )
 /***********************************/
 {
@@ -259,11 +269,11 @@ static  bool_    FindIntervals( void )
     bool_                add;
 
     num = 0;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         ++num;
         curr = static_cast<interval_def *>(CGAlloc( sizeof( interval_def ) ));
-        curr->link = Intervals;
-        Intervals = curr;
+        curr->link = flograph_state().Intervals;
+        flograph_state().Intervals = curr;
         curr->parent = NULL;
         curr->sub_int = NULL;
         curr->next_sub_int = NULL;
@@ -280,8 +290,8 @@ static  bool_    FindIntervals( void )
          * at least one node at new level
          */
         num = 1;
-        NewInterval( HeadBlock, level );
-        for( blk = HeadBlock->next_block; blk != NULL; blk = blk->next_block ) {
+        NewInterval( data_state().HeadBlock, level );
+        for( blk = data_state().HeadBlock->next_block; blk != NULL; blk = blk->next_block ) {
             curr = IntervalNo( blk, level - 1 );
             if( curr->parent == NULL ) {
                 prev_int = NULL;
@@ -356,8 +366,8 @@ static  void    ReorderBlocks( void )
     block               *last_block;
     block               *next_block;
 
-    last_block = HeadBlock;
-    curr = HeadBlock->u.interval;
+    last_block = data_state().HeadBlock;
+    curr = data_state().HeadBlock->u.interval;
     for( ;; ) {
         for( ;; ) {
             if( curr->next_sub_int != NULL )
@@ -379,7 +389,7 @@ static  void    ReorderBlocks( void )
         last_block = next_block;
     }
     last_block->next_block = NULL;
-    BlockList = last_block;
+    data_state().BlockList = last_block;
 }
 
 
@@ -391,7 +401,7 @@ static  void    EdgeLevels( void )
     interval_def        *interval;
     block_id            blk_id;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
             blk_id = edge->source->blk_id;
             interval = blk->u.interval;
@@ -417,8 +427,8 @@ static  void    NewInterval( block *blk, level_depth level )
 
     prev = IntervalNo( blk, level - 1 );
     new_interval = static_cast<interval_def *>(CGAlloc( sizeof( interval_def ) ));
-    new_interval->link = Intervals;
-    Intervals = new_interval;
+    new_interval->link = flograph_state().Intervals;
+    flograph_state().Intervals = new_interval;
     new_interval->sub_int = prev;
     new_interval->next_sub_int = NULL;
     new_interval->level = level;
@@ -440,13 +450,13 @@ static  void    NestingDepth( void )
     block_num           i;
     bool_                change;
 
-    for( interval = BlockList->u.interval->parent; interval->parent != NULL; interval = interval->parent ) {
+    for( interval = data_state().BlockList->u.interval->parent; interval->parent != NULL; interval = interval->parent ) {
         level = interval->level - 1;
         /*
          * borrow 'next_block'
          * identify all back edges at this level
          */
-        for( blk = BlockList; blk != NULL; blk = blk->prev_block ) {
+        for( blk = data_state().BlockList; blk != NULL; blk = blk->prev_block ) {
             blk->next_block = NULL;
             for( i = blk->targets; i-- > 0; ) {
                 edge = &blk->edge[i];
@@ -468,7 +478,7 @@ static  void    NestingDepth( void )
         }
         do {
             change = false;
-            for( blk = BlockList; blk != NULL; blk = blk->prev_block ) {
+            for( blk = data_state().BlockList; blk != NULL; blk = blk->prev_block ) {
                 if( blk->next_block == NULL ) {
                     for( i = blk->targets; i-- > 0; ) {
                         edge = &blk->edge[i];
@@ -493,10 +503,10 @@ static  void    NestingDepth( void )
     /*
      * Restore 'next_block'
      */
-    HeadBlock = NULL;
-    for( blk = BlockList; blk != NULL; blk = blk->prev_block ) {
-        blk->next_block = HeadBlock;
-        HeadBlock = blk;
+    data_state().HeadBlock = NULL;
+    for( blk = data_state().BlockList; blk != NULL; blk = blk->prev_block ) {
+        blk->next_block = data_state().HeadBlock;
+        data_state().HeadBlock = blk;
     }
 }
 
@@ -506,22 +516,21 @@ static  void    KillIntervals( void )
     interval_def        *next;
     block               *blk;
 
-    for( ; Intervals != NULL; Intervals = next ) {
-        next = Intervals->link;
-        CGFree( Intervals );
+    for( ; flograph_state().Intervals != NULL; flograph_state().Intervals = next ) {
+        next = flograph_state().Intervals->link;
+        CGFree( flograph_state().Intervals );
     }
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         blk->u.interval = NULL;
     }
 }
 
-static bool_ functionDegenerate;
 
 static  bool_    FlowDone( block *curr, void *parm )
 /*************************************************/
 {
     if( curr == (block *)parm ) {
-        functionDegenerate = true;
+        flograph_state().functionDegenerate = true;
         return( false );
     }
     return( true );
@@ -533,14 +542,14 @@ static  bool_    Degenerate( void )
     block       *blk;
     block_edge  *edge;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( !_IsBlkAttr( blk, BLK_LOOP_HEADER ) )
             continue;
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
             if( _IsBlkAttr( edge->source, BLK_SELECT ) ) {
-                functionDegenerate = false;
+                flograph_state().functionDegenerate = false;
                 FloodForward( edge->source, FlowDone, blk );
-                if( functionDegenerate ) {
+                if( flograph_state().functionDegenerate ) {
                     return( true );
                 }
             }
@@ -553,12 +562,12 @@ void    MakeFlowGraph( void )
 /***************************/
 {
     Irreducable();
-    if( CurrProc->state.attr & ROUTINE_WANTS_DEBUGGING ) {
+    if( data_state().CurrProc->state.attr & ROUTINE_WANTS_DEBUGGING ) {
         return;
     }
     NoBlocksToSelf();
-    Intervals = NULL;
-    if( HeadBlock != NULL ) {
+    flograph_state().Intervals = NULL;
+    if( data_state().HeadBlock != NULL ) {
         if( !DepthFirstSearch() ) {
             Irreducable();
             RestoreLinks();

@@ -84,24 +84,24 @@
 #define _Equal( op1, op2 ) ( ( (op1)->n.class_==N_TEMP ? DeAlias(op1) : (op1) ) == (op2) )
 
 #define _SuffixLoad( _1, _2, _3, class_ )   \
-             block_cost += Save.load_cost[class_];
+             block_cost += regsave_state().Save.load_cost[class_];
 
 #define _PrefixLoad( _1, _2, _3, class_ )   \
-             block_cost += Save.load_cost[class_];
+             block_cost += regsave_state().Save.load_cost[class_];
 
 #define _SuffixStore( _1, _2, _3, class_ )  \
-             block_cost += Save.store_cost[class_];
+             block_cost += regsave_state().Save.store_cost[class_];
 
 #define _PrefixStore( _1, _2, _3, class_ )  \
-             block_cost += Save.store_cost[class_];
+             block_cost += regsave_state().Save.store_cost[class_];
 
 #define _ReplaceOpnd( _1, ins, i, _2, class_ ) \
-             block_save += Save.use_save[class_]; \
+             block_save += regsave_state().Save.use_save[class_]; \
              if( i == 0 \
               && ins->head.opcode < FIRST_CONDITION \
               && ins->result != NULL \
               && ins->result->n.class_ == N_REGISTER ) { \
-                 block_save += Save.use_save[class_]; \
+                 block_save += regsave_state().Save.use_save[class_]; \
              }
 
 #define _ReplaceResult( _1, ins, _2, class_ ) \
@@ -110,20 +110,20 @@
              && ins->operands[0]->n.class_ == N_TEMP \
              && ins->result->t.location != NO_LOCATION \
              && ins->result->t.location == ins->operands[0]->t.location ) { \
-                block_cost+=Save.load_cost[class_]; \
+                block_cost+=regsave_state().Save.load_cost[class_]; \
             } else { \
-                block_save+=Save.def_save[class_]; \
+                block_save+=regsave_state().Save.def_save[class_]; \
                 if( ins->num_operands != 0 \
                  && ins->operands[0]->n.class_ == N_REGISTER ) { \
-                    block_save+=Save.use_save[class_]; \
+                    block_save+=regsave_state().Save.use_save[class_]; \
                 } \
             }
 
 #define _ReplaceIdxResult( _1, _2, _3 ) \
-             block_save += Save.index_save;
+             block_save += regsave_state().Save.index_save;
 
 #define _ReplaceIdxOpnd( _1, _2, _3, _4 ) \
-             block_save += Save.index_save;
+             block_save += regsave_state().Save.index_save;
 
 #define _UpdateCost( blk, reg_name ) \
              save += Weight( block_save, blk ); \

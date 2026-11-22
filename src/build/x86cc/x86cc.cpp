@@ -6,6 +6,7 @@
 
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <mutex>
 #include <optional>
 
@@ -23,7 +24,9 @@ extern "C" {
     IDEBool IDEAPI p##IDEPassInitInfo(IDEDllHdl hdl, IDEInitInfo* info);                                                 \
     void IDEAPI p##IDEFiniDLL(IDEDllHdl hdl);                                                                            \
     int IDEAPI p##IDERunYourSelf(IDEDllHdl hdl, const char* opts, IDEBool* fatalerr);                                    \
-    void p##IdeMsgFormat(IDECBHdl hdl, const IDEMsgInfo* info, char* buffer, size_t len, IDEMsgInfoFn displayer);
+    void p##IdeMsgFormat(IDECBHdl hdl, const IDEMsgInfo* info, char* buffer, size_t len, IDEMsgInfoFn displayer);       \
+    void p##CBRunBegin(void);                                                                                          \
+    void p##CBRunEnd(void);
 CB_WCC_ENTRIES(wcci86_)
 CB_WCC_ENTRIES(wcc386_)
 }
@@ -48,13 +51,15 @@ struct Entries {
     void(IDEAPI* fini)(IDEDllHdl);
     int(IDEAPI* run)(IDEDllHdl, const char*, IDEBool*);
     void (*format)(IDECBHdl, const IDEMsgInfo*, char*, size_t, IDEMsgInfoFn);
+    void (*begin_run)();   // run/cbrun.hpp: the compiler's state for one run, made new here and destroyed by end_run
+    void (*end_run)();
 };
 
 const Entries& entries(Target t) {
     static const Entries i86{&wcci86_IDEInitDLL, &wcci86_IDEPassInitInfo, &wcci86_IDEFiniDLL, &wcci86_IDERunYourSelf,
-                             &wcci86_IdeMsgFormat};
+                             &wcci86_IdeMsgFormat, &wcci86_CBRunBegin, &wcci86_CBRunEnd};
     static const Entries i386{&wcc386_IDEInitDLL, &wcc386_IDEPassInitInfo, &wcc386_IDEFiniDLL, &wcc386_IDERunYourSelf,
-                              &wcc386_IdeMsgFormat};
+                              &wcc386_IdeMsgFormat, &wcc386_CBRunBegin, &wcc386_CBRunEnd};
     return t == Target::i86 ? i86 : i386;
 }
 
@@ -113,6 +118,17 @@ IDEBool IDEAPI get_info(IDECBHdl, IDEInfoType type, IDEGetInfoWParam extra, IDEG
     return false;
 }
 
+// Zeroes the stack below the caller: the frames of the compiler that follow start on zeros, as a new process's do.
+#if defined(_MSC_VER)
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+void clear_stack() {
+    volatile char pad[256 * 1024];
+    for (std::size_t i = 0; i < sizeof(pad); i += 64) std::memset(const_cast<char*>(pad) + i, 0, 64);
+}
+
 }  // namespace
 
 bool available() { return true; }
@@ -137,6 +153,15 @@ Run compile(Target target, const std::vector<std::string>& args, const stdfs::pa
 
     // the command line the program would have after its own name (maindrv.c: _bgetcmd)
     const std::string command = process::command_line(args);
+
+    // the compiler's state (every variable that was a global or a static of it) is new for this run and gone at its end
+    host.entries->begin_run();
+    struct EndRun {
+        void (*end)();
+        ~EndRun() { end(); }
+    } end_run{host.entries->end_run};
+
+    clear_stack();   // (what a compile reads from a frame it never wrote is zero, as on a new process's stack)
 
     const WorkingFolder in(folder);   // (the compiler opens its files relative to the process's)
     IDEDllHdl dll = nullptr;

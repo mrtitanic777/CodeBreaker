@@ -52,16 +52,16 @@
 #define TRUNC_SYMBOL_HASH_LEN        4
 #define TRUNC_SYMBOL_LEN_WARN        120
 
-#define _HAS_EXE_MAIN   (CompFlags.has_main || CompFlags.has_winmain)
-#define _HAS_DLL_MAIN   (CompFlags.bd_switch_used || CompFlags.has_libmain)
+#define _HAS_EXE_MAIN   (cvars_state().CompFlags.has_main || cvars_state().CompFlags.has_winmain)
+#define _HAS_DLL_MAIN   (cvars_state().CompFlags.bd_switch_used || cvars_state().CompFlags.has_libmain)
 #define _HAS_ANY_MAIN   (_HAS_EXE_MAIN || _HAS_DLL_MAIN)
 
-static unsigned char VarFuncWeights[] = {
+static unsigned char const VarFuncWeights[] = {
 /* a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z */
    0, 0,13, 0, 2, 1, 0, 0, 0, 0, 0,12, 0,14, 4,10, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0
 };
 
-static const char *VarParmFuncs[] = {
+static const char *const VarParmFuncs[] = {
     /*
      * functions with var parm lists
      */
@@ -107,7 +107,7 @@ static const char *VarParmFuncs[] = {
 
 #ifdef __SEH__
   #if _CPU == 386
-    hw_reg_set TryParms[] = {
+    extern hw_reg_set const TryParms[] = {
         HW_D( HW_EAX ),
         HW_D( HW_EMPTY )
     };
@@ -122,16 +122,12 @@ static const char *VarParmFuncs[] = {
 
 extern const alt_inline_funcs FlatAlternates[];
 
-static struct STRUCT_BYTE_SEQ( 1 ) FinallyCode = {
+static struct STRUCT_BYTE_SEQ( 1 ) const FinallyCode = {
     1, false, { 0xc3 }   /* ret */
 };
 
-static hw_reg_set TryFiniParms[] = {
-    HW_D( HW_EAX ),
-    HW_D( HW_EMPTY )
-};
 
-static struct STRUCT_BYTE_SEQ( 6 ) TryFiniCode = {
+static struct STRUCT_BYTE_SEQ( 6 ) const TryFiniCode = {
     6, false, { 0x64, 0xA3, 0, 0, 0, 0 }  /* mov fs:[0],eax */
 };
 
@@ -186,7 +182,7 @@ bool_ VarFunc( SYMPTR sym )
         if( c1 >= 0 && c2 >= 0 ) {
             hash = (len + VarFuncWeights[c1] + VarFuncWeights[c2]) & 0x1f;
             if( strcmp( p, VarParmFuncs[hash] ) == 0
-              && ( CompFlags.extensions_enabled
+              && ( cvars_state().CompFlags.extensions_enabled
               || (( 1 << hash ) & VAR_PARM_FUNCS_ANSI) ) ) {
                 return( true );
             }
@@ -203,7 +199,7 @@ static const inline_funcs *Flat( const inline_funcs *ifunc )
   #if _CPU == 386
     const alt_inline_funcs  *p;
 
-    if( TargetSwitches & CGSW_X86_FLAT_MODEL ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_FLAT_MODEL ) {
         for( p = FlatAlternates; p->byteseq != NULL; p++ ) {
             if( p->byteseq == ifunc->code ) {
                 return( &(p->alt_ifunc) );
@@ -218,24 +214,24 @@ static const inline_funcs *IF_Lookup( const char *name )
 {
     const inline_funcs  *ifunc;
 
-    if( !GET_FPU_FPC( ProcRevision ) ) {
+    if( !GET_FPU_FPC( cvars_state().ProcRevision ) ) {
         for( ifunc = _8087_Functions; ifunc->name != NULL; ifunc++ ) {
             if( strcmp( ifunc->name, name ) == 0 ) {
                 return( Flat( ifunc ) );
             }
         }
     }
-    if( OptSize == 100 ) {              /* if /os specified */
+    if( cvars_state().OptSize == 100 ) {              /* if /os specified */
         ifunc = SInline_Functions;
-        if( TargetSwitches & CGSW_X86_BIG_DATA ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
   #if _CPU == 8086
-            if( TargetSwitches & CGSW_X86_FLOATING_DS ) {
+            if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
                 ifunc = ZF_Data_Functions;
             } else {
                 ifunc = ZP_Data_Functions;
             }
   #else /* _CPU == 386 */
-            if( TargetSwitches & CGSW_X86_FLOATING_DS ) {
+            if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
                 ifunc = SBigData_Functions;
             } else {
                 ifunc = SBigDataNoDs_Functions;
@@ -249,7 +245,7 @@ static const inline_funcs *IF_Lookup( const char *name )
         }
     }
   #if _CPU == 386
-    if( TargetSwitches & CGSW_X86_FLAT_MODEL ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_FLAT_MODEL ) {
         for( ifunc = Flat_Functions; ifunc->name != NULL; ifunc++ ) {
             if( strcmp( ifunc->name, name ) == 0 ) {
                 return( ifunc );
@@ -258,15 +254,15 @@ static const inline_funcs *IF_Lookup( const char *name )
     }
   #endif
     ifunc = Inline_Functions;
-    if( TargetSwitches & CGSW_X86_BIG_DATA ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
   #if _CPU == 8086
-        if( TargetSwitches & CGSW_X86_FLOATING_DS ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
             ifunc = DF_Data_Functions;
         } else {
             ifunc = DP_Data_Functions;
         }
   #else /* _CPU == 386 */
-        if( TargetSwitches & CGSW_X86_FLOATING_DS ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
             ifunc = BigData_Functions;
         } else {
             ifunc = BigDataNoDs_Functions;
@@ -327,6 +323,26 @@ bool_ ParmsToBeReversed( type_modifiers flags, aux_info *inf )
 #endif
     return( false );
 }
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CfeinfoState {
+#if _CPU == 386
+    hw_reg_set TryFiniParms[2] = {
+        HW_D( HW_EAX ),
+        HW_D( HW_EMPTY )
+    };
+#endif
+    hw_reg_set FEAuxInfo_save_set;
+#if _INTEL_CPU
+    unsigned char FEAuxInfo_Alignment[3] = { 2, 1, 1 };
+#endif
+};
+
+}  // namespace
+
+static inline CfeinfoState& cfeinfo_state() { return cbrun_part<CfeinfoState>(); }
+
 
 static aux_info *InfoLookup( SYMPTR sym )
 {
@@ -376,7 +392,7 @@ static aux_info *InfoLookup( SYMPTR sym )
                     return( inf );
                 }
             }
-            inf = &InlineInfo;
+            inf = &pdefn2_state().InlineInfo;
             inf->cclass         = FECALL_GEN_NONE;
             inf->cclass_target  = (WatcallInfo.cclass_target & FECALL_X86_FAR_CALL) | FECALL_X86_MODIFY_EXACT;
 
@@ -386,7 +402,7 @@ static aux_info *InfoLookup( SYMPTR sym )
                 inf->cclass_target  |= ent->info->cclass_target;
             }
             inf->code = ifunc->code;
-            inf->parms = ifunc->parms;
+            inf->parms = const_cast<hw_reg_set *>(ifunc->parms);   // (never written through)
             inf->returns = ifunc->returns;
             if( !HW_CEqual( inf->returns, HW_xAX )
               && !HW_CEqual( inf->returns, HW_EMPTY ) ) {
@@ -418,18 +434,18 @@ aux_info *FindInfo( SYMPTR sym, SYM_HANDLE sym_handle )
 
     SymGet( sym, sym_handle );
 #if _CPU == 386
-    if( (sym_handle == SymSTOSB)
-      || (sym_handle == SymSTOSD) ) {
-        return( &STOSBInfo );
-    } else if( sym_handle == SymFinally ) {
-        InlineInfo = WatcallInfo;
-        InlineInfo.code = (byte_seq *)&FinallyCode;
-        return( &InlineInfo );
-    } else if( sym_handle == SymTryFini ) {
-        InlineInfo = WatcallInfo;
-        InlineInfo.parms = TryFiniParms;
-        InlineInfo.code = (byte_seq *)&TryFiniCode;
-        return( &InlineInfo );
+    if( (sym_handle == cvars_state().SymSTOSB)
+      || (sym_handle == cvars_state().SymSTOSD) ) {
+        return( &pragdefn_state().STOSBInfo );
+    } else if( sym_handle == cvars_state().SymFinally ) {
+        pdefn2_state().InlineInfo = WatcallInfo;
+        pdefn2_state().InlineInfo.code = (byte_seq *)&FinallyCode;
+        return( &pdefn2_state().InlineInfo );
+    } else if( sym_handle == cvars_state().SymTryFini ) {
+        pdefn2_state().InlineInfo = WatcallInfo;
+        pdefn2_state().InlineInfo.parms = cfeinfo_state().TryFiniParms;
+        pdefn2_state().InlineInfo.code = (byte_seq *)&TryFiniCode;
+        return( &pdefn2_state().InlineInfo );
     }
 #endif
     if( (sym->flags & SYM_TEMP) == 0 ) {
@@ -541,7 +557,7 @@ static call_class_target getCallClassTarget( SYM_HANDLE sym_handle )
     if( sym_handle != SYM_NULL ) {
         if( sym.flags & SYM_FUNCTION ) {
   #if _CPU == 8086
-            if( TargetSystem == TS_WINDOWS ) {
+            if( cvars_state().TargetSystem == TS_WINDOWS ) {
                 if( inf == &PascalInfo
                   || inf == &CdeclInfo ) {
                     cclass_target |= FECALL_X86_PROLOG_FAT_WINDOWS;
@@ -551,7 +567,7 @@ static call_class_target getCallClassTarget( SYM_HANDLE sym_handle )
             if( sym.mods & FLAG_FARSS ) {
                 cclass_target |= FECALL_X86_FARSS;
             }
-            if( CompFlags.emit_names ) {
+            if( cvars_state().CompFlags.emit_names ) {
                 cclass_target |= FECALL_X86_EMIT_FUNCTION_NAME;
             }
             if( sym.mods & FLAG_FAR ) {
@@ -578,16 +594,16 @@ static call_class_target getCallClassTarget( SYM_HANDLE sym_handle )
             cclass_target |= FECALL_X86_THUNK_PROLOG;
         }
     }
-    if( CompFlags.ep_switch_used ) {
+    if( cvars_state().CompFlags.ep_switch_used ) {
         cclass_target |= FECALL_X86_PROLOG_HOOKS;
     }
-    if( CompFlags.ee_switch_used ) {
+    if( cvars_state().CompFlags.ee_switch_used ) {
         cclass_target |= FECALL_X86_EPILOG_HOOKS;
     }
-    if( CompFlags.sg_switch_used ) {
+    if( cvars_state().CompFlags.sg_switch_used ) {
         cclass_target |= FECALL_X86_GROW_STACK;
     }
-    if( CompFlags.st_switch_used ) {
+    if( cvars_state().CompFlags.st_switch_used ) {
         cclass_target |= FECALL_X86_TOUCH_STACK;
     }
 #else
@@ -613,17 +629,17 @@ static void addDefaultLibs( void )
  *          returns the requested name.
  */
 {
-    if( CompFlags.emit_library_names ) {
+    if( cvars_state().CompFlags.emit_library_names ) {
         if( _HAS_ANY_MAIN
-          || CompFlags.pragma_library
-          || CompFlags.emit_all_default_libs ) {
-            AddLibraryName( CLIB_Name + 1, CLIB_Name[0] );
+          || cvars_state().CompFlags.pragma_library
+          || cvars_state().CompFlags.emit_all_default_libs ) {
+            AddLibraryName( cvars_state().CLIB_Name + 1, cvars_state().CLIB_Name[0] );
         }
-        if( CompFlags.pgm_used_8087
-          || CompFlags.float_used ) {
-            AddLibraryName( MATHLIB_Name + 1, MATHLIB_Name[0] );
-            if( EmuLib_Name != NULL ) {
-                AddLibraryName( EmuLib_Name + 1, EmuLib_Name[0] );
+        if( cvars_state().CompFlags.pgm_used_8087
+          || cvars_state().CompFlags.float_used ) {
+            AddLibraryName( cvars_state().MATHLIB_Name + 1, cvars_state().MATHLIB_Name[0] );
+            if( cvars_state().EmuLib_Name != NULL ) {
+                AddLibraryName( cvars_state().EmuLib_Name + 1, cvars_state().EmuLib_Name[0] );
             }
         }
     }
@@ -642,7 +658,7 @@ static CGPOINTER NextLibrary( int index, aux_class request )
     if( request == FEINF_NEXT_LIBRARY )
         index++;
     if( index > 0 ) {
-        for( i = 1, lib = HeadLibs; lib != NULL; i++, lib = lib->next ) {
+        for( i = 1, lib = cvars_state().HeadLibs; lib != NULL; i++, lib = lib->next ) {
             if( i == index ) {
                 name = lib->libname;
                 break;
@@ -691,7 +707,7 @@ static CGPOINTER NextAlias( int index, aux_class request )
     if( request == FEINF_NEXT_ALIAS )
         ++index;
 
-    for( i = 1, aliaslist = AliasHead; aliaslist != NULL; i++, aliaslist = aliaslist->next ) {
+    for( i = 1, aliaslist = cvars_state().AliasHead; aliaslist != NULL; i++, aliaslist = aliaslist->next ) {
         if( i == index ) {
             switch( request ) {
             case FEINF_ALIAS_NAME:
@@ -759,10 +775,10 @@ static const char *GetNamePattern( SYM_HANDLE sym_handle )
 
     inf = FindInfo( &sym, sym_handle );
 #ifdef __SEH__
-    if(( sym_handle == SymTryInit )
-      || ( sym_handle == SymTryFini )
-      || ( sym_handle == SymTryUnwind )
-      || ( sym_handle == SymExcept )) {
+    if(( sym_handle == cvars_state().SymTryInit )
+      || ( sym_handle == cvars_state().SymTryFini )
+      || ( sym_handle == cvars_state().SymTryUnwind )
+      || ( sym_handle == cvars_state().SymExcept )) {
         pattern = const_cast<char *>("*");
     } else {
 #endif
@@ -771,7 +787,7 @@ static const char *GetNamePattern( SYM_HANDLE sym_handle )
 #if _INTEL_CPU
             if( VarFunc( &sym ) ) {
                 if( inf == &DefaultInfo )
-                    inf = DftCallConv;
+                    inf = callinfo_state().DftCallConv;
                 if( inf == &StdcallInfo ) {
                     pattern = CdeclInfo.objname;
                 } else if( inf == &FastcallInfo ) {
@@ -813,7 +829,7 @@ const char *FEExtName( CGSYM_HANDLE sym_handle, int request )
     case EXTN_PRMSIZE:
         return( (const char *)(pointer_uint)GetParmsSize( (SYM_HANDLE)sym_handle ) );
     case EXTN_IMPPREFIX:
-        return( ( TargetSystem == TS_NT ) ? "__imp_" : NULL );
+        return( ( cvars_state().TargetSystem == TS_NT ) ? "__imp_" : NULL );
     case EXTN_CALLBACKNAME:
     default:
         return( NULL );
@@ -832,19 +848,19 @@ static void addDefaultImports( void )
     if( _HAS_ANY_MAIN ) {
         check_mask control;
 
-        if( CompFlags.bd_switch_used ) {
+        if( cvars_state().CompFlags.bd_switch_used ) {
             control = CM_DLLMAIN;
-        } else if( CompFlags.bw_switch_used ) {
+        } else if( cvars_state().CompFlags.bw_switch_used ) {
             control = CM_WINMAIN | CM_MAIN;
-        } else if( CompFlags.bg_switch_used ) {
+        } else if( cvars_state().CompFlags.bg_switch_used ) {
             control = CM_WINMAIN;
-        } else if( CompFlags.bc_switch_used ) {
+        } else if( cvars_state().CompFlags.bc_switch_used ) {
             control = CM_MAIN;
         } else {
             control = CM_DLLMAIN | CM_WINMAIN | CM_MAIN;
         }
         if( (control & CM_DLLMAIN) && _HAS_DLL_MAIN ) {
-            if( CompFlags.has_wchar_entry ) {
+            if( cvars_state().CompFlags.has_wchar_entry ) {
                 AddExtRefN( "__DLLstartw_" );
             } else {
                 AddExtRefN( "__DLLstart_" );
@@ -852,12 +868,12 @@ static void addDefaultImports( void )
             control = CM_NULL;
         }
 #if _CPU == 8086
-        if( (control & CM_WINMAIN) && CompFlags.has_winmain
-          || (TargetSwitches & CGSW_X86_WINDOWS) && CompFlags.has_main ) {
+        if( (control & CM_WINMAIN) && cvars_state().CompFlags.has_winmain
+          || (cvars_state().TargetSwitches & CGSW_X86_WINDOWS) && cvars_state().CompFlags.has_main ) {
 #else
-        if( (control & CM_WINMAIN) && CompFlags.has_winmain ) {
+        if( (control & CM_WINMAIN) && cvars_state().CompFlags.has_winmain ) {
 #endif
-            if( CompFlags.has_wchar_entry ) {
+            if( cvars_state().CompFlags.has_wchar_entry ) {
                 AddExtRefN( "_wstartw_" );
             } else {
                 AddExtRefN( "_wstart_" );
@@ -866,7 +882,7 @@ static void addDefaultImports( void )
         }
         if( control & CM_MAIN ) {
             assert( CompFlags.has_main );
-            if( CompFlags.has_wchar_entry ) {
+            if( cvars_state().CompFlags.has_wchar_entry ) {
                 AddExtRefN( "_cstartw_" );
             } else {
                 AddExtRefN( "_cstart_" );
@@ -875,33 +891,33 @@ static void addDefaultImports( void )
         }
     }
 #if _INTEL_CPU
-    if( CompFlags.emit_library_names ) {
-        if( CompFlags.float_used ) {
-            if( CompFlags.use_long_double ) {
+    if( cvars_state().CompFlags.emit_library_names ) {
+        if( cvars_state().CompFlags.float_used ) {
+            if( cvars_state().CompFlags.use_long_double ) {
                 AddExtRefN( "_fltused_80bit_" );
             }
             AddExtRefN( "_fltused_" );
         }
   #if _CPU == 8086
-        if( FirstStmt != 0 ) {
-            if( TargetSwitches & CGSW_X86_BIG_CODE ) {
+        if( cvars_state().FirstStmt != 0 ) {
+            if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
                 AddExtRefN( "_big_code_" );
             } else {
                 AddExtRefN( "_small_code_" );
             }
         }
   #endif
-        if( CompFlags.pgm_used_8087
-          || CompFlags.float_used ) {
-            if( GET_FPU_EMU( ProcRevision ) ) {
+        if( cvars_state().CompFlags.pgm_used_8087
+          || cvars_state().CompFlags.float_used ) {
+            if( GET_FPU_EMU( cvars_state().ProcRevision ) ) {
   #if _CPU == 8086
                 AddExtRefN( "__init_87_emulator" );
   #else /* _CPU == 386 */
                 AddExtRefN( "__init_387_emulator" );
   #endif
             }
-            if( !GET_FPU_FPC( ProcRevision ) ) {
-                if( Stack87 == 4 ) {
+            if( !GET_FPU_FPC( cvars_state().ProcRevision ) ) {
+                if( cvars_state().Stack87 == 4 ) {
                     AddExtRefN( "__old_8087" );
                 } else {
                     AddExtRefN( "__8087" );
@@ -920,22 +936,22 @@ static void addDefaultImports( void )
     }
 #endif
 #if _INTEL_CPU
-    if( CompFlags.main_has_parms ) {
+    if( cvars_state().CompFlags.main_has_parms ) {
   #if _CPU == 8086
-        if( CompFlags.has_wchar_entry ) {
+        if( cvars_state().CompFlags.has_wchar_entry ) {
             AddExtRefN( "__wargc" );
         } else {
             AddExtRefN( "__argc" );
         }
   #else /* _CPU == 386 */
-        if( CompFlags.register_conventions ) {
-            if( CompFlags.has_wchar_entry ) {
+        if( cvars_state().CompFlags.register_conventions ) {
+            if( cvars_state().CompFlags.has_wchar_entry ) {
                 AddExtRefN( "__wargc" );
             } else {
                 AddExtRefN( "__argc" );
             }
         } else {
-            if( CompFlags.has_wchar_entry ) {
+            if( cvars_state().CompFlags.has_wchar_entry ) {
                 AddExtRefN( "_wargc" );
             } else {
                 AddExtRefN( "_argc" );
@@ -951,15 +967,15 @@ static void addDefaultImports( void )
     /*
      * handle default windowing app
      */
-    if( CompFlags.bw_switch_used ) {
+    if( cvars_state().CompFlags.bw_switch_used ) {
         AddExtRefN( "__init_default_win" );
     }
 #if _INTEL_CPU
     /*
      * handle NetWare
      */
-    if( TargetSystem == TS_NETWARE
-      || TargetSystem == TS_NETWARE5 ) {
+    if( cvars_state().TargetSystem == TS_NETWARE
+      || cvars_state().TargetSystem == TS_NETWARE5 ) {
         /*
          * is target NETWARE or NETWARE5?
          */
@@ -968,7 +984,7 @@ static void addDefaultImports( void )
     /*
      * handle 'old' profiling
      */
-    if( TargetSwitches & CGSW_X86_P5_PROFILING ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_P5_PROFILING ) {
         /*
          * is profiling enabled (-et)?
          */
@@ -977,7 +993,7 @@ static void addDefaultImports( void )
     /*
      * handle 'new' profiling
      */
-    if( TargetSwitches & CGSW_X86_NEW_P5_PROFILING ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_NEW_P5_PROFILING ) {
         /*
          * is profiling enabled (-etp)?
          */
@@ -1010,7 +1026,7 @@ static CGPOINTER NextImport( int index, aux_class request )
     int         i;
     extref_info *e;
 
-    if( !CompFlags.emit_targimp_symbols )
+    if( !cvars_state().CompFlags.emit_targimp_symbols )
         return( NULL );
 
     name = NULL;
@@ -1020,7 +1036,7 @@ static CGPOINTER NextImport( int index, aux_class request )
     if( request == FEINF_NEXT_IMPORT )
         index++;
     if( index > 0 ) {
-        for( i = 1, e = ExtrefInfo; e != NULL; i++, e = e->next ) {
+        for( i = 1, e = cvars_state().ExtrefInfo; e != NULL; i++, e = e->next ) {
             if( e->symbol != NULL )
                 continue;
             if( i == index ) {
@@ -1048,14 +1064,14 @@ static CGPOINTER NextImportS( int index, aux_class request )
     int         i;
     extref_info *e;
 
-    if(!CompFlags.emit_targimp_symbols)
+    if(!cvars_state().CompFlags.emit_targimp_symbols)
         return( NULL );
 
     symbol = NULL;
     if( request == FEINF_NEXT_IMPORT_S )
         index++;
     if( index > 0 ) {
-        for( i = 1, e = ExtrefInfo; e != NULL; i++, e = e->next ) {
+        for( i = 1, e = cvars_state().ExtrefInfo; e != NULL; i++, e = e->next ) {
             if( e->symbol == NULL )
                 continue;
             if( i == index ) {
@@ -1083,18 +1099,17 @@ CGPOINTER FEAuxInfo( CGPOINTER req_handle, aux_class request )
 {
     aux_info            *inf;
     SYM_ENTRY           sym;
-    static hw_reg_set   save_set;
 
     switch( request ) {
     case FEINF_SOURCE_LANGUAGE:
         return( (CGPOINTER)FE_LANG_C );
 #if _INTEL_CPU
     case FEINF_STACK_SIZE_8087:
-        return( (CGPOINTER)(pointer_uint)Stack87 );
+        return( (CGPOINTER)(pointer_uint)cvars_state().Stack87 );
     case FEINF_CODE_GROUP:
-        return( (CGPOINTER)GenCodeGroup );
+        return( (CGPOINTER)cvars_state().GenCodeGroup );
     case FEINF_DATA_GROUP:
-        return( (CGPOINTER)DataSegName );
+        return( (CGPOINTER)cvars_state().DataSegName );
 #endif
     case FEINF_OBJECT_FILE_NAME:
         return( (CGPOINTER)ObjFileName() );
@@ -1104,34 +1119,33 @@ CGPOINTER FEAuxInfo( CGPOINTER req_handle, aux_class request )
         return( req_handle );
 #if _INTEL_CPU
     case FEINF_PROEPI_DATA_SIZE:
-        return( (CGPOINTER)(pointer_uint)ProEpiDataSize );
+        return( (CGPOINTER)(pointer_uint)cvars_state().ProEpiDataSize );
     case FEINF_DBG_PREDEF_SYM:
-        return( (CGPOINTER)SymDFAbbr );
+        return( (CGPOINTER)cvars_state().SymDFAbbr );
     case FEINF_P5_CHIP_BUG_SYM:
-        return( (CGPOINTER)SymChipBug );
+        return( (CGPOINTER)cvars_state().SymChipBug );
     case FEINF_CODE_LABEL_ALIGNMENT:
         {
-            static  unsigned char   Alignment[] = { 2, 1, 1 };
 
-            if( OptSize == 0 )
-                Alignment[1] = TARGET_INT;
+            if( cvars_state().OptSize == 0 )
+                cfeinfo_state().FEAuxInfo_Alignment[1] = TARGET_INT;
 
-            return( (CGPOINTER)Alignment );
+            return( (CGPOINTER)cfeinfo_state().FEAuxInfo_Alignment );
         }
     case FEINF_CLASS_NAME:
         return( (CGPOINTER)SegClassName( (segment_id)(pointer_uint)req_handle ) );
     case FEINF_USED_8087:
-        CompFlags.pgm_used_8087 = true;
+        cvars_state().CompFlags.pgm_used_8087 = true;
         return( NULL );
   #if _CPU == 386
     case FEINF_P5_PROF_DATA:
-        return( (CGPOINTER)FunctionProfileBlock );
+        return( (CGPOINTER)cvars_state().FunctionProfileBlock );
     case FEINF_P5_PROF_SEG:
-        return( (CGPOINTER)(pointer_uint)FunctionProfileSegId );
+        return( (CGPOINTER)(pointer_uint)cvars_state().FunctionProfileSegId );
   #endif
 #endif
     case FEINF_SOURCE_NAME:
-        return( (CGPOINTER)FNameFullPath( FNames ) );
+        return( (CGPOINTER)FNameFullPath( cvars_state().FNames ) );
     case FEINF_CALL_CLASS:
         return( (CGPOINTER)getCallClass( req_handle ) );
     case FEINF_CALL_CLASS_TARGET:
@@ -1158,7 +1172,7 @@ CGPOINTER FEAuxInfo( CGPOINTER req_handle, aux_class request )
     case FEINF_TEMP_LOC_TELL:
         return( NULL );
     case FEINF_NEXT_DEPENDENCY:
-        if( CompFlags.emit_dependencies )
+        if( cvars_state().CompFlags.emit_dependencies )
             return( (CGPOINTER)NextDependency( (FNAMEPTR)req_handle ) );
         return( NULL );
     case FEINF_DEPENDENCY_TIMESTAMP:
@@ -1174,18 +1188,18 @@ CGPOINTER FEAuxInfo( CGPOINTER req_handle, aux_class request )
     case FEINF_SAVE_REGS:
         sym.mods = static_cast<type_modifiers>(0);
         inf = FindInfo( &sym, req_handle );
-        save_set = inf->save;
+        cfeinfo_state().FEAuxInfo_save_set = inf->save;
 #if _INTEL_CPU
         if( sym.mods & FLAG_SAVEREGS ) {
-            HW_CTurnOn( save_set, HW_SEGS );
+            HW_CTurnOn( cfeinfo_state().FEAuxInfo_save_set, HW_SEGS );
         }
   #ifdef __SEH__
-        if( (SYM_HANDLE)req_handle == SymTryInit ) {
-            HW_CTurnOff( save_set, HW_xSP );
+        if( (SYM_HANDLE)req_handle == cvars_state().SymTryInit ) {
+            HW_CTurnOff( cfeinfo_state().FEAuxInfo_save_set, HW_xSP );
         }
   #endif
 #endif
-        return( (CGPOINTER)&save_set );
+        return( (CGPOINTER)&cfeinfo_state().FEAuxInfo_save_set );
     case FEINF_RETURN_REG:
         inf = FindInfo( &sym, req_handle );
         return( (CGPOINTER)&inf->returns );
@@ -1195,10 +1209,10 @@ CGPOINTER FEAuxInfo( CGPOINTER req_handle, aux_class request )
     case FEINF_PARM_REGS:
 #if _INTEL_CPU
   #ifdef __SEH__
-        if(( (SYM_HANDLE)req_handle == SymTryInit )
-          || ( (SYM_HANDLE)req_handle == SymTryFini )
-          || ( (SYM_HANDLE)req_handle == SymTryUnwind )
-          || ( (SYM_HANDLE)req_handle == SymExcept )) {
+        if(( (SYM_HANDLE)req_handle == cvars_state().SymTryInit )
+          || ( (SYM_HANDLE)req_handle == cvars_state().SymTryFini )
+          || ( (SYM_HANDLE)req_handle == cvars_state().SymTryUnwind )
+          || ( (SYM_HANDLE)req_handle == cvars_state().SymExcept )) {
             return( (CGPOINTER)TryParms );
         }
   #endif

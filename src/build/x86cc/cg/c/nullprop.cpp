@@ -46,7 +46,7 @@ void    ClearBlocksBitsMask( block_class mask )
 {
     block               *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         blk->class_ &= mask;
     }
 }
@@ -218,7 +218,7 @@ static  bool_            LastBlock( block *blk, bool_ forward )
             return( true );
         }
     } else {
-        if( blk == HeadBlock ) {
+        if( blk == data_state().HeadBlock ) {
             return( true );
         }
     }
@@ -494,7 +494,7 @@ void            PropNullInfo( void )
     if( _IsModel( CGSW_GEN_NULL_DEREF_OK ) )
         return;
     change = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         change |= NullProp( blk );
     }
     _MarkBlkAllUnVisited();

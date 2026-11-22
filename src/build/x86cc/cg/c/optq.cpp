@@ -39,28 +39,28 @@ void    InsertQueue( ins_entry *old_ins, ins_entry *new_ins )
 /***********************************************************/
 {
   optbegin
-    if( FirstIns == NULL ) {
-        FirstIns = old_ins;
-        LastIns = old_ins;
-        FirstIns->ins.prev = NULL;
-        FirstIns->ins.next = NULL;
+    if( optdata_state().FirstIns == NULL ) {
+        optdata_state().FirstIns = old_ins;
+        optdata_state().LastIns = old_ins;
+        optdata_state().FirstIns->ins.prev = NULL;
+        optdata_state().FirstIns->ins.next = NULL;
     } else if( new_ins == NULL ) {
-        FirstIns->ins.prev = old_ins;
-        old_ins->ins.next = FirstIns;
+        optdata_state().FirstIns->ins.prev = old_ins;
+        old_ins->ins.next = optdata_state().FirstIns;
         old_ins->ins.prev = NULL;
-        FirstIns = old_ins;
-    } else if( new_ins == LastIns ) {
-        LastIns->ins.next = old_ins;
+        optdata_state().FirstIns = old_ins;
+    } else if( new_ins == optdata_state().LastIns ) {
+        optdata_state().LastIns->ins.next = old_ins;
         old_ins->ins.next = NULL;
-        old_ins->ins.prev = LastIns;
-        LastIns = old_ins;
+        old_ins->ins.prev = optdata_state().LastIns;
+        optdata_state().LastIns = old_ins;
     } else {
         old_ins->ins.next = new_ins->ins.next;
         old_ins->ins.prev = new_ins;
         new_ins->ins.next->ins.prev = old_ins;
         new_ins->ins.next = old_ins;
     }
-    ++QCount;
+    ++optdata_state().QCount;
   optend
 }
 
@@ -69,20 +69,20 @@ void    DeleteQueue( ins_entry *old_ins )
 /***************************************/
 {
   optbegin
-    if( old_ins == FirstIns ) {
-        FirstIns = FirstIns->ins.next;
-        if( FirstIns != NULL ) {
-            FirstIns->ins.prev = NULL;
+    if( old_ins == optdata_state().FirstIns ) {
+        optdata_state().FirstIns = optdata_state().FirstIns->ins.next;
+        if( optdata_state().FirstIns != NULL ) {
+            optdata_state().FirstIns->ins.prev = NULL;
         } else {
-            LastIns = NULL;
+            optdata_state().LastIns = NULL;
         }
-    } else if( old_ins == LastIns ) {
-        LastIns = LastIns->ins.prev;
-        LastIns->ins.next = NULL;
+    } else if( old_ins == optdata_state().LastIns ) {
+        optdata_state().LastIns = optdata_state().LastIns->ins.prev;
+        optdata_state().LastIns->ins.next = NULL;
     } else {
         old_ins->ins.next->ins.prev = old_ins->ins.prev;
         old_ins->ins.prev->ins.next = old_ins->ins.next;
     }
-    --QCount;
+    --optdata_state().QCount;
   optend
 }

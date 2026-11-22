@@ -41,8 +41,17 @@
 #include "regtree.h"
 
 
-static  pointer         *RegFrl;
-static  pointer         *TreeFrl;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct RegtreeState {
+    pointer *RegFrl;
+    pointer *TreeFrl;
+};
+
+}  // namespace
+
+static inline RegtreeState& regtree_state() { return cbrun_part<RegtreeState>(); }
 
 
 #if _TARGET_INTEL
@@ -68,16 +77,15 @@ static  reg_tree        *AllocRegTree( void )
 {
     reg_tree    *tree;
 
-    tree = static_cast<reg_tree *>(AllocFrl( &TreeFrl, sizeof( reg_tree ) ));
+    tree = static_cast<reg_tree *>(AllocFrl( &regtree_state().TreeFrl, sizeof( reg_tree ) ));
     return( tree );
 }
-
 
 
 static  void    FreeRegTree( reg_tree *tree )
 /*******************************************/
 {
-    FrlFreeSize( &TreeFrl, (pointer *)tree, sizeof( reg_tree ) );
+    FrlFreeSize( &regtree_state().TreeFrl, (pointer *)tree, sizeof( reg_tree ) );
 }
 
 
@@ -88,7 +96,7 @@ static  hw_reg_set      *AllocRegSet( void )
     hw_reg_set  *regs;
     hw_reg_set  *curr;
 
-    regs = static_cast<hw_reg_set *>(AllocFrl( &RegFrl, REGSET_SIZE ));
+    regs = static_cast<hw_reg_set *>(AllocFrl( &regtree_state().RegFrl, REGSET_SIZE ));
     for( curr = regs, i = REG_COUNT; i > 0; --i, ++curr ) {
         HW_CAsgn( *curr, HW_EMPTY );
     }
@@ -99,7 +107,7 @@ static  hw_reg_set      *AllocRegSet( void )
 static  void    FreeRegSet( hw_reg_set *regs )
 /********************************************/
 {
-    FrlFreeSize( &RegFrl, (pointer *)regs, REGSET_SIZE );
+    FrlFreeSize( &regtree_state().RegFrl, (pointer *)regs, REGSET_SIZE );
 }
 
 
@@ -108,8 +116,8 @@ bool_    RegTreeFrlFree( void )
 {
     bool_        freed;
 
-    freed = FrlFreeAll( &TreeFrl, sizeof( reg_tree ) );
-    freed |= FrlFreeAll( &RegFrl, REGSET_SIZE );
+    freed = FrlFreeAll( &regtree_state().TreeFrl, sizeof( reg_tree ) );
+    freed |= FrlFreeAll( &regtree_state().RegFrl, REGSET_SIZE );
     return( freed );
 }
 
@@ -172,7 +180,7 @@ static  void    BuildPossible( reg_tree *tree )
         if( tree->idx != RL_NUMBER_OF_SETS ) {
             tree->regs = AllocRegSet();
             dst = tree->regs;
-            for( src = RegSets[tree->idx]; !HW_CEqual( *src, HW_EMPTY ); ++src ) {
+            for( src = RegSetList(tree->idx); !HW_CEqual( *src, HW_EMPTY ); ++src ) {
                 *dst++ = *src;
             }
             *dst = *src;
@@ -475,8 +483,8 @@ void    BurnNameTree( reg_tree *tree )
 void    RegTreeInit( void )
 /*************************/
 {
-    InitFrl( &RegFrl );
-    InitFrl( &TreeFrl );
+    InitFrl( &regtree_state().RegFrl );
+    InitFrl( &regtree_state().TreeFrl );
 }
 
 

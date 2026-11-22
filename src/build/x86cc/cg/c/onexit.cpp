@@ -41,8 +41,17 @@
 #include "feprotos.h"
 
 
-static  bool_ volatile   BrkFlag;
-static  bool_            OnExitFlag = true;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct OnexitState {
+    bool_ volatile BrkFlag;
+    bool_ OnExitFlag = true;
+};
+
+}  // namespace
+
+static inline OnexitState& onexit_state() { return cbrun_part<OnexitState>(); }
 
 
 static void SigIntFunc( int sig_num )
@@ -50,7 +59,7 @@ static void SigIntFunc( int sig_num )
 {
     /* unused parameters */ (void)sig_num;
 
-    BrkFlag = true;
+    onexit_state().BrkFlag = true;
 }
 
 
@@ -70,12 +79,12 @@ static void BrkFini( void )
 static void InitOnExit( void )
 /*********************/
 {
-    if( OnExitFlag ) {
+    if( onexit_state().OnExitFlag ) {
         BrkInit();
         GrabTimer();
         atexit( BrkFini );
         atexit( ReleTimer );
-        OnExitFlag = false;
+        onexit_state().OnExitFlag = false;
     }
 }
 
@@ -86,8 +95,8 @@ bool_ TBreak( void )
     int         brk;
 
     InitOnExit();
-    brk = BrkFlag;
-    BrkFlag = 0;
+    brk = onexit_state().BrkFlag;
+    onexit_state().BrkFlag = 0;
     return( brk != 0 );
 }
 
@@ -95,7 +104,7 @@ bool_ TBreak( void )
 void CauseTBreak( void )
 /**********************/
 {
-    BrkFlag = true;
+    onexit_state().BrkFlag = true;
 }
 
 

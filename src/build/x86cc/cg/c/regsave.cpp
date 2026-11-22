@@ -41,9 +41,6 @@
 #include "regsave.h"
 
 
-savings         Save;
-
-
 void    AdjTimeSize( uint *time, uint *size )
 /*******************************************/
 {
@@ -68,10 +65,10 @@ void    SetLoopCost( uint time )
     if( loop_weight == 0 ) {
         loop_weight = 1;
     }
-    Save.loop_weight[0] = 1;
+    regsave_state().Save.loop_weight[0] = 1;
     i = 1;
     for( ;; ) {
-        Save.loop_weight[i] = Save.loop_weight[i - 1] * loop_weight;
+        regsave_state().Save.loop_weight[i] = regsave_state().Save.loop_weight[i - 1] * loop_weight;
         ++ i;
         if( i > MAX_LOOP ) {
             break;
@@ -110,9 +107,9 @@ save_def        Weight( save_def value, block *blk )
 /**************************************************/
 {
     if( blk->depth < MAX_LOOP ) {
-        value *= Save.loop_weight[blk->depth];
+        value *= regsave_state().Save.loop_weight[blk->depth];
     } else {
-        value *= Save.loop_weight[MAX_LOOP];
+        value *= regsave_state().Save.loop_weight[MAX_LOOP];
     }
     return( value );
 }

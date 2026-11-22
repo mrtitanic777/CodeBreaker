@@ -1,3 +1,4 @@
+#pragma once
 /****************************************************************************
 *
 *                            Open Watcom Project
@@ -33,4 +34,14 @@
 
 #include "cfloat.h"
 
-extern cfstruct     cgh;
+
+#ifndef CB_STATE__CFLOAT_H
+#define CB_STATE__CFLOAT_H
+
+/* the variables of _cfloat.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct CfloatState {
+    cfstruct cgh;
+};
+inline CfloatState& cfloat_state() { return cbrun_part<CfloatState>(); }
+
+#endif

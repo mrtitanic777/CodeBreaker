@@ -33,12 +33,21 @@
 #include "cvars.h"
 
 
-TREEPTR     ExprNodeList;
-unsigned    NodeCount;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct ExprtreeState {
+    TREEPTR ExprNodeList;
+};
+
+}  // namespace
+
+static inline ExprtreeState& exprtree_state() { return cbrun_part<ExprtreeState>(); }
+
 
 void InitExprTree( void )
 {
-    ExprNodeList = NULL;
+    exprtree_state().ExprNodeList = NULL;
 }
 
 static void AllocMoreExprNodes( void )
@@ -47,7 +56,7 @@ static void AllocMoreExprNodes( void )
     int         i;
 
     node = (TREEPTR)CMemAlloc( 500 * sizeof( EXPRNODE ) );
-    ExprNodeList = node;
+    exprtree_state().ExprNodeList = node;
     for( i = 0; i < (500 - 1); i++ ) {
         node->left = node + 1;
         ++node;
@@ -59,18 +68,18 @@ TREEPTR ExprNode( TREEPTR left, opr_code opcode, TREEPTR right )
 {
     TREEPTR     node;
 
-    if( ExprNodeList == NULL ) {
+    if( exprtree_state().ExprNodeList == NULL ) {
         AllocMoreExprNodes();
     }
-    node = ExprNodeList;
-    ExprNodeList = node->left;
+    node = exprtree_state().ExprNodeList;
+    exprtree_state().ExprNodeList = node->left;
     node->left = left;
     node->right = right;
     node->op.opr = opcode;
     node->op.flags = OPFLAG_NONE;
     node->visit = false;
     node->checked = false;
-    ++NodeCount;
+    ++cvars_state().NodeCount;
     return( node );
 }
 
@@ -97,9 +106,9 @@ void FreeExprNode( TREEPTR node )
         } else if ( node->op.opr == OPR_CALL ) {
             CheckCallNode( node );
         }
-        --NodeCount;
-        node->left = ExprNodeList;
-        ExprNodeList = node;
+        --cvars_state().NodeCount;
+        node->left = exprtree_state().ExprNodeList;
+        exprtree_state().ExprNodeList = node;
     }
 }
 

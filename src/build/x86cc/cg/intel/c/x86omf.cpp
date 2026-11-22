@@ -166,7 +166,7 @@ static bool_         symIsExported( cg_sym_handle );
 #define _ARRAYOF( what, type )  ((type *)(what)->array)
 #define _CHGTYPE( what, type )  (*(type *)&(what))
 
-#define altCodeSegId    codeSegId
+#define altCodeSegId    x86omf_state().codeSegId
 
 #define OMFNAMELEN(s)   *(unsigned char *)(s)
 
@@ -206,44 +206,6 @@ typedef struct dbg_seg_info {
 } dbg_seg_info;
 
 
-static  bool_            GenStaticImports;
-static  omf_idx         ImportHdl;
-static  array_control   Imports;
-static  array_control   SegInfo;
-static  abs_patch       *AbsPatches;
-static  segment_id      codeSegId = BACKSEGS;
-static  segment_id      dataSegId;
-static  segdef          *SegDefs;
-static  long_offset     CodeSize;
-static  long_offset     DataSize;
-static  long_offset     DbgTypeSize;
-static  index_rec       *CurrSeg;
-static  omf_idx         GroupIndex;
-static  omf_idx         DGroupIndex;
-static  omf_idx         SegmentIndex;
-static  omf_idx         PrivateIndexRW;
-static  omf_idx         PrivateIndexRO;
-static  omf_idx         CodeGroupGIdx;
-static  omf_idx         CodeGroupNIdx;
-static  char            CodeGroup[80];
-static  char            DataGroup[80];
-static  offset          SelStart;
-static  omf_idx         selIdx;
-static  segment_id      backSegId = BACKSEGS;
-static  omf_idx         FPPatchImp[FPP_NUMBER_OF_TYPES];
-static  int             segmentCount;
-static  bool_            NoDGroup;
-static  short           CurrFNo;
-#if _TARGET & _TARG_80386
-static  omf_idx         FlatGIndex;
-static  omf_idx         FlatNIndex;
-#endif
-static  omf_idx         TLSGIndex;
-
-static  omf_idx         NameIndex;
-static  lname_cache     *NameCache;
-static  lname_cache     *NameCacheDumped;
-
 static const char * const FPPatchName[] = {
     #define pick_fp(enum,name,alt_name,win,alt_win,others,alt_others) name,
     #include "fppatche.h"
@@ -256,28 +218,76 @@ static const char * const FPPatchAltName[] = {
     #undef pick_fp
 };
 
-static const struct dbg_seg_info DbgSegs[] = {
-    { &DbgLocals, "$$SYMBOLS", "DEBSYM" },
-    { &DbgTypes,  "$$TYPES",   "DEBTYP" },
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct X86omfState {
+    bool_ GenStaticImports;
+    omf_idx ImportHdl;
+    array_control Imports;
+    array_control SegInfo;
+    abs_patch *AbsPatches;
+    segment_id codeSegId = BACKSEGS;
+    segment_id dataSegId;
+    segdef *SegDefs;
+    long_offset CodeSize;
+    long_offset DataSize;
+    long_offset DbgTypeSize;
+    index_rec *CurrSeg;
+    omf_idx GroupIndex;
+    omf_idx DGroupIndex;
+    omf_idx SegmentIndex;
+    omf_idx PrivateIndexRW;
+    omf_idx PrivateIndexRO;
+    omf_idx CodeGroupGIdx;
+    omf_idx CodeGroupNIdx;
+    char CodeGroup[80];
+    char DataGroup[80];
+    offset SelStart;
+    omf_idx selIdx;
+    segment_id backSegId = BACKSEGS;
+    omf_idx FPPatchImp[FPP_NUMBER_OF_TYPES];
+    int segmentCount;
+    bool_ NoDGroup;
+    short CurrFNo;
+#if _TARGET & _TARG_80386
+    omf_idx FlatGIndex;
+#endif
+#if _TARGET & _TARG_80386
+    omf_idx FlatNIndex;
+#endif
+    omf_idx TLSGIndex;
+    omf_idx NameIndex;
+    lname_cache *NameCache;
+    lname_cache *NameCacheDumped;
+    const struct dbg_seg_info DbgSegs[2] = {
+        { &data_state().DbgLocals, "$$SYMBOLS", "DEBSYM" },
+        { &data_state().DbgTypes,  "$$TYPES",   "DEBTYP" },
+    };
+    segment_id askCode16Seg_Code16Seg = BACKSEGS;
 };
 
+}  // namespace
+
+static inline X86omfState& x86omf_state() { return cbrun_part<X86omfState>(); }
 
 static void    initSegDefs( void )
 /*************************/
 {
-    SegDefs = NULL;
-    NameCache = NULL;
-    NameCacheDumped = NULL;
-    NameIndex = 0;
-    GroupIndex = 0;
-    DGroupIndex = 0;
-    TLSGIndex = 0;
+    x86omf_state().SegDefs = NULL;
+    x86omf_state().NameCache = NULL;
+    x86omf_state().NameCacheDumped = NULL;
+    x86omf_state().NameIndex = 0;
+    x86omf_state().GroupIndex = 0;
+    x86omf_state().DGroupIndex = 0;
+    x86omf_state().TLSGIndex = 0;
 #if _TARGET & _TARG_80386
-    FlatGIndex = 0;
+    x86omf_state().FlatGIndex = 0;
 #endif
-    segmentCount = 0;
-    codeSegId = BACKSEGS; /* just so it doesn't match a FE seg_id */
-    backSegId = BACKSEGS;
+    x86omf_state().segmentCount = 0;
+    x86omf_state().codeSegId = BACKSEGS; /* just so it doesn't match a FE seg_id */
+    x86omf_state().backSegId = BACKSEGS;
 }
 
 static omf_idx GetNameIdx( const char *name, const char *suff )
@@ -293,7 +303,7 @@ static omf_idx GetNameIdx( const char *name, const char *suff )
     if( len < 256 ) {
         strcpy( idxname, name );
         strcat( idxname, suff );
-        for( owner = &NameCache; (curr = *owner) != NULL; owner = &curr->next ) {
+        for( owner = &x86omf_state().NameCache; (curr = *owner) != NULL; owner = &curr->next ) {
             if( len == OMFNAMELEN( curr->name ) && strcmp( idxname, curr->name + 1 ) == 0 ) {
                 return( curr->idx );
             }
@@ -301,10 +311,10 @@ static omf_idx GetNameIdx( const char *name, const char *suff )
         curr = static_cast<lname_cache *>(CGAlloc( sizeof( *curr ) + len + 1 ));
         *owner = curr;
         curr->next = NULL;
-        curr->idx = ++NameIndex;
+        curr->idx = ++x86omf_state().NameIndex;
         curr->name[0] = (unsigned char)len;
         strcpy( curr->name + 1, idxname );
-        return( NameIndex );
+        return( x86omf_state().NameIndex );
     }
     return( 0 );
 }
@@ -377,7 +387,7 @@ static void FlushNames( void )
 
     tmp.array = buff;
     tmp.used = 0;
-    dmp = ( NameCacheDumped != NULL ) ? NameCacheDumped->next : NameCache;
+    dmp = ( x86omf_state().NameCacheDumped != NULL ) ? x86omf_state().NameCacheDumped->next : x86omf_state().NameCache;
     for( ; dmp != NULL; dmp = dmp->next ) {
         len = OMFNAMELEN( dmp->name );
         if( ( tmp.used + len ) > ( sizeof( buff ) - 1 ) ) {
@@ -386,7 +396,7 @@ static void FlushNames( void )
         buff[tmp.used++] = len;
         _CopyTrans( dmp->name + 1, buff + tmp.used, len );
         tmp.used += len;
-        NameCacheDumped = dmp;
+        x86omf_state().NameCacheDumped = dmp;
     }
     if( tmp.used > 0 ) {
         PutObjOMFRec( CMD_LNAMES, &tmp );
@@ -398,15 +408,15 @@ static bool_ freeObjCache( void )
 {
     lname_cache         *tmp;
 
-    if( NameCache == NULL )
+    if( x86omf_state().NameCache == NULL )
         return( false );
     FlushNames();
-    while( NameCache != NULL ) {
-        tmp = NameCache->next;
-        CGFree( NameCache );
-        NameCache = tmp;
+    while( x86omf_state().NameCache != NULL ) {
+        tmp = x86omf_state().NameCache->next;
+        CGFree( x86omf_state().NameCache );
+        x86omf_state().NameCache = tmp;
     }
-    NameCacheDumped = NULL;
+    x86omf_state().NameCacheDumped = NULL;
     return( true );
 }
 
@@ -416,9 +426,9 @@ static  index_rec   *AskSegIndex( segment_id segid )
 {
     unsigned    i;
 
-    for( i = 0; i < SegInfo.used; ++i ) {
-        if( _ARRAYOF( &SegInfo, index_rec )[i].segid == segid ) {
-            return( _ARRAYOF( &SegInfo, index_rec ) + i );
+    for( i = 0; i < x86omf_state().SegInfo.used; ++i ) {
+        if( _ARRAYOF( &x86omf_state().SegInfo, index_rec )[i].segid == segid ) {
+            return( _ARRAYOF( &x86omf_state().SegInfo, index_rec ) + i );
         }
     }
     return( NULL );
@@ -535,8 +545,8 @@ static array_control *InitArray( unsigned size, unsigned starting, unsigned incr
 static  void    SetMaxWritten( void )
 /***********************************/
 {
-    if( CurrSeg->max_written < CurrSeg->location ) {
-        CurrSeg->max_written = CurrSeg->location;
+    if( x86omf_state().CurrSeg->max_written < x86omf_state().CurrSeg->location ) {
+        x86omf_state().CurrSeg->max_written = x86omf_state().CurrSeg->location;
     }
 }
 
@@ -563,10 +573,10 @@ static void *allocOutData( unsigned size )
     unsigned        i;
     array_control   *obj_data;
 
-    i = CurrSeg->location - CurrSeg->obj->start + CurrSeg->data_prefix_size;
+    i = x86omf_state().CurrSeg->location - x86omf_state().CurrSeg->obj->start + x86omf_state().CurrSeg->data_prefix_size;
     incLocation( size );
     need = i + size;
-    obj_data = &CurrSeg->obj->data;
+    obj_data = &x86omf_state().CurrSeg->obj->data;
     if( obj_data->used < need ) {
         if( need > obj_data->alloc ) {
             ReallocArray( obj_data, need );
@@ -688,7 +698,7 @@ static  void    DoASegDef( index_rec *rec, bool_ use_16 )
 #endif
     FlushNames();
     obj->segfix = AskObjHandle();
-    if( ++segmentCount > 32000 ) {
+    if( ++x86omf_state().segmentCount > 32000 ) {
         FatalError( "too many segments" );
     }
 #if _TARGET & _TARG_80386
@@ -720,7 +730,7 @@ static  void    OutCGroup( omf_idx sidx, array_control *dest )
 /************************************************************/
 {
     FlushNames();
-    OutIdx( CodeGroupNIdx, dest );
+    OutIdx( x86omf_state().CodeGroupNIdx, dest );
     OutByte( GRP_SEGIDX, dest );
     OutIdx( sidx, dest );
     PutObjOMFRec( CMD_GRPDEF, dest );
@@ -730,7 +740,7 @@ static void OutGroup( omf_idx sidx, array_control *group_def, omf_idx *index_p )
 /******************************************************************************/
 {
     if( *index_p == 0 ) {
-        *index_p = ++GroupIndex;
+        *index_p = ++x86omf_state().GroupIndex;
     }
     OutByte( GRP_SEGIDX, group_def );
     OutIdx( sidx, group_def );
@@ -741,10 +751,10 @@ static segment_id  askOP( void )
 {
     segment_id  segid;
 
-    if( CurrSeg == NULL ) {
+    if( x86omf_state().CurrSeg == NULL ) {
         segid = UNDEFSEG;
     } else {
-        segid = CurrSeg->segid;
+        segid = x86omf_state().CurrSeg->segid;
     }
     return( segid );
 }
@@ -754,15 +764,15 @@ static segment_id  changeOP( segment_id segid )
 {
     segment_id  old_segid;
 
-    if( CurrSeg == NULL ) {
+    if( x86omf_state().CurrSeg == NULL ) {
         old_segid = UNDEFSEG;
     } else {
-        old_segid = CurrSeg->segid;
+        old_segid = x86omf_state().CurrSeg->segid;
     }
     if( segid == UNDEFSEG ) {
-        CurrSeg = NULL;
+        x86omf_state().CurrSeg = NULL;
     } else {
-        CurrSeg = AskSegIndex( segid );
+        x86omf_state().CurrSeg = AskSegIndex( segid );
     }
     return( old_segid );
 }
@@ -771,9 +781,9 @@ static void    setOP( segment_id segid )
 /*******************************/
 {
     if( segid == UNDEFSEG ) {
-        CurrSeg = NULL;
+        x86omf_state().CurrSeg = NULL;
     } else {
-        CurrSeg = AskSegIndex( segid );
+        x86omf_state().CurrSeg = AskSegIndex( segid );
     }
 }
 
@@ -789,7 +799,7 @@ static  index_rec   *AllocNewSegRec( void )
      * to refresh CurrSeg pointer
      */
     segid = askOP();
-    rec = static_cast<index_rec *>(allocOut( &SegInfo, 1 ));
+    rec = static_cast<index_rec *>(allocOut( &x86omf_state().SegInfo, 1 ));
     setOP( segid );
     return( rec );
 }
@@ -825,7 +835,7 @@ static void DoSegment( segdef *seg, array_control *dgroup_def, array_control *tg
     rec->virt_func_refs = NULL;
     rec->data_prefix_size = 0;
     rec->comdat_prefix_import = NOT_IMPORTED;
-    rec->sidx = ++SegmentIndex;
+    rec->sidx = ++x86omf_state().SegmentIndex;
     rec->segid = seg->segid;
     rec->attr = SegmentAttr( seg->align, seg->attr, use_16 );
     if( seg->attr & EXEC ) {
@@ -834,18 +844,18 @@ static void DoSegment( segdef *seg, array_control *dgroup_def, array_control *tg
         rec->cidx = _NIDX_CODE;
         if( seg->attr & GIVEN_NAME ) {
             rec->nidx = GetNameIdx( seg->str, "" );
-        } else if( CodeGroupGIdx != 0 ) {
-            rec->nidx = GetNameIdx( CodeGroup, seg->str );
+        } else if( x86omf_state().CodeGroupGIdx != 0 ) {
+            rec->nidx = GetNameIdx( x86omf_state().CodeGroup, seg->str );
         } else if( _IsTargetModel( CGSW_X86_BIG_CODE ) ) {
             rec->nidx = GetNameIdx( FEModuleName(), seg->str );
         } else {
             rec->nidx = GetNameIdx( seg->str, "" );
         }
-        if( CodeGroupGIdx != 0 ) {
-            rec->base = CodeGroupGIdx;
+        if( x86omf_state().CodeGroupGIdx != 0 ) {
+            rec->base = x86omf_state().CodeGroupGIdx;
             rec->btype = BASE_GRP;
         } else {
-            rec->base = SegmentIndex;
+            rec->base = x86omf_state().SegmentIndex;
             rec->btype = BASE_SEG;
         }
     } else {
@@ -855,32 +865,32 @@ static void DoSegment( segdef *seg, array_control *dgroup_def, array_control *tg
         if( seg->attr & PRIVATE ) {
             rec->nidx = GetNameIdx( seg->str, "" );
             if( seg->attr & ROM ) {
-                if( PrivateIndexRO == 0 ) {
-                    PrivateIndexRO = GetNameIdx( "FAR_CONST", "" );
+                if( x86omf_state().PrivateIndexRO == 0 ) {
+                    x86omf_state().PrivateIndexRO = GetNameIdx( "FAR_CONST", "" );
                 }
-                rec->cidx = PrivateIndexRO;
+                rec->cidx = x86omf_state().PrivateIndexRO;
             } else {
-                if( PrivateIndexRW == 0 ) {
-                    PrivateIndexRW = GetNameIdx( "FAR_DATA", "" );
+                if( x86omf_state().PrivateIndexRW == 0 ) {
+                    x86omf_state().PrivateIndexRW = GetNameIdx( "FAR_DATA", "" );
                 }
-                rec->cidx = PrivateIndexRW;
+                rec->cidx = x86omf_state().PrivateIndexRW;
             }
-            rec->base = SegmentIndex;
+            rec->base = x86omf_state().SegmentIndex;
             rec->btype = BASE_SEG;
         } else {
             if( seg->attr & THREAD_LOCAL ) {
-                if( TLSGIndex == 0 ) {
+                if( x86omf_state().TLSGIndex == 0 ) {
                     OutIdx( _NIDX_TLS, tgroup_def );
                 }
-                OutGroup( rec->sidx, tgroup_def, &TLSGIndex );
-                rec->base = TLSGIndex;
+                OutGroup( rec->sidx, tgroup_def, &x86omf_state().TLSGIndex );
+                rec->base = x86omf_state().TLSGIndex;
                 rec->btype = BASE_GRP;
-            } else if( NoDGroup ) {
+            } else if( x86omf_state().NoDGroup ) {
                 rec->btype = BASE_SEG;
-                rec->base = SegmentIndex;
+                rec->base = x86omf_state().SegmentIndex;
             } else {
-                OutGroup( rec->sidx, dgroup_def, &DGroupIndex );
-                rec->base = DGroupIndex;
+                OutGroup( rec->sidx, dgroup_def, &x86omf_state().DGroupIndex );
+                rec->base = x86omf_state().DGroupIndex;
                 rec->btype = BASE_GRP;
             }
             if( seg->attr & THREAD_LOCAL ) {
@@ -892,12 +902,12 @@ static void DoSegment( segdef *seg, array_control *dgroup_def, array_control *tg
             } else {
                 rec->cidx = _NIDX_DATA;
             }
-            rec->nidx = GetNameIdx( DataGroup, seg->str );
+            rec->nidx = GetNameIdx( x86omf_state().DataGroup, seg->str );
         }
     }
     SegmentClass( rec );
     DoASegDef( rec, use_16 );
-    if( (seg->attr & EXEC) && CodeGroupGIdx != 0 ) {
+    if( (seg->attr & EXEC) && x86omf_state().CodeGroupGIdx != 0 ) {
         OutCGroup( rec->sidx, &rec->obj->data );
     }
 }
@@ -911,7 +921,7 @@ static segdef *AllocSegDefs( const char *str )
     seg->next = NULL;
     seg->str = static_cast<char *>(CGAlloc( Length( str ) + 1 ));
     CopyStr( str, seg->str );
-    for( owner = &SegDefs; *owner != NULL; ) {
+    for( owner = &x86omf_state().SegDefs; *owner != NULL; ) {
         owner = &(*owner)->next;
     }
     *owner = seg;
@@ -922,8 +932,8 @@ static void DoSegDefsAndFree( array_control *dgroup_def, array_control *tgroup_d
 {
     segdef  *seg;
 
-    while( (seg = SegDefs) != NULL ) {
-        SegDefs = seg->next;
+    while( (seg = x86omf_state().SegDefs) != NULL ) {
+        x86omf_state().SegDefs = seg->next;
         DoSegment( seg, dgroup_def, tgroup_def, use_16 );
         CGFree( seg->str );
         CGFree( seg );
@@ -942,20 +952,20 @@ static void    defSegment( segment_id segid, seg_attr attr, const char *str, uin
     new_seg->align = align;
     first_code_segid = BACKSEGS;
     if( attr & EXEC ) {
-        if( codeSegId == BACKSEGS ) {
-            codeSegId = segid;
+        if( x86omf_state().codeSegId == BACKSEGS ) {
+            x86omf_state().codeSegId = segid;
             first_code_segid = segid;
         }
-        if( OptForSize == 0 ) {
+        if( data_state().OptForSize == 0 ) {
             if( new_seg->align < 16 ) {
                 new_seg->align = 16;
             }
         }
     }
     if( attr & BACK ) {
-        dataSegId = segid;
+        x86omf_state().dataSegId = segid;
     }
-    if( NameIndex != 0 ) {
+    if( x86omf_state().NameIndex != 0 ) {
         /*
          * we are after BEStart processing
          *
@@ -982,7 +992,7 @@ static  void    FPInitPatches( void )
     int i;
 
     for( i = FPP_NUMBER_OF_TYPES; i-- > 0; ) {
-        FPPatchImp[i] = NOT_IMPORTED;
+        x86omf_state().FPPatchImp[i] = NOT_IMPORTED;
     }
 }
 
@@ -1078,7 +1088,7 @@ static segment_id dbgSegDef( const char *seg_name, const char *seg_class, int se
     index_rec   *rec;
 
     rec = AllocNewSegRec();
-    rec->sidx = ++SegmentIndex;
+    rec->sidx = ++x86omf_state().SegmentIndex;
     rec->cidx = GetNameIdx( seg_class, "" );
     rec->nidx = GetNameIdx( seg_name, "" );
     rec->location = 0;
@@ -1099,7 +1109,7 @@ static segment_id dbgSegDef( const char *seg_name, const char *seg_class, int se
     rec->comdat_nidx = 0;
     rec->comdat_size = 0;
     rec->virt_func_refs = NULL;
-    rec->segid = --backSegId;
+    rec->segid = --x86omf_state().backSegId;
     rec->attr = SEG_ALGN_BYTE | seg_modifier;
     rec->data_prefix_size = 0;
     rec->comdat_prefix_import = NOT_IMPORTED;
@@ -1124,33 +1134,33 @@ static  void    DoSegGrpNames( array_control *dgroup_def, array_control *tgroup_
 #if _TARGET & _TARG_80386
     if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
       && _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
-        FlatNIndex = GetNameIdx( "FLAT", "" );
+        x86omf_state().FlatNIndex = GetNameIdx( "FLAT", "" );
     }
 #endif
-    SegmentIndex = 0;
-    PrivateIndexRO = 0;
-    PrivateIndexRW = 0;
-    CopyStr( static_cast<const char *>(FEAuxInfo( NULL, FEINF_CODE_GROUP )), CodeGroup );
-    if( CodeGroup[0] == NULLCHAR ) {
-        CodeGroupGIdx = 0;
+    x86omf_state().SegmentIndex = 0;
+    x86omf_state().PrivateIndexRO = 0;
+    x86omf_state().PrivateIndexRW = 0;
+    CopyStr( static_cast<const char *>(FEAuxInfo( NULL, FEINF_CODE_GROUP )), x86omf_state().CodeGroup );
+    if( x86omf_state().CodeGroup[0] == NULLCHAR ) {
+        x86omf_state().CodeGroupGIdx = 0;
     } else {
-        CodeGroupNIdx = GetNameIdx( CodeGroup, "" );
-        CodeGroupGIdx = ++GroupIndex;
+        x86omf_state().CodeGroupNIdx = GetNameIdx( x86omf_state().CodeGroup, "" );
+        x86omf_state().CodeGroupGIdx = ++x86omf_state().GroupIndex;
     }
     dgroup = static_cast<char *>(FEAuxInfo( NULL, FEINF_DATA_GROUP ));
     if( dgroup == NULL ) {
-        NoDGroup = true;
+        x86omf_state().NoDGroup = true;
     } else {
-        CopyStr( dgroup, DataGroup );
+        CopyStr( dgroup, x86omf_state().DataGroup );
     }
-    if( DataGroup[0] != NULLCHAR ) {
-        TargetModel |= CGSW_X86_FLOATING_SS;
-        dgroup_idx = GetNameIdx( DataGroup, "_GROUP" );
+    if( x86omf_state().DataGroup[0] != NULLCHAR ) {
+        model_state().TargetModel |= CGSW_X86_FLOATING_SS;
+        dgroup_idx = GetNameIdx( x86omf_state().DataGroup, "_GROUP" );
     } else {
         dgroup_idx = GetNameIdx( "DGROUP", "" );
     }
     OutIdx( dgroup_idx, dgroup_def );
-    FillArray( &SegInfo, sizeof( index_rec ), MODEST_INFO, INCREMENT_INFO );
+    FillArray( &x86omf_state().SegInfo, sizeof( index_rec ), MODEST_INFO, INCREMENT_INFO );
     /*
      * we are in BEStart processing
      *
@@ -1166,12 +1176,12 @@ static  void    DoSegGrpNames( array_control *dgroup_def, array_control *tgroup_
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVDefSegs();
     } else {
-        DbgTypeSize = 0;
+        x86omf_state().DbgTypeSize = 0;
         if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
-            DbgLocals = dbgSegDef( DbgSegs[0].seg_name, DbgSegs[0].class_name, SEG_COMB_PRIVATE );
+            data_state().DbgLocals = dbgSegDef( x86omf_state().DbgSegs[0].seg_name, x86omf_state().DbgSegs[0].class_name, SEG_COMB_PRIVATE );
         }
         if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-            DbgTypes = dbgSegDef( DbgSegs[1].seg_name, DbgSegs[1].class_name, SEG_COMB_PRIVATE );
+            data_state().DbgTypes = dbgSegDef( x86omf_state().DbgSegs[1].seg_name, x86omf_state().DbgSegs[1].class_name, SEG_COMB_PRIVATE );
         }
     }
 }
@@ -1195,22 +1205,22 @@ static  void    KillArray( array_control *arr )
 
 static void initImports( void )
 {
-    ImportHdl = IMPORT_BASE;
-    FillArray( &Imports, sizeof( byte ), MODEST_IMP, INCREMENT_IMP );
-    GenStaticImports = false;
+    x86omf_state().ImportHdl = IMPORT_BASE;
+    FillArray( &x86omf_state().Imports, sizeof( byte ), MODEST_IMP, INCREMENT_IMP );
+    x86omf_state().GenStaticImports = false;
 }
 
 static void finiImports( void )
 {
-    KillStatic( &Imports );
+    KillStatic( &x86omf_state().Imports );
 }
 
 static omf_idx getImportHdl( void )
 {
-    if( ImportHdl >= 0x7FFF ) {
+    if( x86omf_state().ImportHdl >= 0x7FFF ) {
         FatalError( "OMF file too many external symbols" );
     }
-    return( ImportHdl++ );
+    return( x86omf_state().ImportHdl++ );
 }
 
 static time_t timet2dosu( time_t stamp )
@@ -1240,9 +1250,9 @@ static void    objInit( void )
     void                *depend;
 
     FPInitPatches();
-    CodeSize = 0;
-    DataSize = 0;
-    CurrFNo = 0;
+    x86omf_state().CodeSize = 0;
+    x86omf_state().DataSize = 0;
+    x86omf_state().CurrFNo = 0;
     OpenObj();
     names = InitArray( sizeof( byte ), MODEST_HDR, INCREMENT_HDR );
 #ifdef MULTI_THEADR
@@ -1328,16 +1338,16 @@ static void    objInit( void )
 #if _TARGET & _TARG_80386
     if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
       && _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
-        FlatGIndex = ++GroupIndex;
-        OutIdx( FlatNIndex, dgroup_def );
+        x86omf_state().FlatGIndex = ++x86omf_state().GroupIndex;
+        OutIdx( x86omf_state().FlatNIndex, dgroup_def );
         FlushNames();
         PutObjOMFRec( CMD_GRPDEF, dgroup_def );
     }
 #endif
     KillArray( dgroup_def );
-    setOP( codeSegId );
+    setOP( x86omf_state().codeSegId );
     initImports();
-    AbsPatches = NULL;
+    x86omf_state().AbsPatches = NULL;
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         if( _IsModel( CGSW_GEN_DBG_LOCALS )
           || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
@@ -1358,7 +1368,7 @@ static void    objInit( void )
 static offset  askLocation( void )
 /*************************/
 {
-    return( (offset)CurrSeg->location );
+    return( (offset)x86omf_state().CurrSeg->location );
 }
 
 static void chkDbgSegSize( offset max, bool_ typing )
@@ -1367,14 +1377,14 @@ static void chkDbgSegSize( offset max, bool_ typing )
     const dbg_seg_info  *info;
     long_offset         curr;
 
-    info = DbgSegs;
+    info = x86omf_state().DbgSegs;
     if( typing )
         info++;
     PUSH_OP( *info->segid );
-        curr = (offset)CurrSeg->location;
+        curr = (offset)x86omf_state().CurrSeg->location;
         if( curr >= max ) {
             if( typing ) {
-                DbgTypeSize += curr;
+                x86omf_state().DbgTypeSize += curr;
             }
             *info->segid = dbgSegDef( info->seg_name, info->class_name, SEG_COMB_PRIVATE );
         }
@@ -1393,7 +1403,6 @@ static bool_    useImportForm( fe_attr attr )
 }
 
 
-
 static bool_    askSegIsNear( segment_id segid )
 /**************************************/
 {
@@ -1404,7 +1413,7 @@ static bool_    askSegIsNear( segment_id segid )
     rec = AskSegIndex( segid );
     if( rec->btype != BASE_GRP )
         return( false );
-    if( rec->base > CodeGroupGIdx )
+    if( rec->base > x86omf_state().CodeGroupGIdx )
         return( true );
     return( false );
 }
@@ -1449,21 +1458,21 @@ static bool_    askSegIsROM( segment_id segid )
 static segment_id  askBackSeg( void )
 /****************************/
 {
-    return( dataSegId );
+    return( x86omf_state().dataSegId );
 }
 
 
 static segment_id  askCodeSeg( void )
 /****************************/
 {
-    return( codeSegId );
+    return( x86omf_state().codeSegId );
 }
 
 
 static bool_    haveCodeSeg( void )
 /*************************/
 {
-    return( codeSegId != BACKSEGS );
+    return( x86omf_state().codeSegId != BACKSEGS );
 }
 
 
@@ -1476,13 +1485,12 @@ static segment_id  askAltCodeSeg( void )
 static segment_id  askCode16Seg( void )
 /******************************/
 {
-    static segment_id   Code16Seg = BACKSEGS;
 
-    if( Code16Seg == BACKSEGS ) {
-        Code16Seg = --backSegId;
-        defSegment( Code16Seg, EXEC | GIVEN_NAME, "_TEXT16", 16, true );
+    if( x86omf_state().askCode16Seg_Code16Seg == BACKSEGS ) {
+        x86omf_state().askCode16Seg_Code16Seg = --x86omf_state().backSegId;
+        defSegment( x86omf_state().askCode16Seg_Code16Seg, EXEC | GIVEN_NAME, "_TEXT16", 16, true );
     }
-    return( Code16Seg );
+    return( x86omf_state().askCode16Seg_Code16Seg );
 }
 
 
@@ -1491,13 +1499,13 @@ static  void    EjectImports( void )
 {
     omf_cmd     cmd;
 
-    if( Imports.used > 0 ) {
-        if( GenStaticImports ) {
+    if( x86omf_state().Imports.used > 0 ) {
+        if( x86omf_state().GenStaticImports ) {
             cmd = CMD_LEXTDEF;
         } else {
             cmd = CMD_EXTDEF;
         }
-        PutObjOMFRec( cmd, &Imports );
+        PutObjOMFRec( cmd, &x86omf_state().Imports );
     }
 }
 
@@ -1509,8 +1517,8 @@ static  void    SetPatches( void )
     array_control       *lbl_patches;
     obj_patch           *patch;
 
-    while( (tpatch = CurrSeg->obj->tpatches) != NULL ) {
-        CurrSeg->obj->tpatches = tpatch->link;
+    while( (tpatch = x86omf_state().CurrSeg->obj->tpatches) != NULL ) {
+        x86omf_state().CurrSeg->obj->tpatches = tpatch->link;
         lbl_patches = static_cast<array_control *>(AskLblPatches( tpatch->lbl ));
         patch = static_cast<obj_patch *>(allocOut( lbl_patches, 1 ));
         patch->ref = AskObjHandle();
@@ -1527,8 +1535,8 @@ static  void    SetAbsPatches( void )
     abs_patch   *apatch;
     object      *obj;
 
-    obj = CurrSeg->obj;
-    for( apatch = AbsPatches; apatch != NULL; apatch = apatch->link ) {
+    obj = x86omf_state().CurrSeg->obj;
+    for( apatch = x86omf_state().AbsPatches; apatch != NULL; apatch = apatch->link ) {
         if( apatch->patch.ref == INVALID_OBJHANDLE && apatch->obj == obj ) {
             apatch->patch.ref = AskObjHandle();
             apatch->flags |= AP_HAVE_OFFSET;
@@ -1544,11 +1552,11 @@ static void     EjectLEData( void )
     omf_cmd         cmd;
 
     EjectImports();
-    if( CurrSeg->obj->data.used > CurrSeg->data_prefix_size ) {
+    if( x86omf_state().CurrSeg->obj->data.used > x86omf_state().CurrSeg->data_prefix_size ) {
         SetPatches();
         SetAbsPatches();
-        obj_data = &CurrSeg->obj->data;
-        if( CurrSeg->comdat_label != NULL ) {
+        obj_data = &x86omf_state().CurrSeg->obj->data;
+        if( x86omf_state().CurrSeg->comdat_label != NULL ) {
 #if _TARGET & _TARG_80386
             if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_COMDAT32;
@@ -1566,7 +1574,7 @@ static void     EjectLEData( void )
                 cmd = CMD_LEDATA;
             }
 #else /* SEG32DBG dwarf, codeview */
-            if( (CurrSeg->attr & SEG_USE_32)
+            if( (x86omf_state().CurrSeg->attr & SEG_USE_32)
               && _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LEDATA32;
             } else {
@@ -1575,8 +1583,8 @@ static void     EjectLEData( void )
 #endif
         }
         PutObjOMFRec( cmd, obj_data );
-        if( CurrSeg->obj->fixes.used > 0 ) {
-            if( CurrSeg->data_ptr_in_code ) {
+        if( x86omf_state().CurrSeg->obj->fixes.used > 0 ) {
+            if( x86omf_state().CurrSeg->data_ptr_in_code ) {
                 OutShort( LINKER_COMMENT, obj_data );
                 OutByte( LDIR_OPT_UNSAFE, obj_data );
                 PutObjOMFRec( CMD_COMENT, obj_data );
@@ -1590,9 +1598,9 @@ static void     EjectLEData( void )
 #else
             cmd = CMD_FIXUPP;
 #endif
-            PutObjOMFRec( cmd, &CurrSeg->obj->fixes );
+            PutObjOMFRec( cmd, &x86omf_state().CurrSeg->obj->fixes );
         }
-        CurrSeg->data_ptr_in_code = false;
+        x86omf_state().CurrSeg->data_ptr_in_code = false;
     }
 }
 
@@ -1606,11 +1614,11 @@ static void GetSymLName( const char *name, omf_idx *nidx )
 static omf_idx NeedComdatNidx( import_kind kind )
 /***********************************************/
 {
-    if( CurrSeg->comdat_nidx == 0 ) {
-        OUTPUT_OBJECT_NAME( CurrSeg->comdat_symbol, GetSymLName, &CurrSeg->comdat_nidx, kind );
+    if( x86omf_state().CurrSeg->comdat_nidx == 0 ) {
+        OUTPUT_OBJECT_NAME( x86omf_state().CurrSeg->comdat_symbol, GetSymLName, &x86omf_state().CurrSeg->comdat_nidx, kind );
         FlushNames();
     }
-    return( CurrSeg->comdat_nidx );
+    return( x86omf_state().CurrSeg->comdat_nidx );
 }
 
 
@@ -1620,31 +1628,31 @@ static void    outSelect( bool_ starts )
     array_control   *obj_data;
 
     if( starts ) {
-        selIdx = CurrSeg->sidx;
-        SelStart = (offset)CurrSeg->location;
-    } else if( selIdx != 0 ) {
-        if( !CurrSeg->start_data_in_code ) {
+        x86omf_state().selIdx = x86omf_state().CurrSeg->sidx;
+        x86omf_state().SelStart = (offset)x86omf_state().CurrSeg->location;
+    } else if( x86omf_state().selIdx != 0 ) {
+        if( !x86omf_state().CurrSeg->start_data_in_code ) {
             EjectLEData();
-            obj_data = &CurrSeg->obj->data;
+            obj_data = &x86omf_state().CurrSeg->obj->data;
             OutShort( DISASM_COMMENT, obj_data );
 #if _TARGET & _TARG_80386
             OutByte( DDIR_SCAN_TABLE_32, obj_data );
 #else
             OutByte( DDIR_SCAN_TABLE, obj_data );
 #endif
-            if( CurrSeg->comdat_label != NULL ) {
+            if( x86omf_state().CurrSeg->comdat_label != NULL ) {
                 OutIdx( 0, obj_data );
                 OutIdx( NeedComdatNidx( NORMAL ), obj_data );
             } else {
-                OutIdx( selIdx, obj_data );
+                OutIdx( x86omf_state().selIdx, obj_data );
             }
-            OutOffset( SelStart, obj_data );
-            OutOffset( (offset)CurrSeg->location, obj_data );
+            OutOffset( x86omf_state().SelStart, obj_data );
+            OutOffset( (offset)x86omf_state().CurrSeg->location, obj_data );
             PutObjOMFRec( CMD_COMENT, obj_data );
         }
-        selIdx = 0;
+        x86omf_state().selIdx = 0;
     }
-    CurrSeg->start_data_in_code = false;
+    x86omf_state().CurrSeg->start_data_in_code = false;
 }
 
 static  void    OutLEDataStart( bool_ iterated )
@@ -1653,45 +1661,45 @@ static  void    OutLEDataStart( bool_ iterated )
     byte            flag;
     array_control   *obj_data;
 
-    obj_data = &CurrSeg->obj->data;
+    obj_data = &x86omf_state().CurrSeg->obj->data;
     if( obj_data->used == 0 ) {
-        if( CurrSeg->comdat_label != NULL ) {
+        if( x86omf_state().CurrSeg->comdat_label != NULL ) {
             flag = 0;
-            if( CurrSeg->location != 0 )
+            if( x86omf_state().CurrSeg->location != 0 )
                 flag |= 1; /* continued */
             if( iterated )
                 flag |= 2;   /* LIDATA form */
-            if( (FEAttr( CurrSeg->comdat_symbol ) & FE_GLOBAL) == 0 ) {
+            if( (FEAttr( x86omf_state().CurrSeg->comdat_symbol ) & FE_GLOBAL) == 0 ) {
                 flag |= 0x4;    /* local comdat */
             }
             OutByte( flag, obj_data );
             OutByte( 0x10, obj_data );
             OutByte( 0, obj_data );
-            OutOffset( (offset)CurrSeg->location, obj_data );
+            OutOffset( (offset)x86omf_state().CurrSeg->location, obj_data );
             OutIdx( 0, obj_data );
-            if( CurrSeg->btype == BASE_GRP ) {
-                OutIdx( CurrSeg->base, obj_data );  /* group index*/
+            if( x86omf_state().CurrSeg->btype == BASE_GRP ) {
+                OutIdx( x86omf_state().CurrSeg->base, obj_data );  /* group index*/
             } else {
                 OutIdx( 0, obj_data );
             }
-            OutIdx( CurrSeg->sidx, obj_data );      /* segment index*/
+            OutIdx( x86omf_state().CurrSeg->sidx, obj_data );      /* segment index*/
             OutIdx( NeedComdatNidx( NORMAL ), obj_data );
         } else { /* LEDATA */
-            OutIdx( CurrSeg->sidx, obj_data );
+            OutIdx( x86omf_state().CurrSeg->sidx, obj_data );
 #if _TARGET & _TARG_80386
-            OutOffset( (offset)CurrSeg->location, obj_data );
+            OutOffset( (offset)x86omf_state().CurrSeg->location, obj_data );
 #else /* SEG32DBG dwarf, codeview */
-            if( CurrSeg->attr & SEG_USE_32 ) {
-                OutLongOffset( CurrSeg->location, obj_data );
+            if( x86omf_state().CurrSeg->attr & SEG_USE_32 ) {
+                OutLongOffset( x86omf_state().CurrSeg->location, obj_data );
             } else {
-                OutOffset( (offset)CurrSeg->location, obj_data );
+                OutOffset( (offset)x86omf_state().CurrSeg->location, obj_data );
             }
 #endif
         }
-        CurrSeg->obj->start = CurrSeg->location;
-        CurrSeg->data_prefix_size = obj_data->used;
+        x86omf_state().CurrSeg->obj->start = x86omf_state().CurrSeg->location;
+        x86omf_state().CurrSeg->data_prefix_size = obj_data->used;
     }
-    if( CurrSeg->start_data_in_code ) {
+    if( x86omf_state().CurrSeg->start_data_in_code ) {
         outSelect( true );
     }
 }
@@ -1705,16 +1713,16 @@ static  void    CheckLEDataSize( unsigned max_size, bool_ need_init )
     object          *obj;
     long_offset     end_valid;
 
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     start = obj->start;
     used = obj->data.used;
-    if( CurrSeg->location < start ) {
+    if( x86omf_state().CurrSeg->location < start ) {
         EjectLEData();
-    } else if( CurrSeg->location - start + max_size > BUFFSIZE - TOLERANCE - CurrSeg->data_prefix_size ) {
+    } else if( x86omf_state().CurrSeg->location - start + max_size > BUFFSIZE - TOLERANCE - x86omf_state().CurrSeg->data_prefix_size ) {
         EjectLEData();
     } else {
-        end_valid = start + used - CurrSeg->data_prefix_size;
-        if( CurrSeg->max_written > end_valid && CurrSeg->location > end_valid ) {
+        end_valid = start + used - x86omf_state().CurrSeg->data_prefix_size;
+        if( x86omf_state().CurrSeg->max_written > end_valid && x86omf_state().CurrSeg->location > end_valid ) {
             EjectLEData();
         }
     }
@@ -1729,25 +1737,25 @@ static void    setUpObj( bool_ is_data )
     object      *obj;
     bool_        old_data;
 
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     if( obj == NULL )
         return;
     if( obj->fixes.used >= BUFFSIZE - TOLERANCE ) {
         EjectLEData();
         return;
     }
-    if( Imports.used >= BUFFSIZE - TOLERANCE ) {
+    if( x86omf_state().Imports.used >= BUFFSIZE - TOLERANCE ) {
          EjectLEData();
          return;
     }
     /* so that a call will always fit */
     CheckLEDataSize( 4 * sizeof( offset ), false );
-    if( CurrSeg->exec ) {
-        old_data = ( CurrSeg->data_in_code != 0 );
-        CurrSeg->data_in_code = is_data;
+    if( x86omf_state().CurrSeg->exec ) {
+        old_data = ( x86omf_state().CurrSeg->data_in_code != 0 );
+        x86omf_state().CurrSeg->data_in_code = is_data;
         if( is_data != old_data ) {
             if( is_data ) {
-                CurrSeg->start_data_in_code = true;
+                x86omf_state().CurrSeg->start_data_in_code = true;
             } else {
                 outSelect( false );
                 setUpObj( false );
@@ -1767,9 +1775,9 @@ static  void    GenComdef( void )
     cg_sym_handle       sym;
     omf_cmd             cmd;
 
-    if( CurrSeg->comdat_label != NULL &&
-        CurrSeg->max_written < CurrSeg->comdat_size ) {
-        if( CurrSeg->max_written != 0 ) {
+    if( x86omf_state().CurrSeg->comdat_label != NULL &&
+        x86omf_state().CurrSeg->max_written < x86omf_state().CurrSeg->comdat_size ) {
+        if( x86omf_state().CurrSeg->max_written != 0 ) {
             Zoiks( ZOIKS_080 );
         }
         /*
@@ -1777,12 +1785,12 @@ static  void    GenComdef( void )
          * gets messed up
          */
         EjectImports();
-        size = CurrSeg->comdat_size - CurrSeg->max_written;
+        size = x86omf_state().CurrSeg->comdat_size - x86omf_state().CurrSeg->max_written;
         comdef = InitArray( sizeof( byte ), MODEST_EXP, INCREMENT_EXP );
-        sym = CurrSeg->comdat_symbol;
+        sym = x86omf_state().CurrSeg->comdat_symbol;
         OutObjectName( sym, comdef );
         OutByte( 0, comdef );                  /* type index */
-        if( CurrSeg->btype == BASE_GRP && CurrSeg->base == DGroupIndex ) {
+        if( x86omf_state().CurrSeg->btype == BASE_GRP && x86omf_state().CurrSeg->base == x86omf_state().DGroupIndex ) {
             OutByte( COMDEF_NEAR, comdef );    /* common type */
         } else {
             OutByte( COMDEF_FAR, comdef );     /* common type */
@@ -1837,8 +1845,8 @@ static  void    EjectExports( void )
 {
     omf_cmd         cmd;
 
-    if( CurrSeg->obj->exports.used > 0 ) {
-        if( CurrSeg->obj->gen_static_exports ) {
+    if( x86omf_state().CurrSeg->obj->exports.used > 0 ) {
+        if( x86omf_state().CurrSeg->obj->gen_static_exports ) {
 #if _TARGET & _TARG_80386
             if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LPUBDEF32;
@@ -1859,7 +1867,7 @@ static  void    EjectExports( void )
             cmd = CMD_PUBDEF;
 #endif
         }
-        PutObjOMFRec( cmd, &CurrSeg->obj->exports );
+        PutObjOMFRec( cmd, &x86omf_state().CurrSeg->obj->exports );
     }
 }
 
@@ -1872,7 +1880,7 @@ static  void    FlushLineNum( object *obj )
     if( obj->last_line ) {
         OutShort( obj->last_line, obj->lines );
         OutOffset( obj->last_offset, obj->lines );
-        if( CurrSeg->comdat_label != NULL ) {
+        if( x86omf_state().CurrSeg->comdat_label != NULL ) {
 #if _TARGET & _TARG_80386
             if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LINSYM32;
@@ -1908,10 +1916,10 @@ static  void    FlushObject( void )
 
     setUpObj( false );
     GenComdef();
-    CurrSeg->total_comdat_size += CurrSeg->comdat_size;
+    x86omf_state().CurrSeg->total_comdat_size += x86omf_state().CurrSeg->comdat_size;
     EjectLEData();
     EjectExports();
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     if( obj->lines != NULL ) {
         FlushLineNum( obj );
         KillArray( obj->lines );
@@ -1926,9 +1934,9 @@ static  index_rec       *AskIndexRec( uint_16 sidx )
 {
     unsigned    i;
 
-    for( i = 0; i < SegInfo.used; ++i ) {
-        if( _ARRAYOF( &SegInfo, index_rec )[i].sidx == sidx ) {
-            return( _ARRAYOF( &SegInfo, index_rec ) + i );
+    for( i = 0; i < x86omf_state().SegInfo.used; ++i ) {
+        if( _ARRAYOF( &x86omf_state().SegInfo, index_rec )[i].sidx == sidx ) {
+            return( _ARRAYOF( &x86omf_state().SegInfo, index_rec ) + i );
         }
     }
     return( NULL );
@@ -1950,13 +1958,13 @@ static  void    FiniTarg( void )
     long_offset size_l;
 
     FlushObject();
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     rec = AskIndexRec( obj->index );
     size_l = rec->max_size;
     if( rec->exec ) {
-        CodeSize += size_l + rec->total_comdat_size;
+        x86omf_state().CodeSize += size_l + rec->total_comdat_size;
     } else if( rec->cidx == _NIDX_DATA ) {
-        DataSize += size_l + rec->total_comdat_size;
+        x86omf_state().DataSize += size_l + rec->total_comdat_size;
     }
     if( rec->big ) {
         attr = rec->attr | SEG_BIG;
@@ -1987,11 +1995,11 @@ static void    flushOP( segment_id segid )
     index_rec   *rec;
 
     PUSH_OP( segid );
-        if( segid == codeSegId ) {
+        if( segid == x86omf_state().codeSegId ) {
             doEmptyQueue();
         }
         if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-            rec = CurrSeg;
+            rec = x86omf_state().CurrSeg;
             if( rec->exec || rec->cidx == _NIDX_DATA || rec->cidx == _NIDX_BSS ) {
                 if( rec->max_size != 0 ) {
                     DFSegRange();
@@ -1999,7 +2007,7 @@ static void    flushOP( segment_id segid )
             }
         }
         FiniTarg();
-        CurrSeg->obj = NULL;
+        x86omf_state().CurrSeg->obj = NULL;
     POP_OP();
 }
 
@@ -2010,10 +2018,10 @@ static void FiniWVTypes( void )
     const dbg_seg_info  *info;
 
     WVTypesEof();
-    info = &DbgSegs[1];
+    info = &x86omf_state().DbgSegs[1];
     PUSH_OP( *info->segid );
-        curr = (offset)CurrSeg->location;
-        curr += DbgTypeSize;
+        curr = (offset)x86omf_state().CurrSeg->location;
+        curr += x86omf_state().DbgTypeSize;
         *info->segid = dbgSegDef( info->seg_name, info->class_name, SEG_COMB_PRIVATE );
         setOP( *info->segid );
         WVDmpCueInfo( curr );
@@ -2023,7 +2031,7 @@ static void FiniWVTypes( void )
 static void FlushSelect( void )
 /*****************************/
 {
-    if( selIdx != 0 ) {
+    if( x86omf_state().selIdx != 0 ) {
         outSelect( false );
     }
 }
@@ -2033,9 +2041,9 @@ static  void    FlushData( void )
 /*******************************/
 {
     GenComdef();
-    CurrSeg->total_comdat_size += CurrSeg->comdat_size;
+    x86omf_state().CurrSeg->total_comdat_size += x86omf_state().CurrSeg->comdat_size;
     EjectLEData();
-    FlushLineNum( CurrSeg->obj );
+    FlushLineNum( x86omf_state().CurrSeg->obj );
     FlushSelect();
 }
 
@@ -2043,12 +2051,12 @@ static  void    NormalData( void )
 /********************************/
 {
     FlushData();
-    CurrSeg->location = CurrSeg->max_written = CurrSeg->max_size;
-    CurrSeg->comdat_size = 0;
-    CurrSeg->comdat_label = NULL;
-    CurrSeg->comdat_symbol = NULL;
-    CurrSeg->need_base_set = true;
-    CurrSeg->prefix_comdat_state = PCS_OFF;
+    x86omf_state().CurrSeg->location = x86omf_state().CurrSeg->max_written = x86omf_state().CurrSeg->max_size;
+    x86omf_state().CurrSeg->comdat_size = 0;
+    x86omf_state().CurrSeg->comdat_label = NULL;
+    x86omf_state().CurrSeg->comdat_symbol = NULL;
+    x86omf_state().CurrSeg->need_base_set = true;
+    x86omf_state().CurrSeg->prefix_comdat_state = PCS_OFF;
     KillLblRedirects();
 }
 
@@ -2059,7 +2067,7 @@ static void DoSegARange( offset *codesize, index_rec *rec )
     if( rec->exec || rec->cidx == _NIDX_DATA ||rec->cidx == _NIDX_BSS ) {
         if( rec->max_size != 0 ) {
             PUSH_OP( rec->segid );
-                if( CurrSeg->comdat_symbol != NULL ) {
+                if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
                     DFSymRange( rec->comdat_symbol, (offset)rec->comdat_size );
                 }
                 NormalData();
@@ -2107,14 +2115,13 @@ static  void    DoPatch( obj_patch *patch, offset lc )
 }
 
 
-
 static  void    FiniAbsPatches( void )
 /************************************/
 {
     abs_patch   *apatch;
 
-    while( (apatch = AbsPatches) != NULL ) {
-        AbsPatches = apatch->link;
+    while( (apatch = x86omf_state().AbsPatches) != NULL ) {
+        x86omf_state().AbsPatches = apatch->link;
         DoPatch( &apatch->patch, (offset)apatch->value );
         CGFree( apatch );
     }
@@ -2168,9 +2175,9 @@ static void    objFini( void )
             offset  codesize;
 
             codesize = 0;
-            for( i = 0; i < SegInfo.used; ++i ) {
-                if( _ARRAYOF( &SegInfo, index_rec )[i].obj != NULL ) {
-                    DoSegARange( &codesize, _ARRAYOF( &SegInfo, index_rec ) + i );
+            for( i = 0; i < x86omf_state().SegInfo.used; ++i ) {
+                if( _ARRAYOF( &x86omf_state().SegInfo, index_rec )[i].obj != NULL ) {
+                    DoSegARange( &codesize, _ARRAYOF( &x86omf_state().SegInfo, index_rec ) + i );
                 }
             }
             DFObjFiniDbgInfo( codesize );
@@ -2190,45 +2197,45 @@ static void    objFini( void )
     /*
      * Fini all segments.
      */
-    for( i = 0; i < SegInfo.used; ++i ) {
-        if( _ARRAYOF( &SegInfo, index_rec )[i].obj != NULL ) {
-            CurrSeg = _ARRAYOF( &SegInfo, index_rec ) + i;
+    for( i = 0; i < x86omf_state().SegInfo.used; ++i ) {
+        if( _ARRAYOF( &x86omf_state().SegInfo, index_rec )[i].obj != NULL ) {
+            x86omf_state().CurrSeg = _ARRAYOF( &x86omf_state().SegInfo, index_rec ) + i;
             FiniTarg();
         }
     }
     /*
      * if 8087 is used then enable emit default 8087 import records.
      */
-    if( Used87 ) {
+    if( i87data_state().Used87 ) {
         (void)FEAuxInfo( NULL, FEINF_USED_8087 );
     }
     /*
      * Emit default import records.
      */
     for( auto_import = NULL; (auto_import = FEAuxInfo( auto_import, FEINF_NEXT_IMPORT )) != NULL; ) {
-        OutName( static_cast<const char *>(FEAuxInfo( auto_import, FEINF_IMPORT_NAME )), &Imports );
-        OutIdx( 0, &Imports );           /* type index*/
-        if( Imports.used >= BUFFSIZE - TOLERANCE ) {
-            PutObjOMFRec( CMD_EXTDEF, &Imports );
+        OutName( static_cast<const char *>(FEAuxInfo( auto_import, FEINF_IMPORT_NAME )), &x86omf_state().Imports );
+        OutIdx( 0, &x86omf_state().Imports );           /* type index*/
+        if( x86omf_state().Imports.used >= BUFFSIZE - TOLERANCE ) {
+            PutObjOMFRec( CMD_EXTDEF, &x86omf_state().Imports );
         }
     }
     for( auto_import = NULL; (auto_import = FEAuxInfo( auto_import, FEINF_NEXT_IMPORT_S )) != NULL; ) {
-        OutObjectName( static_cast<cg_sym_handle>(FEAuxInfo( auto_import, FEINF_IMPORT_NAME_S )), &Imports );
-        OutIdx( 0, &Imports );           /* type index*/
-        if( Imports.used >= BUFFSIZE - TOLERANCE ) {
-            PutObjOMFRec( CMD_EXTDEF, &Imports );
+        OutObjectName( static_cast<cg_sym_handle>(FEAuxInfo( auto_import, FEINF_IMPORT_NAME_S )), &x86omf_state().Imports );
+        OutIdx( 0, &x86omf_state().Imports );           /* type index*/
+        if( x86omf_state().Imports.used >= BUFFSIZE - TOLERANCE ) {
+            PutObjOMFRec( CMD_EXTDEF, &x86omf_state().Imports );
         }
     }
-    if( Imports.used > 0 ) {
-        PutObjOMFRec( CMD_EXTDEF, &Imports );
+    if( x86omf_state().Imports.used > 0 ) {
+        PutObjOMFRec( CMD_EXTDEF, &x86omf_state().Imports );
     }
     /*
      * Emit default library search records.
      */
     for( lib = NULL; (lib = static_cast<char *>(FEAuxInfo( lib, FEINF_NEXT_LIBRARY ))) != NULL; ) {
-        OutShort( LIBNAME_COMMENT, &Imports );
-        OutString( (char *)FEAuxInfo( lib, FEINF_LIBRARY_NAME ), &Imports );
-        PutObjOMFRec( CMD_COMENT, &Imports );
+        OutShort( LIBNAME_COMMENT, &x86omf_state().Imports );
+        OutString( (char *)FEAuxInfo( lib, FEINF_LIBRARY_NAME ), &x86omf_state().Imports );
+        PutObjOMFRec( CMD_COMENT, &x86omf_state().Imports );
     }
     /*
      * Emit alias definition records.
@@ -2239,25 +2246,25 @@ static void    objFini( void )
 
         alias_name = static_cast<char *>(FEAuxInfo( alias, FEINF_ALIAS_NAME ));
         if( alias_name == NULL ) {
-            OutObjectName( static_cast<cg_sym_handle>(FEAuxInfo( alias, FEINF_ALIAS_SYMBOL )), &Imports );
+            OutObjectName( static_cast<cg_sym_handle>(FEAuxInfo( alias, FEINF_ALIAS_SYMBOL )), &x86omf_state().Imports );
         } else {
-            OutName( alias_name, &Imports );
+            OutName( alias_name, &x86omf_state().Imports );
         }
         subst_name = static_cast<char *>(FEAuxInfo( alias, FEINF_ALIAS_SUBST_NAME ));
         if( subst_name == NULL ) {
-            OutObjectName( static_cast<cg_sym_handle>(FEAuxInfo( alias, FEINF_ALIAS_SUBST_SYMBOL )), &Imports );
+            OutObjectName( static_cast<cg_sym_handle>(FEAuxInfo( alias, FEINF_ALIAS_SUBST_SYMBOL )), &x86omf_state().Imports );
         } else {
-            OutName( subst_name, &Imports );
+            OutName( subst_name, &x86omf_state().Imports );
         }
-        PutObjOMFRec( CMD_ALIAS, &Imports );
+        PutObjOMFRec( CMD_ALIAS, &x86omf_state().Imports );
     }
     finiImports();
-    KillStatic( &SegInfo );
+    KillStatic( &x86omf_state().SegInfo );
     FiniAbsPatches();
     EndModule();
     CloseObj();
-    FEMessage( FEMSG_CODE_SIZE, (pointer)(pointer_uint)CodeSize );
-    FEMessage( FEMSG_DATA_SIZE, (pointer)(pointer_uint)DataSize );
+    FEMessage( FEMSG_CODE_SIZE, (pointer)(pointer_uint)x86omf_state().CodeSize );
+    FEMessage( FEMSG_DATA_SIZE, (pointer)(pointer_uint)x86omf_state().DataSize );
 }
 
 
@@ -2266,7 +2273,7 @@ static  void    FreeAbsPatch( abs_patch *apatch )
 {
     abs_patch   **owner;
 
-    for( owner = &AbsPatches; *owner != apatch; ) {
+    for( owner = &x86omf_state().AbsPatches; *owner != apatch; ) {
         owner = &(*owner)->link;
     }
     *owner = (*owner)->link;
@@ -2280,9 +2287,9 @@ static void CheckExportSwitch( bool_ next_is_static )
     /*
      * are we switching from global to statics or vis-versa
      */
-    if( CurrSeg->obj->gen_static_exports != next_is_static ) {
+    if( x86omf_state().CurrSeg->obj->gen_static_exports != next_is_static ) {
         EjectExports();
-        CurrSeg->obj->gen_static_exports = next_is_static;
+        x86omf_state().CurrSeg->obj->gen_static_exports = next_is_static;
     }
 }
 
@@ -2293,9 +2300,9 @@ static  void    CheckImportSwitch( bool_ next_is_static )
     /*
      * are we switching from static imports to global or vis-versa
      */
-    if( GenStaticImports != next_is_static ) {
+    if( x86omf_state().GenStaticImports != next_is_static ) {
         EjectImports();
-        GenStaticImports = next_is_static;
+        x86omf_state().GenStaticImports = next_is_static;
     }
 }
 
@@ -2306,18 +2313,18 @@ static  void    OutExport( cg_sym_handle sym )
     array_control       *obj_exports;
     object              *obj;
 
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     obj_exports = &obj->exports;
     if( obj_exports->used >= BUFFSIZE - TOLERANCE ) {
         EjectExports();
     }
     CheckExportSwitch( (FEAttr( sym ) & FE_GLOBAL) == 0 );
     if( obj_exports->used == 0 ) {
-        if( CurrSeg->btype == BASE_GRP ) {
-            OutIdx( CurrSeg->base, obj_exports );   /* group index*/
+        if( x86omf_state().CurrSeg->btype == BASE_GRP ) {
+            OutIdx( x86omf_state().CurrSeg->base, obj_exports );   /* group index*/
         } else {
 #if _TARGET & _TARG_80386
-            OutIdx( FlatGIndex, obj_exports );      /* will be 0 if we have none */
+            OutIdx( x86omf_state().FlatGIndex, obj_exports );      /* will be 0 if we have none */
 #else
             OutIdx( 0, obj_exports );
 #endif
@@ -2325,7 +2332,7 @@ static  void    OutExport( cg_sym_handle sym )
         OutIdx( obj->index, obj_exports );          /* segment index*/
     }
     OutObjectName( sym, obj_exports );
-    OutOffset( (offset)CurrSeg->location, obj_exports );
+    OutOffset( (offset)x86omf_state().CurrSeg->location, obj_exports );
     OutIdx( 0, obj_exports );                       /* type index*/
 }
 
@@ -2424,8 +2431,8 @@ static omf_idx  GenImport( cg_sym_handle sym, bool_ alt_dllimp )
                 kind = PIC_RW;
             }
         }
-        OUTPUT_OBJECT_NAME( sym, OutName, &Imports, kind );
-        OutIdx( 0, &Imports );           /* type index*/
+        OUTPUT_OBJECT_NAME( sym, OutName, &x86omf_state().Imports, kind );
+        OutIdx( 0, &x86omf_state().Imports );           /* type index*/
         def_resolve = static_cast<cg_sym_handle>(FEAuxInfo( sym, FEINF_DEFAULT_IMPORT_RESOLVE ));
         if( def_resolve != NULL && def_resolve != sym ) {
             def_idx = GenImport( def_resolve, false );
@@ -2439,9 +2446,9 @@ static omf_idx  GenImport( cg_sym_handle sym, bool_ alt_dllimp )
 static  omf_idx     GenImportComdat( void )
 /*****************************************/
 {
-    CheckImportSwitch( (FEAttr( CurrSeg->comdat_symbol ) & FE_GLOBAL) == 0 );
-    OUTPUT_OBJECT_NAME( CurrSeg->comdat_symbol, OutName, &Imports, SPECIAL );
-    OutIdx( 0, &Imports );           /* type index*/
+    CheckImportSwitch( (FEAttr( x86omf_state().CurrSeg->comdat_symbol ) & FE_GLOBAL) == 0 );
+    OUTPUT_OBJECT_NAME( x86omf_state().CurrSeg->comdat_symbol, OutName, &x86omf_state().Imports, SPECIAL );
+    OutIdx( 0, &x86omf_state().Imports );           /* type index*/
     return( getImportHdl() );
 }
 
@@ -2449,20 +2456,20 @@ static  void    ComdatData( label_handle lbl, cg_sym_handle sym )
 /************************************************************/
 {
     FlushData();
-    CurrSeg->obj->lines_generated = false;
-    CurrSeg->location = CurrSeg->max_written = 0;
-    CurrSeg->comdat_size = 0;
-    CurrSeg->comdat_nidx = 0;
-    CurrSeg->comdat_label = lbl;
+    x86omf_state().CurrSeg->obj->lines_generated = false;
+    x86omf_state().CurrSeg->location = x86omf_state().CurrSeg->max_written = 0;
+    x86omf_state().CurrSeg->comdat_size = 0;
+    x86omf_state().CurrSeg->comdat_nidx = 0;
+    x86omf_state().CurrSeg->comdat_label = lbl;
     if( sym != NULL ) {
-        CurrSeg->comdat_symbol = sym;
+        x86omf_state().CurrSeg->comdat_symbol = sym;
     } else {
         NeedComdatNidx( SPECIAL );
-        CurrSeg->comdat_prefix_import = GenImportComdat();
-        TellCommonLabel( lbl, CurrSeg->comdat_prefix_import );
+        x86omf_state().CurrSeg->comdat_prefix_import = GenImportComdat();
+        TellCommonLabel( lbl, x86omf_state().CurrSeg->comdat_prefix_import );
     }
-    CurrSeg->need_base_set = true;
-    CurrSeg->prefix_comdat_state = PCS_OFF;
+    x86omf_state().CurrSeg->need_base_set = true;
+    x86omf_state().CurrSeg->prefix_comdat_state = PCS_OFF;
     KillLblRedirects();
 }
 
@@ -2478,15 +2485,15 @@ static void     OutVirtFuncRef( cg_sym_handle virt )
         extdef = GenImport( virt, false );
     }
     EjectLEData();
-    obj_data = &CurrSeg->obj->data;
+    obj_data = &x86omf_state().CurrSeg->obj->data;
     OutShort( LINKER_COMMENT, obj_data );
     OutByte( LDIR_VF_REFERENCE, obj_data );
     OutIdx( extdef, obj_data );
-    if( CurrSeg->comdat_symbol != NULL ) {
+    if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
         OutIdx( 0, obj_data );
         OutIdx( NeedComdatNidx( NORMAL ), obj_data );
     } else {
-        OutIdx( CurrSeg->sidx, obj_data );
+        OutIdx( x86omf_state().CurrSeg->sidx, obj_data );
     }
     PutObjOMFRec( CMD_COMENT, obj_data );
 }
@@ -2501,7 +2508,7 @@ static void    outDLLExport( uint words, cg_sym_handle sym )
 
     setUpObj( false );
     EjectLEData();
-    obj_data = &CurrSeg->obj->data;
+    obj_data = &x86omf_state().CurrSeg->obj->data;
     OutShort( EXPORT_COMMENT, obj_data );
     OutByte( 2, obj_data );
 #if _TARGET & _TARG_8086
@@ -2546,36 +2553,36 @@ static void    outLabel( label_handle lbl )
         if( attr & FE_COMMON ) {
             ComdatData( lbl, sym );
         } else {
-            if( CurrSeg->comdat_label != NULL )
+            if( x86omf_state().CurrSeg->comdat_label != NULL )
                 NormalData();
             if( useImportForm( attr ) ) {
                 OutExport( sym );
             }
         }
-        for( curr = static_cast<virt_func_ref_list *>(CurrSeg->virt_func_refs); curr != NULL; curr = next ) {
+        for( curr = static_cast<virt_func_ref_list *>(x86omf_state().CurrSeg->virt_func_refs); curr != NULL; curr = next ) {
             next = curr->next;
             for( cookie = curr->cookie; cookie != NULL; cookie = FEAuxInfo( cookie, FEINF_VIRT_FUNC_NEXT_REFERENCE ) ) {
                 OutVirtFuncRef( static_cast<cg_sym_handle>(FEAuxInfo( cookie, FEINF_VIRT_FUNC_SYM )) );
             }
             CGFree( curr );
         }
-        CurrSeg->virt_func_refs = NULL;
-    } else if( CurrSeg->prefix_comdat_state != PCS_OFF ) {
+        x86omf_state().CurrSeg->virt_func_refs = NULL;
+    } else if( x86omf_state().CurrSeg->prefix_comdat_state != PCS_OFF ) {
         /*
             We have data coming out before the COMDAT symbol (select table
             before a common procedure). Gen a 'magical' comdat name to
             deal with it.
         */
-        if( CurrSeg->prefix_comdat_state == PCS_NEED ) {
+        if( x86omf_state().CurrSeg->prefix_comdat_state == PCS_NEED ) {
             ComdatData( lbl, NULL );
-            CurrSeg->prefix_comdat_state = PCS_ACTIVE;
+            x86omf_state().CurrSeg->prefix_comdat_state = PCS_ACTIVE;
         }
-        TellCommonLabel( lbl, CurrSeg->comdat_prefix_import );
+        TellCommonLabel( lbl, x86omf_state().CurrSeg->comdat_prefix_import );
     }
-    lc = (offset)CurrSeg->location;
+    lc = (offset)x86omf_state().CurrSeg->location;
     TellAddress( lbl, lc );
-    for( i = SegInfo.used; i-- > 0; ) {
-        obj = _ARRAYOF( &SegInfo, index_rec )[i].obj;
+    for( i = x86omf_state().SegInfo.used; i-- > 0; ) {
+        obj = _ARRAYOF( &x86omf_state().SegInfo, index_rec )[i].obj;
         if( obj != NULL ) { /* twas flushed and not redefined*/
             owner = &obj->tpatches;
             for( ;; ) {
@@ -2707,12 +2714,12 @@ static void DoFix( omf_idx idx, bool_ rel, base_type base, fix_class class_, omf
     byte        b;
 
     b = rel ? LOCAT_REL : LOCAT_ABS;
-    if( F_CLASS( class_ ) == F_PTR && CurrSeg->data_in_code ) {
-        CurrSeg->data_ptr_in_code = true;
+    if( F_CLASS( class_ ) == F_PTR && x86omf_state().CurrSeg->data_in_code ) {
+        x86omf_state().CurrSeg->data_ptr_in_code = true;
     }
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     cursor = static_cast<fixup *>(allocOut( &obj->fixes, sizeof( fixup ) ));
-    where = CurrSeg->location - obj->start;
+    where = x86omf_state().CurrSeg->location - obj->start;
     cursor->locatof = b + ( getOMFFixLoc( class_ ) << S_LOCAT_LOC ) + ( where >> 8 );
     cursor->fset = where;
     if( base != BASE_IMP ) {
@@ -2740,7 +2747,7 @@ static void DoFix( omf_idx idx, bool_ rel, base_type base, fix_class class_, omf
             grp_idx = FlatGIndex;
         }
   #else
-        grp_idx = FlatGIndex;
+        grp_idx = x86omf_state().FlatGIndex;
   #endif
         if( base == BASE_GRP ) {
             cursor->fixdat = FIXDAT_FRAME_GROUP + FIXDAT + BASE_SEG;
@@ -2767,14 +2774,14 @@ static void DoFix( omf_idx idx, bool_ rel, base_type base, fix_class class_, omf
 static void    setBigLocation( long_offset loc )
 /***************************************/
 {
-    CurrSeg->location = loc;
-    if( CurrSeg->comdat_label != NULL ) {
-        if( CurrSeg->comdat_size < loc ) {
-            CurrSeg->comdat_size = loc;
+    x86omf_state().CurrSeg->location = loc;
+    if( x86omf_state().CurrSeg->comdat_label != NULL ) {
+        if( x86omf_state().CurrSeg->comdat_size < loc ) {
+            x86omf_state().CurrSeg->comdat_size = loc;
         }
     } else {
-        if( CurrSeg->max_size < loc ) {
-            CurrSeg->max_size = loc;
+        if( x86omf_state().CurrSeg->max_size < loc ) {
+            x86omf_state().CurrSeg->max_size = loc;
         }
     }
 }
@@ -2784,23 +2791,23 @@ static void    incLocation( offset by )
 {
     long_offset     sum;
 
-    CurrSeg->obj->pending_line_number = 0;
-    sum = CurrSeg->location + by;
+    x86omf_state().CurrSeg->obj->pending_line_number = 0;
+    sum = x86omf_state().CurrSeg->location + by;
     if( _IsntTargetModel( CGSW_X86_EZ_OMF )
-      && (CurrSeg->attr & SEG_USE_32) == 0 ) {
+      && (x86omf_state().CurrSeg->attr & SEG_USE_32) == 0 ) {
         sum &= 0xFFFF;
     }
-    if( sum < CurrSeg->location ) { /* if wrapped*/
-        if( sum != 0 || CurrSeg->big == 1 ) {
+    if( sum < x86omf_state().CurrSeg->location ) { /* if wrapped*/
+        if( sum != 0 || x86omf_state().CurrSeg->big == 1 ) {
             FatalError( "segment too large" );
-        } else if( CurrSeg->comdat_label == NULL ) {
-            CurrSeg->big = 1;
-            if( CurrSeg->attr & SEG_USE_32 ) {
-                CurrSeg->max_size = (long_offset)(-1);
-                CurrSeg->location = (long_offset)(-1);
+        } else if( x86omf_state().CurrSeg->comdat_label == NULL ) {
+            x86omf_state().CurrSeg->big = 1;
+            if( x86omf_state().CurrSeg->attr & SEG_USE_32 ) {
+                x86omf_state().CurrSeg->max_size = (long_offset)(-1);
+                x86omf_state().CurrSeg->location = (long_offset)(-1);
             } else {
-                CurrSeg->max_size = (short_offset)(-1);
-                CurrSeg->location =  1L << 8 * sizeof( short_offset );
+                x86omf_state().CurrSeg->max_size = (short_offset)(-1);
+                x86omf_state().CurrSeg->location =  1L << 8 * sizeof( short_offset );
             }
         }
     } else {
@@ -2812,14 +2819,14 @@ static void    incLocation( offset by )
 static void    setLocation( offset loc )
 /*******************************/
 {
-    CurrSeg->location = loc;
-    if( CurrSeg->comdat_label != NULL ) {
-        if( CurrSeg->comdat_size < loc ) {
-            CurrSeg->comdat_size = loc;
+    x86omf_state().CurrSeg->location = loc;
+    if( x86omf_state().CurrSeg->comdat_label != NULL ) {
+        if( x86omf_state().CurrSeg->comdat_size < loc ) {
+            x86omf_state().CurrSeg->comdat_size = loc;
         }
     } else {
-        if( CurrSeg->max_size < loc ) {
-            CurrSeg->max_size = loc;
+        if( x86omf_state().CurrSeg->max_size < loc ) {
+            x86omf_state().CurrSeg->max_size = loc;
         }
     }
 }
@@ -2827,7 +2834,7 @@ static void    setLocation( offset loc )
 static  void    DecLocation( offset by )
 /**************************************/
 {
-    setLocation( (offset)CurrSeg->location - by );
+    setLocation( (offset)x86omf_state().CurrSeg->location - by );
 }
 
 static void    outFPPatch( fp_patches i )
@@ -2835,20 +2842,20 @@ static void    outFPPatch( fp_patches i )
 {
     omf_idx     idx;
 
-    idx = FPPatchImp[i];
+    idx = x86omf_state().FPPatchImp[i];
     if( idx == NOT_IMPORTED ) {
         idx = getImportHdl();
-        FPPatchImp[i] = idx;
-        if( GenStaticImports ) {
+        x86omf_state().FPPatchImp[i] = idx;
+        if( x86omf_state().GenStaticImports ) {
             EjectImports();
-            GenStaticImports = false;
+            x86omf_state().GenStaticImports = false;
         }
-        OutName( FPPatchName[i], &Imports );
-        OutIdx( 0, &Imports );                   /* type index*/
+        OutName( FPPatchName[i], &x86omf_state().Imports );
+        OutIdx( 0, &x86omf_state().Imports );                   /* type index*/
         if( FPPatchAltName[i] != NULL ) {
             getImportHdl();
-            OutName( FPPatchAltName[i], &Imports );
-            OutIdx( 0, &Imports );               /* type index*/
+            OutName( FPPatchAltName[i], &x86omf_state().Imports );
+            OutIdx( 0, &x86omf_state().Imports );               /* type index*/
         }
     }
     CheckLEDataSize( 2 * sizeof( offset ), true );
@@ -2869,11 +2876,11 @@ static void    outPatch( label_handle lbl, patch_attr attr )
     /* careful, might be patching offset of seg:off */
     CheckLEDataSize( 3 * sizeof( offset ), true );
     tpatch = static_cast<temp_patch *>(CGAlloc( sizeof( *tpatch ) ));
-    tpatch->link = CurrSeg->obj->tpatches;
-    CurrSeg->obj->tpatches = tpatch;
+    tpatch->link = x86omf_state().CurrSeg->obj->tpatches;
+    x86omf_state().CurrSeg->obj->tpatches = tpatch;
     tpatch->lbl = lbl;
     tpatch->patch.ref = INVALID_OBJHANDLE;
-    tpatch->patch.where = CurrSeg->location - CurrSeg->obj->start + CurrSeg->data_prefix_size;
+    tpatch->patch.where = x86omf_state().CurrSeg->location - x86omf_state().CurrSeg->obj->start + x86omf_state().CurrSeg->data_prefix_size;
     tpatch->patch.attr = attr;
 }
 
@@ -2884,8 +2891,8 @@ static abs_patch       *newAbsPatch( void )
 
     apatch = static_cast<abs_patch *>(CGAlloc( sizeof( *apatch ) ));
     memset( apatch, 0, sizeof( *apatch ) );
-    apatch->link = AbsPatches;
-    AbsPatches = apatch;
+    apatch->link = x86omf_state().AbsPatches;
+    x86omf_state().AbsPatches = apatch;
     return( apatch );
 }
 
@@ -2894,12 +2901,12 @@ static  void    InitLineInfo( object *obj )
 /*****************************************/
 {
     obj->lines->used = 0;
-    if( CurrSeg->comdat_label != NULL ) {
+    if( x86omf_state().CurrSeg->comdat_label != NULL ) {
         OutByte( obj->lines_generated, obj->lines );
         OutIdx( NeedComdatNidx( NORMAL ), obj->lines );
     } else {
-        if( CurrSeg->btype == BASE_GRP ) {
-            OutIdx( CurrSeg->base, obj->lines );
+        if( x86omf_state().CurrSeg->btype == BASE_GRP ) {
+            OutIdx( x86omf_state().CurrSeg->base, obj->lines );
         } else {
             OutIdx( 0, obj->lines );
         }
@@ -2917,7 +2924,7 @@ static  void    ChangeObjSrc( short fno )
     const char          *fname;
 
     fname = SrcFNoFind( fno );
-    CurrFNo = fno;
+    x86omf_state().CurrFNo = fno;
     names = InitArray( sizeof( byte ), MODEST_HDR, INCREMENT_HDR );
     OutName( fname, names );
     PutObjOMFRec( CMD_THEADR, names );
@@ -2938,7 +2945,7 @@ static  void    AddLineInfo( object *obj, cg_linenum line, offset offs )
                  DFLineNum( &info, offs );
             }
         } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-            if( info.fno != CurrFNo ) {
+            if( info.fno != x86omf_state().CurrFNo ) {
                 FlushLineNum( obj );
                 InitLineInfo( obj );
                 ChangeObjSrc( info.fno );
@@ -2965,11 +2972,11 @@ static  void    SetPendingLine( void )
     cg_linenum          line;
     offset              offs;
 
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     line = obj->pending_line_number;
     if( line == 0 )
         return;
-    offs = CurrSeg->location;
+    offs = x86omf_state().CurrSeg->location;
     obj->pending_line_number = 0;
     obj->pending_label_line = false;
     if( obj->lines == NULL ) {
@@ -3027,9 +3034,9 @@ static void    outAbsPatch( abs_patch *apatch, patch_attr attr )
         value = apatch->value;
         FreeAbsPatch( apatch );
     } else {
-        apatch->obj = CurrSeg->obj;
+        apatch->obj = x86omf_state().CurrSeg->obj;
         apatch->patch.ref = INVALID_OBJHANDLE;
-        apatch->patch.where = CurrSeg->location - CurrSeg->obj->start + CurrSeg->data_prefix_size;
+        apatch->patch.where = x86omf_state().CurrSeg->location - x86omf_state().CurrSeg->obj->start + x86omf_state().CurrSeg->data_prefix_size;
         apatch->patch.attr = attr;
         value = 0;
     }
@@ -3095,8 +3102,8 @@ static void    outRTImportRel( rt_class rtindex, fix_class class_, bool_ rel )
         imphdl = getImportHdl();
         CheckImportSwitch( false );
         TellRTHandle( rtindex, imphdl );
-        OutName( AskRTName( rtindex ), &Imports );
-        OutIdx( 0, &Imports );           /* type index*/
+        OutName( AskRTName( rtindex ), &x86omf_state().Imports );
+        OutIdx( 0, &x86omf_state().Imports );           /* type index*/
     }
     outSpecialCommon( imphdl, class_, rel );
 }
@@ -3114,18 +3121,18 @@ static void    outBckExport( const char *name, bool_ is_export )
     array_control       *obj_exports;
     object              *obj;
 
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     obj_exports = &obj->exports;
     if( obj_exports->used >= BUFFSIZE - TOLERANCE ) {
         EjectExports();
     }
     CheckExportSwitch( is_export );
     if( obj_exports->used == 0 ) {
-        if( CurrSeg->btype == BASE_GRP ) {
-            OutIdx( CurrSeg->base, obj_exports );   /* group index*/
+        if( x86omf_state().CurrSeg->btype == BASE_GRP ) {
+            OutIdx( x86omf_state().CurrSeg->base, obj_exports );   /* group index*/
         } else {
 #if _TARGET & _TARG_80386
-            OutIdx( FlatGIndex, obj_exports );      /* will be 0 if we have none */
+            OutIdx( x86omf_state().FlatGIndex, obj_exports );      /* will be 0 if we have none */
 #else
             OutIdx( 0, obj_exports );
 #endif
@@ -3133,7 +3140,7 @@ static void    outBckExport( const char *name, bool_ is_export )
         OutIdx( obj->index, obj_exports );          /* segment index*/
     }
     OutName( name, obj_exports );
-    OutOffset( (offset)CurrSeg->location, obj_exports );
+    OutOffset( (offset)x86omf_state().CurrSeg->location, obj_exports );
     OutIdx( 0, obj_exports );                       /* type index*/
 }
 
@@ -3147,8 +3154,8 @@ static void    outBckImport( const char *name, back_handle bck, fix_class class_
         idx = getImportHdl();
         CheckImportSwitch( false );
         bck->imp = idx;
-        OutName( name, &Imports );
-        OutIdx( 0, &Imports );               /* type index*/
+        OutName( name, &x86omf_state().Imports );
+        OutIdx( 0, &x86omf_state().Imports );               /* type index*/
     }
     outSpecialCommon( idx, class_, false );
 }
@@ -3159,7 +3166,7 @@ static void    outLineNum( cg_linenum  line, bool_ label_line )
 {
     object      *obj;
 
-    obj = CurrSeg->obj;
+    obj = x86omf_state().CurrSeg->obj;
     if( obj->pending_line_number == 0
         || obj->pending_label_line
         || obj->pending_line_number > line ) {
@@ -3178,8 +3185,8 @@ static unsigned        savePendingLine( unsigned new_line )
 {
     unsigned    old;
 
-    old = CurrSeg->obj->pending_line_number;
-    CurrSeg->obj->pending_line_number = new_line;
+    old = x86omf_state().CurrSeg->obj->pending_line_number;
+    x86omf_state().CurrSeg->obj->pending_line_number = new_line;
     return( old );
 }
 
@@ -3192,7 +3199,7 @@ static void    outDBytes( unsigned len, const byte *src )
 
     SetPendingLine();
     CheckLEDataSize( sizeof( byte ), true );
-    max = (BUFFSIZE - TOLERANCE) - ( CurrSeg->location - CurrSeg->obj->start + CurrSeg->data_prefix_size );
+    max = (BUFFSIZE - TOLERANCE) - ( x86omf_state().CurrSeg->location - x86omf_state().CurrSeg->obj->start + x86omf_state().CurrSeg->data_prefix_size );
     while( len != 0 ) {
         if( len > max ) {
             n = max;
@@ -3225,7 +3232,7 @@ static void    outIBytes( byte pattern, offset len )
     } else {
         EjectLEData();
         OutLEDataStart( true );
-        obj_data = &CurrSeg->obj->data;
+        obj_data = &x86omf_state().CurrSeg->obj->data;
 #if _TARGET & _TARG_80386
         if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
             OutOffset( len, obj_data );         /* repeat count */
@@ -3238,7 +3245,7 @@ static void    outIBytes( byte pattern, offset len )
         OutShort( 0, obj_data );                /* nesting count */
         OutByte( 1, obj_data );                 /* pattern length */
         OutByte( pattern, obj_data );
-        if( CurrSeg->comdat_label != NULL ) {
+        if( x86omf_state().CurrSeg->comdat_label != NULL ) {
 #if _TARGET & _TARG_80386
             if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_COMDAT32;
@@ -3271,8 +3278,8 @@ static bool_    needBaseSet( void )
 {
     bool_        need;
 
-    need = ( CurrSeg->need_base_set != 0 );
-    CurrSeg->need_base_set = false;
+    need = ( x86omf_state().CurrSeg->need_base_set != 0 );
+    x86omf_state().CurrSeg->need_base_set = false;
     return( need );
 }
 
@@ -3280,19 +3287,19 @@ static bool_    needBaseSet( void )
 static offset  askMaxSize( void )
 /************************/
 {
-    return( (offset)CurrSeg->max_size );
+    return( (offset)x86omf_state().CurrSeg->max_size );
 }
 
 static long_offset  askBigLocation( void )
 /*********************************/
 {
-    return( CurrSeg->location );
+    return( x86omf_state().CurrSeg->location );
 }
 
 static long_offset  askBigMaxSize( void )
 /********************************/
 {
-    return( CurrSeg->max_size );
+    return( x86omf_state().CurrSeg->max_size );
 }
 
 static void    tellObjNewLabel( cg_sym_handle lbl )
@@ -3300,9 +3307,9 @@ static void    tellObjNewLabel( cg_sym_handle lbl )
 {
     if( lbl == NULL )
         return;
-    if( CurrSeg == NULL )
+    if( x86omf_state().CurrSeg == NULL )
         return;
-    if( codeSegId != CurrSeg->segid )
+    if( x86omf_state().codeSegId != x86omf_state().CurrSeg->segid )
         return;
 
     /*
@@ -3312,16 +3319,16 @@ static void    tellObjNewLabel( cg_sym_handle lbl )
     if( FEAttr( lbl ) & FE_COMMON ) {
         doEmptyQueue();
         if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-            if( CurrSeg->comdat_symbol != NULL ) {
-                DFSymRange( CurrSeg->comdat_symbol, (offset)CurrSeg->comdat_size );
+            if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
+                DFSymRange( x86omf_state().CurrSeg->comdat_symbol, (offset)x86omf_state().CurrSeg->comdat_size );
             }
         }
-    } else if( CurrSeg->comdat_symbol != NULL ) {
+    } else if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
         doEmptyQueue();
         setUpObj( false );
         if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-            if( CurrSeg->comdat_symbol != NULL ) {
-                DFSymRange( CurrSeg->comdat_symbol, (offset)CurrSeg->comdat_size );
+            if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
+                DFSymRange( x86omf_state().CurrSeg->comdat_symbol, (offset)x86omf_state().CurrSeg->comdat_size );
             }
         }
     }
@@ -3332,40 +3339,40 @@ static void    tellObjNewProc( cg_sym_handle proc )
 {
     segment_id  proc_segid;
 
-    PUSH_OP( codeSegId );
+    PUSH_OP( x86omf_state().codeSegId );
         proc_segid = FESegID( proc );
-        if( codeSegId != proc_segid ) {
+        if( x86omf_state().codeSegId != proc_segid ) {
             if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-                if( CurrSeg->comdat_symbol != NULL ) {
-                    DFSymRange( CurrSeg->comdat_symbol, (offset)CurrSeg->comdat_size );
+                if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
+                    DFSymRange( x86omf_state().CurrSeg->comdat_symbol, (offset)x86omf_state().CurrSeg->comdat_size );
                 }
             }
-            if( CurrSeg->obj != NULL ) {
+            if( x86omf_state().CurrSeg->obj != NULL ) {
                 doEmptyQueue();
                 FlushObject();
             }
-            codeSegId = proc_segid;
-            setOP( codeSegId );
-            CurrSeg->need_base_set = true;
-            if( !CurrSeg->exec ) {
+            x86omf_state().codeSegId = proc_segid;
+            setOP( x86omf_state().codeSegId );
+            x86omf_state().CurrSeg->need_base_set = true;
+            if( !x86omf_state().CurrSeg->exec ) {
                 Zoiks( ZOIKS_088 );
             }
         }
         if( FEAttr( proc ) & FE_COMMON ) {
             doEmptyQueue();
             if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-                if( CurrSeg->comdat_symbol != NULL ) {
-                    DFSymRange( CurrSeg->comdat_symbol, (offset)CurrSeg->comdat_size );
+                if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
+                    DFSymRange( x86omf_state().CurrSeg->comdat_symbol, (offset)x86omf_state().CurrSeg->comdat_size );
                 }
             }
-            CurrSeg->comdat_symbol = proc;
-            CurrSeg->prefix_comdat_state = PCS_NEED;
-        } else if( CurrSeg->comdat_symbol != NULL ) {
+            x86omf_state().CurrSeg->comdat_symbol = proc;
+            x86omf_state().CurrSeg->prefix_comdat_state = PCS_NEED;
+        } else if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
             doEmptyQueue();
             setUpObj( false );
             if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-                if( CurrSeg->comdat_symbol != NULL ) {
-                    DFSymRange( CurrSeg->comdat_symbol, (offset)CurrSeg->comdat_size );
+                if( x86omf_state().CurrSeg->comdat_symbol != NULL ) {
+                    DFSymRange( x86omf_state().CurrSeg->comdat_symbol, (offset)x86omf_state().CurrSeg->comdat_size );
                 }
             }
             NormalData();
@@ -3378,11 +3385,11 @@ static void     tellObjVirtFuncRef( void *cookie )
 {
     virt_func_ref_list  *new_vf;
 
-    PUSH_OP( codeSegId );
+    PUSH_OP( x86omf_state().codeSegId );
         new_vf = static_cast<virt_func_ref_list *>(CGAlloc( sizeof( virt_func_ref_list ) ));
         new_vf->cookie = cookie;
-        new_vf->next = static_cast<struct virt_func_ref_list *>(CurrSeg->virt_func_refs);
-        CurrSeg->virt_func_refs = new_vf;
+        new_vf->next = static_cast<struct virt_func_ref_list *>(x86omf_state().CurrSeg->virt_func_refs);
+        x86omf_state().CurrSeg->virt_func_refs = new_vf;
     POP_OP();
 }
 
@@ -3404,18 +3411,18 @@ static segment_id      askSegID( pointer hdl, cg_class class_ )
     switch( class_ ) {
     case CG_FE:
         if( InlineFunction( (cg_sym_handle)hdl ) ) {
-            return( codeSegId );    /* askCodeSeg() */
+            return( x86omf_state().codeSegId );    /* askCodeSeg() */
         }
         return( FESegID( (cg_sym_handle)hdl ) );
     case CG_BACK:
         return( ((back_handle)hdl)->segid );
     case CG_TBL:
     case CG_VTB:
-        return( codeSegId );        /* askCodeSeg() */
+        return( x86omf_state().codeSegId );        /* askCodeSeg() */
     case CG_CLB:
         return( altCodeSegId );     /* askAltCodeSeg() */
     default:
-        return( dataSegId );        /* askBackSeg() */
+        return( x86omf_state().dataSegId );        /* askBackSeg() */
     }
 }
 

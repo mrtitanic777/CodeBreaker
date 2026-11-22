@@ -30,7 +30,7 @@
 ****************************************************************************/
 
 
-#define TOGGLE(x)           PragmaToggles.tog_##x
+#define TOGGLE(x)           toggles_state().PragmaToggles.tog_##x
 #define TOGGLE_STK(x)       HeadToggles_tog_##x
 
 typedef struct pragma_toggles {
@@ -39,4 +39,14 @@ typedef struct pragma_toggles {
     #undef pick
 } pragma_toggles;
 
-extern pragma_toggles       PragmaToggles;
+
+#ifndef CB_STATE_TOGGLES_H
+#define CB_STATE_TOGGLES_H
+
+/* the variables of toggles.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct TogglesState {
+    pragma_toggles PragmaToggles;
+};
+inline TogglesState& toggles_state() { return cbrun_part<TogglesState>(); }
+
+#endif

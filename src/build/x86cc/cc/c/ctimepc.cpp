@@ -41,8 +41,8 @@ void TimeInit( void )
 
     time_of_day = time( &time_of_day );
     tod = localtime( &time_of_day );
-    strcpy( __Time, "00:00:00" );
-    FormatTime_tm( __Time, tod );
-    strcpy( __Date, "Jan  1 1970" );
-    FormatDate_tm( __Date, tod );
+    strcpy( cvars_state().__Time, "00:00:00" );
+    FormatTime_tm( cvars_state().__Time, tod );
+    strcpy( cvars_state().__Date, "Jan  1 1970" );
+    FormatDate_tm( cvars_state().__Date, tod );
 }

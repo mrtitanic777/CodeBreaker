@@ -50,8 +50,8 @@
 #endif
 
 
-#define PushCGName(name)        ValueStack[index++] = (TREEPTR)name
-#define PopCGName()             (cg_name)ValueStack[--index]
+#define PushCGName(name)        cvars_state().ValueStack[index++] = (TREEPTR)name
+#define PopCGName()             (cg_name)cvars_state().ValueStack[--index]
 
 typedef struct local_vars {
     struct local_vars   *next;
@@ -65,23 +65,32 @@ typedef struct  try_table_back_handles {
 } try_table_back_handles;
 #endif
 
-extern SYM_LIST_HEADS   *SymListHeads;
-extern LABEL_INDEX      LabelIndex;
 
-static local_vars       *LocalVarList;
-static label_handle     *CGLabelHandles;
-static TREEPTR          FirstNode;
-static TREEPTR          LastNode;
-static OPNODE           *FuncNodePtr;
-static int              Refno;
-static temp_handle      SSVar;
-static SYM_HANDLE       Saved_CurFunc;
-static int              InLineDepth;
+namespace {
 
+/* the statics of this file, one set for each run of the compiler */
+struct CgenState {
+    local_vars *LocalVarList;
+    label_handle *CGLabelHandles;
+    TREEPTR FirstNode;
+    TREEPTR LastNode;
+    OPNODE *FuncNodePtr;
+    int Refno;
+    temp_handle SSVar;
+    SYM_HANDLE Saved_CurFunc;
+    int InLineDepth;
 #ifdef __SEH__
-static int                      TryRefno;
-static try_table_back_handles   *TryTableBackHandles;
+    int TryRefno;
 #endif
+#ifdef __SEH__
+    try_table_back_handles *TryTableBackHandles;
+#endif
+};
+
+}  // namespace
+
+static inline CgenState& cgen_state() { return cbrun_part<CgenState>(); }
+
 
 struct func_save {
     SYMPTR          func;
@@ -94,19 +103,19 @@ struct func_save {
 /*
  * matches table of type in ctypes.h
  */
-static  char    CGDataType[] = {
+static  char    const CGDataType[] = {
     #define pick1(type,dtype,cgtype,x86asmtype,name,size) cgtype,
     #include "cdatatyp.h"
     #undef  pick1
 };
 
-static  cg_op   CGOperator[] = {
+static  cg_op   const CGOperator[] = {
     #define pick1(enum,dump,cgenum) cgenum,
     #include "copcodes.h"
     #undef pick1
 };
 
-static  cg_op   CC2CGOp[] = {
+static  cg_op   const CC2CGOp[] = {
     #define pick1(enum,dump,cgenum) cgenum,
     #include "copcond.h"
     #undef pick1
@@ -144,11 +153,11 @@ static void DefineLabels( OPNODE *node )
 {
     LABEL_INDEX i;
 
-    LabelIndex = node->u2.label_count;
-    if( LabelIndex != 0 ) {
-        CGLabelHandles = (label_handle *)CMemAlloc( ( LabelIndex + 1 ) * sizeof( label_handle ) );
-        for( i = 1; i <= LabelIndex; i++ ) {
-            CGLabelHandles[i] = BENewLabel();
+    cvars_state().LabelIndex = node->u2.label_count;
+    if( cvars_state().LabelIndex != 0 ) {
+        cgen_state().CGLabelHandles = (label_handle *)CMemAlloc( ( cvars_state().LabelIndex + 1 ) * sizeof( label_handle ) );
+        for( i = 1; i <= cvars_state().LabelIndex; i++ ) {
+            cgen_state().CGLabelHandles[i] = BENewLabel();
         }
     }
 }
@@ -204,7 +213,7 @@ static void RelLocalVars( local_vars *local_var_list )
 
 static cg_type ReturnType( cg_type type )
 {
-    if( CompFlags.returns_promoted && (InLineDepth == 0) ) {
+    if( cvars_state().CompFlags.returns_promoted && (cgen_state().InLineDepth == 0) ) {
         type = FEParmType( NULL, NULL, type );
     }
     return( type );
@@ -215,16 +224,16 @@ static void FreeTrySymBackInfo( void )
 {
     SYM_ENTRY   sym;
 
-    SymGet( &sym, TrySymHandle );
-    FreeSymBackInfo( &sym, TrySymHandle );
+    SymGet( &sym, cvars_state().TrySymHandle );
+    FreeSymBackInfo( &sym, cvars_state().TrySymHandle );
 }
 
 static void FreeTryTableBackHandles( void )
 {
     try_table_back_handles  *try_backinfo;
 
-    for( ; (try_backinfo = TryTableBackHandles) != NULL; ) {
-        TryTableBackHandles = try_backinfo->next;
+    for( ; (try_backinfo = cgen_state().TryTableBackHandles) != NULL; ) {
+        cgen_state().TryTableBackHandles = try_backinfo->next;
         BEFreeBack( try_backinfo->back_handle );
         CMemFree( try_backinfo );
     }
@@ -241,14 +250,14 @@ static void CallTryRtn( SYM_HANDLE try_rtn, cg_name parm )
 
 static void CallTryInit( void )
 {
-    CallTryRtn( SymTryInit, CGFEName( (CGSYM_HANDLE)TrySymHandle, TY_POINTER ) );
+    CallTryRtn( cvars_state().SymTryInit, CGFEName( (CGSYM_HANDLE)cvars_state().TrySymHandle, TY_POINTER ) );
 }
 
 static cg_name TryFieldAddr( unsigned offset )
 {
     cg_name     name;
 
-    name = CGFEName( (CGSYM_HANDLE)TrySymHandle, static_cast<cg_type>(TryRefno) );
+    name = CGFEName( (CGSYM_HANDLE)cvars_state().TrySymHandle, static_cast<cg_type>(cgen_state().TryRefno) );
     name = CGBinary( O_PLUS, name, CGInteger( offset, TY_UNSIGNED ), TY_POINTER );
     name = CGVolatile( name );
     return( name );
@@ -260,7 +269,7 @@ static void CallTryFini( void )
 
     name = TryFieldAddr( FLD_next );
     name = CGUnary( O_POINTS, name, TY_POINTER );
-    CallTryRtn( SymTryFini, name );
+    CallTryRtn( cvars_state().SymTryFini, name );
 }
 #endif
 
@@ -271,21 +280,21 @@ static void EndFunction( OPNODE *node )
     cg_type     dtype;
     SYM_ENTRY   sym;
 
-    if( LabelIndex != 0 ) {
-        for( i = 1; i <= LabelIndex; i++ ) {
-            BEFiniLabel( CGLabelHandles[i] );
+    if( cvars_state().LabelIndex != 0 ) {
+        for( i = 1; i <= cvars_state().LabelIndex; i++ ) {
+            BEFiniLabel( cgen_state().CGLabelHandles[i] );
         }
-        CMemFree( CGLabelHandles );     // free labels for the function
-        CGLabelHandles = NULL;
+        CMemFree( cgen_state().CGLabelHandles );     // free labels for the function
+        cgen_state().CGLabelHandles = NULL;
     }
 #ifdef __SEH__
-    if( FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
+    if( cgen_state().FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
         CallTryFini();          // generate call to __TryFini
         FreeTrySymBackInfo();
     }
 #endif
     if( node->u2.sym_handle == SYM_NULL ) {
-        dtype = CGenType( CurFunc->sym_type->object );
+        dtype = CGenType( cvars_state().CurFunc->sym_type->object );
         CGReturn( NULL, dtype );
     } else {                            // return value
         SymGet( &sym, node->u2.sym_handle );
@@ -294,17 +303,17 @@ static void EndFunction( OPNODE *node )
         name = CGUnary( O_POINTS, name, dtype );
         CGReturn( name, ReturnType( dtype ) );
     }
-    FreeLocalVars( CurFunc->u.func.parms );
-    FreeLocalVars( CurFunc->u.func.locals );
-    if( InLineDepth == 0 ) {
-        RelLocalVars( LocalVarList );
+    FreeLocalVars( cvars_state().CurFunc->u.func.parms );
+    FreeLocalVars( cvars_state().CurFunc->u.func.locals );
+    if( cgen_state().InLineDepth == 0 ) {
+        RelLocalVars( cgen_state().LocalVarList );
     }
-    if( GenSwitches & CGSW_GEN_DBG_LOCALS ) {
-        if( InLineDepth != 0 ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS ) {
+        if( cgen_state().InLineDepth != 0 ) {
             DBEndBlock();
         }
     }
-    FuncNodePtr->u2.func.flags &= ~FUNC_INUSE;
+    cgen_state().FuncNodePtr->u2.func.flags &= ~FUNC_INUSE;
 }
 
 static void ReturnExpression( OPNODE *node, cg_name expr )
@@ -346,7 +355,7 @@ static cg_type DataPointerType( OPNODE *node )
 
 static cg_name ForceVolatileFloat( cg_name name, TYPEPTR typ )
 {
-    if( CompFlags.op_switch_used ) {
+    if( cvars_state().CompFlags.op_switch_used ) {
         if( typ->decl_type == TYP_FLOAT || typ->decl_type == TYP_DOUBLE || typ->decl_type == TYP_LONG_DOUBLE ) {
             name = CGVolatile( name );
         }
@@ -365,13 +374,13 @@ static cg_name PushSymSeg( OPNODE *node )
     if( sym_handle == SYM_NULL ) {
         segname = CGInteger( 0, TY_UNSIGNED );
     } else {
-        if( sym_handle == Sym_CS ) {
-            segname = CGFEName( (CGSYM_HANDLE)CurFuncHandle, TY_LONG_CODE_PTR );
-        } else if( sym_handle == Sym_SS ) {
-            if( SSVar == NULL ) {
-                SSVar = CGTemp( TY_UINT_2 );
+        if( sym_handle == cvars_state().Sym_CS ) {
+            segname = CGFEName( (CGSYM_HANDLE)cvars_state().CurFuncHandle, TY_LONG_CODE_PTR );
+        } else if( sym_handle == cvars_state().Sym_SS ) {
+            if( cgen_state().SSVar == NULL ) {
+                cgen_state().SSVar = CGTemp( TY_UINT_2 );
             }
-            segname = CGTempName( SSVar, TY_UINT_2 );
+            segname = CGTempName( cgen_state().SSVar, TY_UINT_2 );
         } else {
 //            sym = SymGetPtr( sym_handle );
             segname = CGFEName( (CGSYM_HANDLE)sym_handle, TY_UINT_2 );
@@ -421,8 +430,8 @@ static void EndFinally( void )
     name = CGUnary( O_POINTS, name, TY_UINT_1 );
     name = CGCompare( O_EQ, name, CGInteger( 0, TY_UINT_1 ), TY_UINT_1 );
     CGControl( O_IF_TRUE, name, label_handle );
-    func = CGFEName( (CGSYM_HANDLE)SymFinally, TY_CODE_PTR );
-    call = CGInitCall( func, TY_INTEGER, (CGSYM_HANDLE)SymFinally );
+    func = CGFEName( (CGSYM_HANDLE)cvars_state().SymFinally, TY_CODE_PTR );
+    call = CGInitCall( func, TY_INTEGER, (CGSYM_HANDLE)cvars_state().SymFinally );
     CGDone( CGCall( call ) );
     CGControl( O_LABEL, NULL, label_handle );
     BEFiniLabel( label_handle );
@@ -442,7 +451,7 @@ static void CallTryUnwind( tryindex_t scope_index )
     call_handle call;
     cg_name     parm;
 
-    call = CGInitCall( CGFEName( (CGSYM_HANDLE)SymTryUnwind, TY_POINTER ), TY_INTEGER, (CGSYM_HANDLE)SymTryUnwind );
+    call = CGInitCall( CGFEName( (CGSYM_HANDLE)cvars_state().SymTryUnwind, TY_POINTER ), TY_INTEGER, (CGSYM_HANDLE)cvars_state().SymTryUnwind );
     parm = CGInteger( scope_index, TY_UINT_1 );
     CGAddParm( call, parm, TY_INTEGER );
     CGDone( CGCall( call ) );
@@ -468,7 +477,7 @@ static void GenerateTryBlock( TREEPTR tree )
             break;
         case OPR_EXCEPT:
         case OPR_FINALLY:
-            ValueStack[try_index] = stmt;
+            cvars_state().ValueStack[try_index] = stmt;
             break;
         default:
             break;
@@ -484,11 +493,11 @@ static void GenerateTryBlock( TREEPTR tree )
         except_table = BENewBack( NULL );
         try_backinfo = (try_table_back_handles *)CMemAlloc( sizeof( try_table_back_handles ) );
         try_backinfo->back_handle = except_table;
-        try_backinfo->next = TryTableBackHandles;
-        TryTableBackHandles = try_backinfo;
+        try_backinfo->next = cgen_state().TryTableBackHandles;
+        cgen_state().TryTableBackHandles = try_backinfo;
         DGLabel( except_table );
         for( try_index = 0; try_index <= max_try_index; try_index++ ) {
-            stmt = ValueStack[try_index];
+            stmt = cvars_state().ValueStack[try_index];
             DGInteger( stmt->op.u2.st.parent_scope, TY_UINT_1 );  // parent index
             if( stmt->op.opr == OPR_EXCEPT ) {
                 DGInteger( 0, TY_UINT_1 );
@@ -496,7 +505,7 @@ static void GenerateTryBlock( TREEPTR tree )
                 DGInteger( 1, TY_UINT_1 );
             }
             except_label = FEBack( (CGSYM_HANDLE)stmt->op.u2.st.u.try_sym_handle );
-            DGBackPtr( except_label, FESegID( (CGSYM_HANDLE)CurFuncHandle ), 0, TY_CODE_PTR );
+            DGBackPtr( except_label, FESegID( (CGSYM_HANDLE)cvars_state().CurFuncHandle ), 0, TY_CODE_PTR );
         }
         BESetSeg( old_segid );
         SetTryTable( except_table );
@@ -800,7 +809,7 @@ static segment_id StringSegment( STR_HANDLE strlit )
 {
 #if _INTEL_CPU
     if( strlit->flags & STRLIT_FAR )
-        return( FarStringSegId );
+        return( cvars_state().FarStringSegId );
 #endif
     if( strlit->flags & STRLIT_CONST )
         return( SEG_CODE );
@@ -847,7 +856,7 @@ static void FreeStrings( void )
     str_hash_idx    hash;
 
     for( hash = 0; hash < STRING_HASH_SIZE; hash++ ) {
-        for( strlit = StringHash[hash]; strlit != NULL; strlit = strlit_next ) {
+        for( strlit = cvars_state().StringHash[hash]; strlit != NULL; strlit = strlit_next ) {
             strlit_next = strlit->next_string;
             if( strlit->back_handle != NULL ) {
                 BEFiniBack( strlit->back_handle );
@@ -856,7 +865,7 @@ static void FreeStrings( void )
             }
             FreeLiteral( strlit );
         }
-        StringHash[hash] = NULL;
+        cvars_state().StringHash[hash] = NULL;
     }
 }
 
@@ -875,9 +884,9 @@ static void EmitCS_Strings( void )
 {
     str_hash_idx    hash;
 
-    if( CompFlags.strings_in_code_segment ) {
+    if( cvars_state().CompFlags.strings_in_code_segment ) {
         for( hash = STRING_HASH_SIZE; hash-- > 0; ) {
-            DumpCS_Strings( StringHash[hash] );
+            DumpCS_Strings( cvars_state().StringHash[hash] );
         }
     }
 }
@@ -963,9 +972,9 @@ static void DoSwitch( OPNODE *node, cg_name name )
     table = CGSelInit();
     sw = node->u2.switch_info;
     for( ce = sw->case_list; ce != NULL; ce = ce->next_case ) {
-        CGSelCase( table, CGLabelHandles[ce->label], ce->value );
+        CGSelCase( table, cgen_state().CGLabelHandles[ce->label], ce->value );
     }
-    CGSelOther( table, CGLabelHandles[sw->default_label] );
+    CGSelOther( table, cgen_state().CGLabelHandles[sw->default_label] );
     CGSelect( table, name );
 }
 
@@ -985,34 +994,34 @@ static bool_ IsStruct( TYPEPTR typ )
 
 static void ThreadNode( TREEPTR node )
 {
-    if( FirstNode == NULL )
-        FirstNode = node;
-    if( LastNode != NULL )
-        LastNode->u.thread = node;
-    LastNode = node;
+    if( cgen_state().FirstNode == NULL )
+        cgen_state().FirstNode = node;
+    if( cgen_state().LastNode != NULL )
+        cgen_state().LastNode->u.thread = node;
+    cgen_state().LastNode = node;
 }
 
 static TREEPTR LinearizeTree( TREEPTR tree )
 {
-    FirstNode = NULL;
-    LastNode = NULL;
+    cgen_state().FirstNode = NULL;
+    cgen_state().LastNode = NULL;
     WalkExprTree( tree, ThreadNode, NoOp, NoOp, ThreadNode );
-    LastNode->u.thread = NULL;
-    return( FirstNode );
+    cgen_state().LastNode->u.thread = NULL;
+    return( cgen_state().FirstNode );
 }
 
 
 void EmitInit( void )
 {
-    SegListHead = NULL;
+    cvars_state().SegListHead = NULL;
     ImportSegIdInit();
-    Refno = TY_FIRST_FREE;
+    cgen_state().Refno = TY_FIRST_FREE;
 }
 
 
 static int NewRefno( void )
 {
-    return( Refno++ );
+    return( cgen_state().Refno++ );
 }
 
 
@@ -1027,7 +1036,7 @@ static void EmitSym( SYMPTR sym, SYM_HANDLE sym_handle )
     target_size         size;
 
     typ = sym->sym_type;
-    if( (GenSwitches & CGSW_GEN_DBG_TYPES) && (sym->attribs.stg_class == SC_TYPEDEF) ) {
+    if( (cvars_state().GenSwitches & CGSW_GEN_DBG_TYPES) && (sym->attribs.stg_class == SC_TYPEDEF) ) {
         if( typ->decl_type != TYP_TYPEDEF ) {
             DBEndName( DBBegName( sym->name, DBG_NIL_TYPE ), DBType( typ ) );
         }
@@ -1083,7 +1092,7 @@ static void CDoAutoDecl( SYM_HANDLE sym_handle )
         SymGet( &sym, sym_handle );
         emit_debug_info = false;
         emit_extra_info = false;
-        if( GenSwitches & CGSW_GEN_NO_OPTIMIZATION )
+        if( cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION )
             emit_debug_info = true;
         if( sym.attribs.stg_class == SC_STATIC ) {
             emit_debug_info = false;
@@ -1124,12 +1133,12 @@ static void CDoAutoDecl( SYM_HANDLE sym_handle )
             }
         }
 #if _CPU != 370
-        if( ! CompFlags.debug_info_some )
+        if( ! cvars_state().CompFlags.debug_info_some )
             emit_extra_info = false;
 #endif
         if( emit_debug_info || emit_extra_info ) {
-            if( Saved_CurFunc == SYM_NULL ) {  /* if we are not inlining */
-                if( GenSwitches & CGSW_GEN_DBG_LOCALS ) {
+            if( cgen_state().Saved_CurFunc == SYM_NULL ) {  /* if we are not inlining */
+                if( cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS ) {
                     if( (sym.flags & SYM_TEMP) == 0 ) {
                         DBLocalSym( (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
                     }
@@ -1150,12 +1159,12 @@ static void CDoParmDecl( SYMPTR sym, SYM_HANDLE sym_handle )
     dtype = CGenType( typ );
     CGParmDecl( (CGSYM_HANDLE)sym_handle, dtype );
 #if _CPU == 386
-    if( (GenSwitches & CGSW_GEN_NO_OPTIMIZATION)
-      || (!CompFlags.register_conventions && CompFlags.debug_info_some) ) {
+    if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION)
+      || (!cvars_state().CompFlags.register_conventions && cvars_state().CompFlags.debug_info_some) ) {
 #else
-    if( GenSwitches & CGSW_GEN_NO_OPTIMIZATION ) {
+    if( cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION ) {
 #endif
-        if( GenSwitches & CGSW_GEN_DBG_LOCALS ) {
+        if( cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS ) {
             DBLocalSym( (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
         }
     }
@@ -1181,32 +1190,32 @@ static bool_ DoFuncDefn( SYM_HANDLE funcsym_handle )
     SYM_HANDLE  sym_handle;
     cg_type     ret_type;
 
-    SSVar = NULL;
-    CurFunc = &CurFuncSym;
-    SymGet( CurFunc, funcsym_handle );
-    CurFuncHandle = funcsym_handle;
+    cgen_state().SSVar = NULL;
+    cvars_state().CurFunc = &cvars_state().CurFuncSym;
+    SymGet( cvars_state().CurFunc, funcsym_handle );
+    cvars_state().CurFuncHandle = funcsym_handle;
 #if _INTEL_CPU
-    if( ! CompFlags.zu_switch_used ) {
-        if( CurFunc->mods & FLAG_FARSS ) {      /* function use far stack */
-            TargetSwitches |= CGSW_X86_FLOATING_SS;
+    if( ! cvars_state().CompFlags.zu_switch_used ) {
+        if( cvars_state().CurFunc->mods & FLAG_FARSS ) {      /* function use far stack */
+            cvars_state().TargetSwitches |= CGSW_X86_FLOATING_SS;
         } else {
-            TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
+            cvars_state().TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
         }
     }
 #endif
-    ret_type = ReturnType( CGenType( CurFunc->sym_type->object ) );
+    ret_type = ReturnType( CGenType( cvars_state().CurFunc->sym_type->object ) );
     CGProcDecl( (CGSYM_HANDLE)funcsym_handle, ret_type );
 #if _CPU == 386
-    if( TargetSwitches & CGSW_X86_P5_PROFILING ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_P5_PROFILING ) {
         const char *fn_name;
         size_t     len;
         segment_id old_segid;
 
         fn_name = FEName( (CGSYM_HANDLE)funcsym_handle );
         len = strlen( fn_name ) + 1;
-        old_segid = BESetSeg( FunctionProfileSegId );
-        FunctionProfileBlock = BENewBack( NULL );
-        DGLabel( FunctionProfileBlock );
+        old_segid = BESetSeg( cvars_state().FunctionProfileSegId );
+        cvars_state().FunctionProfileBlock = BENewBack( NULL );
+        DGLabel( cvars_state().FunctionProfileBlock );
         DGInteger( 0,   TY_INTEGER );
         DGInteger( (unsigned)-1,  TY_INTEGER );
         DGInteger( 0,   TY_INTEGER );
@@ -1219,27 +1228,27 @@ static bool_ DoFuncDefn( SYM_HANDLE funcsym_handle )
         BESetSeg( old_segid );
     }
 #endif
-    if( GenSwitches & CGSW_GEN_DBG_LOCALS ) {
-        if( InLineDepth == 0 ) {
-            DBModSym( (CGSYM_HANDLE)CurFuncHandle, TY_DEFAULT );
+    if( cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS ) {
+        if( cgen_state().InLineDepth == 0 ) {
+            DBModSym( (CGSYM_HANDLE)cvars_state().CurFuncHandle, TY_DEFAULT );
         } else {
             DBBegBlock();
         }
     }
     parms_reversed = false;
-    if( CurFunc->u.func.parms != SYM_NULL ) {
+    if( cvars_state().CurFunc->u.func.parms != SYM_NULL ) {
         SYMPTR              psym;
 #ifndef REVERSE
         aux_info            *inf;
         SYM_ENTRY           sym;
 
-        inf = FindInfo( &sym, CurFuncHandle );
+        inf = FindInfo( &sym, cvars_state().CurFuncHandle );
         if( inf->cclass & FECALL_GEN_REVERSE_PARMS ) {
-            ParmReverse( CurFunc->u.func.parms );
+            ParmReverse( cvars_state().CurFunc->u.func.parms );
             parms_reversed = true;
         } else {
 #endif
-            for( sym_handle = CurFunc->u.func.parms; sym_handle != SYM_NULL; sym_handle = psym->handle ) {
+            for( sym_handle = cvars_state().CurFunc->u.func.parms; sym_handle != SYM_NULL; sym_handle = psym->handle ) {
                 psym = SymGetPtr( sym_handle );
                 if( psym->sym_type->decl_type == TYP_DOT_DOT_DOT )
                     break;
@@ -1250,10 +1259,10 @@ static bool_ DoFuncDefn( SYM_HANDLE funcsym_handle )
 #endif
     }
     CGLastParm();
-    CDoAutoDecl( CurFunc->u.func.locals );
+    CDoAutoDecl( cvars_state().CurFunc->u.func.locals );
 #ifdef __SEH__
-    if( FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
-        CGAutoDecl( (CGSYM_HANDLE)TrySymHandle, static_cast<cg_type>(TryRefno) );
+    if( cgen_state().FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
+        CGAutoDecl( (CGSYM_HANDLE)cvars_state().TrySymHandle, static_cast<cg_type>(cgen_state().TryRefno) );
         CallTryInit();                  // generate call to __TryInit
     }
 #endif
@@ -1262,12 +1271,12 @@ static bool_ DoFuncDefn( SYM_HANDLE funcsym_handle )
 
 static void StartFunction( OPNODE *node )
 {
-    FuncNodePtr = node;
-    if( InLineDepth == 0 ) {
-        LocalVarList = NULL;
+    cgen_state().FuncNodePtr = node;
+    if( cgen_state().InLineDepth == 0 ) {
+        cgen_state().LocalVarList = NULL;
     }
 
-    FuncNodePtr->u2.func.flags |= FUNC_INUSE;
+    cgen_state().FuncNodePtr->u2.func.flags |= FUNC_INUSE;
     DoFuncDefn( node->u2.func.sym_handle );
 }
 
@@ -1293,7 +1302,7 @@ static void EmitNodes( TREEPTR tree )
             break;
         case OPR_ENDBLOCK:              // end of new block { vars; }
             DBEndBlock();
-            LocalVarList = ReleaseVars( node->u2.sym_handle, LocalVarList );
+            cgen_state().LocalVarList = ReleaseVars( node->u2.sym_handle, cgen_state().LocalVarList );
             break;
         case OPR_LABELCOUNT:            // number of labels used in function
             DefineLabels( node );
@@ -1531,23 +1540,23 @@ static void EmitNodes( TREEPTR tree )
             PushCGName( call );
             break;
         case OPR_LABEL:                 // label
-            CGControl( O_LABEL, NULL, CGLabelHandles[node->u2.label_index] );
+            CGControl( O_LABEL, NULL, cgen_state().CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_CASE:                  // case label
             if( node->u2.case_info->gen_label ) {
-                CGControl( O_LABEL, NULL, CGLabelHandles[node->u2.case_info->label] );
+                CGControl( O_LABEL, NULL, cgen_state().CGLabelHandles[node->u2.case_info->label] );
             }
             break;
         case OPR_JUMP:                  // jump
-            CGControl( O_GOTO, NULL, CGLabelHandles[node->u2.label_index] );
+            CGControl( O_GOTO, NULL, cgen_state().CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_JUMPTRUE:              // jump if true
             op1 = PopCGName();
-            CGControl( O_IF_TRUE, op1, CGLabelHandles[node->u2.label_index] );
+            CGControl( O_IF_TRUE, op1, cgen_state().CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_JUMPFALSE:             // jump if false
             op1 = PopCGName();
-            CGControl( O_IF_FALSE, op1, CGLabelHandles[node->u2.label_index] );
+            CGControl( O_IF_FALSE, op1, cgen_state().CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_SWITCH:                // switch
             op1 = PopCGName();
@@ -1611,8 +1620,8 @@ static TREEPTR GenOptimizedCode( TREEPTR tree )
 
     unroll_count = 0;
     for( ; tree != NULL; tree = tree->left ) {
-        if( tree->op.u2.src_loc.line != SrcLoc.line || tree->op.u2.src_loc.fno != SrcLoc.fno ) {
-            if( Saved_CurFunc == SYM_NULL ) {
+        if( tree->op.u2.src_loc.line != cvars_state().SrcLoc.line || tree->op.u2.src_loc.fno != cvars_state().SrcLoc.fno ) {
+            if( cgen_state().Saved_CurFunc == SYM_NULL ) {
                 FNAMEPTR    flist;
 
                 flist = FileIndexToFName( tree->op.u2.src_loc.fno );
@@ -1624,7 +1633,7 @@ static TREEPTR GenOptimizedCode( TREEPTR tree )
                 }
                 DBSrcCue( flist->index_db, tree->op.u2.src_loc.line, 1 );
             }
-            SrcLoc = tree->op.u2.src_loc;
+            cvars_state().SrcLoc = tree->op.u2.src_loc;
         }
         if( tree->op.u1.unroll_count != unroll_count ) {
             unroll_count = tree->op.u1.unroll_count;
@@ -1638,7 +1647,7 @@ static TREEPTR GenOptimizedCode( TREEPTR tree )
 
             right = tree->right;
             if ( ( right->op.u2.func.flags & FUNC_USED ) == 0 ) {
-                if( InLineDepth == 0 ) {
+                if( cgen_state().InLineDepth == 0 ) {
                     while( tree->right->op.opr != OPR_FUNCEND ) {
                         tree = tree->left;
                     }
@@ -1649,7 +1658,7 @@ static TREEPTR GenOptimizedCode( TREEPTR tree )
         EmitNodes( LinearizeTree( tree->right ) );
 #ifdef __SEH__
         if( tree->right->op.opr == OPR_FUNCTION ) {     // if start of func
-            if( FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
+            if( cgen_state().FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
                 GenerateTryBlock( tree->left );
             }
         }
@@ -1668,24 +1677,24 @@ static void DoInLineFunction( TREEPTR tree )
 {
     struct func_save    save;
 
-    ++InLineDepth;
-    save.func = CurFunc;
-    save.func_handle = CurFuncHandle;
-    save.funcnode = FuncNodePtr;
-    save.cglabel_handles = CGLabelHandles;
-    save.labelindex = LabelIndex;
-    CurFuncHandle = SYM_NULL;
-    FuncNodePtr = NULL;
-    CGLabelHandles = NULL;
-    LabelIndex = 0;
+    ++cgen_state().InLineDepth;
+    save.func = cvars_state().CurFunc;
+    save.func_handle = cvars_state().CurFuncHandle;
+    save.funcnode = cgen_state().FuncNodePtr;
+    save.cglabel_handles = cgen_state().CGLabelHandles;
+    save.labelindex = cvars_state().LabelIndex;
+    cvars_state().CurFuncHandle = SYM_NULL;
+    cgen_state().FuncNodePtr = NULL;
+    cgen_state().CGLabelHandles = NULL;
+    cvars_state().LabelIndex = 0;
     GenOptimizedCode( tree );
-    CurFunc = save.func;
-    SymGet( CurFunc, save.func_handle );  // must be done before changing CurFuncHandle
-    CurFuncHandle = save.func_handle;
-    FuncNodePtr = save.funcnode;
-    CGLabelHandles = save.cglabel_handles;
-    LabelIndex = save.labelindex;
-    --InLineDepth;
+    cvars_state().CurFunc = save.func;
+    SymGet( cvars_state().CurFunc, save.func_handle );  // must be done before changing CurFuncHandle
+    cvars_state().CurFuncHandle = save.func_handle;
+    cgen_state().FuncNodePtr = save.funcnode;
+    cgen_state().CGLabelHandles = save.cglabel_handles;
+    cvars_state().LabelIndex = save.labelindex;
+    --cgen_state().InLineDepth;
 }
 
 static TREEPTR FindFuncStmtTree( SYM_HANDLE sym_handle )
@@ -1713,7 +1722,7 @@ bool_ IsInLineFunc( SYM_HANDLE sym_handle )
     TREEPTR     right;
 
     ret = false;
-    if( InLineDepth < MAX_INLINE_DEPTH ) {
+    if( cgen_state().InLineDepth < MAX_INLINE_DEPTH ) {
         tree = FindFuncStmtTree(sym_handle);
         if( tree != NULL ) {
            right = tree->right;
@@ -1793,7 +1802,7 @@ static void PruneFunctions( void )
     int         marked;
 
     marked = 0;
-    for( tree = FirstStmt; tree != NULL; tree = tree->left ) {
+    for( tree = cvars_state().FirstStmt; tree != NULL; tree = tree->left ) {
         if( tree->right->op.opr == OPR_FUNCTION ) {
             SymGet( &sym, tree->right->op.u2.func.sym_handle );
             if( sym.attribs.stg_class != SC_STATIC || ( sym.flags & SYM_ADDR_TAKEN ) ) {
@@ -1804,7 +1813,7 @@ static void PruneFunctions( void )
     }
     while( marked ) {
         marked = 0;
-        for( tree = FirstStmt; tree != NULL; tree = tree->left ) {
+        for( tree = cvars_state().FirstStmt; tree != NULL; tree = tree->left ) {
             if( tree->right->op.opr == OPR_FUNCTION ) {
                 if (tree->right->op.u2.func.flags & FUNC_MARKED) {
                     tree->right->op.u2.func.flags &= ~FUNC_MARKED;
@@ -1819,9 +1828,9 @@ static void GenModuleCode( void )
 {
     TREEPTR     tree;
 
-    InLineDepth = 0;
+    cgen_state().InLineDepth = 0;
 //    InLineFuncStack = NULL;
-    for( tree = FirstStmt; tree != NULL; tree = tree->left ) {
+    for( tree = cvars_state().FirstStmt; tree != NULL; tree = tree->left ) {
         tree = GenOptimizedCode( tree );
     }
 }
@@ -1836,10 +1845,10 @@ static void EmitSyms( void )
     SYM_HANDLE          sym_handle;
     SYM_ENTRY           sym;
 
-    for( sym_handle = GlobalSym; sym_handle != SYM_NULL; sym_handle = sym.handle ) {
+    for( sym_handle = cvars_state().GlobalSym; sym_handle != SYM_NULL; sym_handle = sym.handle ) {
         SymGet( &sym, sym_handle );
         EmitSym( &sym, sym_handle );
-        if( (GenSwitches & CGSW_GEN_DBG_LOCALS )
+        if( (cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS )
           && ( sym.sym_type->decl_type != TYP_FUNCTION )
           && ( (sym.flags & SYM_TEMP) == 0 )
           && ( sym.attribs.stg_class != SC_TYPEDEF ) ) {
@@ -1891,7 +1900,7 @@ static void FreeExtVars( void )
     SYM_LIST_HEADS   *sym_list_head;
     SYM_LIST_HEADS   *next_sym_list_head;
 
-    for( sym_list_head = SymListHeads; sym_list_head != NULL; sym_list_head = next_sym_list_head ) {
+    for( sym_list_head = cvars_state().SymListHeads; sym_list_head != NULL; sym_list_head = next_sym_list_head ) {
         RelExtVars( sym_list_head->sym_head );
         next_sym_list_head = sym_list_head->next;
         CMemFree( sym_list_head );
@@ -1904,13 +1913,13 @@ void DoCompile( void )
     jmp_buf         env;
     cg_init_info    cg_info;
 
-    old_env = Environment;
+    old_env = cvars_state().Environment;
     if( setjmp( env ) == 0 ) {
-        Environment = JMPBUF_PTR( env );
+        cvars_state().Environment = JMPBUF_PTR( env );
         if( BELoad( NULL ) ) {
 #if _INTEL_CPU
-            if( ! CompFlags.zu_switch_used ) {
-                TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
+            if( ! cvars_state().CompFlags.zu_switch_used ) {
+                cvars_state().TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
             }
 #endif
 #ifdef DEVBUILD
@@ -1918,44 +1927,44 @@ void DoCompile( void )
                 GenSwitches |= CGSW_GEN_ECHO_API_CALLS;
             }
 #endif
-            if( CompFlags.rent ) {
-                GenSwitches |= CGSW_GEN_POSITION_INDEPENDANT;
+            if( cvars_state().CompFlags.rent ) {
+                cvars_state().GenSwitches |= CGSW_GEN_POSITION_INDEPENDANT;
             }
-            cg_info = BEInit( GenSwitches, TargetSwitches, OptSize, static_cast<proc_revision>(ProcRevision) );
+            cg_info = BEInit( cvars_state().GenSwitches, cvars_state().TargetSwitches, cvars_state().OptSize, static_cast<proc_revision>(cvars_state().ProcRevision) );
             if( cg_info.revision != 0 || cg_info.target != 0 ) {
 #if _CPU == 386
-                if( TargetSwitches & (CGSW_X86_P5_PROFILING | CGSW_X86_NEW_P5_PROFILING) ) {
-                    FunctionProfileSegId = AddSegName( TS_SEG_TI, "DATA", SEGTYPE_INITFINI );
+                if( cvars_state().TargetSwitches & (CGSW_X86_P5_PROFILING | CGSW_X86_NEW_P5_PROFILING) ) {
+                    cvars_state().FunctionProfileSegId = AddSegName( TS_SEG_TI, "DATA", SEGTYPE_INITFINI );
                 }
 #endif
                 SetSegs();
                 BEStart();
                 EmitSegLabels();
-                if( GenSwitches & CGSW_GEN_DBG_TYPES )
+                if( cvars_state().GenSwitches & CGSW_GEN_DBG_TYPES )
                     EmitDBType();
                 EmitSyms();
                 EmitCS_Strings();
-                SrcLoc.line = 0;
-                SrcLoc.column = 0;
-                SrcLoc.fno = 0;
+                cvars_state().SrcLoc.line = 0;
+                cvars_state().SrcLoc.column = 0;
+                cvars_state().SrcLoc.fno = 0;
                 EmitDataQuads();
                 FreeDataQuads();
 #ifdef __SEH__
-                TryRefno = NewRefno();
-                BEDefType( static_cast<cg_type>(TryRefno), 1, TRY_BLOCK_SIZE );
-                TryTableBackHandles = NULL;
+                cgen_state().TryRefno = NewRefno();
+                BEDefType( static_cast<cg_type>(cgen_state().TryRefno), 1, TRY_BLOCK_SIZE );
+                cgen_state().TryTableBackHandles = NULL;
 #endif
                 PruneFunctions();
                 GenModuleCode();
                 FreeStrings();
                 FiniSegLabels();
-                if( ErrCount != 0 ) {
+                if( cvars_state().ErrCount != 0 ) {
                     BEAbort();
                 }
                 BEStop();
                 FiniSegBacks();
-                FreeGblVars( GlobalSym );
-                FreeGblVars( SpecialSyms );
+                FreeGblVars( cvars_state().GlobalSym );
+                FreeGblVars( cvars_state().SpecialSyms );
                 FreeExtVars();
 #ifdef __SEH__
                 FreeTryTableBackHandles();
@@ -1968,7 +1977,7 @@ void DoCompile( void )
             NoCodeGenDLL();
         }
     }
-    Environment = old_env;
+    cvars_state().Environment = old_env;
 }
 
 

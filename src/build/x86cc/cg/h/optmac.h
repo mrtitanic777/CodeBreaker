@@ -1,3 +1,4 @@
+#pragma once
 /****************************************************************************
 *
 *                            Open Watcom Project
@@ -31,10 +32,10 @@
 ****************************************************************************/
 
 
-#define optbegin            ++InOptimizer;
-#define optend              --InOptimizer;
-#define optreturn( x )      { --InOptimizer; return( x ); }
-#define optreturnvoid       { --InOptimizer; return; }
+#define optbegin            ++optmac_state().InOptimizer;
+#define optend              --optmac_state().InOptimizer;
+#define optreturn( x )      { --optmac_state().InOptimizer; return( x ); }
+#define optreturnvoid       { --optmac_state().InOptimizer; return; }
 
 #define _TransferClass(var) ((var) >= OC_JMP)
 //#define _TransferClass(var) ((var) == OC_JMP || (var) == OC_JMPI || (var) == OC_RET || (var) == OC_NORET || (var) == OC_IDATA)
@@ -58,4 +59,14 @@
 /*  the next size seems to cover almost all optimizer entries that get allocated */
 #define OCENTRY_SIZE        (sizeof( ins_entry ))
 
-extern  int     InOptimizer;
+
+#ifndef CB_STATE_OPTMAC_H
+#define CB_STATE_OPTMAC_H
+
+/* the variables of optmac.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct OptmacState {
+    int InOptimizer;
+};
+inline OptmacState& optmac_state() { return cbrun_part<OptmacState>(); }
+
+#endif

@@ -73,7 +73,7 @@ void    BuildIndex( void )
     instruction *next;
     bool_        change;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         do {
             change = false;
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {

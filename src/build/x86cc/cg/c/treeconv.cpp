@@ -146,7 +146,7 @@ tn      FoldCnvRnd( cg_op opcode, tn name, const type_def *to_tipe )
 
     if( name->class_ == TN_CONS ) {
         if( name->tipe->refno == TY_DEFAULT ) {
-            cf = CFCopy( &cgh, name->u.name->c.u.cfval );
+            cf = CFCopy( &cfloat_state().cgh, name->u.name->c.u.cfval );
         } else {
             cf = CnvCFToType( name->u.name->c.u.cfval, name->tipe );
         }
@@ -154,22 +154,22 @@ tn      FoldCnvRnd( cg_op opcode, tn name, const type_def *to_tipe )
             new_tn = TGConst( cf, to_tipe );
         } else if( opcode == O_CONVERT ) {
             junk = cf;
-            cf = CFTrunc( &cgh, cf );
-            CFFree( &cgh, junk );
+            cf = CFTrunc( &cfloat_state().cgh, cf );
+            CFFree( &cfloat_state().cgh, junk );
             if( to_tipe->refno != TY_DEFAULT ) {
                 junk = cf;
                 cf = CnvCFToType( cf, to_tipe );
-                CFFree( &cgh, junk );
+                CFFree( &cfloat_state().cgh, junk );
             }
             new_tn = TGConst( cf, to_tipe );
         } else if( opcode == O_ROUND ) {
             junk = cf;
-            cf = CFRound( &cgh, cf );
-            CFFree( &cgh, junk );
+            cf = CFRound( &cfloat_state().cgh, cf );
+            CFFree( &cfloat_state().cgh, junk );
             if( to_tipe->refno != TY_DEFAULT ) {
                 junk = cf;
                 cf = CnvCFToType( cf, to_tipe );
-                CFFree( &cgh, junk );
+                CFFree( &cfloat_state().cgh, junk );
             }
             new_tn = TGConst( cf, to_tipe );
         } else {

@@ -46,7 +46,17 @@
 #include "trmem.h"
 
 
-static mem_out_action   MemOut;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct MemmgtState {
+    mem_out_action MemOut;
+};
+
+}  // namespace
+
+static inline MemmgtState& memmgt_state() { return cbrun_part<MemmgtState>(); }
+
 #ifdef _CHUNK_TRACKING
 static uint             Chunks;
 #endif
@@ -70,7 +80,7 @@ void    CGMemInit( pointer trmemhdl )
 /***********************************/
 {
     _SysReInit();
-    MemOut = MO_FATAL;
+    memmgt_state().MemOut = MO_FATAL;
 #ifdef TRMEM
     if( trmemhdl == NULL ) {
         TrHdl = _trmem_open( _SysAlloc, _SysFree, _TRMEM_NO_REALLOC, _TRMEM_NO_STRDUP,
@@ -117,8 +127,8 @@ mem_out_action    SetMemOut( mem_out_action what )
 {
     mem_out_action      old;
 
-    old = MemOut;
-    MemOut = what;
+    old = memmgt_state().MemOut;
+    memmgt_state().MemOut = what;
     return( old );
 }
 
@@ -151,9 +161,9 @@ pointer CGAlloc( size_t size )
             break;
         }
     }
-    if( ( MemOut == MO_FATAL ) || ( InOptimizer != 0 ) ) {
+    if( ( memmgt_state().MemOut == MO_FATAL ) || ( optmac_state().InOptimizer != 0 ) ) {
         FatalError( "Out of memory" );
-    } else if( MemOut == MO_SUICIDE ) {
+    } else if( memmgt_state().MemOut == MO_SUICIDE ) {
         Suicide();
     }
     return( NULL );

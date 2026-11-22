@@ -59,12 +59,17 @@ typedef struct type_list {
     type_class          format;
 } type_list;
 
-const type_def *PTInteger;
-const type_def *PTUnsigned;
-const type_def *PTPointer;
-const type_def *PTCodePointer;
 
-static type_list    *TypeList;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct TypesFileState {
+    type_list *TypeList;
+};
+
+}  // namespace
+
+static inline TypesFileState& types_file_state() { return cbrun_part<TypesFileState>(); }
 
 
 /*                              refno           length  attributes */
@@ -134,15 +139,15 @@ const type_def  *TypeAddress( cg_type tipe )
     case TY_PROC_PARM:
         return( &TPascal );
     case TY_INTEGER:
-        return( PTInteger );
+        return( types_state().PTInteger );
     case TY_UNSIGNED:
-        return( PTUnsigned );
+        return( types_state().PTUnsigned );
     case TY_POINTER:
-        return( PTPointer );
+        return( types_state().PTPointer );
     case TY_CODE_PTR:
-        return( PTCodePointer );
+        return( types_state().PTCodePointer );
     default:
-        for( list = TypeList; list != NULL; list = list->link ) {
+        for( list = types_file_state().TypeList; list != NULL; list = list->link ) {
             if( list->format == TYPE_DEFINITION ) {
                 if( list->tipe.u.type_def.refno == tipe ) {
                     return( &list->tipe.u.type_def );
@@ -182,8 +187,8 @@ const type_def  *TypeAlias( cg_type define, cg_type existing )
     if( t->refno == TY_DEFAULT )
         return( t );
     list = static_cast<type_list *>(CGAlloc( sizeof( type_list ) ));
-    list->link = TypeList;
-    TypeList = list;
+    list->link = types_file_state().TypeList;
+    types_file_state().TypeList = list;
     list->format = TYPE_ALIAS;
     list->tipe.u.alias.refno = define;
     list->tipe.u.alias.tptr  = t;
@@ -202,8 +207,8 @@ const type_def  *TypeDef( cg_type refno, type_length length, type_length align )
     /* unused parameters */ (void)align;
 
     list = static_cast<type_list *>(CGAlloc( sizeof( type_list ) ));
-    list->link = TypeList;
-    TypeList = list;
+    list->link = types_file_state().TypeList;
+    types_file_state().TypeList = list;
     list->format = TYPE_DEFINITION;
     list->tipe.u.type_def.refno  =  refno;
     list->tipe.u.type_def.length = length;
@@ -223,7 +228,7 @@ void    TypeFini( void )
     type_list   *type;
     type_list   *next;
 
-    for( type = TypeList; type != NULL; type = next ) {
+    for( type = types_file_state().TypeList; type != NULL; type = next ) {
         next = type->link;
         CGFree( type );
     }
@@ -232,17 +237,17 @@ void    TypeFini( void )
 void    TypeInit( void )
 /**********************/
 {
-    TypeList = NULL;
+    types_file_state().TypeList = NULL;
 
     TargTypeInit();
-    TypeProcParm = TypeAddress( TY_PROC_PARM );
-    TypeInteger = TypeAddress( TY_INTEGER );
-    TypeHugeInteger = TypeAddress( TY_HUGE_INTEGER );
-    TypeLongInteger = TypeAddress( TY_LONG_INTEGER );
-    TypeLongLongInteger = TypeAddress( TY_INT_8 );   // should be something else perhaps?
-    TypeNearInteger = TypeAddress( TY_NEAR_INTEGER );
-    TypeUnsigned = TypeAddress( TY_UNSIGNED );
-    TypeBoolean = TypeAddress( TY_BOOLEAN );
-    TypeNone = TypeAddress( TY_DEFAULT );
-    TypePtr = TypeAddress( TY_POINTER );
+    data_state().TypeProcParm = TypeAddress( TY_PROC_PARM );
+    data_state().TypeInteger = TypeAddress( TY_INTEGER );
+    data_state().TypeHugeInteger = TypeAddress( TY_HUGE_INTEGER );
+    data_state().TypeLongInteger = TypeAddress( TY_LONG_INTEGER );
+    data_state().TypeLongLongInteger = TypeAddress( TY_INT_8 );   // should be something else perhaps?
+    data_state().TypeNearInteger = TypeAddress( TY_NEAR_INTEGER );
+    data_state().TypeUnsigned = TypeAddress( TY_UNSIGNED );
+    data_state().TypeBoolean = TypeAddress( TY_BOOLEAN );
+    data_state().TypeNone = TypeAddress( TY_DEFAULT );
+    data_state().TypePtr = TypeAddress( TY_POINTER );
 }

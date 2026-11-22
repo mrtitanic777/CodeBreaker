@@ -44,8 +44,8 @@ static  label_handle DoAskForLabel( cg_sym_handle sym )
 
   optbegin
     new_lbl = static_cast<label_handle>(CGAlloc( sizeof( code_lbl ) ));
-    new_lbl->lbl.link    = Handles;
-    Handles = new_lbl;
+    new_lbl->lbl.link    = optdata_state().Handles;
+    optdata_state().Handles = new_lbl;
     new_lbl->lbl.sym     = sym;
     new_lbl->lbl.address = ADDR_UNKNOWN;
     new_lbl->lbl.patches = NULL;

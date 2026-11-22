@@ -47,8 +47,18 @@
 #include "cachecon.h"
 
 
-static  block           *Head;
-static  block           *(*Next)(block*);
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CacheconState {
+    block *Head;
+    block *(*Next)(block*);
+};
+
+}  // namespace
+
+static inline CacheconState& cachecon_state() { return cbrun_part<CacheconState>(); }
+
 
 static  opcnt   CountOps( instruction *ins, name *cons )
 /******************************************************/
@@ -98,7 +108,7 @@ static  type_class_def  FindMaxClass( name *cons, int *prefs )
 
     type_class = -1;
     *prefs = 0;
-    for( blk = Head; blk != NULL; blk = Next( blk ) ) {
+    for( blk = cachecon_state().Head; blk != NULL; blk = cachecon_state().Next( blk ) ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             num_operands = CountOps( ins, cons );
             for( i = 0; i < num_operands; ++i ) {
@@ -140,7 +150,7 @@ static  bool_    ReplaceConst( name *cons, name *temp, type_class_def tmp_class 
 #endif
 
     change = false;
-    for( blk = Head; blk != NULL; blk = Next( blk ) ) {
+    for( blk = cachecon_state().Head; blk != NULL; blk = cachecon_state().Next( blk ) ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             type_class = Unsigned[_OpClass( ins )];
             num_operands = CountOps( ins, cons );
@@ -177,15 +187,15 @@ void    ConstToTemp( block *pre, block *head, block*(*next)(block*) )
     type_class_def      type_class;
     int                 num_refs;
 
-    Head = head;
-    Next = next;
-    for( cons = Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
+    cachecon_state().Head = head;
+    cachecon_state().Next = next;
+    for( cons = data_state().Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
         if( cons->c.const_type == CONS_TEMP_ADDR )
             continue;
         type_class = FindMaxClass( cons, &num_refs );
         if( type_class == XX )
             continue;
-        if( head == HeadBlock && num_refs < 2 )
+        if( head == data_state().HeadBlock && num_refs < 2 )
             continue;
         temp = AllocTemp( type_class );
         temp->t.temp_flags |= CONST_TEMP;
@@ -215,7 +225,7 @@ void            MemConstTemp( conflict_node *conf )
 
     temp = conf->name;
     other = NULL;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = 0; i < ins->num_operands; ++i ) {
                 if( ins->operands[i]->n.class_ != N_TEMP )
@@ -249,7 +259,7 @@ void            MemConstTemp( conflict_node *conf )
         return;
     if( other->v.conflict == NULL )
         return;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = 0; i < ins->num_operands; ++i ) {
                 if( ins->operands[i]->n.class_ != N_TEMP )

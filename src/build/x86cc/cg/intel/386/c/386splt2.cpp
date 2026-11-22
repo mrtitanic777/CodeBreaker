@@ -87,7 +87,7 @@ name    *LowPart( name *tosplit, type_class_def type_class )
                 _Zoiks( ZOIKS_129 );
             } else { /* FD */
                 floatval = GetFloat( tosplit, FD );
-                new_part = AllocConst( CFCnvU32F( &cgh, _TargetLongInt( U64LowLE( floatval->buffer.u64 ) ) ) );
+                new_part = AllocConst( CFCnvU32F( &cfloat_state().cgh, _TargetLongInt( U64LowLE( floatval->buffer.u64 ) ) ) );
             }
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_OFFSET );
@@ -240,7 +240,7 @@ name    *HighPart( name *tosplit, type_class_def type_class )
                 _Zoiks( ZOIKS_129 );
             } else { /* FD */
                 floatval = GetFloat( tosplit, FD );
-                new_part = AllocConst( CFCnvU32F( &cgh, _TargetLongInt( U64HighLE( floatval->buffer.u64 ) ) ) );
+                new_part = AllocConst( CFCnvU32F( &cfloat_state().cgh, _TargetLongInt( U64HighLE( floatval->buffer.u64 ) ) ) );
             }
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_SEGMENT );
@@ -397,7 +397,6 @@ instruction     *rMAKEU2( instruction *ins )
 }
 
 
-
 instruction      *rLOADLONGADDR( instruction *ins )
 /*************************************************/
 {
@@ -533,7 +532,6 @@ instruction     *rEXT_PUSH1( instruction *ins )
     PrefixIns( ins, new_ins );
     return( new_ins );
 }
-
 
 
 instruction     *rEXT_PUSH2( instruction *ins )

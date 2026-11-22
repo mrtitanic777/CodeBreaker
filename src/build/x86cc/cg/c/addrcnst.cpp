@@ -47,7 +47,7 @@ void    MakeMovAddrConsts( void )
     instruction *ins;
     name        *op;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode == OP_LA ) {
                 op = ins->operands[0];
@@ -74,7 +74,7 @@ void    KillMovAddrConsts( void )
     type_class_def      type_class;
     opcnt               i;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 op = ins->operands[i];

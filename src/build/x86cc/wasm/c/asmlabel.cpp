@@ -174,7 +174,7 @@ bool_ MakeLabel( token_buffer *tokbuf, token_idx i, memtype mem_type )
         return( RC_ERROR );
     }
     sym->state = SYM_INTERNAL;
-    sym->addr = AsmCodeAddress;
+    sym->addr = asminlin_state().AsmCodeAddress;
     //  it should define label type ?????
     sym->mem_type = mem_type;  // fixme ??
 #endif

@@ -55,3 +55,17 @@ bool_    LoopRegInvariant( void );
 void    LoopEnregister( void );
 bool_    IndVars( void );
 bool_    TransLoops( bool_ unroll );
+
+#ifndef CB_STATE_LOOPOPTS_H
+#define CB_STATE_LOOPOPTS_H
+
+/* the variables of loopopts.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct LoopoptsState {
+    block *Head;
+    block *PreHead;
+    induction *IndVarList;
+    block *Loop;
+};
+inline LoopoptsState& loopopts_state() { return cbrun_part<LoopoptsState>(); }
+
+#endif

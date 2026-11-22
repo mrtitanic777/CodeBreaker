@@ -206,5 +206,15 @@ typedef enum {
     BASED_VALUE,
 }cv_based_kind;
 
-extern segment_id    CVSyms;
-extern segment_id    CVTypes;
+
+#ifndef CB_STATE_CVDBG_H
+#define CB_STATE_CVDBG_H
+
+/* the variables of cvdbg.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct CvdbgState {
+    segment_id CVSyms;
+    segment_id CVTypes;
+};
+inline CvdbgState& cvdbg_state() { return cbrun_part<CvdbgState>(); }
+
+#endif

@@ -30,7 +30,16 @@
 ****************************************************************************/
 
 
-extern dw_client    Client;
+#ifndef CB_STATE_DFSYMS_H
+#define CB_STATE_DFSYMS_H
+
+/* the variables of dfsyms.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct DfsymsState {
+    dw_client Client;
+};
+inline DfsymsState& dfsyms_state() { return cbrun_part<DfsymsState>(); }
+
+#endif
 
 extern  void    DFInitDbgInfo( void );
 extern  void    DFFiniDbgInfo( void );

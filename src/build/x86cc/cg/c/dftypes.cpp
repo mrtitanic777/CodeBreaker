@@ -60,7 +60,7 @@ dbg_type        DFFtnType( const char *name, dbg_ftn_type tipe )
     unsigned    size;
 
     size = (tipe & 0x0f)+1;
-    ret = DWFundamental( Client, name, DW_FT_COMPLEX_FLOAT, size );
+    ret = DWFundamental( dfsyms_state().Client, name, DW_FT_COMPLEX_FLOAT, size );
     return( ret );
 }
 
@@ -91,7 +91,7 @@ dbg_type        DFScalar( const char *name, cg_type tipe )
         class_ = DW_FT_UNSIGNED;
     }
 
-    ret = DWFundamental( Client, name, class_, tipe_addr->length );
+    ret = DWFundamental( dfsyms_state().Client, name, class_, tipe_addr->length );
     return( ret );
 }
 
@@ -135,7 +135,7 @@ void    DFDumpName( dbg_name name, dbg_type tipe )
 /************************************************/
 {
     if( name->scope == SCOPE_TYPEDEF ) {
-        tipe = DWTypedef( Client, tipe, name->name, 0, static_cast<dw_flags>(0) );
+        tipe = DWTypedef( dfsyms_state().Client, tipe, name->name, 0, static_cast<dw_flags>(0) );
     }
     name->refno = tipe; /* link in  typedef sym to type */
 }
@@ -153,7 +153,7 @@ dbg_type        DFCharBlock( uint_32 len )
 {
     dbg_type    ret;
 
-    ret = DWString( Client, NULL, len, NULL, 0, static_cast<dw_flags>(0) );
+    ret = DWString( dfsyms_state().Client, NULL, len, NULL, 0, static_cast<dw_flags>(0) );
     return( ret );
 }
 
@@ -162,7 +162,7 @@ dbg_type    DFCharBlockNamed( const char *name, uint_32 len )
 {
     dbg_type    ret;
 
-    ret = DWString( Client, NULL, len, name, 0, static_cast<dw_flags>(0) );
+    ret = DWString( dfsyms_state().Client, NULL, len, name, 0, static_cast<dw_flags>(0) );
     return( ret );
 }
 
@@ -174,13 +174,13 @@ dbg_type    DFIndCharBlock( back_handle len, cg_type len_type, int off )
     dw_loc_handle   len_loc;
     const type_def  *tipe_addr;
 
-    len_locid = DWLocInit( Client );
-    DWLocSym( Client, len_locid, (dw_sym_handle)len, DW_W_LABEL );
-    DWLocOp( Client, len_locid, DW_LOC_plus_uconst, off );
-    len_loc = DWLocFini( Client, len_locid );
+    len_locid = DWLocInit( dfsyms_state().Client );
+    DWLocSym( dfsyms_state().Client, len_locid, (dw_sym_handle)len, DW_W_LABEL );
+    DWLocOp( dfsyms_state().Client, len_locid, DW_LOC_plus_uconst, off );
+    len_loc = DWLocFini( dfsyms_state().Client, len_locid );
     tipe_addr = TypeAddress( len_type );
-    ret = DWString( Client, len_loc, tipe_addr->length, NULL, 0, static_cast<dw_flags>(0) );
-    DWLocTrash( Client, len_loc );
+    ret = DWString( dfsyms_state().Client, len_loc, tipe_addr->length, NULL, 0, static_cast<dw_flags>(0) );
+    DWLocTrash( dfsyms_state().Client, len_loc );
     return( ret );
 }
 
@@ -194,9 +194,9 @@ dbg_type        DFLocCharBlock( dbg_loc loc, cg_type len_type )
     //NYI: damned if I know what to do.
     len_loc = DBGLoc2DF( loc );
     tipe_addr = TypeAddress( len_type );
-    ret = DWString( Client, len_loc, tipe_addr->length, NULL, 0, static_cast<dw_flags>(0) );
+    ret = DWString( dfsyms_state().Client, len_loc, tipe_addr->length, NULL, 0, static_cast<dw_flags>(0) );
     if( len_loc != NULL ) {
-        DWLocTrash( Client, len_loc );
+        DWLocTrash( dfsyms_state().Client, len_loc );
     }
     return( ret );
 }
@@ -209,12 +209,12 @@ dbg_type        DFArray( dbg_type idx, dbg_type base )
     dw_dim_info info;
 
 /* need subrange types in dwarf library */
-    ret = DWBeginArray( Client, base, 0, NULL, 0, static_cast<dw_flags>(0) );
+    ret = DWBeginArray( dfsyms_state().Client, base, 0, NULL, 0, static_cast<dw_flags>(0) );
     info.index_type  = idx;
     info.lo_data  = 0;
     info.hi_data  = 0;
-    DWArrayDimension( Client, &info );
-    DWEndArray( Client );
+    DWArrayDimension( dfsyms_state().Client, &info );
+    DWEndArray( dfsyms_state().Client );
     return( ret );
 }
 
@@ -223,7 +223,7 @@ dbg_type        DFIntArray( uint_32 hi, dbg_type base )
 {
     dbg_type    ret;
 
-    ret = DWSimpleArray( Client, base, hi+1 );
+    ret = DWSimpleArray( dfsyms_state().Client, base, hi+1 );
     return( ret );
 }
 
@@ -234,24 +234,24 @@ static  dw_handle   MKBckVar( back_handle bck, int off, dw_handle tipe )
     dw_loc_handle   dw_segloc;
     dw_handle       obj;
 
-    locid = DWLocInit( Client );
-    DWLocSym( Client, locid, (dw_sym_handle)bck, DW_W_LABEL );
-    DWLocOp( Client, locid, DW_LOC_plus_uconst, off );
-    dw_loc = DWLocFini( Client, locid );
+    locid = DWLocInit( dfsyms_state().Client );
+    DWLocSym( dfsyms_state().Client, locid, (dw_sym_handle)bck, DW_W_LABEL );
+    DWLocOp( dfsyms_state().Client, locid, DW_LOC_plus_uconst, off );
+    dw_loc = DWLocFini( dfsyms_state().Client, locid );
     dw_segloc = NULL;
 #if _TARGET_INTEL
     if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
-        locid = DWLocInit( Client );
-        DWLocSym( Client, locid, (dw_sym_handle)bck, DW_W_LABEL_SEG );
-        dw_segloc = DWLocFini( Client, locid );
+        locid = DWLocInit( dfsyms_state().Client );
+        DWLocSym( dfsyms_state().Client, locid, (dw_sym_handle)bck, DW_W_LABEL_SEG );
+        dw_segloc = DWLocFini( dfsyms_state().Client, locid );
     }
 #endif
-    obj = DWVariable( Client, tipe, dw_loc, 0, dw_segloc, "__bck", 0, static_cast<dw_flags>(0) );
+    obj = DWVariable( dfsyms_state().Client, tipe, dw_loc, 0, dw_segloc, "__bck", 0, static_cast<dw_flags>(0) );
 
-    DWLocTrash( Client, dw_loc );
+    DWLocTrash( dfsyms_state().Client, dw_loc );
 #if _TARGET_INTEL
     if( dw_segloc != NULL ) {
-        DWLocTrash( Client, dw_segloc );
+        DWLocTrash( dfsyms_state().Client, dw_segloc );
     }
 #endif
     return( obj );
@@ -268,7 +268,7 @@ dbg_type    DFEndArray( dbg_array ar )
     dim_any         *dim;
     dbg_type        ret;
 
-    ret = DWBeginArray( Client, ar->base, 0, NULL, 0, static_cast<dw_flags>(0) );
+    ret = DWBeginArray( dfsyms_state().Client, ar->base, 0, NULL, 0, static_cast<dw_flags>(0) );
     lo_tipe = DBG_NIL_TYPE;
     tipe_addr = NULL;
     count_tipe = DBG_NIL_TYPE;
@@ -279,7 +279,7 @@ dbg_type    DFEndArray( dbg_array ar )
             info.index_type = dim->u.con.idx;
             info.lo_data  = dim->u.con.lo;
             info.hi_data  = dim->u.con.hi;
-            DWArrayDimension( Client, &info );
+            DWArrayDimension( dfsyms_state().Client, &info );
             break;
         case DIM_VAR:
             if( lo_tipe == DBG_NIL_TYPE ) {
@@ -290,12 +290,12 @@ dbg_type    DFEndArray( dbg_array ar )
             varinfo.index_type = lo_tipe;
             varinfo.lo_data  =  MKBckVar( dim->u.var.dims, dim->u.var.off, lo_tipe);
             varinfo.count_data  = MKBckVar( dim->u.var.dims, dim->u.var.off + tipe_addr->length, count_tipe);
-            DWArrayVarDim( Client, &varinfo );
+            DWArrayVarDim( dfsyms_state().Client, &varinfo );
             break;
         }
         CGFree( dim );
     }
-    DWEndArray( Client );
+    DWEndArray( dfsyms_state().Client );
     return( ret );
 }
 
@@ -309,15 +309,15 @@ dbg_type        DFFtnArray( back_handle dims, cg_type lo_bound_tipe,
     const type_def  *tipe_addr;
     dbg_type        ret;
 
-    ret = DWBeginArray( Client, base, 0, NULL, 0, static_cast<dw_flags>(0) );
+    ret = DWBeginArray( dfsyms_state().Client, base, 0, NULL, 0, static_cast<dw_flags>(0) );
     tipe_addr = TypeAddress( lo_bound_tipe );
     lo_tipe = DFScalar( "", lo_bound_tipe );
     count_tipe = DFScalar( "", num_elems_tipe );
     varinfo.index_type = lo_tipe;
     varinfo.lo_data  =  MKBckVar( dims, off, lo_tipe);
     varinfo.count_data  = MKBckVar( dims, off+tipe_addr->length, count_tipe);
-    DWArrayVarDim( Client, &varinfo );
-    DWEndArray( Client );
+    DWArrayVarDim( dfsyms_state().Client, &varinfo );
+    DWEndArray( dfsyms_state().Client );
     return( ret );
 }
 
@@ -382,7 +382,7 @@ dbg_type        DFDereference( cg_type ptr_type, dbg_type base )
     dw_flags    flags;
 
     flags = DFPtrClass( ptr_type );
-    ret = DWPointer( Client, base, flags | DW_FLAG_REFERENCE  );
+    ret = DWPointer( dfsyms_state().Client, base, flags | DW_FLAG_REFERENCE  );
     return( ret );
 }
 
@@ -393,7 +393,7 @@ dbg_type        DFPtr( cg_type ptr_type, dbg_type base )
     dw_flags    flags;
 
     flags = DFPtrClass( ptr_type );
-    ret = DWPointer( Client, base, flags );
+    ret = DWPointer( dfsyms_state().Client, base, flags );
     return( ret );
 }
 
@@ -409,7 +409,7 @@ void      DFBegStruct( dbg_struct st )
     } else {
         class_ = DW_ST_UNION;
     }
-    ret = DWStruct( Client, class_ );
+    ret = DWStruct( dfsyms_state().Client, class_ );
     st->me = ret;
 }
 
@@ -440,22 +440,22 @@ static  dw_loc_id   DoLocCnv( dbg_loc loc, loc_state *state )
         if( loc->class_ == LOC_MEMORY ) {
             sym = (dw_sym_handle)loc->u.fe_sym;
             if( state->seg ) {
-                DWLocSegment( Client, locid, sym );
+                DWLocSegment( dfsyms_state().Client, locid, sym );
             }
             if( state->offset ) {
-                DWLocStatic( Client, locid, sym );
+                DWLocStatic( dfsyms_state().Client, locid, sym );
                 if( state->seg ) {
                     state->addr_seg = true;
                 }
             }
         } else {
             offset = loc->u.val;
-            DWLocConstS( Client, locid, offset );
+            DWLocConstS( dfsyms_state().Client, locid, offset );
         }
         break;
     case LOC_BP_OFFSET:
         offset = NewBase( loc->u.be_sym );
-        DWLocOp( Client, locid, DW_LOC_fbreg, offset );
+        DWLocOp( dfsyms_state().Client, locid, DW_LOC_fbreg, offset );
         break;
     case LOC_REG:
         DFOutReg( locid, loc->u.be_sym );
@@ -464,7 +464,7 @@ static  dw_loc_id   DoLocCnv( dbg_loc loc, loc_state *state )
         if( HW_CEqual( loc->u.be_sym->r.reg, HW_EMPTY ) ) {
             //NYI: structured return value on the stack. Have to do something
             //       suitable. For now, output a no location.
-            DWLocOp( Client, locid, DW_LOC_breg, 0, 0 );
+            DWLocOp( dfsyms_state().Client, locid, DW_LOC_breg, 0, 0 );
         } else {
             DFOutRegInd( locid, loc->u.be_sym );
         }
@@ -483,7 +483,7 @@ static  dw_loc_id   DoLocCnv( dbg_loc loc, loc_state *state )
             } else {
                 size = 4;
             }
-            DWLocOp( Client, locid, dref_op, size );
+            DWLocOp( dfsyms_state().Client, locid, dref_op, size );
             state->addr_seg = false;  /* ate offset seg */
             break;
         case LOP_IND_ADDR_16:
@@ -495,49 +495,49 @@ static  dw_loc_id   DoLocCnv( dbg_loc loc, loc_state *state )
             }
             if( state->addr_seg ) {
                 dref_op =  DW_LOC_xderef_size;
-                DWLocOp0( Client, locid, DW_LOC_pick );  /* dup seg */
-                DWLocOp0( Client, locid, DW_LOC_pick );  /* dup offset */
-                DWLocOp( Client, locid, DW_LOC_plus_uconst, size ); /* seg offset*/
-                DWLocOp( Client, locid, dref_op, 2 );  /* push seg */
-                DWLocOp0( Client, locid, DW_LOC_rot );  /* seg at bottom */
-                DWLocOp( Client, locid, dref_op, size ); /* push offset */
+                DWLocOp0( dfsyms_state().Client, locid, DW_LOC_pick );  /* dup seg */
+                DWLocOp0( dfsyms_state().Client, locid, DW_LOC_pick );  /* dup offset */
+                DWLocOp( dfsyms_state().Client, locid, DW_LOC_plus_uconst, size ); /* seg offset*/
+                DWLocOp( dfsyms_state().Client, locid, dref_op, 2 );  /* push seg */
+                DWLocOp0( dfsyms_state().Client, locid, DW_LOC_rot );  /* seg at bottom */
+                DWLocOp( dfsyms_state().Client, locid, dref_op, size ); /* push offset */
                 /* now have offset seg on stack */
             } else {
                 dref_op =  DW_LOC_deref_size;
-                DWLocOp0( Client, locid, DW_LOC_dup );    /* dup offset */
-                DWLocOp( Client, locid, DW_LOC_plus_uconst, size ); /* seg offset*/
-                DWLocOp( Client, locid, dref_op, 2 );  /* push seg */
-                DWLocOp0( Client, locid, DW_LOC_swap ); /* get dup offset */
-                DWLocOp( Client, locid, dref_op, size ); /* push offset */
+                DWLocOp0( dfsyms_state().Client, locid, DW_LOC_dup );    /* dup offset */
+                DWLocOp( dfsyms_state().Client, locid, DW_LOC_plus_uconst, size ); /* seg offset*/
+                DWLocOp( dfsyms_state().Client, locid, dref_op, 2 );  /* push seg */
+                DWLocOp0( dfsyms_state().Client, locid, DW_LOC_swap ); /* get dup offset */
+                DWLocOp( dfsyms_state().Client, locid, dref_op, size ); /* push offset */
                 /* now have offset seg on stack */
             }
             state->addr_seg = true; /* we have offset seg on stack */
             break;
         case LOP_ZEB:
-            DWLocConstU( Client, locid, 0xff );
-            DWLocOp0( Client, locid, DW_LOC_and );
+            DWLocConstU( dfsyms_state().Client, locid, 0xff );
+            DWLocOp0( dfsyms_state().Client, locid, DW_LOC_and );
             break;
         case LOP_ZEW:
-            DWLocConstU( Client, locid, 0xffff );
-            DWLocOp0( Client, locid, DW_LOC_and );
+            DWLocConstU( dfsyms_state().Client, locid, 0xffff );
+            DWLocOp0( dfsyms_state().Client, locid, DW_LOC_and );
             break;
         case LOP_MK_FP:
             state->addr_seg = true;
             break;
         case LOP_POP:
-            DWLocOp0( Client, locid, DW_LOC_drop );
+            DWLocOp0( dfsyms_state().Client, locid, DW_LOC_drop );
             break;
         case LOP_XCHG:
-            DWLocOp0( Client, locid, DW_LOC_swap );
+            DWLocOp0( dfsyms_state().Client, locid, DW_LOC_swap );
             break;
         case LOP_ADD:
-            DWLocOp0( Client, locid, DW_LOC_plus );
+            DWLocOp0( dfsyms_state().Client, locid, DW_LOC_plus );
             break;
         case LOP_DUP:
-            DWLocOp0( Client, locid, DW_LOC_dup );
+            DWLocOp0( dfsyms_state().Client, locid, DW_LOC_dup );
             break;
         case LOP_NOP:
-            DWLocOp0( Client, locid, DW_LOC_not );
+            DWLocOp0( dfsyms_state().Client, locid, DW_LOC_not );
             break;
         }
         break;
@@ -591,13 +591,13 @@ dw_loc_handle DBGLoc2DF( dbg_loc loc )
     state.seg = false;
     state.offset = true;
     state.addr_seg = false;
-    state.locid = DWLocInit( Client );
+    state.locid = DWLocInit( dfsyms_state().Client );
     if( loc != NULL ) {
         df_locid = DoLocCnv( loc, &state );
-        df_loc = DWLocFini( Client, df_locid );
+        df_loc = DWLocFini( dfsyms_state().Client, df_locid );
     } else {
         df_locid = state.locid;
-        df_loc = DWLocFini( Client, df_locid );
+        df_loc = DWLocFini( dfsyms_state().Client, df_locid );
     }
     return( df_loc );
 
@@ -615,14 +615,14 @@ dw_loc_handle DBGLocBase2DF( dbg_loc loc_seg )
     state.seg = true;
     state.offset = true;
     state.addr_seg = false;
-    state.locid = DWLocInit( Client );
+    state.locid = DWLocInit( dfsyms_state().Client );
     loc_seg = SkipMkFP( loc_seg );
     if( loc_seg != NULL ) {
         df_locid = DoLocCnv( loc_seg, &state );
-        df_loc = DWLocFini( Client, df_locid );
+        df_loc = DWLocFini( dfsyms_state().Client, df_locid );
     } else {
         df_locid = state.locid;
-        df_loc = DWLocFini( Client, df_locid );
+        df_loc = DWLocFini( dfsyms_state().Client, df_locid );
     }
     return( df_loc );
 
@@ -639,9 +639,9 @@ dbg_type        DFBasedPtr( cg_type ptr_type, dbg_type base,
 
     dw_segloc = DBGLocBase2DF( loc_segment );
     flags = DFPtrClass( ptr_type );
-    ret = DWBasedPointer( Client, base, dw_segloc, flags );
+    ret = DWBasedPointer( dfsyms_state().Client, base, dw_segloc, flags );
     if( dw_segloc != NULL ) {
-        DWLocTrash( Client, dw_segloc );
+        DWLocTrash( dfsyms_state().Client, dw_segloc );
     }
     return( ret );
 }
@@ -686,7 +686,7 @@ dbg_type        DFEndStruct( dbg_struct st )
     } else {
         name = NULL;
     }
-    DWBeginStruct( Client, ret, st->size, name, 0, static_cast<dw_flags>(0) );
+    DWBeginStruct( dfsyms_state().Client, ret, st->size, name, 0, static_cast<dw_flags>(0) );
     for( ;; ) {
         field = st->list;
         if( field == NULL )
@@ -699,8 +699,8 @@ dbg_type        DFEndStruct( dbg_struct st )
             if( field->bclass.kind == INHERIT_VBASE ) {
                 flags |= DW_FLAG_VIRTUAL;
             }
-            DWAddInheritance( Client, field->bclass.base, loc, flags );
-            DWLocTrash( Client, loc );
+            DWAddInheritance( dfsyms_state().Client, field->bclass.base, loc, flags );
+            DWLocTrash( dfsyms_state().Client, loc );
             break;
         case FIELD_METHOD:
             DBLocFini( field->method.u.loc );
@@ -715,38 +715,38 @@ dbg_type        DFEndStruct( dbg_struct st )
                 loc = DBGLoc2DF( field->member.u.loc );
                  DBLocFini( field->member.u.loc );
             } else {
-                locid = DWLocInit( Client );
-                DWLocConstU( Client, locid, field->member.u.off );
-                DWLocOp0( Client, locid, DW_LOC_plus );
-                loc = DWLocFini( Client, locid );
+                locid = DWLocInit( dfsyms_state().Client );
+                DWLocConstU( dfsyms_state().Client, locid, field->member.u.off );
+                DWLocOp0( dfsyms_state().Client, locid, DW_LOC_plus );
+                loc = DWLocFini( dfsyms_state().Client, locid );
             }
             if( field->member.b_strt == 0 && field->member.b_len == 0 ) {
-                DWAddField( Client, field->member.base, loc,
+                DWAddField( dfsyms_state().Client, field->member.base, loc,
                     field->member.name, flags );
             } else {
                 int bit_start;
 
                 bit_start = 4*8-( field->member.b_strt+field->member.b_len);
-                DWAddBitField( Client, field->member.base, loc, 4,
+                DWAddBitField( dfsyms_state().Client, field->member.base, loc, 4,
                                bit_start, field->member.b_len,
                                field->member.name, flags );
             }
-            DWLocTrash( Client, loc );
+            DWLocTrash( dfsyms_state().Client, loc );
             break;
         case FIELD_STFIELD:
             /* some loc thing */
             flags = WVDFAccess( field->stfield.attr );
             loc = DBGLoc2DF( field->stfield.loc );
             DBLocFini( field->stfield.loc );
-            DWAddField( Client, field->stfield.base, loc,
+            DWAddField( dfsyms_state().Client, field->stfield.base, loc,
                          field->stfield.name, flags | DW_FLAG_STATIC );
-            DWLocTrash( Client, loc );
+            DWLocTrash( dfsyms_state().Client, loc );
             break;
         }
         st->list = field->entry.next;
         CGFree( field );
     }
-    DWEndStruct( Client );
+    DWEndStruct( dfsyms_state().Client );
     return( ret );
 }
 
@@ -760,21 +760,21 @@ dbg_type        DFEndEnum( dbg_enum en )
     signed_64       val;
 
     tipe_addr = TypeAddress( en->tipe );
-    ret = DWBeginEnumeration( Client, tipe_addr->length, NULL, 0, static_cast<dw_flags>(0) );
+    ret = DWBeginEnumeration( dfsyms_state().Client, tipe_addr->length, NULL, 0, static_cast<dw_flags>(0) );
     for( ;; ) {
         cons = en->list;
         if( cons == NULL )
             break;
         val = cons->val;
         if( I64High( val ) == 0 || I64High( val ) == -1 ) {
-            DWAddEnumerationConstant( Client, U64Low( val ), cons->name );
+            DWAddEnumerationConstant( dfsyms_state().Client, U64Low( val ), cons->name );
         } else {
-            DWAddEnumerationConstant( Client, U64Low( val ), cons->name );
+            DWAddEnumerationConstant( dfsyms_state().Client, U64Low( val ), cons->name );
         }
         en->list = cons->next;
         CGFree( cons );
     }
-    DWEndEnumeration( Client );
+    DWEndEnumeration( dfsyms_state().Client );
     return( ret );
 }
 
@@ -789,19 +789,19 @@ dbg_type        DFEndProc( dbg_proc pr )
 
 //  flags = DFPtrClass( pr->call );
     flags = DW_FLAG_PROTOTYPED | DW_FLAG_DECLARATION;
-    proc_type = DWBeginSubroutineType( Client, pr->ret, NULL, 0, flags );
+    proc_type = DWBeginSubroutineType( dfsyms_state().Client, pr->ret, NULL, 0, flags );
     parm = pr->list;
     if( parm == NULL ) {
-        DWAddEllipsisToSubroutineType( Client );
+        DWAddEllipsisToSubroutineType( dfsyms_state().Client );
     }
     for( ;; ) {
         if( parm == NULL )
             break;
-        DWAddParmToSubroutineType( Client, parm->tipe, NULL, NULL, NULL );
+        DWAddParmToSubroutineType( dfsyms_state().Client, parm->tipe, NULL, NULL, NULL );
         pr->list = parm->next;
         CGFree( parm );
         parm = pr->list;
     }
-    DWEndSubroutineType( Client );
+    DWEndSubroutineType( dfsyms_state().Client );
     return( proc_type );
 }

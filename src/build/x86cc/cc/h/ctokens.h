@@ -107,6 +107,6 @@ typedef enum TOKEN {
 #define T_UNEXPANDABLE_ID   T_LAST_TOKEN
 #define T_PRAGMA_END        (T_LAST_TOKEN + 1)
 
-extern  const char  *TokenString[];
-extern  token_class TokenClass[];
+extern  const char  *const TokenString[];
+extern  token_class const TokenClass[];
 

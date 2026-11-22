@@ -43,7 +43,17 @@
 #include "optrel.h"
 
 
-static  label_handle    Handle;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct OptrelState {
+    label_handle Handle;
+};
+
+}  // namespace
+
+static inline OptrelState& optrel_state() { return cbrun_part<OptrelState>(); }
+
 
 static  bool_    Jmp_to_lbl( ins_entry *instr )
 /********************************************/
@@ -51,7 +61,7 @@ static  bool_    Jmp_to_lbl( ins_entry *instr )
   optbegin
     if( _Class( instr ) != OC_JMP )
         optreturn( false );
-    if( _Label( instr ) != Handle )
+    if( _Label( instr ) != optrel_state().Handle )
         optreturn( false );
     optreturn( true );
 }
@@ -78,8 +88,8 @@ static  bool_    CanReach( label_handle lbl, ins_entry **add_ptr,
         if( _TstStatus( lbl, SHORTREACH ) )
             return( true );
         obj_len = OptInsSize( OC_JMP, OC_DEST_SHORT );
-        lbl_ins = Handle->ins;
-        for( instr = NextIns( FirstIns ); instr != NULL; instr = NextIns( instr ) ) {
+        lbl_ins = optrel_state().Handle->ins;
+        for( instr = NextIns( optdata_state().FirstIns ); instr != NULL; instr = NextIns( instr ) ) {
             obj_len += _ObjLen( instr );
             if( obj_len > MAX_SHORT_FWD )
                 break;
@@ -112,12 +122,12 @@ static  void    HndlRedirect( label_handle new_lbl )
     label_handle    redir;
 
   optbegin
-    redir = Handle->redirect;
+    redir = optrel_state().Handle->redirect;
     if( redir != NULL && redir != new_lbl ) {
         _ClrStatus( redir, REDIRECTION );
         TryScrapLabel( redir );
     }
-    Handle->redirect = new_lbl;
+    optrel_state().Handle->redirect = new_lbl;
     if( new_lbl != NULL ) {
         _SetStatus( new_lbl, REDIRECTION );
     }
@@ -134,7 +144,7 @@ static  bool_    InRange( void )
   optbegin
     if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) )
         optreturn( false );
-    jmp_lbl = Handle->redirect;
+    jmp_lbl = optrel_state().Handle->redirect;
     /* we don't have a redirection for this label*/
     if( jmp_lbl == NULL )
         optreturn( false );
@@ -162,22 +172,22 @@ static  void    BigBranch( ins_entry *add, ins_entry *jmp )
     if( jmp != NULL && _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
         /* jump to a jump that's going where we want*/
         HndlRedirect( AddNewLabel( PrevIns( jmp ), 0 ) );
-        ChgLblRef( FirstIns, Handle->redirect );
+        ChgLblRef( optdata_state().FirstIns, optrel_state().Handle->redirect );
     } else if( InRange() ) {
         /* use old redirection label*/
-        ChgLblRef( FirstIns, Handle->redirect );
+        ChgLblRef( optdata_state().FirstIns, optrel_state().Handle->redirect );
     } else if( add != NULL && _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
         /* add a jump that's in range*/
-        AddNewJump( add, Handle );
+        AddNewJump( add, optrel_state().Handle );
         _Savings( OPT_JUMPS, -_ObjLen( NextIns( add ) ) );
         HndlRedirect( AddNewLabel( add, 0 ) );
-        ChgLblRef( FirstIns, Handle->redirect );
+        ChgLblRef( optdata_state().FirstIns, optrel_state().Handle->redirect );
     } else {
         /* reverse the branch*/
-        _JmpCond( FirstIns ) = ReverseCondition( _JmpCond( FirstIns ) );
-        AddNewJump( FirstIns, Handle );
-        ChgLblRef( FirstIns, AddNewLabel( NextIns( FirstIns ), 0 ) );
-        HndlRedirect( AddNewLabel( FirstIns, 0 ) );
+        _JmpCond( optdata_state().FirstIns ) = ReverseCondition( _JmpCond( optdata_state().FirstIns ) );
+        AddNewJump( optdata_state().FirstIns, optrel_state().Handle );
+        ChgLblRef( optdata_state().FirstIns, AddNewLabel( NextIns( optdata_state().FirstIns ), 0 ) );
+        HndlRedirect( AddNewLabel( optdata_state().FirstIns, 0 ) );
     }
   optend
 }
@@ -192,26 +202,26 @@ static  void    SetShort( void )
 
   optbegin
     floating = false;
-    if( _ChkAttr( FirstIns, OC_ATTR_FLOAT ) ) {
+    if( _ChkAttr( optdata_state().FirstIns, OC_ATTR_FLOAT ) ) {
         floating = true;
     }
-    size = OptInsSize( static_cast<oc_class>(_Class( FirstIns )), OC_DEST_SHORT );
-    if( _Class( FirstIns ) == OC_JMP ) {
+    size = OptInsSize( static_cast<oc_class>(_Class( optdata_state().FirstIns )), OC_DEST_SHORT );
+    if( _Class( optdata_state().FirstIns ) == OC_JMP ) {
         _Savings( OPT_JUMPS, _ObjLen( FirstIns ) - size );
-        _ObjLen( FirstIns ) = size;
-        _ResetClass( FirstIns, OC_JMP );
+        _ObjLen( optdata_state().FirstIns ) = size;
+        _ResetClass( optdata_state().FirstIns, OC_JMP );
         if( floating ) {
-            _SetAttr( FirstIns, OC_ATTR_FLOAT );
+            _SetAttr( optdata_state().FirstIns, OC_ATTR_FLOAT );
         }
     } else {
         _Savings( OPT_JCONDS, _ObjLen( FirstIns ) - size );
-        _ObjLen( FirstIns ) = size;
-        _ResetClass( FirstIns, OC_JCOND );
+        _ObjLen( optdata_state().FirstIns ) = size;
+        _ResetClass( optdata_state().FirstIns, OC_JCOND );
         if( floating ) {
-            _SetAttr( FirstIns, OC_ATTR_FLOAT );
+            _SetAttr( optdata_state().FirstIns, OC_ATTR_FLOAT );
         }
     }
-    l_ins = _Label( FirstIns )->ins;
+    l_ins = _Label( optdata_state().FirstIns )->ins;
     if( l_ins != NULL ) {
         _SetAttr( l_ins, OC_ATTR_SHORT );
     }
@@ -229,15 +239,15 @@ void    SetBranches( void )
   bool_          was_keep;
 
   optbegin
-    Handle = _Label( FirstIns );
-    if( CanReach( Handle, &add, &jmp ) ) {
-        _SetStatus( Handle, SHORTREACH );
+    optrel_state().Handle = _Label( optdata_state().FirstIns );
+    if( CanReach( optrel_state().Handle, &add, &jmp ) ) {
+        _SetStatus( optrel_state().Handle, SHORTREACH );
         HndlRedirect( NULL );
         SetShort();
     } else {
-        if( _ChkAttr( FirstIns, OC_ATTR_SHORT ) ) {
+        if( _ChkAttr( optdata_state().FirstIns, OC_ATTR_SHORT ) ) {
             /* HAS to be a short branch */
-            next = NextIns( FirstIns );
+            next = NextIns( optdata_state().FirstIns );
             if( _Class(next) == OC_JMP && CanReach(_Label(next), NULL, NULL) ) {
                 /* we have:
                         Jcond   L1
@@ -247,22 +257,22 @@ void    SetBranches( void )
                         J~cond  L2
                         JMP     L1
                 */
-                _JmpCond( FirstIns ) =
-                                ReverseCondition( _JmpCond( FirstIns ) );
-                was_keep = _TstStatus( Handle, KEEPLABEL );
-                _SetStatus( Handle, KEEPLABEL );
-                ChgLblRef( FirstIns, _Label( next ) );
-                ChgLblRef( next, Handle );
+                _JmpCond( optdata_state().FirstIns ) =
+                                ReverseCondition( _JmpCond( optdata_state().FirstIns ) );
+                was_keep = _TstStatus( optrel_state().Handle, KEEPLABEL );
+                _SetStatus( optrel_state().Handle, KEEPLABEL );
+                ChgLblRef( optdata_state().FirstIns, _Label( next ) );
+                ChgLblRef( next, optrel_state().Handle );
                 if( !was_keep ) {
-                    _ClrStatus( Handle, KEEPLABEL );
+                    _ClrStatus( optrel_state().Handle, KEEPLABEL );
                 }
             } else {
                 BigBranch( add, jmp );
             }
             SetShort();
-        } else if( OptForSize > 50 && InRange() ) {
+        } else if( data_state().OptForSize > 50 && InRange() ) {
             /* use an old redirection label*/
-            ChgLblRef( FirstIns, Handle->redirect );
+            ChgLblRef( optdata_state().FirstIns, optrel_state().Handle->redirect );
             SetShort();
         }
     }

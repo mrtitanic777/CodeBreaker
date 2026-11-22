@@ -92,7 +92,7 @@ bool_ FoldIntoIndex( instruction *ins )
             /*
              * found ADD R1,c => R1
              */
-            if( TypeClassSize[ins->type_class] != WORD_SIZE )
+            if( data_state().TypeClassSize[ins->type_class] != WORD_SIZE )
                 return( false );
             cons_add = true;
             HW_CAsgn( base_reg, HW_EMPTY );

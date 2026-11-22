@@ -161,7 +161,7 @@ hw_reg_set      Op1Reg( instruction *ins )
 {
     const hw_reg_set    *list;
 
-    list = RegSets[Op1Possible( ins )];
+    list = RegSetList(Op1Possible( ins ));
     return( *list );
 }
 
@@ -170,7 +170,7 @@ hw_reg_set      ResultReg( instruction *ins )
 {
     const hw_reg_set    *list;
 
-    list = RegSets[ResultPossible( ins )];
+    list = RegSetList(ResultPossible( ins ));
     return( *list );
 }
 
@@ -179,14 +179,14 @@ hw_reg_set      ZapReg( instruction *ins )
 {
     const hw_reg_set    *list;
 
-    list = RegSets[RegList[ins->u.gen_table->reg_set].zap];
+    list = RegSetList(RegList[ins->u.gen_table->reg_set].zap);
     return( *list );
 }
 
 instruction *MoveConst( uint_32 value, name *result, type_class_def type_class )
 /******************************************************************************/
 {
-    return( MakeMove( AllocConst( CFCnvU32F( &cgh, value ) ), result, type_class ) );
+    return( MakeMove( AllocConst( CFCnvU32F( &cfloat_state().cgh, value ) ), result, type_class ) );
 }
 
 
@@ -792,7 +792,7 @@ instruction      *rNEGADD( instruction *ins )
 static  void    NegOp2( instruction *ins )
 /****************************************/
 {
-    ins->operands[1] = AllocConst( CFCnvI32F( &cgh, -ins->operands[1]->c.lo.u.int_value ) );
+    ins->operands[1] = AllocConst( CFCnvI32F( &cfloat_state().cgh, -ins->operands[1]->c.lo.u.int_value ) );
 }
 
 

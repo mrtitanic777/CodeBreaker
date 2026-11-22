@@ -51,7 +51,7 @@ void EmitZeros( target_size amount )
 void AlignIt( TYPEPTR typ )
 {
 #if _INTEL_CPU
-    if( OptSize == 0 ) {        /* optimize for time */
+    if( cvars_state().OptSize == 0 ) {        /* optimize for time */
         DGAlign( GetTypeAlignment( typ ) );
     }
 #else /* _RISC_CPU */
@@ -77,11 +77,11 @@ target_size GetDQuadPointerSize( enum quad_flags dq_flags )
     } else if( dq_flags & Q_FAR_POINTER ) {
         size = TARGET_FAR_POINTER;
     } else if( dq_flags & Q_CODE_POINTER ) {
-        if( TargetSwitches & CGSW_X86_BIG_CODE ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
             size = TARGET_FAR_POINTER;
         }
     } else {
-        if( TargetSwitches & CGSW_X86_BIG_DATA ) {
+        if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
             size = TARGET_FAR_POINTER;
         }
     }
@@ -108,6 +108,18 @@ static cg_type GetDQuadPointerCGType( enum quad_flags dq_flags )
     }
     return( cgtype );
 }
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CgendataState {
+    segment_id EmitDQuad_segid = SEG_NULL;
+    target_size EmitDQuad_size = 0;
+};
+
+}  // namespace
+
+static inline CgendataState& cgendata_state() { return cbrun_part<CgendataState>(); }
+
 
 static void EmitDQuad( DATA_QUAD *dq )
 {
@@ -115,68 +127,66 @@ static void EmitDQuad( DATA_QUAD *dq )
     target_size         amount;
     SYM_ENTRY           sym;
 
-    static segment_id   segid = SEG_NULL;
-    static target_size  size = 0;
 
 #if _CPU == 8086
-    if( size >= 0x10000 ) {
-        if( segid != SEG_CONST && segid != SEG_DATA ) {
-            ++segid;
-            BESetSeg( segid );
-            size -= 0x10000;
+    if( cgendata_state().EmitDQuad_size >= 0x10000 ) {
+        if( cgendata_state().EmitDQuad_segid != SEG_CONST && cgendata_state().EmitDQuad_segid != SEG_DATA ) {
+            ++cgendata_state().EmitDQuad_segid;
+            BESetSeg( cgendata_state().EmitDQuad_segid );
+            cgendata_state().EmitDQuad_size -= 0x10000;
         }
     }
 #endif
     switch( dq->type ) {
     case QDT_STATIC:
         SymGet( &sym, dq->u.var.sym_handle );
-        segid = sym.u.var.segid;
-        BESetSeg( segid );
+        cgendata_state().EmitDQuad_segid = sym.u.var.segid;
+        BESetSeg( cgendata_state().EmitDQuad_segid );
         AlignIt( sym.sym_type );
         DGLabel( FEBack( (CGSYM_HANDLE)dq->u.var.sym_handle ) );
-        size = 0;
+        cgendata_state().EmitDQuad_size = 0;
         break;
     case QDT_CHAR:
     case QDT_UCHAR:
     case QDT_BOOL:
         DGInteger( dq->u_long_value1, TY_UINT_1 );
-        size += sizeof( char );
+        cgendata_state().EmitDQuad_size += sizeof( char );
         if( dq->flags & Q_2_INTS_IN_ONE ) {
             DGInteger( dq->u_long_value2, TY_UINT_1 );
-            size += sizeof( char );
+            cgendata_state().EmitDQuad_size += sizeof( char );
         }
         break;
     case QDT_SHORT:
     case QDT_USHORT:
         DGInteger( dq->u_long_value1, TY_UINT_2 );
-        size += TARGET_SHORT;
+        cgendata_state().EmitDQuad_size += TARGET_SHORT;
         if( dq->flags & Q_2_INTS_IN_ONE ) {
             DGInteger( dq->u_long_value2, TY_UINT_2 );
-            size += TARGET_SHORT;
+            cgendata_state().EmitDQuad_size += TARGET_SHORT;
         }
         break;
     case QDT_INT:
     case QDT_UINT:
         DGInteger( dq->u_long_value1, TY_INTEGER );
-        size += TARGET_INT;
+        cgendata_state().EmitDQuad_size += TARGET_INT;
         if( dq->flags & Q_2_INTS_IN_ONE ) {
             DGInteger( dq->u_long_value2, TY_INTEGER );
-            size += TARGET_INT;
+            cgendata_state().EmitDQuad_size += TARGET_INT;
         }
         break;
     case QDT_LONG:
     case QDT_ULONG:
         DGInteger( dq->u_long_value1, TY_UINT_4 );
-        size += TARGET_LONG;
+        cgendata_state().EmitDQuad_size += TARGET_LONG;
         if( dq->flags & Q_2_INTS_IN_ONE ) {
             DGInteger( dq->u_long_value2, TY_UINT_4 );
-            size += TARGET_LONG;
+            cgendata_state().EmitDQuad_size += TARGET_LONG;
         }
         break;
     case QDT_LONG64:
     case QDT_ULONG64:
         DGInteger64( dq->u.long64, TY_UINT_8 );
-        size += TARGET_LONG64;
+        cgendata_state().EmitDQuad_size += TARGET_LONG64;
         break;
 
     case QDT_FLOAT:
@@ -197,24 +207,24 @@ static void EmitDQuad( DATA_QUAD *dq )
             float_value = (float)local_dq.u.double_value;
             DGBytes( TARGET_FLOAT, (char *)&float_value );
         }
-        size += TARGET_FLOAT;
+        cgendata_state().EmitDQuad_size += TARGET_FLOAT;
         break;
     case QDT_DOUBLE:
     case QDT_DIMAGINARY:
 //        ftoa( dq->u.double_value, Buffer );
 //        DGFloat( Buffer, TY_DOUBLE );
         DGBytes( TARGET_DOUBLE, (char *)&dq->u.double_value );
-        size += TARGET_DOUBLE;
+        cgendata_state().EmitDQuad_size += TARGET_DOUBLE;
         break;
     case QDT_LONG_DOUBLE:
     case QDT_LDIMAGINARY:
         DGBytes( TARGET_LDOUBLE, (char *)&dq->u.long_double_value );
-        size += TARGET_LDOUBLE;
+        cgendata_state().EmitDQuad_size += TARGET_LDOUBLE;
         break;
     case QDT_STRING:
         data_type = GetDQuadPointerCGType( dq->flags );
         EmitStrPtr( dq->u.string_leaf, data_type );
-        size += GetDQuadPointerSize( dq->flags );
+        cgendata_state().EmitDQuad_size += GetDQuadPointerSize( dq->flags );
         break;
     case QDT_POINTER:
     case QDT_ID:
@@ -228,32 +238,32 @@ static void EmitDQuad( DATA_QUAD *dq )
         } else {
             DGFEPtr( (CGSYM_HANDLE)dq->u.var.sym_handle, data_type, dq->u.var.offset );
         }
-        size += GetDQuadPointerSize( dq->flags );
+        cgendata_state().EmitDQuad_size += GetDQuadPointerSize( dq->flags );
         break;
     case QDT_CONST:                       /* array of characters */
-        size += EmitBytes( dq->u.string_leaf );
+        cgendata_state().EmitDQuad_size += EmitBytes( dq->u.string_leaf );
         break;
     case QDT_CONSTANT:
 #if _CPU == 8086
         for( amount = dq->u_size; amount != 0; ) {
-            if( amount + size >= 0x00010000 ) {
-                EmitZeros( 0x10000 - size );
-                amount -= ( 0x10000 - size );
-                size = 0;
-                if( segid != SEG_CONST && segid != SEG_DATA ) {
-                    ++segid;
-                    BESetSeg( segid );
+            if( amount + cgendata_state().EmitDQuad_size >= 0x00010000 ) {
+                EmitZeros( 0x10000 - cgendata_state().EmitDQuad_size );
+                amount -= ( 0x10000 - cgendata_state().EmitDQuad_size );
+                cgendata_state().EmitDQuad_size = 0;
+                if( cgendata_state().EmitDQuad_segid != SEG_CONST && cgendata_state().EmitDQuad_segid != SEG_DATA ) {
+                    ++cgendata_state().EmitDQuad_segid;
+                    BESetSeg( cgendata_state().EmitDQuad_segid );
                 }
             } else {
                 EmitZeros( amount );
-                size += amount;
+                cgendata_state().EmitDQuad_size += amount;
                 amount = 0;
             }
         }
 #else
         amount = dq->u_size;
         EmitZeros( amount );
-        size += amount;
+        cgendata_state().EmitDQuad_size += amount;
 #endif
         break;
     }

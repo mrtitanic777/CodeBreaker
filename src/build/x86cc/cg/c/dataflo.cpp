@@ -48,7 +48,16 @@
 static  void            PropagateConflicts( void );
 static  void            LiveAnalysis( block *tail, global_bit_set memory_bits );
 
-static  bool_            MoreUseInOtherTemps;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct DatafloState {
+    bool_ MoreUseInOtherTemps;
+};
+
+}  // namespace
+
+static inline DatafloState& dataflo_state() { return cbrun_part<DatafloState>(); }
 
 
 static  void    AddTempSave( name *op, block *blk )
@@ -109,7 +118,7 @@ static  void    RoughSortTemps( void )
     instruction         *ins;
     opcnt               i;
 
-    for( opnd = Names[N_TEMP]; opnd != NULL; opnd = opnd->n.next_name ) {
+    for( opnd = data_state().Names[N_TEMP]; opnd != NULL; opnd = opnd->n.next_name ) {
         if( ( opnd->v.usage & (USE_MEMORY | USE_ADDRESS) ) ) {
             opnd->v.usage |= NEEDS_MEMORY | USE_MEMORY;
         } else if( opnd->v.usage & USE_IN_ANOTHER_BLOCK ) {
@@ -119,7 +128,7 @@ static  void    RoughSortTemps( void )
             }
         }
     }
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = 0; i < ins->num_operands; ++i ) {
                 AddTempSave( ins->operands[i], blk );
@@ -129,7 +138,7 @@ static  void    RoughSortTemps( void )
             }
         }
     }
-    Names[N_TEMP] = static_cast<name *>(SortList( Names[N_TEMP], offsetof( name, n.next_name ), AllocBefore ));
+    data_state().Names[N_TEMP] = static_cast<name *>(SortList( data_state().Names[N_TEMP], offsetof( name, n.next_name ), AllocBefore ));
 }
 
 
@@ -144,12 +153,12 @@ static  global_bit_set AssignGlobalBits( name_class_def class_,
 
     if( class_ == N_TEMP ) {
         _GBitInit( all_used, EMPTY );
-        if( !MoreUseInOtherTemps )
+        if( !dataflo_state().MoreUseInOtherTemps )
             return( all_used );
-        MoreUseInOtherTemps = false;
+        dataflo_state().MoreUseInOtherTemps = false;
     }
     _GBitInit( all_used, EMPTY );
-    for( opnd = Names[class_]; opnd != NULL; opnd = opnd->n.next_name ) {
+    for( opnd = data_state().Names[class_]; opnd != NULL; opnd = opnd->n.next_name ) {
         if( ( opnd->v.usage & (USE_MEMORY | USE_ADDRESS) ) ) {
             opnd->v.usage |= NEEDS_MEMORY | USE_MEMORY;
         } else if( opnd->v.usage & USE_IN_ANOTHER_BLOCK ) {
@@ -170,7 +179,7 @@ static  global_bit_set AssignGlobalBits( name_class_def class_,
                     _GBitNext( bit );
                     if( _GBitEmpty( conf->id.out_of_block ) ) {
                         _SetTrue( conf, CST_CONFLICT_ON_HOLD );
-                        MoreUseInOtherTemps = true;
+                        dataflo_state().MoreUseInOtherTemps = true;
                     }
                 }
             }
@@ -187,7 +196,7 @@ static  void    CheckGlobals( void )
 
 #define FORCE_MEM (USE_MEMORY|USE_ADDRESS)
     if( _IsntModel( CGSW_GEN_RELAX_ALIAS ) ) {
-        for( op = Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
+        for( op = data_state().Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
             if( op->m.memory_type == CG_FE ) {
                 if( ( op->v.usage & FORCE_MEM ) != FORCE_MEM ) {
                     if( FEAttr( static_cast<cg_sym_handle>(op->v.symbol) ) & ( FE_VISIBLE | FE_GLOBAL ) ) {
@@ -206,13 +215,13 @@ void    MakeConflicts( void )
     global_bit_set     bit;
 
     CheckGlobals();
-    MoreUseInOtherTemps = true;
+    dataflo_state().MoreUseInOtherTemps = true;
     _GBitFirst( bit );
-    if( !BlockByBlock ) {
+    if( !data_state().BlockByBlock ) {
         RoughSortTemps();
     }
     AssignGlobalBits( N_TEMP, &bit, true );
-    MemoryBits = AssignGlobalBits( N_MEMORY, &bit, true );
+    data_state().MemoryBits = AssignGlobalBits( N_MEMORY, &bit, true );
     PropagateConflicts();
 }
 
@@ -223,7 +232,7 @@ bool_    MoreConflicts( void )
     global_bit_set     bit;
 
     _GBitFirst( bit );
-    _GBitInit( MemoryBits, EMPTY );
+    _GBitInit( data_state().MemoryBits, EMPTY );
     bit = AssignGlobalBits( N_TEMP, &bit, false );
     if( !_GBitEmpty( bit ) ) {
         PropagateConflicts();
@@ -232,7 +241,6 @@ bool_    MoreConflicts( void )
         return( false );
     }
 }
-
 
 
 static  void    PropagateConflicts( void )
@@ -245,10 +253,10 @@ static  void    PropagateConflicts( void )
     /*   (When we run out of bits, everything } else { is forced to memory)*/
 
     FindReferences();
-    if( !BlockByBlock ) {
-        LiveAnalysis( HeadBlock, MemoryBits );
+    if( !data_state().BlockByBlock ) {
+        LiveAnalysis( data_state().HeadBlock, data_state().MemoryBits );
     }
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         SetInOut( blk );
     }
 }
@@ -257,13 +265,13 @@ static  void    PropagateConflicts( void )
 void    SetInOut( block *blk )
 /****************************/
 {
-    if( BlockByBlock ) {
+    if( data_state().BlockByBlock ) {
         blk->dataflow->in  = blk->dataflow->use;
         _GBitTurnOn( blk->dataflow->in, blk->dataflow->def );
         _GBitAssign( blk->dataflow->out, blk->dataflow->in );
     }
     if( _IsBlkAttr( blk, BLK_RETURN ) ) {
-        HW_TurnOn( blk->ins.head.live.regs, CurrProc->state.return_reg );
+        HW_TurnOn( blk->ins.head.live.regs, data_state().CurrProc->state.return_reg );
     }
     _LBitInit( blk->ins.head.live.within_block, EMPTY );
     _GBitAssign( blk->ins.head.live.out_of_block, blk->dataflow->out );

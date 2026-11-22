@@ -34,8 +34,6 @@
 #include "i64.h"
 
 
-extern  unsigned SymTypedef;
-
 static TYPEPTR StructDecl(DATA_TYPE,bool_);
 //static TYPEPTR ComplexDecl(int,bool);
 static void      SetPlainCharType( DATA_TYPE char_type );
@@ -53,17 +51,12 @@ static void CheckBitfieldType( TYPEPTR typ );
 /*
  * matches enum DataType in ctypes.h
  */
-static unsigned char  CTypeSizes[] = {
+static unsigned char  const CTypeSizes[] = {
     #define pick1(type,dtype,cgtype,x86asmtype,name,size) size,
     #include "cdatatyp.h"
     #undef  pick1
 };
 
-TYPEPTR CTypeHash[DATA_TYPE_SIZE];
-TYPEPTR PtrTypeHash[DATA_TYPE_SIZE];
-
-TAGPTR  TagHash[ID_HASH_SIZE + 1];
-FIELDPTR FieldHash[ID_HASH_SIZE];
 
 typedef enum {
     M_NONE          = 0,
@@ -82,6 +75,20 @@ typedef enum {
     M_BOOL          = 0x1000,
 } type_mask;
 
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CtypeState {
+    TYPEPTR CTypeHash[DATA_TYPE_SIZE];
+    TYPEPTR PtrTypeHash[DATA_TYPE_SIZE];
+    FIELDPTR FieldHash[ID_HASH_SIZE];
+    field_level_stype GetFields_struct_level = 0;
+};
+
+}  // namespace
+
+static inline CtypeState& ctype_state() { return cbrun_part<CtypeState>(); }
+
 void InitTypeHashTables( void )
 {
     parm_hash_idx   hash1;
@@ -89,30 +96,30 @@ void InitTypeHashTables( void )
     DATA_TYPE       base_type;
 
     for( hash1 = 0; hash1 <= MAX_PARM_LIST_HASH_SIZE; hash1++ ) {
-        FuncTypeHead[hash1] = NULL;
+        cvars_state().FuncTypeHead[hash1] = NULL;
     }
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
-        CTypeHash[base_type] = NULL;
-        PtrTypeHash[base_type] = NULL;
+        ctype_state().CTypeHash[base_type] = NULL;
+        ctype_state().PtrTypeHash[base_type] = NULL;
     }
     for( hash2 = 0; hash2 < ID_HASH_SIZE; hash2++ ) {
-        TagHash[hash2] = NULL;
-        FieldHash[hash2] = NULL;
+        cvars_state().TagHash[hash2] = NULL;
+        ctype_state().FieldHash[hash2] = NULL;
     }
-    TagHash[ID_HASH_SIZE] = NULL;
+    cvars_state().TagHash[ID_HASH_SIZE] = NULL;
 }
 
 void CTypeInit( void )
 {
     DATA_TYPE   base_type;
 
-    TypeHead = NULL;
-    TagCount = 0;
-    FieldCount = 0;
-    EnumCount = 0;
+    cvars_state().TypeHead = NULL;
+    cvars_state().TagCount = 0;
+    cvars_state().FieldCount = 0;
+    cvars_state().EnumCount = 0;
     InitTypeHashTables();
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
-        CTypeCounts[base_type] = 0;
+        cvars_state().CTypeCounts[base_type] = 0;
 #if 0
         if ( base_type == TYP_FCOMPLEX || base_type == TYP_DCOMPLEX || base_type == TYP_LDCOMPLEX ) {
             BaseTypes[base_type] = ComplexDecl( TYP_STRUCT, false );
@@ -120,18 +127,18 @@ void CTypeInit( void )
         } else {
 #endif
             if( CTypeSizes[base_type] != 0 || base_type == TYP_VOID || base_type == TYP_DOT_DOT_DOT ) {
-                BaseTypes[base_type] = TypeNode( base_type, NULL );
+                cvars_state().BaseTypes[base_type] = TypeNode( base_type, NULL );
             } else {
-                BaseTypes[base_type] = NULL;
+                cvars_state().BaseTypes[base_type] = NULL;
             }
 #if 0
         }
 #endif
     }
     SetPlainCharType( TYP_UCHAR );
-    StringArrayType = NULL;
-    VoidParmList[0] = BaseTypes[TYP_VOID];
-    VoidParmList[1] = NULL;
+    cvars_state().StringArrayType = NULL;
+    cvars_state().VoidParmList[0] = cvars_state().BaseTypes[TYP_VOID];
+    cvars_state().VoidParmList[1] = NULL;
 }
 
 
@@ -139,7 +146,7 @@ TYPEPTR GetType( DATA_TYPE base_type )
 {
     TYPEPTR     typ;
 
-    typ = BaseTypes[base_type];
+    typ = cvars_state().BaseTypes[base_type];
     if( typ == NULL ) {
         typ = TypeNode( base_type, NULL );
     }
@@ -152,7 +159,7 @@ void WalkFuncTypeList( void (*func)(TYPEPTR,int) )
     parm_hash_idx   hash;
 
     for( hash = 0; hash <= MAX_PARM_LIST_HASH_SIZE; hash++ ) {
-        for( typ = FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
+        for( typ = cvars_state().FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
             func( typ, hash );
         }
     }
@@ -164,12 +171,12 @@ void WalkTypeList( void (*func)(TYPEPTR) )
     DATA_TYPE   base_type;
 
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
-        for( typ = CTypeHash[base_type]; typ != NULL; typ = typ->next_type ) {
+        for( typ = ctype_state().CTypeHash[base_type]; typ != NULL; typ = typ->next_type ) {
             func( typ );
         }
     }
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
-        for( typ = PtrTypeHash[base_type]; typ != NULL; typ = typ->next_type ) {
+        for( typ = ctype_state().PtrTypeHash[base_type]; typ != NULL; typ = typ->next_type ) {
             func( typ );
         }
     }
@@ -182,9 +189,9 @@ static TYPEPTR DupType( TYPEPTR typ, enum type_state flags, bool_ force_duplicat
 
     if( !force_duplicate ) {
         if( typ->decl_type == TYP_POINTER ) {
-            next = PtrTypeHash[typ->object->decl_type];
+            next = ctype_state().PtrTypeHash[typ->object->decl_type];
         } else {
-            next = CTypeHash[typ->decl_type];
+            next = ctype_state().CTypeHash[typ->decl_type];
         }
         for( ; next != NULL; next = next->next_type ) {
             if( next->decl_type == typ->decl_type
@@ -209,9 +216,9 @@ static void SetPlainCharType( DATA_TYPE char_type )
 
     typ = TypeNode( char_type, NULL );
     typ->type_flags = TF2_TYP_PLAIN_CHAR;
-    BaseTypes[TYP_PLAIN_CHAR] = typ;
-    StringType = PtrNode( typ, FLAG_NONE, SEG_DATA );
-    ConstCharType =  typ;
+    cvars_state().BaseTypes[TYP_PLAIN_CHAR] = typ;
+    cvars_state().StringType = PtrNode( typ, FLAG_NONE, SEG_DATA );
+    cvars_state().ConstCharType =  typ;
 }
 
 void SetSignedChar( void )
@@ -228,7 +235,7 @@ type_modifiers TypeQualifier( void )
     flags = static_cast<type_modifiers>(0);
     bit = static_cast<type_modifiers>(0);
     for( ;; ) {
-        switch( CurToken ) {
+        switch( cvars_state().CurToken ) {
         case T_CONST:
             bit = FLAG_CONST;
             break;
@@ -246,7 +253,7 @@ type_modifiers TypeQualifier( void )
             return( flags );
         }
         if( (flags & bit)
-          && ( CompVars.cstd < STD_C99 ) )
+          && ( cvars_state().CompVars.cstd < STD_C99 ) )
             CErr1( ERR_REPEATED_MODIFIER );
         flags |= bit;
         NextToken();
@@ -314,7 +321,7 @@ static TYPEPTR GetScalarType( bool_ *plain_int, type_mask bmask, type_modifiers 
         data_type = TYP_FLOAT;
         break;
     case M_LONG | M_DOUBLE:
-        if( CompFlags.use_long_double ) {
+        if( cvars_state().CompFlags.use_long_double ) {
             data_type = TYP_LONG_DOUBLE;
             break;
         }
@@ -326,7 +333,7 @@ static TYPEPTR GetScalarType( bool_ *plain_int, type_mask bmask, type_modifiers 
         data_type = TYP_FCOMPLEX;
         break;
     case M_COMPLEX | M_LONG | M_DOUBLE:
-        if( CompFlags.use_long_double ) {
+        if( cvars_state().CompFlags.use_long_double ) {
             data_type = TYP_LDCOMPLEX;
             break;
         }
@@ -338,7 +345,7 @@ static TYPEPTR GetScalarType( bool_ *plain_int, type_mask bmask, type_modifiers 
         data_type = TYP_FIMAGINARY;
         break;
     case M_IMAGINARY | M_LONG | M_DOUBLE:
-        if( CompFlags.use_long_double ) {
+        if( cvars_state().CompFlags.use_long_double ) {
             data_type = TYP_LDIMAGINARY;
             break;
         }
@@ -361,10 +368,10 @@ static TYPEPTR GetScalarType( bool_ *plain_int, type_mask bmask, type_modifiers 
 
 static void AdvanceToken( void )
 {
-    if( CurToken == T_SAVED_ID ) {
-        CMemFree( SavedId );
-        SavedId = NULL;
-        CurToken = LAToken;
+    if( cvars_state().CurToken == T_SAVED_ID ) {
+        CMemFree( cvars_state().SavedId );
+        cvars_state().SavedId = NULL;
+        cvars_state().CurToken = cvars_state().LAToken;
     } else {
         NextToken();
     }
@@ -398,7 +405,7 @@ static void DeclSpecifiers( bool_ *plain_int, decl_info *info )
     for(;;) {
         stg_class = SC_NONE;
         bit = M_NONE;
-        switch( CurToken ) {
+        switch( cvars_state().CurToken ) {
         case T_CHAR:
             bit = M_CHAR;
             break;
@@ -503,9 +510,9 @@ static void DeclSpecifiers( bool_ *plain_int, decl_info *info )
         case T___DECLSPEC:
             AdvanceToken();                   // declspec( dllimport naked )
             MustRecog( T_LEFT_PAREN );
-            while( CurToken != T_RIGHT_PAREN ) {
+            while( cvars_state().CurToken != T_RIGHT_PAREN ) {
                 modifier = static_cast<type_modifiers>(0);
-                switch( CurToken ) {
+                switch( cvars_state().CurToken ) {
                 case T___WATCALL:
                     modifier = FLAG_WATCALL;
                     break;
@@ -541,28 +548,28 @@ static void DeclSpecifiers( bool_ *plain_int, decl_info *info )
                         CErr1( ERR_INVALID_DECLARATOR );
                         break;
                     }
-                    if( strcmp( Buffer, "dllimport" ) == 0 ) {
+                    if( strcmp( cvars_state().Buffer, "dllimport" ) == 0 ) {
                         decl = DECLSPEC_DLLIMPORT;
-                    } else if( strcmp( Buffer, "overridable" ) == 0 ) {
+                    } else if( strcmp( cvars_state().Buffer, "overridable" ) == 0 ) {
                         decl = DECLSPEC_DLLIMPORT;
-                    } else if( strcmp( Buffer, "dllexport" ) == 0 ) {
+                    } else if( strcmp( cvars_state().Buffer, "dllexport" ) == 0 ) {
                         decl = DECLSPEC_DLLEXPORT;
-                    } else if( strcmp( Buffer, "thread" ) == 0 ) {
+                    } else if( strcmp( cvars_state().Buffer, "thread" ) == 0 ) {
                         decl = DECLSPEC_THREAD;
-                    } else if( strcmp( Buffer, "naked" ) == 0 ) {
+                    } else if( strcmp( cvars_state().Buffer, "naked" ) == 0 ) {
                         if( info->naked ) {
                             CErr1( ERR_INVALID_DECLSPEC );
                         } else {
                             info->naked = true;
                         }
-                    } else if( strcmp( Buffer, "aborts" ) == 0
-                      || strcmp( Buffer, "__aborts" ) == 0 ) {
+                    } else if( strcmp( cvars_state().Buffer, "aborts" ) == 0
+                      || strcmp( cvars_state().Buffer, "__aborts" ) == 0 ) {
                         modifier = FLAG_ABORTS;
-                    } else if( strcmp( Buffer, "noreturn" ) == 0
-                      || strcmp( Buffer, "__noreturn" ) == 0
-                      || strcmp( Buffer, "_Noreturn" ) == 0 ) {
+                    } else if( strcmp( cvars_state().Buffer, "noreturn" ) == 0
+                      || strcmp( cvars_state().Buffer, "__noreturn" ) == 0
+                      || strcmp( cvars_state().Buffer, "_Noreturn" ) == 0 ) {
                         modifier = FLAG_NORETURN;
-                    } else if( strcmp( Buffer, "farss" ) == 0 ) {
+                    } else if( strcmp( cvars_state().Buffer, "farss" ) == 0 ) {
                         modifier = FLAG_FARSS;
                     } else {
                         CErr1( ERR_INVALID_DECLSPEC );
@@ -616,24 +623,24 @@ static void DeclSpecifiers( bool_ *plain_int, decl_info *info )
              * lookup id in symbol table
              * if valid type identifier then OK
              */
-            if( CurToken == T_ID ) {
-                sym_handle = SymLookTypedef( CalcHashID( Buffer ), Buffer, &sym );
+            if( cvars_state().CurToken == T_ID ) {
+                sym_handle = SymLookTypedef( CalcHashID( cvars_state().Buffer ), cvars_state().Buffer, &sym );
             } else {    /* T_SAVED_ID */
-                sym_handle = SymLookTypedef( CalcHashID( SavedId ), SavedId, &sym );
+                sym_handle = SymLookTypedef( CalcHashID( cvars_state().SavedId ), cvars_state().SavedId, &sym );
             }
             if( sym_handle == SYM_NULL )
                 goto got_specifier;
             if( sym.attribs.stg_class != SC_TYPEDEF )
                 goto got_specifier;
-            if( SymLevel != 0 && flags == 0 ) {
-                if( CurToken == T_ID ) {
+            if( cvars_state().SymLevel != 0 && flags == 0 ) {
+                if( cvars_state().CurToken == T_ID ) {
                     LookAhead();
-                    if( LAToken == T_COLON ) {
+                    if( cvars_state().LAToken == T_COLON ) {
                         goto got_specifier;
                     }
                 }
             }
-            ++SymTypedef;
+            ++cvars_state().SymTypedef;
             typ = sym.sym_type;
             SymGet( &sym, sym_handle );  // get rest of sym from nutty sym table
             if( flags & sym.mods ) {
@@ -740,12 +747,12 @@ static TAGPTR NewTag( id_hash_idx hash, const char *name )
     TAGPTR      tag;
 
     tag = (TAGPTR)CPermAlloc( sizeof( TAGDEFN ) + strlen( name ) );
-    tag->level = (id_level_type)SymLevel;
+    tag->level = (id_level_type)cvars_state().SymLevel;
     tag->hash = hash;
-    tag->next_tag = TagHash[hash];
-    TagHash[hash] = tag;
+    tag->next_tag = cvars_state().TagHash[hash];
+    cvars_state().TagHash[hash] = tag;
     strcpy( tag->name, name );
-    ++TagCount;
+    ++cvars_state().TagCount;
     return( tag );
 }
 
@@ -777,7 +784,7 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
     TAGPTR      tag;
     id_hash_idx hash;
 
-    ++FieldCount;
+    ++cvars_state().FieldCount;
     typ = new_field->field_type;
     if( typ != NULL ) {
         SKIP_TYPEDEFS( typ );
@@ -787,7 +794,7 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
          * allow nameless structs and unions
          */
         if( (typ->decl_type != TYP_STRUCT && typ->decl_type != TYP_UNION)
-          || !CompFlags.extensions_enabled ) {
+          || !cvars_state().CompFlags.extensions_enabled ) {
             CErr1( ERR_INVALID_DECLARATOR );
         }
     }
@@ -798,7 +805,7 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
          * can't have an array of incomplete type
          */
         if( typ->decl_type == TYP_ARRAY
-          && ( SizeOfArg( typ->object ) == 0 || !CompFlags.extensions_enabled )
+          && ( SizeOfArg( typ->object ) == 0 || !cvars_state().CompFlags.extensions_enabled )
           || typ->decl_type != TYP_ARRAY ) {
             CErr2p( ERR_INCOMPLETE_TYPE, new_field->name );
         }
@@ -807,7 +814,7 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
     hash = CalcHashID( new_field->name );
     new_field->hash = hash;
     if( new_field->name[0] != '\0' ) {  /* only check non-empty names */
-        for( field = FieldHash[hash]; field != NULL; field = field->next_field_same_hash ) {
+        for( field = ctype_state().FieldHash[hash]; field != NULL; field = field->next_field_same_hash ) {
             /*
              * fields were added at the front of the hash linked list --
              * may as well stop if the level isn't the same anymore
@@ -818,8 +825,8 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
                 CErr2p( ERR_DUPLICATE_FIELD_NAME, field->name );
             }
         }
-        new_field->next_field_same_hash = FieldHash[hash];
-        FieldHash[hash] = new_field;
+        new_field->next_field_same_hash = ctype_state().FieldHash[hash];
+        ctype_state().FieldHash[hash] = new_field;
     }
     if( tag->u.field_list == NULL ) {
         tag->u.field_list = new_field;
@@ -895,7 +902,7 @@ static target_size FieldAlign( target_size next_offset, FIELDPTR field, align_ty
     align_type  align;
     target_size old_offset;
 
-    pack_adjustment = PackAmount;
+    pack_adjustment = cvars_state().PackAmount;
     align = GetTypeAlignment( field->field_type );
     if( align > pack_adjustment ) { // can't be any bigger than pack( x )
         align = pack_adjustment;
@@ -906,7 +913,7 @@ static target_size FieldAlign( target_size next_offset, FIELDPTR field, align_ty
     if( align != 1 ) {
         old_offset = next_offset;
         next_offset = _RoundUp( next_offset, align );
-        if( CompFlags.slack_byte_warning && (next_offset - old_offset) ) {
+        if( cvars_state().CompFlags.slack_byte_warning && (next_offset - old_offset) ) {
             CWarn2( ERR_SLACK_ADDED, (unsigned)( next_offset - old_offset ) );
         }
     }
@@ -954,12 +961,12 @@ static void ClearFieldHashTable( TAGPTR tag )
 
     for( field = tag->u.field_list; field != NULL; field = field->next_field ) {
         prev_field = NULL;
-        hash_field = FieldHash[field->hash];
+        hash_field = ctype_state().FieldHash[field->hash];
         if( hash_field == field ) {
             /*
              * first entry: easy kick out
              */
-            FieldHash[field->hash] = field->next_field_same_hash;
+            ctype_state().FieldHash[field->hash] = field->next_field_same_hash;
         } else {
             while( hash_field != NULL ) {
                 /*
@@ -1036,10 +1043,9 @@ static target_size GetFields( TYPEPTR decl )
     DATA_TYPE           prev_unqualified_type;
     bool_                plain_int;
     decl_info           info;
-    static field_level_stype struct_level = 0;
     const_val           cval;
 
-    struct_level++;
+    ctype_state().GetFields_struct_level++;
     prev_unqualified_type = TYP_VOID;   /* so it doesn't match 1st time */
     start = 0;
     worst_alignment = 1;
@@ -1051,9 +1057,9 @@ static target_size GetFields( TYPEPTR decl )
     struct_size = start;
     next_offset = start;
     for(;;) {
-        if( CurToken == T_SEMI_COLON && CompFlags.extensions_enabled ) {
+        if( cvars_state().CurToken == T_SEMI_COLON && cvars_state().CompFlags.extensions_enabled ) {
             NextToken();
-            if( CurToken == T_RIGHT_BRACE )
+            if( cvars_state().CurToken == T_RIGHT_BRACE )
                 break;
             continue;
         }
@@ -1062,9 +1068,9 @@ static target_size GetFields( TYPEPTR decl )
         state = DECL_STATE_NONE;
         if( typ == NULL ) {
             state |= DECL_STATE_NOTYPE;
-            CErr2p( ERR_MISSING_DATA_TYPE, Buffer );
+            CErr2p( ERR_MISSING_DATA_TYPE, cvars_state().Buffer );
             typ = TypeDefault();
-            if( CurToken == T_ID ) {
+            if( cvars_state().CurToken == T_ID ) {
                 NextToken();
             }
         }
@@ -1086,13 +1092,13 @@ static target_size GetFields( TYPEPTR decl )
                 bits_available = bits_total;
             }
             field = NULL;
-            if( CurToken != T_COLON ) {
+            if( cvars_state().CurToken != T_COLON ) {
                 field = FieldDecl( typ, info.mod, state );
-                field->level = struct_level;
+                field->level = ctype_state().GetFields_struct_level;
                 AdjModsTypeNode( &field->field_type, info.decl_mod, NULL );
                 field = NewField( field, decl );
             }
-            if( CurToken == T_COLON ) {
+            if( cvars_state().CurToken == T_COLON ) {
                 if( field != NULL ) {
                     next_offset = FieldAlign( next_offset, field, &worst_alignment );
                 }
@@ -1150,16 +1156,16 @@ static target_size GetFields( TYPEPTR decl )
             }
             if( next_offset > struct_size )
                 struct_size = next_offset;
-            if( CurToken != T_COMMA )
+            if( cvars_state().CurToken != T_COMMA )
                 break;
             NextToken();
         }
-        if( CurToken == T_RIGHT_BRACE ) {
+        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
             CWarn1( ERR_MISSING_LAST_SEMICOLON );
         } else {
             MustRecog( T_SEMI_COLON );
         }
-        if( CurToken == T_RIGHT_BRACE ) {
+        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
             break;
         }
     }
@@ -1174,7 +1180,7 @@ static target_size GetFields( TYPEPTR decl )
     struct_size = _RoundUp( struct_size, worst_alignment );
     _CHECK_SIZE( struct_size );
     NextToken();
-    struct_level--;
+    ctype_state().GetFields_struct_level--;
     return( struct_size );
 }
 
@@ -1185,32 +1191,32 @@ static TYPEPTR StructDecl( DATA_TYPE decl_typ, bool_ packed )
     TAGPTR      tag;
     align_type  saved_packamount;
 
-    saved_packamount = PackAmount;
+    saved_packamount = cvars_state().PackAmount;
     if( packed )
-        PackAmount = 1;
+        cvars_state().PackAmount = 1;
     NextToken();
-    if( CurToken == T_LEFT_BRACE ) {
+    if( cvars_state().CurToken == T_LEFT_BRACE ) {
         tag = NullTag();
         NextToken();
     } else {
         for(;;) {
-            if( CurToken == T_ID )
+            if( cvars_state().CurToken == T_ID )
                 break;
-            if( CurToken == T_LEFT_BRACE )
+            if( cvars_state().CurToken == T_LEFT_BRACE )
                 break;
-            if( CurToken == T_EOF )
+            if( cvars_state().CurToken == T_EOF )
                 break;
             ExpectStructUnionTag();
             NextToken();
         }
-        if( CurToken == T_ID ) {        /* structure or union tag */
-            tag = TagLookup( Buffer );
+        if( cvars_state().CurToken == T_ID ) {        /* structure or union tag */
+            tag = TagLookup( cvars_state().Buffer );
             NextToken();
         } else {
             tag = NullTag();
         }
-        if( CurToken != T_LEFT_BRACE ) {
-            if( CurToken == T_SEMI_COLON ) {
+        if( cvars_state().CurToken != T_LEFT_BRACE ) {
+            if( cvars_state().CurToken == T_SEMI_COLON ) {
                 if( !CheckEqSymLevel( tag ) ) {
                     tag = NewTag( tag->hash, tag->name );
                 }
@@ -1225,7 +1231,7 @@ static TYPEPTR StructDecl( DATA_TYPE decl_typ, bool_ packed )
             }
             tag->sym_type = typ;
             typ->u.tag = tag;
-            PackAmount = saved_packamount;
+            cvars_state().PackAmount = saved_packamount;
             return( typ );
         }
         NextToken();
@@ -1239,7 +1245,7 @@ static TYPEPTR StructDecl( DATA_TYPE decl_typ, bool_ packed )
     typ->u.tag = tag;
     tag->u.field_list = NULL;
     tag->size = GetFields( typ );
-    PackAmount = saved_packamount;
+    cvars_state().PackAmount = saved_packamount;
     return( typ );
 }
 
@@ -1352,7 +1358,7 @@ static void CheckBitfieldType( TYPEPTR typ )
      * skip typedefs
      */
     SKIP_TYPEDEFS( typ );
-    if( CompFlags.extensions_enabled ) {
+    if( cvars_state().CompFlags.extensions_enabled ) {
         /*
          * go into enum base
          */
@@ -1360,8 +1366,8 @@ static void CheckBitfieldType( TYPEPTR typ )
     }
     switch( typ->decl_type ) {
     case TYP_BOOL:
-        if( !CompFlags.extensions_enabled
-          && ( CompVars.cstd < STD_C99 ) ) {
+        if( !cvars_state().CompFlags.extensions_enabled
+          && ( cvars_state().CompVars.cstd < STD_C99 ) ) {
             break;
         }
         /* fall through */
@@ -1379,7 +1385,7 @@ static void CheckBitfieldType( TYPEPTR typ )
     case TYP_ULONG:
     case TYP_LONG64:
     case TYP_ULONG64:
-        if( CompFlags.extensions_enabled ) {
+        if( cvars_state().CompFlags.extensions_enabled ) {
             return;
         }
         break;
@@ -1420,7 +1426,7 @@ TAGPTR TagLookup( const char *name )
     id_hash_idx hash;
 
     hash = CalcHashID( name );
-    for( tag = TagHash[hash]; tag != NULL; tag = tag->next_tag ) {
+    for( tag = cvars_state().TagHash[hash]; tag != NULL; tag = tag->next_tag ) {
         if( strcmp( name, tag->name ) == 0 ) {
             return( tag );
         }
@@ -1434,12 +1440,12 @@ void FreeTags( void )
     id_hash_idx     hash;
 
     for( hash = 0; hash <= ID_HASH_SIZE; hash++ ) {
-        for( ; (tag = TagHash[hash]) != NULL; ) {
+        for( ; (tag = cvars_state().TagHash[hash]) != NULL; ) {
             if( CheckLtSymLevel( tag ) )
                 break;
-            TagHash[hash] = tag->next_tag;
-            tag->next_tag = DeadTags;
-            DeadTags = tag;
+            cvars_state().TagHash[hash] = tag->next_tag;
+            tag->next_tag = cvars_state().DeadTags;
+            cvars_state().DeadTags = tag;
         }
     }
 }
@@ -1450,7 +1456,7 @@ void WalkTagList( void (*func)(TAGPTR) )
     id_hash_idx     hash;
 
     for( hash = 0; hash <= ID_HASH_SIZE; hash++ ) {
-        for( tag = TagHash[hash]; tag != NULL; tag = tag->next_tag ) {
+        for( tag = cvars_state().TagHash[hash]; tag != NULL; tag = tag->next_tag ) {
             func( tag );
         }
     }
@@ -1460,21 +1466,21 @@ void AddTypeHash( TYPEPTR typ )
 {
     if( typ->decl_type == TYP_POINTER ) {
         if( typ->object != NULL ) {
-            typ->next_type = PtrTypeHash[typ->object->decl_type];
-            PtrTypeHash[typ->object->decl_type] = typ;
+            typ->next_type = ctype_state().PtrTypeHash[typ->object->decl_type];
+            ctype_state().PtrTypeHash[typ->object->decl_type] = typ;
         }
     } else if( typ->decl_type == TYP_FUNCTION ) {
         typ->next_type = NULL;
     } else {
-        typ->next_type = CTypeHash[typ->decl_type];
-        CTypeHash[typ->decl_type] = typ;
+        typ->next_type = ctype_state().CTypeHash[typ->decl_type];
+        ctype_state().CTypeHash[typ->decl_type] = typ;
     }
 }
 
 void AddPtrTypeHash( TYPEPTR typ )
 {
-    typ->next_type = PtrTypeHash[typ->object->decl_type];
-    PtrTypeHash[typ->object->decl_type] = typ;
+    typ->next_type = ctype_state().PtrTypeHash[typ->object->decl_type];
+    ctype_state().PtrTypeHash[typ->object->decl_type] = typ;
 }
 
 TYPEPTR TypeNode( DATA_TYPE type_spec, TYPEPTR the_object )
@@ -1486,8 +1492,8 @@ TYPEPTR TypeNode( DATA_TYPE type_spec, TYPEPTR the_object )
     typ->object = the_object;
     typ->u.tag = NULL;
     AddTypeHash( typ );
-    ++TypeCount;
-    ++CTypeCounts[type_spec];
+    ++cvars_state().TypeCount;
+    ++cvars_state().CTypeCounts[type_spec];
     return( typ );
 }
 
@@ -1507,7 +1513,7 @@ static TYPEPTR MkPtrNode( TYPEPTR typ, type_modifiers flags,
     TYPEPTR     ptrtyp;
 
     if( typ != NULL ) {
-        ptrtyp = PtrTypeHash[typ->decl_type];
+        ptrtyp = ctype_state().PtrTypeHash[typ->decl_type];
         for( ; ptrtyp != NULL; ptrtyp = ptrtyp->next_type ) {
             if( ptrtyp->decl_type == TYP_POINTER &&
                 ptrtyp->object == typ &&
@@ -1559,7 +1565,7 @@ TYPEPTR FuncNode( TYPEPTR return_typ, type_modifiers flag, TYPEPTR *parm_types )
 
     hash = FuncHeadIndex( parm_types );
     if( return_typ != NULL ) {
-        for( typ = FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
+        for( typ = cvars_state().FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
             if( typ->object == return_typ &&
                 typ->u.fn.decl_flags == flag &&
                 typ->u.fn.parms == parm_types ) {
@@ -1570,8 +1576,8 @@ TYPEPTR FuncNode( TYPEPTR return_typ, type_modifiers flag, TYPEPTR *parm_types )
     typ = TypeNode( TYP_FUNCTION, return_typ );
     typ->u.fn.decl_flags = flag;
     typ->u.fn.parms = parm_types;
-    typ->next_type = FuncTypeHead[hash];
-    FuncTypeHead[hash] = typ;
+    typ->next_type = cvars_state().FuncTypeHead[hash];
+    cvars_state().FuncTypeHead[hash] = typ;
     return( typ );
 }
 
@@ -1614,7 +1620,7 @@ target_size TypeSizeEx( TYPEPTR typ, bitfield_width *pFieldWidth )
         size = CTypeSizes[typ->decl_type];
         break;
     case TYP_VOID:
-        if( CompFlags.unix_ext ) {
+        if( cvars_state().CompFlags.unix_ext ) {
             size = 1;
         } else {
             size = 0;
@@ -1629,9 +1635,9 @@ target_size TypeSizeEx( TYPEPTR typ, bitfield_width *pFieldWidth )
             typ = typ->object;
             SKIP_TYPEDEFS( typ );
             if( typ->decl_type == TYP_FUNCTION ) {
-                size = CodePtrSize;
+                size = cvars_state().CodePtrSize;
             } else {
-                size = DataPtrSize;
+                size = cvars_state().DataPtrSize;
             }
         }
         break;

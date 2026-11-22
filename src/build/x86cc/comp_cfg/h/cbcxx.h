@@ -10,6 +10,26 @@
 
 #include <type_traits>
 
+/* the memory a compile allocates and the files it opens are its run's (run/cbrun.cpp): what a fatal error leaves open or
+ * unfreed is released when the run ends. The C headers come first, so only the compilers' own uses are renamed. */
+#include <stdio.h>
+#include <stdlib.h>
+#include <malloc.h>
+extern "C" {
+void* cbrun_malloc(size_t);
+void* cbrun_calloc(size_t, size_t);
+void* cbrun_realloc(void*, size_t);
+void cbrun_free(void*);
+FILE* cbrun_fopen(const char*, const char*);
+int cbrun_fclose(FILE*);
+}
+#define malloc cbrun_malloc
+#define calloc cbrun_calloc
+#define realloc cbrun_realloc
+#define free cbrun_free
+#define fopen cbrun_fopen
+#define fclose cbrun_fclose
+
 namespace {   // (internal linkage: each target's objects keep the instantiations of their own enumerations; no merging between wcc and wcc386)
 namespace cb_wcc_cxx {
 template <class E>

@@ -62,7 +62,7 @@ static uint_16 const sigCheck[] = {
 LS_DEFS
 #undef LS_DEF
 
-static int (*codeDispatch[])( IntlData *, _LocaleItem * ) = {
+static int (*const codeDispatch[])( IntlData *, _LocaleItem * ) = {
     #define LS_DEF( name, sig ) do##name,
     LS_DEFS
     #undef LS_DEF

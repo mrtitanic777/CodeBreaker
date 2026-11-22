@@ -59,7 +59,6 @@ typedef enum {
     AC,         /* assignment compatible */
 } cmp_type;
 
-extern call_list    *CallNodeList;
 
 #define __  NO
 
@@ -109,7 +108,7 @@ void ParmCountMismatch( void )
  */
 {
 #if _CPU == 8086
-    if( TargetSwitches & CGSW_X86_MSC8 ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_MSC8 ) {
         CWarn1( ERR_PARM_COUNT_WARNING );
         return;
     }
@@ -146,13 +145,13 @@ static bool_ CheckParmPromotion( TYPEPTR typ )
     case TYP_CHAR:
     case TYP_UCHAR:
     case TYP_SHORT:
-        if( CompFlags.strict_ANSI ) {
+        if( cvars_state().CompFlags.strict_ANSI ) {
             return( false );
         }
         break;
     case TYP_USHORT:
 #if TARGET_SHORT != TARGET_INT
-        if( CompFlags.strict_ANSI )  {
+        if( cvars_state().CompFlags.strict_ANSI )  {
             return( false );
         }
 #endif
@@ -288,9 +287,9 @@ bool_ CheckCompatibleLanguage( type_modifiers typ1, type_modifiers typ2 )
     if( typ1 == typ2 ) {
         return( true );
     } else if( typ1 == 0 ) {
-        return( DftCallConv == GetLangInfo( typ2 ) );
+        return( callinfo_state().DftCallConv == GetLangInfo( typ2 ) );
     } else if( typ2 == 0 ) {
-        return( DftCallConv == GetLangInfo( typ1 ) );
+        return( callinfo_state().DftCallConv == GetLangInfo( typ1 ) );
     } else  {
         return( false );
     }
@@ -357,7 +356,7 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
                  * allow  void ** with any ** (but warn about it)
                  */
                 if( ( ptr_indir_level == 1 )
-                  || !CompFlags.strict_ANSI ) {
+                  || !cvars_state().CompFlags.strict_ANSI ) {
                     if( ptr_indir_level > 1 ) {
                         ret_val = PM;
                     }
@@ -409,7 +408,7 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
                  * Types are not the same
                  * if extensions are enabled, then we can do a compatible struct test
                  */
-                if( CompFlags.extensions_enabled ) {
+                if( cvars_state().CompFlags.extensions_enabled ) {
                     if( CompatibleStructs( typ1->u.tag, typ2->u.tag ) != OK ) {
                         if( ptr_indir_level > 0 ) {
                             if( ret_val != PW ) {
@@ -578,7 +577,7 @@ void CompatiblePtrType( TYPEPTR typ1, TYPEPTR typ2, TOKEN opr )
     case PX:
         break;
     case PQ:
-        if( !CompFlags.no_check_qualifiers ) { // else fuck em
+        if( !cvars_state().CompFlags.no_check_qualifiers ) { // else fuck em
             CWarn1( ERR_QUALIFIER_MISMATCH );
         }
         break;
@@ -660,7 +659,7 @@ static void CompareParms( TYPEPTR *master, TREEPTR parms, bool_ reverse )
         /*
          * can allow wrong number of parms with -3s option
          */
-        if( !CompFlags.register_conventions ) {
+        if( !cvars_state().CompFlags.register_conventions ) {
             CWarn1( ERR_PARM_COUNT_WARNING );
         } else {
             ParmCountMismatch();
@@ -682,7 +681,7 @@ void CheckCallParms( void )
     call_list   *nextcall;
     call_list   *next;
 
-    for( nextcall = CallNodeList; nextcall != NULL; nextcall = next ) {
+    for( nextcall = cvars_state().CallNodeList; nextcall != NULL; nextcall = next ) {
         TREEPTR     callnode;
         TREEPTR     callsite;
         SYM_ENTRY   sym;
@@ -915,7 +914,7 @@ void CheckParmAssign( TYPEPTR typ1, TREEPTR opnd2, int parm_num, bool_ asgn_chec
         }
         break;
     case PQ:
-        if( !CompFlags.no_check_qualifiers ) {
+        if( !cvars_state().CompFlags.no_check_qualifiers ) {
             if( parm_num ) {
                 CWarn2( ERR_PARM_QUALIFIER_MISMATCH, parm_num );
             } else {
@@ -1001,7 +1000,7 @@ void CheckTernary( TYPEPTR typ1, TYPEPTR typ2 )
         CWarn1( ERR_POINTER_TRUNCATION );
         break;
     case PQ:
-        if( !CompFlags.no_check_qualifiers ) {
+        if( !cvars_state().CompFlags.no_check_qualifiers ) {
             CWarn1( ERR_QUALIFIER_MISMATCH );
         }
         break;
@@ -1032,9 +1031,9 @@ void CheckRetType( TREEPTR tree )
     if( tree->op.opr == OPR_ERROR )
         return;
     ret_type = TypeOf( tree );
-    func_type = CurFunc->sym_type->object;
+    func_type = cvars_state().CurFunc->sym_type->object;
     if( func_type->decl_type == TYP_VOID ) {
-        CErr2p( ERR_NOT_EXPECTING_RETURN_VALUE, CurFunc->name );
+        CErr2p( ERR_NOT_EXPECTING_RETURN_VALUE, cvars_state().CurFunc->name );
     } else if( ret_type->decl_type == TYP_POINTER ) {
         if( ret_type->u.p.segid == SEG_STACK ) {
             CWarn1( ERR_RET_ADDR_OF_AUTO );
@@ -1059,7 +1058,7 @@ static typecheck_err TypeCheck( TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
      * "char *s" and "char s[]" differs only by FLAG_WAS_ARRAY, ignore it too
      */
 #if _INTEL_CPU
-    if( TargetSwitches & CGSW_X86_BIG_DATA ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
         ptr_mask = ~(FLAG_FAR  | FLAG_WAS_ARRAY | MASK_LANGUAGES);
     } else {
         ptr_mask = ~(FLAG_NEAR | FLAG_WAS_ARRAY | MASK_LANGUAGES);

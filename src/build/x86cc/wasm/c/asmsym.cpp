@@ -59,9 +59,19 @@ static char             const dots[] = " . . . . . . . . . . . . . . . .";
 
 #else
 
-static asm_sym_handle   AsmSymHead;
+namespace {
 
-static unsigned short CvtTable[] = {
+/* the statics of this file, one set for each run of the compiler */
+struct AsmsymState {
+    asm_sym_handle AsmSymHead;
+};
+
+}  // namespace
+
+static inline AsmsymState& asmsym_state() { return cbrun_part<AsmsymState>(); }
+
+
+static unsigned short const CvtTable[] = {
     #define ASM_TYPE(c,a)   a,
     ASM_TYPES
     #undef ASM_TYPE
@@ -142,7 +152,7 @@ static asm_sym_handle *AsmFind( const char *name )
 #if defined( _STANDALONE_ )
     sym = &sym_table[hashpjw( name )];
 #else
-    sym = &AsmSymHead;
+    sym = &asmsym_state().AsmSymHead;
 #endif
     for( ; *sym != NULL; sym = &((*sym)->next) ) {
 #if defined( _STANDALONE_ )
@@ -283,7 +293,7 @@ asm_sym_handle AsmLookup( const char *name )
             return( sym );
         }
 #else
-        sym->addr = AsmCodeAddress;
+        sym->addr = asminlin_state().AsmCodeAddress;
 #endif
     } else {
         AsmError( NO_MEMORY );
@@ -591,8 +601,8 @@ void AsmSymFini( void )
     myassert( AsmSymCount == 0 );
 
 #else
-    for( ; (sym = AsmSymHead) != NULL; ) {
-        AsmSymHead = sym->next;
+    for( ; (sym = asmsym_state().AsmSymHead) != NULL; ) {
+        asmsym_state().AsmSymHead = sym->next;
         FreeASym( sym );
     }
 #endif

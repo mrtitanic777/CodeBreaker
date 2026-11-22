@@ -81,7 +81,7 @@ hw_reg_set      CalcSegment( cg_sym_handle sym, cg_class class_ ) {
     if( reg != NULL && !HW_CEqual( *reg, HW_EMPTY ) ) {
         if( HW_COvlap( *reg, HW_SEGS ) )
             return( *reg );
-        FEMessage( FEMSG_BAD_PEG_REG, AskForLblSym( static_cast<label_handle>(CurrProc->label) ) );
+        FEMessage( FEMSG_BAD_PEG_REG, AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) );
     }
     if( class_ == CG_FE && (attr & FE_PROC) && (attr & FE_DLLIMPORT) == 0 ) {
 #if _TARGET & _TARG_80386

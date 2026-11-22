@@ -36,7 +36,17 @@
 #include "target.h"
 #include "intlload.h"
 
-static IntlData *internationalData; // translated messages
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CmsgState {
+    IntlData *internationalData;   // translated messages
+};
+
+}  // namespace
+
+static inline CmsgState& cmsg_state() { return cbrun_part<CmsgState>(); }
+
 
 //get default language
 static char const  * const EMsgArray[] = {
@@ -81,7 +91,7 @@ static msg_type const MsgType[] = {
 };
 #endif
 
-static char const *MsgPrefix[grp_index_max] = {
+static char const *const MsgPrefix[grp_index_max] = {
     #define GRP_DEF( name,prefix,num,index,eindex ) #prefix,
     GRP_DEFS
     #undef GRP_DEF
@@ -100,13 +110,13 @@ static char const EngUsageText[] = {
 
 void InitMsg( void )
 {
-    internationalData = LoadInternationalData( _str( __msg_file_prefix ) );
+    cmsg_state().internationalData = LoadInternationalData( _str( __msg_file_prefix ) );
 }
 
 void FiniMsg( void )
 {
-    if( internationalData != NULL ) {
-        FreeInternationalData( internationalData );
+    if( cmsg_state().internationalData != NULL ) {
+        FreeInternationalData( cmsg_state().internationalData );
     }
 }
 
@@ -114,8 +124,8 @@ char const *UsageText(void)      // GET INTERNATIONAL USAGE TEXT
 {
     char const *usage_text;
 
-    if( internationalData != NULL ) {
-        usage_text = internationalData->usage_text;
+    if( cmsg_state().internationalData != NULL ) {
+        usage_text = cmsg_state().internationalData->usage_text;
     } else {
         usage_text = EngUsageText;
     }
@@ -177,10 +187,10 @@ char const *CGetMsgStr( msg_codes msgnum )
     msg_index = GetMsgIndex( msgnum );
     p = NULL;
     if( !IS_MSGIDX_INVALID( msg_index ) ) {
-        if( internationalData == NULL ) {
+        if( cmsg_state().internationalData == NULL ) {
             p = EMsgArray[msg_index];
-        } else if( msg_index < internationalData->errors_count ) {
-            p = internationalData->errors_text[msg_index];
+        } else if( msg_index < cmsg_state().internationalData->errors_count ) {
+            p = cmsg_state().internationalData->errors_text[msg_index];
         }
     }
     return( p );

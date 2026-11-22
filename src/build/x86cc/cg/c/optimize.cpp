@@ -222,7 +222,7 @@ void    DeadTemps( void )
     instruction *ins;
     instruction *next;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
             if( !SideEffect( ins ) && _IsntIns( ins, SIDE_EFFECT )
@@ -296,7 +296,7 @@ void    AxeDeadCode( void )
     for( ;; ) {
         kill = NULL;
         change = false;
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
                 next = ins->head.next;
                 if( IsDeadIns( blk, ins, next ) ) {
@@ -342,7 +342,7 @@ void    DeadInstructions( void )
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         FreeJunk( blk );
     }
 }
@@ -368,7 +368,7 @@ void    PushPostOps( void )
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         PushInsForward( blk );
     }
     PropagateMoves();

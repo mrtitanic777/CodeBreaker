@@ -73,8 +73,8 @@ type_length      ParmMem( type_length length, type_length alignment, call_state 
         offset = _RoundUp( offset, alignment );
     }
     state->parm.offset = offset + _RoundUp( length, word_size );
-    if( state->parm.offset > MaxStack ) {
-        MaxStack = state->parm.offset;
+    if( state->parm.offset > data_state().MaxStack ) {
+        data_state().MaxStack = state->parm.offset;
     }
     return( offset );
 }

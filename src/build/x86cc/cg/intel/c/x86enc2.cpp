@@ -125,17 +125,27 @@ static const issigned signed_type[] = {
     SIGNED_86,      /* FL*/
     UNSIGNED        /* XX*/
 };
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct X86enc2State {
+    unsigned char DepthAlign_AlignArray[10] = { 0 };
+};
+
+}  // namespace
+
+static inline X86enc2State& x86enc2_state() { return cbrun_part<X86enc2State>(); }
+
 
 unsigned DepthAlign( unsigned depth )
 /***********************************/
 {
-    static unsigned char    AlignArray[10] = { 0 };
 
-    if( AlignArray[0] == 0 || depth == PROC_ALIGN ) {
+    if( x86enc2_state().DepthAlign_AlignArray[0] == 0 || depth == PROC_ALIGN ) {
         unsigned char *align_info_bytes = static_cast<unsigned char *>(FEAuxInfo( NULL, FEINF_CODE_LABEL_ALIGNMENT ));
-        Copy( align_info_bytes, AlignArray, align_info_bytes[0] + 1 );
+        Copy( align_info_bytes, x86enc2_state().DepthAlign_AlignArray, align_info_bytes[0] + 1 );
     }
-    if( OptForSize > 0 )
+    if( data_state().OptForSize > 0 )
         return( 1 );
     if( _CPULevel( CPU_486 ) ) {
         if( depth == PROC_ALIGN || depth == DEEP_LOOP_ALIGN )
@@ -148,14 +158,14 @@ unsigned DepthAlign( unsigned depth )
         return( 1 );
     }
     if( depth == PROC_ALIGN || depth == DEEP_LOOP_ALIGN ) {
-        return( AlignArray[1] );
+        return( x86enc2_state().DepthAlign_AlignArray[1] );
     }
     if( depth == 0 )
         depth = 1;
-    if( depth >= AlignArray[0] ) {
-        depth = AlignArray[0] - 1;
+    if( depth >= x86enc2_state().DepthAlign_AlignArray[0] ) {
+        depth = x86enc2_state().DepthAlign_AlignArray[0] - 1;
     }
-    return( AlignArray[depth + 1] );
+    return( x86enc2_state().DepthAlign_AlignArray[depth + 1] );
 }
 
 byte    CondCode( instruction *cond )
@@ -276,7 +286,7 @@ static  void    CodeSequence( const byte *p, byte_seq_len len )
                     attr = FEAttr( sym );
                     switch( type ) {
                     case FIX_SYM_SEGMENT:
-                        ILen += 2;
+                        pcencode_state().ILen += 2;
                         if( attr & (FE_STATIC | FE_GLOBAL) ) {
                             DoFESymRef( sym, CG_FE, off, FE_FIX_BASE );
                         } else {
@@ -284,7 +294,7 @@ static  void    CodeSequence( const byte *p, byte_seq_len len )
                         }
                         break;
                     case FIX_SYM_OFFSET:
-                        ILen += WORD_SIZE;
+                        pcencode_state().ILen += WORD_SIZE;
                         if( attr & (FE_STATIC | FE_GLOBAL) ) {
                             DoFESymRef( sym, CG_FE, off, FE_FIX_OFF );
                         } else {
@@ -297,7 +307,7 @@ static  void    CodeSequence( const byte *p, byte_seq_len len )
                         }
                         break;
                     case FIX_SYM_RELOFF:
-                        ILen += WORD_SIZE;
+                        pcencode_state().ILen += WORD_SIZE;
                         if( attr & FE_PROC ) {
                             DoFESymRef( sym, CG_FE, off, FE_FIX_SELF );
                         } else {
@@ -318,7 +328,7 @@ static  void    CodeSequence( const byte *p, byte_seq_len len )
                     p += 2;
                     if( _IsEmulation() ) {
                         SetFPPatchType( static_cast<fp_patches>(type) );
-                        Used87 = true;
+                        i87data_state().Used87 = true;
                     }
                     break;
                 }

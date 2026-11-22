@@ -64,9 +64,19 @@ static void     DoRelocRef( cg_sym_handle sym, cg_class class_, segment_id segid
 static void     OutShortDisp( label_handle lbl );
 static void     OutCodeDisp( label_handle lbl, fix_class f, bool_ rel, oc_class class_ );
 
-static oc_class SaveDbgOc = static_cast<oc_class>(OC_INFO_NOT_DEBUG);
-static pointer  SaveDbgPtr;
-static offset   LastUnique = ADDR_UNKNOWN;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct X86escState {
+    oc_class SaveDbgOc = static_cast<oc_class>(OC_INFO_NOT_DEBUG);
+    pointer SaveDbgPtr;
+    offset LastUnique = ADDR_UNKNOWN;
+};
+
+}  // namespace
+
+static inline X86escState& x86esc_state() { return cbrun_part<X86escState>(); }
+
 
 bool_    CodeHasAbsPatch( oc_entry *code )
 /***************************************/
@@ -224,18 +234,18 @@ static void SendBytes( const byte *ptr, unsigned len )
 static  void    DumpSavedDebug( void )
 /******************************/
 {
-    switch( SaveDbgOc ) {
+    switch( x86esc_state().SaveDbgOc ) {
     case OC_INFO_DBG_RTN_BEG:
-        DbgRtnBeg( static_cast<dbg_rtn *>(SaveDbgPtr), AskLocation() );
+        DbgRtnBeg( static_cast<dbg_rtn *>(x86esc_state().SaveDbgPtr), AskLocation() );
         break;
     case OC_INFO_DBG_BLK_BEG:
-        DbgBlkBeg( static_cast<dbg_block *>(SaveDbgPtr), AskLocation() );
+        DbgBlkBeg( static_cast<dbg_block *>(x86esc_state().SaveDbgPtr), AskLocation() );
         break;
     case OC_INFO_DBG_EPI_BEG:
-        DbgEpiBeg( static_cast<dbg_rtn *>(SaveDbgPtr), AskLocation() );
+        DbgEpiBeg( static_cast<dbg_rtn *>(x86esc_state().SaveDbgPtr), AskLocation() );
         break;
     }
-    SaveDbgOc = OC_INFO_NOT_DEBUG;
+    x86esc_state().SaveDbgOc = OC_INFO_NOT_DEBUG;
 }
 
 void DoAlignment( int len )
@@ -560,12 +570,12 @@ void    OutputOC( any_oc *oc, any_oc *next_lbl )
         lc = AskLocation();
         len = -lc & oc->oc_handle.hdr.objlen;
         if( AskIfUniqueLabel( oc->oc_handle.handle ) ) {
-            if( (lc == LastUnique) && (len == 0) ) {
+            if( (lc == x86esc_state().LastUnique) && (len == 0) ) {
                 /* Two unique labels have ended up next to each other.
                    Pad out to next label alignment boundry. */
                 len = oc->oc_handle.hdr.objlen + 1;
             }
-            LastUnique = lc + len;
+            x86esc_state().LastUnique = lc + len;
         }
         DoAlignment( len );
         OutLabel( oc->oc_handle.handle );           /* do patches*/
@@ -662,8 +672,8 @@ void    OutputOC( any_oc *oc, any_oc *next_lbl )
         case OC_INFO_DBG_RTN_BEG:
         case OC_INFO_DBG_BLK_BEG:
         case OC_INFO_DBG_EPI_BEG:
-            SaveDbgOc = base;
-            SaveDbgPtr = oc->oc_debug.ptr;
+            x86esc_state().SaveDbgOc = base;
+            x86esc_state().SaveDbgPtr = oc->oc_debug.ptr;
             break;
         case OC_INFO_DBG_BLK_END:
             DbgBlkEnd( static_cast<dbg_block *>(oc->oc_debug.ptr), AskLocation() );

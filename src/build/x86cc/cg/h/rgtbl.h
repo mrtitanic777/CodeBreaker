@@ -30,7 +30,7 @@
 ****************************************************************************/
 
 
-extern const hw_reg_set * const RegSets[];
+extern const hw_reg_set     *RegSetList( unsigned index );   /* the registers of a register list */
 extern const op_regs    RegList[];
 
 extern void             InitRegTbl( void );

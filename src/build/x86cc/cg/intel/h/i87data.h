@@ -33,7 +33,16 @@
 #include "gen8087.h"
 
 
-extern name            *FPStatWord;
-extern name            *Parm8087[MAX_8087_REG + 1];
-extern bool_            Used87;
-extern int             Max87Stk;
+#ifndef CB_STATE_I87DATA_H
+#define CB_STATE_I87DATA_H
+
+/* the variables of i87data.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct I87dataState {
+    name *FPStatWord;
+    name *Parm8087[MAX_8087_REG + 1];
+    bool_ Used87;
+    int Max87Stk;
+};
+inline I87dataState& i87data_state() { return cbrun_part<I87dataState>(); }
+
+#endif

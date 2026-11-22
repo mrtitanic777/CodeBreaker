@@ -143,7 +143,6 @@ void    DoBigLblPtr( cg_sym_handle sym )
 }
 
 
-
 static  void    DoImpPtr( cg_sym_handle sym, fix_class class_, offset plus )
 /*************************************************************************/
 {
@@ -313,7 +312,7 @@ name    *GenConstData( const void *buffer, type_class_def type_class )
 
     TellOptimizerByPassed();
     cgclass = ConstDataClass();
-    size = TypeClassSize[type_class];
+    size = data_state().TypeClassSize[type_class];
     label = AskForLabel( NULL );
     if( cgclass == CG_CLB ) {
         segid = AskCodeSeg();

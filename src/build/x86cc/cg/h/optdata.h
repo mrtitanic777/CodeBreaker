@@ -1,3 +1,4 @@
+#pragma once
 /****************************************************************************
 *
 *                            Open Watcom Project
@@ -29,15 +30,24 @@
 ****************************************************************************/
 
 
-extern  ins_entry       *FirstIns;
-extern  ins_entry       *LastIns;
-extern  ins_entry       *PendingDeletes;
-extern  bool_            InsDelete;
-extern  uint            QCount;
-extern  label_handle    Handles;
-extern  ins_entry       *RetList;
-extern  ins_entry       *NoRetList;
-extern  pointer         *InstrFrl;
+#ifndef CB_STATE_OPTDATA_H
+#define CB_STATE_OPTDATA_H
+
+/* the variables of optdata.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct OptdataState {
+    ins_entry *FirstIns;
+    ins_entry *LastIns;
+    ins_entry *PendingDeletes;
+    bool_ InsDelete;
+    uint QCount;
+    label_handle Handles;
+    ins_entry *RetList;
+    ins_entry *NoRetList;
+    pointer *InstrFrl;
+};
+inline OptdataState& optdata_state() { return cbrun_part<OptdataState>(); }
+
+#endif
 //      pointer         *CodeLblFrl;
 #if( OPTIONS & SAVINGS )
 extern  uint            Savings;

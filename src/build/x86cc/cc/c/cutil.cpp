@@ -39,8 +39,8 @@ void MustRecog( TOKEN this_token )
         NextToken();
     } else {
 /*      if( CurToken != T_LEFT_BRACE && CurToken != T_RIGHT_BRACE */
-        if( CurToken != T_EOF ) {
-            if( CurToken == T_SEMI_COLON ) {
+        if( cvars_state().CurToken != T_EOF ) {
+            if( cvars_state().CurToken == T_SEMI_COLON ) {
                 switch( this_token ) {
                 case T_RIGHT_BRACKET:
                 case T_RIGHT_PAREN:
@@ -60,18 +60,18 @@ static const char *NameOfCurToken( void )
 {
     const char  *token;
 
-    switch( CurToken ) {
+    switch( cvars_state().CurToken ) {
     case T_BAD_CHAR:
-        Buffer[1] = '\0';
+        cvars_state().Buffer[1] = '\0';
         /* fall through */
     case T_ID:
     case T_STRING:
     case T_CONSTANT:
     case T_BAD_TOKEN:
-        token = Buffer;
+        token = cvars_state().Buffer;
         break;
     default:
-        token = TokenString[CurToken];
+        token = TokenString[cvars_state().CurToken];
     }
     return( token );
 }
@@ -83,7 +83,7 @@ void Expecting( const char *a_token )
 
 bool_ ExpectingToken( TOKEN token )
 {
-    if( CurToken == token ) {
+    if( cvars_state().CurToken == token ) {
         return( true );
     }
     CErr3p( ERR_EXPECTING_BUT_FOUND, TokenString[token], NameOfCurToken() );
@@ -108,7 +108,7 @@ void ExpectIdentifier( void )
 
 bool_ ExpectingConstant( void )
 {
-    if( CurToken == T_CONSTANT ) {
+    if( cvars_state().CurToken == T_CONSTANT ) {
         return( true );
     }
     CErr2p( ERR_EXPECTING_CONSTANT_BUT_FOUND, NameOfCurToken() );
@@ -130,11 +130,11 @@ SYM_NAMEPTR SymName( SYMPTR sym, SYM_HANDLE sym_handle )
 {
     SYM_HASHPTR hsym;
 
-    if( sym_handle == CharSymHandle )
+    if( sym_handle == cvars_state().CharSymHandle )
         return( "char" );
     if( sym->name != NULL )
         return( sym->name );
-    hsym = HashTab[sym->u1.hash];
+    hsym = cvars_state().HashTab[sym->u1.hash];
     while( hsym->handle != sym_handle )
         hsym = hsym->next_sym;
     return( hsym->name );

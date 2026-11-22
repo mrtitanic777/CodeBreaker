@@ -40,7 +40,17 @@
 #include "regsave.h"
 
 
-static  save_def        MaxConstSave;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct X86regsvState {
+    save_def MaxConstSave;
+};
+
+}  // namespace
+
+static inline X86regsvState& x86regsv_state() { return cbrun_part<X86regsvState>(); }
+
 
 #define COST( s, t ) ( ( (s)*size + (t)*time ) / TOTAL_WEIGHT )
 #define _NEXTCON( c ) (*(conflict_node**)&((c)->tree))
@@ -68,28 +78,28 @@ void    InitWeights( uint size )
 
 
     if( _CPULevel( CPU_486 ) /* or 586 */ ) {
-        SetCost( Save.load_cost, COST( 3,1 ) );
-        SetCost( Save.store_cost, COST( 3,1 ) );
-        SetCost( Save.use_save, COST( 1,1 ) );
-        SetCost( Save.def_save, COST( 1,1 ) );
-        SetCost( Save.push_cost, COST( 1,1 ) );
-        SetCost( Save.pop_cost, COST( 1,1 ) );
+        SetCost( regsave_state().Save.load_cost, COST( 3,1 ) );
+        SetCost( regsave_state().Save.store_cost, COST( 3,1 ) );
+        SetCost( regsave_state().Save.use_save, COST( 1,1 ) );
+        SetCost( regsave_state().Save.def_save, COST( 1,1 ) );
+        SetCost( regsave_state().Save.push_cost, COST( 1,1 ) );
+        SetCost( regsave_state().Save.pop_cost, COST( 1,1 ) );
     } else if( _CPULevel( CPU_386 ) ) {
-        SetCost( Save.load_cost, COST( 3,4 ) );
-        SetCost( Save.store_cost, COST( 3,2 ) );
-        SetCost( Save.use_save, COST( 1,(4-2) ) );
-        SetCost( Save.def_save, COST( 1,2 ) );
-        SetCost( Save.push_cost, COST( 1,2 ) );
-        SetCost( Save.pop_cost, COST( 1,4 ) );
+        SetCost( regsave_state().Save.load_cost, COST( 3,4 ) );
+        SetCost( regsave_state().Save.store_cost, COST( 3,2 ) );
+        SetCost( regsave_state().Save.use_save, COST( 1,(4-2) ) );
+        SetCost( regsave_state().Save.def_save, COST( 1,2 ) );
+        SetCost( regsave_state().Save.push_cost, COST( 1,2 ) );
+        SetCost( regsave_state().Save.pop_cost, COST( 1,4 ) );
     } else { // how about some 286 and 186 timings!
-        SetCost( Save.load_cost, COST( 3,17 ) );
-        SetCost( Save.store_cost, COST( 3,18 ) );
-        SetCost( Save.use_save, COST( 1,(18-3) ) );
-        SetCost( Save.def_save, COST( 1,18 ) );
-        SetCost( Save.push_cost, COST( 1,11 ) );
-        SetCost( Save.pop_cost, COST( 1,8 ) );
+        SetCost( regsave_state().Save.load_cost, COST( 3,17 ) );
+        SetCost( regsave_state().Save.store_cost, COST( 3,18 ) );
+        SetCost( regsave_state().Save.use_save, COST( 1,(18-3) ) );
+        SetCost( regsave_state().Save.def_save, COST( 1,18 ) );
+        SetCost( regsave_state().Save.push_cost, COST( 1,11 ) );
+        SetCost( regsave_state().Save.pop_cost, COST( 1,8 ) );
     }
-    Save.index_save     = Save.load_cost[WD];
+    regsave_state().Save.index_save     = regsave_state().Save.load_cost[WD];
 }
 
 
@@ -108,21 +118,21 @@ bool_    WorthProlog( conflict_node *conf, hw_reg_set reg )
 
     type_class = conf->name->n.type_class;
     must_save = MustSaveRegs();
-    if( BlockByBlock || HW_Ovlap( reg, GivenRegisters ) ||
+    if( data_state().BlockByBlock || HW_Ovlap( reg, data_state().GivenRegisters ) ||
        !HW_Ovlap( reg, must_save ) ) {
         cost = 0;
     } else {
-        cost = Save.pop_cost[type_class] + Save.push_cost[type_class];
+        cost = regsave_state().Save.pop_cost[type_class] + regsave_state().Save.push_cost[type_class];
     }
     op = conf->name;
     savings = conf->savings;
     if( _ConstTemp( op ) ) {
         /* adjust for the initial load */
-        cost += Weight( Save.load_cost[type_class] + Save.def_save[type_class], conf->start_block );
+        cost += Weight( regsave_state().Save.load_cost[type_class] + regsave_state().Save.def_save[type_class], conf->start_block );
         /* Adjust by a fudge factor */
         savings /= LOOP_FACTOR;
     } else {
-        savings -= MaxConstSave;
+        savings -= x86regsv_state().MaxConstSave;
     }
     return( savings >= cost );
 }
@@ -143,7 +153,7 @@ void        ConstSavings( void )
     block               *blk;
     instruction         *ins;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode != OP_MOV )
                 continue;
@@ -164,7 +174,7 @@ void        ConstSavings( void )
             _NEXTCON( conf ) = other;
         }
     }
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         if( _Is( conf, CST_SAVINGS_JUST_CALCULATED ) && _ConstTemp( conf->name ) ) {
             for( other=_NEXTCON(conf); other != NULL; other=_NEXTCON(other) ) {
                 conf->savings += other->savings;
@@ -175,29 +185,29 @@ void        ConstSavings( void )
             _SetTrue( conf, CST_CONF_VISITED ); /* already summed down the list */
         }
     }
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         _NEXTCON( conf ) = NULL;
         _SetFalse( conf, CST_CONF_VISITED );
     }
-    MaxConstSave = 0;
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    x86regsv_state().MaxConstSave = 0;
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         if( !_ConstTemp( conf->name ) )
             continue;
         _SetFalse( conf, CST_SAVINGS_JUST_CALCULATED );
         if( _Isnt( conf, CST_SAVINGS_CALCULATED ) )
             continue;
-        if( conf->savings < MaxConstSave )
+        if( conf->savings < x86regsv_state().MaxConstSave )
             continue;
-        MaxConstSave = conf->savings;
+        x86regsv_state().MaxConstSave = conf->savings;
     }
-    for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
         if( _ConstTemp( conf->name ) )
             continue;
         if( _Isnt( conf, CST_SAVINGS_JUST_CALCULATED ) )
             continue;
         _SetFalse( conf, CST_SAVINGS_JUST_CALCULATED );
         if( conf->savings != 0 ) {
-            conf->savings += MaxConstSave;
+            conf->savings += x86regsv_state().MaxConstSave;
         }
     }
 }

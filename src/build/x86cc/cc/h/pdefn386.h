@@ -33,7 +33,7 @@
 
 #define NC '\0'
 
-hw_reg_set DefaultVarParms[] = {
+extern hw_reg_set const DefaultVarParms[] = {
     HW_D( HW_EMPTY )
 };
 
@@ -69,20 +69,20 @@ REG_PICK( EDI, "edi", 27 ) \
 REG_PICK( EBP, "ebp", 28 ) \
 REG_PICK( ESP, "esp", 29 )
 
-char Registers[] = {
+extern char const Registers[] = {
     #define REG_PICK(c,t,r) t "\0"
     REG_DEFS
     "\0"
     #undef REG_PICK
 };
 
-unsigned char RegMap[] = {
+extern unsigned char const RegMap[] = {
     #define REG_PICK(c,t,r) r,
     REG_DEFS
     #undef REG_PICK
 };
 
-hw_reg_set RegBits[] = {
+extern hw_reg_set const RegBits[] = {
     #define REG_PICK(c,t,r) HW_D( HW_##c ),
     REG_DEFS
     #undef REG_PICK
@@ -90,7 +90,7 @@ hw_reg_set RegBits[] = {
 
 /*      INLINE FUNCTIONS */
 
-aux_info        InlineInfo;
+#include "pdefn2.h"
 
 /*
   here come the code bursts ...
@@ -98,218 +98,218 @@ aux_info        InlineInfo;
 
 #include "code386.gh"
 
-static hw_reg_set P_EAX_CL[] = {
+static hw_reg_set const P_EAX_CL[] = {
     HW_D( HW_EAX ),
     HW_D( HW_CL ),
     HW_D( HW_EMPTY ) };
 
-static hw_reg_set P_EAX_ECX[] = {
+static hw_reg_set const P_EAX_ECX[] = {
     HW_D( HW_EAX ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY ) };
 
-static hw_reg_set P_EDI_ESI[] = {
+static hw_reg_set const P_EDI_ESI[] = {
     HW_D( HW_EDI ),
     HW_D( HW_ESI ),
     HW_D( HW_EMPTY ) };
 
-static hw_reg_set P_EDI_ESI_ECX[] = {
+static hw_reg_set const P_EDI_ESI_ECX[] = {
     HW_D( HW_EDI ),
     HW_D( HW_ESI ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESI_EDI_ECX[] = {
+static hw_reg_set const P_ESI_EDI_ECX[] = {
     HW_D( HW_ESI ),
     HW_D( HW_EDI ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EDI_AX_ECX[] = {
+static hw_reg_set const P_EDI_AX_ECX[] = {
     HW_D( HW_EDI ),
     HW_D( HW_AX ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EDI_EAX_ECX[] = {
+static hw_reg_set const P_EDI_EAX_ECX[] = {
     HW_D( HW_EDI ),
     HW_D( HW_EAX ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EDI_AL_ECX[] = {
+static hw_reg_set const P_EDI_AL_ECX[] = {
     HW_D( HW_EDI ),
     HW_D( HW_AL ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESEDI_DSESI[] = {
+static hw_reg_set const P_ESEDI_DSESI[] = {
     HW_D_2( HW_ES, HW_EDI ),
     HW_D_2( HW_DS, HW_ESI ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DXEDI_CL[] = {
+static hw_reg_set const P_DXEDI_CL[] = {
     HW_D_2( HW_DX, HW_EDI ),
     HW_D( HW_CL ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DXEDI_CXESI_EAX[] = {
+static hw_reg_set const P_DXEDI_CXESI_EAX[] = {
     HW_D_2( HW_DX, HW_EDI ),
     HW_D_2( HW_CX, HW_ESI ),
     HW_D( HW_EAX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DXESI_CXEDI_EAX[] = {
+static hw_reg_set const P_DXESI_CXEDI_EAX[] = {
     HW_D_2( HW_DX, HW_ESI ),
     HW_D_2( HW_CX, HW_EDI ),
     HW_D( HW_EAX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DXEAX_CXEBX[] = {
+static hw_reg_set const P_DXEAX_CXEBX[] = {
     HW_D_2( HW_DX, HW_EAX ),
     HW_D_2( HW_CX, HW_EBX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESEDI_DSESI_ECX[] = {
+static hw_reg_set const P_ESEDI_DSESI_ECX[] = {
     HW_D_2( HW_ES, HW_EDI ),
     HW_D_2( HW_DS, HW_ESI ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESEDI_AL_ECX[] = {
+static hw_reg_set const P_ESEDI_AL_ECX[] = {
     HW_D_2( HW_ES, HW_EDI ),
     HW_D( HW_AL ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DXEDI_AL_ECX[] = {
+static hw_reg_set const P_DXEDI_AL_ECX[] = {
     HW_D_2( HW_DX, HW_EDI ),
     HW_D( HW_AL ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESEDI_AX_ECX[] = {
+static hw_reg_set const P_ESEDI_AX_ECX[] = {
     HW_D_2( HW_ES, HW_EDI ),
     HW_D( HW_AX ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESEDI_EAX_ECX[] = {
+static hw_reg_set const P_ESEDI_EAX_ECX[] = {
     HW_D_2( HW_ES, HW_EDI ),
     HW_D( HW_EAX ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DXEDI_AX_ECX[] = {
+static hw_reg_set const P_DXEDI_AX_ECX[] = {
     HW_D_2( HW_DX, HW_EDI ),
     HW_D( HW_AX ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DXEDI_EAX_ECX[] = {
+static hw_reg_set const P_DXEDI_EAX_ECX[] = {
     HW_D_2( HW_DX, HW_EDI ),
     HW_D( HW_EAX ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESI_EDI[] = {
+static hw_reg_set const P_ESI_EDI[] = {
     HW_D( HW_ESI ),
     HW_D( HW_EDI ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DSESI_ESEDI[] = {
+static hw_reg_set const P_DSESI_ESEDI[] = {
     HW_D_2( HW_DS, HW_ESI ),
     HW_D_2( HW_ES, HW_EDI ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_SIEAX_CXEDI[] = {
+static hw_reg_set const P_SIEAX_CXEDI[] = {
     HW_D_2( HW_SI, HW_EAX ),
     HW_D_2( HW_CX, HW_EDI ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DSESI_ESEDI_ECX[] = {
+static hw_reg_set const P_DSESI_ESEDI_ECX[] = {
     HW_D_2( HW_DS, HW_ESI ),
     HW_D_2( HW_ES, HW_EDI ),
     HW_D( HW_ECX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_DSESI_CL[] = {
+static hw_reg_set const P_DSESI_CL[] = {
     HW_D_2( HW_DS, HW_ESI ),
     HW_D( HW_CL ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESI_DL[] = {
+static hw_reg_set const P_ESI_DL[] = {
     HW_D( HW_ESI ),
     HW_D( HW_DL ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EDI[] = {
+static hw_reg_set const P_EDI[] = {
     HW_D( HW_EDI ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_ESEDI[] = {
+static hw_reg_set const P_ESEDI[] = {
     HW_D_2( HW_ES, HW_EDI ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_CXEDI[] = {
+static hw_reg_set const P_CXEDI[] = {
     HW_D_2( HW_CX, HW_EDI ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EAX[] = {
+static hw_reg_set const P_EAX[] = {
     HW_D( HW_EAX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EDX[] = {
+static hw_reg_set const P_EDX[] = {
     HW_D( HW_EDX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EDX_AL[] = {
+static hw_reg_set const P_EDX_AL[] = {
     HW_D( HW_EDX ),
     HW_D( HW_AL ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EDX_EAX[] = {
+static hw_reg_set const P_EDX_EAX[] = {
     HW_D( HW_EDX ),
     HW_D( HW_EAX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EAX_EDX[] = {
+static hw_reg_set const P_EAX_EDX[] = {
     HW_D( HW_EAX ),
     HW_D( HW_EDX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EAX_ESI_EDX_EDI_ECX[] = {
+static hw_reg_set const P_EAX_ESI_EDX_EDI_ECX[] = {
     HW_D( HW_EAX ),
     HW_D( HW_ESI ),
     HW_D( HW_EDX ),
@@ -318,12 +318,12 @@ static hw_reg_set P_EAX_ESI_EDX_EDI_ECX[] = {
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_EDXEAX[] = {
+static hw_reg_set const P_EDXEAX[] = {
     HW_D_2( HW_EDX, HW_EAX ),
     HW_D( HW_EMPTY )
 };
 
-static hw_reg_set P_8087[] = {
+static hw_reg_set const P_8087[] = {
     HW_D( HW_FLTS ),
     HW_D( HW_EMPTY )
 };

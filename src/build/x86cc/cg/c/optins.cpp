@@ -270,16 +270,16 @@ void    OptPush( void )
     ins_entry   *ins;
 
   optbegin
-    ins = LastIns;
+    ins = optdata_state().LastIns;
     for( ;; ) {
-        InsDelete = false;
+        optdata_state().InsDelete = false;
         switch( _Class( ins ) ) {
         case OC_INFO:
             MultiLineNums( ins );
             break;
         case OC_LABEL:
             Untangle( ins );
-            if( !InsDelete ) {
+            if( !optdata_state().InsDelete ) {
                 TraceCommon( ins );
             }
             break;
@@ -290,7 +290,7 @@ void    OptPush( void )
             break;
         case OC_JMP:
             Untangle( PrevIns( ins ) );
-            if( !InsDelete ) {
+            if( !optdata_state().InsDelete ) {
                 ComCode( ins );
                 JmpRet( ins );
             }
@@ -300,21 +300,21 @@ void    OptPush( void )
                 RetAftrLbl( ins );
                 RetAftrCall( ins );
             }
-            if( !InsDelete ) {
-                ComTail( RetList, ins );
+            if( !optdata_state().InsDelete ) {
+                ComTail( optdata_state().RetList, ins );
             }
             break;
         case OC_NORET:
-            if( !InsDelete ) {
-                ComTail( NoRetList, ins );
+            if( !optdata_state().InsDelete ) {
+                ComTail( optdata_state().NoRetList, ins );
             }
             break;
         }
-        if( !InsDelete )
+        if( !optdata_state().InsDelete )
             break;      /* nothing happened*/
         FreePendingDeletes();
         /* find the last interesting queue entry and try some more*/
-        ins = LastIns;
+        ins = optdata_state().LastIns;
         for( ;; ) {
             if( ins == NULL )
                 optreturnvoid;
@@ -334,30 +334,30 @@ void    OptPull( void )
 
   optbegin
     for( ;; ) {
-        InsDelete = false;
-        ins_class = _Class( FirstIns );
+        optdata_state().InsDelete = false;
+        ins_class = _Class( optdata_state().FirstIns );
         switch( ins_class ) {
         case OC_LABEL:
-            Untangle( FirstIns );
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !InsDelete ) {
-                CloneCode( _Label( FirstIns ) );
+            Untangle( optdata_state().FirstIns );
+            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !optdata_state().InsDelete ) {
+                CloneCode( _Label( optdata_state().FirstIns ) );
             }
             break;
         case OC_CALL:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                CallRet( FirstIns );
+                CallRet( optdata_state().FirstIns );
             }
             break;
         case OC_JMP:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                IsolatedCode( FirstIns );
-                if( !InsDelete ) {
-                    StraightenCode( FirstIns );
-                    JmpRet( FirstIns );
-                    if( !InsDelete ) {
-                        CheckStraightenCode( NextIns( FirstIns ) );
-                        if( !InsDelete ) {
-                            CloneCode( _Label( FirstIns ) );
+                IsolatedCode( optdata_state().FirstIns );
+                if( !optdata_state().InsDelete ) {
+                    StraightenCode( optdata_state().FirstIns );
+                    JmpRet( optdata_state().FirstIns );
+                    if( !optdata_state().InsDelete ) {
+                        CheckStraightenCode( NextIns( optdata_state().FirstIns ) );
+                        if( !optdata_state().InsDelete ) {
+                            CloneCode( _Label( optdata_state().FirstIns ) );
                         }
                     }
                 }
@@ -365,45 +365,45 @@ void    OptPull( void )
             break;
         case OC_JMPI:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                IsolatedCode( FirstIns );
-                if( !InsDelete ) {
-                    CheckStraightenCode( NextIns( FirstIns ) );
+                IsolatedCode( optdata_state().FirstIns );
+                if( !optdata_state().InsDelete ) {
+                    CheckStraightenCode( NextIns( optdata_state().FirstIns ) );
                 }
             }
             break;
         case OC_JCOND:
-            Untangle( NextIns( FirstIns ) );
+            Untangle( NextIns( optdata_state().FirstIns ) );
             break;
         case OC_RET:
         case OC_NORET:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                IsolatedCode( FirstIns );
-                if( !InsDelete ) {
-                    CheckStraightenCode( NextIns( FirstIns ) );
+                IsolatedCode( optdata_state().FirstIns );
+                if( !optdata_state().InsDelete ) {
+                    CheckStraightenCode( NextIns( optdata_state().FirstIns ) );
                 }
             }
             break;
         }
         FreePendingDeletes();
-        if( FirstIns == NULL )
+        if( optdata_state().FirstIns == NULL )
             optreturnvoid;
-        if( !InsDelete ) {
+        if( !optdata_state().InsDelete ) {
             break;
         }
     }
     switch( ins_class ) {
     case OC_LREF:
     case OC_CALL:
-        _SetStatus( _Label( FirstIns ), KEEPLABEL );
+        _SetStatus( _Label( optdata_state().FirstIns ), KEEPLABEL );
         break;
     case OC_JCOND:
     case OC_JMP:
 #if( OPTIONS & SHORT_JUMPS )
-        if( !_ChkAttr( FirstIns, OC_ATTR_FAR ) ) {
+        if( !_ChkAttr( optdata_state().FirstIns, OC_ATTR_FAR ) ) {
             SetBranches();
         }
 #endif
-        _SetStatus( _Label( FirstIns ), KEEPLABEL );
+        _SetStatus( _Label( optdata_state().FirstIns ), KEEPLABEL );
         break;
     }
   optend

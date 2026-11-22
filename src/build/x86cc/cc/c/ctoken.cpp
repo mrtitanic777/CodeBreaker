@@ -32,13 +32,13 @@
 
 #include "ctokens.h"
 
-const char      *TokenString[] = {
+extern const char      *const TokenString[] = {
     #define pick(token,string,class_,oper,prec) string,
     #include "_ctokens.h"
     #undef  pick
 };
 
-token_class     TokenClass[] = {
+extern token_class     const TokenClass[] = {
     #define pick(token,string,class_,oper,prec) class_,
     #include "_ctokens.h"
     #undef pick

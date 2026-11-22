@@ -131,34 +131,34 @@ type_class_def  CallState( aux_handle aux, const type_def *tipe, call_state *sta
     if( cclass_target & FECALL_X86_NEEDS_BP_CHAIN ) {
         state->attr |= ROUTINE_NEEDS_BP_CHAIN;
     }
-    if( state == &CurrProc->state ) {
+    if( state == &data_state().CurrProc->state ) {
         if( cclass_target & (FECALL_X86_GENERATE_STACK_FRAME | FECALL_X86_PROLOG_HOOKS | FECALL_X86_EPILOG_HOOKS) ) {
-            CurrProc->prolog_state |= PST_PROLOG_FAT;
+            data_state().CurrProc->prolog_state |= PST_PROLOG_FAT;
             state->attr |= ROUTINE_NEEDS_PROLOG;
         }
         if( cclass_target & FECALL_X86_PROLOG_HOOKS ) {
-            CurrProc->prolog_state |= PST_PROLOG_HOOKS;
+            data_state().CurrProc->prolog_state |= PST_PROLOG_HOOKS;
         }
         if( cclass_target & FECALL_X86_EPILOG_HOOKS ) {
-            CurrProc->prolog_state |= PST_EPILOG_HOOKS;
+            data_state().CurrProc->prolog_state |= PST_EPILOG_HOOKS;
         }
         if( cclass_target & FECALL_X86_PROLOG_FAT_WINDOWS ) {
-            CurrProc->prolog_state |= PST_PROLOG_FAT;
+            data_state().CurrProc->prolog_state |= PST_PROLOG_FAT;
         }
         if( cclass_target & FECALL_X86_EMIT_FUNCTION_NAME ) {
-            CurrProc->prolog_state |= PST_FUNCTION_NAME;
+            data_state().CurrProc->prolog_state |= PST_FUNCTION_NAME;
         }
         if( cclass_target & FECALL_X86_THUNK_PROLOG ) {
-            CurrProc->prolog_state |= PST_PROLOG_THUNK;
+            data_state().CurrProc->prolog_state |= PST_PROLOG_THUNK;
         }
         if( cclass_target & FECALL_X86_GROW_STACK ) {
-            CurrProc->prolog_state |= PST_GROW_STACK;
+            data_state().CurrProc->prolog_state |= PST_GROW_STACK;
         }
         if( cclass_target & FECALL_X86_TOUCH_STACK ) {
-            CurrProc->prolog_state |= PST_TOUCH_STACK;
+            data_state().CurrProc->prolog_state |= PST_TOUCH_STACK;
         }
         if( cclass_target & FECALL_X86_LOAD_RDOSDEV_ON_ENTRY ) {
-            CurrProc->prolog_state |= PST_PROLOG_RDOSDEV;
+            data_state().CurrProc->prolog_state |= PST_PROLOG_RDOSDEV;
         }
     }
     type_class = ReturnTypeClass( tipe, state->attr );
@@ -180,7 +180,7 @@ type_class_def  CallState( aux_handle aux, const type_def *tipe, call_state *sta
     HW_CAsgn( state->parm.used, HW_EMPTY );
     state->parm.curr_entry = state->parm.table;
     state->parm.offset  = 0;
-    if( tipe == TypeNone ) {
+    if( tipe == data_state().TypeNone ) {
         HW_CAsgn( state->return_reg, HW_EMPTY );
     } else if( type_class == XX ) {
         if( cclass_target & FECALL_X86_SPECIAL_STRUCT_RETURN ) {
@@ -220,7 +220,7 @@ void    UpdateReturn( call_state *state, const type_def *tipe, type_class_def ty
     } else {
         HW_CTurnOff( state->return_reg, HW_FLTS );
     }
-    if( tipe == TypeNone ) {
+    if( tipe == data_state().TypeNone ) {
         if( HW_CEqual( state->return_reg, HW_EMPTY ) )
             return;
         FEMessage( FEMSG_BAD_RETURN_REGISTER, aux );
@@ -274,7 +274,6 @@ hw_reg_set      CallZap( call_state *state )
 }
 
 
-
 hw_reg_set      MustSaveRegs( void )
 /**********************************/
 {
@@ -282,23 +281,23 @@ hw_reg_set      MustSaveRegs( void )
     hw_reg_set  tmp;
 
     HW_CAsgn( save, HW_FULL );
-    HW_TurnOff( save, CurrProc->state.modify );
+    HW_TurnOff( save, data_state().CurrProc->state.modify );
     HW_CTurnOff( save, HW_UNUSED );
-    if( CurrProc->state.attr & ROUTINE_MODIFY_EXACT ) {
-        HW_TurnOff( save, CurrProc->state.return_reg );
+    if( data_state().CurrProc->state.attr & ROUTINE_MODIFY_EXACT ) {
+        HW_TurnOff( save, data_state().CurrProc->state.return_reg );
     } else {
-        tmp = CurrProc->state.parm.used;
-        HW_TurnOn( tmp, CurrProc->state.return_reg );
+        tmp = data_state().CurrProc->state.parm.used;
+        HW_TurnOn( tmp, data_state().CurrProc->state.return_reg );
         tmp = FullReg( tmp );
         HW_TurnOff( save, tmp );
     }
     tmp = StackReg();
     HW_TurnOff( save, tmp );
-    if( HW_CEqual( CurrProc->state.return_reg, HW_EMPTY ) ) {
-        tmp = ReturnReg( WD, _NPX( CurrProc->state.attr ) );
+    if( HW_CEqual( data_state().CurrProc->state.return_reg, HW_EMPTY ) ) {
+        tmp = ReturnReg( WD, _NPX( data_state().CurrProc->state.attr ) );
         HW_TurnOff( save, tmp );
     }
-    tmp = CurrProc->state.unalterable;
+    tmp = data_state().CurrProc->state.unalterable;
     HW_TurnOff( tmp, DisplayReg() );
     HW_TurnOff( tmp, StackReg() );
     HW_TurnOff( save, tmp );
@@ -310,7 +309,7 @@ hw_reg_set      SaveRegs( void )
 {
     hw_reg_set  save;
     save = MustSaveRegs();
-    HW_OnlyOn( save, CurrProc->state.used );
+    HW_OnlyOn( save, data_state().CurrProc->state.used );
     return( save );
 }
 

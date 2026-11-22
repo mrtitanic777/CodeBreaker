@@ -38,40 +38,50 @@
 #include "procdef.h"
 #include "optmac.h"
 
-extern  block                   *HeadBlock;
-extern  block                   *BlockList;
-extern  block                   *CurrBlock;
-extern  int                     InsId;
-extern  int                     TempId;
-extern  conflict_node           *ConfList;
-extern  name                    *Names[N_CLASS_MAX];
-extern  name                    *LastTemp;
-extern  name                    *DummyIndex;
-extern  source_line_number      SrcLine;
-extern  global_bit_set          MemoryBits;
-extern  type_class_def          ClassPointer;
-extern  bool_                    BlockByBlock;
-extern  type_length             MaxStack;
-extern  const type_def          *TypeBoolean;
-extern  const type_def          *TypeInteger;
-extern  const type_def          *TypeUnsigned;
-extern  const type_def          *TypePtr;
-extern  const type_def          *TypeNone;
-extern  const type_def          *TypeProcParm;
-extern  const type_def          *TypeNearInteger;
-extern  const type_def          *TypeLongInteger;
-extern  const type_def          *TypeLongLongInteger;
-extern  const type_def          *TypeHugeInteger;
-extern  hw_reg_set              GivenRegisters;
-extern  bool_                    BlocksUnTrimmed;
-extern  an                      AddrList;
-extern  segment_id              DbgLocals;
-extern  segment_id              DbgTypes;
-extern  uint_16                 TypeIdx;      // uint ???
-extern  byte                    OptForSize;
-extern  bool_                    HaveLiveInfo;
-extern  bool_                    HaveDominatorInfo;
-extern  pointer_uint            FrlSize;
-extern  bool_                    HaveCurrBlock;
-extern  proc_def                *CurrProc;
-extern  type_length             TypeClassSize[];
+
+#ifndef CB_STATE_DATA_H
+#define CB_STATE_DATA_H
+
+/* the variables of data.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct DataState {
+    block *HeadBlock;
+    block *BlockList;
+    block *CurrBlock;
+    int InsId;
+    int TempId;
+    conflict_node *ConfList;
+    proc_def *CurrProc;
+    name *Names[N_CLASS_MAX];
+    name *LastTemp;
+    name *DummyIndex;
+    source_line_number SrcLine;
+    global_bit_set MemoryBits;
+    type_class_def ClassPointer;
+    bool_ BlockByBlock;
+    type_length MaxStack;
+    const type_def *TypeBoolean;
+    const type_def *TypeInteger;
+    const type_def *TypeUnsigned;
+    const type_def *TypePtr;
+    const type_def *TypeNone;
+    const type_def *TypeProcParm;
+    const type_def *TypeNearInteger;
+    const type_def *TypeLongInteger;
+    const type_def *TypeLongLongInteger;
+    const type_def *TypeHugeInteger;
+    hw_reg_set GivenRegisters;
+    bool_ BlocksUnTrimmed;
+    an AddrList;
+    segment_id DbgLocals;
+    segment_id DbgTypes;
+    uint_16 TypeIdx;
+    byte OptForSize;
+    bool_ HaveLiveInfo;
+    bool_ HaveDominatorInfo;
+    pointer_uint FrlSize;
+    bool_ HaveCurrBlock;
+    type_length TypeClassSize[XX + 1];
+};
+inline DataState& data_state() { return cbrun_part<DataState>(); }
+
+#endif

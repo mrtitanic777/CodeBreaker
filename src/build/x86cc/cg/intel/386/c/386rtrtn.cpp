@@ -66,53 +66,58 @@ const rtn_info RTInfo[] = {
     #undef PICK
 };
 
-static const struct STRUCT_BYTE_SEQ( 2 ) Scn1 = {
-     2, false,
-    {0xF2,           /*       repne     */
-     0xAE}           /*       scasb     */
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct RtrtnState {
+    const struct STRUCT_BYTE_SEQ( 2 ) Scn1 = {
+         2, false,
+        {0xF2,           /*       repne     */
+         0xAE}           /*       scasb     */
+    };
+    const struct STRUCT_BYTE_SEQ( 6 ) Scn1ES = {
+         6, false,
+        {0x06,          /*      push    es  */
+         0x0e,          /*      push    cs  */
+         0x07,          /*      pop     es  */
+         0xF2,          /*      repne       */
+         0xAE,          /*      scasb       */
+         0x07}          /*      pop     es  */
+    };
+    const struct STRUCT_BYTE_SEQ( 3 ) Scn2 = {    /* or Scn4 in USE16 */
+         3, false,
+        {0xF2,          /*      repne       */
+         0x66, 0xAF}    /*      scasw       */
+    };
+    const struct STRUCT_BYTE_SEQ( 7 ) Scn2ES = {  /* or Scn4 in USE16 */
+         7, false,
+        {0x06,          /*      push    es  */
+         0x0e,          /*      push    cs  */
+         0x07,          /*      pop     es  */
+         0xF2,          /*      repne       */
+         0x66, 0xAF,    /*      scasw       */
+         0x07}          /*      pop     es  */
+    };
+    const struct STRUCT_BYTE_SEQ( 2 ) Scn4 = {    /* or Scn2 in USE16 */
+         2, false,
+        {0xF2,          /*      repne       */
+         0xAF}          /*      scasd       */
+    };
+    const struct STRUCT_BYTE_SEQ( 6 ) Scn4ES = {  /* or Scn2 in USE16 */
+         6, false,
+        {0x06,          /*      push    es  */
+         0x0e,          /*      push    cs  */
+         0x07,          /*      pop     es  */
+         0xF2,          /*      repne       */
+         0xAF,          /*      scasd       */
+         0x07}          /*      pop     es  */
+    };
 };
 
-static const struct STRUCT_BYTE_SEQ( 6 ) Scn1ES = {
-     6, false,
-    {0x06,          /*      push    es  */
-     0x0e,          /*      push    cs  */
-     0x07,          /*      pop     es  */
-     0xF2,          /*      repne       */
-     0xAE,          /*      scasb       */
-     0x07}          /*      pop     es  */
-};
+}  // namespace
 
-static const struct STRUCT_BYTE_SEQ( 3 ) Scn2 = {    /* or Scn4 in USE16 */
-     3, false,
-    {0xF2,          /*      repne       */
-     0x66, 0xAF}    /*      scasw       */
-};
-
-static const struct STRUCT_BYTE_SEQ( 7 ) Scn2ES = {  /* or Scn4 in USE16 */
-     7, false,
-    {0x06,          /*      push    es  */
-     0x0e,          /*      push    cs  */
-     0x07,          /*      pop     es  */
-     0xF2,          /*      repne       */
-     0x66, 0xAF,    /*      scasw       */
-     0x07}          /*      pop     es  */
-};
-
-static const struct STRUCT_BYTE_SEQ( 2 ) Scn4 = {    /* or Scn2 in USE16 */
-     2, false,
-    {0xF2,          /*      repne       */
-     0xAF}          /*      scasd       */
-};
-
-static const struct STRUCT_BYTE_SEQ( 6 ) Scn4ES = {  /* or Scn2 in USE16 */
-     6, false,
-    {0x06,          /*      push    es  */
-     0x0e,          /*      push    cs  */
-     0x07,          /*      pop     es  */
-     0xF2,          /*      repne       */
-     0xAF,          /*      scasd       */
-     0x07}          /*      pop     es  */
-};
+static inline RtrtnState& rtrtn_state() { return cbrun_part<RtrtnState>(); }
 
 
 const char  *AskRTName( rt_class rtindex )
@@ -262,27 +267,27 @@ pointer BEAuxInfo( pointer hdl, aux_class request )
         switch( FindRTLabel( static_cast<label_handle>(hdl) ) ) {
         case RT_SCAN1:
             if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                return( (pointer)&Scn1ES );
-            return( (pointer)&Scn1 );
+                return( (pointer)&rtrtn_state().Scn1ES );
+            return( (pointer)&rtrtn_state().Scn1 );
         case RT_SCAN2:
             if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
                 if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&Scn4ES );
-                return( (pointer)&Scn4 );
+                    return( (pointer)&rtrtn_state().Scn4ES );
+                return( (pointer)&rtrtn_state().Scn4 );
             } else {
                 if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&Scn2ES );
-                return( (pointer)&Scn2 );
+                    return( (pointer)&rtrtn_state().Scn2ES );
+                return( (pointer)&rtrtn_state().Scn2 );
             }
         case RT_SCAN4:
             if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
                 if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&Scn2ES );
-                return( (pointer)&Scn2 );
+                    return( (pointer)&rtrtn_state().Scn2ES );
+                return( (pointer)&rtrtn_state().Scn2 );
             } else {
                 if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&Scn4ES );
-                return( (pointer)&Scn4 );
+                    return( (pointer)&rtrtn_state().Scn4ES );
+                return( (pointer)&rtrtn_state().Scn4 );
             }
         default:
             return( NULL );

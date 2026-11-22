@@ -133,7 +133,7 @@ static  void    ReallyScrapLabel( label_handle lbl )
     label_handle *owner;
 
   optbegin
-    owner = &Handles;
+    owner = &optdata_state().Handles;
     for( ;; ) {
         if( *owner == NULL )
             optreturnvoid;
@@ -193,7 +193,7 @@ void    TellBeginExecutions( void )
 
   optbegin
     for( ;; ) {
-        dead = NextCondemned( Handles );
+        dead = NextCondemned( optdata_state().Handles );
         if( dead == NULL )
             break;
         GenKillLabel( dead );
@@ -209,17 +209,17 @@ void    TellFreeAllLabels( void )
 
   optbegin
     unfreed = false;
-    while( Handles != NULL ) {
+    while( optdata_state().Handles != NULL ) {
 #ifndef PRODUCTION
-        if( _TstStatus( Handles, CODELABEL )
-         && Handles->lbl.sym == NULL
-         && !_TstStatus( Handles, REDIRECTION )
+        if( _TstStatus( optdata_state().Handles, CODELABEL )
+         && optdata_state().Handles->lbl.sym == NULL
+         && !_TstStatus( optdata_state().Handles, REDIRECTION )
          && !unfreed ) {
             _Zoiks( ZOIKS_001 );
             unfreed = true;
         }
 #endif
-        ReallyScrapLabel( Handles );
+        ReallyScrapLabel( optdata_state().Handles );
     }
   optend
 }
@@ -234,7 +234,7 @@ void    TellUnreachLabels( void )
     label_handle    lbl;
 
   optbegin
-    for( lbl = Handles; lbl != NULL; lbl = lbl->lbl.link ) {
+    for( lbl = optdata_state().Handles; lbl != NULL; lbl = lbl->lbl.link ) {
         if( lbl->lbl.address != ADDR_UNKNOWN ) {
             _SetStatus( lbl, UNREACHABLE );
         }
@@ -249,7 +249,7 @@ void    KillLblRedirects( void )
 
   optbegin
 #if  OPTIONS & SHORT_JUMPS
-    for( lbl = Handles; lbl != NULL; lbl = lbl->lbl.link ) {
+    for( lbl = optdata_state().Handles; lbl != NULL; lbl = lbl->lbl.link ) {
         lbl->redirect = NULL;
     }
 #endif

@@ -213,7 +213,7 @@ static const unsigned char  IntResult[DATA_TYPE_SIZE][DATA_TYPE_SIZE] = {
 /*
  * matches enum DATA_TYPE in ctypes.h
  */
-static char ShiftResult[DATA_TYPE_SIZE] = {
+static char const ShiftResult[DATA_TYPE_SIZE] = {
 /* >>      op2 */
 /* BOL */  INT,
 /* CHR */  INT,
@@ -429,7 +429,7 @@ static enum  conv_types const CnvTable[DATA_TYPE_SIZE][DATA_TYPE_SIZE] = {
 /* LCX */ { CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER,CER, },
 };
 
-static opr_code Operator[] = {
+static opr_code const Operator[] = {
     #define OPERATORS_ONLY
     #define pick(token,string,class_,oper,prec) oper,
     #include "_ctokens.h"
@@ -521,11 +521,11 @@ static pointer_class PointerClass( TYPEPTR typ )
 #if _INTEL_CPU
     } else {
         if( typ->decl_type == TYP_FUNCTION ) {
-            if( TargetSwitches & CGSW_X86_BIG_CODE ) {
+            if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
                 ptrclass = PTRCLS_FAR;
             }
         } else {
-            if( TargetSwitches & CGSW_X86_BIG_DATA ) {
+            if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
                 ptrclass = PTRCLS_FAR;
             }
         }
@@ -547,7 +547,6 @@ pointer_class ExprTypeClass( TYPEPTR typ )
     }
     return( PTRCLS_NOT );           // indicate not a pointer type
 }
-
 
 
 #define Convert( opnd, opnd_type, result_type )     opnd
@@ -746,11 +745,11 @@ static TREEPTR BaseConv( TYPEPTR typ1, TREEPTR op2 )
         if( typ2_flags & FLAG_BASED ) {
             if( (typ1_flags & MASK_ALL_MEM_MODELS) == FLAG_NONE ) {
                 if( typ1->object->decl_type == TYP_FUNCTION ) {
-                    if( TargetSwitches & CGSW_X86_BIG_CODE ) {
+                    if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
                         typ1_flags = FLAG_FAR;
                     }
                 } else {
-                    if( TargetSwitches & CGSW_X86_BIG_DATA ) {
+                    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
                         typ1_flags = FLAG_FAR;
                     }
                 }
@@ -769,7 +768,7 @@ static TREEPTR BaseConv( TYPEPTR typ1, TREEPTR op2 )
          */
         if( TypeSize( typ1 ) > TypeSize( typ2 ) ) {
 #if _CPU == 386
-            if( (TargetSwitches & CGSW_X86_FLAT_MODEL) == 0 && (typ2_flags & FLAG_BASED) ) {
+            if( (cvars_state().TargetSwitches & CGSW_X86_FLAT_MODEL) == 0 && (typ2_flags & FLAG_BASED) ) {
 #else
             if( typ2_flags & FLAG_BASED ) {
 #endif
@@ -1226,7 +1225,7 @@ TREEPTR AddOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
     case T_MINUS_EQUAL:
     case T_MINUS_MINUS:
         if( ( op1->op.opr == OPR_CONVERT || op1->op.opr == OPR_CONVERT_PTR )
-          && CompFlags.extensions_enabled ) {
+          && cvars_state().CompFlags.extensions_enabled ) {
             op1 = LCastAdj( op1 );
         }
         LValue( op1 );
@@ -1474,7 +1473,7 @@ TREEPTR InitAsgn( TYPEPTR typ, TREEPTR op2 )
     }
     op2 = RValue( op2 );
     op2 = BoolConv( typ, op2 );
-    if( !CompFlags.no_check_inits ) {   // else fuck em
+    if( !cvars_state().CompFlags.no_check_inits ) {   // else fuck em
         CheckParmAssign( typ, op2, 0, true );
     }
     return( op2 );
@@ -1497,7 +1496,7 @@ TREEPTR AsgnOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
         return( op2 );
     }
     if( op1->op.flags & OPFLAG_LVALUE_CAST ) {
-        if( CompFlags.extensions_enabled ) {
+        if( cvars_state().CompFlags.extensions_enabled ) {
             op1->op.flags &= ~(OPFLAG_LVALUE_CAST | OPFLAG_RVALUE);
             if( op1->op.opr == OPR_PUSHSYM ) {
                 op1->op.opr = OPR_PUSHADDR;
@@ -1508,7 +1507,7 @@ TREEPTR AsgnOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
         }
     }
     if( ( op1->op.opr == OPR_CONVERT || op1->op.opr == OPR_CONVERT_PTR )
-      && CompFlags.extensions_enabled ) {
+      && cvars_state().CompFlags.extensions_enabled ) {
         op1 = LCastAdj( op1 );
     }
     isLValue = LValue( op1 );
@@ -1753,7 +1752,7 @@ TREEPTR CnvOp( TREEPTR opnd, TYPEPTR newtyp, bool_ cast_op )
         }
     }
     flags = OPFLAG_NONE;
-    if( cast_op && CompFlags.extensions_enabled ) {
+    if( cast_op && cvars_state().CompFlags.extensions_enabled ) {
         if( IsLValue( opnd ) ) {
             flags |= OPFLAG_LVALUE_CAST;
         }
@@ -1770,7 +1769,7 @@ TREEPTR CnvOp( TREEPTR opnd, TYPEPTR newtyp, bool_ cast_op )
             opnd->u.expr_type = newtyp;
             opnd->op.u2.result_type = newtyp;
             if( cast_op ) {
-                CompFlags.meaningless_stmt = false;
+                cvars_state().CompFlags.meaningless_stmt = false;
             }
         } else if( newtyp->decl_type == TYP_ENUM ) {
             if( typ->decl_type == TYP_POINTER ) {
@@ -1830,7 +1829,7 @@ convert:                                /* moved here */
                     opnd->u.expr_type = newtyp;
                     SetDiagPop();
                     return( opnd );
-                } else if( cast_op && CompFlags.extensions_enabled ) {
+                } else if( cast_op && cvars_state().CompFlags.extensions_enabled ) {
                     /*
                      * We know the following:
                      * - it is a cast operation

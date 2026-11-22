@@ -56,9 +56,19 @@ typedef struct {
 
 extern const hw_reg_set PushRegs[];
 
-static  block           *blockArray[_DBit_SIZE];
-static  int             bitCount;
-static  hw_reg_set      flowedRegs;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct FlowsaveState {
+    block *blockArray[_DBit_SIZE];
+    int bitCount;
+    hw_reg_set flowedRegs;
+};
+
+}  // namespace
+
+static inline FlowsaveState& flowsave_state() { return cbrun_part<FlowsaveState>(); }
+
 
 #if 0
 static block *FindDominatorBlock( dom_bit_set *dom, bool_ post )
@@ -182,7 +192,7 @@ static int CountBlocks( void )
     int                 i;
 
     i = 0;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         i++;
     }
     return( i );
@@ -210,23 +220,23 @@ static void InitBlockArray( void )
     int                 i;
 
     i = 0;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
-        blockArray[i++] = blk;
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+        flowsave_state().blockArray[i++] = blk;
     }
 }
 
 static void DoCountBits( a_bit_set set )
 /**************************************/
 {
-    bitCount += CountBits( set );
+    flowsave_state().bitCount += CountBits( set );
 }
 
 static int CountDomBits( dom_bit_set *dbits )
 /*******************************************/
 {
-    bitCount = 0;
+    flowsave_state().bitCount = 0;
     _DBitIter( DoCountBits, *dbits );
-    return( bitCount );
+    return( flowsave_state().bitCount );
 }
 
 static void GetRegUsage( reg_flow_info *info )
@@ -236,7 +246,7 @@ static void GetRegUsage( reg_flow_info *info )
 
     _DBitInit( info->dom_usage, ~0U );
     _DBitInit( info->post_dom_usage, ~0U );
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( BlockUses( blk, info->reg ) ) {
             _DBitIntersect( info->dom_usage, blk->dom.dominator );
             _DBitIntersect( info->post_dom_usage, blk->dom.post_dominator );
@@ -303,16 +313,16 @@ void FlowSave( hw_reg_set *preg )
     instruction         *ins;
     type_class_def      reg_type_class;
 
-    HW_CAsgn( flowedRegs, HW_EMPTY );
+    HW_CAsgn( flowsave_state().flowedRegs, HW_EMPTY );
     if( _IsntModel( CGSW_GEN_FLOW_REG_SAVES ) )
         return;
-    if( !HaveDominatorInfo )
+    if( !data_state().HaveDominatorInfo )
         return;
     // we can't do this if we have push's which are 'live' at the end of a block
     // - this flag is set when we see a push being generated for a call in a different
     //   block
 #if _TARGET_INTEL
-    if( CurrProc->targ.never_sp_frame )
+    if( data_state().CurrProc->targ.never_sp_frame )
         return;
 #endif
     num_regs = CountRegs( *preg );
@@ -336,18 +346,18 @@ void FlowSave( hw_reg_set *preg )
         best_score = 0;
         for( i = 0; i < num_blocks; i++ ) {
             for( j = 0; j < num_blocks; j++ ) {
-                if( PairOk( blockArray[i], blockArray[j], &reg_info[0], curr_reg ) ) {
+                if( PairOk( flowsave_state().blockArray[i], flowsave_state().blockArray[j], &reg_info[0], curr_reg ) ) {
                     // we use the number of blocks dominated by the save block plus
                     // the number of blocks post-dominated by the restore block as a
                     // rough metric for determining how much we like a given (valid)
                     // pair of blocks - the more blocks dominated, the further 'in'
                     // we have pushed the save, which should be good
-                    curr_score =  CountDomBits( &blockArray[i]->dom.dominator );
-                    curr_score += CountDomBits( &blockArray[j]->dom.post_dominator );
+                    curr_score =  CountDomBits( &flowsave_state().blockArray[i]->dom.dominator );
+                    curr_score += CountDomBits( &flowsave_state().blockArray[j]->dom.post_dominator );
                     if( best_score < curr_score ) {
                         best_score = curr_score;
-                        reg_info[curr_reg].save    = blockArray[i];
-                        reg_info[curr_reg].restore = blockArray[j];
+                        reg_info[curr_reg].save    = flowsave_state().blockArray[i];
+                        reg_info[curr_reg].restore = flowsave_state().blockArray[j];
                     }
                 }
             }
@@ -357,7 +367,7 @@ void FlowSave( hw_reg_set *preg )
         // in the normal prolog sequence
         save = reg_info[curr_reg].save;
         restore = reg_info[curr_reg].restore;
-        if( ( save != NULL && save != HeadBlock ) && ( restore != NULL && !_IsBlkAttr( restore, BLK_RETURN ) ) ) {
+        if( ( save != NULL && save != data_state().HeadBlock ) && ( restore != NULL && !_IsBlkAttr( restore, BLK_RETURN ) ) ) {
             reg_type_class = WD;
 #if _TARGET_INTEL
             if( IsSegReg( reg_info[curr_reg].reg ) ) {
@@ -372,7 +382,7 @@ void FlowSave( hw_reg_set *preg )
             ResetGenEntry( ins );
             SuffixIns( restore->ins.head.prev, ins );
             HW_TurnOff( *preg, reg_info[curr_reg].reg );
-            HW_TurnOn( flowedRegs, reg_info[curr_reg].reg );
+            HW_TurnOn( flowsave_state().flowedRegs, reg_info[curr_reg].reg );
             FixStackDepth( save, restore );
         }
         curr_push++;
@@ -383,5 +393,5 @@ void FlowSave( hw_reg_set *preg )
 void FlowRestore( hw_reg_set *preg )
 /**********************************/
 {
-    HW_TurnOff( *preg, flowedRegs );
+    HW_TurnOff( *preg, flowsave_state().flowedRegs );
 }

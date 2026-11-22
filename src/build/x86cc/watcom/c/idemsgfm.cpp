@@ -35,7 +35,17 @@
 
 #include "idedll.h"
 
-static char contextual_file[ 144 ];     // name of contextual file
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct IdemsgfmState {
+    char contextual_file[ 144 ];   // name of contextual file
+};
+
+}  // namespace
+
+static inline IdemsgfmState& idemsgfm_state() { return cbrun_part<IdemsgfmState>(); }
+
 
 #define TEXT_SEVERITY_WARNING   "Warning!"
 #define TEXT_SEVERITY_ERROR     "Error!"
@@ -272,5 +282,5 @@ void IdeMsgFormat               // FORMAT A MESSAGE
 void IdeMsgStartDll             // START OF FORMATING FOR A DLL (EACH TIME)
     ( void )
 {
-    contextual_file[0] = '\0';
+    idemsgfm_state().contextual_file[0] = '\0';
 }

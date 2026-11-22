@@ -70,21 +70,21 @@ void    FPParms( void )
     instruction *next;
     int         i;
 
-    if( CurrProc->label == HeadBlock->label ) {
+    if( data_state().CurrProc->label == data_state().HeadBlock->label ) {
         for( i = MAX_8087_REG + 1; i-- > 0; ) {
-            Parm8087[i] = NULL;
+            i87data_state().Parm8087[i] = NULL;
         }
         i = 0;
-        for( ins = HeadBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+        for( ins = data_state().HeadBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode == OP_PARM_DEF ) {
                 if( FPRegNum( ins->result ) == 0 ) {
                     next = ins->head.next;
                     if( next->head.opcode == OP_BLOCK
                      || (instruction *)ins->operands[2] != next /* not associated*/
                      || (instruction *)next->operands[2] != ins ) {
-                        Parm8087[i] = (name *)CurrProc; /* klude - means parm ignored*/
+                        i87data_state().Parm8087[i] = (name *)data_state().CurrProc; /* klude - means parm ignored*/
                     } else {
-                        Parm8087[i] = next->result;
+                        i87data_state().Parm8087[i] = next->result;
                         DoNothing( next );
                         ins = next;
                     }
@@ -121,7 +121,7 @@ static  bool_    CanPushImmed( pn parm, int *num_parms )
                         }
                     }
                 }
-                if( _BLOCK( next ) != CurrBlock ) {
+                if( _BLOCK( next ) != data_state().CurrBlock ) {
                     return( false );
                 }
             }
@@ -196,7 +196,6 @@ static  instruction     *PushDelayed( instruction *ins, an addr, call_state *sta
 }
 
 
-
 static bool_ PushDelayedIfStackOperand( instruction *ins, pn parm, call_state *state )
 /************************************************************************************
  * Delay the "push" of a floating point parameter if any of its
@@ -217,7 +216,6 @@ static bool_ PushDelayedIfStackOperand( instruction *ins, pn parm, call_state *s
     }
     return( false );
 }
-
 
 
 static bool_ PushDelayedIfRedefinition( instruction *ins, pn parm, call_state *state )
@@ -241,10 +239,10 @@ static bool_ PushDelayedIfRedefinition( instruction *ins, pn parm, call_state *s
                 }
             }
         }
-        if( _BLOCK( next ) == CurrBlock )
+        if( _BLOCK( next ) == data_state().CurrBlock )
             break;
         if( _BLOCK( next )->next_block == NULL ) {
-            next = CurrBlock->ins.head.next;
+            next = data_state().CurrBlock->ins.head.next;
         } else {
             next = _BLOCK( next )->next_block->ins.head.next;
         }
@@ -342,7 +340,7 @@ void    FPPushParms( pn parm, call_state *state )
     if( _FPULevel( FPU_87 ) ) {
         parms = 0;
         if( CanPushImmed( parm, &parms )
-          && parms < Max87Stk
+          && parms < i87data_state().Max87Stk
           && (state->attr & ROUTINE_STACK_RESERVE) == 0 ) {
             parms = FPPushImmed( parm );
         } else {
@@ -488,7 +486,7 @@ static  instruction    *To86Move( instruction *ins, instruction *next )
     instruction         *ret;
 
     ret = ins->head.next;
-    for( regs = RegSets[RL_MOVE]; ; ++regs ) {
+    for( regs = RegSetList(RL_MOVE); ; ++regs ) {
         if( HW_CEqual( *regs, HW_EMPTY ) )
             return( ret );
         if( HW_Ovlap( *regs, next->head.live.regs ) )
@@ -500,7 +498,7 @@ static  instruction    *To86Move( instruction *ins, instruction *next )
     }
     if( next->result->n.type_class == FS ) {
 #if _TARGET & _TARG_8086
-        if( OptForSize > 50 )
+        if( data_state().OptForSize > 50 )
             return( ret );
         MoveThrough( LowPart( ins->operands[0], U2 ),
                      LowPart( next->result, U2 ), ins, next, reg, U2 );
@@ -510,7 +508,7 @@ static  instruction    *To86Move( instruction *ins, instruction *next )
         MoveThrough( ins->operands[0], next->result, ins, next, reg, U4 );
 #endif
     } else {
-        if( OptForSize > 50 )
+        if( data_state().OptForSize > 50 )
             return( ret );
 #if _TARGET & _TARG_8086
         MoveThrough( LowPart( LowPart( ins->operands[0], U4 ), U2 ),
@@ -782,7 +780,7 @@ static void    Opt8087( void )
     bool_        again;
     instruction *next;
 
-    for( blk = HeadBlock; blk != NULL; ) {
+    for( blk = data_state().HeadBlock; blk != NULL; ) {
         i = 0;
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             ins->sequence = ++i;

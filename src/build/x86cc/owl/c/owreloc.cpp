@@ -98,54 +98,75 @@
 /* OWL_RELOC_GLUE */            I386_RELOC( 0,                              R_386_NONE )
 
 // These correspond to owl_reloc_type
-static uint_32 coffRelocTypesPPC[] = {
-    #define PPC_RELOC(coff,elf,mask)    coff,
-    PPC_RELOCS
-    #undef PPC_RELOC
-};
 
-static uint_32 coffRelocTypesMIPS[] = {
-    #define MIPS_RELOC(coff,elf,mask)   coff,
-    MIPS_RELOCS
-    #undef MIPS_RELOC
-};
-
-static uint_32 coffRelocTypesAlpha[] = {
-    #define ALPHA_RELOC(coff,elf,mask)  coff,
-    ALPHA_RELOCS
-    #undef ALPHA_RELOC
-};
-
-static uint_32 coffRelocTypes386[] = {
-    #define I386_RELOC(coff,elf)        coff,
-    I386_RELOCS
-    #undef I386_RELOC
-};
-
-static Elf32_Word elfRelocTypesPPC[] = {
-    #define PPC_RELOC(coff,elf,mask)    elf,
-    PPC_RELOCS
-    #undef PPC_RELOC
-};
-
-static Elf32_Word elfRelocTypesMIPS[] = {
-    #define MIPS_RELOC(coff,elf,mask)    elf,
-    MIPS_RELOCS
-    #undef MIPS_RELOC
-};
 
 // Someone should really make these up...
-static Elf32_Word elfRelocTypesAlpha[] = {
-    #define ALPHA_RELOC(coff,elf,mask)  elf,
-    ALPHA_RELOCS
+
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct OwrelocState {
+    uint_32 coffRelocTypesPPC[14] = {
+    #define PPC_RELOC(coff,elf,mask)    coff,
+        PPC_RELOCS
+    #undef PPC_RELOC
+    };
+    uint_32 coffRelocTypesMIPS[14] = {
+    #define MIPS_RELOC(coff,elf,mask)   coff,
+        MIPS_RELOCS
+    #undef MIPS_RELOC
+    };
+    uint_32 coffRelocTypesAlpha[14] = {
+    #define ALPHA_RELOC(coff,elf,mask)  coff,
+        ALPHA_RELOCS
     #undef ALPHA_RELOC
+    };
+    uint_32 coffRelocTypes386[14] = {
+    #define I386_RELOC(coff,elf)        coff,
+        I386_RELOCS
+    #undef I386_RELOC
+    };
+    Elf32_Word elfRelocTypesPPC[14] = {
+    #define PPC_RELOC(coff,elf,mask)    elf,
+        PPC_RELOCS
+    #undef PPC_RELOC
+    };
+    Elf32_Word elfRelocTypesMIPS[14] = {
+    #define MIPS_RELOC(coff,elf,mask)    elf,
+        MIPS_RELOCS
+    #undef MIPS_RELOC
+    };
+    Elf32_Word elfRelocTypesAlpha[14] = {
+    #define ALPHA_RELOC(coff,elf,mask)  elf,
+        ALPHA_RELOCS
+    #undef ALPHA_RELOC
+    };
+    Elf32_Word elfRelocTypes386[14] = {
+    #define I386_RELOC(coff,elf)        elf,
+        I386_RELOCS
+    #undef I386_RELOC
+    };
+    unsigned ppcMasks[14] = {
+    #define PPC_RELOC(coff,elf,mask)    mask,
+        PPC_RELOCS
+    #undef PPC_RELOC
+    };
+    unsigned mipsMasks[14] = {
+    #define MIPS_RELOC(coff,elf,mask)    mask,
+        MIPS_RELOCS
+    #undef MIPS_RELOC
+    };
+    unsigned alphaMasks[14] = {
+    #define ALPHA_RELOC(coff,elf,mask)  mask,
+        ALPHA_RELOCS
+    #undef ALPHA_RELOC
+    };
 };
 
-static Elf32_Word elfRelocTypes386[] = {
-    #define I386_RELOC(coff,elf)        elf,
-    I386_RELOCS
-    #undef I386_RELOC
-};
+}  // namespace
+
+static inline OwrelocState& owreloc_state() { return cbrun_part<OwrelocState>(); }
 
 Elf32_Word OWLENTRY ElfRelocType( owl_reloc_type reloc_type, owl_cpu cpu ) {
 //**************************************************************************
@@ -154,16 +175,16 @@ Elf32_Word OWLENTRY ElfRelocType( owl_reloc_type reloc_type, owl_cpu cpu ) {
 
     switch( cpu ) {
     case OWL_CPU_PPC:
-        elf_relocs = elfRelocTypesPPC;
+        elf_relocs = owreloc_state().elfRelocTypesPPC;
         break;
     case OWL_CPU_MIPS:
-        elf_relocs = elfRelocTypesMIPS;
+        elf_relocs = owreloc_state().elfRelocTypesMIPS;
         break;
     case OWL_CPU_ALPHA:
-        elf_relocs = elfRelocTypesAlpha;
+        elf_relocs = owreloc_state().elfRelocTypesAlpha;
         break;
     case OWL_CPU_X86:
-        elf_relocs = elfRelocTypes386;
+        elf_relocs = owreloc_state().elfRelocTypes386;
         break;
     default:
         assert( 0 );
@@ -178,16 +199,16 @@ uint_32 OWLENTRY CoffRelocType( owl_reloc_type reloc_type, owl_cpu cpu ) {
 
     switch( cpu ) {
     case OWL_CPU_PPC:
-        coff_relocs = coffRelocTypesPPC;
+        coff_relocs = owreloc_state().coffRelocTypesPPC;
         break;
     case OWL_CPU_MIPS:
-        coff_relocs = coffRelocTypesMIPS;
+        coff_relocs = owreloc_state().coffRelocTypesMIPS;
         break;
     case OWL_CPU_ALPHA:
-        coff_relocs = coffRelocTypesAlpha;
+        coff_relocs = owreloc_state().coffRelocTypesAlpha;
         break;
     case OWL_CPU_X86:
-        coff_relocs = coffRelocTypes386;
+        coff_relocs = owreloc_state().coffRelocTypes386;
         break;
     default:
         assert( 0 );
@@ -195,23 +216,6 @@ uint_32 OWLENTRY CoffRelocType( owl_reloc_type reloc_type, owl_cpu cpu ) {
     return( coff_relocs[ reloc_type ] );
 }
 
-static unsigned ppcMasks[] = {
-    #define PPC_RELOC(coff,elf,mask)    mask,
-    PPC_RELOCS
-    #undef PPC_RELOC
-};
-
-static unsigned mipsMasks[] = {
-    #define MIPS_RELOC(coff,elf,mask)    mask,
-    MIPS_RELOCS
-    #undef MIPS_RELOC
-};
-
-static unsigned alphaMasks[] = {
-    #define ALPHA_RELOC(coff,elf,mask)  mask,
-    ALPHA_RELOCS
-    #undef ALPHA_RELOC
-};
 
 unsigned OWLENTRY OWLRelocBitMask( owl_file_handle file, owl_reloc_info *reloc ) {
 //********************************************************************************
@@ -221,15 +225,15 @@ unsigned OWLENTRY OWLRelocBitMask( owl_file_handle file, owl_reloc_info *reloc )
     assert( reloc != NULL );
     switch( file->info->cpu ) {
     case OWL_CPU_PPC:
-        mask_array = ppcMasks;
+        mask_array = owreloc_state().ppcMasks;
         break;
     case OWL_CPU_ALPHA:
-        mask_array = alphaMasks;
+        mask_array = owreloc_state().alphaMasks;
         break;
     case OWL_CPU_X86:
         return( 0xffffffff );
     case OWL_CPU_MIPS:
-        mask_array = mipsMasks;
+        mask_array = owreloc_state().mipsMasks;
         break;
     default:
         assert( 0 );

@@ -65,7 +65,7 @@ void    RetAftrCall( ins_entry *ret_instr )
     if( ( _ChkAttr( call_instr, OC_ATTR_FAR ) ^ _ChkAttr( ret_instr, OC_ATTR_FAR ) ) != 0 )
         optreturnvoid;
 #endif
-    InsDelete = true;
+    optdata_state().InsDelete = true;
     _ChgClass( call_instr, OC_JMP );
     /* NB! this code assumes that we aren't making the instruction longer */
     if( _ObjLen( call_instr ) == OptInsSize( OC_CALL, OC_DEST_CHEAP ) ) {

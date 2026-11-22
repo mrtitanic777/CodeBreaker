@@ -40,17 +40,25 @@
 #define myassert(x)
 #endif
 
-static struct {
-    token_idx           idx;
-    bool_                close_bracket;
-} TakeOut[MAX_TOKEN_COUNT + 1];
 
-static token_idx        TokCnt;
+namespace {
 
-static asm_tok          Store[MAX_TOKEN_COUNT + 1];
+/* the statics of this file, one set for each run of the compiler */
+struct AsmevalState {
+    struct {
+        token_idx           idx;
+        bool_                close_bracket;
+    } TakeOut[MAX_TOKEN_COUNT + 1];
+    token_idx TokCnt;
+    asm_tok Store[MAX_TOKEN_COUNT + 1];
+    int op_sq_bracket_level;
+    bool_ error_msg;
+};
 
-static int              op_sq_bracket_level;
-static bool_             error_msg;
+}  // namespace
+
+static inline AsmevalState& asmeval_state() { return cbrun_part<AsmevalState>(); }
+
 
 typedef enum process_flag {
     PROC_BRACKET,
@@ -263,7 +271,7 @@ static bool_ get_operand( expr_list *new_, token_buffer *tokbuf, token_idx *star
         new_->empty = false;
         new_->type = EXPR_REG;
         new_->base_reg = i;
-        if( op_sq_bracket_level > 0 ) {
+        if( asmeval_state().op_sq_bracket_level > 0 ) {
             switch( tokbuf->tokens[i].u.token ) {
             case T_EAX:
             case T_EBX:
@@ -286,14 +294,14 @@ static bool_ get_operand( expr_list *new_, token_buffer *tokbuf, token_idx *star
             case T_FS:
             case T_GS:
                 if( tokbuf->tokens[i+1].class_ != TC_COLON ) {
-                    if( error_msg )
+                    if( asmeval_state().error_msg )
                         AsmError( ILLEGAL_USE_OF_REGISTER );
                     new_->type = EXPR_UNDEF;
                     return( RC_ERROR );
                 }
                 break;
             default:
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( ILLEGAL_USE_OF_REGISTER );
                 new_->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -315,7 +323,7 @@ static bool_ get_operand( expr_list *new_, token_buffer *tokbuf, token_idx *star
                     return( RC_ERROR );
                 }
                 if( sti.type != EXPR_CONST ) {
-                    if( error_msg )
+                    if( asmeval_state().error_msg )
                         AsmError( CONSTANT_EXPECTED );
                     new_->type = EXPR_UNDEF;
                     return( RC_ERROR );
@@ -626,7 +634,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
 
         MakeConst( token_2 );
         if( token_2->type != EXPR_CONST ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( POSITIVE_SIGN_CONSTANT_EXPECTED );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -642,7 +650,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
 
         MakeConst( token_2 );
         if( token_2->type != EXPR_CONST ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( NEGATIVE_SIGN_CONSTANT_EXPECTED );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -662,7 +670,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
          */
 
         if( check_direct_reg( token_1, token_2 ) ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( ILLEGAL_USE_OF_REGISTER );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -679,7 +687,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
             token_1->indirect |= token_2->indirect;
             if( token_1->sym != NULL ) {
                 if( token_2->sym != NULL ) {
-                    if( error_msg )
+                    if( asmeval_state().error_msg )
                         AsmError( SYNTAX_ERROR );
                     token_1->type = EXPR_UNDEF;
                     return( RC_ERROR );
@@ -714,7 +722,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
                 case T_NULL:
                     break;
                 default:
-                    if( error_msg )
+                    if( asmeval_state().error_msg )
                         AsmError( LABEL_IS_EXPECTED );
                     token_1->type = EXPR_UNDEF;
                     return( RC_ERROR );
@@ -747,7 +755,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
             token_1->type = EXPR_ADDR;
         } else {
             /* Error */
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( ADDITION_CONSTANT_EXPECTED );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -762,7 +770,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
          */
 
         if( check_direct_reg( token_1, token_2 ) ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( ILLEGAL_USE_OF_REGISTER );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -773,7 +781,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
             token_1->indirect |= token_2->indirect;
             if( token_1->sym != NULL ) {
                 if( token_2->sym != NULL ) {
-                    if( error_msg )
+                    if( asmeval_state().error_msg )
                         AsmError( SYNTAX_ERROR );
                     token_1->type = EXPR_UNDEF;
                     return( RC_ERROR );
@@ -804,7 +812,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
 
             if( token_1->type == EXPR_REG ) {
                 if( token_2->instr != T_NULL ) {
-                    if( error_msg )
+                    if( asmeval_state().error_msg )
                         AsmError( LABEL_IS_EXPECTED );
                     token_1->type = EXPR_UNDEF;
                     return( RC_ERROR );
@@ -830,7 +838,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
             token_1->type = EXPR_ADDR;
         } else {
             /* Error */
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( SYNTAX_ERROR );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -847,7 +855,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
          */
 
         if( check_direct_reg( token_1, token_2 ) ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( ILLEGAL_USE_OF_REGISTER );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -869,7 +877,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
             fix_struct_value( token_2 );
             if( ISVALID_IDX( token_2->base_reg )
               || ISVALID_IDX( token_2->idx_reg ) ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( ILLEGAL_USE_OF_REGISTER );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -879,7 +887,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
                 token_1->indirect |= token_2->indirect;
             } else {
                 if( ISINVALID_IDX( token_1->label ) ) {
-                    if( error_msg )
+                    if( asmeval_state().error_msg )
                         AsmError( SYNTAX_ERROR );
                     token_1->type = EXPR_UNDEF;
                     return( RC_ERROR );
@@ -939,7 +947,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
 
         } else {
             /* Error */
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( SUBTRACTION_CONSTANT_EXPECTED );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -956,7 +964,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
          */
         if( ISVALID_IDX( token_2->override ) ) {
             /* Error */
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( MORE_THAN_ONE_OVERRIDE );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -966,7 +974,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
 
             if( ISVALID_IDX( token_1->base_reg )
               && ISVALID_IDX( token_1->idx_reg ) ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( ILLEGAL_USE_OF_REGISTER );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -975,7 +983,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
              * a segment override for the the destination. If ES is used for
              * the [E]DI operand, ignore it; actual overrides are rejected.
              */
-            switch( Code->info.token ) {
+            switch( asmdefs_state().Code->info.token ) {
             case T_MOVS:
             case T_CMPS:
             case T_SCAS:
@@ -988,7 +996,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
                             token_1->base_reg = token_2->override;
                             break;
                         }
-                        if( error_msg )
+                        if( asmeval_state().error_msg )
                             AsmError( ILLEGAL_USE_OF_REGISTER );
                         token_1->type = EXPR_UNDEF;
                         return( RC_ERROR );
@@ -1040,13 +1048,13 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
                 return( RC_ERROR );
             }
 #else
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( ONLY_SEG_OR_GROUP_ALLOWED );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
 #endif
         } else {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( REG_OR_LABEL_EXPECTED_IN_OVERRIDE );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -1075,7 +1083,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
               || ( tokbuf->tokens[index + 1].u.token != T_PTR ) ) {
 #endif
                 // Missing PTR operator
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( MISSING_PTR_OPERATOR );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1156,7 +1164,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
                     break;
                 default:
                     // find 'ptr' but no 'byte', 'word' etc in front of it
-                    if( error_msg )
+                    if( asmeval_state().error_msg )
                         AsmError( NO_SIZE_GIVEN_BEFORE_PTR_OPERATOR );
                     token_1->type = EXPR_UNDEF;
                     return( RC_ERROR );
@@ -1175,7 +1183,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
         MakeConst( token_2 );
         if( tokbuf->tokens[index].u.token == T_NOT ) {
             if( token_2->type != EXPR_CONST ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( CONSTANT_EXPECTED );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1183,7 +1191,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
             token_1->type = EXPR_CONST;
         } else {
             if( !check_same( token_1, token_2, EXPR_CONST ) ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( CONSTANT_EXPECTED );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1214,12 +1222,12 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
         if( ( tokbuf->tokens[index].u.token == T_OFFSET )
           && ( token_2->type == EXPR_CONST ) ) {
         } else if( token_2->type != EXPR_ADDR ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( LABEL_IS_EXPECTED );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
         } else if( token_2->instr != T_NULL ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( LABEL_IS_EXPECTED );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -1333,7 +1341,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
              *        constant MOD constant
              */
             if( !check_same( token_1, token_2, EXPR_CONST ) ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( CONSTANT_EXPECTED );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1367,7 +1375,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
                 token_1->indirect |= token_2->indirect;
                 token_1->type = EXPR_ADDR;
             } else {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( MULTIPLICATION_CONSTANT_EXPECTED );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1379,7 +1387,7 @@ static bool_ calculate( expr_list *token_1, expr_list *token_2, token_buffer *to
              *        constant / constant
              */
             if( !check_same( token_1, token_2, EXPR_CONST ) ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( DIVISION_CONSTANT_EXPECTED );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1442,7 +1450,7 @@ static bool_ evaluate(
 
     token_needed = false;
     curr_operator = INVALID_IDX;
-    op_sq_bracket = op_sq_bracket_level;
+    op_sq_bracket = asmeval_state().op_sq_bracket_level;
 
     /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
     /* Look at first token, which may be an unary operator or an operand */
@@ -1452,7 +1460,7 @@ static bool_ evaluate(
         if( cmp_token_cls( tokbuf, *i, TC_OP_BRACKET ) ) {
             (*i)++;
             if( *i > end ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( OPERAND_EXPECTED );
                 operand1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1462,7 +1470,7 @@ static bool_ evaluate(
             }
             if( cmp_token_cls( tokbuf, *i, TC_CL_SQ_BRACKET ) ) {
                 // error open ( close ]
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( BRACKETS_NOT_BALANCED );
                 operand1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1477,24 +1485,24 @@ static bool_ evaluate(
             /**/myassert( !cmp_token_cls( tokbuf, (*i) - 1, TC_CL_BRACKET ) );
             (*i)++;
             if( *i > end ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( OPERAND_EXPECTED );
                 operand1->type = EXPR_UNDEF;
                 return( RC_ERROR );
             }
-            op_sq_bracket_level++;
+            asmeval_state().op_sq_bracket_level++;
             if( evaluate( operand1, tokbuf, i, end, PROC_BRACKET, is_expr ) ) {
                 return( RC_ERROR );
             }
             if( cmp_token_cls( tokbuf, *i, TC_CL_BRACKET ) ) {
                 // error open [ close )
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( BRACKETS_NOT_BALANCED );
                 operand1->type = EXPR_UNDEF;
                 return( RC_ERROR );
             }
             if( cmp_token_cls( tokbuf, *i, TC_CL_SQ_BRACKET ) ) {
-                op_sq_bracket_level--;
+                asmeval_state().op_sq_bracket_level--;
             }
             (*i)++;
         } else if( get_operand( operand1, tokbuf, i, end, is_expr ) ) {
@@ -1511,9 +1519,9 @@ static bool_ evaluate(
     if( !token_needed ) {
         if( *i > end ) {
             /* no operator is found; result is in operand1 */
-            if( op_sq_bracket_level != op_sq_bracket ) {
+            if( asmeval_state().op_sq_bracket_level != op_sq_bracket ) {
                 // error missing ]
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( BRACKETS_NOT_BALANCED );
                 operand1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1523,9 +1531,9 @@ static bool_ evaluate(
         }
         /* Read the operator */
         if( cmp_token_cls( tokbuf, *i, TC_CL_BRACKET ) ) {
-            if( op_sq_bracket_level != op_sq_bracket ) {
+            if( asmeval_state().op_sq_bracket_level != op_sq_bracket ) {
                 // error close ) but [ is open
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( BRACKETS_NOT_BALANCED );
                 operand1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1536,9 +1544,9 @@ static bool_ evaluate(
             return( RC_OK );
         } else if( cmp_token_cls( tokbuf, *i, TC_OP_SQ_BRACKET ) ) {
             tokbuf->tokens[*i].class_ = TC_PLUS;
-            op_sq_bracket_level++;
+            asmeval_state().op_sq_bracket_level++;
         } else if( !is_optr( tokbuf, *i ) ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( OPERATOR_EXPECTED );
             operand1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -1554,7 +1562,7 @@ static bool_ evaluate(
         /*:::::::::::::::::::::::::::*/
 
         if( *i > end ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( OPERAND_EXPECTED );
             operand1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -1570,7 +1578,7 @@ static bool_ evaluate(
                 (*i)++;
             }
         } else if( cmp_token_cls( tokbuf, *i, TC_OP_SQ_BRACKET ) ) {
-            op_sq_bracket_level++;
+            asmeval_state().op_sq_bracket_level++;
             (*i)++;
             if( evaluate( &operand2, tokbuf, i, end, PROC_BRACKET, is_expr ) ) {
                 return( RC_ERROR );
@@ -1580,7 +1588,7 @@ static bool_ evaluate(
                 return( RC_ERROR );
             }
         } else if( is_optr( tokbuf, *i ) ) {
-            if( error_msg )
+            if( asmeval_state().error_msg )
                 AsmError( OPERAND_EXPECTED );
             operand1->type = EXPR_UNDEF;
             return( RC_ERROR );
@@ -1593,10 +1601,10 @@ static bool_ evaluate(
         /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
 
         while( ( *i <= end )
-            && ( op_sq_bracket_level > op_sq_bracket )
+            && ( asmeval_state().op_sq_bracket_level > op_sq_bracket )
             && cmp_token_cls( tokbuf, *i, TC_CL_SQ_BRACKET ) ) {
             (*i)++;
-            op_sq_bracket_level--;
+            asmeval_state().op_sq_bracket_level--;
         }
 
         /*:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::*/
@@ -1608,7 +1616,7 @@ static bool_ evaluate(
             if( !is_optr( tokbuf, *i )
               || is_unary( tokbuf, *i, false )
               || cmp_token_cls( tokbuf, *i, TC_OP_BRACKET ) ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( OPERATOR_EXPECTED );
                 operand1->type = EXPR_UNDEF;
                 return( RC_ERROR );
@@ -1618,7 +1626,7 @@ static bool_ evaluate(
                     if( ( PLUS_PRECEDENCE <= get_precedence( tokbuf, curr_operator ) )
                         || ( proc_flag == PROC_BRACKET ) ) {
                         tokbuf->tokens[*i].class_ = TC_PLUS;
-                        op_sq_bracket_level++;
+                        asmeval_state().op_sq_bracket_level++;
                         next_operator = true;
                     }
                 } else {
@@ -1626,15 +1634,15 @@ static bool_ evaluate(
                         if( evaluate( &operand2, tokbuf, i, end, PROC_OPERAND, is_expr ) )
                             return( RC_ERROR );
                         while( ( *i <= end )
-                            && ( op_sq_bracket_level > op_sq_bracket )
+                            && ( asmeval_state().op_sq_bracket_level > op_sq_bracket )
                             && cmp_token_cls( tokbuf, *i, TC_CL_SQ_BRACKET ) ) {
                             (*i)++;
-                            op_sq_bracket_level--;
+                            asmeval_state().op_sq_bracket_level--;
                         }
                         if( cmp_token_cls( tokbuf, *i, TC_OP_SQ_BRACKET ) ) {
                             if( proc_flag == PROC_BRACKET ) {
                                 tokbuf->tokens[*i].class_ = TC_PLUS;
-                                op_sq_bracket_level++;
+                                asmeval_state().op_sq_bracket_level++;
                                 next_operator = true;
                             }
                         }
@@ -1658,8 +1666,8 @@ static bool_ evaluate(
             && !cmp_token_cls( tokbuf, *i, TC_CL_BRACKET )
             && !cmp_token_cls( tokbuf, *i, TC_CL_SQ_BRACKET )
             && ( *i < end ) ) );
-    if( op_sq_bracket_level != op_sq_bracket ) {
-        if( error_msg )
+    if( asmeval_state().op_sq_bracket_level != op_sq_bracket ) {
+        if( asmeval_state().error_msg )
             AsmError( BRACKETS_NOT_BALANCED );
         operand1->type = EXPR_UNDEF;
         return( RC_ERROR );
@@ -1702,7 +1710,7 @@ static bool_ is_expr1( token_buffer *tokbuf, token_idx i )
     case TC_UNARY_OPERATOR:
 //        case T_SEG:
 //        case T_OFFSET:
-        if( i + 1 < TokCnt )
+        if( i + 1 < asmeval_state().TokCnt )
             return( true );
         break;
     case TC_ARITH_OPERATOR:
@@ -1866,18 +1874,18 @@ static bool_ fix_parens( token_buffer *tokbuf )
     int         non_dup_bracket_count = 0;
 
     store = 0;
-    for( i = 0; i < TokCnt; i++ ) {
+    for( i = 0; i < asmeval_state().TokCnt; i++ ) {
 
         if( tokbuf->tokens[i].class_ == TC_RES_ID
           && tokbuf->tokens[i].u.token == T_DUP ) {
             dup_count++;
             if( tokbuf->tokens[++i].class_ != TC_OP_BRACKET ) {
-                if( error_msg )
+                if( asmeval_state().error_msg )
                     AsmError( BRACKET_EXPECTED );
                 return( RC_ERROR );
             }
-            TakeOut[store].idx = i;               // Store the location
-            TakeOut[store++].close_bracket = false;
+            asmeval_state().TakeOut[store].idx = i;               // Store the location
+            asmeval_state().TakeOut[store++].close_bracket = false;
             tokbuf->tokens[i].class_ = TC_NOOP;
         } else if( tokbuf->tokens[i].class_ == TC_OP_BRACKET ) {
             non_dup_bracket_count++;
@@ -1886,19 +1894,19 @@ static bool_ fix_parens( token_buffer *tokbuf )
                 non_dup_bracket_count--;
             } else {
                 dup_count--;
-                TakeOut[store].idx = i;  // store close brackets as -ve values
-                TakeOut[store++].close_bracket = true;
+                asmeval_state().TakeOut[store].idx = i;  // store close brackets as -ve values
+                asmeval_state().TakeOut[store++].close_bracket = true;
                 tokbuf->tokens[i].class_ = TC_NOOP;
             }
         }
     }
     if( dup_count != 0 ) {
-        if( error_msg )
+        if( asmeval_state().error_msg )
             AsmError( BRACKETS_NOT_BALANCED );
         return( RC_ERROR );
     }
-    TakeOut[store].idx = INVALID_IDX;        // Mark the end
-    TakeOut[store].close_bracket = false;
+    asmeval_state().TakeOut[store].idx = INVALID_IDX;        // Mark the end
+    asmeval_state().TakeOut[store].close_bracket = false;
     return( RC_OK );
 }
 
@@ -1997,24 +2005,24 @@ static token_idx fix( expr_list *res, token_buffer *tokbuf, token_idx start, tok
 
         for( i = start; i <= end; i++ ) {
             /* Store the original tokbuf->tokens[] data */
-            Store[i - start] = tokbuf->tokens[i];
+            asmeval_state().Store[i - start] = tokbuf->tokens[i];
         }
 
         if( start + 1 + size > end ) {
             diff = start + 1 + size - end;
 
-            for( i = TokCnt - 1; i > end; i-- ) {
+            for( i = asmeval_state().TokCnt - 1; i > end; i-- ) {
                 tokbuf->tokens[i + diff] = tokbuf->tokens[i];
             }
 
-            for( i = 0; ISVALID_IDX( TakeOut[i].idx ); i++ ) {
-                if( TakeOut[i].idx > end ) {
-                    TakeOut[i].idx += diff;
+            for( i = 0; ISVALID_IDX( asmeval_state().TakeOut[i].idx ); i++ ) {
+                if( asmeval_state().TakeOut[i].idx > end ) {
+                    asmeval_state().TakeOut[i].idx += diff;
                 }
             }
 
             end += diff;
-            TokCnt += diff;
+            asmeval_state().TokCnt += diff;
         }
 
         if( res->instr != T_NULL ) {
@@ -2074,27 +2082,27 @@ static token_idx fix( expr_list *res, token_buffer *tokbuf, token_idx start, tok
         }
 
         if( ISVALID_IDX( res->override ) ) {
-            tokbuf->tokens[start++] = Store[res->override - old_start];
+            tokbuf->tokens[start++] = asmeval_state().Store[res->override - old_start];
             tokbuf->tokens[start++].class_ = TC_COLON;
         }
 
         if( ISVALID_IDX( res->label )
           && res->type != EXPR_REG ) {
-            tokbuf->tokens[start++] = Store[res->label - old_start];
+            tokbuf->tokens[start++] = asmeval_state().Store[res->label - old_start];
         }
 
         if( ISVALID_IDX( res->base_reg ) ) {
             tokbuf->tokens[start++].class_ = TC_OP_SQ_BRACKET;
             tokbuf->tokens[start].class_ = TC_REG;
-            tokbuf->tokens[start].string_ptr = Store[res->base_reg-old_start].string_ptr;
-            tokbuf->tokens[start++].u.value = Store[res->base_reg-old_start].u.value;
+            tokbuf->tokens[start].string_ptr = asmeval_state().Store[res->base_reg-old_start].string_ptr;
+            tokbuf->tokens[start++].u.value = asmeval_state().Store[res->base_reg-old_start].u.value;
             tokbuf->tokens[start++].class_ = TC_CL_SQ_BRACKET;
         }
         if( ISVALID_IDX( res->idx_reg ) ) {
             tokbuf->tokens[start++].class_ = TC_OP_SQ_BRACKET;
             tokbuf->tokens[start].class_ = TC_REG;
-            tokbuf->tokens[start].string_ptr = Store[res->idx_reg-old_start].string_ptr;
-            tokbuf->tokens[start++].u.value = Store[res->idx_reg-old_start].u.value;
+            tokbuf->tokens[start].string_ptr = asmeval_state().Store[res->idx_reg-old_start].string_ptr;
+            tokbuf->tokens[start++].u.value = asmeval_state().Store[res->idx_reg-old_start].u.value;
             if( res->scale != 1 ) {
                 tokbuf->tokens[start].string_ptr = const_cast<char *>("*");
                 tokbuf->tokens[start].u.token = T_OP_TIMES;
@@ -2137,36 +2145,36 @@ static void fix_final( token_buffer *tokbuf )
 
     for( i = 0;; i++ ) {
         if( dup_count == 0
-          && ISINVALID_IDX( TakeOut[i].idx ) )
+          && ISINVALID_IDX( asmeval_state().TakeOut[i].idx ) )
             break;
-        if( TakeOut[i].close_bracket ) {
-            tokbuf->tokens[TakeOut[i].idx].class_ = TC_CL_BRACKET;
+        if( asmeval_state().TakeOut[i].close_bracket ) {
+            tokbuf->tokens[asmeval_state().TakeOut[i].idx].class_ = TC_CL_BRACKET;
             dup_count--;
         } else {
-            tokbuf->tokens[TakeOut[i].idx].class_ = TC_OP_BRACKET;
+            tokbuf->tokens[asmeval_state().TakeOut[i].idx].class_ = TC_OP_BRACKET;
             dup_count++;
         }
         myassert( i < MAX_TOKEN_COUNT );
     }
 
-    for( start = 0; start < TokCnt; start++ ) {
+    for( start = 0; start < asmeval_state().TokCnt; start++ ) {
         if( tokbuf->tokens[start].class_ == TC_NOOP ) {
             for( end = start + 1;; end++ ) {
                 if( tokbuf->tokens[end].class_ != TC_NOOP
-                  || end == TokCnt ) {
+                  || end == asmeval_state().TokCnt ) {
                     break;
                 }
             }
-            if( end == TokCnt ) {
-                TokCnt = start;
+            if( end == asmeval_state().TokCnt ) {
+                asmeval_state().TokCnt = start;
                 return;
             } else {
                 diff = end - start;
-                for( i = end; i < TokCnt; i++ ) {
+                for( i = end; i < asmeval_state().TokCnt; i++ ) {
                     tokbuf->tokens[i - diff] = tokbuf->tokens[i];
                 }
             }
-            TokCnt -= diff;
+            asmeval_state().TokCnt -= diff;
         }
     }
 }
@@ -2185,7 +2193,7 @@ token_idx EvalExpr( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok
     if( tokbuf->tokens[end_tok].class_ == TC_FINAL )
         final = true;
 
-    TokCnt = count = tokbuf->count;
+    asmeval_state().TokCnt = count = tokbuf->count;
 
     if( fix_parens( tokbuf ) ) {
         // take out those parentheses which are not part of an expression
@@ -2193,12 +2201,12 @@ token_idx EvalExpr( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok
     }
 
     i = start_tok;
-    while( i < TokCnt && i <= end_tok ) {
+    while( i < asmeval_state().TokCnt && i <= end_tok ) {
         if( is_expr1( tokbuf, i ) ) {
             start = i++;
             num = 0;
             for( ;; ) {
-                if( i >= TokCnt )
+                if( i >= asmeval_state().TokCnt )
                     break;
                 if( i > end_tok )
                     break;
@@ -2221,17 +2229,17 @@ token_idx EvalExpr( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok
             } else {
                 i = start;
                 init_expr( &result );
-                op_sq_bracket_level = 0;
-                error_msg = flag_msg;
+                asmeval_state().op_sq_bracket_level = 0;
+                asmeval_state().error_msg = flag_msg;
                 if( evaluate( &result, tokbuf, &i, i + num, PROC_BRACKET, is_expr1 ) ) {
                     return( INVALID_IDX );
                 }
                 i = fix( &result, tokbuf, start, start + num );
-                if( count != TokCnt ) {
+                if( count != asmeval_state().TokCnt ) {
                     /* we just changed the number of tokens, so update
                      * count & end_tok appropriately */
-                    end_tok += TokCnt - count;
-                    count = TokCnt;
+                    end_tok += asmeval_state().TokCnt - count;
+                    count = asmeval_state().TokCnt;
                 }
             }
         }
@@ -2239,11 +2247,11 @@ token_idx EvalExpr( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok
     }
     fix_final( tokbuf );
 
-    if( tokbuf->tokens[TokCnt].class_ == TC_NOOP
+    if( tokbuf->tokens[asmeval_state().TokCnt].class_ == TC_NOOP
       || final ) {
-        SetFinalToken( tokbuf, TokCnt );
+        SetFinalToken( tokbuf, asmeval_state().TokCnt );
     }
-    return( TokCnt );
+    return( asmeval_state().TokCnt );
 }
 
 bool_ EvalOperand( token_buffer *tokbuf, token_idx *start_tok, token_idx count, expr_list *result, bool_ flag_msg )
@@ -2268,13 +2276,13 @@ bool_ EvalOperand( token_buffer *tokbuf, token_idx *start_tok, token_idx count, 
             break;
         num++;
     }
-    op_sq_bracket_level = 0;
+    asmeval_state().op_sq_bracket_level = 0;
 #if defined( _STANDALONE_ )
     if( Options.mode & MODE_IDEAL ) {
         Definition.struct_depth = 0;
     }
 #endif
-    error_msg = flag_msg;
+    asmeval_state().error_msg = flag_msg;
     rc = evaluate( result, tokbuf, start_tok, *start_tok + num, PROC_BRACKET, is_expr2 );
 #if defined( _STANDALONE_ )
     if( Options.mode & MODE_IDEAL ) {

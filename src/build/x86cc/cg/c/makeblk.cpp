@@ -117,13 +117,13 @@ void    FreeABlock( block * blk )
 void    FreeBlock( void )
 /***********************/
 {
-    while( CurrBlock->ins.head.next != (instruction *)&CurrBlock->ins ) {
-        FreeIns( CurrBlock->ins.head.next );
+    while( data_state().CurrBlock->ins.head.next != (instruction *)&data_state().CurrBlock->ins ) {
+        FreeIns( data_state().CurrBlock->ins.head.next );
     }
-    if( CurrBlock->dataflow != NULL ) {
-        CGFree( CurrBlock->dataflow );
+    if( data_state().CurrBlock->dataflow != NULL ) {
+        CGFree( data_state().CurrBlock->dataflow );
     }
-    FreeABlock( CurrBlock );
+    FreeABlock( data_state().CurrBlock );
 }
 
 
@@ -134,27 +134,27 @@ void    EnLink( label_handle label )
 
     blk = MakeBlockInit( 1 );
     blk->label = label;
-    blk->ins.head.line_num = SrcLine;
-    CurrBlock = blk;
-    SrcLine = 0;
+    blk->ins.head.line_num = data_state().SrcLine;
+    data_state().CurrBlock = blk;
+    data_state().SrcLine = 0;
 }
 
 void    AddIns( instruction *ins )
 /********************************/
 {
-    if( !HaveCurrBlock ) {
+    if( !data_state().HaveCurrBlock ) {
         EnLink( AskForNewLabel() );
-        CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
-        HaveCurrBlock = true;
+        data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+        data_state().HaveCurrBlock = true;
     }
-    ins->head.next = (instruction *)&CurrBlock->ins;
-    ins->head.prev = CurrBlock->ins.head.prev;
-    CurrBlock->ins.head.prev->head.next = ins;
-    CurrBlock->ins.head.prev = ins;
-    ins->head.line_num = SrcLine;
+    ins->head.next = (instruction *)&data_state().CurrBlock->ins;
+    ins->head.prev = data_state().CurrBlock->ins.head.prev;
+    data_state().CurrBlock->ins.head.prev->head.next = ins;
+    data_state().CurrBlock->ins.head.prev = ins;
+    ins->head.line_num = data_state().SrcLine;
     _INS_NOT_BLOCK( ins );
-    ins->id = ++InsId;
-    SrcLine = 0;
+    ins->id = ++data_state().InsId;
+    data_state().SrcLine = 0;
 }
 
 
@@ -166,16 +166,16 @@ void    GenBlock( block_class class_, block_num targets )
     instruction *ins;
 
     NamesCrossBlocks();
-    if( HeadBlock == NULL ) {
-        HeadBlock = CurrBlock;
-        CurrBlock->blk_id = 1;
-        CurrBlock->gen_blk_id = 1;
+    if( data_state().HeadBlock == NULL ) {
+        data_state().HeadBlock = data_state().CurrBlock;
+        data_state().CurrBlock->blk_id = 1;
+        data_state().CurrBlock->gen_blk_id = 1;
     } else {
-        BlockList->next_block = CurrBlock;
-        CurrBlock->blk_id = BlockList->blk_id + 1;
-        CurrBlock->gen_blk_id = BlockList->gen_blk_id + 1;
+        data_state().BlockList->next_block = data_state().CurrBlock;
+        data_state().CurrBlock->blk_id = data_state().BlockList->blk_id + 1;
+        data_state().CurrBlock->gen_blk_id = data_state().BlockList->gen_blk_id + 1;
     }
-    if( SrcLine != 0 ) {
+    if( data_state().SrcLine != 0 ) {
         /*
          * Add an instruction to carry the line number for the block ending
          * opcode (the AddIns code puts in line number automatically).
@@ -184,12 +184,12 @@ void    GenBlock( block_class class_, block_num targets )
         ins->flags.u.nop_flags |= NOP_SOURCE_QUEUE;
         AddIns( ins );
     }
-    CurrBlock->prev_block = BlockList;
-    BlockList = CurrBlock;
-    CurrBlock->next_block = NULL;
+    data_state().CurrBlock->prev_block = data_state().BlockList;
+    data_state().BlockList = data_state().CurrBlock;
+    data_state().CurrBlock->next_block = NULL;
     if( targets > 1 ) {
-        new_blk = MakeBlockCopy( targets, CurrBlock, 1 );
-        if( CurrBlock->ins.head.next == (instruction *)&CurrBlock->ins ) {
+        new_blk = MakeBlockCopy( targets, data_state().CurrBlock, 1 );
+        if( data_state().CurrBlock->ins.head.next == (instruction *)&data_state().CurrBlock->ins ) {
             new_blk->ins.head.next = (instruction *)&new_blk->ins;
             new_blk->ins.head.prev = (instruction *)&new_blk->ins;
         } else {
@@ -200,11 +200,11 @@ void    GenBlock( block_class class_, block_num targets )
         /*
          * Move all references to CurrBlock
          */
-        if( HeadBlock == CurrBlock ) {
-            HeadBlock = new_blk;
+        if( data_state().HeadBlock == data_state().CurrBlock ) {
+            data_state().HeadBlock = new_blk;
         }
-        if( BlockList == CurrBlock ) {
-            BlockList = new_blk;
+        if( data_state().BlockList == data_state().CurrBlock ) {
+            data_state().BlockList = new_blk;
         }
         if( new_blk->prev_block != NULL ) {
             new_blk->prev_block->next_block = new_blk;
@@ -215,14 +215,14 @@ void    GenBlock( block_class class_, block_num targets )
         for( edge = new_blk->input_edges; edge != NULL; edge = edge->next_source ) {
             edge->destination.u.blk = new_blk;
         }
-        CGFree( CurrBlock );
-        CurrBlock = new_blk;
+        CGFree( data_state().CurrBlock );
+        data_state().CurrBlock = new_blk;
     }
-    if( _IsBlkAttr( CurrBlock, BLK_BIG_LABEL ) )        /* the only one that sticks*/
+    if( _IsBlkAttr( data_state().CurrBlock, BLK_BIG_LABEL ) )        /* the only one that sticks*/
         class_ |= BLK_BIG_LABEL;
-    CurrBlock->class_ = class_;
+    data_state().CurrBlock->class_ = class_;
     while( targets-- > 1 ) {
-        CurrBlock->edge[targets].flags = BEF_NONE;
+        data_state().CurrBlock->edge[targets].flags = BEF_NONE;
     }
 }
 
@@ -253,11 +253,11 @@ block   *ReGenBlock( block *blk, label_handle lbl )
         new_blk->edge[targets].source = new_blk;
     }
     new_blk->ins.blk = new_blk;
-    if( HeadBlock == blk ) {
-        HeadBlock = new_blk;
+    if( data_state().HeadBlock == blk ) {
+        data_state().HeadBlock = new_blk;
     }
-    if( BlockList == blk ) {
-        BlockList = new_blk;
+    if( data_state().BlockList == blk ) {
+        data_state().BlockList = new_blk;
     }
     if( new_blk->prev_block != NULL ) {
         new_blk->prev_block->next_block = new_blk;
@@ -280,11 +280,11 @@ type_class_def  InitCallState( const type_def *tipe )
     cg_sym_handle   sym;
     aux_handle      aux;
 
-    sym = AskForLblSym( static_cast<label_handle>(CurrProc->label) );
+    sym = AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) );
     name = AllocMemory( sym, 0, CG_FE, TypeClass( tipe ) );
     name->v.usage |= USE_MEMORY;        /* so not put in conflict graph*/
     aux = static_cast<aux_handle>(FEAuxInfo( sym, FEINF_AUX_LOOKUP ));
-    return( CallState( aux, tipe, &CurrProc->state ) );
+    return( CallState( aux, tipe, &data_state().CurrProc->state ) );
 }
 
 
@@ -295,8 +295,8 @@ void    AddTarget( label_handle dest, bool_ dest_label_dies )
 {
     block_edge  *edge;
 
-    edge = &CurrBlock->edge[CurrBlock->targets++];
-    edge->source = CurrBlock;
+    edge = &data_state().CurrBlock->edge[data_state().CurrBlock->targets++];
+    edge->source = data_state().CurrBlock;
     edge->destination.u.lbl = dest;
     edge->next_source = NULL;
     if( dest_label_dies ) {
@@ -310,7 +310,7 @@ block   *FindBlockWithLbl( label_handle label )
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->label == label ) {
             break;
         }
@@ -327,7 +327,7 @@ void    FixEdges( void )
     block_num   i;
     block_edge  *edge;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( !_IsBlkAttr( blk, BLK_BIG_JUMP ) ) {
             for( i = blk->targets; i-- > 0; ) {
                 edge = &blk->edge[i];
@@ -342,7 +342,17 @@ void    FixEdges( void )
 }
 
 
-static label_handle LinkReturnsParms[2];
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct MakeblkState {
+    label_handle LinkReturnsParms[2];
+};
+
+}  // namespace
+
+static inline MakeblkState& makeblk_state() { return cbrun_part<MakeblkState>(); }
+
 
 static void *LinkReturns( void *arg )
 /***********************************/
@@ -355,8 +365,8 @@ static void *LinkReturns( void *arg )
 
     /* unused parameters */ (void)arg;
 
-    link_to = LinkReturnsParms[0];
-    to_search = LinkReturnsParms[1];
+    link_to = makeblk_state().LinkReturnsParms[0];
+    to_search = makeblk_state().LinkReturnsParms[1];
     blk = FindBlockWithLbl( to_search );
 //    found = false;
     if( blk == NULL )
@@ -379,15 +389,15 @@ static void *LinkReturns( void *arg )
         if( _IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
             if( blk->next_block == NULL )
                 return( TO_SR_VALUE( false ) );
-            LinkReturnsParms[0] = link_to;
-            LinkReturnsParms[1] = blk->next_block->label;
+            makeblk_state().LinkReturnsParms[0] = link_to;
+            makeblk_state().LinkReturnsParms[1] = blk->next_block->label;
             if( !FROM_SR_VALUE( SafeRecurseCG( LinkReturns, NULL ), bool_ ) ) {
                 return( TO_SR_VALUE( false ) );
             }
         } else {
             for( i = blk->targets; i-- > 0; ) {
-                LinkReturnsParms[0] = link_to;
-                LinkReturnsParms[1] = blk->edge[i].destination.u.lbl;
+                makeblk_state().LinkReturnsParms[0] = link_to;
+                makeblk_state().LinkReturnsParms[1] = blk->edge[i].destination.u.lbl;
                 if( !FROM_SR_VALUE( SafeRecurseCG( LinkReturns, NULL ), bool_ ) ) {
                     return( TO_SR_VALUE( false ) );
                 }
@@ -406,18 +416,18 @@ bool_        FixReturns( void )
     block       *blk;
     block       *other_blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
             _MarkBlkVisited( blk );
             if( blk->next_block == NULL )
                 return( false );
             _MarkBlkAttrSet( blk, BLK_RETURNED_TO );
-            LinkReturnsParms[0] = blk->next_block->label;
-            LinkReturnsParms[1] = blk->edge[0].destination.u.lbl;
+            makeblk_state().LinkReturnsParms[0] = blk->next_block->label;
+            makeblk_state().LinkReturnsParms[1] = blk->edge[0].destination.u.lbl;
             if( !FROM_SR_VALUE( LinkReturns( NULL ), bool_ ) ) {
                 return( false );
             }
-            for( other_blk = HeadBlock; other_blk != NULL; other_blk = other_blk->next_block ) {
+            for( other_blk = data_state().HeadBlock; other_blk != NULL; other_blk = other_blk->next_block ) {
                 _MarkBlkUnVisited( other_blk );
             }
         }
@@ -433,7 +443,7 @@ void    UnFixEdges( void )
     block_num   i;
     block_edge  *edge;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( !_IsBlkAttr( blk, BLK_BIG_JUMP ) ) {
             for( i = blk->targets; i-- > 0; ) {
                 edge = &blk->edge[i];
@@ -453,10 +463,10 @@ void    AddAnIns( block *blk, instruction *ins )
 {
     block       *curr_block;
 
-    curr_block = CurrBlock;
-    CurrBlock = blk;
+    curr_block = data_state().CurrBlock;
+    data_state().CurrBlock = blk;
     AddIns( ins );
-    CurrBlock = curr_block;
+    data_state().CurrBlock = curr_block;
 }
 
 
@@ -465,22 +475,22 @@ bool_    BlkTooBig( void )
 {
     label_handle    blk;
 
-    if( !HaveCurrBlock )
+    if( !data_state().HaveCurrBlock )
         return( false );
-    if( CurrBlock == NULL )
+    if( data_state().CurrBlock == NULL )
         return( false );
-    if( CurrBlock->ins.head.next == (instruction *)&CurrBlock->ins )
+    if( data_state().CurrBlock->ins.head.next == (instruction *)&data_state().CurrBlock->ins )
         return( false );
-    _INS_NOT_BLOCK( CurrBlock->ins.head.next );
-    if( (InsId - CurrBlock->ins.head.next->id) < INS_PER_BLOCK )
+    _INS_NOT_BLOCK( data_state().CurrBlock->ins.head.next );
+    if( (data_state().InsId - data_state().CurrBlock->ins.head.next->id) < INS_PER_BLOCK )
         return( false );
-    if( CurrBlock->targets != 0 )
+    if( data_state().CurrBlock->targets != 0 )
         return( false );
     blk = AskForNewLabel();
     GenBlock( BLK_JUMP, 1 );
     AddTarget( blk, false );
     EnLink( blk );
-    CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
     return( true );
 }
 
@@ -491,31 +501,31 @@ void    NewProc( level_depth level )
     proc_def        *new_proc;
     name_class_def  class_;
 
-    if( CurrProc != NULL ) {
+    if( data_state().CurrProc != NULL ) {
         SaveToTargProc();
-        CurrProc->head_block = HeadBlock;
-        CurrProc->tail_block = BlockList;
-        CurrProc->curr_block = CurrBlock;
-        CurrProc->lasttemp = LastTemp;
-        CurrProc->dummy_index = DummyIndex;
+        data_state().CurrProc->head_block = data_state().HeadBlock;
+        data_state().CurrProc->tail_block = data_state().BlockList;
+        data_state().CurrProc->curr_block = data_state().CurrBlock;
+        data_state().CurrProc->lasttemp = data_state().LastTemp;
+        data_state().CurrProc->dummy_index = data_state().DummyIndex;
         for( class_ = static_cast<name_class_def>(0); class_ < N_CLASS_MAX; class_++ ) {
-            CurrProc->names[class_] = Names[class_];
+            data_state().CurrProc->names[class_] = data_state().Names[class_];
         }
-        CurrProc->block_by_block = BlockByBlock;
-        CurrProc->ins_id = InsId;
-        CurrProc->untrimmed = BlocksUnTrimmed;
+        data_state().CurrProc->block_by_block = data_state().BlockByBlock;
+        data_state().CurrProc->ins_id = data_state().InsId;
+        data_state().CurrProc->untrimmed = data_state().BlocksUnTrimmed;
     }
-    HaveCurrBlock = true;
-    BlocksUnTrimmed = true;
-    MaxStack = 0;
-    InsId = 0;
-    HeadBlock = NULL;
-    BlockList = NULL;
+    data_state().HaveCurrBlock = true;
+    data_state().BlocksUnTrimmed = true;
+    data_state().MaxStack = 0;
+    data_state().InsId = 0;
+    data_state().HeadBlock = NULL;
+    data_state().BlockList = NULL;
     ReInitNames();
     new_proc = static_cast<proc_def *>(CGAlloc( sizeof( proc_def ) ));
     memset( new_proc, 0, sizeof( proc_def ) );
-    new_proc->next_proc = CurrProc;
-    CurrProc = new_proc;
+    new_proc->next_proc = data_state().CurrProc;
+    data_state().CurrProc = new_proc;
     new_proc->frame_index = NULL;
     new_proc->lex_level = level;
     new_proc->parms.size = 0;
@@ -534,36 +544,36 @@ void    FreeProc( void )
     proc_def        *oldproc;
     name_class_def  class_;
 
-    for( CurrBlock = HeadBlock; CurrBlock != NULL; CurrBlock = HeadBlock ) {
-        HeadBlock = CurrBlock->next_block;
+    for( data_state().CurrBlock = data_state().HeadBlock; data_state().CurrBlock != NULL; data_state().CurrBlock = data_state().HeadBlock ) {
+        data_state().HeadBlock = data_state().CurrBlock->next_block;
         FreeBlock();
     }
-    BlockList = NULL;
+    data_state().BlockList = NULL;
     FreeNames();
     TellBeginExecutions();
-    oldproc = CurrProc;
+    oldproc = data_state().CurrProc;
     if( oldproc != NULL ) {
-        CurrProc = CurrProc->next_proc;
+        data_state().CurrProc = data_state().CurrProc->next_proc;
         if( oldproc->state.parm.table ) {
             CGFree( oldproc->state.parm.table );
         }
         CGFree( oldproc );
-        if( CurrProc != NULL ) {
+        if( data_state().CurrProc != NULL ) {
             RestoreFromTargProc();
-            InsId = CurrProc->ins_id;
-            HeadBlock = CurrProc->head_block;
-            BlockList = CurrProc->tail_block;
-            CurrBlock = CurrProc->curr_block;
+            data_state().InsId = data_state().CurrProc->ins_id;
+            data_state().HeadBlock = data_state().CurrProc->head_block;
+            data_state().BlockList = data_state().CurrProc->tail_block;
+            data_state().CurrBlock = data_state().CurrProc->curr_block;
             for( class_ = static_cast<name_class_def>(0); class_ < N_CLASS_MAX; class_++ ) {
-                Names[class_] = CurrProc->names[class_];
+                data_state().Names[class_] = data_state().CurrProc->names[class_];
             }
-            LastTemp = CurrProc->lasttemp;
-            DummyIndex = CurrProc->dummy_index;
-            BlockByBlock = CurrProc->block_by_block;
-            BlocksUnTrimmed = CurrProc->untrimmed;
+            data_state().LastTemp = data_state().CurrProc->lasttemp;
+            data_state().DummyIndex = data_state().CurrProc->dummy_index;
+            data_state().BlockByBlock = data_state().CurrProc->block_by_block;
+            data_state().BlocksUnTrimmed = data_state().CurrProc->untrimmed;
         } else {
-            InsId = 0;
-            BlockByBlock = false;
+            data_state().InsId = 0;
+            data_state().BlockByBlock = false;
         }
     }
 }

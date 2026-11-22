@@ -108,9 +108,6 @@ typedef pointer_uint    tag;
 
 static pointer          MemFromSys( size_t );
 
-static pointer_uint     AllocSize = 0;
-static pointer_uint     MemorySize;
-static int              Initialized = 0;
 #ifdef MEMORY_STATS
 static pointer_uint     PeakAlloc = 0;
 #endif
@@ -143,9 +140,22 @@ typedef struct blk_hdr {
     tag             size;   /* This must be the last member! */
 } blk_hdr;
 
-static mem_blk  *_Blks;
-static frl      *_FreeList[MAX_CLASS + 1];
-static unsigned _ClassSizes[MAX_CLASS + 1];
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CgmemmgrState {
+    pointer_uint AllocSize = 0;
+    pointer_uint MemorySize;
+    int Initialized = 0;
+    mem_blk *_Blks;
+    frl *_FreeList[MAX_CLASS + 1];
+    unsigned _ClassSizes[MAX_CLASS + 1];
+};
+
+}  // namespace
+
+static inline CgmemmgrState& cgmemmgr_state() { return cbrun_part<CgmemmgrState>(); }
+
 
 #if  defined( __DOS__ ) || defined( __QNX__ )
 
@@ -183,7 +193,7 @@ static  void    CalcMemSize( void )
     char            buff[80];
     const char      *envvar;
 
-    Initialized = 2;
+    cgmemmgr_state().Initialized = 2;
     size_requested = 0;
     size_queried = false;
     max_size_queried = false;
@@ -249,9 +259,9 @@ static  void    CalcMemSize( void )
         GlobalMemoryStatus( &info );
         memory_available = info.dwAvailVirtual;
         if( size_requested != 0 ) {
-            MemorySize = size_requested;
+            cgmemmgr_state().MemorySize = size_requested;
         } else {
-            MemorySize = memory_available;
+            cgmemmgr_state().MemorySize = memory_available;
         }
     }
 #elif defined( __OS2__ )
@@ -293,17 +303,17 @@ static  void    CalcMemSize( void )
 static  void    memInit( void )
 /*****************************/
 {
-    if( Initialized == 0 ) {
+    if( cgmemmgr_state().Initialized == 0 ) {
         int i;
 
         for( i = 0; i <= MAX_CLASS; ++i ) {
-            _FreeList[i]   = NULL;
-            _ClassSizes[i] = 1 << ( MIN_SIZE + i );
+            cgmemmgr_state()._FreeList[i]   = NULL;
+            cgmemmgr_state()._ClassSizes[i] = 1 << ( MIN_SIZE + i );
         }
 
-        Initialized = 1;
-        AllocSize   = 0;
-        _Blks       = NULL;
+        cgmemmgr_state().Initialized = 1;
+        cgmemmgr_state().AllocSize   = 0;
+        cgmemmgr_state()._Blks       = NULL;
 #if !defined( __QNX__ )
         CalcMemSize();
 #endif
@@ -339,7 +349,7 @@ static int SizeToClass( size_t amount )
 static unsigned ClassToSize( int mem_class )
 /******************************************/
 {
-    return( _ClassSizes[mem_class] );
+    return( cgmemmgr_state()._ClassSizes[mem_class] );
 }
 
 
@@ -350,13 +360,13 @@ static pointer  GetFromFrl( size_t amount, int frl_class )
 
     /* unused parameters */ (void)amount;
 
-    free = _FreeList[frl_class];
+    free = cgmemmgr_state()._FreeList[frl_class];
     if( free != NULL ) {
 #ifdef DEVBUILD
         assert( (free->length & ALLOCATED) == 0 );
 #endif
         free->length |= ALLOCATED;
-        _FreeList[frl_class] = free->link;
+        cgmemmgr_state()._FreeList[frl_class] = free->link;
         return( free );
     }
     return( NULL );
@@ -369,7 +379,7 @@ static pointer  GetFromBlk( size_t amount )
     mem_blk     *block;
     tag         *alloc;
 
-    for( block = _Blks; block != NULL; block = block->next ) {
+    for( block = cgmemmgr_state()._Blks; block != NULL; block = block->next ) {
         if( block->free >= amount ) {
             alloc = (tag *)( (char *)block + block->size - block->free );
 #ifdef DEVBUILD
@@ -392,7 +402,7 @@ pointer  CgMemAlloc( size_t amount )
     char        *chunk;
     int         mem_class;
 
-    if( Initialized == 0 )
+    if( cgmemmgr_state().Initialized == 0 )
         memInit();
     if( amount == 0 )
         return( NULL );
@@ -442,8 +452,8 @@ void     CgMemFree( pointer p )
 #endif
     } else {
         mem_class  = SizeToClass( length );
-        free->link = _FreeList[mem_class];
-        _FreeList[mem_class] = free;
+        free->link = cgmemmgr_state()._FreeList[mem_class];
+        cgmemmgr_state()._FreeList[mem_class] = free;
     }
 }
 
@@ -457,16 +467,16 @@ void     MemCoalesce( void )
 pointer_uint     MemInUse( void )
 /*******************************/
 {
-    if( Initialized == 0 )
+    if( cgmemmgr_state().Initialized == 0 )
         memInit();
-    return( AllocSize );
+    return( cgmemmgr_state().AllocSize );
 }
 
 
 pointer_uint     MemSize( void )
 /******************************/
 {
-    switch( Initialized ) {
+    switch( cgmemmgr_state().Initialized ) {
     case 0:
         memInit();
 #if defined( __QNX__ )
@@ -475,7 +485,7 @@ pointer_uint     MemSize( void )
         CalcMemSize();
 #endif
     }
-    return( MemorySize );
+    return( cgmemmgr_state().MemorySize );
 }
 
 
@@ -491,16 +501,12 @@ static  pointer MemFromSys( size_t amount )
      * round up size to multiple of 64K
      */
     size = _RoundUp( amount + sizeof( mem_blk ) + sizeof( blk_hdr ), _64K );
-#ifdef DEVBUILD
     /*
-     * Need to clear memory for later assert() calls
+     * Need to clear memory for later assert() calls, and a compile reads what it never wrote as zero (run/cbrun.hpp)
      */
     ptr = calloc( 1, size );
-#else
-    ptr = malloc( size );
-#endif
     if( ptr != NULL ) {
-        AllocSize += size;
+        cgmemmgr_state().AllocSize += size;
 #ifdef MEMORY_STATS
         if( AllocSize > PeakAlloc )
             PeakAlloc = AllocSize;
@@ -513,8 +519,8 @@ static  pointer MemFromSys( size_t amount )
          * small chunks. If the initial large allocation is freed,
          * it will also be reused for small blocks.
          */
-        blk->next = _Blks;
-        _Blks = blk;
+        blk->next = cgmemmgr_state()._Blks;
+        cgmemmgr_state()._Blks = blk;
         blk->free = size - amount - sizeof( mem_blk );
         blk->size = size;
         if( amount ) {
@@ -546,7 +552,7 @@ void MemFini( void )
     mem_blk     *curr;
     mem_blk     *next;
 
-    for( curr = _Blks; curr != NULL; curr = next ) {
+    for( curr = cgmemmgr_state()._Blks; curr != NULL; curr = next ) {
         next = curr->next;
         MemToSys( curr );
     }
@@ -559,5 +565,5 @@ void MemFini( void )
         PeakAlloc = 0;
     }
 #endif
-    Initialized = 0;
+    cgmemmgr_state().Initialized = 0;
 }

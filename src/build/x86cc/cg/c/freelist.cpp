@@ -55,7 +55,7 @@ pointer AllocFrl( pointer **head, size_t size )
    } else {
         new_frl = *head;
         *head = static_cast<pointer *>(**head);
-        FrlSize -= size;
+        data_state().FrlSize -= size;
     }
 #ifdef DEVBUILD
     memset( new_frl, 0xda, size );
@@ -71,7 +71,7 @@ void    FrlFreeSize( pointer **head, pointer *what, size_t size )
 #ifdef DEVBUILD
     memset( what, 0xdf, size );
 #endif
-    FrlSize += size;
+    data_state().FrlSize += size;
     *what = *head;
     *head = what;
 }
@@ -87,7 +87,7 @@ bool_    FrlFreeAll( pointer **head, size_t size )
     for( ; *head != NULL; *head = next ) {
         next = static_cast<pointer *>(**head);
         CGFree( *head );
-        FrlSize -= size;
+        data_state().FrlSize -= size;
     }
     return( true );
 }

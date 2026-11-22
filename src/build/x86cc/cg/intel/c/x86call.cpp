@@ -150,7 +150,7 @@ an      BGCall( cn call, bool_ use_return, bool_ aux_inline )
     hw_reg_set          return_reg;
     hw_reg_set          zap_reg;
 
-    if( call->name->tipe == TypeProcParm ) {
+    if( call->name->tipe == data_state().TypeProcParm ) {
         SaveDisplay( OP_PUSH );
     }
 
@@ -238,9 +238,9 @@ an      BGCall( cn call, bool_ use_return, bool_ aux_inline )
             AddIns( ret_ins );
             if( HW_CEqual( state->return_reg, HW_EMPTY ) ) {
                 AddIns( MakeUnary( OP_PUSH, ret_ptr, NULL, WD ) );
-                state->parm.offset += TypeClassSize[WD];
+                state->parm.offset += data_state().TypeClassSize[WD];
                 call_ins->operands[CALL_OP_POPS] =
-                        AllocS32Const( call_ins->operands[CALL_OP_POPS]->c.lo.u.int_value + TypeClassSize[WD] );
+                        AllocS32Const( call_ins->operands[CALL_OP_POPS]->c.lo.u.int_value + data_state().TypeClassSize[WD] );
                 if( state->attr & ROUTINE_REMOVES_PARMS ) {
                     call_ins->flags.u.call_flags |= CALL_POPS_PARMS;
                 }
@@ -282,33 +282,33 @@ void    BGProcDecl( cg_sym_handle sym, const type_def *tipe )
     type_class_def      type_class;
     label_handle        lbl;
 
-    SaveTargetModel = TargetModel;
+    model_state().SaveTargetModel = model_state().TargetModel;
     type_class = AddCallBlock( sym, tipe );
-    if( tipe != TypeNone ) {
+    if( tipe != data_state().TypeNone ) {
         if( type_class == XX ) {
-            if( CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
+            if( data_state().CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
                 PUSH_OP( AskBackSeg() );
                     lbl = AskForNewLabel();
                     DataLabel( lbl );
                     DGUBytes( tipe->length );
-                    CurrProc->targ.return_points = SAllocMemory( lbl, 0, CG_LBL, TypeClass( tipe ), tipe->length );
+                    data_state().CurrProc->targ.return_points = SAllocMemory( lbl, 0, CG_LBL, TypeClass( tipe ), tipe->length );
                 POP_OP();
             } else {
-                reg = CurrProc->state.return_reg;
+                reg = data_state().CurrProc->state.return_reg;
                 if( HW_CEqual( reg, HW_EMPTY ) ) {
-                    temp = DoParmDecl( NULL, TypeInteger, HW_EMPTY );
+                    temp = DoParmDecl( NULL, data_state().TypeInteger, HW_EMPTY );
                 } else {
                     temp = AllocTemp( WD );
                     temp->v.usage |= USE_IN_ANOTHER_BLOCK;
                     AddIns( MakeMove( AllocRegName( reg ), temp, WD ) );
-                    HW_TurnOn( CurrProc->state.parm.used, reg );
+                    HW_TurnOn( data_state().CurrProc->state.parm.used, reg );
                 }
-                CurrProc->targ.return_points = temp;
+                data_state().CurrProc->targ.return_points = temp;
             }
         }
     }
-    if( CurrProc->state.attr & ROUTINE_FARSS ) {
-        TargetModel |= CGSW_X86_FLOATING_SS;
+    if( data_state().CurrProc->state.attr & ROUTINE_FARSS ) {
+        model_state().TargetModel |= CGSW_X86_FLOATING_SS;
     }
 }
 
@@ -322,9 +322,9 @@ name    *StReturn( an retval, const type_def *tipe, instruction **pins )
     name        *seg;
     hw_reg_set  reg;
 
-    if( CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
-        retp = CurrProc->targ.return_points;
-        AddIns( MakeUnary( OP_LA, retp, AllocRegName( CurrProc->state.return_reg ), WD ) );
+    if( data_state().CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
+        retp = data_state().CurrProc->targ.return_points;
+        AddIns( MakeUnary( OP_LA, retp, AllocRegName( data_state().CurrProc->state.return_reg ), WD ) );
         *pins = NULL;
     } else {
         if( _IsTargetModel( CGSW_X86_FLOATING_SS )
@@ -337,11 +337,11 @@ name    *StReturn( an retval, const type_def *tipe, instruction **pins )
             ptr = AllocTemp( WD );
             off = ptr;
         }
-        AddIns( MakeMove( CurrProc->targ.return_points, off, WD ) );
+        AddIns( MakeMove( data_state().CurrProc->targ.return_points, off, WD ) );
         retp = SAllocIndex( ptr, NULL, 0, TypeClass( retval->tipe ), tipe->length );
         reg = ReturnReg( WD, false );
-        *pins = MakeMove( CurrProc->targ.return_points, AllocRegName( reg ), WD );
-        CurrProc->state.return_reg = reg;
+        *pins = MakeMove( data_state().CurrProc->targ.return_points, AllocRegName( reg ), WD );
+        data_state().CurrProc->state.return_reg = reg;
     }
     return( retp );
 }
@@ -356,10 +356,10 @@ static  void    AddCall( instruction *ins, cn call ) {
       && (call->state->attr & ROUTINE_NEEDS_DS_LOADED) ) {
         AddIns( MakeMove( NearSegment(), AllocRegName( HW_DS ), U2 ) );
     }
-    if( call->name->tipe == TypeProcParm ) {
-        proc_name = AllocTemp( ClassPointer );
+    if( call->name->tipe == data_state().TypeProcParm ) {
+        proc_name = AllocTemp( data_state().ClassPointer );
 /* what to do?        proc_name->usage |= USE_REGISTER;*/
-        AddIns( MakeMove( ins->operands[CALL_OP_ADDR], proc_name, ClassPointer ));
+        AddIns( MakeMove( ins->operands[CALL_OP_ADDR], proc_name, data_state().ClassPointer ));
         ins->operands[CALL_OP_ADDR] = proc_name;
         SetDisplay( GenIns( call->name ) );
         AddIns( ins );
@@ -388,29 +388,29 @@ reg_set_index   CallIPossible( instruction *ins )
 void    InitTargProc( void )
 /**************************/
 {
-    CurrProc->targ.stack_check = NULL;
-    CurrProc->targ.push_local_size = 0;
-    CurrProc->targ.debug = NULL;
-    CurrProc->targ.return_points = NULL;
-    CurrProc->targ.sp_frame = false;
-    CurrProc->targ.sp_align = false;
-    CurrProc->targ.has_fd_temps = false;
-    CurrProc->targ.never_sp_frame = false;
-    CurrProc->targ.tls_index = NULL;
+    data_state().CurrProc->targ.stack_check = NULL;
+    data_state().CurrProc->targ.push_local_size = 0;
+    data_state().CurrProc->targ.debug = NULL;
+    data_state().CurrProc->targ.return_points = NULL;
+    data_state().CurrProc->targ.sp_frame = false;
+    data_state().CurrProc->targ.sp_align = false;
+    data_state().CurrProc->targ.has_fd_temps = false;
+    data_state().CurrProc->targ.never_sp_frame = false;
+    data_state().CurrProc->targ.tls_index = NULL;
 }
 
 
 void    SaveToTargProc( void )
 /****************************/
 {
-    CurrProc->targ.max_stack = MaxStack;
+    data_state().CurrProc->targ.max_stack = data_state().MaxStack;
 }
 
 
 void    RestoreFromTargProc( void )
 /*********************************/
 {
-    MaxStack = CurrProc->targ.max_stack;
+    data_state().MaxStack = data_state().CurrProc->targ.max_stack;
 }
 
 
@@ -420,8 +420,8 @@ void    PushInSameBlock( instruction *ins )
 #if ( _TARGET & _TARG_8086 )
     /* unused parameters */ (void)ins;
 #else
-    if( InsBlock( ins ) != CurrBlock ) {
-        CurrProc->targ.never_sp_frame = true;
+    if( InsBlock( ins ) != data_state().CurrBlock ) {
+        data_state().CurrProc->targ.never_sp_frame = true;
     }
 #endif
 }

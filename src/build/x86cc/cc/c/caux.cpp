@@ -39,7 +39,7 @@ aux_entry *AuxLookup( const char *name )
 {
     aux_entry   *ent;
 
-    for( ent = AuxList; ent != NULL; ent = ent->next ) {
+    for( ent = pragdefn_state().AuxList; ent != NULL; ent = ent->next ) {
         if( strcmp( ent->name, name ) == 0 ) {
             break;
         }
@@ -83,7 +83,7 @@ void PragmaAuxInit( void )
     FastcallInfo= WatcallInfo;
 
 #if _INTEL_CPU
-    AuxInfoInit( CompFlags.use_stdcall_at_number );
+    AuxInfoInit( cvars_state().CompFlags.use_stdcall_at_number );
 #endif
 
     SetDefaultAuxInfo();
@@ -93,19 +93,19 @@ void PragmaAuxFini( void )
 {
     void    *junk;
 
-    while( AuxList != NULL ) {
-        junk = AuxList;
-        if( AuxList->info != NULL ) {
-            if( AuxList->info->use > 1 ) {
-                AuxList->info->use--;
+    while( pragdefn_state().AuxList != NULL ) {
+        junk = pragdefn_state().AuxList;
+        if( pragdefn_state().AuxList->info != NULL ) {
+            if( pragdefn_state().AuxList->info->use > 1 ) {
+                pragdefn_state().AuxList->info->use--;
             } else {
-                FreeAuxInfo( AuxList->info );
-                if( !IsAuxInfoBuiltIn( AuxList->info ) ) {
-                    CMemFree( AuxList->info );
+                FreeAuxInfo( pragdefn_state().AuxList->info );
+                if( !IsAuxInfoBuiltIn( pragdefn_state().AuxList->info ) ) {
+                    CMemFree( pragdefn_state().AuxList->info );
                 }
             }
         }
-        AuxList = AuxList->next;
+        pragdefn_state().AuxList = pragdefn_state().AuxList->next;
         CMemFree( junk );
     }
 

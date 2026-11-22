@@ -51,7 +51,19 @@
 #include "liveinfo.h"
 
 
-static  bool_            PreferSize;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct X86ldstrState {
+    bool_ PreferSize;
+    const hw_reg_set *RoverByte;
+    const hw_reg_set *RoverWord;
+    const hw_reg_set *RoverDouble;
+};
+
+}  // namespace
+
+static inline X86ldstrState& x86ldstr_state() { return cbrun_part<X86ldstrState>(); }
 
 static  name    **Enregister( instruction *ins )
 /***********************************************
@@ -93,7 +105,7 @@ static  name    **Enregister( instruction *ins )
     /*
      * only RISCify CMPs, TESTs, and MOVs when optimizing for size
      */
-    if( PreferSize && !_OpIsCondition( ins->head.opcode ) )
+    if( x86ldstr_state().PreferSize && !_OpIsCondition( ins->head.opcode ) )
         return( NULL );
     for( i = ins->num_operands; i-- > 0; ) {
         switch( ins->operands[i]->n.class_ ) {
@@ -118,9 +130,6 @@ static  name    **Enregister( instruction *ins )
     return( NULL );
 }
 
-static const hw_reg_set *RoverByte;
-static const hw_reg_set *RoverWord;
-static const hw_reg_set *RoverDouble;
 
 static const hw_reg_set *FindRegister( instruction *ins )
 /********************************************************
@@ -139,19 +148,19 @@ static const hw_reg_set *FindRegister( instruction *ins )
     switch( ins->type_class ) {
     case U1:
     case I1:
-        start = RegSets[RL_BYTE];
-        rover_ptr = &RoverByte;
+        start = RegSetList(RL_BYTE);
+        rover_ptr = &x86ldstr_state().RoverByte;
         break;
     case U2:
     case I2:
-        start = RegSets[RL_WORD];
-        rover_ptr = &RoverWord;
+        start = RegSetList(RL_WORD);
+        rover_ptr = &x86ldstr_state().RoverWord;
         break;
 #if _TARGET & _TARG_80386
     case U4:
     case I4:
-        start = RegSets[RL_DOUBLE];
-        rover_ptr = &RoverDouble;
+        start = RegSetList(RL_DOUBLE);
+        rover_ptr = &x86ldstr_state().RoverDouble;
         break;
 #endif
     default:
@@ -171,7 +180,7 @@ static const hw_reg_set *FindRegister( instruction *ins )
      * When optimizing for size, disable rover pointers and
      * reuse registers to decrease number of push'es in function prologue
      */
-    if( PreferSize ) {
+    if( x86ldstr_state().PreferSize ) {
         regs = start;
     }
     first = regs;
@@ -195,7 +204,7 @@ static const hw_reg_set *FindRegister( instruction *ins )
         /*
          * only use _AX when optimizing for size
          */
-        if( PreferSize ) {
+        if( x86ldstr_state().PreferSize ) {
             return( NULL );
         }
     }
@@ -359,15 +368,15 @@ static  bool_    FixMem16Moves( void )
     bool_        changed;
     instruction *next;
 
-    if( OptForSize > 0 )
+    if( data_state().OptForSize > 0 )
         return( false );
     if( !_CPULevel( CPU_586 ) )
         return( false );
     changed = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;      /* list is shifting underneath us */
-            if( ins->head.opcode == OP_MOV && TypeClassSize[ins->type_class] == 2 ) {
+            if( ins->head.opcode == OP_MOV && data_state().TypeClassSize[ins->type_class] == 2 ) {
                 switch( ins->operands[0]->n.class_ ) {
                 case N_MEMORY:
                 case N_INDEXED:
@@ -392,14 +401,13 @@ static  void    CompressMem16Moves( void )
 
     if( !_CPULevel( CPU_586 ) )
         return;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             RestoreMem16Move( ins );
         }
     }
 }
 #endif
-
 
 
 bool_    LdStAlloc( void )
@@ -419,20 +427,20 @@ bool_    LdStAlloc( void )
     instruction *next;
     bool_        changed;
 
-    RoverByte = NULL;
-    RoverWord = NULL;
-    RoverDouble = NULL;
+    x86ldstr_state().RoverByte = NULL;
+    x86ldstr_state().RoverWord = NULL;
+    x86ldstr_state().RoverDouble = NULL;
     /*
      * 2006-04-25 RomanT:
      * Run RISCifier for all modes, but sometimes (depending on CPU and
      * optimization) prefer shorter non-RISC version of instructions.
      */
-    PreferSize = false;
-    if( OptForSize > 50 ) {
-        PreferSize = true;
+    x86ldstr_state().PreferSize = false;
+    if( data_state().OptForSize > 50 ) {
+        x86ldstr_state().PreferSize = true;
     }
     if( !_CPULevel( CPU_486 ) ) {
-        PreferSize = true;
+        x86ldstr_state().PreferSize = true;
     }
 
 #if 0  /* You can optionally disable riscifer when optimizing for size */
@@ -441,7 +449,7 @@ bool_    LdStAlloc( void )
 #endif
 
     changed = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;      /* list is shifting underneath us */
             if( LoadStoreIns( ins ) ) {
@@ -553,7 +561,7 @@ static void     CompressIns( instruction *ins )
         /*
          * If size preferable then push must be compacted
          */
-        if( PreferSize )
+        if( x86ldstr_state().PreferSize )
             break;
         /*
          * It's better to use a register for PUSH/POP on a 486
@@ -586,9 +594,9 @@ static void     CompressIns( instruction *ins )
          */
         if( prev->head.opcode == OP_XOR
             && prev_op0 == prev->operands[1]
-            && ( TypeClassSize[prev->type_class] == 1
+            && ( data_state().TypeClassSize[prev->type_class] == 1
 #if _TARGET & _TARG_8086  /* Does not work right on 386 - temps becomes 32-bit much later. Todo. */
-                || ( TypeClassSize[prev->type_class] == 2 && ins->result && ins->result->n.class_ == N_TEMP )
+                || ( data_state().TypeClassSize[prev->type_class] == 2 && ins->result && ins->result->n.class_ == N_TEMP )
 #endif
             ) ) {
             prev_op0 = AllocIntConst( 0 );  /* fake "MOV RESULT, 0" */
@@ -657,7 +665,7 @@ void    LdStCompress( void )
      * Note: LdStAlloc() must be called first to set PreferSize variable
      */
     CompressMem16Moves();
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             CompressIns( ins );
         }

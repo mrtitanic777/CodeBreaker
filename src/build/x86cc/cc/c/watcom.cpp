@@ -47,13 +47,13 @@
 #error Unknown System
 #endif
 
-char CompilerID[] = { "__WATCOMC__=" _MACROSTR( _BLDVER ) };
+extern char const CompilerID[] = { "__WATCOMC__=" _MACROSTR( _BLDVER ) };
 
 void CBanner( void )
 {
-    if( !CompFlags.banner_printed ) {
-        CompFlags.banner_printed = true;
-        if( !CompFlags.quiet_mode ) {
+    if( !cvars_state().CompFlags.banner_printed ) {
+        cvars_state().CompFlags.banner_printed = true;
+        if( !cvars_state().CompFlags.quiet_mode ) {
 #if defined( _BETAVER )
             BannerMsg( banner1t( "C " _TARGET_ " Optimizing Compiler" ) );
             BannerMsg( banner1v( _WCC_VERSION_ ) );

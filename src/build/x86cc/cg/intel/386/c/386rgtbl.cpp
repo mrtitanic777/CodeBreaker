@@ -113,10 +113,6 @@ static const hw_reg_set     EDXEAXReg[] = {
     HW_D_2( HW_EDX, HW_EAX ),
     HW_D_1( HW_EMPTY )
 };
-static hw_reg_set           FPParm2Reg[] = {
-    HW_D_1( HW_EMPTY ),     /* filled in by InitRegTbl */
-    HW_D_1( HW_EMPTY )
-};
 static const hw_reg_set     ByteRegs[] = {
     HW_D_1( HW_AL ),
     HW_D_1( HW_AH ),
@@ -345,19 +341,8 @@ static const hw_reg_set     STIReg[] = {
     HW_D_1( HW_ST7 ),
     HW_D_1( HW_EMPTY )
 };
-static hw_reg_set           STParmReg[] = {
-    HW_D_1( HW_ST1 ),
-    HW_D_1( HW_ST2 ),
-    HW_D_1( HW_ST3 ),
-    HW_D_1( HW_ST4 ),
-    HW_D_1( HW_ST5 ),
-    HW_D_1( HW_ST6 ),
-    HW_D_1( HW_ST7 ),
-    HW_D_1( HW_EMPTY ),
-    HW_D_1( HW_EMPTY )
-};
 
-const hw_reg_set            * const RegSets[] = {
+static const hw_reg_set      * const RegSets[] = {
 /****************************************
  * define the possible register lists
  */
@@ -418,26 +403,51 @@ static const hw_reg_set     * const ParmSets[] = {
     Empty                   /* XX */
 };
 
-static const hw_reg_set     * const ParmSets8087[] = {
-/*****************************************************
- * define the set of register that a parameter of a given class could use
- * when generating 8087 code
- */
-    ByteRegs,               /* U1 */
-    ByteRegs,               /* I1 */
-    WordRegs,               /* U2 */
-    WordRegs,               /* I2 */
-    DoubleParmRegs,         /* U4 */
-    DoubleParmRegs,         /* I4 */
-    QuadReg,                /* U8 */
-    QuadReg,                /* I8 */
-    FarPointerRegs,         /* CP */
-    FarPointerRegs,         /* PT */
-    STParmReg,              /* FS */
-    STParmReg,              /* FD */
-    STParmReg,              /* FL */
-    Empty                   /* XX */
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct RgtblState {
+    hw_reg_set FPParm2Reg[2] = {
+        HW_D_1( HW_EMPTY ),     /* filled in by InitRegTbl */
+        HW_D_1( HW_EMPTY )
+    };
+    hw_reg_set STParmReg[9] = {
+        HW_D_1( HW_ST1 ),
+        HW_D_1( HW_ST2 ),
+        HW_D_1( HW_ST3 ),
+        HW_D_1( HW_ST4 ),
+        HW_D_1( HW_ST5 ),
+        HW_D_1( HW_ST6 ),
+        HW_D_1( HW_ST7 ),
+        HW_D_1( HW_EMPTY ),
+        HW_D_1( HW_EMPTY )
+    };
+    const hw_reg_set * const ParmSets8087[14] = {
+    /*****************************************************
+     * define the set of register that a parameter of a given class could use
+     * when generating 8087 code
+     */
+        ByteRegs,               /* U1 */
+        ByteRegs,               /* I1 */
+        WordRegs,               /* U2 */
+        WordRegs,               /* I2 */
+        DoubleParmRegs,         /* U4 */
+        DoubleParmRegs,         /* I4 */
+        QuadReg,                /* U8 */
+        QuadReg,                /* I8 */
+        FarPointerRegs,         /* CP */
+        FarPointerRegs,         /* PT */
+        STParmReg,              /* FS */
+        STParmReg,              /* FD */
+        STParmReg,              /* FL */
+        Empty                   /* XX */
+    };
 };
+
+}  // namespace
+
+static inline RgtblState& rgtbl_state() { return cbrun_part<RgtblState>(); }
+
 
 static const reg_set_index  IsSets[] = {
 /***********************************
@@ -637,13 +647,24 @@ void            InitRegTbl( void )
  */
 {
     if( _FPULevel( FPU_87 ) ) {
-        HW_CAsgn( STParmReg[Max87Stk], HW_EMPTY );
+        HW_CAsgn( rgtbl_state().STParmReg[i87data_state().Max87Stk], HW_EMPTY );
     }
     if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) ) {
-        HW_CAsgn( FPParm2Reg[0], HW_ECX_ESI );
+        HW_CAsgn( rgtbl_state().FPParm2Reg[0], HW_ECX_ESI );
     } else {
-        HW_CAsgn( FPParm2Reg[0], HW_ECX_EBX );
+        HW_CAsgn( rgtbl_state().FPParm2Reg[0], HW_ECX_EBX );
     }
+}
+
+
+const hw_reg_set   *RegSetList( unsigned index )
+/***********************************************
+ * the registers of register list "index"
+ */
+{
+    if( index == RL_FPPARM2 )
+        return( rgtbl_state().FPParm2Reg );   /* the list this run filled in */
+    return( RegSets[index] );
 }
 
 
@@ -681,7 +702,7 @@ const hw_reg_set    *ParmChoices( type_class_def type_class )
     const hw_reg_set    *list;
 
     if( _FPULevel( FPU_87 ) ) {
-        list = ParmSets8087[type_class];
+        list = rgtbl_state().ParmSets8087[type_class];
     } else {
         list = ParmSets[type_class];
     }
@@ -727,9 +748,9 @@ hw_reg_set      ReturnReg( type_class_def type_class, bool_ use_87 )
     const hw_reg_set  *list;
 
     if( _FPULevel( FPU_87 ) && use_87 ) {
-        list = RegSets[Return8087[type_class]];
+        list = RegSetList(Return8087[type_class]);
     } else {
-        list = RegSets[ReturnSets[type_class]];
+        list = RegSetList(ReturnSets[type_class]);
     }
     return( *list );
 }
@@ -775,7 +796,7 @@ bool_    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool_ is_temp_in
 
     /* unused parameters */ (void)is_temp_index;
 
-    for( list = RegSets[IndexSets[type_class]]; !HW_CEqual( *list, HW_EMPTY ); ++list ) {
+    for( list = RegSetList(IndexSets[type_class]); !HW_CEqual( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, reg ) ) {
             break;
         }
@@ -790,7 +811,7 @@ static  type_class_def  NotFloatRegClass( hw_reg_set regs )
     type_class_def      type_class;
 
     for( type_class = U1; type_class < XX; ++type_class ) {
-        for( possible = RegSets[ClassSets[type_class]]; !HW_CEqual( *possible, HW_EMPTY ); ++possible ) {
+        for( possible = RegSetList(ClassSets[type_class]); !HW_CEqual( *possible, HW_EMPTY ); ++possible ) {
             if( HW_Equal( *possible, regs ) ) {
                 return( type_class );
             }
@@ -838,9 +859,9 @@ bool_    IndexRegOk( hw_reg_set reg, bool_ is_temp_index )
     /* unused parameters */ (void)is_temp_index;
 
     if( RegClass( reg ) == U4 ) {
-        list = RegSets[RL_DOUBLE];
+        list = RegSetList(RL_DOUBLE);
     } else {
-        list = RegSets[RL_LONG_INDEX];
+        list = RegSetList(RL_LONG_INDEX);
     }
     for( ; !HW_CEqual( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, reg ) ) {
@@ -1011,7 +1032,6 @@ hw_reg_set      High64Reg( hw_reg_set regs )
 }
 
 
-
 hw_reg_set      HighReg( hw_reg_set regs )
 /*****************************************
  * return the high order portion of "regs"
@@ -1075,7 +1095,6 @@ hw_reg_set      LowOffsetReg( hw_reg_set regs )
 }
 
 
-
 bool_    IsRegClass( hw_reg_set regs, type_class_def type_class )
 /***************************************************************
  * return true if "regs" has type "class" (eg I4, U4, etc)
@@ -1083,7 +1102,7 @@ bool_    IsRegClass( hw_reg_set regs, type_class_def type_class )
 {
     const hw_reg_set    *list;
 
-    for( list = RegSets[IsSets[type_class]]; !HW_Equal( *list, HW_EMPTY ); ++list ) {
+    for( list = RegSetList(IsSets[type_class]); !HW_Equal( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, regs ) ) {
             break;
         }
@@ -1153,7 +1172,7 @@ hw_reg_set      StackReg( void )
 hw_reg_set      DisplayReg( void )
 /********************************/
 {
-    if( CurrProc->targ.sp_frame )
+    if( data_state().CurrProc->targ.sp_frame )
         return( HW_ESP );
     return( HW_EBP );
 }
@@ -1211,5 +1230,5 @@ hw_reg_set      FirstReg( reg_set_index regs_idx )
  * register list and returns it.
  */
 {
-    return( *RegSets[regs_idx] );
+    return( *RegSetList(regs_idx) );
 }

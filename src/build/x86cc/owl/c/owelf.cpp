@@ -42,7 +42,17 @@
 
 #define _OWLIndexToELFIndex( x )        ( (x) + FIRST_USER_SECTION )
 
-static bool_ useRela;                    // Use .rela or .rel
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct OwelfState {
+    bool_ useRela;   // Use .rela or .rel
+};
+
+}  // namespace
+
+static inline OwelfState& owelf_state() { return cbrun_part<OwelfState>(); }
+
 
 static unsigned numSections( owl_file_handle file )
 /*************************************************/
@@ -57,7 +67,7 @@ static unsigned numSymbols( owl_file_handle file )
                 file->symbol_table->num_local_symbols );
 }
 
-static Elf32_Half machineTypes[] = {
+static Elf32_Half const machineTypes[] = {
     #define OWL_CPU(c,e,o) e,
     OWL_CPUS
     #undef OWL_CPU
@@ -110,7 +120,7 @@ static void prepareStringTable( owl_file_handle file, elf_special_section *str_s
 /*
  * must correspond to owl_sym_linkage in owl.h
  */
-static Elf32_Half elfBinding[] = {
+static Elf32_Half const elfBinding[] = {
     STB_GLOBAL,     /* OWL_SYM_UNDEFINED    */
     STB_LOCAL,      /* OWL_SYM_FUNCTION     */
     STB_LOCAL,      /* OWL_SYM_STATIC       */
@@ -121,7 +131,7 @@ static Elf32_Half elfBinding[] = {
 /*
  * must correspond to owl_sym_type in owl.h
  */
-static Elf32_Half elfType[] = {
+static Elf32_Half const elfType[] = {
     STT_FUNC,       /* OWL_TYPE_FUNCTION    */
     STT_OBJECT,     /* OWL_TYPE_OBJECT      */
     STT_SECTION,    /* OWL_TYPE_SECTION     internal - should not be used by client */
@@ -324,8 +334,8 @@ static void doSectionRelocsHeader( owl_section_handle section, Elf32_Shdr *heade
 {
     size_t      reloc_entry_size;
 
-    reloc_entry_size = useRela ? sizeof( Elf32_Rela ) : sizeof( Elf32_Rel );
-    initSectionHeader( header, (useRela ? SHT_RELA : SHT_REL), sectionFlags( section->type ) & SHF_ALLOC );
+    reloc_entry_size = owelf_state().useRela ? sizeof( Elf32_Rela ) : sizeof( Elf32_Rel );
+    initSectionHeader( header, (owelf_state().useRela ? SHT_RELA : SHT_REL), sectionFlags( section->type ) & SHF_ALLOC );
     header->sh_name = OWLStringOffset( section->x.elf.relocs_name );
     header->sh_link = ELF_SYMBOL_INDEX;
     header->sh_info = _OWLIndexToELFIndex( section->index );
@@ -408,7 +418,7 @@ static void emitReloc( owl_section_handle sec, owl_reloc_info *reloc, Elf32_Rela
     if( (bit_mask & 0xffff0000) == 0 )
         elf_reloc->r_offset += 2;
 #endif
-    if( useRela ) {
+    if( owelf_state().useRela ) {
         /*
          * dig up the embedded addend within the object and put it here
          */
@@ -456,7 +466,7 @@ static void emitSectionData( owl_file_handle file )
      * We pass rela ptr around because it works for rel case also.
      * So be careful: don't do a ++next_reloc etc and expect it to be correct.
      */
-    reloc_entry_size = useRela ? sizeof( Elf32_Rela ) : sizeof( Elf32_Rel );
+    reloc_entry_size = owelf_state().useRela ? sizeof( Elf32_Rela ) : sizeof( Elf32_Rel );
     for( curr = file->sections; curr != NULL; curr = curr->next ) {
         /*
          * We need to prepare the reloc data before emitting its corresponding
@@ -502,16 +512,16 @@ static void prepareRelocSections( owl_file_handle file )
     switch( file->info->cpu ) {
     case OWL_CPU_X86:
     case OWL_CPU_MIPS:    // MIPS SysV ABI supplement says so
-        useRela = false;
+        owelf_state().useRela = false;
         break;
     default:
-        useRela = true; // This seems to be the common case
+        owelf_state().useRela = true; // This seems to be the common case
         break;
     }
     for( curr = file->sections; curr != NULL; curr = curr->next ) {
         curr->x.elf.pad_amount = 0;
         if( curr->first_reloc != NULL ) {
-            strcpy( buffer, (useRela ? ".rela" : ".rel") );
+            strcpy( buffer, (owelf_state().useRela ? ".rela" : ".rel") );
             strcat( buffer, OWLStringText( curr->name ) );
             curr->x.elf.relocs_name = OWLStringAdd( file->string_table, buffer );
             curr->x.elf.relocs_index = file->next_index++;

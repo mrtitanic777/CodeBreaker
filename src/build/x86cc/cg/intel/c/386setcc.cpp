@@ -102,7 +102,7 @@ static  bool_    FindFlowOut( block *blk ) {
         ins = ins->head.prev;
     }
 //    prev = ins->head.prev;
-    if( TypeClassSize[ins->type_class] > WORD_SIZE )
+    if( data_state().TypeClassSize[ins->type_class] > WORD_SIZE )
         return( false );
     true_blk = blk->edge[_TrueIndex( ins )].destination.u.blk;
     if( true_blk->inputs != 1 )
@@ -197,7 +197,7 @@ bool_    SetOnCondition( void )
     if( !_CPULevel( CPU_386 ) )
         return( false );
     change = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
             change |= FindFlowOut( blk );
         }

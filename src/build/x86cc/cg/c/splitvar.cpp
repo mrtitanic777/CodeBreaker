@@ -44,8 +44,18 @@
 #include "splitvar.h"
 
 
-static  block_id        Instance;
-static  global_bit_set  Id;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct SplitvarState {
+    block_id Instance;
+    global_bit_set Id;
+};
+
+}  // namespace
+
+static inline SplitvarState& splitvar_state() { return cbrun_part<SplitvarState>(); }
+
 static  void            *MarkInstance(block *blk);
 
 static  block   *FindUnMarkedInstance( void )
@@ -54,14 +64,14 @@ static  block   *FindUnMarkedInstance( void )
     block               *blk;
     data_flow_def       *flow;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkVisited( blk ) )
             continue;
         flow = blk->dataflow;
-        if( _GBitOverlap( Id, flow->in )
-          || _GBitOverlap( Id, flow->out )
-          || _GBitOverlap( Id, flow->def )
-          || _GBitOverlap( Id, flow->use ) ) {
+        if( _GBitOverlap( splitvar_state().Id, flow->in )
+          || _GBitOverlap( splitvar_state().Id, flow->out )
+          || _GBitOverlap( splitvar_state().Id, flow->def )
+          || _GBitOverlap( splitvar_state().Id, flow->use ) ) {
             break;
         }
     }
@@ -74,7 +84,7 @@ static  void    NotVisited( void )
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         _MarkBlkUnVisited( blk );
         blk->blk_id = 0;
     }
@@ -124,8 +134,8 @@ static  void    ReplaceInstances( name *of, name *with )
 //    block       *replaced;
 
 //    replaced = NULL;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( blk->blk_id == Instance ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+        if( blk->blk_id == splitvar_state().Instance ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
                 for( i = ins->num_operands; i-- > 0; ) {
                     RepOp( &ins->operands[i], of, with );
@@ -147,21 +157,21 @@ static  bool_    Split1Var( conflict_node *conf )
     name        *op;
 
     NotVisited();
-    Instance = 0;
-    _GBitAssign( Id, conf->id.out_of_block );
+    splitvar_state().Instance = 0;
+    _GBitAssign( splitvar_state().Id, conf->id.out_of_block );
     for( ;; ) {
         unlabeled = FindUnMarkedInstance();
         if( unlabeled == NULL )
             break;
-        ++Instance;
+        ++splitvar_state().Instance;
         MarkInstance( unlabeled );
     }
     op = conf->name;
     change = false;
-    while( Instance > 1 ) {
+    while( splitvar_state().Instance > 1 ) {
         change = true;
         ReplaceInstances( op, SAllocTemp( op->n.type_class, op->n.size ) );
-        --Instance;
+        --splitvar_state().Instance;
     }
     return( change );
 }
@@ -174,7 +184,7 @@ static  void    CleanUp( void )
     block_id    blk_id;
 
     blk_id = 1;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         _MarkBlkUnVisited( blk );
         blk->blk_id = blk_id++;
     }
@@ -192,21 +202,21 @@ static  void *MarkInstance( block *blk )
     if( _IsBlkVisited( blk ) )
         return( NULL );
     _MarkBlkVisited( blk );
-    blk->blk_id = Instance;
+    blk->blk_id = splitvar_state().Instance;
     flow = blk->dataflow;
-    if( _GBitOverlap( flow->in, Id ) ) {
+    if( _GBitOverlap( flow->in, splitvar_state().Id ) ) {
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
             bitp = &edge->source->dataflow->out;
-            if( _GBitOverlap( *bitp, Id ) ) {
+            if( _GBitOverlap( *bitp, splitvar_state().Id ) ) {
                 SafeRecurseCG( (func_sr)MarkInstance, edge->source );
             }
         }
     }
-    if( _GBitOverlap( flow->out, Id ) ) {
+    if( _GBitOverlap( flow->out, splitvar_state().Id ) ) {
         edge = &blk->edge[0];
         for( i = blk->targets; i > 0; --i ) {
             bitp = &edge->destination.u.blk->dataflow->in;
-            if( _GBitOverlap( *bitp, Id ) ) {
+            if( _GBitOverlap( *bitp, splitvar_state().Id ) ) {
                 SafeRecurseCG( (func_sr)MarkInstance, edge->destination.u.blk );
             }
             ++edge;
@@ -226,7 +236,7 @@ static  void *MarkInstance( block *blk )
     conflict_node       *conf;
 
     for( ;; ) {
-        for( conf = ConfList; conf != NULL; conf = conf->next_conflict ) {
+        for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
             op = conf->name;
             if( (op->v.usage & USE_IN_ANOTHER_BLOCK) == 0 )
                 continue;

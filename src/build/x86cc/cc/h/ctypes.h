@@ -520,16 +520,16 @@ typedef enum ppctl_t {
     PPCTL_NORMAL            = 0x00  // expand macros, treat <eol> as white space, diagnose lexical problems
 } ppctl_t;
 
-#define PPCTL_ENABLE_ASM()          PPControl |= PPCTL_ASM
+#define PPCTL_ENABLE_ASM()          cvars_state().PPControl |= PPCTL_ASM
 #define PPCTL_DISABLE_ASM()         PPControl &= ~PPCTL_ASM
-#define PPCTL_ENABLE_EOL()          PPControl |= PPCTL_EOL
-#define PPCTL_DISABLE_EOL()         PPControl &= ~PPCTL_EOL
-#define PPCTL_ENABLE_MACROS()       PPControl &= ~PPCTL_NO_EXPAND
-#define PPCTL_DISABLE_MACROS()      PPControl |= PPCTL_NO_EXPAND
-#define PPCTL_ENABLE_LEX_ERRORS()   PPControl &= ~PPCTL_NO_LEX_ERRORS
-#define PPCTL_DISABLE_LEX_ERRORS()  PPControl |= PPCTL_NO_LEX_ERRORS
+#define PPCTL_ENABLE_EOL()          cvars_state().PPControl |= PPCTL_EOL
+#define PPCTL_DISABLE_EOL()         cvars_state().PPControl &= ~PPCTL_EOL
+#define PPCTL_ENABLE_MACROS()       cvars_state().PPControl &= ~PPCTL_NO_EXPAND
+#define PPCTL_DISABLE_MACROS()      cvars_state().PPControl |= PPCTL_NO_EXPAND
+#define PPCTL_ENABLE_LEX_ERRORS()   cvars_state().PPControl &= ~PPCTL_NO_LEX_ERRORS
+#define PPCTL_DISABLE_LEX_ERRORS()  cvars_state().PPControl |= PPCTL_NO_LEX_ERRORS
 
-#define IS_PPCTL_NORMAL()           ((PPControl & (PPCTL_EOL | PPCTL_NO_EXPAND)) == 0)
+#define IS_PPCTL_NORMAL()           ((cvars_state().PPControl & (PPCTL_EOL | PPCTL_NO_EXPAND)) == 0)
 
 typedef struct comp_flags {
     boolbit label_dropped                       : 1;

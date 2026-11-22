@@ -31,16 +31,8 @@
 
 #include "_cgstd.h"
 #include "optwif.h"
+#include "optdata.h"
 
-        ins_entry       *FirstIns;
-        ins_entry       *LastIns;
-        ins_entry       *PendingDeletes;
-        bool_            InsDelete;
-        uint            QCount;
-        label_handle    Handles;
-        ins_entry       *RetList;
-        ins_entry       *NoRetList;
-        pointer         *InstrFrl;
 //      pointer         *CodeLblFrl;
 #if( OPTIONS & SAVINGS )
         uint            Savings;

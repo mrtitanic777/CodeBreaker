@@ -82,15 +82,25 @@ typedef enum {
         RESULT_DIES
 } who_dies;
 
-static instruction      *ExprHeads[LAST_CSE_OP + 1];
-static bool_             LeaveIndVars;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CseState {
+    instruction *ExprHeads[LAST_CSE_OP + 1];
+    bool_ LeaveIndVars;
+};
+
+}  // namespace
+
+static inline CseState& cse_state() { return cbrun_part<CseState>(); }
+
 
 static  void    ReCalcAddrTaken( void )
 /*************************************/
 {
     name        *temp;
 
-    for( temp = Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->v.usage & VAR_VOLATILE )
             continue;
         if( temp->v.symbol != NULL
@@ -119,7 +129,7 @@ static  bool_    LoadAddr( void )
     bool_        change;
 
     change = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             change |= LoadAToMove( ins );
         }
@@ -242,7 +252,7 @@ static  bool_    StretchEdges( void )
     bool_        change;
 
     change = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( StretchABlock( blk ) ) {
             change = true;
         }
@@ -384,7 +394,7 @@ static  void    FindPartition( void )
     block_edge  *edge;
     block_num   i;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_BIG_LABEL )
           || blk->inputs != 1 ) {
             _MarkBlkVisited( blk );
@@ -392,7 +402,7 @@ static  void    FindPartition( void )
         blk->u.partition = blk;
         _BLKBITS( blk ) = EMPTY;
     }
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         edge = &blk->edge[0];
         for( i = blk->targets; i > 0; --i ) {
             if( edge->flags & BEF_DEST_IS_BLOCK ) {
@@ -407,7 +417,7 @@ static  void    FindPartition( void )
             ++edge;
         }
     }
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkVisited( blk ) ) {
             TreeBits( blk );
         }
@@ -498,7 +508,7 @@ static  void    CleanPartition( void )
 {
     block       *blk;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         _MarkBlkUnVisited( blk );
         blk->u.partition = NULL;
     }
@@ -512,7 +522,7 @@ static bool_ CanCrossBlocks( instruction *ins1, instruction *ins2, name *op )
  * in ForceTempsMemory.
  */
 {
-    if( !BlockByBlock )
+    if( !data_state().BlockByBlock )
         return( true );
     if( op->n.class_ != N_TEMP )
         return( true );
@@ -622,7 +632,7 @@ static  bool_            HoistLooksGood( instruction *target, instruction *orig 
     block               *target_blk;
     block               *blk;
 
-    if( OptForSize > 50 )
+    if( data_state().OptForSize > 50 )
         return( true );
     target_blk = InsBlock( target );
     blk = InsBlock( orig );
@@ -872,7 +882,7 @@ static  bool_    DoOneOpcode( opcode_defs opcode )
         signed_matters = true;
         break;
     }
-    for( ins1 = ExprHeads[opcode]; ins1 != NULL; ins1 = next1 ) {
+    for( ins1 = cse_state().ExprHeads[opcode]; ins1 != NULL; ins1 = next1 ) {
         next1 = _INSLINK( ins1 );
         for( ins2 = next1; ins2 != NULL; ins2 = next2 ) {
             next2 = _INSLINK( ins2 );
@@ -880,23 +890,23 @@ static  bool_    DoOneOpcode( opcode_defs opcode )
             if( which_ins != NULL ) {
                 change = true;
                 if( which_ins == ins1 ) {
-                    DeleteFromList( &ExprHeads[opcode], ins1, next1 );
+                    DeleteFromList( &cse_state().ExprHeads[opcode], ins1, next1 );
                     FreeIns( ins1 );
                     break;
                 } else if( which_ins == ins2 ) {
-                    DeleteFromList( &ExprHeads[opcode], ins2, next2 );
+                    DeleteFromList( &cse_state().ExprHeads[opcode], ins2, next2 );
                     FreeIns( ins2 );
                     if( ins2 == next1 ) {
                         next1 = ins1;
                         break;
                     }
                 } else { /* hoisted code from ins1 & ins2 to which_ins*/
-                    DeleteFromList( &ExprHeads[opcode], ins1, next1 );
-                    DeleteFromList( &ExprHeads[opcode], ins2, next2 );
+                    DeleteFromList( &cse_state().ExprHeads[opcode], ins1, next1 );
+                    DeleteFromList( &cse_state().ExprHeads[opcode], ins2, next2 );
                     FreeIns( ins1 );
                     FreeIns( ins2 );
-                    _INSLINK( which_ins ) = ExprHeads[opcode];
-                    ExprHeads[opcode] = which_ins;
+                    _INSLINK( which_ins ) = cse_state().ExprHeads[opcode];
+                    cse_state().ExprHeads[opcode] = which_ins;
                     next1 = which_ins;
                     break;
                 }
@@ -917,14 +927,14 @@ static  bool_    DoDivides( void )
     instruction *next2;
 
     change = false;
-    for( ins1 = ExprHeads[OP_DIV]; ins1 != NULL; ins1 = next1 ) {
+    for( ins1 = cse_state().ExprHeads[OP_DIV]; ins1 != NULL; ins1 = next1 ) {
         next1 = _INSLINK( ins1 );
         for( ins2 = next1; ins2 != NULL; ins2 = next2 ) {
             next2 = _INSLINK( ins2 );
             if( ProcessDivide( ins1, ins2 ) ) {
-                DeleteFromList( &ExprHeads[OP_DIV], ins1, next1 );
-                DeleteFromList( &ExprHeads[OP_DIV], ins2, next2 );
-                next1 = ExprHeads[OP_DIV];
+                DeleteFromList( &cse_state().ExprHeads[OP_DIV], ins1, next1 );
+                DeleteFromList( &cse_state().ExprHeads[OP_DIV], ins2, next2 );
+                next1 = cse_state().ExprHeads[OP_DIV];
                 change = true;
                 break;
             }
@@ -972,14 +982,14 @@ static  bool_    DoArithOps( block *root )
     opcnt       i;
 
     for( opcode = FIRST_CSE_OP; opcode <= LAST_CSE_OP; ++opcode ) {
-        ExprHeads[opcode] = NULL;
+        cse_state().ExprHeads[opcode] = NULL;
     }
     blk = root;
     for( ;; ) {
         for( ins = blk->ins.head.next; (opcode = ins->head.opcode) != OP_BLOCK; ins = ins->head.next ) {
             i = ( _OpIsBinary( opcode ) ) ? 1 : 0;
             if( _OpIsCSE( opcode )
-              && !( LeaveIndVars && Inducable( blk, ins ) )
+              && !( cse_state().LeaveIndVars && Inducable( blk, ins ) )
               && ins->operands[0]->n.class_ != N_REGISTER
               && ins->operands[i]->n.class_ != N_REGISTER
               && ins->result->n.class_ != N_REGISTER
@@ -993,8 +1003,8 @@ static  bool_    DoArithOps( block *root )
                         ins->ins_flags |= INS_DEFINES_OWN_OPERAND;
                     }
                 }
-                _INSLINK( ins ) = ExprHeads[opcode];
-                ExprHeads[opcode] = ins;
+                _INSLINK( ins ) = cse_state().ExprHeads[opcode];
+                cse_state().ExprHeads[opcode] = ins;
             }
         }
         blk = blk->u.partition;
@@ -1025,7 +1035,7 @@ static  bool_    PropagateExprs( void )
     block       *blk;
 
     change = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         SXBlip();
         if( _IsBlkVisited( blk ) ) {
             change |= DoArithOps( blk );
@@ -1532,7 +1542,7 @@ static  bool_    DoPropagateMoves( void )
     block       *blk;
 
     change = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         SXBlip();
         if( _IsBlkVisited( blk ) ) {
             do {
@@ -1594,7 +1604,7 @@ bool_    CommonSex( bool_ leave_indvars_alone )
     bool_        anychange;
 
     loops_killed = false;
-    LeaveIndVars = leave_indvars_alone;
+    cse_state().LeaveIndVars = leave_indvars_alone;
     FindPartition();
     anychange = LoadAddr();
     if( PropRegsOne() )

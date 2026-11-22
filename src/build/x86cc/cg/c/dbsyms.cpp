@@ -58,9 +58,6 @@
 #include "cgprotos.h"
 
 
-cue_ctl     LineInfo;
-fname_ctl   DBFiles;
-
 static const opcode_entry     DbgInfo[] = {
 /*           op1   op2   res   eq      verify          reg           gen             fu  */
 _OE( _None(                         ), V_NO,           RG_,          G_DEBUG,        FU_NO )
@@ -69,8 +66,8 @@ _OE( _None(                         ), V_NO,           RG_,          G_DEBUG,   
 static  void    SrcFileNoInit( void )
 /***********************************/
 {
-    DBFiles.lst = NULL;
-    DBFiles.count = 0;
+    dbsyms_state().DBFiles.lst = NULL;
+    dbsyms_state().DBFiles.count = 0;
 }
 
 static  void    DBSrcFileFini( void )
@@ -78,8 +75,8 @@ static  void    DBSrcFileFini( void )
 {
     fname_lst   *curr;
 
-    while( (curr = DBFiles.lst) != NULL ) {
-        DBFiles.lst = curr->next;
+    while( (curr = dbsyms_state().DBFiles.lst) != NULL ) {
+        dbsyms_state().DBFiles.lst = curr->next;
         CGFree( curr );
     }
 }
@@ -96,7 +93,7 @@ uint    _CGAPI DBSrcFile( cchar_ptr fname )
     EchoAPI( "DBSrcFile( %c )", fname );
 #endif
     index = 0;
-    for( lnk = &DBFiles.lst; (curr = *lnk) != NULL; lnk = &curr->next ) {
+    for( lnk = &dbsyms_state().DBFiles.lst; (curr = *lnk) != NULL; lnk = &curr->next ) {
         if( strcmp( fname, curr->fname ) == 0 ) {
 #ifdef DEVBUILD
             EchoAPI( " -> %i\n", index );
@@ -110,7 +107,7 @@ uint    _CGAPI DBSrcFile( cchar_ptr fname )
     curr->len = len;
     curr->next = NULL;
     strcpy( curr->fname, fname );
-    ++DBFiles.count;
+    ++dbsyms_state().DBFiles.count;
     *lnk = curr;
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", index );
@@ -125,7 +122,7 @@ const char *SrcFNoFind( uint fno )
     fname_lst   *curr;
 
     index = 0;
-    for( curr  = DBFiles.lst; curr != NULL; curr = curr->next ) {
+    for( curr  = dbsyms_state().DBFiles.lst; curr != NULL; curr = curr->next ) {
         if( index == fno ) {
             return( curr->fname );
         }
@@ -179,7 +176,7 @@ cue_idx CueAdd( int fno, int line, int col )
     if( fno == 0 && col == 1 && line < PRIMARY_RANGE ) {
         return( line );
     }
-    ctl = &LineInfo;
+    ctl = &dbsyms_state().LineInfo;
     cmp = EQUAL;
     if( fno != ctl->state.fno ) {
         cmp |= FNO_NO;
@@ -219,7 +216,7 @@ bool_ CueFind( cue_idx cue, cue_state *ret )
     cue_state   *hi;
     int         diff;
 
-    ctl = &LineInfo;
+    ctl = &dbsyms_state().LineInfo;
     if( ctl->count == 0 || cue < PRIMARY_RANGE ) {
         ret->fno = 0;
         ret->line = cue;
@@ -373,11 +370,11 @@ void    InitDbgInfo( void )
 
     SrcFileNoInit();
     DBNested( false ); /* set nesting */
-    SourceCueInit( &LineInfo );
+    SourceCueInit( &dbsyms_state().LineInfo );
     fno = DBSrcFile( static_cast<cchar_ptr>(FEAuxInfo( NULL, FEINF_SOURCE_NAME )) );
 //    idx = CueAdd( fno, 1, 1 );
     CueAdd( fno, 1, 1 );
-    SrcLine = 1;
+    data_state().SrcLine = 1;
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         DFInitDbgInfo();
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
@@ -394,7 +391,7 @@ void    FiniDbgInfo( void )
 /*************************/
 {
     DBSrcFileFini();
-    SourceCueFini( &LineInfo );
+    SourceCueFini( &dbsyms_state().LineInfo );
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         DFFiniDbgInfo();
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
@@ -413,7 +410,7 @@ void    _CGAPI DBLineNum( uint no )
 #ifdef DEVBUILD
     EchoAPI( "\nDBLineNum( %i )\n", no );
 #endif
-    SrcLine = no;
+    data_state().SrcLine = no;
 }
 
 void _CGAPI     DBSrcCue( uint fno, uint line, uint col )
@@ -435,7 +432,7 @@ void _CGAPI     DBSrcCue( uint fno, uint line, uint col )
         }
     } else {
         idx = CueAdd( fno, line, col );
-        SrcLine = idx;
+        data_state().SrcLine = idx;
     }
 }
 
@@ -471,8 +468,8 @@ static  dbg_block *MkBlock( void )
     dbg_block   *blk;
 
     blk = static_cast<dbg_block *>(CGAlloc( sizeof( dbg_block ) ));
-    blk->parent = CurrProc->targ.debug->blk;
-    CurrProc->targ.debug->blk = blk;
+    blk->parent = data_state().CurrProc->targ.debug->blk;
+    data_state().CurrProc->targ.debug->blk = blk;
     blk->locals = NULL;
     blk->bpatches = NULL;
     return( blk );
@@ -492,20 +489,20 @@ void _CGAPI DBGenSym( cg_sym_handle sym, dbg_loc loc, int scoped )
         attr = FEAttr( sym );
         if( (attr & FE_IMPORT) == 0 ) {
             if( attr & FE_PROC ) {
-                CurrProc->state.attr |= ROUTINE_WANTS_DEBUGGING;
-                CurrProc->targ.debug = static_cast<dbg_rtn *>(CGAlloc( sizeof( dbg_rtn ) ));
-                memset( CurrProc->targ.debug, 0, sizeof( dbg_rtn ) );
-                CurrProc->targ.debug->parms = NULL;
-                CurrProc->targ.debug->return_loc = LocDupl( loc );
-                CurrProc->targ.debug->obj_type = DBG_NIL_TYPE;
-                CurrProc->targ.debug->obj_loc = NULL;
-                CurrProc->targ.debug->rtn_blk = MkBlock();
+                data_state().CurrProc->state.attr |= ROUTINE_WANTS_DEBUGGING;
+                data_state().CurrProc->targ.debug = static_cast<dbg_rtn *>(CGAlloc( sizeof( dbg_rtn ) ));
+                memset( data_state().CurrProc->targ.debug, 0, sizeof( dbg_rtn ) );
+                data_state().CurrProc->targ.debug->parms = NULL;
+                data_state().CurrProc->targ.debug->return_loc = LocDupl( loc );
+                data_state().CurrProc->targ.debug->obj_type = DBG_NIL_TYPE;
+                data_state().CurrProc->targ.debug->obj_loc = NULL;
+                data_state().CurrProc->targ.debug->rtn_blk = MkBlock();
             } else if( scoped ) {
                 lcl = static_cast<dbg_local *>(CGAlloc( sizeof( dbg_local ) ));
                 lcl->sym = sym;
                 lcl->loc = LocDupl( loc );
                 lcl->kind = DBG_SYM_VAR;
-                AddLocal( &CurrProc->targ.debug->blk->locals, lcl );
+                AddLocal( &data_state().CurrProc->targ.debug->blk->locals, lcl );
             } else {
                 if( _IsModel( CGSW_GEN_DBG_DF ) ) {
                     DFGenStatic( sym, loc );
@@ -557,8 +554,8 @@ void _CGAPI DBObject( dbg_type tipe, dbg_loc loc, cg_type ptr_type )
 #ifdef DEVBUILD
     EchoAPI( "DBObject( %i, %i, %t )\n", tipe, loc, ptr_type );
 #endif
-    CurrProc->targ.debug->obj_type = tipe;
-    CurrProc->targ.debug->obj_loc = LocDupl( loc );
+    data_state().CurrProc->targ.debug->obj_type = tipe;
+    data_state().CurrProc->targ.debug->obj_loc = LocDupl( loc );
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         //
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
@@ -569,7 +566,6 @@ void _CGAPI DBObject( dbg_type tipe, dbg_loc loc, cg_type ptr_type )
 #endif
     }
 }
-
 
 
 void    DBAllocReg( name *reg, name *temp )
@@ -603,7 +599,7 @@ void    _CGAPI DBLocalSym( cg_sym_handle sym, cg_type indirect )
 #ifdef DEVBUILD
     EchoAPI( "DBLocalSym( %s, %t )\n", sym, indirect );
 #endif
-    if( CurrProc->targ.debug != NULL ) {
+    if( data_state().CurrProc->targ.debug != NULL ) {
         attr = FEAttr( sym );
         if( (attr & FE_IMPORT) == 0 ) {
             loc = DBLocInit();
@@ -633,7 +629,7 @@ void    _CGAPI DBLocalType( cg_sym_handle sym, bool_ kind )
             } else {
                 lcl->kind = DBG_SYM_TYPEDEF;
             }
-            AddLocal( &CurrProc->targ.debug->blk->locals, lcl );
+            AddLocal( &data_state().CurrProc->targ.debug->blk->locals, lcl );
         }
     }
 }
@@ -659,7 +655,7 @@ dbg_block *DoDBBegBlock( int fast_codegen )
 {
     dbg_block   *blk;
 
-    if( CurrProc->targ.debug == NULL )
+    if( data_state().CurrProc->targ.debug == NULL )
         return( NULL );
     blk = MkBlock();
     if( !fast_codegen ) {
@@ -687,12 +683,12 @@ void    DoDBEndBlock( int fast_codegen )
 #ifdef DEVBUILD
     EchoAPI( "DBEndBlock()\n" );
 #endif
-    if( CurrProc->targ.debug != NULL ) {
-        blk = CurrProc->targ.debug->blk;
+    if( data_state().CurrProc->targ.debug != NULL ) {
+        blk = data_state().CurrProc->targ.debug->blk;
         if( !fast_codegen ) {
             AddBlockInfo( blk, false );
         }
-        CurrProc->targ.debug->blk = blk->parent;
+        data_state().CurrProc->targ.debug->blk = blk->parent;
     }
 }
 
@@ -736,7 +732,7 @@ void    DbgParmLoc( name *parm, cg_sym_handle sym )
     lcl->loc = loc;
     lcl->sym = sym;
     lcl->kind = DBG_SYM_VAR;
-    AddLocal( &CurrProc->targ.debug->parms, lcl );
+    AddLocal( &data_state().CurrProc->targ.debug->parms, lcl );
 }
 
 
@@ -745,19 +741,19 @@ void    DbgRetLoc( void )
 {
     dbg_loc loc;
 
-    if( CurrProc->targ.debug->return_loc == NULL ) {
+    if( data_state().CurrProc->targ.debug->return_loc == NULL ) {
         loc = DBLocInit();
-        loc = LocReg( loc, AllocRegName( CurrProc->state.return_reg ) );
+        loc = LocReg( loc, AllocRegName( data_state().CurrProc->state.return_reg ) );
 #if _TARGET_INTEL
-        if( CurrProc->targ.return_points == NULL ) {
+        if( data_state().CurrProc->targ.return_points == NULL ) {
             /* nothing to do */
-        } else if( CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
+        } else if( data_state().CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
             loc->class_ = LOC_IND_REG + IND_RALLOC_NEAR;
         } else {
             loc->class_ = LOC_IND_REG + IND_CALLOC_NEAR;
         }
 #endif
-        CurrProc->targ.debug->return_loc = loc;
+        data_state().CurrProc->targ.debug->return_loc = loc;
     }
 }
 
@@ -770,7 +766,7 @@ void    DbgRetLoc( void )
 void    DbgRetOffset( type_length offset )
 /****************************************/
 {
-    CurrProc->targ.debug->ret_offset = offset;
+    data_state().CurrProc->targ.debug->ret_offset = offset;
 }
 
 
@@ -790,14 +786,14 @@ static  void    EmitDbg( oc_class class_, pointer ptr )
 void    EmitRtnBeg( void )
 /************************/
 {
-    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_RTN_BEG), CurrProc->targ.debug );
+    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_RTN_BEG), data_state().CurrProc->targ.debug );
 }
 
 
 void    EmitProEnd( void )
 /************************/
 {
-    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_PRO_END), CurrProc->targ.debug );
+    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_PRO_END), data_state().CurrProc->targ.debug );
 }
 
 
@@ -815,14 +811,14 @@ void    EmitDbgInfo( instruction *ins )
 void    EmitEpiBeg( void )
 /************************/
 {
-    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_EPI_BEG), CurrProc->targ.debug );
+    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_EPI_BEG), data_state().CurrProc->targ.debug );
 }
 
 
 void    EmitRtnEnd( void )
 /************************/
 {
-    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_RTN_END), CurrProc->targ.debug );
+    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_RTN_END), data_state().CurrProc->targ.debug );
     PUSH_OP( AskCodeSeg() );
         EmptyQueue();
     POP_OP();

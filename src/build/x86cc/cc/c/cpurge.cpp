@@ -61,8 +61,8 @@ void PurgeMemory( void )
     FreeRDir();
     SrcPurge();
     SwitchPurge();
-    Purge( &IncPathList );
+    Purge( &cvars_state().IncPathList );
 //    Purge( &ErrSym );               /* ErrSym is in CPermArea */
-    Purge( &SavedId );
+    Purge( &cvars_state().SavedId );
     FreePreCompiledHeader();
 }

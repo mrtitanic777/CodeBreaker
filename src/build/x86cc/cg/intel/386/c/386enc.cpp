@@ -128,7 +128,7 @@ void    DoRepOp( instruction *ins )
         LayOpbyte( M_REPE );
         if( ins->head.opcode == OP_MOV ) {
             if( (size & ( 4 - 1 )) == 0
-              || OptForSize <= 50 ) {
+              || data_state().OptForSize <= 50 ) {
                 if( _IsntTargetModel( CGSW_X86_USE_32 ) )
                     AddByte( M_OPND_SIZE );
                 AddByte( M_MOVSW );
@@ -225,7 +225,7 @@ static  byte    DoDisp( type_length val, hw_reg_set base_reg, name *op )
         val += TmpLoc( base, op );
         return( Displacement( val, base_reg ) );
     } else if( op->n.class_ == N_MEMORY ) {
-        ILen += WORD_SIZE;
+        pcencode_state().ILen += WORD_SIZE;
         DoSymRef( op, val, false );
         return( DISPW );
     } else if( op->n.class_ == N_CONSTANT ) {
@@ -266,16 +266,16 @@ static  void    EA( hw_reg_set base, hw_reg_set index, scale_typ scale,
              */
             if( scale != SCALE_NONE || val != 0 )
                 _Zoiks( ZOIKS_079 );
-            Inst[RMR] |= DoMDisp( mem_loc, true );
+            pcencode_state().Inst[RMR] |= DoMDisp( mem_loc, true );
         } else {
             if( scale != SCALE_NONE ) {
                 /*
                  * [disp32+scale_index]
                  */
-                Inst[RMR] |= DoScaleIndex( HW_EBP, index, scale );
-                Inst[RMR] |= DISP0;
+                pcencode_state().Inst[RMR] |= DoScaleIndex( HW_EBP, index, scale );
+                pcencode_state().Inst[RMR] |= DISP0;
                 if( mem_loc != NULL ) {
-                    ILen += 4;
+                    pcencode_state().ILen += 4;
                     DoSymRef( mem_loc, val, false );
                 } else {
                     Add32Displacement( val );
@@ -284,8 +284,8 @@ static  void    EA( hw_reg_set base, hw_reg_set index, scale_typ scale,
                 /*
                  * [(disp0|disp8|disp32)+index]
                  */
-                Inst[RMR] |= DoIndex( index );
-                Inst[RMR] |= DoDisp( val, index, mem_loc );
+                pcencode_state().Inst[RMR] |= DoIndex( index );
+                pcencode_state().Inst[RMR] |= DoDisp( val, index, mem_loc );
             }
         }
     } else {
@@ -295,9 +295,9 @@ static  void    EA( hw_reg_set base, hw_reg_set index, scale_typ scale,
         if( HW_CEqual( index, HW_EMPTY ) ) {
             if( scale == SCALE_NONE
               && !HW_CEqual( base, HW_ESP ) ) {
-                Inst[RMR] |= DoIndex( base );
+                pcencode_state().Inst[RMR] |= DoIndex( base );
             } else {
-                Inst[RMR] |= DoScaleIndex( base, HW_ESP, scale );
+                pcencode_state().Inst[RMR] |= DoScaleIndex( base, HW_ESP, scale );
             }
         } else {
             if( scale == SCALE_NONE
@@ -311,9 +311,9 @@ static  void    EA( hw_reg_set base, hw_reg_set index, scale_typ scale,
                 base = index;
                 HW_CAsgn( index, HW_EBP );
             }
-            Inst[RMR] |= DoScaleIndex( base, index, scale );
+            pcencode_state().Inst[RMR] |= DoScaleIndex( base, index, scale );
         }
-        Inst[RMR] |= DoDisp( val, base, mem_loc );
+        pcencode_state().Inst[RMR] |= DoDisp( val, base, mem_loc );
     }
 }
 
@@ -522,7 +522,7 @@ void    LayModRM( name *op )
 void    DoMAddr( name *op )
 /*************************/
 {
-    ILen += 4;
+    pcencode_state().ILen += 4;
     if( op->n.class_ == N_CONSTANT ) {
         _Zoiks( ZOIKS_035 );
     } else {
@@ -538,10 +538,10 @@ void    DoRelocConst( name *op, type_class_def type_class )
 /*********************************************************/
 {
     if( op->c.const_type == CONS_OFFSET ) {
-        ILen += 4;
+        pcencode_state().ILen += 4;
         DoSymRef( op->c.u.op, op->c.u.op->v.offset, false );
     } else if( op->c.const_type == CONS_SEGMENT ) {
-        ILen += 2;
+        pcencode_state().ILen += 2;
         if( op->c.u.op == NULL ) {
             DoSegRef( (segment_id)op->c.lo.u.int_value );
         } else {
@@ -564,7 +564,7 @@ void    GenUnkPush( pointer value )
     _Code;
     LayOpbyte( M_PUSHI );
     OpndSizeIf( false );
-    ILen += 4;
+    pcencode_state().ILen += 4;
     DoAbsPatch( static_cast<abspatch_handle *>(value), 4 );
     _Emit;
 }
@@ -625,7 +625,7 @@ static void    doProfilingCode( char *fe_name, label_handle *data, bool_ prolog 
         GenProfileData( fe_name, data, NULL );
     _Code;
     LayOpbyte( 0x68 );
-    ILen += 4;
+    pcencode_state().ILen += 4;
     DoLblRef( *data, (segment_id)(pointer_uint)FEAuxInfo( NULL, FEINF_P5_PROF_SEG ), 0, ESCA_OFST );
     _Emit;
     DoRTCall( prolog ? RT_PROFILE_ON : RT_PROFILE_OFF, true );
@@ -636,7 +636,7 @@ static  void    doProfilingPrologEpilog( label_handle label, bool_ prolog )
 /************************************************************************/
 {
     if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
-        doProfilingCode( const_cast<char *>(""), &CurrProc->targ.routine_profile_data, prolog );
+        doProfilingCode( const_cast<char *>(""), &data_state().CurrProc->targ.routine_profile_data, prolog );
     } else {
         back_handle     bck;
         label_handle    data_lbl;
@@ -651,12 +651,12 @@ static  void    doProfilingPrologEpilog( label_handle label, bool_ prolog )
         _Code;
         if( prolog ) {
             LayOpword( 0x05ff );                        /* inc L1+count */
-            ILen += 4;
+            pcencode_state().ILen += 4;
             DoLblRef( data_lbl, data_segid, offsetof( P5_timing_info, count ), ESCA_OFST );
             _Next;
         }
         LayOpword( prolog ? 0x05ff : 0x0dff );          /* inc/dec L1+semaphore */
-        ILen += 4;
+        pcencode_state().ILen += 4;
         DoLblRef( data_lbl, data_segid, offsetof( P5_timing_info, semaphore ), ESCA_OFST );
         _Next;
         if( _IsTargetModel( CGSW_X86_P5_PROFILING_CTR0 ) ) {
@@ -684,13 +684,13 @@ static  void    doProfilingPrologEpilog( label_handle label, bool_ prolog )
             _Next;
         }
         LayOpword( prolog ? 0x0529 : 0x0501 );          /* sub/add L1+lo_cycle,eax */
-        ILen += 4;
+        pcencode_state().ILen += 4;
         DoLblRef( data_lbl, data_segid, offsetof( P5_timing_info, lo_cycle ), ESCA_OFST );
         _Next;
         LayOpbyte( 0x58 );                              /* pop eax */
         _Next;
         LayOpword( prolog ? 0x1519 : 0x1511 );          /* sbb/adc L1+hi_cycle,edx */
-        ILen += 4;
+        pcencode_state().ILen += 4;
         DoLblRef( data_lbl, data_segid, offsetof( P5_timing_info, hi_cycle ), ESCA_OFST );
         _Next;
         LayOpbyte( 0x5a );                              /* pop edx */
@@ -745,7 +745,7 @@ segment_id GenProfileData( char *fe_name, label_handle *data, label_handle *stac
         OutDataLong( 0 );                           //lo_start_time
         OutDataLong( 0 );                           //hi_start_time
         OutReloc( AskCodeSeg(), F_OFFSET, false );  //caller
-        OutLblPatch( static_cast<label_handle>(CurrProc->label), F_OFFSET, 0 );
+        OutLblPatch( static_cast<label_handle>(data_state().CurrProc->label), F_OFFSET, 0 );
         OutDataLong( 0 );                           //call_ins
         OutDataLong( 0 );                           //callee
         TellByPassOver();
@@ -930,17 +930,17 @@ void StartBlockProfiling( block *blk )
         OutReloc( AskCodeSeg(), F_OFFSET, false );  //block
         OutLblPatch( blk->label, F_OFFSET, 0 );
         OutReloc( AskCodeSeg(), F_OFFSET, false );  //function
-        OutLblPatch( static_cast<label_handle>(CurrProc->label), F_OFFSET, 0 );
+        OutLblPatch( static_cast<label_handle>(data_state().CurrProc->label), F_OFFSET, 0 );
         TellByPassOver();
     POP_OP();
     _Code;
     LayOpword( 0x0583 );                /* add L1+lo_count,1 */
-    ILen += 4;
+    pcencode_state().ILen += 4;
     DoLblRef( data, data_segid, offsetof( block_count_info, lo_count ), ESCA_OFST );
     AddByte( 1 );
     _Next;
     LayOpword( 0x1583 );                /* adc L1+hi_count,0 */
-    ILen += 4;
+    pcencode_state().ILen += 4;
     DoLblRef( data, data_segid, offsetof( block_count_info, hi_count ), ESCA_OFST );
     AddByte( 0 );
     _Emit;

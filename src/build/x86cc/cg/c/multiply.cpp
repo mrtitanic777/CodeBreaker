@@ -54,7 +54,16 @@ typedef struct op {
     char        cnt;
 } op;
 
-static  op      Ops[MAXOPS];
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct MultiplyState {
+    op Ops[MAXOPS];
+};
+
+}  // namespace
+
+static inline MultiplyState& multiply_state() { return cbrun_part<MultiplyState>(); }
 
 
 static  int     Factor( uint_32 num, int *cost )
@@ -98,16 +107,16 @@ static  int     Factor( uint_32 num, int *cost )
 
                     if( --i < 0 )
                         return( MAXOPS );
-                    Ops[i].op = test == pow2 - 1 ? DO_SUB : DO_ADD;
+                    multiply_state().Ops[i].op = test == pow2 - 1 ? DO_SUB : DO_ADD;
 
                     if( --i < 0 )
                         return( MAXOPS );
-                    Ops[i].op = DO_SHL;
-                    Ops[i].cnt= shlcnt;
+                    multiply_state().Ops[i].op = DO_SHL;
+                    multiply_state().Ops[i].cnt= shlcnt;
 
                     if( --i < 0 )
                         return( MAXOPS );
-                    Ops[i].op = DO_XFR;
+                    multiply_state().Ops[i].op = DO_XFR;
                     break;
                 }
             }
@@ -125,8 +134,8 @@ static  int     Factor( uint_32 num, int *cost )
         if( shlcnt != 0 ) {
             if( --i < 0 )
                 return( MAXOPS );
-            Ops[i].op = DO_SHL;
-            Ops[i].cnt= shlcnt;
+            multiply_state().Ops[i].op = DO_SHL;
+            multiply_state().Ops[i].cnt= shlcnt;
         }
         if( num == 1 )
             break;
@@ -134,11 +143,11 @@ static  int     Factor( uint_32 num, int *cost )
             return( MAXOPS );
         shlcnt = 0;
         if( (num & 3) == 1 ) {
-            Ops[i].op = DO_ADD;
+            multiply_state().Ops[i].op = DO_ADD;
             num >>= 1;
             shlcnt = 1;
         } else {
-            Ops[i].op = DO_SUB;
+            multiply_state().Ops[i].op = DO_SUB;
             ++num;
         }
     }
@@ -146,9 +155,9 @@ static  int     Factor( uint_32 num, int *cost )
      * Now estimate the cost of the alternate instruction sequence.
      */
     for( j = i; j < MAXOPS; ++j ) {
-        switch( Ops[j].op ) {
+        switch( multiply_state().Ops[j].op ) {
         case DO_SHL:
-            *cost += ShiftCost( Ops[j].cnt );
+            *cost += ShiftCost( multiply_state().Ops[j].cnt );
             break;
         case DO_ADD:
             *cost += AddCost();
@@ -202,7 +211,7 @@ static  instruction     *CheckMul( instruction *ins )
     new_ins = MakeMove( orig, temp, type_class );
     PrefixIns( ins, new_ins );
     for( ; i < MAXOPS; ++i ) {
-        switch( Ops[i].op ) {
+        switch( multiply_state().Ops[i].op ) {
         case DO_XFR:
             new_ins = MakeUnary( OP_MOV, temp, orig, type_class );
             break;
@@ -213,7 +222,7 @@ static  instruction     *CheckMul( instruction *ins )
             new_ins = MakeBinary( OP_SUB, temp, orig, temp, type_class );
             break;
         case DO_SHL:
-            new_ins = MakeBinary( OP_LSHIFT, temp, AllocIntConst( Ops[i].cnt ), temp, type_class );
+            new_ins = MakeBinary( OP_LSHIFT, temp, AllocIntConst( multiply_state().Ops[i].cnt ), temp, type_class );
             break;
         }
         PrefixIns( ins, new_ins );
@@ -237,7 +246,7 @@ void    MulToShiftAdd( void )
     instruction *next;
     name        *op;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode != OP_MUL )
                 continue;

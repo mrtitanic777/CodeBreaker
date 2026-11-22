@@ -98,12 +98,19 @@ const arch_reg_info RegsTab[] = {
     #undef pick
 };
 
-template_            Temp;           /* template for oc_entries */
-byte                Inst[INSSIZE];  /* template for instructions */
-byte                ILen;           /* length of object instruction */
 
-static  byte        ICur;           /* cursor for writing into Inst */
-static  byte        IEsc;           /* number of initial bytes that must be */
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct X86encState {
+    byte ICur;   /* cursor for writing into Inst */
+    byte IEsc;   /* number of initial bytes that must be */
+};
+
+}  // namespace
+
+static inline X86encState& x86enc_state() { return cbrun_part<X86encState>(); }
+
                                     /* checked for escapes when copied into Temp */
 #if 0
 static int findArchRegIndex( hw_reg_set regs, reg_cls cls )
@@ -174,12 +181,12 @@ void    Format( oc_class class_ )
  */
 {
     SetFPPatchType( FPP_NONE );
-    Temp.hdr.class_ = class_;
-    Temp.hdr.objlen = 0;
-    Temp.hdr.reclen = offsetof( template_, data );
-    ICur = 0;
-    ILen = 0;
-    IEsc = 0;
+    pcencode_state().Temp.hdr.class_ = class_;
+    pcencode_state().Temp.hdr.objlen = 0;
+    pcencode_state().Temp.hdr.reclen = offsetof( template_, data );
+    x86enc_state().ICur = 0;
+    pcencode_state().ILen = 0;
+    x86enc_state().IEsc = 0;
 }
 
 void    ReFormat( oc_class class_ )
@@ -187,7 +194,7 @@ void    ReFormat( oc_class class_ )
  * Change the class of Temp
  */
 {
-    Temp.hdr.class_ = class_;
+    pcencode_state().Temp.hdr.class_ = class_;
 }
 
 void    AddByte( byte b )
@@ -196,10 +203,10 @@ void    AddByte( byte b )
  */
 {
     if( b == ESC ) {
-        Inst[ICur++] = b;
+        pcencode_state().Inst[x86enc_state().ICur++] = b;
     }
-    Inst[ICur++] = b;
-    ILen++;
+    pcencode_state().Inst[x86enc_state().ICur++] = b;
+    pcencode_state().ILen++;
 }
 
 void    AddToTemp( byte b )
@@ -208,10 +215,10 @@ void    AddToTemp( byte b )
  */
 {
     if( b == ESC ) {
-        Temp.data[Temp.hdr.reclen++ - offsetof( template_, data )] = b;
+        pcencode_state().Temp.data[pcencode_state().Temp.hdr.reclen++ - offsetof( template_, data )] = b;
     }
-    Temp.data[Temp.hdr.reclen++ - offsetof( template_, data )] = b;
-    Temp.hdr.objlen++;
+    pcencode_state().Temp.data[pcencode_state().Temp.hdr.reclen++ - offsetof( template_, data )] = b;
+    pcencode_state().Temp.hdr.objlen++;
 }
 
 void    EmitByte( byte b )
@@ -219,7 +226,7 @@ void    EmitByte( byte b )
  * Plop a byte into Inst[]
  */
 {
-    Inst[ICur++] = b;
+    pcencode_state().Inst[x86enc_state().ICur++] = b;
 }
 
 void    EmitPtr( pointer p )
@@ -227,8 +234,8 @@ void    EmitPtr( pointer p )
  * Plop a pointer into Inst[]
  */
 {
-    memcpy( Inst + ICur, &p, sizeof( pointer ) );
-    ICur += sizeof( pointer );
+    memcpy( pcencode_state().Inst + x86enc_state().ICur, &p, sizeof( pointer ) );
+    x86enc_state().ICur += sizeof( pointer );
 }
 
 void    EmitSegId( segment_id segid )
@@ -236,8 +243,8 @@ void    EmitSegId( segment_id segid )
  * Plop a segment_id into Inst[]
  */
 {
-    memcpy( Inst + ICur, &segid, sizeof( segment_id ) );
-    ICur += sizeof( segment_id );
+    memcpy( pcencode_state().Inst + x86enc_state().ICur, &segid, sizeof( segment_id ) );
+    x86enc_state().ICur += sizeof( segment_id );
 }
 
 void    EmitOffset( offset i )
@@ -245,8 +252,8 @@ void    EmitOffset( offset i )
  * Plop an "offset" int Inst[] (a machine word)
  */
 {
-    memcpy( Inst + ICur, &i, sizeof( offset ) );
-    ICur += sizeof( offset );
+    memcpy( pcencode_state().Inst + x86enc_state().ICur, &i, sizeof( offset ) );
+    x86enc_state().ICur += sizeof( offset );
 }
 
 static void     TransferIns( void )
@@ -257,17 +264,17 @@ static void     TransferIns( void )
     unsigned i;
     unsigned j;
 
-    j = Temp.hdr.reclen - offsetof( template_, data );
-    for( i = 0; i < IEsc; ++i ) {
-        if( Inst[i] == ESC ) {
-            Temp.data[j++] = ESC;
-            Temp.hdr.reclen++;
+    j = pcencode_state().Temp.hdr.reclen - offsetof( template_, data );
+    for( i = 0; i < x86enc_state().IEsc; ++i ) {
+        if( pcencode_state().Inst[i] == ESC ) {
+            pcencode_state().Temp.data[j++] = ESC;
+            pcencode_state().Temp.hdr.reclen++;
         }
-        Temp.data[j++] = Inst[i];
+        pcencode_state().Temp.data[j++] = pcencode_state().Inst[i];
     }
-    Copy( &Inst[i], &Temp.data[j], ICur - i );
-    Temp.hdr.reclen += ICur;
-    Temp.hdr.objlen += ILen;
+    Copy( &pcencode_state().Inst[i], &pcencode_state().Temp.data[j], x86enc_state().ICur - i );
+    pcencode_state().Temp.hdr.reclen += x86enc_state().ICur;
+    pcencode_state().Temp.hdr.objlen += pcencode_state().ILen;
 }
 
 void    EjectInst( void )
@@ -276,9 +283,9 @@ void    EjectInst( void )
  */
 {
     TransferIns();
-    ICur = 0;
-    ILen = 0;
-    IEsc = 0;
+    x86enc_state().ICur = 0;
+    pcencode_state().ILen = 0;
+    x86enc_state().IEsc = 0;
 }
 
 void    Finalize( void )
@@ -288,8 +295,8 @@ void    Finalize( void )
 {
     EjectInst();
     FPPatchTypeRef();
-    if( Temp.hdr.objlen != 0 ) {
-        InputOC( (any_oc *)&Temp );
+    if( pcencode_state().Temp.hdr.objlen != 0 ) {
+        InputOC( (any_oc *)&pcencode_state().Temp );
     }
 }
 
@@ -323,7 +330,7 @@ static void     LayInitial( instruction *ins, gentype gen )
     }
     index = index * table->width + gen - table->low_gen;
     if( table->flags & NEED_WAIT ) {
-        Used87 = true;
+        i87data_state().Used87 = true;
 #if _TARGET & _TARG_8086
         if( gen == G_FINIT || !_CPULevel( CPU_286 ) || _IsEmulation() ) {
             if( _IsEmulation() ) {
@@ -347,9 +354,9 @@ static void     LayInitial( instruction *ins, gentype gen )
           || ins->type_class == I2
           || ins->type_class == I4 ) {
             if( ins->head.opcode >= OP_MUL && ins->head.opcode <= OP_MOD ) {
-                Inst[RMR] |= B_RMR_MUL_SGN;
+                pcencode_state().Inst[RMR] |= B_RMR_MUL_SGN;
             } else if( ins->head.opcode == OP_RSHIFT ) {
-                Inst[RMR] |= B_RMR_SHR_SAR;
+                pcencode_state().Inst[RMR] |= B_RMR_SHR_SAR;
             }
         }
     }
@@ -618,7 +625,7 @@ static  void    LayST( name *op )
  * add the ST(i) operand to a floating point instruction
  */
 {
-    Inst[RMR] |= FPRegTrans( op->r.reg );
+    pcencode_state().Inst[RMR] |= FPRegTrans( op->r.reg );
 }
 
 
@@ -630,28 +637,28 @@ static  void    LayMF( name *op )
     if( op->n.class_ != N_CONSTANT ) {
         switch( op->n.type_class ) {
         case FS:
-            Inst[KEY] |= MF_FS;
+            pcencode_state().Inst[KEY] |= MF_FS;
             break;
         case FD:
-            Inst[KEY] |= MF_FD;
+            pcencode_state().Inst[KEY] |= MF_FD;
             break;
         case FL:
-            Inst[KEY] |= MF_FL;
-            Inst[RMR] |= B_RMR_FMT_FL;
+            pcencode_state().Inst[KEY] |= MF_FL;
+            pcencode_state().Inst[RMR] |= B_RMR_FMT_FL;
             break;
         case U2:
         case I2:
-            Inst[KEY] |= MF_I2;
+            pcencode_state().Inst[KEY] |= MF_I2;
             break;
         case U4:
         case I4:
-            Inst[KEY] |= MF_I4;
+            pcencode_state().Inst[KEY] |= MF_I4;
             break;
         case U8:
         case I8:
         case XX:
-            Inst[KEY] |= MF_I8;
-            Inst[RMR] |= B_RMR_FMT_I8;
+            pcencode_state().Inst[KEY] |= MF_I8;
+            pcencode_state().Inst[RMR] |= B_RMR_FMT_I8;
             break;
         default:
             _Zoiks( ZOIKS_029 );
@@ -828,12 +835,12 @@ static  void    DoP5MemoryDivide( instruction *ins )
         LayOpword( 0x30ff );
         LayModRM( high );
         _Next;
-        StackDepth += WORD_SIZE;
+        x86proc_state().StackDepth += WORD_SIZE;
         if( seg != NULL )
             GenSeg( seg->r.reg );
         LayOpword( 0x30ff );
         LayModRM( low );
-        StackDepth -= WORD_SIZE;
+        x86proc_state().StackDepth -= WORD_SIZE;
 #endif
         if( G( ins ) == G_MRFBIN ) {
             rtindex = RT_FDIV_MEM64R;
@@ -876,7 +883,7 @@ static  void    DoP5Divide( instruction *ins )
     LayOpbyte( 0x9c );          /* pushf */
     _Emit;
 #if _TARGET & _TARG_80386
-    StackDepth += WORD_SIZE;
+    x86proc_state().StackDepth += WORD_SIZE;
 #endif
     _Code;
     if( _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
@@ -896,7 +903,7 @@ static  void    DoP5Divide( instruction *ins )
 #else
     LayOpword( 0x05f6 );        /* test byte ptr L1,1 */
 #endif
-    ILen += WORD_SIZE;
+    pcencode_state().ILen += WORD_SIZE;
     DoLblRef( RTLabel( RT_BUGLIST ), AskBackSeg(), 0, ESCA_OFST );
     AddWData( 1, U1 );
     _Emit;
@@ -927,7 +934,7 @@ static  void    DoP5Divide( instruction *ins )
     LayOpbyte( 0x9d );          /* popf */
     _Emit;
 #if _TARGET & _TARG_80386
-    StackDepth -= WORD_SIZE;
+    x86proc_state().StackDepth -= WORD_SIZE;
 #endif
 }
 #endif
@@ -959,7 +966,7 @@ static  void    SetCC( void )
         } else {
             _Next;                  /*                  */
             LayOpword( 0x38dd );    /*  FSTSW  temp     */
-            LayModRM( FPStatWord ); /*  ..              */
+            LayModRM( i87data_state().FPStatWord ); /*  ..              */
             if( _IsEmulation() ) {
                 _Emit;              /*                  */
                 GFwait();           /*  FWAIT           */
@@ -971,7 +978,7 @@ static  void    SetCC( void )
             LayOpword( 0x008a );    /*  MOV    AX,temp  */
             LayReg( HW_AX );        /*  ..              */
             LayW( U2 );             /*  ..              */
-            LayModRM( FPStatWord ); /*  ..              */
+            LayModRM( i87data_state().FPStatWord ); /*  ..              */
         }
     }
     AddByte( 0x9e );                /*  SAHF            */
@@ -987,10 +994,10 @@ void    LayOpbyte( gen_opcode op )
  * Add a one byte opcode to Inst[]
  */
 {
-    Inst[KEY] = op & 0xff;
-    ICur = 1;
-    ILen = 1;
-    IEsc = 1;
+    pcencode_state().Inst[KEY] = op & 0xff;
+    x86enc_state().ICur = 1;
+    pcencode_state().ILen = 1;
+    x86enc_state().IEsc = 1;
 }
 
 void    LayOpword( gen_opcode op )
@@ -998,11 +1005,11 @@ void    LayOpword( gen_opcode op )
  * Add a 2 byte opcode to Inst[]
  */
 {
-    Inst[KEY] = op & 0xff;
-    Inst[RMR] = (op >> 8) & 0xff;
-    ICur = 2;
-    ILen = 2;
-    IEsc = 2;
+    pcencode_state().Inst[KEY] = op & 0xff;
+    pcencode_state().Inst[RMR] = (op >> 8) & 0xff;
+    x86enc_state().ICur = 2;
+    pcencode_state().ILen = 2;
+    x86enc_state().IEsc = 2;
 }
 
 void    LayW( type_class_def type_class )
@@ -1014,7 +1021,7 @@ void    LayW( type_class_def type_class )
     case U4:
     case I4:
     case FS:
-        Inst[KEY] |= B_KEY_W;       /* turn on the W bit*/
+        pcencode_state().Inst[KEY] |= B_KEY_W;       /* turn on the W bit*/
         break;
     default:
         break;
@@ -1026,7 +1033,7 @@ static  void    LayRegOp( name *r )
  * Add the register op to the instruction
  */
 {
-    Inst[RMR] |= RegTrans( r->r.reg ) << S_RMR_REG;
+    pcencode_state().Inst[RMR] |= RegTrans( r->r.reg ) << S_RMR_REG;
 }
 
 void    LayReg( hw_reg_set r )
@@ -1034,7 +1041,7 @@ void    LayReg( hw_reg_set r )
  * Add the register op to the instruction
  */
 {
-    Inst[RMR] |= RegTrans( r ) << S_RMR_REG;
+    pcencode_state().Inst[RMR] |= RegTrans( r ) << S_RMR_REG;
 }
 
 void    LayRMRegOp( name *r )
@@ -1042,7 +1049,7 @@ void    LayRMRegOp( name *r )
  * Add the register op to a MOD/RM instruction
  */
 {
-    Inst[RMR] |= ( RegTrans( r->r.reg ) << S_RMR_RM ) + RMR_MOD_REG;
+    pcencode_state().Inst[RMR] |= ( RegTrans( r->r.reg ) << S_RMR_RM ) + RMR_MOD_REG;
 }
 
 void    LayRegRM( hw_reg_set r )
@@ -1050,7 +1057,7 @@ void    LayRegRM( hw_reg_set r )
  * Add the register op to a MOD/RM instruction
  */
 {
-    Inst[RMR] |= ( RegTrans( r ) << S_RMR_RM ) + RMR_MOD_REG;
+    pcencode_state().Inst[RMR] |= ( RegTrans( r ) << S_RMR_RM ) + RMR_MOD_REG;
 }
 
 static  void    LayACRegOp( name *r )
@@ -1058,7 +1065,7 @@ static  void    LayACRegOp( name *r )
  * Add the other register op to a REG/AX (Accumulator) operation
  */
 {
-    Inst[KEY] |= RegTrans( r->r.reg ) << S_KEY_REG;
+    pcencode_state().Inst[KEY] |= RegTrans( r->r.reg ) << S_KEY_REG;
 }
 
 void    LayRegAC( hw_reg_set r )
@@ -1066,7 +1073,7 @@ void    LayRegAC( hw_reg_set r )
  * Add the other register op to a REG/AX (Accumulator) operation
  */
 {
-    Inst[KEY] |= RegTrans( r ) << S_KEY_REG;
+    pcencode_state().Inst[KEY] |= RegTrans( r ) << S_KEY_REG;
 }
 
 static  void    LaySROp( name *r )
@@ -1074,7 +1081,7 @@ static  void    LaySROp( name *r )
  * Add a segment register op
  */
 {
-    Inst[RMR] |= SegTrans( r->r.reg ) << S_RMR_SR;
+    pcencode_state().Inst[RMR] |= SegTrans( r->r.reg ) << S_RMR_SR;
 }
 
 void    GenSeg( hw_reg_set regs )
@@ -1353,12 +1360,12 @@ void    AddSData( int_32 value, type_class_def type_class )
     if( ( type_class == U2 || type_class == I2 )
         && ( ( value & 0xff80 ) == 0xff80
           || ( value & 0xff80 ) == 0 ) ) {
-        Inst[KEY] |= B_KEY_S;
+        pcencode_state().Inst[KEY] |= B_KEY_S;
         AddByte( _IntToByte( value ) );
     } else if( ( type_class == U4 || type_class == I4 )
         && ( ( value & 0xffffff80 ) == 0xffffff80
           || ( value & 0xffffff80 ) == 0 ) ) {
-        Inst[KEY] |= B_KEY_S;
+        pcencode_state().Inst[KEY] |= B_KEY_S;
         AddByte( _IntToByte( value ) );
     } else {
         AddWData( value, type_class );
@@ -1487,7 +1494,7 @@ void    GFstp( int i )
 {
     GCondFwait();
     LayOpword( 0xd8dd );
-    Inst[RMR] |= i;
+    pcencode_state().Inst[RMR] |= i;
     _Emit;
 }
 
@@ -1499,7 +1506,7 @@ void    GFxch( int i )
 {
     GCondFwait();
     LayOpword( 0xc8d9 );
-    Inst[RMR] |= i;
+    pcencode_state().Inst[RMR] |= i;
     _Emit;
 }
 
@@ -1522,7 +1529,7 @@ void    GFld( int i )
 {
     GCondFwait();
     LayOpword( 0xc0d9 );
-    Inst[RMR] |= i;
+    pcencode_state().Inst[RMR] |= i;
     _Emit;
 }
 
@@ -1533,7 +1540,7 @@ void    GCondFwait( void )
  */
 {
     _Code;
-    Used87 = true;
+    i87data_state().Used87 = true;
 #if _TARGET & _TARG_8086
     if( !_CPULevel( CPU_286 ) || _IsEmulation() ) {
         if( _IsEmulation() ) {
@@ -1554,7 +1561,7 @@ void    GFwait( void )
     if( _CPULevel( CPU_386 ) )
         return;
     _Code;
-    Used87 = true;
+    i87data_state().Used87 = true;
     if( _IsEmulation() ) {
         SetFPPatchType( FPP_WAIT );
         LayOpword( 0x9b90 );
@@ -1614,7 +1621,7 @@ void    GenTouchStack( bool_ sp_might_point_at_something )
 #if _TARGET & _TARG_8086
     /* unused parameters */ (void)sp_might_point_at_something;
 #else
-    if( sp_might_point_at_something || OptForSize == 100 ) {
+    if( sp_might_point_at_something || data_state().OptForSize == 100 ) {
         QuickSave( HW_xAX, OP_PUSH );
         QuickSave( HW_xAX, OP_POP );
     } else {
@@ -1642,7 +1649,6 @@ void    GenEnter( int size, int level )
 }
 
 
-
 void    GenPushOffset( byte offset )
 /***********************************
  * PUSH        word ptr offset[BP]
@@ -1664,7 +1670,7 @@ void    GenUnkSub( hw_reg_set dst, pointer value )
     LayOpword( M_SUBRC | B_KEY_W );
     OpndSize( dst );
     LayRegRM( dst );
-    ILen += WORD_SIZE;
+    pcencode_state().ILen += WORD_SIZE;
     DoAbsPatch( static_cast<abspatch_handle *>(value), WORD_SIZE );
     _Emit;
 }
@@ -1680,7 +1686,7 @@ void    GenUnkMov( hw_reg_set dst, pointer value )
     _Code;
     LayOpbyte( 0xb8 );
     OpndSize( dst );
-    ILen += WORD_SIZE;
+    pcencode_state().ILen += WORD_SIZE;
     DoAbsPatch( static_cast<abspatch_handle *>(value), WORD_SIZE );
     _Emit;
 }
@@ -1694,7 +1700,7 @@ void    GenUnkEnter( pointer value, int level )
     _Code;
     LayOpbyte( 0xc8 );
     DoAbsPatch( static_cast<abspatch_handle *>(value), 2 );
-    ILen += 2;
+    pcencode_state().ILen += 2;
     AddByte( (byte)level );
     _Emit;
 }
@@ -1787,7 +1793,7 @@ void    GenRdosdevProlog( void )
 
     _Code;
     LayOpbyte( 0x68 );              /*  push    DGROUP    */
-    ILen += WORD_SIZE;
+    pcencode_state().ILen += WORD_SIZE;
     DoSegRef( AskBackSeg() );
     AddByte( 0x0 );
     AddByte( 0x0 );
@@ -1823,7 +1829,7 @@ void    GenLoadDS( void )
     _Code;
     LayOpbyte( 0xb8 );              /*  mov     [e]ax,DGROUP */
     OpndSize( HW_xAX );
-    ILen += WORD_SIZE;
+    pcencode_state().ILen += WORD_SIZE;
     DoSegRef( AskBackSeg() );
     AddByte( 0x8e );                /*  mov     ds,[e]ax   */
     AddByte( 0xd8 );                /*  ..                 */
@@ -1907,10 +1913,10 @@ static void     GenUnkLea( pointer value )
     LayOpword( M_LEA );
     OpndSize( HW_xSP );
     LayReg( HW_xSP );
-    Inst[RMR] |= DISPW;
-    ILen += WORD_SIZE;
+    pcencode_state().Inst[RMR] |= DISPW;
+    pcencode_state().ILen += WORD_SIZE;
     DoAbsPatch( static_cast<abspatch_handle *>(value), WORD_SIZE );
-    Inst[RMR] |= DoIndex( HW_xBP );
+    pcencode_state().Inst[RMR] |= DoIndex( HW_xBP );
 }
 
 #if ( _TARGET & _TARG_8086 )
@@ -1990,7 +1996,7 @@ void    GenObjCode( instruction *ins )
             AdjustStackDepth( ins );
             return;
         }
-        if( _IsTargetModel( CGSW_X86_MSC8 ) && OptForSize == 100
+        if( _IsTargetModel( CGSW_X86_MSC8 ) && data_state().OptForSize == 100
           && ins->head.opcode == OP_ADD && result != NULL && result->n.class_ == N_REGISTER
           && HW_CEqual( result->r.reg, HW_SP ) && right != NULL && right->n.class_ == N_CONSTANT
           && right->c.const_type == CONS_ABSOLUTE && right->c.lo.u.int_value == 2 ) {
@@ -2062,9 +2068,9 @@ void    GenObjCode( instruction *ins )
             AddSWCons( ins->head.opcode, right, ins->type_class );
             break;
         case G_AC:
-            ICur--;
-            ILen--;
-            IEsc--;
+            x86enc_state().ICur--;
+            pcencode_state().ILen--;
+            x86enc_state().IEsc--;
             AddWCons( right, ins->type_class );
             break;
         case G_MC:
@@ -2077,8 +2083,8 @@ void    GenObjCode( instruction *ins )
              * Microsoft C 8 writes a register-to-register MOV, ADD, OR, ADC, SBB, AND, SUB, XOR or
              * CMP in its reg,r/m form, the direction bit set: 8B, 03, 2B ... (-zmsc)
              */
-            if( _IsTargetModel( CGSW_X86_MSC8 ) && ( ( Inst[KEY] & 0xc6 ) == 0x00 || ( Inst[KEY] & 0xfe ) == 0x88 ) ) {
-                Inst[KEY] |= 0x02;
+            if( _IsTargetModel( CGSW_X86_MSC8 ) && ( ( pcencode_state().Inst[KEY] & 0xc6 ) == 0x00 || ( pcencode_state().Inst[KEY] & 0xfe ) == 0x88 ) ) {
+                pcencode_state().Inst[KEY] |= 0x02;
                 LayRegOp( left );
                 LayRMRegOp( right );
                 break;
@@ -2187,13 +2193,13 @@ void    GenObjCode( instruction *ins )
                 break;
             }
             if( HW_COvlap( result->r.reg, HW_FS_GS ) ) {
-                Inst[KEY] += B_KEY_FSGS;    /* load FS or GS */
+                pcencode_state().Inst[KEY] += B_KEY_FSGS;    /* load FS or GS */
                 AddToTemp( M_SECONDARY );
             } else {
-                Inst[KEY] += B_KEY_DSES;    /* load DS or ES */
+                pcencode_state().Inst[KEY] += B_KEY_DSES;    /* load DS or ES */
             }
             if( HW_COvlap( result->r.reg, HW_DS_GS ) ) {
-                Inst[KEY] += 1;             /* indicate load to DS and GS */
+                pcencode_state().Inst[KEY] += 1;             /* indicate load to DS and GS */
             }
             break;
         case G_MS1:
@@ -2242,11 +2248,11 @@ void    GenObjCode( instruction *ins )
                 }
                 if( reg_seg > 3 ) {
                     ins_loc += 1;
-                    Inst[KEY] = 0x0f;
+                    pcencode_state().Inst[KEY] = 0x0f;
                     AddByte( 0x80 );
                 }
-                Inst[ins_loc] |= extra_bits;
-                Inst[ins_loc] |= reg_seg << S_KEY_SR;
+                pcencode_state().Inst[ins_loc] |= extra_bits;
+                pcencode_state().Inst[ins_loc] |= reg_seg << S_KEY_SR;
             }
             break;
         case G_MOVAM:
@@ -2261,7 +2267,7 @@ void    GenObjCode( instruction *ins )
             if( ins->type_class == U2 || ins->type_class == I2
              || ins->type_class == U4 || ins->type_class == I4
              || ins->type_class == FS ) {
-                Inst[KEY] |= B_KEY_AW;
+                pcencode_state().Inst[KEY] |= B_KEY_AW;
             }
             LayACRegOp( result );
             AddWCons( left, ins->type_class );
@@ -2328,10 +2334,10 @@ void    GenObjCode( instruction *ins )
                 label_handle    lbl;
                 segment_id      segid;
 
-                segid = GenProfileData( const_cast<char *>(""), &lbl, &CurrProc->targ.routine_profile_data );
+                segid = GenProfileData( const_cast<char *>(""), &lbl, &data_state().CurrProc->targ.routine_profile_data );
                 _Code;
                 LayOpword( 0xc4f7 );                    /* test [e]sp, offset L1  */
-                ILen += WORD_SIZE;                      /* ..                     */
+                pcencode_state().ILen += WORD_SIZE;                      /* ..                     */
                 DoLblRef( lbl, segid, 0, ESCA_OFST );   /* ..                     */
                 _Emit;
             }
@@ -2349,14 +2355,14 @@ void    GenObjCode( instruction *ins )
                 segment_id      segid;
                 char            c[2];
 
-                segid = GenProfileData( const_cast<char *>(""), &lbl, &CurrProc->targ.routine_profile_data );
-                GenProfileData( const_cast<char *>(""), &junk, &CurrProc->targ.routine_profile_data );
+                segid = GenProfileData( const_cast<char *>(""), &lbl, &data_state().CurrProc->targ.routine_profile_data );
+                GenProfileData( const_cast<char *>(""), &junk, &data_state().CurrProc->targ.routine_profile_data );
                 c[0] = PROFILE_FLAG_END_GROUP;
                 c[1] = 0;
-                GenProfileData( c, &junk, &CurrProc->targ.routine_profile_data );
+                GenProfileData( c, &junk, &data_state().CurrProc->targ.routine_profile_data );
                 _Code;
                 LayOpword( 0xc5f7 );                    /* test [e]bp, offset L1  */
-                ILen += WORD_SIZE;                      /* ..                     */
+                pcencode_state().ILen += WORD_SIZE;                      /* ..                     */
                 DoLblRef( lbl, segid, 0, ESCA_OFST );   /* ..                     */
                 _Emit;
             }
@@ -2476,11 +2482,11 @@ void    GenObjCode( instruction *ins )
             break;
         case G_FTST:
         case G_FCOMPP:
-            Used87 = true;
+            i87data_state().Used87 = true;
             SetCC();
             break;
         case G_FWAIT:
-            Used87 = true;
+            i87data_state().Used87 = true;
             if( _IsEmulation() ) {
                 SetFPPatchType( FPP_WAIT );
                 LayOpword( 0x9b90 );
@@ -2489,7 +2495,7 @@ void    GenObjCode( instruction *ins )
             }
             break;
         case G_FXCH:
-            Used87 = true;
+            i87data_state().Used87 = true;
             GCondFwait();
             LayOpword( 0xC8D9 );    /* fxch st(1) */
             LayST( result );
@@ -2531,7 +2537,7 @@ void    GenObjCode( instruction *ins )
             }
 #if _TARGET & _TARG_80386
             if( ins->operands[0]->n.size == 2 ) {
-                Inst[KEY] |= B_KEY_W;
+                pcencode_state().Inst[KEY] |= B_KEY_W;
             } else { /* base is byte */
                 switch( ins->type_class ) {
                 case U2:

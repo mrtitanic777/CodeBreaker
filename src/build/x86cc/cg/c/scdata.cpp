@@ -34,8 +34,4 @@
 #include "coderep.h"
 #include "score.h"
 
-score_reg       **ScoreList;
-int             ScoreCount;
-score_info      *ScZero;
 //score_info    *ScInitial;
-pointer         *ScListFrl;

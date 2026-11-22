@@ -43,13 +43,22 @@
 #include "x86dbsup.h"
 
 
-static  temp_buff       *CurrBuff;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct X86dbsupState {
+    temp_buff *CurrBuff;
+};
+
+}  // namespace
+
+static inline X86dbsupState& x86dbsup_state() { return cbrun_part<X86dbsupState>(); }
 
 
 void    BuffStart( temp_buff *temp, uint def )
 /********************************************/
 {
-    CurrBuff = temp;
+    x86dbsup_state().CurrBuff = temp;
     temp->buff[1] = def;
     temp->index = 2;
     temp->fix_idx = 0;
@@ -68,33 +77,33 @@ void    BuffEnd( segment_id segid )
 
     ptr_type = TypeAddress( TY_LONG_POINTER );
     PUSH_OP( segid );
-        CurrBuff->buff[0] = CurrBuff->index;
-        buff = CurrBuff->buff;
+        x86dbsup_state().CurrBuff->buff[0] = x86dbsup_state().CurrBuff->index;
+        buff = x86dbsup_state().CurrBuff->buff;
         last = 0;
-        for( i = 0; i < CurrBuff->fix_idx; ++i ) {
-            size = CurrBuff->fix[i].pos - last;
-            last = CurrBuff->fix[i].pos;
+        for( i = 0; i < x86dbsup_state().CurrBuff->fix_idx; ++i ) {
+            size = x86dbsup_state().CurrBuff->fix[i].pos - last;
+            last = x86dbsup_state().CurrBuff->fix[i].pos;
             DataBytes( size, buff );
             buff += size;
-            switch( CurrBuff->fix[i].type ) {
+            switch( x86dbsup_state().CurrBuff->fix[i].type ) {
             case FIX_SYMBOL:
-                FEPtr( static_cast<cg_sym_handle>(CurrBuff->fix[i].p), ptr_type, 0 );
+                FEPtr( static_cast<cg_sym_handle>(x86dbsup_state().CurrBuff->fix[i].p), ptr_type, 0 );
                 last += 2 + WORD_SIZE;
                 buff += 2 + WORD_SIZE;
                 break;
             case FIX_BACKHANDLE:
-                DoBigBckPtr( static_cast<back_handle>(CurrBuff->fix[i].p), *(offset *)buff );
+                DoBigBckPtr( static_cast<back_handle>(x86dbsup_state().CurrBuff->fix[i].p), *(offset *)buff );
                 last += 2 + WORD_SIZE;
                 buff += 2 + WORD_SIZE;
                 break;
             case FIX_FORWARD:
-                dpatch = static_cast<dbg_patch *>(CurrBuff->fix[i].p);
+                dpatch = static_cast<dbg_patch *>(x86dbsup_state().CurrBuff->fix[i].p);
                 dpatch->segid = segid;
                 dpatch->offset = AskLocation();
                 break;
             }
         }
-        DataBytes( CurrBuff->index - last, buff );
+        DataBytes( x86dbsup_state().CurrBuff->index - last, buff );
     POP_OP();
 }
 
@@ -102,23 +111,23 @@ void    BuffEnd( segment_id segid )
 uint    BuffLoc( void )
 /*********************/
 {
-    return( CurrBuff->index );
+    return( x86dbsup_state().CurrBuff->index );
 }
 
 
 void    BuffPatch( byte val, uint loc )
 /*************************************/
 {
-    CurrBuff->buff[loc] = val;
+    x86dbsup_state().CurrBuff->buff[loc] = val;
 }
 
 
 void    BuffByte( byte b )
 /************************/
 {
-    if( CurrBuff->index < DB_BUFF_SIZE ) {
-        CurrBuff->buff[CurrBuff->index++] = b;
-        if( CurrBuff->index >= DB_BUFF_SIZE ) {
+    if( x86dbsup_state().CurrBuff->index < DB_BUFF_SIZE ) {
+        x86dbsup_state().CurrBuff->buff[x86dbsup_state().CurrBuff->index++] = b;
+        if( x86dbsup_state().CurrBuff->index >= DB_BUFF_SIZE ) {
             _Zoiks( ZOIKS_005 );
         }
     }
@@ -173,16 +182,16 @@ void    BuffValue( uint_32 val, uint class_ )
 void    BuffRelocatable( pointer ptr, fixup_kind type, offset off )
 /*****************************************************************/
 {
-    CurrBuff->fix[CurrBuff->fix_idx].pos = CurrBuff->index;
-    CurrBuff->fix[CurrBuff->fix_idx].p = ptr;
-    CurrBuff->fix[CurrBuff->fix_idx].type = type;
+    x86dbsup_state().CurrBuff->fix[x86dbsup_state().CurrBuff->fix_idx].pos = x86dbsup_state().CurrBuff->index;
+    x86dbsup_state().CurrBuff->fix[x86dbsup_state().CurrBuff->fix_idx].p = ptr;
+    x86dbsup_state().CurrBuff->fix[x86dbsup_state().CurrBuff->fix_idx].type = type;
     if( type == FIX_FORWARD ) {
         BuffWord( 0 );
     } else {
         BuffOffset( off );
-        CurrBuff->index += 2;
+        x86dbsup_state().CurrBuff->index += 2;
     }
-    CurrBuff->fix_idx++;
+    x86dbsup_state().CurrBuff->fix_idx++;
 }
 
 

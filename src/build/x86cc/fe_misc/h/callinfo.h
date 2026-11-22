@@ -67,18 +67,18 @@ typedef struct aux_info {
   #endif
 } aux_info;
 
-#define DefaultInfo      BuiltinAuxInfo[0]
-#define WatcallInfo      BuiltinAuxInfo[1]
-#define CdeclInfo        BuiltinAuxInfo[2]
-#define PascalInfo       BuiltinAuxInfo[3]
-#define FortranInfo      BuiltinAuxInfo[4]
-#define SyscallInfo      BuiltinAuxInfo[5]
-#define OptlinkInfo      BuiltinAuxInfo[6]
-#define StdcallInfo      BuiltinAuxInfo[7]
-#define FastcallInfo     BuiltinAuxInfo[8]
+#define DefaultInfo      callinfo_state().BuiltinAuxInfo[0]
+#define WatcallInfo      callinfo_state().BuiltinAuxInfo[1]
+#define CdeclInfo        callinfo_state().BuiltinAuxInfo[2]
+#define PascalInfo       callinfo_state().BuiltinAuxInfo[3]
+#define FortranInfo      callinfo_state().BuiltinAuxInfo[4]
+#define SyscallInfo      callinfo_state().BuiltinAuxInfo[5]
+#define OptlinkInfo      callinfo_state().BuiltinAuxInfo[6]
+#define StdcallInfo      callinfo_state().BuiltinAuxInfo[7]
+#define FastcallInfo     callinfo_state().BuiltinAuxInfo[8]
   #if _CPU == 386
-#define Far16CdeclInfo   BuiltinAuxInfo[9]
-#define Far16PascalInfo  BuiltinAuxInfo[10]
+#define Far16CdeclInfo   callinfo_state().BuiltinAuxInfo[9]
+#define Far16PascalInfo  callinfo_state().BuiltinAuxInfo[10]
   #endif
 
   #if _CPU == 386
@@ -87,9 +87,6 @@ typedef struct aux_info {
 #define MAX_BUILTIN_AUXINFO 9
   #endif
 
-extern aux_info     *DftCallConv;
-
-extern aux_info     BuiltinAuxInfo[MAX_BUILTIN_AUXINFO];
 
 extern void         AuxInfoInit( int );
 extern void         SetAuxStackConventions( void );
@@ -100,5 +97,12 @@ extern int          IsAuxInfoBuiltIn( aux_info *inf );
 extern char         *VarNamePattern( aux_info *inf );
 
 #endif
+
+/* the variables of callinfo.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct CallinfoState {
+    aux_info *DftCallConv;
+    aux_info BuiltinAuxInfo[MAX_BUILTIN_AUXINFO];
+};
+inline CallinfoState& callinfo_state() { return cbrun_part<CallinfoState>(); }
 
 #endif

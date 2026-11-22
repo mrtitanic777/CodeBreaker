@@ -34,6 +34,7 @@
 #include <stdarg.h>
 
 #include "clibext.h"
+#include "cerrs.h"
 
 
 /*
@@ -68,28 +69,33 @@ typedef struct ErrPostList {
     } u;
 } ErrPostList;
 
-msg_level_info      msg_level[MESSAGE_COUNT] = {
-    #define MSG_DEF( name, group, kind, level, group_index ) { MSG_TYPE_##kind, level, true },
-        MSG_DEFS
-    #undef MSG_DEF
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CerrorState {
+    ErrPostList *PostList;
+    unsigned error_line = 0;
+    unsigned error_column = 0;
+    char *error_fname = NULL;
 };
 
-static ErrPostList  *PostList;
-static unsigned     error_line = 0;
-static unsigned     error_column = 0;
-static char         *error_fname = NULL;
+}  // namespace
+
+static inline CerrorState& cerror_state() { return cbrun_part<CerrorState>(); }
+
 
 void OpenErrFile( void )
 /**********************/
 {
     char        *name;
 
-    if( SrcFName != NULL ) {
+    if( cvars_state().SrcFName != NULL ) {
         name = ErrFileName();
         if( name != NULL ) {
-            ErrFile = fopen( name, "w" );
-            if( ErrFile != NULL ) {
-                setvbuf( ErrFile, static_cast<char *>(CPermAlloc( 32 )), _IOFBF, 32 );
+            cvars_state().ErrFile = fopen( name, "w" );
+            if( cvars_state().ErrFile != NULL ) {
+                setvbuf( cvars_state().ErrFile, static_cast<char *>(CPermAlloc( 32 )), _IOFBF, 32 );
             }
         }
     }
@@ -107,18 +113,18 @@ static bool_ okToPrintMsg( msg_codes msgnum, int *plevel )
     msg_index = GetMsgIndex( msgnum );
     if( IS_MSGIDX_INVALID( msg_index ) )
         return( false );
-    ok = msg_level[msg_index].enabled;
-    level = msg_level[msg_index].level;
-    switch( msg_level[msg_index].type ) {
+    ok = cerrs_state().msg_level[msg_index].enabled;
+    level = cerrs_state().msg_level[msg_index].level;
+    switch( cerrs_state().msg_level[msg_index].type ) {
     case MSG_TYPE_INFO :
         level = WLEVEL_NOTE;
         break;
     case MSG_TYPE_ANSIERR :
     case MSG_TYPE_ANSIWARN :
-        ok = !CompFlags.extensions_enabled;
+        ok = !cvars_state().CompFlags.extensions_enabled;
         break;
     case MSG_TYPE_ANSI :
-        if( !CompFlags.extensions_enabled ) {
+        if( !cvars_state().CompFlags.extensions_enabled ) {
             level = WLEVEL_ERROR;
         }
         break;
@@ -157,14 +163,14 @@ static void CMsgInfo( cmsg_info *info, int parm_num, msg_codes msgnum, va_list a
         fname = NULL;
         break;
     default:
-        if( error_fname != NULL ) {
-            fname = error_fname;
-            line = error_line;
-            column = error_column;
+        if( cerror_state().error_fname != NULL ) {
+            fname = cerror_state().error_fname;
+            line = cerror_state().error_line;
+            column = cerror_state().error_column;
         } else {
-            fname = FileIndexToCorrectName( TokenLoc.fno );
-            line = TokenLoc.line;
-            column = TokenLoc.column;
+            fname = FileIndexToCorrectName( cvars_state().TokenLoc.fno );
+            line = cvars_state().TokenLoc.line;
+            column = cvars_state().TokenLoc.column;
         }
     }
     prefix_len = 0;
@@ -229,16 +235,16 @@ static void OutMsg( cmsg_info  *info )
 {
     char        pre[MAX_MSG_LEN]; //actual message text
 
-    if( ErrFile == NULL )
+    if( cvars_state().ErrFile == NULL )
         OpenErrFile();
-    if( !CompFlags.eq_switch_used )
+    if( !cvars_state().CompFlags.eq_switch_used )
         ConsErrMsg( info );
-    if( ErrFile != NULL ) {
+    if( cvars_state().ErrFile != NULL ) {
         FmtCMsg( pre, info );
-        fputs( pre, ErrFile );
-        fputs( info->msgtxt, ErrFile );
-        fputc( '\n', ErrFile );
-        CompFlags.errfile_written = true;
+        fputs( pre, cvars_state().ErrFile );
+        fputs( info->msgtxt, cvars_state().ErrFile );
+        fputc( '\n', cvars_state().ErrFile );
+        cvars_state().CompFlags.errfile_written = true;
     }
 }
 
@@ -256,19 +262,19 @@ static void PrintType( msg_codes msgnum, TYPEPTR typ )
 
 static void PrintPostNotes( void )
 {
-    while( PostList != NULL ) {
-        switch( PostList->type ) {
+    while( cerror_state().PostList != NULL ) {
+        switch( cerror_state().PostList->type ) {
         case POSTLIST_SYMBOL:
-            CInfoMsg( INFO_SYMBOL_DECLARATION, PostList->u.s.sym_name, PostList->u.s.sym_file, PostList->u.s.sym_line );
+            CInfoMsg( INFO_SYMBOL_DECLARATION, cerror_state().PostList->u.s.sym_name, cerror_state().PostList->u.s.sym_file, cerror_state().PostList->u.s.sym_line );
             break;
         case POSTLIST_TWOTYPES_1:
-            PrintType( INFO_SRC_CNV_TYPE, PostList->u.o.types[0] );
-            PrintType( INFO_TGT_CNV_TYPE, PostList->u.o.types[1] );
+            PrintType( INFO_SRC_CNV_TYPE, cerror_state().PostList->u.o.types[0] );
+            PrintType( INFO_TGT_CNV_TYPE, cerror_state().PostList->u.o.types[1] );
             break;
         case POSTLIST_TWOTYPES_2:
-            CInfoMsg( INFO_OPERATOR, TokenString[PostList->u.o.opr] );
-            PrintType( INFO_FIRST_OPND_TYPE, PostList->u.o.types[0] );
-            PrintType( INFO_SECOND_OPND_TYPE, PostList->u.o.types[1] );
+            CInfoMsg( INFO_OPERATOR, TokenString[cerror_state().PostList->u.o.opr] );
+            PrintType( INFO_FIRST_OPND_TYPE, cerror_state().PostList->u.o.types[0] );
+            PrintType( INFO_SECOND_OPND_TYPE, cerror_state().PostList->u.o.types[1] );
             break;
         }
         SetDiagPop();
@@ -284,12 +290,12 @@ static void CErr( int parm_num, msg_codes msgnum, ... )
     cmsg_info   info;
 
     info.class_ = CMSG_ERRO;
-    if( ErrLimit == ERRLIMIT_NOMAX || ErrCount < ErrLimit ) {
+    if( cvars_state().ErrLimit == ERRLIMIT_NOMAX || cvars_state().ErrCount < cvars_state().ErrLimit ) {
         va_start( args1, msgnum );
         CMsgInfo( &info, parm_num, msgnum, args1 );
         va_end( args1 );
         OutMsg( &info );
-        ++ErrCount;
+        ++cvars_state().ErrCount;
         PrintPostNotes();
     } else {
         va_start( args1, msgnum );
@@ -341,12 +347,12 @@ static void CWarn( int parm_num, msg_codes msgnum, ... )
     int         level;
 
     if( okToPrintMsg( msgnum, &level ) ) {
-        if( level <= WngLevel ) {
+        if( level <= cvars_state().WngLevel ) {
             info.class_ = CMSG_WARN;
             va_start( args1, msgnum );
             CMsgInfo( &info, parm_num, msgnum, args1 );
             OutMsg( &info );
-            ++WngCount;
+            ++cvars_state().WngCount;
             PrintPostNotes();
             va_end( args1 );
         }
@@ -381,7 +387,7 @@ void CInfoMsg( msg_codes msgnum, ... )
     int         level;
 
     if( okToPrintMsg( msgnum, &level ) ) {
-        if( level <= WngLevel ) {
+        if( level <= cvars_state().WngLevel ) {
             info.class_ = CMSG_INFO;
             va_start( args1, msgnum );
             CMsgInfo( &info, 0, msgnum, args1 );
@@ -401,7 +407,7 @@ void PCHNote( msg_codes msgnum, ... )
     char        msgbuf[MAX_MSG_LEN];
     char const  *msgstr;
 
-    if( !CompFlags.no_pch_warnings ) {
+    if( !cvars_state().CompFlags.no_pch_warnings ) {
         msgstr = CGetMsgStr( msgnum );
         va_start( args1, msgnum );
         vsnprintf( msgbuf, MAX_MSG_LEN, msgstr, args1 );
@@ -413,22 +419,22 @@ void PCHNote( msg_codes msgnum, ... )
 
 void SetErrLoc( source_loc *src_loc )
 {
-    error_fname = FileIndexToCorrectName( src_loc->fno );
-    error_line = src_loc->line;
-    error_column = src_loc->column;
+    cerror_state().error_fname = FileIndexToCorrectName( src_loc->fno );
+    cerror_state().error_line = src_loc->line;
+    cerror_state().error_column = src_loc->column;
 }
 
 
 void InitErrLoc( void )
 {
-    error_fname = NULL;
+    cerror_state().error_fname = NULL;
 }
 
 
 void CSuicide( void )
 {
-    if( Environment != NULL ) {
-        longjmp( *Environment, 1 );
+    if( cvars_state().Environment != NULL ) {
+        longjmp( *cvars_state().Environment, 1 );
     }
     MyExit(1);
 }
@@ -501,9 +507,9 @@ static struct ErrPostList *NewPostList( postlist_type type )
     struct ErrPostList  *np;
 
     np = static_cast<struct ErrPostList *>(CMemAlloc( sizeof( *np ) ));
-    np->next = PostList;
+    np->next = cerror_state().PostList;
     np->type = type;
-    PostList = np;
+    cerror_state().PostList = np;
     return( np );
 }
 
@@ -568,9 +574,9 @@ void SetDiagPop( void )
 {
     struct ErrPostList  *np;
 
-    np = PostList;
+    np = cerror_state().PostList;
     if( np != NULL ) {
-        PostList = np->next;
+        cerror_state().PostList = np->next;
         CMemFree( np );
     }
 }

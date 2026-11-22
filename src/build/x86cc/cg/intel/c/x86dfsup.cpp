@@ -99,14 +99,14 @@ void   DFOutReg( dw_loc_id locid, name *reg )
     hw_reg = reg->r.reg;
 #if _TARGET & _TARG_8086
     if( HW_CEqual( hw_reg, HW_ABCD ) ) {
-        DWLocReg( Client, locid, DW_REG_DX );
-        DWLocPiece( Client, locid, WD );
-        DWLocReg( Client, locid, DW_REG_CX );
-        DWLocPiece( Client, locid, WD );
-        DWLocReg( Client, locid, DW_REG_BX );
-        DWLocPiece( Client, locid, WD );
-        DWLocReg( Client, locid, DW_REG_AX );
-        DWLocPiece( Client, locid, WD );
+        DWLocReg( dfsyms_state().Client, locid, DW_REG_DX );
+        DWLocPiece( dfsyms_state().Client, locid, WD );
+        DWLocReg( dfsyms_state().Client, locid, DW_REG_CX );
+        DWLocPiece( dfsyms_state().Client, locid, WD );
+        DWLocReg( dfsyms_state().Client, locid, DW_REG_BX );
+        DWLocPiece( dfsyms_state().Client, locid, WD );
+        DWLocReg( dfsyms_state().Client, locid, DW_REG_AX );
+        DWLocPiece( dfsyms_state().Client, locid, WD );
         return;
     }
 #endif
@@ -117,15 +117,15 @@ void   DFOutReg( dw_loc_id locid, name *reg )
 #endif
     if( HW_CEqual( hw_low, HW_EMPTY ) ) {
         dw_reg = RegTransDW( hw_reg );
-        DWLocReg( Client, locid, dw_reg );
+        DWLocReg( dfsyms_state().Client, locid, dw_reg );
    } else {
         dw_reg =  RegTransDW( hw_low );
-        DWLocReg( Client, locid, dw_reg );
-        DWLocPiece( Client, locid, WD );
+        DWLocReg( dfsyms_state().Client, locid, dw_reg );
+        DWLocPiece( dfsyms_state().Client, locid, WD );
         HW_TurnOff( hw_reg, hw_low );
         dw_reg = RegTransDW( hw_reg );
-        DWLocReg( Client, locid, dw_reg );
-        DWLocPiece( Client, locid, WD );
+        DWLocReg( dfsyms_state().Client, locid, dw_reg );
+        DWLocPiece( dfsyms_state().Client, locid, WD );
     }
 }
 
@@ -135,7 +135,7 @@ void   DFOutRegInd( dw_loc_id locid, name *reg )
     dw_regs     dw_reg;
 
     dw_reg = RegTransDW( reg->r.reg );
-    DWLocOp( Client, locid, DW_LOC_breg, dw_reg, 0 );
+    DWLocOp( dfsyms_state().Client, locid, DW_LOC_breg, dw_reg, 0 );
 }
 
 uint DFStkReg( void )

@@ -348,7 +348,7 @@ void    FixIndex( void ) {
     block       *blk;
     instruction *ins;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->type_class != XX && ins->head.opcode != OP_LA && ins->head.opcode != OP_CAREFUL_LA ) {
                 ins = OneMemRef( ins );

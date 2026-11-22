@@ -54,7 +54,6 @@ static    bool_          Zoiks2;
 #endif
 
 
-bool_                    BlipsOn;
 // static HANDLE        blipHandle;
 // static file_mapping  *fileMapping;
 

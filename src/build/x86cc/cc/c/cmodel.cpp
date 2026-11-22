@@ -43,7 +43,7 @@
 #endif
 
 
-extern  char    CompilerID[];
+extern  char    const CompilerID[];
 
 /*
  * COMMAND LINE PARSING OF MACRO DEFINITIONS
@@ -107,14 +107,14 @@ static char *Def_Macro_Tokens( const char *str, bool_ multiple_tokens, macro_fla
             MacroSegmentAddToken( &mlen, token );
             switch( token ) {
             case T_BAD_CHAR:
-                MacroSegmentAddChar( &mlen, Buffer[0] );
+                MacroSegmentAddChar( &mlen, cvars_state().Buffer[0] );
                 break;
             case T_CONSTANT:
             case T_PPNUMBER:
             case T_ID:
             case T_LSTRING:
             case T_STRING:
-                MacroSegmentAddMem( &mlen, Buffer, TokenLen + 1 );
+                MacroSegmentAddMem( &mlen, cvars_state().Buffer, cvars_state().TokenLen + 1 );
                 break;
             default:
                 break;
@@ -137,7 +137,7 @@ static char *Def_Macro_Tokens( const char *str, bool_ multiple_tokens, macro_fla
 
 char *Define_Macro( const char *str )
 {
-    return( Def_Macro_Tokens( str, CompFlags.extended_defines, MFLAG_NONE ) );
+    return( Def_Macro_Tokens( str, cvars_state().CompFlags.extended_defines, MFLAG_NONE ) );
 }
 
 char *Define_UserMacro( const char *str, bool_ multiple_tokens )
@@ -151,15 +151,15 @@ void PreDefine_Macro( const char *str )
     size_t          len;
     const char      *p;
 
-    if( !CompFlags.undefine_all_macros ) {
-        if( UndefNames != NULL ) {
+    if( !cvars_state().CompFlags.undefine_all_macros ) {
+        if( cvars_state().UndefNames != NULL ) {
             len = 0;
             for( p = str; *p != '\0'; ++p ) {
                 if( EqualChar( *p ) )
                     break;
                 ++len;
             }
-            for( uname = UndefNames; uname != NULL; uname = uname->next ) {
+            for( uname = cvars_state().UndefNames; uname != NULL; uname = uname->next ) {
                 if( strncmp( uname->name, str, len ) == 0 ) {
                     if( uname->name[len] == '\0' ) {
                         return;
@@ -179,13 +179,13 @@ void AddUndefMacro( const char *str )
 
     len = strlen( str );
     if( len == 0 ) {
-        CompFlags.undefine_all_macros = true;
+        cvars_state().CompFlags.undefine_all_macros = true;
     } else {
         if( !MacroDel( str ) ) {
             uname = (undef_names *)CMemAlloc( sizeof( undef_names ) );
-            uname->next = UndefNames;
+            uname->next = cvars_state().UndefNames;
             uname->name = CMemStrdup( str );
-            UndefNames = uname;
+            cvars_state().UndefNames = uname;
         }
     }
 }
@@ -195,8 +195,8 @@ static void FreeUndefNames( void )
 {
     undef_names     *uname;
 
-    for( ; (uname = UndefNames) != NULL; ) {
-        UndefNames = uname->next;
+    for( ; (uname = cvars_state().UndefNames) != NULL; ) {
+        cvars_state().UndefNames = uname->next;
         CMemFree( uname->name );
         CMemFree( uname );
     }
@@ -251,22 +251,22 @@ static void PreDefine_Macros_Extension( void )
 
 void MiscMacroDefs( void )
 {
-    if( CompFlags.inline_functions ) {
+    if( cvars_state().CompFlags.inline_functions ) {
         Define_Macro( "__INLINE_FUNCTIONS__" );
     }
-    if( !CompFlags.extensions_enabled ) {
+    if( !cvars_state().CompFlags.extensions_enabled ) {
         Define_Macro( "_NO_EXT_KEYS" );
-        if( CompFlags.non_iso_compliant_names_enabled ) {
+        if( cvars_state().CompFlags.non_iso_compliant_names_enabled ) {
             Define_Macro( "NO_EXT_KEYS" );
         }
     }
-    if( CompFlags.non_iso_compliant_names_enabled ) {
+    if( cvars_state().CompFlags.non_iso_compliant_names_enabled ) {
         PreDefine_Macros_Extension();
     }
-    if( CompFlags.signed_char ) {
+    if( cvars_state().CompFlags.signed_char ) {
         Define_Macro( "__CHAR_SIGNED__" );
     }
-    if( CompFlags.rent ) {
+    if( cvars_state().CompFlags.rent ) {
         Define_Macro( "__RENT__" );
     }
     PreDefine_Macro( "_PUSHPOP_SUPPORTED" );
@@ -277,50 +277,50 @@ void MiscMacroDefs( void )
 
 void InitModInfo( void )
 {
-    UndefNames = NULL;
-    WholeFName = NULL;
-    ObjectFileName = NULL;
-    ErrorFileName = CMemStrdup( "*" );
-    DependFileName = NULL;
-    DependForceSlash = 0;
-    ModuleName = NULL;
-    CodeClassName = NULL;
-    PCH_FileName = NULL;
-    ErrLimit = 20;
-    WngLevel = WLEVEL_DEFAULT;
+    cvars_state().UndefNames = NULL;
+    cvars_state().WholeFName = NULL;
+    cvars_state().ObjectFileName = NULL;
+    cvars_state().ErrorFileName = CMemStrdup( "*" );
+    cvars_state().DependFileName = NULL;
+    cvars_state().DependForceSlash = 0;
+    cvars_state().ModuleName = NULL;
+    cvars_state().CodeClassName = NULL;
+    cvars_state().PCH_FileName = NULL;
+    cvars_state().ErrLimit = 20;
+    cvars_state().WngLevel = WLEVEL_DEFAULT;
 
-    PreProcChar = '#';
-    CompVars.cstd = STD_C89;
+    cvars_state().PreProcChar = '#';
+    cvars_state().CompVars.cstd = STD_C89;
 
-    CompFlags.check_syntax                      = false;
-    CompFlags.signed_char                       = false;
-    CompFlags.use_full_codegen_od               = false;
-    CompFlags.inline_functions                  = false;
-    CompFlags.dump_prototypes                   = false;
-    CompFlags.generate_prototypes               = false;
-    CompFlags.bss_segment_used                  = false;
-    CompFlags.undefine_all_macros               = false;
-    CompFlags.extensions_enabled                = true;
-    CompFlags.non_iso_compliant_names_enabled   = true;
-    CompFlags.unix_ext                          = false;
-    CompFlags.slack_byte_warning                = false;
-    CompFlags.errfile_written                   = false;
-    CompFlags.zu_switch_used                    = false;
-    CompFlags.pragma_library                    = false;
-    CompFlags.emit_all_default_libs             = false;
-    CompFlags.emit_library_names                = true;
-    CompFlags.emit_dependencies                 = true;
-    CompFlags.emit_targimp_symbols              = true;
-    CompFlags.no_debug_type_names               = false;
-    CompFlags.auto_agg_inits                    = false;
-    CompFlags.no_check_inits                    = false;
-    CompFlags.no_check_qualifiers               = false;
-    CompFlags.ignore_default_dirs               = false;
-    CompFlags.use_stdcall_at_number             = true;
-    CompFlags.rent                              = false;
-    CompFlags.check_truncated_fnames            = true;
+    cvars_state().CompFlags.check_syntax                      = false;
+    cvars_state().CompFlags.signed_char                       = false;
+    cvars_state().CompFlags.use_full_codegen_od               = false;
+    cvars_state().CompFlags.inline_functions                  = false;
+    cvars_state().CompFlags.dump_prototypes                   = false;
+    cvars_state().CompFlags.generate_prototypes               = false;
+    cvars_state().CompFlags.bss_segment_used                  = false;
+    cvars_state().CompFlags.undefine_all_macros               = false;
+    cvars_state().CompFlags.extensions_enabled                = true;
+    cvars_state().CompFlags.non_iso_compliant_names_enabled   = true;
+    cvars_state().CompFlags.unix_ext                          = false;
+    cvars_state().CompFlags.slack_byte_warning                = false;
+    cvars_state().CompFlags.errfile_written                   = false;
+    cvars_state().CompFlags.zu_switch_used                    = false;
+    cvars_state().CompFlags.pragma_library                    = false;
+    cvars_state().CompFlags.emit_all_default_libs             = false;
+    cvars_state().CompFlags.emit_library_names                = true;
+    cvars_state().CompFlags.emit_dependencies                 = true;
+    cvars_state().CompFlags.emit_targimp_symbols              = true;
+    cvars_state().CompFlags.no_debug_type_names               = false;
+    cvars_state().CompFlags.auto_agg_inits                    = false;
+    cvars_state().CompFlags.no_check_inits                    = false;
+    cvars_state().CompFlags.no_check_qualifiers               = false;
+    cvars_state().CompFlags.ignore_default_dirs               = false;
+    cvars_state().CompFlags.use_stdcall_at_number             = true;
+    cvars_state().CompFlags.rent                              = false;
+    cvars_state().CompFlags.check_truncated_fnames            = true;
 
-    memset( &PragmaToggles, 0, sizeof( PragmaToggles ) );
+    memset( &toggles_state().PragmaToggles, 0, sizeof( toggles_state().PragmaToggles ) );
 #ifdef DEVBUILD
     memset( &PragmaDbgToggles, 0, sizeof( PragmaDbgToggles ) );
 #endif

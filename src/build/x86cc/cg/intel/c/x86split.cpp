@@ -210,7 +210,7 @@ name    *IntEquivalent( name *name )
     constant_defn       *floatval;
 
     floatval = GetFloat( name, FS );
-    return( AllocConst( CFCnvU32F( &cgh, _TargetBigInt( U64LowLE( floatval->buffer.u64 ) ) ) ) );
+    return( AllocConst( CFCnvU32F( &cfloat_state().cgh, _TargetBigInt( U64LowLE( floatval->buffer.u64 ) ) ) ) );
 }
 
 name    *Int64Equivalent( name *name )
@@ -281,7 +281,7 @@ bool_ UseRepForm( unsigned size )
      */
     if( count > 10 )
         return( true );
-    if( OptForSize > 50 ) {
+    if( data_state().OptForSize > 50 ) {
         switch( size % WORD_SIZE ) {
         case 0: extra = 0;      break;
         case 1: extra = 1;      break;
@@ -394,7 +394,7 @@ static  instruction     *LoadStringOps( instruction *ins,
         HW_CAsgn( new_op1, HW_EMPTY );
     } else {
         if( ( (*op1)->n.size & (WORD_SIZE - 1) ) == 0
-          || ( OptForSize <= 50
+          || ( data_state().OptForSize <= 50
           && ins->head.opcode == OP_MOV ) ) {
             load_len = MoveConst( (*op1)->n.size / WORD_SIZE, AllocRegName( HW_xCX ), WD );
             PrefixIns( ins, load_len );
@@ -751,7 +751,6 @@ void    CheckCC( instruction *ins, instruction *new_ins )
         new_ins->ins_flags |= INS_CC_USED;
     }
 }
-
 
 
 static  instruction     *SplitPush( instruction *ins, type_length size )

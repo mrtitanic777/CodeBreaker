@@ -68,12 +68,21 @@ typedef struct buf {
 } buf;
 
 
-static  objoffset       ObjOffset;
-static  handle          ObjFile;
-static  bool_            NeedSeek;
-static  bool_            EraseObj;
-static  buf             *BufList;       // start of list of buffers
-static  buf             *CurBuf;        // current buffer
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct ObjioState {
+    objoffset ObjOffset;
+    handle ObjFile;
+    bool_ NeedSeek;
+    bool_ EraseObj;
+    buf *BufList;   // start of list of buffers
+    buf *CurBuf;   // current buffer
+};
+
+}  // namespace
+
+static inline ObjioState& objio_state() { return cbrun_part<ObjioState>(); }
 
 
 static buf *NewBuffer( void )
@@ -139,11 +148,11 @@ static  handle  CreateStream( const char *name )
 bool_    CGOpenf( void )
 /*********************/
 {
-    ObjFile = CreateStream( static_cast<const char *>(FEAuxInfo( NULL, FEINF_OBJECT_FILE_NAME )) );
-    if( ObjFile == INVALID_HANDLE )
+    objio_state().ObjFile = CreateStream( static_cast<const char *>(FEAuxInfo( NULL, FEINF_OBJECT_FILE_NAME )) );
+    if( objio_state().ObjFile == INVALID_HANDLE )
         return( false );
-    BufList = NewBuffer();              // allocate first buffer
-    CurBuf = BufList;
+    objio_state().BufList = NewBuffer();              // allocate first buffer
+    objio_state().CurBuf = objio_state().BufList;
     return( true );
 }
 
@@ -151,9 +160,9 @@ bool_    CGOpenf( void )
 void    OpenObj( void )
 /*********************/
 {
-    ObjOffset = 0;
-    NeedSeek = false;
-    EraseObj = false;
+    objio_state().ObjOffset = 0;
+    objio_state().NeedSeek = false;
+    objio_state().EraseObj = false;
 }
 
 
@@ -185,26 +194,26 @@ static  void    PutStream( handle h, const byte *b, size_t len )
 
     for( ;; ) {
         n = len;
-        if( n > CurBuf->bytes_left ) {
-            n = CurBuf->bytes_left;
+        if( n > objio_state().CurBuf->bytes_left ) {
+            n = objio_state().CurBuf->bytes_left;
         }
-        memcpy( CurBuf->bufptr, b, n );
+        memcpy( objio_state().CurBuf->bufptr, b, n );
         b += n;
-        CurBuf->bufptr += n;
-        CurBuf->bytes_left -= n;
-        if( CurBuf->nextbuf == NULL ) {         // if this is last buffer
-            cleanupLastBuffer( CurBuf );
+        objio_state().CurBuf->bufptr += n;
+        objio_state().CurBuf->bytes_left -= n;
+        if( objio_state().CurBuf->nextbuf == NULL ) {         // if this is last buffer
+            cleanupLastBuffer( objio_state().CurBuf );
         }
         len -= n;
         if( len == 0 )
             break;
-        if( CurBuf->nextbuf == NULL ) {
-            CurBuf->nextbuf = NewBuffer();
-            CurBuf = CurBuf->nextbuf;
+        if( objio_state().CurBuf->nextbuf == NULL ) {
+            objio_state().CurBuf->nextbuf = NewBuffer();
+            objio_state().CurBuf = objio_state().CurBuf->nextbuf;
         } else {
-            CurBuf = CurBuf->nextbuf;
-            CurBuf->bufptr = CurBuf->buf;
-            CurBuf->bytes_left = IOBUFSIZE;
+            objio_state().CurBuf = objio_state().CurBuf->nextbuf;
+            objio_state().CurBuf->bufptr = objio_state().CurBuf->buf;
+            objio_state().CurBuf->bytes_left = IOBUFSIZE;
         }
     }
 }
@@ -219,22 +228,22 @@ static  void    GetStream( handle h, byte *b, size_t len )
 
     for( ;; ) {
         n = len;
-        if( n > CurBuf->bytes_left ) {
-            n = CurBuf->bytes_left;
+        if( n > objio_state().CurBuf->bytes_left ) {
+            n = objio_state().CurBuf->bytes_left;
         }
-        memcpy( b, CurBuf->bufptr, n );
+        memcpy( b, objio_state().CurBuf->bufptr, n );
         b += n;
-        CurBuf->bufptr += n;
-        CurBuf->bytes_left -= n;
+        objio_state().CurBuf->bufptr += n;
+        objio_state().CurBuf->bytes_left -= n;
         len -= n;
         if( len == 0 )
             break;
-        CurBuf = CurBuf->nextbuf;
-        if( CurBuf == NULL ) {
+        objio_state().CurBuf = objio_state().CurBuf->nextbuf;
+        if( objio_state().CurBuf == NULL ) {
             _Zoiks( ZOIKS_006 );
         }
-        CurBuf->bufptr = CurBuf->buf;
-        CurBuf->bytes_left = IOBUFSIZE;
+        objio_state().CurBuf->bufptr = objio_state().CurBuf->buf;
+        objio_state().CurBuf->bytes_left = IOBUFSIZE;
     }
 }
 
@@ -247,7 +256,7 @@ static  void    SeekStream( handle h, objoffset offset )
 
     /* unused parameters */ (void)h;
 
-    pbuf = BufList;
+    pbuf = objio_state().BufList;
     n = 0;
     for( ;; ) {
         n += IOBUFSIZE;
@@ -266,40 +275,40 @@ static  void    SeekStream( handle h, objoffset offset )
     if( pbuf->nextbuf == NULL ) {               // if this is last buffer
         cleanupLastBuffer( pbuf );
     }
-    CurBuf = pbuf;
+    objio_state().CurBuf = pbuf;
 }
 
 
 objhandle       AskObjHandle( void )
 /**********************************/
 {
-    return( Offset( ObjOffset ) );
+    return( Offset( objio_state().ObjOffset ) );
 }
 
 void    PutObjBytes( const void *buff, size_t len )
 /*************************************************/
 {
-    if( NeedSeek ) {
-        SeekStream( ObjFile, ObjOffset );
-        NeedSeek = false;
+    if( objio_state().NeedSeek ) {
+        SeekStream( objio_state().ObjFile, objio_state().ObjOffset );
+        objio_state().NeedSeek = false;
     }
-    PutStream( ObjFile, static_cast<const byte *>(buff), len );
-    ObjOffset += len;
+    PutStream( objio_state().ObjFile, static_cast<const byte *>(buff), len );
+    objio_state().ObjOffset += len;
 }
 
 void    GetFromObj( objhandle rec, objoffset roffset, byte *buff, size_t len )
 /****************************************************************************/
 {
-    SeekStream( ObjFile, Byte( rec ) + roffset + 3 );
-    GetStream( ObjFile, buff, len );
-    NeedSeek = true;
+    SeekStream( objio_state().ObjFile, Byte( rec ) + roffset + 3 );
+    GetStream( objio_state().ObjFile, buff, len );
+    objio_state().NeedSeek = true;
 }
 
 
 void    AbortObj( void )
 /**********************/
 {
-    EraseObj = true;
+    objio_state().EraseObj = true;
 }
 
 
@@ -309,8 +318,8 @@ static void FlushBuffers( handle h )
     buf         *pbuf;
     size_t      retc;
 
-    for( ; (pbuf = BufList) != NULL; ) {
-        BufList = pbuf->nextbuf;
+    for( ; (pbuf = objio_state().BufList) != NULL; ) {
+        objio_state().BufList = pbuf->nextbuf;
         retc = fwrite( pbuf->buf, 1, pbuf->bytes_written, h );
         if( retc != pbuf->bytes_written ) {
             FatalError( "Error writing object file" );
@@ -318,20 +327,20 @@ static void FlushBuffers( handle h )
         CGFree( pbuf->buf );
         CGFree( pbuf );
     }
-    CurBuf = NULL;
+    objio_state().CurBuf = NULL;
 }
 
 
 void    CloseObj( void )
 /**********************/
 {
-    if( ObjFile != INVALID_HANDLE ) {
-        FlushBuffers( ObjFile );
-        CloseStream( ObjFile );
-        if( EraseObj ) {
+    if( objio_state().ObjFile != INVALID_HANDLE ) {
+        FlushBuffers( objio_state().ObjFile );
+        CloseStream( objio_state().ObjFile );
+        if( objio_state().EraseObj ) {
             EraseStream( static_cast<const char *>(FEAuxInfo( NULL, FEINF_OBJECT_FILE_NAME )) );
         }
-        ObjFile = INVALID_HANDLE;
+        objio_state().ObjFile = INVALID_HANDLE;
     }
 }
 
@@ -339,26 +348,26 @@ void    CloseObj( void )
 void    ScratchObj( void )
 /************************/
 {
-    EraseObj = true;
+    objio_state().EraseObj = true;
     CloseObj();
 }
 
 void SeekGetObj( objhandle rec, objoffset roffset, byte *b, size_t len )
 /**********************************************************************/
 {
-    SeekStream( ObjFile, Byte( rec ) + roffset );
-    GetStream( ObjFile, b, len );
+    SeekStream( objio_state().ObjFile, Byte( rec ) + roffset );
+    GetStream( objio_state().ObjFile, b, len );
 }
 
 void SeekPutObj( objhandle rec, objoffset roffset, const byte *b, size_t len )
 /****************************************************************************/
 {
-    SeekStream( ObjFile, Byte( rec ) + roffset );
-    PutStream( ObjFile, b, len );
+    SeekStream( objio_state().ObjFile, Byte( rec ) + roffset );
+    PutStream( objio_state().ObjFile, b, len );
 }
 
 void NeedSeekObj( void )
 /**************************/
 {
-    NeedSeek = true;
+    objio_state().NeedSeek = true;
 }

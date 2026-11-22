@@ -62,7 +62,7 @@ static  void    setTempLocations( void )
     name                *base;
     name                *temp;
 
-    for( temp = Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         base = DeAlias( temp );
         if( base->t.location == NO_LOCATION ) {
             temp->t.v.alt_location = NO_LOCATION;
@@ -96,16 +96,16 @@ type_length     AdjustBase( void ) {
     type_length         last_location;
     name                *temp;
 
-    if( BlockByBlock ) {
+    if( data_state().BlockByBlock ) {
         return( -( MAX_SHORT_POS & ~1 ) );
     }
     setTempLocations();
     CountTempRefs();
     SortTemps();
     best_bp = 0;
-    best_savings = CalcBaseSave( best_bp, Names[N_TEMP] );
+    best_savings = CalcBaseSave( best_bp, data_state().Names[N_TEMP] );
     last_location = NO_LOCATION;
-    for( temp = Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->t.v.alt_location != last_location &&
             temp->t.v.alt_location != NO_LOCATION ) {
             bp = ( temp->t.v.alt_location - ( MAX_SHORT_POS - 1 ) ) & ~1;
@@ -160,5 +160,5 @@ static  bool_    TempBefore( void *t1, void *t2 ) {
 static  void    SortTemps(void) {
 /*******************************/
 
-    Names[N_TEMP] = static_cast<name *>(SortList( Names[N_TEMP], offsetof( name, n.next_name ), TempBefore ));
+    data_state().Names[N_TEMP] = static_cast<name *>(SortList( data_state().Names[N_TEMP], offsetof( name, n.next_name ), TempBefore ));
 }

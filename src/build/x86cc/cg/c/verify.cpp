@@ -170,7 +170,7 @@ static  bool_    Op2Pow2( instruction *ins )
     log = GetLog2( ins->operands[1]->c.lo.u.int_value );
     if( log == -1 )
         return( false );
-    if( log == ( ( TypeClassSize[ins->type_class] * 8 ) - 1 ) ) {
+    if( log == ( ( data_state().TypeClassSize[ins->type_class] * 8 ) - 1 ) ) {
         if( _IsSigned( ins->type_class ) ) {
             return( false );
         }
@@ -318,7 +318,7 @@ bool_    OtherVerify( vertype kind, instruction *ins,
         }
         break;
     case V_SPEED:
-        if( OptForSize <= 50 )
+        if( data_state().OptForSize <= 50 )
             return( true );
         break;
     case V_SWAP_GOOD:

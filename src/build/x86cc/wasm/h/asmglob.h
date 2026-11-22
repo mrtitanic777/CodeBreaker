@@ -99,7 +99,15 @@ typedef struct sw_data {
     int     fpt;
 } sw_data;
 
-extern sw_data  SWData;
+
+/* the variables of asmglob.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct AsmglobState {
+#if defined( _STANDALONE_ )
+#else
+    sw_data SWData;
+#endif
+};
+inline AsmglobState& asmglob_state() { return cbrun_part<AsmglobState>(); }
 
 #if defined( _STANDALONE_ )
 

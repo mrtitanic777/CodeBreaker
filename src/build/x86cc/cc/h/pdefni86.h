@@ -33,7 +33,7 @@
 
 #define NC '\0'
 
-hw_reg_set DefaultVarParms[] = {
+extern hw_reg_set const DefaultVarParms[] = {
     HW_D( HW_EMPTY )
 };
 
@@ -61,21 +61,21 @@ REG_PICK( SP, "sp",  19 ) \
 REG_PICK( FS, "fs",  20 ) \
 REG_PICK( GS, "gs",  21 )
 
-char Registers[] = {
+extern char const Registers[] = {
     #define REG_PICK(c,t,r) t "\0"
     REG_DEFS
     "\0"
     #undef REG_PICK
 };
 
-unsigned char RegMap[] = {
+extern unsigned char const RegMap[] = {
     #define REG_PICK(c,t,r) r,
     REG_DEFS
     #undef REG_PICK
 };
 
 
-hw_reg_set RegBits[] = {
+extern hw_reg_set const RegBits[] = {
     #define REG_PICK(c,t,r) HW_D( HW_##c ),
     REG_DEFS
     #undef REG_PICK
@@ -83,7 +83,7 @@ hw_reg_set RegBits[] = {
 
 /*      INLINE FUNCTIONS */
 
-aux_info        InlineInfo;
+#include "pdefn2.h"
 
 
 /*
@@ -116,7 +116,7 @@ aux_info        InlineInfo;
 #define C_8087_fabs_parms  P_8087
 #define C_8087_fabs_saves  HW_NotD( HW_EMPTY )
 
-static struct STRUCT_BYTE_SEQ( 5 ) _8087_fabs = {
+static struct STRUCT_BYTE_SEQ( 5 ) const _8087_fabs = {
     5, true,
     {
         FLOATING_FIXUP_BYTE,     /* 8087 fixup indicator */
@@ -129,146 +129,146 @@ static struct STRUCT_BYTE_SEQ( 5 ) _8087_fabs = {
 
 /****************************************************************/
 
-static hw_reg_set P_AX_CX[] = {
+static hw_reg_set const P_AX_CX[] = {
     HW_D( HW_AX ),
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_AX_DX[] = {
+static hw_reg_set const P_AX_DX[] = {
     HW_D( HW_AX ),
     HW_D( HW_DX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DI_SI[] = {
+static hw_reg_set const P_DI_SI[] = {
     HW_D( HW_DI ),
     HW_D( HW_SI ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DI_SI_CX[] = {
+static hw_reg_set const P_DI_SI_CX[] = {
     HW_D( HW_DI ),
     HW_D( HW_SI ),
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_ESDI_AX_CX[] = {
+static hw_reg_set const P_ESDI_AX_CX[] = {
     HW_D_2( HW_ES, HW_DI ),
     HW_D( HW_AX ),
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_SI_DI_CX[] = {
+static hw_reg_set const P_SI_DI_CX[] = {
     HW_D( HW_SI ),
     HW_D( HW_DI ),
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DI_AL_CX[] = {
+static hw_reg_set const P_DI_AL_CX[] = {
     HW_D( HW_DI ),
     HW_D( HW_AL ),
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_ESDI_SIAX[] = {
+static hw_reg_set const P_ESDI_SIAX[] = {
     HW_D_2( HW_ES, HW_DI ),
     HW_D_2( HW_SI, HW_AX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_ESDI_DSSI[] = {
+static hw_reg_set const P_ESDI_DSSI[] = {
     HW_D_2( HW_ES, HW_DI ),
     HW_D_2( HW_DS, HW_SI ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_ESDI_CXSI_AX[] = {
+static hw_reg_set const P_ESDI_CXSI_AX[] = {
     HW_D_2( HW_ES, HW_DI ),
     HW_D_2( HW_CX, HW_SI ),
     HW_D( HW_AX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_ESDI_DSSI_CX[] = {
+static hw_reg_set const P_ESDI_DSSI_CX[] = {
     HW_D_2( HW_ES, HW_DI ),
     HW_D_2( HW_DS, HW_SI ),
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_ESDI_AL_CX[] = {
+static hw_reg_set const P_ESDI_AL_CX[] = {
     HW_D_2( HW_ES, HW_DI ),
     HW_D( HW_AL ),
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_SI_DI[] = {
+static hw_reg_set const P_SI_DI[] = {
     HW_D( HW_SI ),
     HW_D( HW_DI ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_SIAX_ESDI[] = {
+static hw_reg_set const P_SIAX_ESDI[] = {
     HW_D_2( HW_SI, HW_AX ),
     HW_D_2( HW_ES, HW_DI ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DSSI_ESDI[] = {
+static hw_reg_set const P_DSSI_ESDI[] = {
     HW_D_2( HW_DS, HW_SI ),
     HW_D_2( HW_ES, HW_DI ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_CXSI_ESDI_AX[] = {
+static hw_reg_set const P_CXSI_ESDI_AX[] = {
     HW_D_2( HW_CX, HW_SI ),
     HW_D_2( HW_ES, HW_DI ),
     HW_D( HW_AX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DSSI_ESDI_CX[] = {
+static hw_reg_set const P_DSSI_ESDI_CX[] = {
     HW_D_2( HW_DS, HW_SI ),
     HW_D_2( HW_ES, HW_DI ),
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DXSI_CL[] = {
+static hw_reg_set const P_DXSI_CL[] = {
     HW_D_2( HW_DX, HW_SI ),
     HW_D( HW_CL ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DSSI_CL[] = {
+static hw_reg_set const P_DSSI_CL[] = {
     HW_D_2( HW_DS, HW_SI ),
     HW_D( HW_CL ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_SI_DL[] = {
+static hw_reg_set const P_SI_DL[] = {
     HW_D( HW_SI ),
     HW_D( HW_DL ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DI[] = {
+static hw_reg_set const P_DI[] = {
     HW_D( HW_DI ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_ESDI[] = {
+static hw_reg_set const P_ESDI[] = {
     HW_D_2( HW_ES, HW_DI ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_AX[] = {
+static hw_reg_set const P_AX[] = {
     HW_D( HW_AX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DX[] = {
+static hw_reg_set const P_DX[] = {
     HW_D( HW_DX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DX_AL[] = {
+static hw_reg_set const P_DX_AL[] = {
     HW_D( HW_DX ),
     HW_D( HW_AL ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_DX_AX[] = {
+static hw_reg_set const P_DX_AX[] = {
     HW_D( HW_DX ),
     HW_D( HW_AX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_AXDX[] = {
+static hw_reg_set const P_AXDX[] = {
     HW_D_2( HW_AX, HW_DX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_AX_SI_ES_DI_CX[] = {
+static hw_reg_set const P_AX_SI_ES_DI_CX[] = {
     HW_D( HW_AX ),
     HW_D( HW_SI ),
     HW_D( HW_ES ),
@@ -276,11 +276,11 @@ static hw_reg_set P_AX_SI_ES_DI_CX[] = {
     HW_D( HW_CX ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_AXBXCXDX[] = {
+static hw_reg_set const P_AXBXCXDX[] = {
     HW_D( HW_ABCD ),
     HW_D( HW_EMPTY )
 };
-static hw_reg_set P_8087[] = {
+static hw_reg_set const P_8087[] = {
     HW_D( HW_FLTS ),
     HW_D( HW_EMPTY )
 };

@@ -37,10 +37,20 @@ extern const type_def   TNearP;
 extern const type_def   TLongP;
 extern const type_def   THugeP;
 
-extern const type_def   *PTInteger;
-extern const type_def   *PTUnsigned;
-extern const type_def   *PTPointer;
-extern const type_def   *PTCodePointer;
+
+#ifndef CB_STATE_TYPES_H
+#define CB_STATE_TYPES_H
+
+/* the variables of types.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct TypesState {
+    const type_def *PTInteger;
+    const type_def *PTUnsigned;
+    const type_def *PTPointer;
+    const type_def *PTCodePointer;
+};
+inline TypesState& types_state() { return cbrun_part<TypesState>(); }
+
+#endif
 
 extern void             TypeInit( void );
 extern const type_def   *TypeAddress( cg_type tipe );

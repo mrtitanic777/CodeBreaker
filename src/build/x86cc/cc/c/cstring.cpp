@@ -43,8 +43,6 @@
 #include "clibext.h"
 
 
-static target_size  CLitLength;         /* length of string literal */
-
 static FILE *OpenUnicodeFile( const char *filename )
 {
     FILE        *fp;
@@ -78,7 +76,7 @@ static void ReadUnicodeFile( FILE *fp )
      * UniCode might be a FAR table
      */
     for( i = 0; i < 256; i++ ) {
-        UniCode[i] = ( i < len ) ? unicode_table[i] : 0;
+        unicode_state().UniCode[i] = ( i < len ) ? unicode_table[i] : 0;
     }
 }
 
@@ -108,7 +106,7 @@ void StringInit( void )
     str_hash_idx    hash;
 
     for( hash = 0; hash < STRING_HASH_SIZE; hash++ ) {
-        StringHash[hash] = 0;
+        cvars_state().StringHash[hash] = 0;
     }
 }
 
@@ -118,11 +116,22 @@ void FreeLiteral( STR_HANDLE str_lit )
     CMemFree( str_lit );
 }
 
-static const unsigned char  *pbuf = NULL;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CstringState {
+    target_size CLitLength;   /* length of string literal */
+    const unsigned char *pbuf = NULL;
+};
+
+}  // namespace
+
+static inline CstringState& cstring_state() { return cbrun_part<CstringState>(); }
+
 
 static int read_inp( void )
 {
-    return( *pbuf++ );
+    return( *cstring_state().pbuf++ );
 }
 
 #define WRITE_BYTE(x) if( buf != NULL ) buf[olen] = x; ++olen
@@ -137,33 +146,33 @@ static target_size RemoveEscapes( char *buf, const char *inbuf, target_size ilen
     const unsigned char *pend;
 
     olen = 0;
-    BadTokenInfo = ERR_NONE;
-    pbuf = (const unsigned char *)inbuf;
-    pend = pbuf + ilen;
-    while( pbuf < pend ) {
+    cvars_state().BadTokenInfo = ERR_NONE;
+    cstring_state().pbuf = (const unsigned char *)inbuf;
+    pend = cstring_state().pbuf + ilen;
+    while( cstring_state().pbuf < pend ) {
         c = read_inp();
         if( c == '\\' ) {
-            c = ESCChar( read_inp, NULL, &BadTokenInfo );
+            c = ESCChar( read_inp, NULL, &cvars_state().BadTokenInfo );
             if( buf != NULL ) {
-                if( !CompFlags.cpp_mode ) {
-                    if( SkipLevel == NestLevel ) {
-                        if( BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
+                if( !cvars_state().CompFlags.cpp_mode ) {
+                    if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
+                        if( cvars_state().BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
                             CErr1( ERR_INVALID_HEX_CONSTANT );
-                        } else if( BadTokenInfo == ERR_CONSTANT_TOO_BIG
-                          || BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
-                            CWarn1( BadTokenInfo );
+                        } else if( cvars_state().BadTokenInfo == ERR_CONSTANT_TOO_BIG
+                          || cvars_state().BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
+                            CWarn1( cvars_state().BadTokenInfo );
                         }
                     }
                 }
             }
-            pbuf--; // move pointer to first character after Escape sequence
-            if( CompFlags.wide_char_string ) {
+            cstring_state().pbuf--; // move pointer to first character after Escape sequence
+            if( cvars_state().CompFlags.wide_char_string ) {
                 WRITE_BYTE( c );
                 c = c >> 8;
             }
         } else {
-            if( CharSet[c] & C_DB ) {       /* if double-byte character */
-                if( CompFlags.jis_to_unicode && CompFlags.wide_char_string ) {
+            if( scan_state().CharSet[c] & C_DB ) {       /* if double-byte character */
+                if( cvars_state().CompFlags.jis_to_unicode && cvars_state().CompFlags.wide_char_string ) {
                     c = (c << 8) + read_inp();
                     c = JIS2Unicode( c );
                     WRITE_BYTE( c );
@@ -172,7 +181,7 @@ static target_size RemoveEscapes( char *buf, const char *inbuf, target_size ilen
                     WRITE_BYTE( c );
                     c = read_inp();
                 }
-            } else if( CompFlags.wide_char_string ) {
+            } else if( cvars_state().CompFlags.wide_char_string ) {
                 c = EncodeWchar( c );
                 WRITE_BYTE( c );
                 c = c >> 8;
@@ -208,7 +217,7 @@ STR_HANDLE GetLiteral( void )
         /*
          * if one component is wide then the whole string is wide
          */
-        if( CompFlags.wide_char_string )
+        if( cvars_state().CompFlags.wide_char_string )
             is_wide = true;
         if( q != NULL ) {
             p = static_cast<STR_HANDLE>(CMemAlloc( sizeof( STRING_LITERAL ) ));
@@ -216,10 +225,10 @@ STR_HANDLE GetLiteral( void )
         }
         q = p;
         p->next_string = NULL;
-        p->length = TokenLen + 1;
-        p->literal = ToStringDup( Buffer, TokenLen );
+        p->length = cvars_state().TokenLen + 1;
+        p->literal = ToStringDup( cvars_state().Buffer, cvars_state().TokenLen );
     } while( NextToken() == T_STRING );
-    CompFlags.wide_char_string = is_wide;
+    cvars_state().CompFlags.wide_char_string = is_wide;
     /*
      * then remove escapes (C99: translation phase 5), and only then
      * concatenate (translation phase 6), not the other way around!
@@ -241,7 +250,7 @@ STR_HANDLE GetLiteral( void )
             FreeLiteral( q );
         q = p;
     } while ( q != NULL );
-    CLitLength = len;
+    cstring_state().CLitLength = len;
     CMemFree( str_lit->literal );
     str_lit->literal = s;
     str_lit->length = len;
@@ -255,16 +264,16 @@ static TYPEPTR StringLeafType( void )
 {
     TYPEPTR     typ;
 
-    if( CompFlags.wide_char_string ) {
+    if( cvars_state().CompFlags.wide_char_string ) {
         typ = ArrayNode( GetType( TYP_USHORT ) );
-        typ->u.array->dimension = CLitLength >> 1;
-    } else if( StringArrayType != NULL ) {
-        typ = StringArrayType;
-        StringArrayType->u.array->dimension = CLitLength;
-        StringArrayType = NULL;
+        typ->u.array->dimension = cstring_state().CLitLength >> 1;
+    } else if( cvars_state().StringArrayType != NULL ) {
+        typ = cvars_state().StringArrayType;
+        cvars_state().StringArrayType->u.array->dimension = cstring_state().CLitLength;
+        cvars_state().StringArrayType = NULL;
     } else {
         typ = ArrayNode( GetType( TYP_PLAIN_CHAR ) );
-        typ->u.array->dimension = CLitLength;
+        typ->u.array->dimension = cstring_state().CLitLength;
     }
     return( typ );
 }
@@ -279,23 +288,23 @@ TREEPTR StringLeaf( string_flags flags )
     strlit = NULL;
     new_lit = GetLiteral();
 #if _INTEL_CPU
-    if( TargetSwitches & CGSW_X86_BIG_DATA ) {
-        if( !CompFlags.strings_in_code_segment ) {
-            if( new_lit->length > DataThreshold ) {
+    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
+        if( !cvars_state().CompFlags.strings_in_code_segment ) {
+            if( new_lit->length > cvars_state().DataThreshold ) {
                 flags |= STRLIT_FAR;
             }
         }
     }
 #endif
-    if( CompFlags.wide_char_string )
+    if( cvars_state().CompFlags.wide_char_string )
         flags |= STRLIT_WIDE;
 #if _INTEL_CPU
     if( flags & STRLIT_FAR )
-        CompFlags.far_strings = true;
+        cvars_state().CompFlags.far_strings = true;
 #endif
     hash = CalcStringHash( new_lit );
     if( TOGGLE( reuse_duplicate_strings ) ) {
-        for( strlit = StringHash[hash]; strlit != NULL; strlit = strlit->next_string ) {
+        for( strlit = cvars_state().StringHash[hash]; strlit != NULL; strlit = strlit->next_string ) {
             if( strlit->length == new_lit->length && strlit->flags == flags ) {
                 /*
                  * it contains wide characters with 0 bytes
@@ -309,10 +318,10 @@ TREEPTR StringLeaf( string_flags flags )
     }
     if( strlit == NULL ) {
         new_lit->flags = flags;
-        ++LitCount;
-        LitPoolSize += CLitLength;
-        new_lit->next_string = StringHash[hash];
-        StringHash[hash] = new_lit;
+        ++cvars_state().LitCount;
+        cvars_state().LitPoolSize += cstring_state().CLitLength;
+        new_lit->next_string = cvars_state().StringHash[hash];
+        cvars_state().StringHash[hash] = new_lit;
     } else {            // we found a duplicate
         FreeLiteral( new_lit );
         new_lit = strlit;
@@ -323,8 +332,8 @@ TREEPTR StringLeaf( string_flags flags )
     // set op.flags field
     leaf_index->u.expr_type = StringLeafType();
 
-    if( CurFunc != NULL ) {
-        CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+    if( cvars_state().CurFunc != NULL ) {
+        cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
     }
     return( leaf_index );
 }

@@ -39,7 +39,17 @@
 
 #define MAX_ZOIKS_40    0x1000
 
-static  int             Zoiks40 = { 0 };
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct ZoiksState {
+    int Zoiks40 = { 0 };
+};
+
+}  // namespace
+
+static inline ZoiksState& zoiks_state() { return cbrun_part<ZoiksState>(); }
+
 
 void    Zoiks( int msg )
 /***********************
@@ -51,7 +61,7 @@ void    Zoiks( int msg )
         return;
     if( ( msg == ZOIKS_002 ) && ( !WantZoiks2() ) )
         return;
-    if( ( msg == ZOIKS_040 ) && ( ++Zoiks40 < MAX_ZOIKS_40 ) )
+    if( ( msg == ZOIKS_040 ) && ( ++zoiks_state().Zoiks40 < MAX_ZOIKS_40 ) )
         return;
     FEMessage( FEMSG_BACK_END_ERROR, (pointer)(pointer_uint)msg );
 }

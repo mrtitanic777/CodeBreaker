@@ -15,7 +15,17 @@
 #include "cscanbuf.h"
 
 
-static size_t   BufferSize;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct CscanbufState {
+    size_t BufferSize;
+};
+
+}  // namespace
+
+static inline CscanbufState& cscanbuf_state() { return cbrun_part<CscanbufState>(); }
+
 
 static void EnlargeBuffer( size_t size )
 /**************************************/
@@ -23,36 +33,36 @@ static void EnlargeBuffer( size_t size )
     char    *newBuffer;
 
 //    size += 32;     /* Buffer size margin */
-    if( size > BufferSize ) {
+    if( size > cscanbuf_state().BufferSize ) {
         size = _RoundUp( size, BUF_SIZE );
         newBuffer = static_cast<char *>(CMemAlloc( size ));
-        memcpy( newBuffer, Buffer, BufferSize );
-        CMemFree( (void *)Buffer );
-        Buffer = newBuffer;
-        BufferSize = size;
+        memcpy( newBuffer, cvars_state().Buffer, cscanbuf_state().BufferSize );
+        CMemFree( (void *)cvars_state().Buffer );
+        cvars_state().Buffer = newBuffer;
+        cscanbuf_state().BufferSize = size;
     }
 }
 
 void WriteBufferChar( int c )
 /***************************/
 {
-    EnlargeBuffer( TokenLen + 1 );
-    Buffer[TokenLen++] = (char)c;
+    EnlargeBuffer( cvars_state().TokenLen + 1 );
+    cvars_state().Buffer[cvars_state().TokenLen++] = (char)c;
 }
 
 int WriteBufferCharNextChar( int c )
 /**********************************/
 {
-    EnlargeBuffer( TokenLen + 1 );
-    Buffer[TokenLen++] = (char)c;
-    return( NextChar() );
+    EnlargeBuffer( cvars_state().TokenLen + 1 );
+    cvars_state().Buffer[cvars_state().TokenLen++] = (char)c;
+    return( cvars_state().NextChar() );
 }
 
 void WriteBufferNullChar( void )
 /******************************/
 {
-    EnlargeBuffer( TokenLen + 1 );
-    Buffer[TokenLen] = '\0';
+    EnlargeBuffer( cvars_state().TokenLen + 1 );
+    cvars_state().Buffer[cvars_state().TokenLen] = '\0';
 }
 
 void WriteBufferString( const char *s )
@@ -60,11 +70,11 @@ void WriteBufferString( const char *s )
 {
     char    c;
 
-    EnlargeBuffer( TokenLen + strlen( s ) + 1 );
+    EnlargeBuffer( cvars_state().TokenLen + strlen( s ) + 1 );
     while( (c = *s++) != '\0' ) {
-        Buffer[TokenLen++] = c;
+        cvars_state().Buffer[cvars_state().TokenLen++] = c;
     }
-    Buffer[TokenLen] = '\0';
+    cvars_state().Buffer[cvars_state().TokenLen] = '\0';
 }
 
 void WriteBufferEscStr( const char **src, bool_ quote )
@@ -75,29 +85,29 @@ void WriteBufferEscStr( const char **src, bool_ quote )
 
     p = *src;
     while( (c = *p++) != '\0' ) {
-        EnlargeBuffer( TokenLen + 1 );
+        EnlargeBuffer( cvars_state().TokenLen + 1 );
         if( c == '\\' || quote && c == '"' ) {
-            Buffer[TokenLen++] = '\\';
-            EnlargeBuffer( TokenLen + 1 );
+            cvars_state().Buffer[cvars_state().TokenLen++] = '\\';
+            EnlargeBuffer( cvars_state().TokenLen + 1 );
         }
-        Buffer[TokenLen++] = c;
+        cvars_state().Buffer[cvars_state().TokenLen++] = c;
     }
     *src = p;
-    EnlargeBuffer( TokenLen + 1 );
-    Buffer[TokenLen] = '\0';
+    EnlargeBuffer( cvars_state().TokenLen + 1 );
+    cvars_state().Buffer[cvars_state().TokenLen] = '\0';
 }
 
 void InitBuffer( size_t size )
 /****************************/
 {
-    Buffer = static_cast<char *>(CMemAlloc( size ));
-    BufferSize = size;
+    cvars_state().Buffer = static_cast<char *>(CMemAlloc( size ));
+    cscanbuf_state().BufferSize = size;
 }
 
 void FiniBuffer( void )
 /*********************/
 {
-    CMemFree( Buffer );
-    Buffer = NULL;
-    BufferSize = 0;
+    CMemFree( cvars_state().Buffer );
+    cvars_state().Buffer = NULL;
+    cscanbuf_state().BufferSize = 0;
 }

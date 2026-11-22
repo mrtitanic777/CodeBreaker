@@ -199,8 +199,18 @@ _OE(                         PRESERVE, V_NO,           RG_,          G_WORDR1,  
 };
 #endif
 
-static  name    *ST0;
-static  name    *ST1;
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+struct I87expState {
+    name *ST0;
+    name *ST1;
+};
+
+}  // namespace
+
+static inline I87expState& i87exp_state() { return cbrun_part<I87expState>(); }
+
 
 static const opcode_entry *GenTab( instruction *ins, const opcode_entry *array )
 /******************************************************************************/
@@ -224,7 +234,7 @@ bool_    FPStackReg( name *reg_name )
     reg_num = FPRegNum( reg_name );
     if( reg_num == -1 )
         return( false );
-    if( reg_num < Max87Stk )
+    if( reg_num < i87data_state().Max87Stk )
         return( true );
     return( false );
 }
@@ -238,16 +248,16 @@ instruction *PrefFLDOp( instruction *ins, operand_type op, name *opnd )
     switch( op ) {
     case OP_STK0:
     case OP_STKI:
-        new_ins = MakeUnary( OP_MOV, opnd, ST0, FD );
+        new_ins = MakeUnary( OP_MOV, opnd, i87exp_state().ST0, FD );
         new_ins->u.gen_table = RFLD;
         break;
     case OP_MEM:
-        new_ins = MakeUnary( OP_MOV, opnd, ST0, FD );
+        new_ins = MakeUnary( OP_MOV, opnd, i87exp_state().ST0, FD );
         new_ins->u.gen_table = MFLD;
         MoveSegOp( ins, new_ins, 0 );
         break;
     case OP_CONS:
-        new_ins = MakeUnary( OP_MOV, opnd, ST0, FD );
+        new_ins = MakeUnary( OP_MOV, opnd, i87exp_state().ST0, FD );
         if( CFTest( opnd->c.u.cfval ) ) {
             new_ins->u.gen_table = FLD1;
         } else {
@@ -271,11 +281,11 @@ static  void    PrefixFLDOp( instruction *ins, operand_type op, opcnt i )
     instruction *new_ins;
 
     opnd = ins->operands[i];
-    ins->operands[i] = ST0;
+    ins->operands[i] = i87exp_state().ST0;
     new_ins = PrefFLDOp( ins, op, opnd );
     new_ins->stk_exit = new_ins->stk_entry + 1;
     ins->stk_entry++;
-    ins->operands[i] = ST0;
+    ins->operands[i] = i87exp_state().ST0;
 }
 
 
@@ -291,7 +301,7 @@ instruction *SuffFSTPRes( instruction *ins, name *opnd, result_type res )
 {
     instruction *new_ins;
 
-    new_ins = MakeUnary( OP_MOV, ST0, opnd, FD );
+    new_ins = MakeUnary( OP_MOV, i87exp_state().ST0, opnd, FD );
     if( res == RES_STKI ) {
         new_ins->u.gen_table = RFST;
     } else if( res == RES_MEM_THROWAWAY ) {
@@ -317,7 +327,7 @@ static  instruction     *SuffixFSTPRes( instruction *ins )
     name        *opnd;
 
     opnd = ins->result;
-    ins->result = ST0;
+    ins->result = i87exp_state().ST0;
     new_ins = SuffFSTPRes( ins, opnd, RES_MEM );
     new_ins->stk_entry = ins->stk_exit + 1;
     ins->stk_exit++;
@@ -329,7 +339,7 @@ instruction     *SuffFXCH( instruction *ins, int i )
 {
     instruction *new_ins;
 
-    new_ins = MakeUnary( OP_MOV, ST0, ST(i), FD );
+    new_ins = MakeUnary( OP_MOV, i87exp_state().ST0, ST(i), FD );
     new_ins->u.gen_table = FXCH;
     SuffixIns( ins, new_ins );
     new_ins->stk_exit = new_ins->stk_entry;
@@ -343,7 +353,7 @@ instruction     *PrefFXCH( instruction *ins, int i )
 {
     instruction *new_ins;
 
-    new_ins = MakeUnary( OP_MOV, ST0, ST(i), FD );
+    new_ins = MakeUnary( OP_MOV, i87exp_state().ST0, ST(i), FD );
     new_ins->u.gen_table = FXCH;
     PrefixIns( ins, new_ins );
     new_ins->stk_exit = new_ins->stk_entry;
@@ -363,7 +373,7 @@ static  void    PrefixChop( instruction *ins )
         return;
     if( _IsFloating( ins->result->n.type_class ) )
         return;
-    new_ins = MakeUnary( OP_MOV, ST0, ST0, FD );
+    new_ins = MakeUnary( OP_MOV, i87exp_state().ST0, i87exp_state().ST0, FD );
     new_ins->u.gen_table = FCHOP;
     PrefixIns( ins, new_ins );
     new_ins->stk_exit = ins->stk_entry;
@@ -398,8 +408,8 @@ static instruction  *ExpUnary( instruction *ins, operand_type src,
     if( res != RES_STK0 ) {
         ins = SuffixFSTPRes( ins );
     }
-    unary->operands[0] = ST0;
-    unary->result = ST0;
+    unary->operands[0] = i87exp_state().ST0;
+    unary->result = i87exp_state().ST0;
     return( ins );
 }
 
@@ -487,7 +497,7 @@ static instruction  *ExpMove( instruction *ins, operand_type src,
         } else {
             ins->u.gen_table = FLDZ;
         }
-        ins->result = ST0;
+        ins->result = i87exp_state().ST0;
         break;
     case _Move( OP_CONS, RES_MEM ):
         PrefixFLDOp( ins, src, 0 );
@@ -500,7 +510,6 @@ static instruction  *ExpMove( instruction *ins, operand_type src,
     }
     return( ins );
 }
-
 
 
 static  instruction     *ExpPush( instruction *ins, operand_type op )
@@ -517,7 +526,7 @@ static  instruction     *ExpPush( instruction *ins, operand_type op )
     name                *index;
 
     sp = AllocRegName( HW_xSP );
-    size = TypeClassSize[ins->type_class];
+    size = data_state().TypeClassSize[ins->type_class];
     new_ins = MakeBinary( OP_SUB, sp, AllocIntConst( size ), sp, WD );
     new_ins->u.gen_table = RC;
     PrefixIns( ins, new_ins );
@@ -583,8 +592,6 @@ static  instruction     *ExpPush( instruction *ins, operand_type op )
 #endif
     return( ins );
 }
-
-
 
 
 #define _OPS( op1, op2 ) ( op1 + op2*OP_NONE )
@@ -676,7 +683,7 @@ static void ExpBinary( instruction *ins, operand_type op1, operand_type op2 )
     case _OPS( OP_CONS, OP_STK0 ):
         PrefixFLDOp( ins, op1, 0 );
         ins->u.gen_table = GenTab( ins, RRFBINP );
-        ins->operands[0] = ST1;
+        ins->operands[0] = i87exp_state().ST1;
         break;
     case _OPS( OP_STK0, OP_STK1 ):
         ins->u.gen_table = GenTab( ins, RRFBINP );
@@ -695,8 +702,8 @@ static void ExpBinary( instruction *ins, operand_type op1, operand_type op2 )
     case _OPS( OP_STK0, OP_CONS ):
         PrefixFLDOp( ins, op2, 1 );
         ins->u.gen_table = GenTab( ins, RNFBINP );
-        ins->operands[0] = ST1;
-        ins->operands[1] = ST0;
+        ins->operands[0] = i87exp_state().ST1;
+        ins->operands[1] = i87exp_state().ST0;
         break;
     case _OPS( OP_MEM , OP_CONS ):
         PrefixFLDOp( ins, op2, 1 );
@@ -707,7 +714,6 @@ static void ExpBinary( instruction *ins, operand_type op1, operand_type op2 )
         break;
     }
 }
-
 
 
 static  void    RevOtherCond( block *blk, instruction *ins )
@@ -769,10 +775,10 @@ static void ExpCompare( instruction *ins, operand_type op1, operand_type op2 )
 */
 {
     if( !_CPULevel( CPU_386 ) ) {
-        if( FPStatWord == NULL && ( !_CPULevel(CPU_286) || _IsEmulation() ) ) {
-            FPStatWord = AllocTemp( U2 );
-            FPStatWord->v.usage |= VAR_VOLATILE | USE_ADDRESS; /* so that it really gets allocd */
-            AllocALocal( FPStatWord );
+        if( i87data_state().FPStatWord == NULL && ( !_CPULevel(CPU_286) || _IsEmulation() ) ) {
+            i87data_state().FPStatWord = AllocTemp( U2 );
+            i87data_state().FPStatWord->v.usage |= VAR_VOLATILE | USE_ADDRESS; /* so that it really gets allocd */
+            AllocALocal( i87data_state().FPStatWord );
         }
     }
     switch( _OPS( op1, op2 ) ) {
@@ -828,7 +834,6 @@ static void ExpCompare( instruction *ins, operand_type op1, operand_type op2 )
         break;
     }
 }
-
 
 
 static instruction *ExpandFPIns( instruction *ins, operand_type op1,
@@ -900,7 +905,7 @@ static instruction *ExpandFPIns( instruction *ins, operand_type op1,
             if( _FPULevel( FPU_387 )
               && _IsModel( CGSW_GEN_I_MATH_INLINE )
               && _IsntTargetModel( CGSW_X86_P5_DIVIDE_CHECK )
-              && OptForSize <= 50 ) {
+              && data_state().OptForSize <= 50 ) {
                 ins = ExpUnary( ins, op1, res, FMATH );
             } else {
                 ins = ExpUnary( ins, op1, res, IFUNC );
@@ -918,7 +923,7 @@ static instruction *ExpandFPIns( instruction *ins, operand_type op1,
         case OP_ROUND:
             if( ins->result->n.class_ == N_REGISTER
               && HW_CEqual( ins->result->r.reg, HW_EMPTY ) ) {
-                ins->result = ST0;
+                ins->result = i87exp_state().ST0;
                 ins->u.gen_table = RFST;
             } else {
                 ins = ExpMove( ins, op1, res );
@@ -976,7 +981,7 @@ static result_type CheckFPRes( instruction *ins )
         if( reg_num != -1 ) {
             /* ??? res_type should be setup to RES_STK0/RES_STKI ??? */
             res_type = RES_STK0;
-            ins->result = ST0;
+            ins->result = i87exp_state().ST0;
         } else {
             res_type = RES_MEM;
         }
@@ -1021,7 +1026,7 @@ static  void    Expand( void )
     block       *blk;
     instruction *ins;
 
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( DoesSomething( ins ) ) {
                 if( _OpIsCall( ins->head.opcode ) ) {
@@ -1173,7 +1178,7 @@ instruction     *MakeWait( void )
 {
     instruction *new_ins;
 
-    new_ins = MakeUnary( OP_MOV, ST0, ST0, FD );
+    new_ins = MakeUnary( OP_MOV, i87exp_state().ST0, i87exp_state().ST0, FD );
     new_ins->u.gen_table = FWAIT;
     return( new_ins );
 }
@@ -1183,12 +1188,12 @@ void    FPInit( void )
     Initialize.
 */
 {
-    Max87Stk = (int)(pointer_uint)FEAuxInfo( NULL, FEINF_STACK_SIZE_8087 );
-    if( Max87Stk > 8 )
-        Max87Stk = 8;
-    if( Max87Stk < 4 )
-        Max87Stk = 4;
-    Used87 = false;
+    i87data_state().Max87Stk = (int)(pointer_uint)FEAuxInfo( NULL, FEINF_STACK_SIZE_8087 );
+    if( i87data_state().Max87Stk > 8 )
+        i87data_state().Max87Stk = 8;
+    if( i87data_state().Max87Stk < 4 )
+        i87data_state().Max87Stk = 4;
+    i87data_state().Used87 = false;
     FPInitStkReq();
 }
 
@@ -1203,8 +1208,8 @@ void    FPExpand( void )
 */
 {
     if( _FPULevel( FPU_87 ) ) {
-        ST0 = ST( 0 );
-        ST1 = ST( 1 );
+        i87exp_state().ST0 = ST( 0 );
+        i87exp_state().ST1 = ST( 1 );
         Expand();
     }
 }

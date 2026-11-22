@@ -75,13 +75,13 @@ type_class_def  AddCallBlock( cg_sym_handle sym, const type_def *tipe )
 {
     type_class_def      type_class;
 
-    if( BlipsOn ) {
+    if( blips_state().BlipsOn ) {
         PGBlip( FEName( sym ) );
     }
     NewProc( FELexLevel( sym ) );
     EnLink( AskForSymLabel( sym, CG_FE ) );
-    _MarkBlkAttrSet( CurrBlock, BLK_BIG_LABEL );
-    CurrProc->label = CurrBlock->label;
+    _MarkBlkAttrSet( data_state().CurrBlock, BLK_BIG_LABEL );
+    data_state().CurrProc->label = data_state().CurrBlock->label;
     type_class = InitCallState( tipe );
     AddIns( MakeNop() );
     return( type_class );
@@ -115,7 +115,7 @@ cn      BGInitCall( an node, const type_def *tipe, aux_handle aux )
 #endif
 
     if( tipe->refno == TY_DEFAULT ) {
-        tipe = TypeInteger;
+        tipe = data_state().TypeInteger;
     }
     call = static_cast<cn>(CGAlloc( sizeof( call_node ) ));
     call->state = static_cast<struct call_state *>(CGAlloc( sizeof( call_state ) ));
@@ -288,7 +288,7 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
     const type_def      *ptipe;
     bool_                no_temp;
 
-    ptipe = QParmType( AskForLblSym( static_cast<label_handle>(CurrProc->label) ), sym, tipe );
+    ptipe = QParmType( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ), sym, tipe );
     type_class = TypeClass( ptipe );
     if( sym == NULL ) {
         temp = AllocTemp( TypeClass( tipe ) );
@@ -306,7 +306,7 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
      * them specially to stop the optimizer from eliminating the writes (don't
      * create temps normally used with simple types).
      */
-    if( _RoutineIsInterrupt( CurrProc->state.attr ) && HW_CEqual( reg, HW_EMPTY ) ) {
+    if( _RoutineIsInterrupt( data_state().CurrProc->state.attr ) && HW_CEqual( reg, HW_EMPTY ) ) {
         no_temp = true;
         temp->v.usage |= USE_ADDRESS;
     }
@@ -319,10 +319,10 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
     if( HW_CEqual( reg, HW_EMPTY ) ) {
         if( no_temp ) {
             parm_name = temp;
-            parm_name->t.location = ParmMem( tipe->length, ParmAlignment( ptipe ), &CurrProc->state );
+            parm_name->t.location = ParmMem( tipe->length, ParmAlignment( ptipe ), &data_state().CurrProc->state );
         } else {
             parm_name = AllocTemp( type_class );
-            parm_name->t.location = ParmMem( ptipe->length, ParmAlignment( ptipe ), &CurrProc->state );
+            parm_name->t.location = ParmMem( ptipe->length, ParmAlignment( ptipe ), &data_state().CurrProc->state );
         }
         parm_name->t.temp_flags |= STACK_PARM;
 //        parm_name->n.size = tipe->length;
@@ -331,11 +331,11 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
     } else {
         parm_name = AllocRegName( ActualParmReg( reg ) );
 #if _TARGET & _TARG_80386
-        if( CurrProc->state.attr & ROUTINE_STACK_RESERVE ) {
+        if( data_state().CurrProc->state.attr & ROUTINE_STACK_RESERVE ) {
             /*
              * Just make sure we are taking up some space
              */
-            ParmMem( ptipe->length, ParmAlignment( ptipe ), &CurrProc->state );
+            ParmMem( ptipe->length, ParmAlignment( ptipe ), &data_state().CurrProc->state );
         }
 #endif
     }
@@ -368,7 +368,7 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
 #endif
         }
     }
-    MaxStack = 0;
+    data_state().MaxStack = 0;
     return( temp );
 }
 
@@ -379,8 +379,8 @@ void    BGParmDecl( cg_sym_handle sym, const type_def *tipe )
     hw_reg_set          reg;
     const type_def      *t;
 
-    t = QParmType( AskForLblSym( static_cast<label_handle>(CurrProc->label) ), sym, tipe );
-    reg = ParmReg( TypeClass( t ), t->length, ParmAlignment( tipe ), &CurrProc->state );
+    t = QParmType( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ), sym, tipe );
+    reg = ParmReg( TypeClass( t ), t->length, ParmAlignment( tipe ), &data_state().CurrProc->state );
     DoParmDecl( sym, tipe, reg );
 }
 
@@ -537,7 +537,7 @@ void    ReserveStack( call_state *state, instruction *prev, type_length len )
     name        *reg;
     instruction *ins;
 
-    CurrProc->targ.never_sp_frame = true;
+    data_state().CurrProc->targ.never_sp_frame = true;
     reg = AllocRegName( HW_xAX );
     switch( len ) {
     case 8:
@@ -552,8 +552,8 @@ void    ReserveStack( call_state *state, instruction *prev, type_length len )
         _Zoiks( ZOIKS_133 );
     }
     state->parm.offset += len;
-    if( state->parm.offset > MaxStack ) {
-        MaxStack = state->parm.offset;
+    if( state->parm.offset > data_state().MaxStack ) {
+        data_state().MaxStack = state->parm.offset;
     }
 }
 #endif
@@ -637,9 +637,9 @@ void    BGZapBase( name *base, const type_def *tipe )
     if( (tipe->attr & TYPE_POINTER) == 0 )
         return;
     ins = MakeNop();
-    if( DummyIndex == NULL )
-        DummyIndex = AllocTemp( WD );
-    ins->result = ScaleIndex( DummyIndex, base, 0, XX, tipe->length, SCALE_NONE, X_FAKE_BASE );
+    if( data_state().DummyIndex == NULL )
+        data_state().DummyIndex = AllocTemp( WD );
+    ins->result = ScaleIndex( data_state().DummyIndex, base, 0, XX, tipe->length, SCALE_NONE, X_FAKE_BASE );
     ins->flags.u.nop_flags |= NOP_ZAP_INFO;
     AddIns( ins );
 }
@@ -663,8 +663,8 @@ void    BGReturn( an retval, const type_def *tipe )
     last_ins = NULL;
     if( retval != NULL ) {
         tipe_type_class = TypeClass( tipe );
-        type_class = ReturnTypeClass( tipe, CurrProc->state.attr );
-        UpdateReturn( &CurrProc->state, tipe, type_class, static_cast<aux_handle>(FEAuxInfo( AskForLblSym(static_cast<label_handle>(CurrProc->label)), FEINF_AUX_LOOKUP )) );
+        type_class = ReturnTypeClass( tipe, data_state().CurrProc->state.attr );
+        UpdateReturn( &data_state().CurrProc->state, tipe, type_class, static_cast<aux_handle>(FEAuxInfo( AskForLblSym(static_cast<label_handle>(data_state().CurrProc->label)), FEINF_AUX_LOOKUP )) );
         if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
             DbgRetLoc();
         }
@@ -672,10 +672,10 @@ void    BGReturn( an retval, const type_def *tipe )
             name = StReturn( retval, tipe, &last_ins );
             AddIns( MakeMove( GenIns( retval ), name, tipe_type_class ) );
         } else {
-            if( HW_CEqual( CurrProc->state.return_reg, HW_EMPTY ) ) {
+            if( HW_CEqual( data_state().CurrProc->state.return_reg, HW_EMPTY ) ) {
                 name = StReturn( retval, tipe, &last_ins );
             } else {
-                name = AllocRegName( CurrProc->state.return_reg );
+                name = AllocRegName( data_state().CurrProc->state.return_reg );
             }
 #if _TARGET & _TARG_AXP
             if( tipe_type_class == U4 && type_class == I8 ) {
@@ -700,18 +700,18 @@ void    BGReturn( an retval, const type_def *tipe )
         }
         BGDone( retval );
     } else {
-        ins->zap = &AllocRegName( CurrProc->state.return_reg )->r;
+        ins->zap = &AllocRegName( data_state().CurrProc->state.return_reg )->r;
         ins->flags.u.nop_flags |= NOP_ZAP_INFO;
     }
     AddIns( ins );
     if( last_ins != NULL )
         AddIns( last_ins );
     GenBlock( BLK_RETURN, 0 );
-    if( AddrList != NULL ) {
+    if( data_state().AddrList != NULL ) {
         _Zoiks( ZOIKS_003 );
     }
     Generate( true );
-    TargetModel = SaveTargetModel;
+    model_state().TargetModel = model_state().SaveTargetModel;
 }
 
 #if _TARGET_RISC

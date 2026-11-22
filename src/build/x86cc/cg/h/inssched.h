@@ -54,7 +54,16 @@ typedef struct dep_list_entry {
 } dep_list_entry;
 
 
-extern data_dag         *DataDag;   /* global for dump routines */
+#ifndef CB_STATE_INSSCHED_H
+#define CB_STATE_INSSCHED_H
+
+/* the variables of inssched.h, one set for each run of the compiler (run/cbrun.hpp) */
+struct InsschedState {
+    data_dag *DataDag;   /* global for dump routines */
+};
+inline InsschedState& inssched_state() { return cbrun_part<InsschedState>(); }
+
+#endif
 
 extern const FU_entry   *FUEntry( instruction *ins );
 extern void             Schedule( void );

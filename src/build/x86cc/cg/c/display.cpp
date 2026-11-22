@@ -93,7 +93,7 @@ void    BigLabel( void )
     name        *bp;
     name        *sp;
 
-    if( CurrProc->lex_level > 0 ) {
+    if( data_state().CurrProc->lex_level > 0 ) {
         bp = AllocRegName( DisplayReg() );
         sp = AllocRegName( StackReg() );
         ins = MakeUnary( OP_LA,
@@ -123,8 +123,8 @@ abspatch_handle *NextFramePatch( void )
     frame_patch *temp;
 
     temp = static_cast<frame_patch *>(CGAlloc( sizeof( frame_patch ) ));
-    temp->next = static_cast<struct frame_patch *>(CurrProc->frame_index);
-    CurrProc->frame_index = temp;
+    temp->next = static_cast<struct frame_patch *>(data_state().CurrProc->frame_index);
+    data_state().CurrProc->frame_index = temp;
     return( &temp->patch );
 }
 
@@ -135,14 +135,13 @@ void    PatchBigLabels( offset lc )
     frame_patch *frame;
     frame_patch *next;
 
-    for( frame = static_cast<frame_patch *>(CurrProc->frame_index); frame != NULL; frame = next ) {
+    for( frame = static_cast<frame_patch *>(data_state().CurrProc->frame_index); frame != NULL; frame = next ) {
         next = frame->next;
         AbsPatch( frame->patch, lc );
         CGFree( frame );
     }
-    CurrProc->frame_index = NULL;
+    data_state().CurrProc->frame_index = NULL;
 }
-
 
 
 an      PassProcParm( an rtn )
@@ -152,15 +151,15 @@ an      PassProcParm( an rtn )
     name        *reg;
 
     op = AllocTemp( XX );
-    op->n.size = TypePtr->length + SizeDisplayReg();
+    op->n.size = data_state().TypePtr->length + SizeDisplayReg();
     reg = AllocRegName( DisplayReg() );
     AddIns( MakeMove( GenIns( rtn ),
-            TempOffset( op, 0, ClassPointer ),
-            ClassPointer ) );
-    AddIns( MakeMove( reg, TempOffset( op, TypePtr->length,
+            TempOffset( op, 0, data_state().ClassPointer ),
+            data_state().ClassPointer ) );
+    AddIns( MakeMove( reg, TempOffset( op, data_state().TypePtr->length,
                                        reg->n.type_class ),
                       reg->n.type_class ) );
-    return( AddrName( op, TypeProcParm ) );
+    return( AddrName( op, data_state().TypeProcParm ) );
 }
 
 
@@ -180,7 +179,7 @@ void    SetDisplay( name *temp )
     name        *reg;
 
     reg = AllocRegName( DisplayReg() );
-    AddIns( MakeMove( TempOffset( temp, TypePtr->length,
+    AddIns( MakeMove( TempOffset( temp, data_state().TypePtr->length,
                                   reg->n.type_class ),
                       reg, reg->n.type_class ) );
 }
