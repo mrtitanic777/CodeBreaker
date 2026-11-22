@@ -97,12 +97,19 @@ std::optional<int> memory_allows(const Limits& limits, int mb_each) {
 
 struct Slots::Impl {
     std::vector<Slot> held;
+    Limits limits;
+    int mb_each = 0;
+    int cap = 0;
+    int next = 0;   // the first slot file not yet tried by grow()
 };
 
 Slots::Slots(const Limits& limits, int want_slots, int mb_each, std::string_view label,
              std::chrono::milliseconds limit, std::chrono::milliseconds poll)
     : impl_(std::make_unique<Impl>()) {
     const int cap = core::workers(limits.workers);
+    impl_->limits = limits;
+    impl_->mb_each = mb_each;
+    impl_->cap = cap;
     int want = std::min(std::max(1, want_slots), cap);
     if (const auto by_memory = memory_allows(limits, mb_each)) want = std::min(want, std::max(1, *by_memory));
     if (want > 1) {   // (and no more than the processors free)
@@ -128,5 +135,21 @@ Slots::~Slots() = default;
 int Slots::held() const { return static_cast<int>(impl_->held.size()); }
 
 int Slots::count() const { return std::max(1, held()); }
+
+bool Slots::grow(double idle_needed) {
+    if (held() >= impl_->cap) return false;
+    if (const auto by_memory = memory_allows(impl_->limits, impl_->mb_each); by_memory && *by_memory < 1) return false;
+    if (const auto idle = idle_cores(); idle && *idle < idle_needed) return false;
+    for (int tried = 0; tried < impl_->cap; ++tried) {   // (a slot this object holds is locked, so it is passed over like another's)
+        const int i = (impl_->next + tried) % impl_->cap;
+        Slot slot;
+        if (slot.take(impl_->limits.slot_dir / std::format("slot-{}", i))) {
+            impl_->held.push_back(std::move(slot));
+            impl_->next = (i + 1) % impl_->cap;
+            return true;
+        }
+    }
+    return false;
+}
 
 }  // namespace cb::base::budget

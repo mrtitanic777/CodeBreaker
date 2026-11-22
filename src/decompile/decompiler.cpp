@@ -4,9 +4,13 @@
 // The native program (decompile/engine/decompiler.exe) is given a description of a module (decompile/describe) and writes each
 // function as a block of text: a line `/*@@ <name> <hex address> */`, the notes on lines of their own, then the C. See decompiler.hpp.
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
-#include <future>
+#include <condition_variable>
+#include <exception>
+#include <mutex>
+#include <thread>
 
 #include <nlohmann/json.hpp>
 
@@ -532,18 +536,55 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
     for (std::size_t i = 0; i < wanted.size(); i += kChunk)
         chunks.emplace_back(wanted.begin() + static_cast<std::ptrdiff_t>(i),
                             wanted.begin() + static_cast<std::ptrdiff_t>(std::min(wanted.size(), i + kChunk)));
-    const base::budget::Slots slots(context_.limits, static_cast<int>(chunks.size()), kProcessMegabytes, "decompile");
-    parallel::ThreadPool pool(static_cast<std::size_t>(slots.count()));
-    std::vector<std::future<NativeOutput>> futures;
-    for (const std::vector<Va>& chunk : chunks)
-        futures.push_back(pool.submit([this, &description, &env, &chunk] { return resuming(description, true, env, chunk); }));
-    std::vector<NativeOutput> parts;
-    std::size_t finished = 0;
-    for (std::future<NativeOutput>& f : futures) {
-        parts.push_back(f.get());
-        finished += chunks[parts.size() - 1].size();
-        if (progress_) progress_(finished, wanted.size());
+    // A job started on a busy machine gets few slots: while chunks are waiting it takes another whenever a processor has come free.
+    base::budget::Slots slots(context_.limits, static_cast<int>(chunks.size()), kProcessMegabytes, "decompile");
+    std::vector<NativeOutput> parts(chunks.size());
+    std::vector<std::exception_ptr> failed(chunks.size());
+    std::atomic<std::size_t> next{0};
+    std::mutex lock;
+    std::condition_variable changed;
+    std::size_t chunks_done = 0, functions_done = 0;
+    const auto work = [&] {
+        for (std::size_t i = next.fetch_add(1); i < chunks.size(); i = next.fetch_add(1)) {
+            try {
+                parts[i] = resuming(description, true, env, chunks[i]);
+            } catch (...) {   // (handed to the caller below, once every process has ended)
+                failed[i] = std::current_exception();
+            }
+            {
+                const std::lock_guard<std::mutex> hold(lock);
+                ++chunks_done;
+                functions_done += chunks[i].size();
+            }
+            changed.notify_all();
+        }
+    };
+    struct Workers {
+        std::vector<std::thread> threads;
+        ~Workers() {
+            for (std::thread& t : threads) t.join();
+        }
+    };
+    {
+        Workers workers;
+        for (int i = 0; i < std::min(slots.count(), static_cast<int>(chunks.size())); ++i) workers.threads.emplace_back(work);
+        std::size_t told = 0;
+        std::unique_lock<std::mutex> hold(lock);
+        while (chunks_done < chunks.size()) {
+            changed.wait_for(hold, std::chrono::seconds(2));
+            const std::size_t functions = functions_done;
+            hold.unlock();
+            if (progress_ && functions != told) progress_(told = functions, wanted.size());
+            if (next.load() < chunks.size() && (static_cast<std::size_t>(slots.count()) > workers.threads.size() || slots.grow()))
+                workers.threads.emplace_back(work);
+            hold.lock();
+        }
+        const std::size_t functions = functions_done;
+        hold.unlock();
+        if (progress_ && functions != told) progress_(functions, wanted.size());
     }
+    for (const std::exception_ptr& e : failed)
+        if (e) std::rethrow_exception(e);
     std::vector<std::pair<Va, std::string>> blocks;
     bool whole = true;
     std::vector<std::string> errs;
