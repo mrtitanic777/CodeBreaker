@@ -146,6 +146,16 @@ Json json_of(const Facts& f) {
     if (f.packer && *f.packer == "PKLITE") {   // (PKLITE's facts name the order before the memory)
         j["order"] = order();
         j["min_alloc"] = f.min_alloc ? Json(*f.min_alloc) : Json(nullptr);
+        if (f.pklite_entry) j["entry"] = *f.pklite_entry;
+        if (!f.pklite_tail.empty()) j["tail"] = std::vector<std::uint32_t>(f.pklite_tail.begin(), f.pklite_tail.end());
+        if (!f.pklite_choices.empty()) {
+            Json chosen = Json::array();   // [where, length, distance], a literal with length 0 and the byte as its distance
+            for (const pkl::Choice& c : f.pklite_choices) {
+                const bool copy = c.token.kind == pkl::Token::Kind::Copy;
+                chosen.push_back(Json::array({c.at, copy ? c.token.length : 0, copy ? c.token.distance : c.token.byte}));
+            }
+            j["choices"] = std::move(chosen);
+        }
         return j;
     }
     j["min_alloc"] = f.min_alloc ? Json(*f.min_alloc) : Json(nullptr);
@@ -163,6 +173,17 @@ Facts facts_from(const Json& j) {
     if (j.contains("min_alloc") && j["min_alloc"].is_number_integer()) f.min_alloc = j["min_alloc"].get<std::uint32_t>();
     if (j.contains("full_last") && j["full_last"].is_boolean()) f.full_last = j["full_last"].get<bool>();
     if (j.contains("words") && j["words"].is_number_integer()) f.words = j["words"].get<unsigned>();
+    if (j.contains("entry") && j["entry"].is_array() && j["entry"].size() == 4) f.pklite_entry = j["entry"].get<std::array<std::uint32_t, 4>>();
+    if (j.contains("tail") && j["tail"].is_array())
+        for (const Json& b : j["tail"]) f.pklite_tail.push_back(b.get<std::uint8_t>());
+    if (j.contains("choices") && j["choices"].is_array()) {
+        for (const Json& c : j["choices"]) {
+            const auto at = c[0].get<std::uint32_t>();
+            const auto length = c[1].get<std::uint16_t>();
+            const auto value = c[2].get<std::uint16_t>();
+            f.pklite_choices.push_back({at, length != 0 ? pkl::Token::copy(length, value) : pkl::Token::literal(static_cast<std::uint8_t>(value))});
+        }
+    }
     if (j.contains("order") && j["order"].is_array()) {
         for (const Json& item : j["order"]) {
             if (item.is_number_integer()) f.offsets.push_back(item.get<std::uint32_t>());
@@ -242,7 +263,17 @@ Bytes compose_pklite(const std::filesystem::path& outdir, const std::string& ste
         relocs = theirs;
         result.remarks.emplace_back("the relocation table is written in the original's frames and order");
     }
-    const pkl::Packed packed = pkl::pack(l.module, relocs, {l.h.cs, l.h.ip, l.h.ss, l.h.sp}, head, memory);
+    pkl::PackDetails details;
+    details.choices = facts.pklite_choices;
+    details.keep_entry = facts.pklite_entry.has_value();
+    details.tail = facts.pklite_tail;
+    pkl::Packed packed = pkl::pack(l.module, relocs, {l.h.cs, l.h.ip, l.h.ss, l.h.sp}, head, memory, details);
+    if (facts.pklite_entry) {
+        packed.header.ss = static_cast<std::uint16_t>((*facts.pklite_entry)[0]);
+        packed.header.sp = static_cast<std::uint16_t>((*facts.pklite_entry)[1]);
+        packed.header.cs = static_cast<std::uint16_t>((*facts.pklite_entry)[2]);
+        packed.header.ip = static_cast<std::uint16_t>((*facts.pklite_entry)[3]);
+    }
     memory = packed.header.min_alloc;
     if (facts.min_alloc && *facts.min_alloc != memory) {
         // (PKLITE's own figure for the memory it asks for, by a rule not yet found: the original's)
@@ -406,6 +437,9 @@ Facts make_pklite_facts(Context& cx, const Subject& s, const std::filesystem::pa
         for (const std::uint16_t off : run.offsets) facts.pairs.emplace_back(run.segment, off);
     }
     facts.min_alloc = oh.min_alloc;
+    facts.pklite_choices = pkl::choices_of(stored);
+    facts.pklite_tail = stored.tail;
+    if (!stored.stub.plain()) facts.pklite_entry = std::array<std::uint32_t, 4>{oh.ss, oh.sp, oh.cs, oh.ip};
     return facts;
 }
 

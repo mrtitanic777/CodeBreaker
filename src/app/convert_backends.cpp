@@ -94,6 +94,24 @@ void cv_keep(const stdfs::path& source, const stdfs::path& work) {
     fs::write_file(work / source.filename(), ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
 }
 
+// What a DOS program's source needs to build alone (`build --dos`): its .build.json, header, link script, overlay and its unpacker's folder. Not what a build makes again.
+void cv_keep_dos_side_files(const stdfs::path& scratch, const stdfs::path& work) {
+    std::error_code ec;
+    for (stdfs::recursive_directory_iterator it(scratch, ec), end; !ec && it != end; it.increment(ec)) {
+        const stdfs::path relative = it->path().lexically_relative(scratch);
+        if (it->is_directory(ec)) {
+            if (relative == "file") it.disable_recursion_pending();
+            continue;
+        }
+        const std::string extension = cv_lower(fs::to_text(relative.extension()));
+        if (extension == ".obj" || extension == ".map" || extension == ".err" || cv_lower(fs::to_text(relative.stem())) == "probe") continue;
+        if (extension == ".asm" && relative.parent_path().empty()) continue;   // (the sources are kept by cv_keep)
+        if ((extension == ".exe" || extension == ".com" || extension == ".bin") && stdfs::exists(stdfs::path(it->path()).replace_extension(".asm"), ec)) continue;
+        stdfs::create_directories((work / relative).parent_path());
+        stdfs::copy_file(it->path(), work / relative, stdfs::copy_options::overwrite_existing);
+    }
+}
+
 // ---- Windows and DOS programs ------------------------------------------------------------------------------------------------
 
 enum class CvMz { Pe, Ne, Le, Dos };
@@ -154,6 +172,7 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
                 const source::dos_writer::Result done = source::dos_writer::reconstruct(input, scratch, tools.dos_options());
                 if (done.sources.empty()) throw NotConvertible("No source could be written for this DOS program.");
                 for (const stdfs::path& s : done.sources) cv_keep(s, work);
+                cv_keep_dos_side_files(scratch, work);
                 break;
             }
         }

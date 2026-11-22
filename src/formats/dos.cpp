@@ -346,6 +346,8 @@ struct Loaded {
     std::uint32_t cs = 0, ip = 0, ss = 0, sp = 0;
 };
 
+PkliteUnpacker g_pklite_unpacker = nullptr;
+
 // The load module, unpacked, relocated for `segment`.
 Loaded load_module(ByteView data, const MzHeader& h, Program& p, std::uint32_t segment, bool run_movers) {
     Loaded L;
@@ -373,6 +375,9 @@ Loaded load_module(ByteView data, const MzHeader& h, Program& p, std::uint32_t s
             p.notes.push_back(std::string("EXEPACK not undone statically (") + e.what() + ")");
         }
     }
+    if (p.packer == Packer::PkLite && g_pklite_unpacker) {
+        if (std::optional<Unpack> u = g_pklite_unpacker(L.image)) adopt(*u, Unpacked::Static);
+    }
     if (p.packer && !p.unpacked && (run_movers || *p.packer != Packer::MovesItself)) {
         try {
             Unpack u = unpack_emulated(L.image, L.relocs, L.cs, L.ip, L.ss, L.sp, *p.packer == Packer::MovesItself);
@@ -389,6 +394,8 @@ Loaded load_module(ByteView data, const MzHeader& h, Program& p, std::uint32_t s
 }
 
 }  // namespace
+
+void set_pklite_unpacker(PkliteUnpacker unpacker) { g_pklite_unpacker = unpacker; }
 
 static void read_mz(ByteView data, const MzHeader& h, Program& p, Kind what, bool run_movers) {
     Loaded L = load_module(data, h, p, kLoadSegment, run_movers);

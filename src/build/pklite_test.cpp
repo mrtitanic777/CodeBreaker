@@ -215,6 +215,13 @@ CB_TEST("build.pklite.pack_then_read_gives_the_program_back", [] {
     }
 });
 
+CB_TEST("build.pklite.relocation_table_groups", [] {
+    const std::vector<pklite::Relocated> relocs = {{.segment = 0, .offset = 0x10}, {.segment = 2 * 0xFFF, .offset = 0x1234}};
+    CB_CHECK(pklite::relocation_table(relocs, pklite::RelocationForm::Groups) == (Bytes{1, 0, 0x10, 0, 0, 0, 1, 0, 0x34, 0x12, 0xFF, 0xFF}));
+    CB_CHECK(pklite::relocation_table(relocs, pklite::RelocationForm::SwappedGroups) == (Bytes{1, 0, 0, 0x10, 0, 0, 1, 0, 0x12, 0x34, 0xFF, 0xFF}));
+    CB_CHECK(pklite::relocation_table({}, pklite::RelocationForm::Groups) == (Bytes{0xFF, 0xFF}));
+});
+
 CB_TEST("build.pklite.relocation_table_runs", [] {
     CB_CHECK(pklite::relocation_table({}) == Bytes{0});
     const std::vector<pklite::Relocated> few = {{0x0102, 0x0304}, {0x0102, 0x0506}, {7, 8}};

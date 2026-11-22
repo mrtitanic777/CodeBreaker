@@ -9,11 +9,17 @@ exit: 0
  89%  Decompiling: 64 of 67 functions
  91%  Decompiling: 67 of 67 functions
  91%  Writing the source
- 95%  Writing the source: setver.asm
- 99%  Writing the source: setver.c
+ 92%  Writing the source: setver.asm
+ 94%  Writing the source: setver.build.json
+ 96%  Writing the source: setver.c
+ 98%  Writing the source: setver.hdr
+ 99%  Writing the source: setver.lnk
 100%  Done
-2 files written to <work>/out/setver
+5 files written to <work>/out/setver
 --- files
 setver/setver.asm 156870 f44574cf430ccec1dbda054bc862732ecab30986ee8615c664367ca47fb9353f
+setver/setver.build.json 385 c9c34619ad545e276db29c99223830894f29cd56b3617d9f47db197f583b6ac7
 setver/setver.c 80947 038bea634b5fa840e8b79f5abfba057fd1a58f6bed3a5ef6e987698042eb622e
+setver/setver.hdr 2512 c8d797a016c80bab4e9e53423a6c14af69efa29b1e76fe4a032c74c8c8d7a321
+setver/setver.lnk 107 e551f9199bc13c1dbef188c7aa9976251d8cea41b4c9641dfbb56a9444508702
 --- stderr (not compared)

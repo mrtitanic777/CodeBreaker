@@ -97,6 +97,11 @@ struct Unpack {
     std::uint32_t cs = 0, ip = 0, ss = 0, sp = 0;  // relative to the load segment (cs, ss)
 };
 
+// Reads a PKLITE load module without running it (build/pklite puts itself here): its stream says exactly what the program is, where a run leaves
+// the unpacker's stack in the image and cannot get past a keyed stub. nullopt: a module it cannot read, which is then run.
+using PkliteUnpacker = std::optional<Unpack> (*)(ByteView module);
+void set_pklite_unpacker(PkliteUnpacker unpacker);
+
 std::optional<MzHeader> mz_header(ByteView data, bool stub = false);
 std::vector<Device> devices(ByteView image, std::uint64_t at = 0,
                             const std::vector<std::uint32_t>& segments = {0, 0xFFFF}, std::size_t limit = 64);

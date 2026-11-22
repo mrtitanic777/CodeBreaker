@@ -19,6 +19,7 @@
 #include "app/window.hpp"
 #include "base/config.hpp"
 #include "build/x86cc/x86cc.hpp"
+#include "build/pklite.hpp"
 #include "build/x86link/x86link.hpp"
 #include "core/fs.hpp"
 
@@ -51,6 +52,7 @@ void state_beside_input(const std::vector<std::string>& args) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    cb::build::pklite::install();    // PKLITE programs are read from their streams
     cb::build::x86link::install();   // wlink runs in this program (x86link), not as wlink.exe
     cb::build::x86cc::install();     // and wcc / wcc386 (x86cc), not as wcc.exe / wcc386.exe
     if (const int code = cb_host_main_hook(argc, argv); code >= 0) return code;   // a worker process: its share, then exit

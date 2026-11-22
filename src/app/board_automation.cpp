@@ -202,7 +202,7 @@ std::vector<std::uint32_t> batch_order(const Board& board, const Index& index, c
     for (const Stack& stack : stacks) {
         for (const std::uint32_t i : stack.todo) {
             const Card& c = board.cards[i];
-            if ((c.format == "PE" || c.format == "NE" || c.format == "LE") && (c.conv == Conv::None || c.conv == Conv::Cancelled || c.conv == Conv::Failed)) cards.push_back(i);
+            if ((c.format == "PE" || c.format == "NE" || c.format == "LE" || c.format == "MZ") && (c.conv == Conv::None || c.conv == Conv::Cancelled || c.conv == Conv::Failed)) cards.push_back(i);
         }
     }
     std::vector<std::uint32_t> inbound(board.cards.size(), 0);

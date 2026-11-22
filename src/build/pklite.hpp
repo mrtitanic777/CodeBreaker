@@ -29,6 +29,13 @@
 // renormalisation mark comes before the first token at or past each 0x8000 + k * 0xA000 bytes of output less 277 (the
 // longest copy).
 //
+// The other forms on the Windows 95 disc are read off their own decompressors the same way. 1.13 large has the tables
+// elsewhere; the small model has a shorter length code (a byte follows length 10) and no renormalisation; 1.20's code is
+// written out in its instructions, with a code of its own for a literal zero. With -e the decompressor is stored keyed
+// (each word combined with the stored word above it) and each literal is XORed with the count of bits left in the word.
+// The small and -e forms keep relocations in groups: a word count, its offsets, the next group 0xFFF paragraphs on,
+// 0xFFFF ending them (1.20's offsets byte-swapped).
+//
 // A module that is not PKLITE's, is cut short, or copies from before its own start is a FormatError (TruncatedError
 // where the data ran out); a program that does not fit PKLITE's 16-bit fields is an UnsupportedError.
 #pragma once
@@ -76,12 +83,22 @@ struct Code {
 };
 using Codes = std::map<std::uint32_t, Code>;   // {value: its bits}
 
+enum class Tree : std::uint8_t { Large, Small, V120 };
+enum class RelocationForm : std::uint8_t { Runs, Groups, SwappedGroups };
+
 // PKLITE's decompressor as it is in one file: its code and the codes its tables make.
 struct Stub {
     Bytes head;      // entry code, decompressor, up to the stream
-    Bytes code;      // the load module from kStubCode: the decompressor's own code, which holds the tables
+    Bytes code;      // the load module from the decompressor's own code (unkeyed), which holds the tables
     Codes lengths;   // the length code
     Codes highs;     // the code for a distance's high byte
+    Tree tree = Tree::Large;
+    RelocationForm relocations = RelocationForm::Runs;
+    bool keyed_literals = false;           // each literal is XORed with the bits left in the word
+    std::size_t length_table = 0x209, high_table = 0x22F;
+
+    // 1.15 large without -e: the form whose entry words and header pack() works out for itself.
+    bool plain() const { return tree == Tree::Large && relocations == RelocationForm::Runs && !keyed_literals && length_table == 0x209; }
 
     // `module`'s first `start` bytes are the head. FormatError when `start` is past the end of the module, or the
     // code is too short for the tables.
@@ -122,6 +139,17 @@ Bytes encode(std::span<const Token> tokens, const Stub& stub);
 // The tokens PKLITE makes for a program (see the top).
 std::vector<Token> parse(ByteView image);
 
+// A token PKLITE chose where parse's rule chooses another, by where in the output it starts.
+struct Choice {
+    std::uint32_t at = 0;
+    Token token;
+    friend bool operator==(const Choice&, const Choice&) = default;
+};
+// parse for this stub's form, keeping these choices.
+std::vector<Token> parse(ByteView image, const Stub& stub, std::span<const Choice> choices);
+// What it takes for parse to give back the stream's own tokens.
+std::vector<Choice> choices_of(const Stored& stored);
+
 struct Relocated {   // one relocation of the program: the word at segment:offset
     std::uint16_t segment = 0;
     std::uint16_t offset = 0;
@@ -129,7 +157,7 @@ struct Relocated {   // one relocation of the program: the word at segment:offse
 
 // The relocation table: the relocations in the order given, a run of the same segment as one entry of at most 255
 // offsets, a zero count at the end.
-Bytes relocation_table(std::span<const Relocated> relocs);
+Bytes relocation_table(std::span<const Relocated> relocs, RelocationForm form = RelocationForm::Runs);
 
 // The file's header after pack(): the entry is PKLITE's, with one relocation (the segment its entry code adds to the
 // memory it needs).
@@ -147,6 +175,14 @@ struct Packed {
 // paragraphs it asks for beyond itself (the min-alloc of its own header) -- stored as PKLITE stores it, behind `head`
 // (PKLITE's entry code and decompressor, up to where the stream starts). UnsupportedError where a value does not fit
 // its 16-bit field.
-Packed pack(ByteView image, std::span<const Relocated> relocs, Registers regs, ByteView head, std::uint32_t memory);
+struct PackDetails {
+    std::vector<Choice> choices;   // where PKLITE's parse departs from the rule
+    bool keep_entry = false;       // the head's own memory and size words stand (a keyed head's size word is its key)
+    Bytes tail;                    // what the file stores after the registers
+};
+Packed pack(ByteView image, std::span<const Relocated> relocs, Registers regs, ByteView head, std::uint32_t memory, const PackDetails& details = {});
+
+// Makes formats/dos read PKLITE's programs from their streams.
+void install();
 
 }  // namespace cb::build::pklite

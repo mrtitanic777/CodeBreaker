@@ -100,7 +100,7 @@ CB_TEST("app.convert.counts_inside_a_stage_move_the_percentage_honestly", [] {
     CB_CHECK(done.state == State::Done);
     std::vector<int> in_stage;
     for (const Progress& p : f.seen)
-        if (p.state == State::Decompiling && p.total == 4) in_stage.push_back(p.percent);
+        if (p.state == State::Decompiling && p.total == 4 && (in_stage.empty() || in_stage.back() != p.percent)) in_stage.push_back(p.percent);   // (a slow moment may repeat a count while the stream trickles)
     // 0, 25, 50, 75 as counted; the last count is 99 (100 is Done's alone)
     const std::vector<int> expected = {0, 25, 50, 75, 99};
     CB_CHECK(in_stage == expected);

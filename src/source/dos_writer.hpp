@@ -21,6 +21,7 @@
 //
 // The other writers do not depend on this one: a Windows file's DOS stub reaches it through `stub_finder`.
 #pragma once
+#include <array>
 
 #include <cstddef>
 #include <cstdint>
@@ -33,6 +34,7 @@
 #include <string_view>
 #include <vector>
 
+#include "build/pklite.hpp"
 #include "analyze/dos_functions.hpp"
 #include "build/watcom.hpp"
 #include "source/assembly.hpp"
@@ -82,6 +84,9 @@ struct Facts {
     std::string file;                              // the file's name (upper case)
     std::optional<std::string> packer;             // "EXEPACK", "PKLITE", "moves itself"
     bool overlay = false;                          // bytes behind the load module (<stem>.ovl)
+    std::vector<build::pklite::Choice> pklite_choices;          // where PKLITE's parse departs from the rule
+    std::optional<std::array<std::uint32_t, 4>> pklite_entry;   // a form whose start the rule does not give: its header's ss, sp, cs, ip
+    Bytes pklite_tail;                                          // what PKLITE stored after the registers
     std::optional<std::uint32_t> min_alloc;
     std::optional<bool> full_last;                 // a last page that is exactly full is written as 512
     std::optional<unsigned> words;                 // EXEPACK: the header words of its unpacker
