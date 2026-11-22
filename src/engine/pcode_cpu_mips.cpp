@@ -141,11 +141,12 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
         }
     } unhook{emu};
 
-    const auto reg = [&](unsigned i) { return static_cast<std::uint32_t>(emu.reg(kNames[i])); };
+    const auto& refs = reg_refs(emu, kNames);
+    const auto reg = [&](unsigned i) { return static_cast<std::uint32_t>(emu.reg(refs[i])); };
     const auto set_reg = [&](unsigned i, std::uint32_t v) {
-        if (i != 0) emu.setReg(kNames[i], v);
+        if (i != 0) emu.setReg(refs[i], v);
     };
-    for (unsigned i = 1; i < 32; ++i) emu.setReg(kNames[i], 0);
+    for (unsigned i = 1; i < 32; ++i) emu.setReg(refs[i], 0);
     for (unsigned i = 0; i < 4; ++i) set_reg(4 + i, options.a[i]);
     for (unsigned i = 0; i < 8; ++i) set_reg(16 + i, options.s[i]);
     for (unsigned i = 0; i < 8; ++i) set_reg(8 + i, options.t[i]);
@@ -366,7 +367,7 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
             pending.value = reg(static_cast<unsigned>(last_destination));
             set_reg(static_cast<unsigned>(last_destination), old_value);
         }
-        emu.setReg("zero", 0);   // (a write to register 0 goes nowhere)
+        emu.setReg(refs[0], 0);   // (a write to register 0 goes nowhere)
         steps += pair ? 2 : 1;   // (the own core counts a branch and its delay slot as two instructions)
     }
     // (a load still in flight when the run ends is not delivered: the own core's registers are as that instruction left them)

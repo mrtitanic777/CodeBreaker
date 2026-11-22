@@ -160,11 +160,12 @@ rc::RunResult run(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& optio
         }
     } unhook{emu};
 
-    const auto reg = [&](unsigned i) { return emu.reg(kNames[i]); };
+    const auto& refs = reg_refs(emu, kNames);
+    const auto reg = [&](unsigned i) { return emu.reg(refs[i]); };
     const auto set_reg = [&](unsigned i, std::uint64_t v) {
-        if (i != 0) emu.setReg(kNames[i], v);
+        if (i != 0) emu.setReg(refs[i], v);
     };
-    for (unsigned i = 1; i < 32; ++i) emu.setReg(kNames[i], 0);
+    for (unsigned i = 1; i < 32; ++i) emu.setReg(refs[i], 0);
     for (unsigned i = 0; i < 4; ++i) set_reg(4 + i, sx32(options.a[i]));
     for (unsigned i = 0; i < 8; ++i) set_reg(16 + i, sx32(options.s[i]));
     for (unsigned i = 0; i < 8; ++i) set_reg(8 + i, sx32(options.t[i]));
@@ -390,7 +391,7 @@ rc::RunResult run(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& optio
             if (*raised == rc::Fault::Kind::Syscall || *raised == rc::Fault::Kind::Break) ++steps;
             break;
         }
-        emu.setReg("zero", 0);
+        emu.setReg(refs[0], 0);
         if (is_branch(word) && !half) {
             const std::optional<decompile::mips::Insn> insn = decompile::mips::decode_word(word, pc, decompile::mips::Variant::R4300);
             const bool skipped = insn && insn->likely && static_cast<std::uint32_t>(emu.pc()) == pc + 8;   // (a branch likely not taken: its slot did not run)

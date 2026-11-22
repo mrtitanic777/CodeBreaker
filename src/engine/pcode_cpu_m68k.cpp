@@ -114,25 +114,29 @@ m::RunResult run(m::Bus& bus, std::uint32_t entry, const m::RunOptions& options)
         }
     } unhook{emu};
 
+    static constexpr const char* kM68kNames[] = {"D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6",
+                                                 "TF", "SVF", "IPL", "XF", "NF", "ZF", "VF", "CF", "SR", "USP", "SP"};
+    enum : unsigned { kA = 8, kTF = 15, kSVF, kIPL, kXF, kNF, kZF, kVF, kCF, kSR, kUSP, kSP };
+    const auto& refs = reg_refs(emu, kM68kNames);
     for (unsigned i = 0; i < 8; ++i) {
-        emu.setReg("D" + std::to_string(i), options.d ? (*options.d)[i] : 0);
-        if (i < 7) emu.setReg("A" + std::to_string(i), options.a ? (*options.a)[i] : 0);
+        emu.setReg(refs[i], options.d ? (*options.d)[i] : 0);
+        if (i < 7) emu.setReg(refs[kA + i], options.a ? (*options.a)[i] : 0);
     }
     const std::uint16_t sr = options.sr;
-    emu.setReg("TF", (sr & 0x8000) != 0);
-    emu.setReg("SVF", (sr & 0x2000) != 0);
-    emu.setReg("IPL", (sr >> 8) & 7);
-    emu.setReg("XF", (sr & 0x10) != 0);
-    emu.setReg("NF", (sr & 8) != 0);
-    emu.setReg("ZF", (sr & 4) != 0);
-    emu.setReg("VF", (sr & 2) != 0);
-    emu.setReg("CF", (sr & 1) != 0);
-    emu.setReg("SR", sr);
-    emu.setReg("USP", 0);
+    emu.setReg(refs[kTF], (sr & 0x8000) != 0);
+    emu.setReg(refs[kSVF], (sr & 0x2000) != 0);
+    emu.setReg(refs[kIPL], (sr >> 8) & 7);
+    emu.setReg(refs[kXF], (sr & 0x10) != 0);
+    emu.setReg(refs[kNF], (sr & 8) != 0);
+    emu.setReg(refs[kZF], (sr & 4) != 0);
+    emu.setReg(refs[kVF], (sr & 2) != 0);
+    emu.setReg(refs[kCF], (sr & 1) != 0);
+    emu.setReg(refs[kSR], sr);
+    emu.setReg(refs[kUSP], 0);
     // the call as JSR makes it: the return address pushed through the bus
     const std::uint32_t sp = options.sp - 4;
     bus.write(sp, 4, m::kReturnAddress);
-    emu.setReg("SP", sp);
+    emu.setReg(refs[kSP], sp);
     emu.setPc(entry);
 
     m::RunResult out;
@@ -219,11 +223,11 @@ m::RunResult run(m::Bus& bus, std::uint32_t entry, const m::RunOptions& options)
         }
         ++steps;
     }
-    for (unsigned i = 0; i < 8; ++i) out.d[i] = static_cast<std::uint32_t>(emu.reg("D" + std::to_string(i)));
-    for (unsigned i = 0; i < 7; ++i) out.a[i] = static_cast<std::uint32_t>(emu.reg("A" + std::to_string(i)));
-    out.a[7] = static_cast<std::uint32_t>(emu.reg("SP"));
-    out.sr = static_cast<std::uint16_t>((emu.reg("TF") << 15) | (emu.reg("SVF") << 13) | (emu.reg("IPL") << 8) | (emu.reg("XF") << 4) | (emu.reg("NF") << 3) |
-                                        (emu.reg("ZF") << 2) | (emu.reg("VF") << 1) | emu.reg("CF"));
+    for (unsigned i = 0; i < 8; ++i) out.d[i] = static_cast<std::uint32_t>(emu.reg(refs[i]));
+    for (unsigned i = 0; i < 7; ++i) out.a[i] = static_cast<std::uint32_t>(emu.reg(refs[kA + i]));
+    out.a[7] = static_cast<std::uint32_t>(emu.reg(refs[kSP]));
+    out.sr = static_cast<std::uint16_t>((emu.reg(refs[kTF]) << 15) | (emu.reg(refs[kSVF]) << 13) | (emu.reg(refs[kIPL]) << 8) | (emu.reg(refs[kXF]) << 4) | (emu.reg(refs[kNF]) << 3) |
+                                        (emu.reg(refs[kZF]) << 2) | (emu.reg(refs[kVF]) << 1) | emu.reg(refs[kCF]));
     out.steps = steps;
     out.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(log_start), bus.log().end());
     return out;

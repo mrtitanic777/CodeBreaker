@@ -249,9 +249,12 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
 
     bool thumb = (entry & 1) != 0;
     emu.setContext("TMode", thumb ? 1 : 0);
-    for (unsigned i = 0; i < 15; ++i) emu.setReg(kArmNames[i], 0);
-    for (unsigned i = 0; i < 4; ++i) emu.setReg(kArmNames[i], options.a[i]);
-    for (unsigned i = 0; i < 8; ++i) emu.setReg(kArmNames[4 + i], options.s[i]);
+    static constexpr const char* kArmStatus[6] = {"NG", "ZR", "CY", "OV", "cpsr", "TB"};
+    const auto& arm_r = reg_refs(emu, kArmNames);
+    const auto& arm_status = reg_refs(emu, kArmStatus);
+    for (unsigned i = 0; i < 15; ++i) emu.setReg(arm_r[i], 0);
+    for (unsigned i = 0; i < 4; ++i) emu.setReg(arm_r[i], options.a[i]);
+    for (unsigned i = 0; i < 8; ++i) emu.setReg(arm_r[4 + i], options.s[i]);
     emu.setReg("sp", options.sp);
     emu.setReg("lr", options.return_address);
     for (const char* flag : {"NG", "ZR", "CY", "OV", "Q"}) emu.setReg(flag, 0);
@@ -290,10 +293,10 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             banks[from].lr = static_cast<std::uint32_t>(emu.reg("lr"));
             banks[from].spsr = static_cast<std::uint32_t>(emu.reg("spsr"));
             const auto high = [&](std::array<std::uint32_t, 5>& into) {
-                for (unsigned i = 0; i < 5; ++i) into[i] = static_cast<std::uint32_t>(emu.reg(kArmNames[8 + i]));
+                for (unsigned i = 0; i < 5; ++i) into[i] = static_cast<std::uint32_t>(emu.reg(arm_r[8 + i]));
             };
             const auto load_high = [&](const std::array<std::uint32_t, 5>& from_regs) {
-                for (unsigned i = 0; i < 5; ++i) emu.setReg(kArmNames[8 + i], from_regs[i]);
+                for (unsigned i = 0; i < 5; ++i) emu.setReg(arm_r[8 + i], from_regs[i]);
             };
             if (from == 1) {
                 high(fiq_high);
@@ -316,10 +319,10 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
     out.end = ar::End::Limit;
     std::uint64_t steps = 0;
     const auto flags = [&](bool& n, bool& z, bool& c, bool& v) {
-        n = emu.reg("NG") != 0;
-        z = emu.reg("ZR") != 0;
-        c = emu.reg("CY") != 0;
-        v = emu.reg("OV") != 0;
+        n = emu.reg(arm_status[0]) != 0;
+        z = emu.reg(arm_status[1]) != 0;
+        c = emu.reg(arm_status[2]) != 0;
+        v = emu.reg(arm_status[3]) != 0;
     };
     const auto stop = [&](ar::Fault::Kind kind, std::uint32_t pc, std::uint32_t address) {
         out.end = ar::End::Stopped;
@@ -327,14 +330,14 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
     };
     // One instruction by the own core, on the registers as they stand (the coprocessor 15 accesses of the DS: the hardware the bus answers).
     const auto delegate = [&](std::uint32_t pc, bool in_thumb) -> std::optional<ar::Fault> {
-        for (unsigned i = 0; i < 15; ++i) scratch.r[i] = static_cast<std::uint32_t>(emu.reg(kArmNames[i]));
+        for (unsigned i = 0; i < 15; ++i) scratch.r[i] = static_cast<std::uint32_t>(emu.reg(arm_r[i]));
         scratch.r[15] = pc;
         bool n, z, c, v;
         flags(n, z, c, v);
         scratch.cpsr = (static_cast<unsigned>(emu.reg("cpsr")) & 0xDF) | (in_thumb ? 0x20u : 0u) | (n ? 0x80000000u : 0u) | (z ? 0x40000000u : 0u) | (c ? 0x20000000u : 0u) |
                        (v ? 0x10000000u : 0u) | (emu.reg("Q") != 0 ? 0x08000000u : 0u);
         const std::optional<ar::Fault> fault = scratch.step();
-        for (unsigned i = 0; i < 15; ++i) emu.setReg(kArmNames[i], scratch.r[i]);
+        for (unsigned i = 0; i < 15; ++i) emu.setReg(arm_r[i], scratch.r[i]);
         emu.setReg("NG", (scratch.cpsr >> 31) & 1);
         emu.setReg("ZR", (scratch.cpsr >> 30) & 1);
         emu.setReg("CY", (scratch.cpsr >> 29) & 1);
@@ -379,7 +382,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
         if (insn->op == da::Op::Swi && passes(insn->cond, n, z, c, v)) {   // a BIOS call: logged and answered as the own core does
             ar::BiosCall call;
             call.function = bus.paged() ? insn->imm & 0xFFFF : thumb ? insn->imm & 0xFF : (insn->imm >> 16) & 0xFF;   // (a 3DS kernel call: the low 16 bits)
-            for (unsigned i = 0; i < 4; ++i) call.args[i] = static_cast<std::uint32_t>(emu.reg(kArmNames[i]));
+            for (unsigned i = 0; i < 4; ++i) call.args[i] = static_cast<std::uint32_t>(emu.reg(arm_r[i]));
             out.bios.push_back(call);
             if (std::find(options.ending.begin(), options.ending.end(), call.function) != options.ending.end()) {
                 out.end = ar::End::Stopped;
@@ -391,7 +394,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             } else {
                 for (unsigned i = 0; i < 4; ++i) scratch.r[i] = call.args[i];
                 ar::bios_answer(scratch, call.function);
-                for (unsigned i = 0; i < 4; ++i) emu.setReg(kArmNames[i], scratch.r[i]);
+                for (unsigned i = 0; i < 4; ++i) emu.setReg(arm_r[i], scratch.r[i]);
             }
             emu.setPc(pc + insn->length);
             ++steps;
@@ -425,7 +428,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             }
             touched &= 0x7FFF;
             for (unsigned i = 0; i < 15; ++i)
-                if ((touched >> i) & 1) before_regs[i] = static_cast<std::uint32_t>(emu.reg(kArmNames[i]));
+                if ((touched >> i) & 1) before_regs[i] = static_cast<std::uint32_t>(emu.reg(arm_r[i]));
         }
         block_transfer = insn->op == da::Op::Ldm || insn->op == da::Op::Stm;
         if (block_transfer) {
@@ -450,7 +453,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
         }
         if (bus_error) {
             for (unsigned i = 0; i < 15; ++i)
-                if ((touched >> i) & 1) emu.setReg(kArmNames[i], before_regs[i]);
+                if ((touched >> i) & 1) emu.setReg(arm_r[i], before_regs[i]);
             out.end = ar::End::Stopped;
             out.fault = ar::Fault{ar::Fault::Kind::BusError, pc, *bus_error, {}, 0};
             fault_pc = pc;   // (the pc stays at the instruction that failed)
@@ -463,11 +466,11 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
         }
         if (odd_half && insn->size == 2 && insn->rd < 15) {   // LDRH / LDRSH from an odd address
             const std::uint32_t result = insn->sign ? static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(*odd_byte))) : *odd_half;
-            emu.setReg(kArmNames[insn->rd], result);
+            emu.setReg(arm_r[insn->rd], result);
         }
         // the state after the instruction: BX and loads into the pc say it; a BLX by an immediate changes it
         bool next_thumb = thumb;
-        if (insn->op == da::Op::Bx) next_thumb = emu.reg("TB") != 0;   // (on the ARMv4T only BX changes the state, and the description records it in TB: MOV and LDR to the pc ignore bit 0)
+        if (insn->op == da::Op::Bx) next_thumb = emu.reg(arm_status[5]) != 0;   // (on the ARMv4T only BX changes the state, and the description records it in TB: MOV and LDR to the pc ignore bit 0)
         else if (v5 && mode_switch && ((insn->op == da::Op::Ldr && insn->rd == 15) || (insn->op == da::Op::Ldm && (insn->list & 0x8000)) || (insn->op == da::Op::Blx && !insn->target)))
             next_thumb = *mode_switch;   // (on the ARMv5 a load into the pc, POP and BLX by a register take the state from bit 0)
         else if (insn->op == da::Op::Blx && insn->target) next_thumb = (*insn->target & 1) != 0;   // (BLX by an immediate: to the other state, the decoder's target says which)
@@ -477,11 +480,11 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             thumb = next_thumb;
             emu.setContext("TMode", thumb ? 1 : 0);
         }
-        if ((static_cast<unsigned>(emu.reg("cpsr")) & 0x1F) != mode) change_mode(static_cast<unsigned>(emu.reg("cpsr")));
+        if ((static_cast<unsigned>(emu.reg(arm_status[4])) & 0x1F) != mode) change_mode(static_cast<unsigned>(emu.reg(arm_status[4])));
         if (const std::uint32_t next_pc = static_cast<std::uint32_t>(emu.pc()); next_pc != (next_pc & (thumb ? ~1u : ~3u))) emu.setPc(next_pc & (thumb ? ~1u : ~3u));   // (a pc written by a load keeps no state bit)
         ++steps;
     }
-    for (unsigned i = 0; i < 15; ++i) out.r[i] = static_cast<std::uint32_t>(emu.reg(kArmNames[i]));
+    for (unsigned i = 0; i < 15; ++i) out.r[i] = static_cast<std::uint32_t>(emu.reg(arm_r[i]));
     out.r[15] = fault_pc ? *fault_pc : static_cast<std::uint32_t>(emu.pc());
     bool n, z, c, v;
     flags(n, z, c, v);
