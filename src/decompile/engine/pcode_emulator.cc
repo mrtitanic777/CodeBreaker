@@ -9,7 +9,10 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bitset>
+#include <cstdlib>
+#include <functional>
 #include <cmath>
 #include <cstring>
 #include <type_traits>
@@ -48,6 +51,49 @@ F first_nan(F a, F c, F result) {
     if (a != a) return bits_as<F>(static_cast<Bits>(bits_as<Bits>(a) | quiet));
     if (c != c) return bits_as<F>(static_cast<Bits>(bits_as<Bits>(c) | quiet));
     return result;
+}
+
+// The common operations of at most 8 bytes, written out where the behaviour table would be called: each is the formula of its OpBehavior, line for line (the test
+// compares them over every size and edge value). Returns false for an operation not written out here.
+inline bool fast_unary(OpCode opc, int sizeout, int sizein, std::uint64_t a, std::uint64_t& r) {
+    switch (opc) {
+        case ghidra::CPUI_COPY: r = a; return true;
+        case ghidra::CPUI_INT_ZEXT: r = a; return true;
+        case ghidra::CPUI_INT_SEXT: r = ghidra::sign_extend(a, sizein, sizeout); return true;
+        default: return false;
+    }
+}
+
+inline bool fast_binary(OpCode opc, int sizeout, int sizein, std::uint64_t a, std::uint64_t c, std::uint64_t& r) {
+    switch (opc) {
+        case ghidra::CPUI_INT_ADD: r = (a + c) & ghidra::calc_mask(sizeout); return true;
+        case ghidra::CPUI_INT_SUB: r = (a - c) & ghidra::calc_mask(sizeout); return true;
+        case ghidra::CPUI_INT_MULT: r = (a * c) & ghidra::calc_mask(sizeout); return true;
+        case ghidra::CPUI_INT_AND: r = a & c; return true;
+        case ghidra::CPUI_INT_OR: r = a | c; return true;
+        case ghidra::CPUI_INT_XOR: r = a ^ c; return true;
+        case ghidra::CPUI_INT_EQUAL: r = a == c ? 1 : 0; return true;
+        case ghidra::CPUI_INT_NOTEQUAL: r = a != c ? 1 : 0; return true;
+        case ghidra::CPUI_INT_LESS: r = a < c ? 1 : 0; return true;
+        case ghidra::CPUI_INT_LESSEQUAL: r = a <= c ? 1 : 0; return true;
+        case ghidra::CPUI_INT_SLESS:
+        case ghidra::CPUI_INT_SLESSEQUAL: {
+            if (sizein <= 0) {
+                r = 0;
+                return true;
+            }
+            std::uint64_t mask = 0x80;
+            mask <<= 8 * (sizein - 1);
+            const std::uint64_t bit1 = a & mask, bit2 = c & mask;
+            if (bit1 != bit2) r = bit1 != 0 ? 1 : 0;
+            else r = opc == ghidra::CPUI_INT_SLESS ? (a < c ? 1 : 0) : (a <= c ? 1 : 0);
+            return true;
+        }
+        case ghidra::CPUI_INT_LEFT: r = c >= static_cast<std::uint64_t>(sizeout) * 8 ? 0 : (a << c) & ghidra::calc_mask(sizeout); return true;
+        case ghidra::CPUI_INT_RIGHT: r = c >= static_cast<std::uint64_t>(sizeout) * 8 ? 0 : (a & ghidra::calc_mask(sizeout)) >> c; return true;
+        case ghidra::CPUI_SUBPIECE: r = c >= sizeof(std::uint64_t) ? 0 : (a >> (c * 8)) & ghidra::calc_mask(sizeout); return true;
+        default: return false;
+    }
 }
 
 constexpr std::uint64_t kPageBits = 12;
@@ -138,6 +184,8 @@ void initialize_once() {
     (void)done;
 }
 
+std::atomic<int> g_blocks_override{-1};   // -1: the environment (CB_PCODE_BLOCKS=0 turns blocks off); 0 / 1: forced
+
 }  // namespace
 
 struct Emulator::Impl {
@@ -151,11 +199,10 @@ struct Emulator::Impl {
             for (ghidra::int4 i = 0; i < size; ++i) {
                 const std::uint64_t a = start + static_cast<std::uint64_t>(i);
                 Page* p = const_cast<Page*>(m.find(a >> kPageBits));
-                if (p) {
-                    p->code = true;
-                    p->decoded.set(a & (kPageSize - 1));
-                }
-                ptr[i] = p ? p->d[a & (kPageSize - 1)] : 0;
+                if (!p) p = m.make(a >> kPageBits);   // (zeros decoded here are code too: a later write to them must drop what was decoded)
+                p->code = true;
+                p->decoded.set(a & (kPageSize - 1));
+                ptr[i] = p->d[a & (kPageSize - 1)];
             }
         }
         std::string getArchType() const override { return "codebreaker"; }
@@ -306,13 +353,14 @@ struct Emulator::Impl {
         const std::uint64_t a = m.space->wrapOffset(unitOff) * m.word;
         if (m.hooked && readHook) {
             std::uint64_t value = 0;
+            ++hookCalls;
             if (readHook(m.space->getName(), a, size, value)) return size >= 8 ? value : value & ((std::uint64_t{1} << (8 * size)) - 1);
         }
         return getValueBytes(m, a, size);
     }
     void writeSpace(SpaceMem& m, std::uint64_t unitOff, unsigned size, std::uint64_t v) {
         const std::uint64_t a = m.space->wrapOffset(unitOff) * m.word;
-        if (m.hooked && writeHook && writeHook(m.space->getName(), a, size, size >= 8 ? v : v & ((std::uint64_t{1} << (8 * size)) - 1))) return;
+        if (m.hooked && writeHook && ++hookCalls && writeHook(m.space->getName(), a, size, size >= 8 ? v : v & ((std::uint64_t{1} << (8 * size)) - 1))) return;
         putValueBytes(m, a, size, v);
     }
     // The varnodes handed to get and put are elements of the instruction being run: its slots say how to reach each.
@@ -432,6 +480,9 @@ struct Emulator::Impl {
         dirty = false;
         stale.clear();
         pcSlotValid = false;
+        if (pinned) pinSlot = directSlot(pinVn);   // (a memory may have been cleared under them)
+        if (counterSet) counterSlot = directSlot(counterVn);
+        blocks.clear();
     }
     // A byte an instruction was decoded from has changed: that instruction (and any other that reads the byte) is decoded again, and nothing else is. Many changes at
     // once are the same as a flush.
@@ -453,6 +504,7 @@ struct Emulator::Impl {
                 }
         }
         stale.clear();
+        blocks.clear();
         trans->forgetParses();
     }
     // The translator's context cache points into the entries cleared here, so it is told to read them again.
@@ -479,7 +531,10 @@ struct Emulator::Impl {
         if (!addressContextKept) dropAddressContext();
         if (d.length == 0) return nullptr;
         resolve(d);
-        if (cache->size() > (1u << 20)) cache->clear();
+        if (cache->size() > (1u << 20)) {
+            cache->clear();
+            blocks.clear();
+        }
         return &cache->emplace(pc, std::move(d)).first->second;
     }
 
@@ -497,11 +552,182 @@ struct Emulator::Impl {
             result = segmentShift ? ((args[0] & 0xffff) << segmentShift) + (args[1] & 0xffff) : args[1];
             served = true;
         } else if (userHook) {
+            ++hookCalls;
             served = userHook(*self, name, args, result);
         }
         if (!served) ++unimpl[name];
         if (out) put(*out, served ? result : 0);
     }
+
+    // ---- blocks: a straight run of instructions translated once. The instructions whose p-code is only arithmetic on registers and temporaries become one flat array of
+    // operations with their operands already resolved (no cache lookup, no hook check and no pc register write between them); every other instruction is run by execute()
+    // as step() runs it. A block ends after an instruction that branches or is run by execute(), and runBlocks() leaves it early whenever something outside could have
+    // seen or changed the state (a hook was called, code bytes changed, a stop address was reached), so what the caller observes is what single steps give.
+    struct FOp {
+        OpCode opc = ghidra::CPUI_COPY;
+        std::uint8_t outSize = 0, inSize = 0;
+        bool unary = false, branch = false, cbranch = false, absolute = false;
+        Slot out, a, c;
+        std::int32_t rel = 0;      // a relative branch: the op index it goes to (the count of ops: the instruction's end)
+        std::uint64_t target = 0;  // an absolute branch: the pc it goes to
+    };
+    struct BItem {
+        const Decoded* d = nullptr;
+        std::uint64_t next = 0;    // the pc after the instruction
+        std::uint64_t amount = 0;  // the instruction counter's addition for it
+        bool flat = false;
+        std::vector<FOp> ops;
+    };
+    struct Block {
+        std::vector<BItem> items;
+    };
+    std::unordered_map<std::uint64_t, Block> blocks;
+    std::uint64_t hookCalls = 0;   // hooks (memory, user operations) called so far: a block ends where one was
+    bool pinned = false;           // a register set back to a value after every instruction (an adapter fixing a description's width)
+    Slot pinSlot;
+    VarnodeData pinVn, counterVn;
+    std::uint64_t pinValue = 0;
+    bool counterSet = false;       // a register that counts instructions (the Z80 R): added to before each instruction
+    Slot counterSlot;
+    std::uint64_t counterMask = 0;
+    std::function<std::uint64_t(std::uint64_t)> counterAmount;
+    static std::uint64_t slotGet(const Slot& s) {
+        if (s.kind == 1) return s.value;
+        const std::uint8_t* b = s.ptr;
+        switch (s.size) {
+            case 1: return b[0];
+            default: {
+                std::uint64_t r = 0;
+                if (s.big)
+                    for (unsigned i = 0; i < s.size; ++i) r = (r << 8) | b[i];
+                else
+                    for (unsigned i = s.size; i-- > 0;) r = (r << 8) | b[i];
+                return r;
+            }
+        }
+    }
+    static void slotPut(const Slot& s, std::uint64_t v) {
+        std::uint8_t* b = s.ptr;
+        if (s.big)
+            for (unsigned i = s.size; i-- > 0; v >>= 8) b[i] = static_cast<std::uint8_t>(v);
+        else
+            for (unsigned i = 0; i < s.size; ++i, v >>= 8) b[i] = static_cast<std::uint8_t>(v);
+    }
+    Slot directSlot(const VarnodeData& v) {
+        Slot s;
+        SpaceMem& m = mem[static_cast<std::size_t>(v.space->getIndex())];
+        const std::uint64_t a = m.space->wrapOffset(v.offset) * m.word;
+        const std::uint64_t off = a & (kPageSize - 1);
+        if (m.hooked || m.isCode || v.size == 0 || v.size > 8 || off + v.size > kPageSize) return s;
+        Page* p = const_cast<Page*>(m.find(a >> kPageBits));
+        if (!p) p = m.make(a >> kPageBits);
+        s.kind = 2;
+        s.ptr = p->d.data() + off;
+        s.size = static_cast<std::uint8_t>(v.size);
+        s.big = m.big;
+        return s;
+    }
+    void applyCounter(std::uint64_t amount) {
+        const std::uint64_t old = slotGet(counterSlot);
+        slotPut(counterSlot, (old & ~counterMask) | ((old + amount) & counterMask));
+    }
+    void applyPin() {
+        if (pinned && slotGet(pinSlot) != pinValue) slotPut(pinSlot, pinValue);
+    }
+    bool overlapsPc(const VarnodeData& v) const {
+        return pcReg && v.space == pcReg->space && v.offset < pcReg->offset + pcReg->size && pcReg->offset < v.offset + v.size;
+    }
+    // Translates the instruction into a flat item when all of its p-code is simple; false: execute() runs it.
+    bool flatten(const Decoded& d, BItem& item) {
+        item.ops.clear();
+        for (std::size_t i = 0; i < d.ops.size(); ++i) {
+            const Op& op = d.ops[i];
+            const std::size_t in0 = op.first + (op.hasOut ? 1 : 0);
+            FOp f;
+            f.opc = op.opc;
+            if (op.opc == ghidra::CPUI_BRANCH || op.opc == ghidra::CPUI_CBRANCH || op.opc == ghidra::CPUI_CALL) {
+                if (op.hasOut) return false;
+                f.branch = true;
+                f.cbranch = op.opc == ghidra::CPUI_CBRANCH;
+                if (op.nIn != (f.cbranch ? 2u : 1u)) return false;
+                const VarnodeData& t = d.vn[in0];
+                if (t.space == constSpace) {
+                    const std::int64_t target = static_cast<std::int64_t>(i) + static_cast<std::int32_t>(static_cast<std::uint32_t>(t.offset));
+                    if (target < 0 || target > static_cast<std::int64_t>(d.ops.size())) return false;
+                    f.rel = static_cast<std::int32_t>(target);
+                } else {
+                    f.absolute = true;
+                    f.target = t.offset;
+                }
+                if (f.cbranch) {
+                    f.c = d.slots[in0 + 1];
+                    if (f.c.kind == 0 || overlapsPc(d.vn[in0 + 1])) return false;
+                }
+                item.ops.push_back(f);
+                continue;
+            }
+            std::uint64_t probe;
+            const bool unary = op.nIn == 1, binary = op.nIn == 2;
+            if (!op.hasOut || !(unary || binary)) return false;
+            if (unary ? !fast_unary(op.opc, 1, 1, 0, probe) : !fast_binary(op.opc, 1, 1, 0, 0, probe)) return false;
+            f.unary = unary;
+            f.out = d.slots[op.first];
+            f.a = d.slots[in0];
+            f.outSize = static_cast<std::uint8_t>(d.vn[op.first].size);
+            f.inSize = static_cast<std::uint8_t>(d.vn[in0].size);
+            if (f.out.kind != 2 || f.a.kind == 0 || overlapsPc(d.vn[op.first]) || overlapsPc(d.vn[in0])) return false;
+            if (binary) {
+                f.c = d.slots[in0 + 1];
+                if (f.c.kind == 0 || d.vn[in0 + 1].size > 8 || overlapsPc(d.vn[in0 + 1])) return false;
+            }
+            item.ops.push_back(f);
+        }
+        return true;
+    }
+    static bool controlFlow(const Decoded& d) {
+        for (const Op& op : d.ops)
+            if (op.opc == ghidra::CPUI_BRANCH || op.opc == ghidra::CPUI_CBRANCH || op.opc == ghidra::CPUI_CALL || op.opc == ghidra::CPUI_BRANCHIND || op.opc == ghidra::CPUI_CALLIND ||
+                op.opc == ghidra::CPUI_RETURN)
+                return true;
+        return false;
+    }
+    Block* blockAt(std::uint64_t pc) {
+        const auto found = blocks.find(pc);
+        if (found != blocks.end()) return &found->second;
+        if (cache->size() + 32 > (1u << 20)) {   // (decoding below must not clear the instructions this block is pointing at)
+            cache->clear();
+            blocks.clear();
+        }
+        Block block;
+        const std::uint64_t unit = mem[static_cast<std::size_t>(codeIndex)].word;
+        std::uint64_t at = pc;
+        for (int n = 0; n < 32; ++n) {
+            const Decoded* d = decode(at);
+            if (!d) break;
+            BItem item;
+            item.d = d;
+            const std::uint64_t start = at;
+            at += d->length / unit;
+            item.next = at;
+            item.flat = flatten(*d, item);
+            if (counterSet) item.amount = counterAmount(start);
+            const bool last = !item.flat || controlFlow(*d);
+            block.items.push_back(std::move(item));
+            if (last) break;
+        }
+        return &(blocks[pc] = std::move(block));
+    }
+    static bool blocksEnabledByEnvironment() {
+        static const bool on = [] {
+            const char* e = std::getenv("CB_PCODE_BLOCKS");
+            return !(e != nullptr && (e[0] == '0' || e[0] == 'n' || e[0] == 'f'));
+        }();
+        return on;
+    }
+    // Runs up to maxSteps instructions, as that many step() calls would, but returning early (after the instruction) when a hook was called, code bytes changed or the pc
+    // reached stopPc, so the caller sees the state wherever it could have looked.
+    Emulator::BlockResult runBlocks(Emulator& self_, std::uint64_t maxSteps, bool useStop, std::uint64_t stopPc);
+    bool blocksOnForRun = true;
 
     Emulator* self = nullptr;
 
@@ -833,6 +1059,136 @@ Emulator::Status Emulator::step() {
     return Status::Ok;
 }
 
+void Emulator::setBlocksOverride(int mode) { g_blocks_override = mode; }
+
+bool Emulator::evaluateOp(unsigned opcode, int sizeOut, int sizeIn, std::uint64_t a, std::uint64_t c, std::uint64_t& result, bool writtenOut) const {
+    const OpCode opc = static_cast<OpCode>(opcode);
+    const bool unary = opc == ghidra::CPUI_COPY || opc == ghidra::CPUI_INT_ZEXT || opc == ghidra::CPUI_INT_SEXT;
+    if (writtenOut) return unary ? fast_unary(opc, sizeOut, sizeIn, a, result) : fast_binary(opc, sizeOut, sizeIn, a, c, result);
+    const ghidra::OpBehavior* b = opcode < impl_->behave.size() ? impl_->behave[opcode] : nullptr;
+    if (!b) return false;
+    result = unary ? b->evaluateUnary(sizeOut, sizeIn, a) : b->evaluateBinary(sizeOut, sizeIn, a, c);
+    return true;
+}
+
+void Emulator::setPin(const RegRef& ref, std::uint64_t value) {
+    Impl& o = *impl_;
+    ghidra::VarnodeData v;
+    v.space = o.mem[ref.space].space;
+    v.offset = ref.offset;
+    v.size = ref.size;
+    o.pinVn = v;
+    o.pinSlot = o.directSlot(v);
+    o.pinned = o.pinSlot.kind == 2;
+    o.pinValue = value;
+}
+
+void Emulator::clearPin() { impl_->pinned = false; }
+
+void Emulator::setCounter(const RegRef& ref, std::uint64_t mask, std::function<std::uint64_t(std::uint64_t pc)> amount) {
+    Impl& o = *impl_;
+    ghidra::VarnodeData v;
+    v.space = o.mem[ref.space].space;
+    v.offset = ref.offset;
+    v.size = ref.size;
+    o.counterVn = v;
+    o.counterSlot = o.directSlot(v);
+    o.counterSet = o.counterSlot.kind == 2;
+    o.counterMask = mask;
+    o.counterAmount = std::move(amount);
+    o.blocks.clear();   // (the amounts are part of the blocks)
+}
+
+void Emulator::clearCounter() {
+    impl_->counterSet = false;
+    impl_->blocks.clear();
+}
+
+Emulator::BlockResult Emulator::runBlocks(std::uint64_t maxSteps, bool useStop, std::uint64_t stopPc) {
+    Impl& o = *impl_;
+    BlockResult r;
+    const bool blocksOn = !o.trace && o.stops.empty() && (g_blocks_override.load() < 0 ? Impl::blocksEnabledByEnvironment() : g_blocks_override.load() != 0);
+    // one instruction, as the caller would have run it with step()
+    const auto single = [&]() -> bool {
+        if (o.counterSet) o.applyCounter(o.counterAmount(o.pcValue));
+        const std::uint64_t hooks = o.hookCalls;
+        const Status status = step();
+        if (status != Status::Ok) {
+            r.status = status;
+            return false;
+        }
+        ++r.executed;
+        o.applyPin();
+        return !(useStop && o.pcValue == stopPc) && o.hookCalls == hooks;
+    };
+    if (!blocksOn) {
+        if (r.executed < maxSteps) single();
+        return r;
+    }
+    while (r.executed < maxSteps) {
+        if (o.dirty) o.flush();
+        else if (!o.stale.empty()) o.dropStale();
+        Impl::Block* block = o.blockAt(o.pcValue);
+        if (block->items.empty()) {   // (nothing decodes here: step() says what happens, including a bad-instruction hook)
+            single();
+            return r;
+        }
+        o.syncPcRegister();   // (a caller may have cleared or set the registers since the last step)
+        for (const Impl::BItem& item : block->items) {
+            if (r.executed >= maxSteps) {
+                o.syncPcRegister();
+                return r;
+            }
+            if (o.counterSet) o.applyCounter(item.amount);
+            const std::uint64_t hooks = o.hookCalls;
+            if (item.flat) {
+                std::uint64_t next = item.next;
+                const Impl::FOp* ops = item.ops.data();
+                const std::size_t count = item.ops.size();
+                std::size_t i = 0;
+                while (i < count) {
+                    const Impl::FOp& f = ops[i];
+                    if (f.branch) {
+                        if (f.cbranch && Impl::slotGet(f.c) == 0) {
+                            ++i;
+                            continue;
+                        }
+                        if (f.absolute) {
+                            next = f.target;
+                            break;
+                        }
+                        i = static_cast<std::size_t>(f.rel);
+                        continue;
+                    }
+                    std::uint64_t result = 0;
+                    if (f.unary) fast_unary(f.opc, f.outSize, f.inSize, Impl::slotGet(f.a), result);
+                    else fast_binary(f.opc, f.outSize, f.inSize, Impl::slotGet(f.a), Impl::slotGet(f.c), result);
+                    Impl::slotPut(f.out, result);
+                    ++i;
+                }
+                o.pcValue = next;
+                ++o.stepCount;
+            } else {
+                o.syncPcRegister();
+                if (!o.execute(*item.d)) {
+                    r.status = Status::Error;
+                    return r;
+                }
+                ++o.stepCount;
+                o.syncPcRegister();
+            }
+            ++r.executed;
+            o.applyPin();
+            if ((useStop && o.pcValue == stopPc) || o.hookCalls != hooks || o.dirty || !o.stale.empty()) {
+                o.syncPcRegister();
+                return r;
+            }
+        }
+        o.syncPcRegister();
+    }
+    return r;
+}
+
 Emulator::RunResult Emulator::run(std::uint64_t n) {
     RunResult r;
     for (; r.steps < n; ++r.steps) {
@@ -893,6 +1249,7 @@ void Emulator::setContext(const std::string& name, int value) {
         for (const char ch : variable) tag = (tag ^ static_cast<unsigned char>(ch)) * 1099511628211ull;
         tag = (tag ^ static_cast<std::uint32_t>(set_to)) * 1099511628211ull;
     }
+    if (tag != o.contextTag) o.blocks.clear();   // (a block holds instructions decoded under one context)
     o.contextTag = tag;
     o.cache = &o.caches[tag];
 }

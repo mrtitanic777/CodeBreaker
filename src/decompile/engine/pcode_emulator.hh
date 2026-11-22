@@ -91,6 +91,26 @@ public:
 
     // ---- running
     Status step();                                    // one instruction
+    // Blocks: up to `maxSteps` instructions run as that many step() calls would run them (registers, memory, hooks, step counts and the pc at every exit are the same), but
+    // the straight-line instructions are translated once and run together. The call returns early, after the instruction, when a hook (memory or user operation) was
+    // called, when bytes code was decoded from changed, or when the pc reached `stopPc`: wherever the caller could have looked at the state. `status` is that of the
+    // instruction that could not run (BadInstruction or Error: it is not counted), else Ok. With CB_PCODE_BLOCKS=0 (or setBlocksOverride(0)), with a trace callback or a stop
+    // address set, one instruction runs per call.
+    struct BlockResult {
+        std::uint64_t executed = 0;
+        Status status = Status::Ok;
+    };
+    BlockResult runBlocks(std::uint64_t maxSteps, bool useStop = false, std::uint64_t stopPc = 0);
+    // A register put back to `value` after every instruction run by runBlocks (an adapter fixing a width the description does not keep), and a register that counts the
+    // instructions: before each instruction its bits under `mask` are advanced by amount(pc). Both apply in runBlocks only, not to a plain step(). Cleared with clearPin / clearCounter.
+    void setPin(const RegRef& ref, std::uint64_t value);
+    void clearPin();
+    void setCounter(const RegRef& ref, std::uint64_t mask, std::function<std::uint64_t(std::uint64_t pc)> amount);
+    void clearCounter();
+    // Forces blocks on (1) or off (0) for every Emulator, or leaves it to the environment (-1): what the tests compare.
+    static void setBlocksOverride(int mode);
+    // One p-code operation on values, by the form blocks run (writtenOut) or by the description's behaviour table: what the test compares. False: no such form.
+    bool evaluateOp(unsigned opcode, int sizeOut, int sizeIn, std::uint64_t a, std::uint64_t c, std::uint64_t& result, bool writtenOut) const;
     RunResult run(std::uint64_t n);                   // up to n instructions; stops early at a stop address, a bad instruction or an error
     void addStop(std::uint64_t pc);                   // run() stops before executing an instruction at pc (a step() never does)
     void clearStops();

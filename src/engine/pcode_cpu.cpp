@@ -137,20 +137,25 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
     m::RunResult out;
     out.end = m::End::Limit;
     std::uint64_t steps = 0;
+    emu.setPin(emu.regRef("SH"), 1);   // (the description's SP is 16 bits wide: the chip's S wraps within page 1: kept so after every instruction)
+    struct Unpin {
+        sl::Emulator& e;
+        ~Unpin() { e.clearPin(); }
+    } unpin{emu};
     while (steps < options.max_steps) {
         if (emu.pc() == m::kReturnAddress) {
             out.end = m::End::Return;
             break;
         }
-        const sl::Emulator::Status status = emu.step();
-        if (status == sl::Emulator::Status::BadInstruction || status == sl::Emulator::Status::Error) {
+        // (a run of instructions at once: it ends where a device was touched, code bytes changed or the return address was reached, which is where this looks)
+        const sl::Emulator::BlockResult ran = emu.runBlocks(options.max_steps - steps, true, m::kReturnAddress);
+        steps += ran.executed;
+        if (ran.status == sl::Emulator::Status::BadInstruction || ran.status == sl::Emulator::Status::Error) {
             const std::uint16_t pc = static_cast<std::uint16_t>(emu.pc());
             out.end = m::End::Stopped;
             out.fault = m::Fault{static_cast<std::uint8_t>(emu.readValue(pc, 1)), pc};
             break;
         }
-        ++steps;
-        if (emu.reg("SH") != 1) emu.setReg("SH", 1);   // (the description's SP is 16 bits wide: the chip's S wraps within page 1)
         if (bus.log().size() != seen) {   // a device was touched: it may have changed the memory under the code
             sync();
             seen = bus.log().size();
@@ -282,6 +287,16 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
         emu.write(first, shadow.data() + first, last - first + 1);
     };
 
+    // R counts the instruction fetches: its low seven bits, two for a prefixed instruction (the description has no fetch count of its own)
+    emu.setCounter(emu.regRef("R"), 0x7F, [&shadow](std::uint64_t at) -> std::uint64_t {
+        const std::uint8_t first = shadow[at & 0xFFFF];
+        return (first == 0xDD || first == 0xFD || first == 0xCB || first == 0xED) ? 2u : 1u;
+    });
+    struct Uncount {
+        sl::Emulator& e;
+        ~Uncount() { e.clearCounter(); }
+    } uncount{emu};
+
     z::RunResult out;
     out.end = z::End::Limit;
     std::uint64_t steps = 0;
@@ -298,18 +313,15 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
             break;
         }
         touched = false;
-        {   // R counts the instruction fetches: its low seven bits, two for a prefixed instruction (the description has no fetch count of its own)
-            const std::uint8_t first = shadow[pc];
-            const std::uint64_t r = emu.reg("R");
-            emu.setReg("R", (r & 0x80) | ((r + ((first == 0xDD || first == 0xFD || first == 0xCB || first == 0xED) ? 2u : 1u)) & 0x7F));
-        }
-        const sl::Emulator::Status status = emu.step();
-        if (status == sl::Emulator::Status::BadInstruction || status == sl::Emulator::Status::Error) {
+        // (a run of instructions at once, R counted for each by the emulator; it ends where a device was touched or a HALT ran, which is where this looks; an instruction at a
+        // time when the caller wants to see every pc)
+        const sl::Emulator::BlockResult ran = emu.runBlocks(options.before_step ? 1 : options.max_steps - steps, true, z::kReturnAddress);
+        steps += ran.executed;
+        if (ran.status == sl::Emulator::Status::BadInstruction || ran.status == sl::Emulator::Status::Error) {
             out.end = z::End::Stopped;
             out.fault = z::Fault{z::Fault::Kind::Undecodable, pc};
             break;
         }
-        ++steps;
         if (touched) sync();
     }
     z::Registers& r = out.regs;

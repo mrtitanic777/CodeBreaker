@@ -7,7 +7,9 @@
 #include "core/testing.hpp"
 #include "emulate/m6502.hpp"
 #include "emulate/z80.hpp"
+#include "decompile/engine/pcode_emulator.hh"
 #include "engine/pcode_cpu.hpp"
+#include "engine/pcode_cpu_internal.hpp"
 
 using namespace cb;
 
@@ -61,4 +63,23 @@ CB_TEST("engine.pcode_cpu.bench_6502_and_z80_loops_on_both_cores", [] {
         });
         std::printf("bench z80: %llu instructions: own core %.1f ms, emulator %.1f ms (%.2fx)\n", static_cast<unsigned long long>(kSteps), own * 1e3, emu * 1e3, emu / own);
     }
+});
+
+// A measure: the emulator alone, stepped with nothing between the steps (no adapter), on the 6502 loop.
+CB_TEST("engine.pcode_cpu.bench_raw_emulator_steps", [] {
+    decompile::sleigh::Emulator& emu = engine::pcode_cpu::emulator_named("6502.sla");
+    const std::uint8_t program[] = {0xA2, 0x00, 0xA0, 0x00, 0xE8, 0xD0, 0xFD, 0xC8, 0xD0, 0xFA, 0x60};
+    emu.write(0x1000, program, sizeof program);
+    constexpr int kSteps = 131000;
+    const auto run = [&] {
+        emu.setPc(0x1000);
+        for (int i = 0; i < kSteps; ++i) emu.step();
+    };
+    const double t = best_of_five(run);
+    std::printf("bench raw 6502 emulator: %d steps %.1f ms (%.1f ns/step)\n", kSteps, t * 1e3, t * 1e9 / kSteps);
+    const double tb = best_of_five([&] {
+        emu.setPc(0x1000);
+        emu.runBlocks(kSteps);
+    });
+    std::printf("bench raw 6502 blocks: %d instructions %.1f ms (%.1f ns/instruction)\n", kSteps, tb * 1e3, tb * 1e9 / kSteps);
 });
