@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/config.hpp"
+#include "core/cpu_time.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -203,9 +204,9 @@ M68Tally m68_judge(const verify::lanes::ImageLane& lane, const verify::lanes::Im
             verify::lanes::Effects e[2];
             for (int core = 0; core < 2; ++core) {
                 M68Forced forced(core == 1);
-                const auto start = std::chrono::steady_clock::now();
+                const double start = cb::thread_cpu_seconds();
                 e[core] = spec.effects(file, entry, state);
-                t.seconds[core] += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                t.seconds[core] += (cb::thread_cpu_seconds() - start);
             }
             ++t.runs;
             const bool odd = e[0] != e[1] && [&] {   // a run that went to an odd address: the own core runs on there, the 68000 (and the description) raise an address error
@@ -244,9 +245,9 @@ M68Tally m68_judge(const verify::lanes::ImageLane& lane, const verify::lanes::Im
             verify::Judgement j[2];
             for (int core = 0; core < 2; ++core) {
                 M68Forced forced(core == 1);
-                const auto start = std::chrono::steady_clock::now();
+                const double start = cb::thread_cpu_seconds();
                 j[core] = lane.judge_function(false, file, edited, entry);
-                t.seconds[core] += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                t.seconds[core] += (cb::thread_cpu_seconds() - start);
                 ++t.verdicts[core][j[core].verdict == verify::Verdict::Equivalent ? 0 : 1];
             }
             ++t.judged;
@@ -465,10 +466,10 @@ CB_TEST("engine.pcode_cpu.m68k_speed_of_the_two_cores", [] {
         std::uint64_t steps = 0;
         for (int round = 0; round < 4; ++round) {
             Bytes memory = image;
-            const auto start = std::chrono::steady_clock::now();
+            const double start = cb::thread_cpu_seconds();
             m68::Bus bus(ByteView(memory), memory.size());
             const m68::RunResult r = pcode ? engine::pcode_cpu::run(bus, 0x1000, options) : m68::run(bus, 0x1000, options);
-            const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            const double t = (cb::thread_cpu_seconds() - start);
             steps = r.steps;
             if (round == 0) first = t;
             best = std::min(best, t);
@@ -481,11 +482,11 @@ CB_TEST("engine.pcode_cpu.m68k_speed_of_the_two_cores", [] {
         double call = 1e9;
         for (int round = 0; round < 20; ++round) {
             Bytes memory = rts;
-            const auto start = std::chrono::steady_clock::now();
+            const double start = cb::thread_cpu_seconds();
             m68::Bus bus(ByteView(memory), memory.size());
             if (pcode) engine::pcode_cpu::run(bus, 0x1000, plain);
             else m68::run(bus, 0x1000, plain);
-            call = std::min(call, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+            call = std::min(call, (cb::thread_cpu_seconds() - start));
         }
         std::printf("pcode_cpu m68k speed, %s: %llu steps in %.1f ms (first run %.1f ms) = %.2f M steps/s; an empty call (1 MB bus, copy included) %.2f ms\n", pcode ? "emulator" : "own core",
                     static_cast<unsigned long long>(steps), best * 1000, first * 1000, static_cast<double>(steps) / best / 1e6, call * 1000);
