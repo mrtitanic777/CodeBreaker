@@ -503,7 +503,9 @@ static void OpenCppFile( void )
         if( ccmain_state().CppWidth == 0 ) {
             ccmain_state().CppWidth = ~0U;
         }
-        setvbuf( cvars_state().CppFile, static_cast<char *>(CPermAlloc( 4096 )), _IOFBF, 4096 );
+        if( cvars_state().CppFile != stdout ) {     /* (stdout outlives this run: it must not keep a buffer of the run's memory) */
+            setvbuf( cvars_state().CppFile, static_cast<char *>(CPermAlloc( 4096 )), _IOFBF, 4096 );
+        }
     }
 }
 
@@ -1429,7 +1431,9 @@ void CloseFiles( void )
             sprintf( msgbuf, msgtxt, strerror( errno ) );
             NoteMsg( msgbuf );
         }
-        fclose( cvars_state().CppFile );
+        if( cvars_state().CppFile != stdout ) {     /* (stdout is the program's, and stays open after this run) */
+            fclose( cvars_state().CppFile );
+        }
         cvars_state().CppFile = NULL;
     }
     if( cvars_state().ErrFile != NULL ) {
