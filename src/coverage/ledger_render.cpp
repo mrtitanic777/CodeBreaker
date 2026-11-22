@@ -95,6 +95,7 @@ std::vector<std::string> table(const std::vector<std::string>& head, const std::
 std::string_view state_of(const Row& r) {
     if (r.measured) return "measured";
     if (r.judged) return "part measured";
+    if (r.in_store && r.functions == 0 && r.code_bytes == 0) return "no code";
     return r.in_store ? "not measured now" : "untouched";
 }
 

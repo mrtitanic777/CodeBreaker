@@ -47,6 +47,11 @@ const Api& api();
 // The library, for its path (messages, the third-party report).
 const DynLib& library();
 
+// Unicorn 2.1.4 on Windows reserves its translator's code buffer and commits it 4 MB at a time from an exception handler. Within 4 MB of
+// the buffer's end that request runs past the reservation and fails, and the write crashes the process. Called once a library is loaded:
+// a handler that runs first commits what is left instead. Does nothing elsewhere.
+void commit_code_buffer_to_its_end();
+
 // Turn a uc_err into an EmulationError carrying Unicorn's own text; does nothing for UC_ERR_OK.
 void check(uc_err code, std::string_view what);
 

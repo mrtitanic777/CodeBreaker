@@ -78,6 +78,9 @@ struct FormatProbes {
         boot_image_modules;
 };
 
+// The extensions an LE driver is shipped under: the sweep goes through them and the coverage counts them.
+const std::vector<std::string>& le_module_extensions();
+
 class Corpus {
 public:
     explicit Corpus(Products products, FormatProbes probes = {});

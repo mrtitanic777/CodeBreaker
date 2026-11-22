@@ -34,7 +34,7 @@ struct LedgerLane {
 std::optional<LedgerLane> ledger_lane_of(std::string_view kind) {
     if (kind == "pe") return LedgerLane{base::Lane::Pe, kLedgerSwept};
     if (kind == "ne") return LedgerLane{base::Lane::Ne, kLedgerSwept};
-    if (kind == "le") return LedgerLane{base::Lane::Le, {".vxd", ".386", ".pdr", ".sys", ".drv", ".exe"}};
+    if (kind == "le") return LedgerLane{base::Lane::Le, base::le_module_extensions()};
     if (kind == "dos") return LedgerLane{base::Lane::Dos, {".exe", ".com", ".sys", ".vxd", ".386"}};
     return std::nullopt;
 }

@@ -156,6 +156,25 @@ CB_TEST("emulate.unicorn_uc.engines_from_a_library_by_path", [] {
     CB_CHECK_THROWS_AS(UsageError, open_x86_from(path, 24));
 });
 
+CB_TEST("emulate.unicorn_uc.translates_past_the_last_4_mb_of_its_buffer", [] {
+    // more distinct blocks than an 8 MB code buffer holds: the translator reaches the buffer's end, where Unicorn's own commit fails
+    auto uc = open_x86(32);
+    emu::unicorn::check(emu::unicorn::api().uc_ctl(static_cast<uc_engine*>(uc->handle()), UC_CTL_WRITE(UC_CTL_TCG_BUFFER_SIZE, 1),
+                                                   std::uint32_t{8} << 20),
+                        "uc_ctl");
+    constexpr std::uint64_t kBase = 0x1000000, kSize = 8 << 20, kBlock = 16;
+    Bytes code(static_cast<std::size_t>(kSize), std::uint8_t{0x90});
+    for (std::size_t at = 0; at < code.size(); at += kBlock) {   // inc eax; jmp to the next block
+        code[at] = 0x40;
+        code[at + 1] = 0xEB;
+        code[at + 2] = 0x0D;
+    }
+    uc->mem_map(kBase, kSize);
+    uc->mem_write(kBase, code);
+    uc->emu_start(kBase, kBase + kSize - kBlock);
+    CB_CHECK_EQ(uc->reg_read(reg("EAX")), kSize / kBlock - 1);
+});
+
 CB_TEST("emulate.unicorn_uc.float_register_is_the_first_word", [] {
     auto uc = open_x86(32);
     uc->reg_write(reg("EAX"), 12);

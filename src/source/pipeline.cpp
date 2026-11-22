@@ -154,7 +154,7 @@ cli::Command sweep(const Environment& environment) {
         verify::sweep::Services services{.reconstruct = world.reconstructor(), .store = world.store(),
                                          .modules = [&world](std::string_view kind) -> std::vector<stdfs::path> {
                                              base::Corpus& corpus = world.corpus();
-                                             if (kind == "le") return corpus.modules(base::Lane::Le, {".vxd", ".386"});
+                                             if (kind == "le") return corpus.modules(base::Lane::Le, base::le_module_extensions());
                                              if (kind == "dos") return dos_programs_of(corpus);
                                              if (const auto lane = base::lane_from_name(kind)) return corpus.modules(*lane);
                                              return {};
