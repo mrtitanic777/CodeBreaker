@@ -63,6 +63,33 @@ public static partial class JLib
 
     public static T NonNull<T>(T v) where T : class => v ?? throw new NullReferenceException();
 
+    // A Java box that may be null: reading its number throws as Java's unboxing does.
+    public static T Unbox<T>(T? v) where T : struct => v ?? throw new NullReferenceException();
+
+    // map.get of boxed values: a key the map does not hold is a null.
+    public static V? GetBox<K, V>(IDictionary<K, V> m, K key) where V : struct => m.TryGetValue(key, out V v) ? v : (V?)null;
+
+    // `x++` of a box: the value it had, after the update.
+    public static T Before<T, U>(T before, U after) => before;
+
+    // == of two boxes compares references. Java shares the small ones, so those are the same box; two equal values past that range are
+    // the same box only if one was copied from the other, which a value cannot say, so the program stops rather than guess.
+    public static bool SameBox<T>(T? a, T? b) where T : struct
+    {
+        if (!a.HasValue || !b.HasValue) return !a.HasValue && !b.HasValue;
+        if (!a.Value.Equals(b.Value)) return false;
+        switch (a.Value)
+        {
+            case bool: return true;
+            case sbyte: return true;
+            case char c when c <= 127: return true;
+            case short s when s >= -128 && s <= 127: return true;
+            case int i when i >= -128 && i <= 127: return true;
+            case long l when l >= -128 && l <= 127: return true;
+        }
+        throw new NotSupportedException("== of two equal boxes outside Java's shared range compares references");
+    }
+
     // List.of: no nulls.
     public static List<T> listOf<T>(params T[] items)
     {

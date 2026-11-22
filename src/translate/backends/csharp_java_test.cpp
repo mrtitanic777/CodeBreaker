@@ -138,9 +138,16 @@ CB_TEST("translate.csharp_java.what_it_declines", [] {
     };
     const Case cases[] = {
         // a class it cannot carry declines the whole unit; the others only the method
-        {"boxed_null", "boxed-null", "int x = 5;", "Integer x"},
         {"exception_cause", "exception", "throw new ArgumentException(\"bad\");", "RuntimeException"},
     };
+    {   // a box that may be null is a nullable value, and only that one
+        auto u = cjt_load("boxed_null");
+        cs::Program p(u->units, cjt_options());
+        const std::string written = p.files().at(0).text;
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(written.find("int? absent()") != std::string::npos);
+        CB_CHECK(written.find("int x = 5;") != std::string::npos);
+    }
     {   // an enum of objects is a class
         auto u = cjt_load("enum_object");
         cs::Program p(u->units, cjt_options());

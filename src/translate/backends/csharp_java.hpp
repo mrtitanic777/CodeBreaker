@@ -85,12 +85,23 @@ public:
     std::optional<std::string> class_keyword(const ir::ClassDecl& c) override;
     std::optional<std::string> this_text(cs::Context& w, ir::Node* e) override;
     std::optional<std::string> name_text(cs::Context& w, ir::Node* e) override;
+    std::optional<cs::Ex> update(cs::Context& w, ir::Node* e) override;
     bool local_class(const ir::Node* decl) const override { return hoist_of_.contains(decl); }
     std::vector<std::string> extra_members(cs::Context& w, ir::ClassDecl& c) override;
     bool enum_as_class(const ir::ClassDecl& c) const override { return c.qname && object_enums_.contains(*c.qname); }
     std::optional<std::string> enum_case(const ir::TypeP& scrutinee, const std::string& name) const override;
 
 private:
+    // A box that can be null. Java's Integer is C#'s int; the variables, fields, parameters and results that may hold a null (found by
+    // following nulls through the program) are `int?`. Reading one where a number is wanted goes through JLib.Unbox, which throws as
+    // Java does; the places that keep the null (a test against null, text, another such variable) read it as it is.
+    void prepare_boxed_nulls(cs::Program& program, const std::vector<ir::Node*>& classes);
+    bool may_be_null(ir::Node* e) const;
+    std::string kept_null(cs::Context& w, ir::Node* e);       // the expression as a `T?`, its null kept
+    std::optional<std::string> unboxed_read(cs::Context& w, ir::Node* e);
+    std::unordered_set<const ir::Node*> null_reads_;          // the reads that can give a null
+    std::unordered_set<const ir::Node*> read_as_is_;          // those being written with their null kept (or assigned to)
+
     // A class Java declares in a method (a local or anonymous one), as C# has none: a member of the class around it, with a field
     // `cap_x` for each local it reads, given to each constructor. One written for a library functional interface is handed over as
     // a delegate to its one method.

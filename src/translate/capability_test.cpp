@@ -136,8 +136,9 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
     cb::fs::write_text(work / "CollectionKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/CollectionKit.java")));
     cb::fs::write_text(work / "LocalKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/LocalKit.java")));
     cb::fs::write_text(work / "LibraryKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/LibraryKit.java")));
+    cb::fs::write_text(work / "BoxKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/BoxKit.java")));
     cb::fs::write_text(work / "TryKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/TryKit.java")));
-    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}, {"csharp", "LocalKit"}, {"csharp", "LibraryKit"},
+    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}, {"csharp", "LocalKit"}, {"csharp", "LibraryKit"}, {"csharp", "BoxKit"},
                                                          {"cpp17", "StreamKit"}, {"cpp17", "CollectionKit"}, {"cpp17", "LocalKit"}, {"cpp17", "LibraryKit"}, {"cpp17", "Library"},
                                                          {"c", "TryKit"}, {"c", "CollectionKit"}, {"c", "LocalKit"}, {"c", "LibraryKit"}, {"c", "Library"}};
     cb::fs::write_text(work / "Library.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/cpp03/modernlib/src/000_Library.java")));
@@ -159,6 +160,12 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
         const tf::Result fixed = capt_run("java", "csharp", work / "Fixed.java", work / "out-fixed", work / "scratch-fixed");
         CB_CHECK(fixed.verdict == tf::Verdict::Refused);
         CB_CHECK(fixed.detail.find("Arrays.asList") != std::string::npos);
+        // a null held in a collection of numbers has no C# value to be: refused, not turned into a zero
+        cb::fs::write_text(work / "NullHeld.java", "import java.util.*;\npublic class NullHeld {\n    public static void main(String[] args) {\n"
+                                                   "        List<Integer> l = new ArrayList<>();\n        l.add(null);\n        System.out.println(l);\n    }\n}\n");
+        const tf::Result held = capt_run("java", "csharp", work / "NullHeld.java", work / "out-held", work / "scratch-held");
+        CB_CHECK(held.verdict == tf::Verdict::Refused);
+        CB_CHECK(held.detail.find("boxed-null") != std::string::npos);
         // a bin Java keeps as a tree has an order the translation cannot promise: the run fails and nothing is handed over
         cb::fs::write_text(work / "TreeBin.java",
                            "import java.util.*;\npublic class TreeBin {\n    static class K { final int id; K(int id) { this.id = id; }\n"

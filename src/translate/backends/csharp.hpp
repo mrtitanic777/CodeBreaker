@@ -165,6 +165,8 @@ public:
     virtual std::optional<std::string> class_keyword(const ir::ClassDecl&) { return std::nullopt; }
     // A name that reads something other than a local of the method being written (a local a class declared in a method copied in).
     virtual std::optional<std::string> name_text(Context&, ir::Node*) { return std::nullopt; }
+    // A compound assignment or ++/--, where the target needs more than C#'s own operator (a Java box that may be null).
+    virtual std::optional<Ex> update(Context&, ir::Node*) { return std::nullopt; }
     // Is this class, declared in a method, written as a member of the class around it?
     virtual bool local_class(const ir::Node* /*decl*/) const { return false; }
     // Lines of C# a class needs that its source does not say (what a Java Iterable owes .NET's foreach).

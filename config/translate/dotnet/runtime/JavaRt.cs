@@ -237,7 +237,13 @@ public static class JavaRt
     public static T Set<T>(IList<T> l, int i, T x) { T old = l[i]; l[i] = x; return old; }
     public static T RemoveAt<T>(IList<T> l, int i) { T old = l[i]; l.RemoveAt(i); return old; }
 
-    public static V Get<K, V>(IDictionary<K, V> m, K k) => m.TryGetValue(k, out V v) ? v : default!;
+    // map.get: a key it does not hold is Java's null, and a number read from that null throws.
+    public static V Get<K, V>(IDictionary<K, V> m, K k)
+    {
+        if (m.TryGetValue(k, out V v)) return v;
+        if (typeof(V).IsValueType && Nullable.GetUnderlyingType(typeof(V)) == null) throw new NullReferenceException();
+        return default!;
+    }
     public static V GetOrDefault<K, V>(IDictionary<K, V> m, K k, V d) => m.TryGetValue(k, out V v) ? v : d;
 
     public static V Put<K, V>(IDictionary<K, V> m, K k, V v)

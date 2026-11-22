@@ -2116,6 +2116,9 @@ Ex Writer::dispatch(Node* e) {
     }
     if (const auto* x = ir::get<ir::Unary>(e)) {
         const std::string& op = x->op;
+        if (java_ && (op == "++" || op == "--")) {
+            if (auto got = lib().update(*this, e)) return *got;
+        }
         if ((op == "++" || op == "--") && x->postfix) return {wrap(x->x, kPrimary) + op, kPrimary};
         std::string v = wrap(x->x, kUnary);
         if ((op == "-" || op == "+") && v.starts_with(op)) v = "(" + v + ")";   // - -x, not --x
@@ -2160,6 +2163,9 @@ Ex Writer::dispatch(Node* e) {
         return {text::join(texts, " + "), kAdd};
     }
     if (const auto* x = ir::get<ir::Assign>(e)) {
+        if (java_ && x->op) {
+            if (auto got = lib().update(*this, e)) return *got;
+        }
         const std::string target = wrap(x->target, kUnary);
         if (!x->op) return {target + " = " + coerce(x->value, type_of(x->target)), kAssign};
         const std::string op = *x->op + "=";
