@@ -494,7 +494,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
 ar::RunResult call(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& options) {
     const ar::System system = bus.system();
     const bool ours = system == ar::System::Gba || system == ar::System::Nds9 || system == ar::System::Nds7 || system == ar::System::N3ds;
-    return enabled(Core::Arm) && ours && options.imports.empty() ? pcode_cpu::run(bus, entry, options) : ar::run(bus, entry, options);
+    return enabled_by(default_on(system)) && ours && options.imports.empty() ? pcode_cpu::run(bus, entry, options) : ar::run(bus, entry, options);
 }
 
 }  // namespace cb::engine::pcode_cpu

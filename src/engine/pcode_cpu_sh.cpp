@@ -37,6 +37,8 @@ struct ShMirror {
     std::unordered_map<std::uint32_t, ShCodePage> pages;   // by virtual page address
     std::uint32_t run = 0;
     bool configured = false;
+    std::array<sl::Emulator::RegRef, 16> r{};   // the registers a step reads and writes, found once: a lookup by name each time is most of what the adapter costs
+    sl::Emulator::RegRef pr{}, gbr{}, vbr{}, mach{}, macl{}, sr{};
 };
 
 ShMirror& sh_mirror(const void* emulator) {
@@ -114,16 +116,18 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
     ShMirror& mir = sh_mirror(&emu);
     if (!mir.configured) {
         emu.keepAddressContext(false);
+        static const char* const kShNames[16] = {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
+        for (unsigned i = 0; i < 16; ++i) mir.r[i] = emu.regRef(kShNames[i]);
+        mir.pr = emu.regRef(sh4 ? "PR" : "pr");
+        mir.gbr = emu.regRef(sh4 ? "GBR" : "gbr");
+        mir.vbr = emu.regRef(sh4 ? "VBR" : "vbr");
+        mir.mach = emu.regRef(sh4 ? "MACH" : "mach");
+        mir.macl = emu.regRef(sh4 ? "MACL" : "macl");
+        if (!sh4) mir.sr = emu.regRef("sr");   // (the SH-4's status is its flag registers: get_sr)
         mir.configured = true;
     }
     ++mir.run;
     const std::vector<ShWord>& words = sh_words(bus.variant());
-    const char* const mach_name = sh4 ? "MACH" : "mach";
-    const char* const macl_name = sh4 ? "MACL" : "macl";
-    const char* const pr_name = sh4 ? "PR" : "pr";
-    const char* const gbr_name = sh4 ? "GBR" : "gbr";
-    const char* const vbr_name = sh4 ? "VBR" : "vbr";
-    static const char* const kShNames[16] = {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
 
     // The state only the own core carries (the SH-4's banks, FPU and system registers) lives in this CPU, which also runs what is left to the own core.
     sh::Cpu scratch(bus);
@@ -136,8 +140,11 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
 
     // A page of code is read from the bus the first time an instruction is fetched from it in a run (and handed to the emulator when it differs from what the
     // emulator holds); what the program writes to a page already read is written to the emulator too. Addresses are virtual: the cache views mirror each other.
+    std::uint32_t loaded_base = 1;   // (the page last looked at: nearly every fetch is on it. No page starts at an odd address.)
     const auto load_page = [&](std::uint32_t address) {
         const std::uint32_t base = address & ~(kShPage - 1);
+        if (base == loaded_base) return;
+        loaded_base = base;
         ShCodePage& page = mir.pages[base];
         if (page.run == mir.run) return;
         page.run = mir.run;
@@ -218,12 +225,12 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
     const auto flag = [&](const char* name) { return static_cast<std::uint32_t>(emu.reg(name)) & 1; };
     std::uint32_t sr_rest = 0;   // SH-4: the bits of SR the flag registers do not carry
     const auto get_sr = [&]() -> std::uint32_t {
-        if (!sh4) return static_cast<std::uint32_t>(emu.reg("sr"));
+        if (!sh4) return static_cast<std::uint32_t>(emu.reg(mir.sr));
         return (sr_rest & ~0x303u) | flag("T") | flag("S") << 1 | flag("Q") << 8 | flag("M") << 9;
     };
     const auto set_sr = [&](std::uint32_t v) {
         if (!sh4) {
-            emu.setReg("sr", v);
+            emu.setReg(mir.sr, v);
             return;
         }
         sr_rest = v;
@@ -233,37 +240,37 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
         emu.setReg("M", v >> 9 & 1);
         emu.setReg("SR", v);
     };
-    for (unsigned i = 0; i < 16; ++i) emu.setReg(kShNames[i], 0);
-    emu.setReg("r0", options.r0);
-    emu.setReg("r15", options.sp);
-    for (std::size_t i = 0; i < options.a.size(); ++i) emu.setReg(kShNames[4 + i], options.a[i]);
-    for (std::size_t i = 0; i < options.s.size(); ++i) emu.setReg(kShNames[8 + i], options.s[i]);
-    emu.setReg(pr_name, sh::kReturnAddress);
-    emu.setReg(gbr_name, options.gbr);
-    emu.setReg(vbr_name, options.vbr);
-    emu.setReg(mach_name, 0);
-    emu.setReg(macl_name, 0);
+    for (unsigned i = 0; i < 16; ++i) emu.setReg(mir.r[i], 0);
+    emu.setReg(mir.r[0], options.r0);
+    emu.setReg(mir.r[15], options.sp);
+    for (std::size_t i = 0; i < options.a.size(); ++i) emu.setReg(mir.r[4 + i], options.a[i]);
+    for (std::size_t i = 0; i < options.s.size(); ++i) emu.setReg(mir.r[8 + i], options.s[i]);
+    emu.setReg(mir.pr, sh::kReturnAddress);
+    emu.setReg(mir.gbr, options.gbr);
+    emu.setReg(mir.vbr, options.vbr);
+    emu.setReg(mir.mach, 0);
+    emu.setReg(mir.macl, 0);
     set_sr(sh4 ? 0x700000F0u : 0xF0u);
     emu.setPc(entry);
 
     // The own core's view of the registers, for what it runs: and back.
     const auto to_scratch = [&](std::uint32_t pc) {
-        for (unsigned i = 0; i < 16; ++i) scratch.r[i] = static_cast<std::uint32_t>(emu.reg(kShNames[i]));
+        for (unsigned i = 0; i < 16; ++i) scratch.r[i] = static_cast<std::uint32_t>(emu.reg(mir.r[i]));
         scratch.pc = pc;
-        scratch.pr = static_cast<std::uint32_t>(emu.reg(pr_name));
-        scratch.gbr = static_cast<std::uint32_t>(emu.reg(gbr_name));
-        scratch.vbr = static_cast<std::uint32_t>(emu.reg(vbr_name));
-        scratch.mach = static_cast<std::uint32_t>(emu.reg(mach_name));
-        scratch.macl = static_cast<std::uint32_t>(emu.reg(macl_name));
+        scratch.pr = static_cast<std::uint32_t>(emu.reg(mir.pr));
+        scratch.gbr = static_cast<std::uint32_t>(emu.reg(mir.gbr));
+        scratch.vbr = static_cast<std::uint32_t>(emu.reg(mir.vbr));
+        scratch.mach = static_cast<std::uint32_t>(emu.reg(mir.mach));
+        scratch.macl = static_cast<std::uint32_t>(emu.reg(mir.macl));
         scratch.sr = get_sr();
     };
     const auto from_scratch = [&]() {
-        for (unsigned i = 0; i < 16; ++i) emu.setReg(kShNames[i], scratch.r[i]);
-        emu.setReg(pr_name, scratch.pr);
-        emu.setReg(gbr_name, scratch.gbr);
-        emu.setReg(vbr_name, scratch.vbr);
-        emu.setReg(mach_name, scratch.mach);
-        emu.setReg(macl_name, scratch.macl);
+        for (unsigned i = 0; i < 16; ++i) emu.setReg(mir.r[i], scratch.r[i]);
+        emu.setReg(mir.pr, scratch.pr);
+        emu.setReg(mir.gbr, scratch.gbr);
+        emu.setReg(mir.vbr, scratch.vbr);
+        emu.setReg(mir.mach, scratch.mach);
+        emu.setReg(mir.macl, scratch.macl);
         set_sr(scratch.sr);
         emu.setPc(scratch.pc);
     };
@@ -306,7 +313,7 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
         }
         if (!own && bus.has_enter_hooks()) {   // (what the own core runs enters the bus's stubs itself)
             std::array<std::uint32_t, 16> regs{};
-            for (unsigned i = 0; i < 16; ++i) regs[i] = static_cast<std::uint32_t>(emu.reg(kShNames[i]));
+            for (unsigned i = 0; i < 16; ++i) regs[i] = static_cast<std::uint32_t>(emu.reg(mir.r[i]));
             bus.enter(pc, regs);
         }
         if (!w.valid) {
@@ -337,18 +344,18 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
         // (a delayed branch's slot is the one that accesses memory: its registers are the ones to keep)
         const std::uint16_t slot_word = w.delayed ? static_cast<std::uint16_t>(bus.peek(pc + 2, 2)) : word;
         const unsigned n = word >> 8 & 15, m = word >> 4 & 15, n2 = slot_word >> 8 & 15, m2 = slot_word >> 4 & 15;
-        const std::uint32_t before_n = static_cast<std::uint32_t>(emu.reg(kShNames[n])), before_m = static_cast<std::uint32_t>(emu.reg(kShNames[m])),
-                            before_n2 = static_cast<std::uint32_t>(emu.reg(kShNames[n2])), before_m2 = static_cast<std::uint32_t>(emu.reg(kShNames[m2])),
-                            before_r0 = static_cast<std::uint32_t>(emu.reg("r0")), before_sp = static_cast<std::uint32_t>(emu.reg("r15"));
+        const std::uint32_t before_n = static_cast<std::uint32_t>(emu.reg(mir.r[n])), before_m = static_cast<std::uint32_t>(emu.reg(mir.r[m])),
+                            before_n2 = static_cast<std::uint32_t>(emu.reg(mir.r[n2])), before_m2 = static_cast<std::uint32_t>(emu.reg(mir.r[m2])),
+                            before_r0 = static_cast<std::uint32_t>(emu.reg(mir.r[0])), before_sp = static_cast<std::uint32_t>(emu.reg(mir.r[15]));
         const ShWord& slot_kind = words[slot_word];
         std::uint32_t before_sys[6] = {};
         if (slot_kind.touches_memory) before_sys[0] = get_sr();
         if (slot_kind.sysload) {   // (LDC.L and LDS.L load a system register from memory)
-            before_sys[1] = static_cast<std::uint32_t>(emu.reg(gbr_name));
-            before_sys[2] = static_cast<std::uint32_t>(emu.reg(vbr_name));
-            before_sys[3] = static_cast<std::uint32_t>(emu.reg(mach_name));
-            before_sys[4] = static_cast<std::uint32_t>(emu.reg(macl_name));
-            before_sys[5] = static_cast<std::uint32_t>(emu.reg(pr_name));
+            before_sys[1] = static_cast<std::uint32_t>(emu.reg(mir.gbr));
+            before_sys[2] = static_cast<std::uint32_t>(emu.reg(mir.vbr));
+            before_sys[3] = static_cast<std::uint32_t>(emu.reg(mir.mach));
+            before_sys[4] = static_cast<std::uint32_t>(emu.reg(mir.macl));
+            before_sys[5] = static_cast<std::uint32_t>(emu.reg(mir.pr));
         }
         hook_fault.reset();
         const sl::Emulator::Status status = emu.step();
@@ -357,19 +364,19 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
             break;
         }
         if (hook_fault) {
-            emu.setReg(kShNames[n], before_n);
-            emu.setReg(kShNames[m], before_m);
-            emu.setReg(kShNames[n2], before_n2);
-            emu.setReg(kShNames[m2], before_m2);
-            emu.setReg("r0", before_r0);
-            emu.setReg("r15", before_sp);
+            emu.setReg(mir.r[n], before_n);
+            emu.setReg(mir.r[m], before_m);
+            emu.setReg(mir.r[n2], before_n2);
+            emu.setReg(mir.r[m2], before_m2);
+            emu.setReg(mir.r[0], before_r0);
+            emu.setReg(mir.r[15], before_sp);
             if (slot_kind.touches_memory) set_sr(before_sys[0]);
             if (slot_kind.sysload) {
-                emu.setReg(gbr_name, before_sys[1]);
-                emu.setReg(vbr_name, before_sys[2]);
-                emu.setReg(mach_name, before_sys[3]);
-                emu.setReg(macl_name, before_sys[4]);
-                emu.setReg(pr_name, w.links ? pc + 4 : before_sys[5]);   // (a branch that links has set PR before its slot ran)
+                emu.setReg(mir.gbr, before_sys[1]);
+                emu.setReg(mir.vbr, before_sys[2]);
+                emu.setReg(mir.mach, before_sys[3]);
+                emu.setReg(mir.macl, before_sys[4]);
+                emu.setReg(mir.pr, w.links ? pc + 4 : before_sys[5]);   // (a branch that links has set PR before its slot ran)
             }
             emu.setPc(pc);
             if (w.delayed) ++steps;   // (the branch itself ran)
@@ -379,12 +386,12 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
         steps += w.delayed ? 2 : 1;
     }
     if (out.end == sh::End::Limit && static_cast<std::uint32_t>(emu.pc()) == sh::kReturnAddress) out.end = sh::End::Return;
-    for (unsigned i = 0; i < 16; ++i) out.r[i] = static_cast<std::uint32_t>(emu.reg(kShNames[i]));
-    out.pr = static_cast<std::uint32_t>(emu.reg(pr_name));
-    out.gbr = static_cast<std::uint32_t>(emu.reg(gbr_name));
-    out.vbr = static_cast<std::uint32_t>(emu.reg(vbr_name));
-    out.mach = static_cast<std::uint32_t>(emu.reg(mach_name));
-    out.macl = static_cast<std::uint32_t>(emu.reg(macl_name));
+    for (unsigned i = 0; i < 16; ++i) out.r[i] = static_cast<std::uint32_t>(emu.reg(mir.r[i]));
+    out.pr = static_cast<std::uint32_t>(emu.reg(mir.pr));
+    out.gbr = static_cast<std::uint32_t>(emu.reg(mir.gbr));
+    out.vbr = static_cast<std::uint32_t>(emu.reg(mir.vbr));
+    out.mach = static_cast<std::uint32_t>(emu.reg(mir.mach));
+    out.macl = static_cast<std::uint32_t>(emu.reg(mir.macl));
     out.sr = get_sr();
     out.fpscr = scratch.fpscr;
     out.fpul = scratch.fpul;
@@ -394,8 +401,8 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
     return out;
 }
 
-sh::RunResult call(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& options) {
-    return enabled(Core::SuperH) ? pcode_cpu::run(bus, entry, options) : sh::run(bus, entry, options);
+sh::RunResult call(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& options, ShMachine machine) {
+    return enabled_by(default_on(machine)) ? pcode_cpu::run(bus, entry, options) : sh::run(bus, entry, options);
 }
 
 }  // namespace cb::engine::pcode_cpu

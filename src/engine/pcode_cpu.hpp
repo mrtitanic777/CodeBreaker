@@ -37,8 +37,15 @@ namespace cb::engine::pcode_cpu {
 enum class Core : std::uint8_t { Mos6502, Z80, M68000, Mips, R4300, Arm, SuperH, PowerPc };
 bool default_on(Core core);
 
+// Where a family's machines differ, the default is the machine's: the ARM's DS and 3DS are on the emulator and its GBA is not, the SH's Saturn and 32X are
+// and its Dreamcast is not. (The 32X's 68000 is on the emulator too, by its machine's choice: enabled_by.)
+enum class ShMachine : std::uint8_t { Saturn, Sega32x, Dreamcast };
+bool default_on(emulate::arm::System system);
+bool default_on(ShMachine machine);
+
 // Whether call() runs on the emulator: force() if set, else CB_PCODE_EMU ("0", "false", "no": off for every core; "1", "true", "yes": on for every
-// core), else the core's default.
+// core), else the default given (enabled_by) or the core's (enabled).
+bool enabled_by(bool lane_default);
 bool enabled(Core core = Core::Mos6502);
 // Override the environment (tests flip it); std::nullopt goes back to the environment.
 void force(std::optional<bool> on);
@@ -83,7 +90,7 @@ emulate::arm::RunResult call(emulate::arm::Bus& bus, std::uint32_t entry, const 
 // the emulator, the faults, the on-chip registers and the bus's devices are the adapter's and the bus's; what the descriptions leave out (the SH-4's FPU, banks and
 // cache instructions) runs as the own core runs it.
 emulate::sh2::RunResult run(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
-emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
+emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options, ShMachine machine);
 
 // The PowerPC lanes' (the GameCube, Wii, Wii U, PlayStation 3) function runs, on ppc_64_isa_altivec_be.sla: the integer, branch and condition-register instructions on the
 // description with the Machine as the memory, the rest (floating point and paired singles, vector, system calls, reservations, special registers) as the interpreter runs

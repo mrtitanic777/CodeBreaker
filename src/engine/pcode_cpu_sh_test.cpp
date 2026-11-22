@@ -156,7 +156,13 @@ CB_TEST("engine.pcode_cpu.the_32x_lane_runs_homebrew_the_same_on_both_cores", []
         const formats::sega32x::Rom rom = formats::sega32x::read(path);
         return rom.header.sh2_offset + ((address & sh::kPhysicalMask) - formats::sega32x::kSdram);
     },
-    [](std::uint32_t address) { return address >= formats::sega32x::kSdram; });   // (the 68000's functions are the 68000 lanes' proof)
+    [](std::uint32_t address) { return address >= formats::sega32x::kSdram; });
+});
+
+// The 32X's other processor: the 68000's functions, whose addresses are the ROM's.
+CB_TEST("engine.pcode_cpu.the_32x_lane_runs_its_68000_functions_the_same_on_both_cores", [] {
+    engine::pcode_compare::compare_homebrew("sega32x", "sega32x", ".32x", [](const std::filesystem::path&, std::uint32_t address) -> std::size_t { return address; },
+                                            [](std::uint32_t address) { return address < formats::sega32x::kSdram; });
 });
 
 CB_TEST("engine.pcode_cpu.the_saturn_lane_runs_homebrew_the_same_on_both_cores", [] {
