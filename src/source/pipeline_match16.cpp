@@ -19,6 +19,7 @@
 #include "exact/emu/native_dos_executive.hpp"
 #include "compare/mask.hpp"
 #include "core/fs.hpp"
+#include "core/json.hpp"
 #include "core/log.hpp"
 #include "core/text.hpp"
 #include "formats/ne.hpp"
@@ -412,6 +413,19 @@ int match16_command(World& world, const stdfs::path& module, const cli::Args& ar
     options.search = static_cast<int>(args.integer<std::int64_t>("search").value_or(0));
     const Match16Run run = run_match16(world, module, options, [](std::string_view line) { cb::out("{}\n", line); });
     for (const std::string& line : am16::report_lines(fs::to_text(module.filename()), run.result)) cb::out("{}\n", line);
+    if (const auto json_file = args.value("json")) {
+        Json j = Json::object();
+        for (const auto& [name, v] : run.result.verdicts) {
+            const auto used = run.result.setting.find(name);
+            const auto segment = run.result.segment.find(name);
+            j[name] = Json{{"verdict", std::string(verify::word(v.match))},
+                           {"differing", v.differing},
+                           {"total", v.total},
+                           {"segment", segment == run.result.segment.end() ? 0U : segment->second},
+                           {"flags", used == run.result.setting.end() ? std::string() : used->second.compiler + " " + used->second.switches}};
+        }
+        fs::write_text(fs::from_text(*json_file), json::dump(j, json::Style::Pretty));
+    }
     return 0;
 }
 
