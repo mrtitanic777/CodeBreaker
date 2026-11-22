@@ -262,7 +262,7 @@ vl::Effects sega32x_effects(const stdfs::path& path, std::uint32_t entry, const 
     bus.map(0x4100, 0x41FF, [swaps](std::uint32_t a, unsigned) -> std::uint32_t { return (a & ~1u) == 0x410A ? 0x8000u | ((*swaps)++ & 1u) : 0u; });
 
     const std::vector<Watched> watched = watch(bus, {formats::sega32x::kSdram, formats::sega32x::kFrameBuffer, 0x4200});
-    const sh2::RunResult run = pcode_cpu::call(bus, entry, options_of(state, k32Stack));
+    const sh2::RunResult run = pcode_cpu::call(bus, entry, options_of(state, k32Stack), pcode_cpu::ShMachine::Sega32x);
     return outcome(run, watched);
 }
 
@@ -307,7 +307,7 @@ vl::Effects saturn_effects(const stdfs::path& path, std::uint32_t entry, const v
     });
 
     const std::vector<Watched> watched = watch(bus, {0x00200000, formats::saturn::kHighRam, 0x05A00000, 0x05C00000, 0x05C80000, 0x05E00000, 0x05F00000});
-    const sh2::RunResult run = pcode_cpu::call(bus, entry, options_of(state, kSatStack));
+    const sh2::RunResult run = pcode_cpu::call(bus, entry, options_of(state, kSatStack), pcode_cpu::ShMachine::Saturn);
     return outcome(run, watched);
 }
 
