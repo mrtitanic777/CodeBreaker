@@ -135,7 +135,8 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
                        "}\n");
     cb::fs::write_text(work / "CollectionKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/CollectionKit.java")));
     cb::fs::write_text(work / "LocalKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/LocalKit.java")));
-    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}, {"csharp", "LocalKit"}};
+    cb::fs::write_text(work / "LibraryKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/LibraryKit.java")));
+    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}, {"csharp", "LocalKit"}, {"csharp", "LibraryKit"}};
     for (const auto& [to, program] : cases) {
         const cap::Path* path = cap::find_path("java", to);
         CB_CHECK(path != nullptr);

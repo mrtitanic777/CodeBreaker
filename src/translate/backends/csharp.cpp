@@ -753,6 +753,7 @@ private:
     std::map<std::string, std::pair<bool, bool>> labels_;                // a Java label -> its uses (break, continue)
     std::unordered_map<const Node*, std::string> loop_labels_;           // a loop -> its label; lookup only
     std::unordered_set<std::string> locals_;
+    TypeP yield_type_;                                                   // inside a switch-expression arm that is a block: what it yields
     std::vector<std::unordered_set<std::string>> block_names_;           // the locals each enclosing block declares (all of the block)
     std::vector<std::map<std::string, std::string>> scopes_;             // a local's name -> the name it is written with
     std::unordered_map<const Node*, InitGroup> init_uses_;               // the use of a hoisted initialiser's local -> what it stands for
@@ -876,6 +877,8 @@ std::string Writer::class_name(const TypeP&, const ir::ClassType& c) {
         Lines parts;
         for (const TypeP& a : c.args) parts.push_back(ctype(a));
         simple += "<" + text::join(parts, ", ") + ">";
+    } else if (java_ && cls_ != nullptr && cls_->qname == c.name && !cls_->typeparams.empty()) {   // a raw use inside the class (javac's record equals): its own T
+        simple += "<" + text::join(cls_->typeparams, ", ") + ">";
     }
     return simple + suffix;
 }
@@ -886,7 +889,7 @@ std::string Writer::short_name(const std::string& qname) {
         std::vector<ir::ClassDecl*> chain{c};
         while (chain.back()->outer) {
             ir::ClassDecl* o = prog_.class_named(*chain.back()->outer);
-            if (o == nullptr) break;
+            if (o == nullptr || (java_ && !o->typeparams.empty())) break;   // (inside a generic class its members are named alone: the name takes its T)
             chain.push_back(o);
         }
         const ir::ClassDecl& top = *chain.back();
@@ -1066,10 +1069,12 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
         }
     }
     Lines bases;
-    if (ckind == "enum") {
+    const bool object_enum = java_ && ckind == "enum" && lib().enum_as_class(c);
+    if (object_enum) bases.emplace_back("JEnum");
+    if (ckind == "enum" && !object_enum) {
         if (c.extends) bases.push_back(ctype(c.extends));
     } else {
-        if (c.extends) {
+        if (c.extends && !object_enum) {
             std::string b = ctype(c.extends);
             if (primary != nullptr) {
                 // the base class takes the arguments of the primary constructor's base call
@@ -1112,7 +1117,7 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
     }
     lines.push_back(ind + "{");
     const std::string inner = ind + "    ";
-    if (ckind == "enum") {
+    if (ckind == "enum" && !object_enum) {
         std::vector<Node*> consts;
         std::vector<Node*> rest;
         for (Node* m : members) (ir::is<ir::EnumConst>(m) ? consts : rest).push_back(m);
@@ -1134,6 +1139,9 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
         if (!first && (written.size() > 1 || ir::is<ir::MethodDecl>(m) || ir::is<ir::ClassDecl>(m) || ir::is<ir::Property>(m))) lines.emplace_back();
         extend(lines, written);
         first = false;
+    }
+    if (java_) {
+        for (const std::string& extra : lib().extra_members(*this, c)) lines.push_back(inner + extra);
     }
     lines.push_back(ind + "}");
     return lines;
@@ -1606,6 +1614,9 @@ std::string Writer::case_label(Node* lab0, Node* scrutinee) {
     Node* lab = strip(lab0);
     if (const auto* sel = ir::get<ir::Select>(lab)) {
         if (sel->sym && sel->sym->kind == ir::SymKind::EnumConst) {
+            if (java_ && scrutinee != nullptr) {
+                if (auto number = lib().enum_case(type_of(scrutinee), sel->sym->name)) return *number;
+            }
             return ctype(ir::class_type(sel->sym->owner.value_or(""))) + "." + ident(sel->sym->name);
         }
     }
@@ -1618,7 +1629,8 @@ std::string Writer::case_label(Node* lab0, Node* scrutinee) {
 }
 
 void Writer::switch_stmt(const ir::Switch& s, Lines& out, const std::string& ind) {
-    out.push_back(ind + "switch (" + expr(s.expr).text + ")");
+    const bool by_number = java_ && lib().enum_case(type_of(s.expr), "").has_value();   // (an enum of objects: C# cases need constants)
+    out.push_back(ind + "switch (" + (by_number ? wrap(s.expr, kPrimary) + ".JOrdinal" : expr(s.expr).text) + ")");
     out.push_back(ind + "{");
     for (std::size_t i = 0; i < s.cases.size(); ++i) {
         const auto* c = ir::get<ir::Case>(s.cases[i]);
@@ -1819,7 +1831,11 @@ void Writer::stmt(Node* s, Lines& out, const std::string& ind) {
     if (ir::is<ir::CtorCall>(s)) throw Decline("ctor-call", "a constructor call that is not the first statement");
     if (const auto* x = ir::get<ir::Switch>(s)) return switch_stmt(*x, out, ind);
     if (const auto* x = ir::get<ir::Try>(s)) return try_stmt(*x, out, ind);
-    if (ir::is<ir::Yield>(s)) throw Decline("yield", "a switch-expression arm with statements");
+    if (const auto* x = ir::get<ir::Yield>(s)) {
+        if (!yield_type_) throw Decline("yield", "a switch-expression arm with statements");
+        out.push_back(ind + "return " + coerce(x->expr, yield_type_) + ";");   // (the arm is a function of its own)
+        return;
+    }
     if (const auto* x = ir::get<ir::YieldReturn>(s)) {
         out.push_back(ind + "yield return " + expr(x->expr).text + ";");
         return;
@@ -2177,6 +2193,15 @@ Ex Writer::dispatch(Node* e) {
         return {t, kUnary};
     }
     if (const auto* x = ir::get<ir::InstanceOf>(e)) {
+        if (java_ && x->binding == nullptr) {   // `o instanceof Box`, of a generic class: any Box<...>
+            const std::string* tested = class_of(x->test);
+            const ir::ClassDecl* generic = tested != nullptr ? prog_.class_named(*tested) : nullptr;
+            if (generic != nullptr && generic != cls_ && !generic->typeparams.empty() && std::get<ir::ClassType>(x->test->body).args.empty()) {
+                prog_.use_runtime("JavaRt");
+                prog_.use_runtime("JavaCollections");
+                return {"JLib.IsGeneric(" + expr(x->x).text + ", typeof(" + short_name(*tested) + "<" + std::string(generic->typeparams.size() - 1, ',') + ">))", kPrimary};
+            }
+        }
         std::string t = wrap(x->x, kRel) + " is " + ctype(x->test);
         if (x->binding != nullptr) {
             const auto* bl = ir::get<ir::Local>(x->binding);
@@ -2227,6 +2252,24 @@ Ex Writer::dispatch(Node* e) {
             if (const auto* y = ir::get<ir::Yield>(b)) val = coerce(y->expr, e->type);
             else if (const auto* t = ir::get<ir::Throw>(b)) val = "throw " + expr(t->expr).text;
             else if (const auto* es = ir::get<ir::ExprStmt>(b)) val = expr(es->expr).text;
+            else if (java_ && ir::is<ir::Block>(b)) {   // C# arms are expressions: a block is a function called on the spot, its `yield` that function's return
+                struct Restore {
+                    std::unordered_set<std::string>& names;
+                    std::unordered_set<std::string> saved_names;
+                    TypeP& yielded;
+                    TypeP saved_type;
+                    ~Restore() {
+                        names = std::move(saved_names);
+                        yielded = std::move(saved_type);
+                    }
+                } restore{locals_, locals_, yield_type_, yield_type_};
+                yield_type_ = e->type;
+                Scope scope(*this);
+                Lines body;
+                block_into(b, body, "");
+                usings_.insert("System");
+                val = "((Func<" + ctype(e->type) + ">)(() =>\n" + text::join(body, "\n") + "))()";
+            }
             else throw Decline("switch-expression", "a switch-expression arm " + describe(b));
             Lines pats;
             if (c->is_default) {
@@ -2236,7 +2279,8 @@ Ex Writer::dispatch(Node* e) {
             }
             arms.push_back(text::join(pats, " or ") + " => " + val);
         }
-        return {wrap(x->expr, kPrimary) + " switch { " + text::join(arms, ", ") + " }", kPrimary};
+        const bool by_number = java_ && lib().enum_case(type_of(x->expr), "").has_value();
+        return {wrap(x->expr, kPrimary) + (by_number ? ".JOrdinal" : "") + " switch { " + text::join(arms, ", ") + " }", kPrimary};
     }
     if (const auto* x = ir::get<ir::New>(e)) {
         if (x->body != nullptr && !java_) throw Decline("anonymous-class", "an anonymous class");
@@ -2266,6 +2310,13 @@ Ex Writer::dispatch(Node* e) {
         std::size_t n = 1;
         TypeP base = x->elem;
         if (arr != nullptr) std::tie(n, base) = ir::dims(t);
+        if (java_ && x->dims.size() > 1) {   // Java's arrays of arrays, each its own: C# has no one expression for them
+            prog_.use_runtime("JavaRt");
+            prog_.use_runtime("JavaCollections");
+            Lines ds;
+            for (Node* d : x->dims) ds.push_back(expr(d).text);
+            return {"JLib.Jagged<" + ctype(t) + ">(" + text::join(ds, ", ") + ")", kPrimary};
+        }
         std::string sizes;
         for (Node* d : x->dims) sizes += "[" + expr(d).text + "]";
         std::string rest;

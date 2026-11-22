@@ -138,10 +138,16 @@ CB_TEST("translate.csharp_java.what_it_declines", [] {
     };
     const Case cases[] = {
         // a class it cannot carry declines the whole unit; the others only the method
-        {"enum_object", "enum", "was not translated: a Java enum with fields", "Color"},
         {"boxed_null", "boxed-null", "int x = 5;", "Integer x"},
         {"exception_cause", "exception", "throw new ArgumentException(\"bad\");", "RuntimeException"},
     };
+    {   // an enum of objects is a class
+        auto u = cjt_load("enum_object");
+        cs::Program p(u->units, cjt_options());
+        const std::string written = p.files().at(0).text;
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(written.find(": JEnum") != std::string::npos);
+    }
     for (const Case& c : cases) {
         auto u = cjt_load(c.name);
         cs::Program p(u->units, cjt_options());

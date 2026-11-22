@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <format>
 #include <functional>
+#include <sstream>
 
 #include "core/arena.hpp"
 #include "core/error.hpp"
@@ -214,6 +215,52 @@ JavaMain tf_java_main(std::span<ir::Node* const> units, const std::string& stem)
     return chosen;
 }
 
+// The folder a Java file's package starts in: its own, or as many above it as the file's `package` line has names.
+stdfs::path tf_java_root(const stdfs::path& file) {
+    stdfs::path root = stdfs::absolute(file).parent_path();
+    std::istringstream lines(fs::read_text(file));
+    for (std::string line; std::getline(lines, line);) {
+        const std::string_view trimmed = text::trim(line);
+        if (trimmed.starts_with("import ") || trimmed.find(" class ") != std::string_view::npos || trimmed.starts_with("class ")) break;
+        if (!trimmed.starts_with("package ")) continue;
+        const std::size_t levels = 1 + static_cast<std::size_t>(std::count(trimmed.begin(), trimmed.end(), '.'));
+        for (std::size_t i = 0; i < levels; ++i) root = root.parent_path();
+        break;
+    }
+    return root;
+}
+
+// The source files javac read, from its -verbose log: the file itself and every class of the program it reached through -sourcepath.
+std::vector<stdfs::path> tf_java_read(std::string_view log) {
+    static constexpr std::string_view kStart = "[parsing started ";
+    std::vector<stdfs::path> out;
+    for (std::size_t at = log.find(kStart); at != std::string_view::npos; at = log.find(kStart, at + 1)) {
+        const std::size_t open = log.find('[', at + 1);
+        const std::size_t close = log.find("]]", at);
+        if (open == std::string_view::npos || close == std::string_view::npos || open > close) continue;
+        const std::string_view named = log.substr(open + 1, close - open - 1);
+        const std::size_t joint = named.rfind(':');   // (a file found on the source path is written `folder:relative/path`)
+        if (joint != std::string_view::npos && joint > 1) out.push_back(fs::from_text(std::string(named.substr(0, joint))) / fs::from_text(std::string(named.substr(joint + 1))));
+        else out.push_back(fs::from_text(std::string(named)));
+    }
+    return out;
+}
+
+// javac's log without its -verbose lines.
+std::string tf_java_errors(std::string_view log) {
+    std::string out;
+    for (std::size_t at = 0; at < log.size();) {
+        const std::size_t end = std::min(log.find('\n', at), log.size());
+        const std::string_view line = log.substr(at, end - at);
+        if (!line.starts_with("[")) {
+            out.append(line);
+            out.push_back('\n');
+        }
+        at = end + 1;
+    }
+    return out;
+}
+
 // A built program run, as the judge compares it.
 dj::Run tf_java_run(process::ProcessSpec spec) {
     spec.timeout = dj::kTimeout;
@@ -237,26 +284,37 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
     };
     const std::string name = fs::to_text(input.stem());
     const stdfs::path judged = work / "judge";
-    const stdfs::path source = judged / "src" / input.filename();
-    fs::make_dirs(source.parent_path());
-    fs::write_file(source, fs::read_file(input));
+    const stdfs::path sources = judged / "src";
+    fs::make_dirs(sources);
     Result result;
 
     translating(0, 0, fs::to_text(input.filename()));
-    process::ProcessSpec compile;   // the original first: a program javac refuses has nothing to be compared with
-    compile.argv = {fs::to_text(javac), "-nowarn", "-encoding", "UTF-8", "-d", fs::to_text(judged / "classes"), fs::to_text(source)};
+    // the original first: a program javac refuses has nothing to be compared with. The classes it uses are found beside it, as javac finds them
+    const stdfs::path root = tf_java_root(input);
+    process::ProcessSpec compile;
+    compile.argv = {fs::to_text(javac), "-nowarn", "-verbose", "-encoding", "UTF-8", "-sourcepath", fs::to_text(root), "-d", fs::to_text(judged / "classes"),
+                    fs::to_text(stdfs::absolute(input))};
     compile.err = process::Capture::Merge;
     compile.timeout = std::chrono::seconds(300);
     const process::ProcessResult compiled = process::run(compile);
+    const std::string compile_log = text::sanitize_utf8(as_text(compiled.out));
     if (compiled.exit_code != 0) {
         result.verdict = Verdict::BadInput;
-        result.detail = "front end: javac: " + text::sanitize_utf8(as_text(compiled.out)).substr(0, 400);
+        result.detail = "front end: javac: " + tf_java_errors(compile_log).substr(0, 400);
         return result;
+    }
+    std::vector<stdfs::path> read = tf_java_read(compile_log);
+    if (read.empty()) read.push_back(stdfs::absolute(input));
+    for (const stdfs::path& file : read) {
+        const stdfs::path relative = file.lexically_relative(root);
+        const stdfs::path copy = sources / (relative.empty() || *relative.begin() == ".." ? file.filename() : relative);
+        fs::make_dirs(copy.parent_path());
+        fs::write_file(copy, fs::read_file(file));
     }
     Arena arena;
     const java::frontend::DumpTools tools{*java, javac, environment.config.checkout_root() / "config" / "translate" / "frontends" / "java" / "TreeDump.java",
                                           environment.config.state(), {}};
-    std::vector<ir::Node*> units = java::frontend::lower_program(arena, source.parent_path(), tools);
+    std::vector<ir::Node*> units = java::frontend::lower_program(arena, sources, tools);
     const JavaMain main_class = tf_java_main(units, name);
     if (main_class.simple.empty()) {
         result.verdict = Verdict::BadInput;

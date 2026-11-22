@@ -86,6 +86,9 @@ public:
     std::optional<std::string> this_text(cs::Context& w, ir::Node* e) override;
     std::optional<std::string> name_text(cs::Context& w, ir::Node* e) override;
     bool local_class(const ir::Node* decl) const override { return hoist_of_.contains(decl); }
+    std::vector<std::string> extra_members(cs::Context& w, ir::ClassDecl& c) override;
+    bool enum_as_class(const ir::ClassDecl& c) const override { return c.qname && object_enums_.contains(*c.qname); }
+    std::optional<std::string> enum_case(const ir::TypeP& scrutinee, const std::string& name) const override;
 
 private:
     // A class Java declares in a method (a local or anonymous one), as C# has none: a member of the class around it, with a field
@@ -144,6 +147,8 @@ private:
     std::unordered_map<const ir::Node*, std::string> refused_;            // the tree's ClassDecl -> why it has no class
     std::unordered_map<const ir::Node*, std::string> capture_names_;      // a Name that reads a captured local -> the field
     std::unordered_map<const ir::Node*, std::set<std::string>> via_field_;   // a `new` -> the captures it passes from the class's own fields
+    std::unordered_map<std::string, std::vector<std::string>> object_enums_;   // an enum written as a class -> its constants, in order
+    std::unordered_map<const ir::Node*, std::pair<std::string, int>> enum_made_;   // the `new` of a constant -> its name and ordinal
     std::unordered_set<const ir::Node*> before_base_;                     // a `new` in this(...) or super(...): its captures are parameters there
 };
 

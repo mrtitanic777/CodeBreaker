@@ -71,6 +71,291 @@ public static partial class JLib
         return new List<T>(items);
     }
 
+    // `new int[a][b]`: an array of arrays, every size checked before anything is made.
+    public static T Jagged<T>(params int[] sizes)
+    {
+        foreach (int n in sizes)
+            if (n < 0) throw new OverflowException();
+        return (T)(object)MakeArray(typeof(T), sizes, 0);
+    }
+
+    static Array MakeArray(Type type, int[] sizes, int at)
+    {
+        Type item = type.GetElementType();
+        Array made = Array.CreateInstance(item, sizes[at]);
+        if (at + 1 < sizes.Length)
+            for (int i = 0; i < sizes[at]; i++) made.SetValue(MakeArray(item, sizes, at + 1), i);
+        return made;
+    }
+
+    // `o instanceof Box`, where Box is generic.
+    public static bool IsGeneric(object o, Type open)
+    {
+        if (o is null) return false;
+        for (Type t = o.GetType(); t != null; t = t.BaseType)
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == open) return true;
+        foreach (Type i in o.GetType().GetInterfaces())
+            if (i.IsGenericType && i.GetGenericTypeDefinition() == open) return true;
+        return false;
+    }
+
+    public static T EnumMade<T>(T constant, string name, int ordinal) where T : JEnum
+    {
+        constant.JName = name;
+        constant.JOrdinal = ordinal;
+        return constant;
+    }
+
+    public static T EnumOf<T>(T[] all, string name) where T : JEnum
+    {
+        if (name is null) throw new NullReferenceException("Name is null");
+        foreach (T x in all)
+            if (x.JName == name) return x;
+        throw new ArgumentException("No enum constant " + typeof(T).Name + "." + name);
+    }
+
+    // ---- java.util.Iterator
+    public static IEnumerator<T> Walk<T>(JIterator<T> it)
+    {
+        while (it.hasNext()) yield return it.next();
+    }
+
+    public static JIterator<T> iteratorOf<T>(IEnumerable<T> items) => new JEnumeratorIterator<T>(items.GetEnumerator());
+
+    // ---- Map's default methods
+    public static V merge<K, V>(IDictionary<K, V> m, K key, V value, Func<V, V, V> f)
+    {
+        if (value is null) throw new NullReferenceException();
+        bool had = m.TryGetValue(key, out V old);
+        if (!had || old is null)
+        {
+            Store(m, key, value, had);
+            return value;
+        }
+        V made = f(old, value);
+        if (made is null) m.Remove(key); else m[key] = made;
+        return made;
+    }
+
+    public static V putIfAbsent<K, V>(IDictionary<K, V> m, K key, V value)
+    {
+        if (m.TryGetValue(key, out V old) && old is not null) return old;
+        m[key] = value;
+        return default!;
+    }
+
+    public static V computeIfAbsent<K, V>(IDictionary<K, V> m, K key, Func<K, V> f)
+    {
+        if (m.TryGetValue(key, out V old) && old is not null) return old;
+        bool had = m.ContainsKey(key);
+        V made = f(key);
+        if (made is not null) Store(m, key, made, had);
+        return made;
+    }
+
+    public static V computeIfPresent<K, V>(IDictionary<K, V> m, K key, Func<K, V, V> f)
+    {
+        if (!m.TryGetValue(key, out V old) || old is null) return default!;
+        V made = f(key, old);
+        if (made is null) m.Remove(key); else m[key] = made;
+        return made;
+    }
+
+    public static V compute<K, V>(IDictionary<K, V> m, K key, Func<K, V, V> f)
+    {
+        bool had = m.TryGetValue(key, out V old);
+        if (!had && typeof(V).IsValueType) throw new NotSupportedException("compute on a missing key hands the function a null this value type cannot hold");
+        V made = f(key, old);
+        if (made is null) { if (had) m.Remove(key); } else Store(m, key, made, had);
+        return made;
+    }
+
+    // merge and the compute methods put a new key at the head of its bin, where put puts it at the tail: the order a walk shows depends on it.
+    static void Store<K, V>(IDictionary<K, V> m, K key, V value, bool had)
+    {
+        if (!had && m is JHashMap<K, V> table) table.InsertAtHead(key, value);
+        else m[key] = value;
+    }
+
+    // ---- java.util.Formatter: the conversions programs use, with Java's rounding (half up, on the shortest decimal of the double)
+    public static string format(string f, params object[] args)
+    {
+        var b = new StringBuilder();
+        int next = 0, last = -1;
+        for (int i = 0; i < f.Length;)
+        {
+            if (f[i] != '%') { b.Append(f[i++]); continue; }
+            i++;
+            int index = -1, j = i;
+            while (j < f.Length && char.IsDigit(f[j])) j++;
+            if (j > i && j < f.Length && f[j] == '$') { index = int.Parse(f.Substring(i, j - i)) - 1; i = j + 1; }
+            else if (i < f.Length && f[i] == '<') { index = last; i++; }
+            int flagsAt = i;
+            while (i < f.Length && "-#+ 0,(".IndexOf(f[i]) >= 0) i++;
+            string flags = f.Substring(flagsAt, i - flagsAt);
+            int width = -1, precision = -1;
+            j = i;
+            while (j < f.Length && char.IsDigit(f[j])) j++;
+            if (j > i) { width = int.Parse(f.Substring(i, j - i)); i = j; }
+            if (i < f.Length && f[i] == '.')
+            {
+                j = ++i;
+                while (j < f.Length && char.IsDigit(f[j])) j++;
+                precision = int.Parse(f.Substring(i, j - i));
+                i = j;
+            }
+            if (i >= f.Length) throw new FormatException("a format that ends in the middle of a conversion");
+            char conv = f[i++];
+            if (conv == 'n') { b.Append(Environment.NewLine); continue; }
+            if (conv == '%') { b.Append(Pad("%", width, flags)); continue; }
+            if (index < 0) index = next++;
+            if (args == null || index >= args.Length) throw new FormatException("Format specifier '%" + conv + "'");
+            last = index;
+            b.Append(Convert1(conv, args[index], flags, width, precision));
+        }
+        return b.ToString();
+    }
+
+    static string Pad(string s, int width, string flags) =>
+        width <= s.Length ? s : flags.Contains('-') ? s.PadRight(width) : s.PadLeft(width);
+
+    static string Convert1(char conv, object a, string flags, int width, int precision)
+    {
+        switch (conv)
+        {
+            case 's':
+            case 'S':
+            case 'b':
+            case 'B':
+            {
+                string s = conv == 's' || conv == 'S' ? JavaRt.Str(a) : a is bool t ? (t ? "true" : "false") : a is null ? "false" : "true";
+                if (precision >= 0 && precision < s.Length) s = s.Substring(0, precision);
+                return Pad(char.IsUpper(conv) ? s.ToUpperInvariant() : s, width, flags);
+            }
+            case 'c':
+            case 'C':
+            {
+                string s = a switch { null => "null", char c => c.ToString(), int p => char.ConvertFromUtf32(p), _ => throw new FormatException("%c of this value") };
+                return Pad(conv == 'C' ? s.ToUpperInvariant() : s, width, flags);
+            }
+            case 'd':
+                if (a is null) return Pad("null", width, flags);
+                if (!(a is sbyte || a is short || a is int || a is long)) throw new FormatException("%d of this value");
+                long v = Convert.ToInt64(a);
+                string digits = v < 0 ? v.ToString().Substring(1) : v.ToString();
+                return Signed(v < 0, Grouped(digits, flags), flags, width);
+            case 'x':
+            case 'X':
+            case 'o':
+            {
+                if (a is null) return Pad("null", width, flags);
+                ulong bits = a switch
+                {
+                    sbyte x8 => (byte)x8, short x16 => (ushort)x16, int x32 => (uint)x32, long x64 => unchecked((ulong)x64),
+                    _ => throw new FormatException("%x of this value"),
+                };
+                string s = conv == 'o' ? Convert.ToString(unchecked((long)bits), 8) : bits.ToString("x");
+                if (flags.Contains('#')) s = (conv == 'o' ? "0" : "0x") + s;
+                if (flags.Contains('0') && width > s.Length) s = s.PadLeft(width, '0');
+                return Pad(conv == 'X' ? s.ToUpperInvariant() : s, width, flags);
+            }
+            case 'f':
+            case 'e':
+            case 'E':
+            {
+                if (a is null) return Pad("null", width, flags);
+                if (!(a is double || a is float)) throw new FormatException("%f of this value");
+                double d = Convert.ToDouble(a);
+                bool negative = double.IsNegative(d) && !double.IsNaN(d);
+                if (double.IsNaN(d)) return Pad("NaN", width, flags);
+                if (double.IsInfinity(d)) return Signed(negative, "Infinity", flags.Replace("0", ""), width);
+                int places = precision < 0 ? 6 : precision;
+                string body = conv == 'f' ? FixedText(Math.Abs(d), places, flags) : ExpText(Math.Abs(d), places);
+                return Signed(negative, conv == 'E' ? body.ToUpperInvariant() : body, flags, width);
+            }
+            default:
+                throw new NotSupportedException("the format conversion %" + conv);
+        }
+    }
+
+    static string Signed(bool negative, string body, string flags, int width)
+    {
+        string before = negative ? (flags.Contains('(') ? "(" : "-") : flags.Contains('+') ? "+" : flags.Contains(' ') ? " " : "";
+        string after = negative && flags.Contains('(') ? ")" : "";
+        int room = width - before.Length - body.Length - after.Length;
+        if (room > 0 && flags.Contains('0')) body = new string('0', room) + body;
+        return Pad(before + body + after, width, flags);
+    }
+
+    static string Grouped(string digits, string flags)
+    {
+        if (!flags.Contains(',')) return digits;
+        var b = new StringBuilder();
+        for (int i = 0; i < digits.Length; i++)
+        {
+            if (i > 0 && (digits.Length - i) % 3 == 0) b.Append(',');
+            b.Append(digits[i]);
+        }
+        return b.ToString();
+    }
+
+    // The shortest decimal of a non-negative double: its digits, with the value 0.digits * 10^point.
+    static (string digits, int point) Decimal(double v)
+    {
+        if (v == 0) return ("", 0);
+        string r = v.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        int e = r.IndexOfAny(new[] { 'E', 'e' });
+        int exp = e >= 0 ? int.Parse(r.Substring(e + 1), System.Globalization.CultureInfo.InvariantCulture) : 0;
+        string mantissa = e >= 0 ? r.Substring(0, e) : r;
+        int dot = mantissa.IndexOf('.');
+        int point = (dot >= 0 ? dot : mantissa.Length) + exp;
+        string digits = mantissa.Replace(".", "");
+        int lead = 0;
+        while (lead < digits.Length && digits[lead] == '0') lead++;
+        return (digits.Substring(lead).TrimEnd('0'), point - lead);
+    }
+
+    // `keep` digits of `digits`, rounded half up; a carry out of the first digit moves the point.
+    static (string digits, int point) RoundUp(string digits, int point, int keep)
+    {
+        if (keep < 0) return ("", point);
+        if (keep >= digits.Length) return (digits, point);
+        bool up = digits[keep] >= '5';
+        char[] kept = digits.Substring(0, keep).ToCharArray();
+        if (!up) return (new string(kept), point);
+        for (int i = keep - 1; i >= 0; i--)
+        {
+            if (kept[i] != '9') { kept[i]++; return (new string(kept), point); }
+            kept[i] = '0';
+        }
+        return ("1" + new string(kept), point + 1);
+    }
+
+    static string FixedText(double v, int places, string flags)
+    {
+        (string digits, int point) = Decimal(v);
+        (digits, point) = RoundUp(digits, point, point + places);
+        string whole = point > 0 ? digits.PadRight(point, '0').Substring(0, point) : "0";
+        var fraction = new StringBuilder();
+        if (point < 0) fraction.Append('0', Math.Min(-point, places));
+        if (digits.Length > Math.Max(point, 0)) fraction.Append(digits.Substring(Math.Max(point, 0)));
+        string text = fraction.ToString().PadRight(places, '0');
+        if (text.Length > places) text = text.Substring(0, places);
+        whole = Grouped(whole, flags);
+        return places == 0 ? whole : whole + "." + text;
+    }
+
+    static string ExpText(double v, int places)
+    {
+        (string digits, int point) = Decimal(v);
+        if (digits.Length == 0) return (places == 0 ? "0" : "0." + new string('0', places)) + "e+00";
+        (digits, point) = RoundUp(digits, point, places + 1);
+        digits = digits.PadRight(places + 1, '0');
+        int exp = point - 1;
+        string head = digits.Substring(0, 1) + (places == 0 ? "" : "." + digits.Substring(1, places));
+        return head + "e" + (exp < 0 ? "-" : "+") + Math.Abs(exp).ToString("00");
+    }
+
     // Set.of and Map.of: no nulls, no repeats, no changes. Java shuffles their order afresh on each run, so with two or more items a
     // walk throws NotSupportedException: no order written here could be the one Java shows.
     public static JHashSet<T> setOf<T>(params T[] items)
@@ -96,6 +381,44 @@ public static partial class JLib
         }
         map.Freeze();
         return map;
+    }
+}
+
+// java.lang.Enum, for an enum with fields or methods: a class whose constants are its static fields.
+public abstract class JEnum : IComparable
+{
+    public string JName { get; internal set; }
+    public int JOrdinal { get; internal set; }
+    public override string ToString() => JName;
+    public int CompareTo(object other) => JOrdinal - ((JEnum)other).JOrdinal;
+}
+
+// java.util.Iterator.
+public interface JIterator<T>
+{
+    bool hasNext();
+    T next();
+}
+
+// A .NET enumerator as a Java iterator, which must know whether there is a next item before it is asked for it.
+sealed class JEnumeratorIterator<T> : JIterator<T>
+{
+    readonly IEnumerator<T> items;
+    bool looked, has;
+
+    internal JEnumeratorIterator(IEnumerator<T> items) { this.items = items; }
+
+    public bool hasNext()
+    {
+        if (!looked) { has = items.MoveNext(); looked = true; }
+        return has;
+    }
+
+    public T next()
+    {
+        if (!hasNext()) throw new InvalidOperationException();
+        looked = false;
+        return items.Current;
     }
 }
 
@@ -279,6 +602,24 @@ public class JHashMap<K, V> : IDictionary<K, V>
             }
         }
         if (++size > threshold) Resize();
+    }
+
+    // As HashMap.merge and compute add a key: the table grows first, on the size before this key, and the key goes to the head of its bin.
+    internal void InsertAtHead(K key, V value)
+    {
+        Unchanged();
+        Node[] tab = size > threshold || table == null ? Resize() : table;
+        int h = Spread(key), i = h & (tab.Length - 1), count = 0;
+        for (Node e = tab[i]; e != null; e = e.next) count++;
+        Node n = Made(h, key, value);
+        n.next = tab[i];
+        tab[i] = n;
+        if (count >= 7)
+        {
+            if (tab.Length < 64) Resize();
+            else if (!linked) treeBin = true;
+        }
+        size++;
     }
 
     public bool Remove(K key)

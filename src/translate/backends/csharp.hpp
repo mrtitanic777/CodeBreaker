@@ -167,6 +167,12 @@ public:
     virtual std::optional<std::string> name_text(Context&, ir::Node*) { return std::nullopt; }
     // Is this class, declared in a method, written as a member of the class around it?
     virtual bool local_class(const ir::Node* /*decl*/) const { return false; }
+    // Lines of C# a class needs that its source does not say (what a Java Iterable owes .NET's foreach).
+    virtual std::vector<std::string> extra_members(Context&, ir::ClassDecl&) { return {}; }
+    // Is this enum written as a class (a Java enum of objects, with fields, methods or constructor arguments)?
+    virtual bool enum_as_class(const ir::ClassDecl&) const { return false; }
+    // The label of constant `name` in a switch over this type, where the switch is on something else than the value itself.
+    virtual std::optional<std::string> enum_case(const ir::TypeP& /*scrutinee*/, const std::string& /*name*/) const { return std::nullopt; }
 };
 
 // A library for a language, made once per Program.

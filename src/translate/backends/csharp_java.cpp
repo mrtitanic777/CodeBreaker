@@ -48,14 +48,14 @@ const std::unordered_map<std::string_view, std::string_view>& cj_generic() {
         {"java.util.HashMap", "JHashMap"}, {"java.util.LinkedHashMap", "JLinkedHashMap"}, {"java.util.Hashtable", "Dictionary"},
         {"java.util.TreeMap", "SortedDictionary"}, {"java.util.SortedMap", "IDictionary"}, {"java.util.Set", "ISet"},
         {"java.util.HashSet", "JHashSet"}, {"java.util.LinkedHashSet", "JLinkedHashSet"}, {"java.util.TreeSet", "SortedSet"},
-        {"java.util.SortedSet", "ISet"}, {"java.util.Map.Entry", "KeyValuePair"}};
+        {"java.util.SortedSet", "ISet"}, {"java.util.Map.Entry", "KeyValuePair"}, {"java.util.Iterator", "JIterator"}};
     return table;
 }
 
 std::size_t cj_arity(std::string_view generic) {
     static const std::unordered_map<std::string_view, std::size_t> table = {
         {"List", 1}, {"Dictionary", 2}, {"JHashMap", 2}, {"JLinkedHashMap", 2}, {"SortedDictionary", 2}, {"JHashSet", 1}, {"JLinkedHashSet", 1},
-        {"SortedSet", 1}, {"KeyValuePair", 2}, {"IDictionary", 2}, {"ISet", 1}, {"ICollection", 1}};
+        {"SortedSet", 1}, {"KeyValuePair", 2}, {"IDictionary", 2}, {"ISet", 1}, {"ICollection", 1}, {"JIterator", 1}};
     return table.at(generic);
 }
 
@@ -311,6 +311,23 @@ void JavaLibrary::prepare(cs::Program& program) {
     }
     prepare_local_classes(program, classes);
     prepare_inner_classes(program, classes);
+    for (Node* cn : classes) {   // an enum of objects is a class: a plain one stays a C# enum
+        const ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
+        if (c.kind != "enum" || !c.qname) continue;
+        bool rich = false, bodies = false;
+        std::vector<std::string> names;
+        for (Node* m : c.members) {
+            const ir::MethodDecl* md = ir::get<ir::MethodDecl>(m);
+            if (const ir::EnumConst* ec = ir::get<ir::EnumConst>(m)) {
+                names.push_back(ec->sym->name);
+                rich = rich || !ec->args.empty();
+                bodies = bodies || ec->body != nullptr;
+            } else if (ir::is<ir::FieldDecl>(m) || (md != nullptr && !cj_has(md->mods, "IMPLICIT"))) {
+                rich = true;
+            }
+        }
+        if (rich && !bodies) object_enums_[*c.qname] = std::move(names);
+    }
     for (Node* cn : classes) {
         ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
         if (c.kind != "class" || !cj_has(c.mods, "abstract")) continue;
@@ -414,7 +431,7 @@ void JavaLibrary::check_class(cs::Context& w, ir::ClassDecl& c) {
             throw Decline("inner-class", "a class whose base constructor may call back into it before its outer instance and captured locals are set (" + c.name.value_or("") + ")");
         }
     }
-    if (c.kind == "enum") {
+    if (c.kind == "enum" && !enum_as_class(c)) {
         for (Node* m : c.members) {
             const ir::MethodDecl* md = ir::get<ir::MethodDecl>(m);
             const ir::EnumConst* ec = ir::get<ir::EnumConst>(m);
@@ -440,8 +457,17 @@ std::vector<std::string> JavaLibrary::class_mods(cs::Context&, ir::ClassDecl& c)
     return out;
 }
 
+std::optional<std::string> JavaLibrary::enum_case(const ir::TypeP& scrutinee, const std::string& name) const {
+    const std::string* q = cj_qual(scrutinee);
+    if (q == nullptr) return std::nullopt;
+    const auto found = object_enums_.find(*q);
+    if (found == object_enums_.end()) return std::nullopt;
+    const auto at = std::find(found->second.begin(), found->second.end(), name);
+    return std::to_string(at == found->second.end() ? -1 : at - found->second.begin());
+}
+
 std::optional<std::string> JavaLibrary::class_keyword(const ir::ClassDecl& c) {
-    if (c.kind == "record") return "class";
+    if (c.kind == "record" || enum_as_class(c)) return "class";
     return std::nullopt;
 }
 
@@ -559,6 +585,31 @@ std::vector<Node*> JavaLibrary::arrange_members(cs::Context& w, ir::ClassDecl& c
     cs::Program& program = w.program();
     Arena& arena = program.arena();
     const std::string qname = c.qname.value_or("");
+    if (enum_as_class(c)) {   // each constant a static field, first, made in order; javac's values and valueOf are the library's to write
+        program.use_runtime("JavaRt");
+        program.use_runtime("JavaCollections");
+        std::vector<Node*> kept;
+        int ordinal = 0;
+        const ir::TypeP self = ir::class_type(qname);
+        for (Node* mn : members) {
+            if (const ir::EnumConst* ec = ir::get<ir::EnumConst>(mn)) {
+                Node* made = ir::make(arena, ir::New{.sym = ec->ctor, .args = ec->args}, self);
+                enum_made_[made] = {ec->sym->name, ordinal++};
+                ir::FieldDecl field;
+                field.sym = ir::make_sym(ir::SymKind::Field, ec->sym->name, qname, true, self);
+                field.type = self;
+                field.init = made;
+                field.mods = {"public", "static", "final"};
+                kept.push_back(ir::make(arena, std::move(field)));
+            }
+        }
+        for (Node* mn : members) {
+            const ir::MethodDecl* md = ir::get<ir::MethodDecl>(mn);
+            if (ir::is<ir::EnumConst>(mn) || (md != nullptr && md->kind != "ctor" && cj_has(md->mods, "IMPLICIT"))) continue;
+            kept.push_back(mn);
+        }
+        members = std::move(kept);
+    }
     std::vector<Node*> out;
     std::vector<Node*> statics;   // the static fields with an initialiser and the static blocks, in their textual order
     std::vector<Node*> moves;     // the instance fields with an initialiser and the instance blocks
@@ -694,6 +745,16 @@ bool cj_is_a(const cs::Program& program, const ir::ClassDecl* c, const std::stri
     return false;
 }
 
+// A class as its own members name it: a generic one with its own type variables.
+ir::TypeP cj_own_type(const cs::Program& program, const std::string& qname) {
+    const ir::ClassDecl* c = program.class_named(qname);
+    if (c == nullptr || c->typeparams.empty()) return ir::class_type(qname);
+    ir::ClassType own;
+    own.name = qname;
+    for (const std::string& t : c->typeparams) own.args.push_back(ir::typevar_type(t));
+    return ir::make_type(std::move(own));
+}
+
 bool cj_is_inner(const ir::ClassDecl& c) { return c.kind == "class" && c.outer && !cj_has(c.mods, "static"); }
 
 // Does anything in `c` reach an instance of a class around it?
@@ -739,6 +800,23 @@ const JavaLibrary::Hoisted* JavaLibrary::hoisted(const ir::ClassDecl& c) const {
 bool JavaLibrary::has_captures(const ir::ClassDecl& c) const {
     const Hoisted* h = hoisted(c);
     return h != nullptr && !h->captures.empty();
+}
+
+// A Java Iterable has `iterator()`; .NET's foreach wants GetEnumerator.
+std::vector<std::string> JavaLibrary::extra_members(cs::Context& w, ir::ClassDecl& c) {
+    if (c.kind != "class" && c.kind != "record") return {};
+    for (const ir::TypeP& i : c.implements) {
+        const std::string* q = cj_qual(i);
+        if (q == nullptr || *q != "java.lang.Iterable") continue;
+        const auto& args = std::get<ir::ClassType>(i->body).args;
+        const std::string item = args.empty() ? std::string("object") : w.ctype(args[0]);
+        w.add_using("System.Collections.Generic");
+        w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaCollections");
+        return {"public IEnumerator<" + item + "> GetEnumerator() => JLib.Walk(iterator());",
+                "System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();"};
+    }
+    return {};
 }
 
 std::optional<std::string> JavaLibrary::name_text(cs::Context&, Node* e) {
@@ -799,7 +877,8 @@ void JavaLibrary::prepare_local_classes(cs::Program& program, std::vector<Node*>
                 made.delegate_method = single->name;
                 const std::string* typed = cj_qual(ci.creation->type);
                 made.delegate_type = typed != nullptr && *typed == target ? ci.creation->type : written;
-            } else if (target == "java.lang.Comparable" || target == "java.lang.AutoCloseable" || target == "java.io.Closeable") {
+            } else if (target == "java.lang.Comparable" || target == "java.lang.AutoCloseable" || target == "java.io.Closeable" ||
+                       target == "java.util.Iterator" || target == "java.lang.Iterable") {
                 copy.implements.push_back(written);
             } else if (const auto mapped = cj_types().find(target); mapped != cj_types().end() && mapped->second.ends_with("Exception")) {
                 copy.extends = written;
@@ -973,7 +1052,7 @@ void JavaLibrary::prepare_inner_classes(cs::Program& program, const std::vector<
         for (Node* cn : classes) {
             const ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
             if (!cj_is_inner(c) || !c.qname || inner_.contains(*c.qname) || !cj_reaches_outer(program, c, inner_)) continue;
-            inner_[*c.qname] = ir::make_sym(ir::SymKind::Field, "outer_", *c.qname, false, ir::class_type(*c.outer));
+            inner_[*c.qname] = ir::make_sym(ir::SymKind::Field, "outer_", *c.qname, false, cj_own_type(program, *c.outer));
             changed = true;
         }
     }
@@ -982,7 +1061,7 @@ void JavaLibrary::prepare_inner_classes(cs::Program& program, const std::vector<
             const ir::New* made = ir::get<ir::New>(n);
             const std::string* q = made != nullptr && made->outer != nullptr ? cj_qual(n->type) : nullptr;
             const ir::ClassDecl* c = q != nullptr ? program.class_named(*q) : nullptr;
-            if (c != nullptr && c->outer && !inner_.contains(*q)) inner_[*q] = ir::make_sym(ir::SymKind::Field, "outer_", *q, false, ir::class_type(*c->outer));
+            if (c != nullptr && c->outer && !inner_.contains(*q)) inner_[*q] = ir::make_sym(ir::SymKind::Field, "outer_", *q, false, cj_own_type(program, *c->outer));
         }
     }
     Arena& arena = program.arena();
@@ -1071,7 +1150,7 @@ std::optional<Ex> JavaLibrary::new_inner(cs::Context& w, Node* e, const ir::Clas
         const bool typed = made.sym != nullptr && i < made.sym->params.size() && made.sym->params[i] && made.sym->params[i]->kind() != "typevar";
         parts.push_back(typed ? w.coerce(made.args[i], made.sym->params[i]) : w.expr(made.args[i]).text);
     }
-    const std::string type = made.body != nullptr ? w.ctype(ir::class_type(*c.qname)) : w.ctype(e->type);
+    const std::string type = made.body != nullptr ? cs::ident(c.name.value_or("")) : w.ctype(e->type);   // (made inside the class around it, whose T it shares)
     const std::string object = "new " + type + "(" + text::join(parts, ", ") + ")";
     if (local != nullptr && !local->delegate_method.empty()) {   // a library functional interface is a delegate here: to this object's one method
         return Ex{"new " + w.ctype(local->delegate_type) + "(" + object + "." + cs::ident(local->delegate_method) + ")", cs::kPrimary};
@@ -1125,6 +1204,32 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
     if (s == nullptr) return std::nullopt;
     const std::string owner = s->owner.value_or("");
     const ir::ClassDecl* c = w.program().class_named(owner);
+    const ir::ClassDecl* object_enum = c != nullptr && enum_as_class(*c) ? c : nullptr;
+    if (object_enum == nullptr && call.target != nullptr) {
+        const std::string* tq = cj_qual(call.target->type);
+        const ir::ClassDecl* tc = tq != nullptr ? w.program().class_named(*tq) : nullptr;
+        if (tc != nullptr && enum_as_class(*tc)) object_enum = tc;
+    }
+    if (object_enum == nullptr && call.target == nullptr && owner == "java.lang.Enum" && w.current_class() != nullptr && enum_as_class(*w.current_class())) {
+        object_enum = w.current_class();   // (`name()` inside the enum)
+    }
+    if (object_enum != nullptr) {
+        const std::string tn = w.ctype(ir::class_type(*object_enum->qname));
+        const auto receiver = [&] { return call.target != nullptr && !ir::is<ir::TypeName>(call.target) ? w.wrap(call.target, cs::kPrimary) : std::string("this"); };
+        if (s->is_static && (s->name == "values" || s->name == "valueOf")) {
+            std::vector<std::string> all;
+            for (const std::string& n : object_enums_.at(*object_enum->qname)) all.push_back(tn + "." + cs::ident(n));
+            const std::string array = "new " + tn + "[] { " + text::join(all, ", ") + " }";
+            if (s->name == "values") return Ex{array, cs::kPrimary};
+            return Ex{"JLib.EnumOf(" + array + ", " + w.expr(call.args.at(0)).text + ")", cs::kPrimary};
+        }
+        const bool inherited = owner == "java.lang.Enum" || c == nullptr;
+        if (inherited && s->name == "name" && call.args.empty()) return Ex{receiver() + ".JName", cs::kPrimary};
+        if (inherited && s->name == "ordinal" && call.args.empty()) return Ex{receiver() + ".JOrdinal", cs::kPrimary};
+        if (inherited && s->name == "compareTo" && call.args.size() == 1) return Ex{receiver() + ".CompareTo(" + w.expr(call.args[0]).text + ")", cs::kPrimary};
+        if (inherited && s->name == "toString" && call.args.empty()) return Ex{receiver() + ".ToString()", cs::kPrimary};
+        if (inherited && s->name == "equals" && call.args.size() == 1) return Ex{receiver() + ".Equals(" + w.expr(call.args[0]).text + ")", cs::kPrimary};
+    }
     if (c != nullptr && c->kind == "enum" && s->is_static && (s->name == "values" || s->name == "valueOf")) {
         w.add_using("System");
         const std::string tn = w.ctype(ir::class_type(c->qname.value_or("")));
@@ -1276,6 +1381,39 @@ std::optional<Ex> JavaLibrary::stream_call(cs::Context& w, Node* e) {
         uses();
         return Ex{"JLib.listOf<" + result_arg(0) + ">(" + arguments() + ")", cs::kPrimary};
     }
+    if (owner == "java.lang.String" && ((s.name == "format" && is_static) || s.name == "formatted")) {
+        if (s.name == "format" && !call.args.empty() && !cs::is_string(call.args[0]->type)) throw Decline("library", "String.format with a Locale");
+        uses();
+        const std::string args = arguments();
+        if (s.name == "format") return Ex{"JLib.format(" + args + ")", cs::kPrimary};
+        return Ex{"JLib.format(" + w.expr(call.target).text + (args.empty() ? "" : ", " + args) + ")", cs::kPrimary};
+    }
+    if (owner == "java.io.PrintStream" && (s.name == "printf" || s.name == "format") && call.target != nullptr) {
+        if (!call.args.empty() && !cs::is_string(call.args[0]->type)) throw Decline("library", "printf with a Locale");
+        uses();
+        return Ex{w.wrap(call.target, cs::kPrimary) + ".Write(JLib.format(" + arguments() + "))", cs::kPrimary};
+    }
+    if (owner == "java.lang.Comparable" && s.name == "compareTo" && call.args.size() == 1 && call.target != nullptr) {   // (a bounded type variable: C# has no bound here)
+        uses();
+        return Ex{"JLib.Natural(" + w.expr(call.target).text + ", " + arguments() + ")", cs::kPrimary};
+    }
+    if (owner == "java.util.Iterator") {
+        if ((s.name == "hasNext" || s.name == "next") && call.args.empty()) return on_target();
+        throw Decline("library", "Iterator." + s.name);
+    }
+    if (const auto family = cj_family().find(owner); family != cj_family().end() && !is_static) {
+        if ((family->second == "List" || family->second == "Set") && s.name == "iterator" && call.args.empty() && call.target != nullptr) {
+            uses();
+            const std::optional<std::string> walked = iterable(w, call.target);
+            return Ex{"JLib.iteratorOf(" + (walked ? *walked : w.expr(call.target).text) + ")", cs::kPrimary};
+        }
+        if (family->second == "Map" && call.target != nullptr &&
+            ((s.name == "merge" && call.args.size() == 3) || (s.name == "putIfAbsent" && call.args.size() == 2) ||
+             ((s.name == "computeIfAbsent" || s.name == "computeIfPresent" || s.name == "compute") && call.args.size() == 2))) {
+            uses();
+            return Ex{"JLib." + s.name + "(" + w.expr(call.target).text + ", " + arguments() + ")", cs::kPrimary};
+        }
+    }
     if (owner == "java.util.Set" && s.name == "of" && is_static) {
         uses();
         return Ex{"JLib.setOf<" + result_arg(0) + ">(" + arguments() + ")", cs::kPrimary};
@@ -1417,6 +1555,15 @@ std::optional<std::string> JavaLibrary::concat_part(cs::Context& w, Node* part) 
 
 std::optional<Ex> JavaLibrary::new_object(cs::Context& w, Node* e) {
     const ir::TypeP& t = e->type;
+    if (const auto constant = enum_made_.find(e); constant != enum_made_.end()) {
+        const ir::New& made = *ir::get<ir::New>(e);
+        std::vector<std::string> parts;
+        for (std::size_t i = 0; i < made.args.size(); ++i) {
+            const bool typed = made.sym != nullptr && i < made.sym->params.size() && made.sym->params[i] && made.sym->params[i]->kind() != "typevar";
+            parts.push_back(typed ? w.coerce(made.args[i], made.sym->params[i]) : w.expr(made.args[i]).text);
+        }
+        return Ex{"JLib.EnumMade(new " + w.ctype(t) + "(" + text::join(parts, ", ") + "), \"" + constant->second.first + "\", " + std::to_string(constant->second.second) + ")", cs::kPrimary};
+    }
     if (const Node* body = ir::get<ir::New>(e)->body; body != nullptr) {
         const auto found = hoist_of_.find(body);
         if (found != hoist_of_.end()) return new_inner(w, e, *found->second);
@@ -1448,6 +1595,13 @@ std::optional<Ex> JavaLibrary::new_object(cs::Context& w, Node* e) {
     }
     if (*q == "java.util.LinkedHashMap" && args.size() == 3) throw Decline("library", "a LinkedHashMap in access order");
     if (cj_generic().contains(*q)) return Ex{"new " + tn + "(" + joined() + ")", cs::kPrimary};   // (a capacity, or the collection copied)
+    if (*q == "java.lang.String") {
+        if (args.empty()) return Ex{"new string(new char[0])", cs::kPrimary};
+        const auto* array = args[0]->type ? std::get_if<ir::ArrayType>(&args[0]->type->body) : nullptr;
+        if (array != nullptr && array->elem && array->elem->kind() == "u16" && (args.size() == 1 || args.size() == 3)) return Ex{"new string(" + joined() + ")", cs::kPrimary};
+        if (args.size() == 1 && cs::is_string(args[0]->type)) return Ex{"new string(" + w.wrap(args[0], cs::kPrimary) + ".ToCharArray())", cs::kPrimary};   // (a new object, as Java's is)
+        throw Decline("library", "new java.lang.String with these arguments");
+    }
     if (*q == "java.lang.StringBuilder" || *q == "java.lang.StringBuffer") {
         w.add_using("System.Text");
         if (!args.empty() && cs::is_string(args[0]->type)) return Ex{"new StringBuilder(" + string_of(w, args[0]) + ")", cs::kPrimary};
