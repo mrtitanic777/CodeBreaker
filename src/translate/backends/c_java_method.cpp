@@ -54,7 +54,28 @@ Lines MethodWriter::define() {
                         break;
                     }
                 }
-                if (implicit != nullptr) out.push_back(std::format("\t{}(({}*)self);", p_.ctor_name(*b, implicit), b->cname));
+                // javac's constructor of an anonymous class takes the arguments of its `new` and hands them to the base
+                const ir::Node* chosen = nullptr;
+                if (ci_->anon && !m.params.empty()) {
+                    for (const ir::Node* x : b->methods()) {
+                        const ir::MethodDecl& c = method_of(x);
+                        if (c.kind != "ctor" || c.params.size() != m.params.size()) continue;
+                        bool same = true;
+                        for (std::size_t i = 0; i < c.params.size(); ++i) same = same && p_.ct(param_of(c.params[i]).type) == p_.ct(param_of(m.params[i]).type);
+                        if (same) {
+                            chosen = x;
+                            break;
+                        }
+                    }
+                    if (chosen == nullptr) throw Decline("the base constructor of an anonymous class");
+                }
+                if (chosen != nullptr) {
+                    std::string forwarded;
+                    for (const ir::Node* pn : m.params) forwarded += ", " + ident(need_sym(param_of(pn).sym, "a parameter").name);
+                    out.push_back(std::format("\t{}(({}*)self{});", p_.ctor_name(*b, chosen), b->cname, forwarded));
+                } else if (implicit != nullptr) {
+                    out.push_back(std::format("\t{}(({}*)self);", p_.ctor_name(*b, implicit), b->cname));
+                }
             }
         }
         if (!delegated) out.push_back(std::format("\t{}_finit(self);", ci_->cname));

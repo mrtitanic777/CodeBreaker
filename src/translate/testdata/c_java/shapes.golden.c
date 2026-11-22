@@ -351,19 +351,19 @@ static void Shapes_main(jarray* args) {
 		for (; jrt_Iterator_hasNext_(j2x_it9); ) {
 			jobject* volatile s = jrt_Iterator_next_(j2x_it9);
 			jstring* volatile o5 = NULL;
-			Shapes_Size* volatile o6 = NULL;
-			volatile int32_t o7 = 0;
-			jrt_PrintStream_println_Str(jrt_System_out, (o5 = Shapes_Shape_describe_i((jobject*)s), o6 = Shapes_classify(Shapes_Shape_area_i((jobject*)s)), o7 = Shapes_sides(s), jrt_concat(5, jrt_str_O((jobject*)o5), jrt_lit(&lit_14, u" -> ", 4), jrt_str_O((jobject*)o6), jrt_lit(&lit_15, u" sides=", 7), jrt_str_I(o7))));
+			jstring* volatile o6 = NULL;
+			jstring* volatile o7 = NULL;
+			jrt_PrintStream_println_Str(jrt_System_out, (o5 = jrt_str_O((jobject*)Shapes_Shape_describe_i((jobject*)s)), o6 = jrt_str_O((jobject*)Shapes_classify(Shapes_Shape_area_i((jobject*)s))), o7 = jrt_str_I(Shapes_sides(s)), jrt_concat(5, o5, jrt_lit(&lit_14, u" -> ", 4), o6, jrt_lit(&lit_15, u" sides=", 7), o7)));
 			sum += Shapes_Shape_area_i((jobject*)s);
 		}
 	}
 	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(2, jrt_lit(&lit_16, u"total ", 6), jrt_str_D(sum)));
-	Shapes_Rect* volatile o8 = NULL;
-	Shapes_Circle* volatile o9 = NULL;
+	jstring* volatile o8 = NULL;
+	jstring* volatile o9 = NULL;
 	Shapes_Rect* volatile o10 = NULL;
 	Shapes_Rect* volatile o11 = NULL;
-	volatile bool o12 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o8 = Shapes_Rect_new(1, 2), o9 = Shapes_Circle_new(0.5), o12 = (o10 = Shapes_Rect_new(1, 2), o11 = Shapes_Rect_new(1, 2), jrt_equals((jobject*)o10, (jobject*)o11)), jrt_concat(5, jrt_str_O((jobject*)o8), jrt_lit(&lit_17, u" ", 1), jrt_str_O((jobject*)o9), jrt_lit(&lit_17, u" ", 1), jrt_str_Z(o12))));
+	jstring* volatile o12 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (o8 = jrt_str_O((jobject*)Shapes_Rect_new(1, 2)), o9 = jrt_str_O((jobject*)Shapes_Circle_new(0.5)), o12 = jrt_str_Z((o10 = Shapes_Rect_new(1, 2), o11 = Shapes_Rect_new(1, 2), jrt_equals((jobject*)o10, (jobject*)o11))), jrt_concat(5, o8, jrt_lit(&lit_17, u" ", 1), o9, jrt_lit(&lit_17, u" ", 1), o12)));
 	{
 		volatile int32_t k = 0;
 		for (; k < 4; k++) {

@@ -64,6 +64,7 @@ struct Library {
             {"java.lang.IndexOutOfBoundsException", {"java.lang.RuntimeException"}},
             {"java.lang.ArrayIndexOutOfBoundsException", {"java.lang.IndexOutOfBoundsException"}},
             {"java.lang.StringIndexOutOfBoundsException", {"java.lang.IndexOutOfBoundsException"}},
+            {"java.lang.NegativeArraySizeException", {"java.lang.RuntimeException"}},
             {"java.lang.NumberFormatException", {"java.lang.IllegalArgumentException"}},
             {"java.util.NoSuchElementException", {"java.lang.RuntimeException"}},
             {"java.io.IOException", {"java.lang.Exception"}},

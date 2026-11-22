@@ -90,6 +90,7 @@ Code MethodWriter::expr(const ir::Node* e) {
 
 std::string MethodWriter::sequenced(const ir::Node* e) {
     if (ir::is<ir::Lambda>(e) || ir::is<ir::MethodRef>(e)) return "";
+    if (const auto* concat = ir::get<ir::Concat>(e); concat != nullptr && concat_in_turn(*concat)) return "";   // (it orders its own parts)
     const std::vector<const ir::Node*> nodes = cpp03::operands(e);
     if (nodes.size() < 2 || !cpp03::order_matters(nodes)) return "";
     std::vector<std::string> parts;
@@ -330,10 +331,37 @@ std::string MethodWriter::as_string(const ir::Node* x) {
     return std::format("jrt_str_O((jobject*){})", c.code);
 }
 
+// Java turns each part to text in turn, left to right, and C does not order a call's arguments. That shows when an object is written
+// beside something that can change it: another part with an effect, or a second object, whose toString may have one.
+bool MethodWriter::concat_in_turn(const ir::Concat& k) const {
+    if (!order_) return false;
+    std::size_t open = 0, objects = 0;
+    bool effects = false;
+    for (const ir::Node* x : k.parts) {
+        if (cpp03::is_constant(x)) continue;
+        ++open;
+        effects = effects || cpp03::has_effects(x);
+        const ir::TypeP t = type_of(x);
+        if (kind_of(t) == "class" && class_name(t) != "java.lang.String" && box_letter(class_name(t)).empty()) ++objects;
+    }
+    return open >= 2 && objects >= 1 && (effects || objects >= 2);
+}
+
 Code MethodWriter::on(const ir::Node&, const ir::Concat& k) {
-    std::vector<std::string> parts;
-    for (const ir::Node* x : k.parts) parts.push_back(as_string(x));
-    return {std::format("jrt_concat({}, {})", parts.size(), join_commas(parts)), std::string(kStr)};
+    std::vector<std::string> parts, steps;
+    const bool in_turn = concat_in_turn(k);
+    for (const ir::Node* x : k.parts) {
+        std::string text = as_string(x);
+        if (in_turn && !cpp03::is_constant(x)) {
+            const std::string name = std::format("o{}", ++temps_);
+            pending_.push_back(decl(kStr, name));
+            steps.push_back(std::format("{} = {}", name, text));
+            text = name;
+        }
+        parts.push_back(std::move(text));
+    }
+    const std::string joined = std::format("jrt_concat({}, {})", parts.size(), join_commas(parts));
+    return {steps.empty() ? joined : std::format("({}, {})", join_commas(steps), joined), std::string(kStr)};
 }
 
 Code MethodWriter::on(const ir::Node&, const ir::Assign& k) {

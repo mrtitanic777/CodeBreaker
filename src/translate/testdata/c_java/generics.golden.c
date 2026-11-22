@@ -335,7 +335,7 @@ static jstring* Generics_visit(int32_t n) {
 static int32_t Generics_hits(jobject* self_, int32_t n) {
 	Generics* self = (Generics*)self_;
 	Generics_Counter* a = Generics_Counter_new(self);
-	Generics_Counter* b = Generics_Counter_new(self);
+	Generics_Counter* b = Generics_Counter_new((Generics*)jrt_nn(self));
 	{
 		int32_t i = 0;
 		for (; i < n % 30; i++) {

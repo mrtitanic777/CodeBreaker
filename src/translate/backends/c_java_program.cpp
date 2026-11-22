@@ -49,6 +49,10 @@ Program::Program(Arena& arena, std::span<ir::Node* const> units, std::optional<s
     std::map<std::string, std::set<std::string>> signatures;
     for (const auto& [qname, cls] : model_->classes()) {
         by_cname_.emplace(cls->cname, cls);
+        for (const ir::Node* x : cls->members()) {
+            if (const auto* f = ir::get<ir::FieldDecl>(x); f != nullptr && f->sym && f->sym->is_static) static_names_.insert(f->sym->name);
+            if (const auto* e = ir::get<ir::EnumConst>(x); e != nullptr && e->sym) static_names_.insert(e->sym->name);
+        }
         for (const ir::Node* mn : cls->methods()) {
             const ir::MethodDecl& m = method_of(mn);
             if (m.kind != "method") continue;
@@ -74,6 +78,8 @@ std::string Program::mname(std::string_view name, std::span<const ir::TypeP> par
     if (overloaded_.contains(std::string(name))) {
         base += '_';
         for (const ir::TypeP& p : params) base += type_code(jmodel::erase(p));
+    } else if (static_names_.contains(std::string(name))) {   // Java keeps fields and methods apart; C has one name for both
+        base += "_m";
     }
     return base;
 }
@@ -254,7 +260,7 @@ std::vector<IMethod> Program::iface_methods(std::string_view qname) const {
             return {IMethod{"hasNext", {}, "bool", "hasNext", {}}, IMethod{"next", {}, std::string(kObj), "next", {}}};
         if (qname == "java.lang.Comparable")
             return {IMethod{"compareTo", {std::string(kObj)}, "int32_t", "compareTo", {ir::typevar_type("T")}}};
-        if (qname == "java.lang.CharSequence") return {};
+        if (qname == "java.lang.CharSequence" || qname == "java.lang.AutoCloseable" || qname == "java.io.Closeable") return {};
         throw Decline("interface " + std::string(qname));
     }
     std::vector<IMethod> out;

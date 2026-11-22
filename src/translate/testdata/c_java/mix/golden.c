@@ -273,7 +273,7 @@ static void Mix_thrower(int32_t x) {
 static void Mix_main(jarray* args) {
 	Mix_clinit();
 	Mix* volatile m = Mix_new();
-	Mix_Inner* volatile in = Mix_Inner_new(m, 3);
+	Mix_Inner* volatile in = Mix_Inner_new((Mix*)jrt_nn(m), 3);
 	volatile int32_t o1 = 0;
 	volatile int32_t o2 = 0;
 	volatile int32_t o3 = 0;
@@ -288,10 +288,10 @@ static void Mix_main(jarray* args) {
 			volatile int32_t j2x_i4 = 0;
 			for (; j2x_i4 < JLEN(j2x_a3); j2x_i4++) {
 				Mix_Color* volatile c = (Mix_Color*)jrt_cast((jobject*)JA(jobject*, j2x_a3, j2x_i4), &Mix_Color_class);
-				Mix_Color* volatile o8 = NULL;
-				volatile int32_t o9 = 0;
-				volatile int32_t o10 = 0;
-				jrt_PrintStream_println_Str(jrt_System_out, (o8 = c, o9 = Mix_Color_weight_v((jobject*)c), o10 = jrt_Enum_ordinal_((jobject*)c), jrt_concat(5, jrt_str_O((jobject*)o8), jrt_lit(&lit_10, u":", 1), jrt_str_I(o9), jrt_lit(&lit_10, u":", 1), jrt_str_I(o10))));
+				jstring* volatile o8 = NULL;
+				jstring* volatile o9 = NULL;
+				jstring* volatile o10 = NULL;
+				jrt_PrintStream_println_Str(jrt_System_out, (o8 = jrt_str_O((jobject*)c), o9 = jrt_str_I(Mix_Color_weight_v((jobject*)c)), o10 = jrt_str_I(jrt_Enum_ordinal_((jobject*)c)), jrt_concat(5, o8, jrt_lit(&lit_10, u":", 1), o9, jrt_lit(&lit_10, u":", 1), o10)));
 			}
 		}
 	}

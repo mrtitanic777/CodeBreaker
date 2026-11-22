@@ -1344,7 +1344,7 @@ struct HashMap : Map {
 		for (auto e = table[i]; e; e = e->next) ++bin;
 		n->next = table[i];
 		table[i] = n;
-		if (bin >= 8) grown_bin();
+		if (bin >= 7) grown_bin();
 		if (linked) order.push_back(n);
 		++count;
 	}

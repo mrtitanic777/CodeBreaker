@@ -312,7 +312,7 @@ CB_TEST("translate.jmodel.library_tables", [] {
     CB_CHECK(jm::library_supers("java.util.LinkedList") == (std::vector<std::string>{"java.util.List", "java.util.Deque"}));
     CB_CHECK(jm::library_supers("p.Unknown").empty());
     const auto& throwables = jm::library_throwables();
-    CB_CHECK(throwables.size() == 15 && throwables.front() == "java.lang.Exception");
+    CB_CHECK(throwables.size() == 16 && throwables.front() == "java.lang.Exception");
     CB_CHECK(std::find(throwables.begin(), throwables.end(), "java.lang.Throwable") == throwables.end());
     CB_CHECK(jm::library_functional("java.util.Comparator")->name == "compare");
     CB_CHECK(jm::library_functional("java.util.List") == nullptr);

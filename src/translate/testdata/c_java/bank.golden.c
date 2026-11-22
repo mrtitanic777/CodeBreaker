@@ -241,9 +241,9 @@ static jstring* Bank_ordered(int32_t n) {
 			(jstring*)jrt_cast((jobject*)jrt_Map_put_OO(tm, jrt_box_I(k), (jobject*)jrt_concat(2, jrt_lit(&lit_4, u"v", 1), jrt_str_I(i))), &jrt_String_class);
 		}
 	}
-	jobject* o1 = NULL;
-	jobject* o2 = NULL;
-	return (o1 = jrt_Map_keySet_(lm), o2 = jrt_Map_values_(tm), jrt_concat(3, jrt_str_O((jobject*)o1), jrt_lit(&lit_5, u"|", 1), jrt_str_O((jobject*)o2)));
+	jstring* o1 = NULL;
+	jstring* o2 = NULL;
+	return (o1 = jrt_str_O((jobject*)jrt_Map_keySet_(lm)), o2 = jrt_str_O((jobject*)jrt_Map_values_(tm)), jrt_concat(3, o1, jrt_lit(&lit_5, u"|", 1), o2));
 }
 
 static int32_t Bank_hashOrder(int32_t n) {
@@ -268,61 +268,67 @@ static int32_t Bank_hashOrder(int32_t n) {
 static void Bank_main(jarray* args) {
 	Bank_Checking* volatile c = Bank_Checking_new(jrt_lit(&lit_7, u"A1", 2), (int64_t)(100));
 	Bank_Savings* volatile s = Bank_Savings_new(jrt_lit(&lit_8, u"B2", 2), (int64_t)(5000), 20);
-	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(5, jrt_str_O((jobject*)c), jrt_lit(&lit_3, u" ", 1), jrt_str_O((jobject*)s), jrt_lit(&lit_9, u" opened=", 8), jrt_str_I(Bank_Account_opened)));
+	jstring* volatile o1 = NULL;
+	jstring* volatile o2 = NULL;
+	jstring* volatile o3 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (o1 = jrt_str_O((jobject*)c), o2 = jrt_str_O((jobject*)s), o3 = jrt_str_I(Bank_Account_opened), jrt_concat(5, o1, jrt_lit(&lit_3, u" ", 1), o2, jrt_lit(&lit_9, u" opened=", 8), o3)));
 	{
-		jrt_try f1;
-		jrt_push(&f1);
-		if (setjmp(f1.jb) == 0) {
+		jrt_try f4;
+		jrt_push(&f4);
+		if (setjmp(f4.jb) == 0) {
 			{
-				jrt_try t2;
-				jrt_push(&t2);
-				if (setjmp(t2.jb) == 0) {
+				jrt_try t5;
+				jrt_push(&t5);
+				if (setjmp(t5.jb) == 0) {
 					Bank_Account_withdraw_v((jobject*)c, (int64_t)(50));
 					Bank_Account_withdraw_v((jobject*)c, (int64_t)(80));
-					jrt_pop(&t2);
+					jrt_pop(&t5);
 				} else {
-					jrt_pop(&t2);
-					if (jrt_instanceof(t2.ex, &Bank_InsufficientFunds_class)) {
-						Bank_InsufficientFunds* e = (Bank_InsufficientFunds*)t2.ex;
+					jrt_pop(&t5);
+					if (jrt_instanceof(t5.ex, &Bank_InsufficientFunds_class)) {
+						Bank_InsufficientFunds* e = (Bank_InsufficientFunds*)t5.ex;
 						jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(4, jrt_lit(&lit_10, u"failed: ", 8), jrt_str_O((jobject*)jrt_Throwable_getMessage_((jobject*)e)), jrt_lit(&lit_11, u" by ", 4), jrt_str_I(((Bank_InsufficientFunds*)jrt_nn(e))->shortBy)));
 					} else {
-						jrt_throw(t2.ex);
+						jrt_throw(t5.ex);
 					}
 				}
 			}
-			jrt_pop(&f1);
+			jrt_pop(&f4);
 		} else {
-			jrt_pop(&f1);
+			jrt_pop(&f4);
 			jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(2, jrt_lit(&lit_12, u"after: ", 7), jrt_str_O((jobject*)c)));
-			jrt_throw(f1.ex);
+			jrt_throw(f4.ex);
 		}
 		jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(2, jrt_lit(&lit_12, u"after: ", 7), jrt_str_O((jobject*)c)));
 	}
 	{
-		jrt_try t3;
-		jrt_push(&t3);
-		if (setjmp(t3.jb) == 0) {
+		jrt_try t6;
+		jrt_push(&t6);
+		if (setjmp(t6.jb) == 0) {
 			Bank_Account_deposit_v((jobject*)s, (int64_t)(-5));
-			jrt_pop(&t3);
+			jrt_pop(&t6);
 		} else {
-			jrt_pop(&t3);
-			if (jrt_instanceof(t3.ex, &jrt_IllegalArgumentException_class)) {
-				jrt_Throwable* e = (jrt_Throwable*)t3.ex;
+			jrt_pop(&t6);
+			if (jrt_instanceof(t6.ex, &jrt_IllegalArgumentException_class)) {
+				jrt_Throwable* e = (jrt_Throwable*)t6.ex;
 				jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(2, jrt_lit(&lit_13, u"rejected ", 9), jrt_str_O((jobject*)jrt_Throwable_getMessage_((jobject*)e))));
 			} else {
-				jrt_throw(t3.ex);
+				jrt_throw(t6.ex);
 			}
 		}
 	}
 	Bank_Savings_accrue_v((jobject*)s);
-	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(5, jrt_str_O((jobject*)s), jrt_lit(&lit_3, u" ", 1), jrt_str_O((jobject*)((Bank_Account*)jrt_nn(c))->log), jrt_lit(&lit_3, u" ", 1), jrt_str_O((jobject*)((Bank_Account*)jrt_nn(s))->log)));
-	volatile int64_t o4 = 0;
-	volatile int64_t o5 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o4 = Bank_simulate(42), o5 = Bank_simulate(7), jrt_concat(3, jrt_str_J(o4), jrt_lit(&lit_3, u" ", 1), jrt_str_J(o5))));
+	jstring* volatile o7 = NULL;
+	jstring* volatile o8 = NULL;
+	jstring* volatile o9 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (o7 = jrt_str_O((jobject*)s), o8 = jrt_str_O((jobject*)((Bank_Account*)jrt_nn(c))->log), o9 = jrt_str_O((jobject*)((Bank_Account*)jrt_nn(s))->log), jrt_concat(5, o7, jrt_lit(&lit_3, u" ", 1), o8, jrt_lit(&lit_3, u" ", 1), o9)));
+	volatile int64_t o10 = 0;
+	volatile int64_t o11 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (o10 = Bank_simulate(42), o11 = Bank_simulate(7), jrt_concat(3, jrt_str_J(o10), jrt_lit(&lit_3, u" ", 1), jrt_str_J(o11))));
 	jrt_PrintStream_println_Str(jrt_System_out, Bank_wordFreq(jrt_lit(&lit_14, u"to be or not to be that is the question to be", 45)));
-	jstring* volatile o6 = NULL;
-	volatile int32_t o7 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o6 = Bank_ordered(9), o7 = Bank_hashOrder(33), jrt_concat(3, jrt_str_O((jobject*)o6), jrt_lit(&lit_3, u" ", 1), jrt_str_I(o7))));
+	jstring* volatile o12 = NULL;
+	volatile int32_t o13 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (o12 = Bank_ordered(9), o13 = Bank_hashOrder(33), jrt_concat(3, jrt_str_O((jobject*)o12), jrt_lit(&lit_3, u" ", 1), jrt_str_I(o13))));
 }
 
 static void Bank_finit(Bank* self) {

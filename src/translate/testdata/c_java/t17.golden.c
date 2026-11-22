@@ -323,12 +323,12 @@ static void Modern_main(jarray* args) {
 	jobject* o2 = NULL;
 	int32_t o3 = 0;
 	jrt_PrintStream_println_Str(jrt_System_out, (o1 = Modern_sum(xs), o2 = jrt_Function_apply_O(twice, jrt_box_I(21)), o3 = Modern_squares(10), jrt_concat(5, jrt_str_I(o1), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o2), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o3))));
-	Modern_Point* o4 = NULL;
-	int32_t o5 = 0;
+	jstring* o4 = NULL;
+	jstring* o5 = NULL;
 	Modern_Point* o6 = NULL;
 	Modern_Point* o7 = NULL;
-	bool o8 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o4 = Modern_Point_new(3, 4), o5 = Modern_Point_dist2_v((jobject*)Modern_Point_new(3, 4)), o8 = (o6 = Modern_Point_new(1, 2), o7 = Modern_Point_new(1, 2), jrt_equals((jobject*)o6, (jobject*)o7)), jrt_concat(5, jrt_str_O((jobject*)o4), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o5), jrt_lit(&lit_7, u" ", 1), jrt_str_Z(o8))));
+	jstring* o8 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (o4 = jrt_str_O((jobject*)Modern_Point_new(3, 4)), o5 = jrt_str_I(Modern_Point_dist2_v((jobject*)Modern_Point_new(3, 4))), o8 = jrt_str_Z((o6 = Modern_Point_new(1, 2), o7 = Modern_Point_new(1, 2), jrt_equals((jobject*)o6, (jobject*)o7))), jrt_concat(5, o4, jrt_lit(&lit_7, u" ", 1), o5, jrt_lit(&lit_7, u" ", 1), o8)));
 	int32_t o9 = 0;
 	int32_t o10 = 0;
 	jstring* o11 = NULL;
