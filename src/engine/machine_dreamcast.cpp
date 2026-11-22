@@ -247,7 +247,7 @@ vl::Effects dreamcast_effects(const stdfs::path& path, std::uint32_t entry, cons
     options.fpscr = static_cast<std::uint32_t>(at(state, "fpscr"));
     options.fa[0] = static_cast<std::uint32_t>(at(state, "f0"));
     options.fa[1] = static_cast<std::uint32_t>(at(state, "f1"));
-    const sh2::RunResult run = pcode_cpu::call(bus, entry, options, pcode_cpu::ShMachine::Dreamcast);
+    const sh2::RunResult run = pcode_cpu::call(bus, entry, options);
     return outcome(run, watched);
 }
 

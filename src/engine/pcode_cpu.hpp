@@ -37,11 +37,11 @@ namespace cb::engine::pcode_cpu {
 enum class Core : std::uint8_t { Mos6502, Z80, M68000, Mips, R4300, Arm, SuperH, PowerPc };
 bool default_on(Core core);
 
-// Where a family's machines differ, the default is the machine's: the ARM's DS and 3DS are on the emulator and its GBA is not, the SH's Saturn and 32X are
-// and its Dreamcast is not. (The 32X's 68000 is on the emulator too, by its machine's choice: enabled_by.)
-enum class ShMachine : std::uint8_t { Saturn, Sega32x, Dreamcast };
+// Where a family's machines differ, the default is the machine's: the ARM's DS and 3DS are on the emulator and its GBA is not, the 68000's Genesis, 32X,
+// Neo Geo and Jaguar are and its Sega CD and CD-i are not.
+enum class M68kMachine : std::uint8_t { Genesis, Sega32x, NeoGeo, Jaguar, SegaCd, Cdi };
 bool default_on(emulate::arm::System system);
-bool default_on(ShMachine machine);
+bool default_on(M68kMachine machine);
 
 // Whether call() runs on the emulator: force() if set, else CB_PCODE_EMU ("0", "false", "no": off for every core; "1", "true", "yes": on for every
 // core), else the default given (enabled_by) or the core's (enabled).
@@ -69,7 +69,7 @@ emulate::z80::RunResult call(emulate::z80::Bus& bus, std::uint16_t entry, const 
 // device ranges and their log are the bus's), the 16 MB of bus memory is what instructions are decoded from, a page at a time current from the last run.
 // The call is made as JSR makes it; TRAP, CHK, TRAPV and STOP end the run with the fault the own core gives.
 emulate::m68k::RunResult run(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
-emulate::m68k::RunResult call(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
+emulate::m68k::RunResult call(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options, M68kMachine machine);
 
 // The PlayStation's R3000A (emulate::mips::Bus), on mips32le.sla: the adapter carries the BIOS calls, the load delay slot, the faults, coprocessor 0 and the
 // GTE (the own core's). A branch in a branch's delay slot is the one thing the description cannot decode.
@@ -90,7 +90,7 @@ emulate::arm::RunResult call(emulate::arm::Bus& bus, std::uint32_t entry, const 
 // the emulator, the faults, the on-chip registers and the bus's devices are the adapter's and the bus's; what the descriptions leave out (the SH-4's FPU, banks and
 // cache instructions) runs as the own core runs it.
 emulate::sh2::RunResult run(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
-emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options, ShMachine machine);
+emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
 
 // The PowerPC lanes' (the GameCube, Wii, Wii U, PlayStation 3) function runs, on ppc_64_isa_altivec_be.sla: the integer, branch and condition-register instructions on the
 // description with the Machine as the memory, the rest (floating point and paired singles, vector, system calls, reservations, special registers) as the interpreter runs

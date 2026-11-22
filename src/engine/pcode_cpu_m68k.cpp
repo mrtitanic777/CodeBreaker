@@ -233,6 +233,8 @@ m::RunResult run(m::Bus& bus, std::uint32_t entry, const m::RunOptions& options)
     return out;
 }
 
-m::RunResult call(m::Bus& bus, std::uint32_t entry, const m::RunOptions& options) { return enabled(Core::M68000) ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options); }
+m::RunResult call(m::Bus& bus, std::uint32_t entry, const m::RunOptions& options, M68kMachine machine) {
+    return enabled_by(default_on(machine)) ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options);
+}
 
 }  // namespace cb::engine::pcode_cpu
