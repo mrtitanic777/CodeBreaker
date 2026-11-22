@@ -281,6 +281,32 @@ Model::Model(std::span<ir::Node* const> units) {
     for (ClassInfo* c : all) find_supers(*c);
     for (ClassInfo* c : all)
         if (c->local || c->anon) find_captures(*c);
+    // a class that makes a local class must hand it what it captured, so it captures that too (unless it declares the name itself)
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (ClassInfo* c : all) {
+            if (!(c->local || c->anon)) continue;
+            std::set<std::string, std::less<>> declared;
+            const std::vector<ir::Node*> nodes = ir::walk(c->node);
+            for (const ir::Node* n : nodes) {
+                if (const auto* local = ir::get<ir::Local>(n); local != nullptr && local->sym) declared.insert(local->sym->name);
+                if (const auto* param = ir::get<ir::Param>(n); param != nullptr && param->sym) declared.insert(param->sym->name);
+            }
+            for (const ir::Node* n : nodes) {
+                const auto* made = ir::get<ir::New>(n);
+                if (made == nullptr) continue;
+                const ClassInfo* target = made->body != nullptr ? of_decl(made->body) : of_type(n->type);
+                if (target == nullptr || target == c || !(target->local || target->anon)) continue;
+                const std::vector<Capture> wanted = target->captures;
+                for (const Capture& w : wanted) {
+                    if (declared.contains(w.name)) continue;
+                    if (std::any_of(c->captures.begin(), c->captures.end(), [&](const Capture& have) { return have.name == w.name; })) continue;
+                    c->captures.push_back(w);
+                    changed = true;
+                }
+            }
+        }
+    }
 }
 
 ClassInfo& Model::add(ir::Node* class_decl, ClassInfo* outer, const std::string& package, bool local, bool anon,
@@ -408,18 +434,21 @@ void Model::find_supers(ClassInfo& ci) {
 }
 
 void Model::find_captures(ClassInfo& ci) {
-    std::set<std::string, std::less<>> declared;
-    const std::vector<ir::Node*> nodes = ir::walk(ci.node);
-    for (const ir::Node* n : nodes) {
-        if (const auto* local = ir::get<ir::Local>(n); local != nullptr && local->sym) declared.insert(local->sym->name);
-        if (const auto* param = ir::get<ir::Param>(n); param != nullptr && param->sym) declared.insert(param->sym->name);
-    }
-    for (const ir::Node* n : nodes) {
-        const auto* name = ir::get<ir::Name>(n);
-        if (name == nullptr || !name->sym || declared.contains(name->sym->name)) continue;
-        const bool seen = std::any_of(ci.captures.begin(), ci.captures.end(),
-                                      [&](const Capture& c) { return c.name == name->sym->name; });
-        if (!seen) ci.captures.push_back({name->sym->name, n->type});
+    // member by member: one method's own `x` does not hide the captured `x` another method reads
+    for (ir::Node* member : ci.decl->members) {
+        std::set<std::string, std::less<>> declared;
+        const std::vector<ir::Node*> nodes = ir::walk(member);
+        for (const ir::Node* n : nodes) {
+            if (const auto* local = ir::get<ir::Local>(n); local != nullptr && local->sym) declared.insert(local->sym->name);
+            if (const auto* param = ir::get<ir::Param>(n); param != nullptr && param->sym) declared.insert(param->sym->name);
+        }
+        for (const ir::Node* n : nodes) {
+            const auto* name = ir::get<ir::Name>(n);
+            if (name == nullptr || !name->sym || declared.contains(name->sym->name)) continue;
+            const bool seen = std::any_of(ci.captures.begin(), ci.captures.end(),
+                                          [&](const Capture& c) { return c.name == name->sym->name; });
+            if (!seen) ci.captures.push_back({name->sym->name, n->type});
+        }
     }
 }
 

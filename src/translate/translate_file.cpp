@@ -230,6 +230,34 @@ stdfs::path tf_java_root(const stdfs::path& file) {
     return root;
 }
 
+// The name on a Java file's `package` line, empty for none.
+std::string tf_java_package(const stdfs::path& file) {
+    std::istringstream lines(fs::read_text(file));
+    for (std::string line; std::getline(lines, line);) {
+        const std::string_view trimmed = text::trim(line);
+        if (trimmed.starts_with("import ") || trimmed.starts_with("class ") || trimmed.find(" class ") != std::string_view::npos) break;
+        if (trimmed.starts_with("package ")) return std::string(text::trim(trimmed.substr(8), " \t;"));
+    }
+    return {};
+}
+
+// A file whose folder does not spell its package: javac cannot find its classes by path, so the files beside it in the same package are named.
+std::vector<std::string> tf_java_flat_siblings(const stdfs::path& file) {
+    const std::string package = tf_java_package(file);
+    if (package.empty()) return {};
+    std::string spelled = package;
+    std::replace(spelled.begin(), spelled.end(), '.', '/');
+    const stdfs::path folder = stdfs::absolute(file).parent_path();
+    if (folder.generic_string().ends_with("/" + spelled)) return {};
+    std::vector<std::string> out;
+    for (const auto& entry : stdfs::directory_iterator(folder)) {
+        if (entry.path().extension() != ".java" || entry.path().filename() == file.filename()) continue;
+        if (tf_java_package(entry.path()) == package) out.push_back(fs::to_text(entry.path()));
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 // The source files javac read, from its -verbose log: the file itself and every class of the program it reached through -sourcepath.
 std::vector<stdfs::path> tf_java_read(std::string_view log) {
     static constexpr std::string_view kStart = "[parsing started ";
@@ -290,10 +318,12 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
 
     translating(0, 0, fs::to_text(input.filename()));
     // the original first: a program javac refuses has nothing to be compared with. The classes it uses are found beside it, as javac finds them
-    const stdfs::path root = tf_java_root(input);
+    const std::vector<std::string> flat = tf_java_flat_siblings(input);
+    const stdfs::path root = flat.empty() ? tf_java_root(input) : stdfs::absolute(input).parent_path();
     process::ProcessSpec compile;
     compile.argv = {fs::to_text(javac), "-nowarn", "-verbose", "-encoding", "UTF-8", "-sourcepath", fs::to_text(root), "-d", fs::to_text(judged / "classes"),
                     fs::to_text(stdfs::absolute(input))};
+    compile.argv.insert(compile.argv.end(), flat.begin(), flat.end());
     compile.err = process::Capture::Merge;
     compile.timeout = std::chrono::seconds(300);
     const process::ProcessResult compiled = process::run(compile);
