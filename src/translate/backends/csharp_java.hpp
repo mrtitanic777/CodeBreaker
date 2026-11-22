@@ -84,8 +84,25 @@ public:
     // A Java record is written as a sealed class: javac's members for it (its accessors, equals, hashCode, toString) are in the tree.
     std::optional<std::string> class_keyword(const ir::ClassDecl& c) override;
     std::optional<std::string> this_text(cs::Context& w, ir::Node* e) override;
+    std::optional<std::string> name_text(cs::Context& w, ir::Node* e) override;
+    bool local_class(const ir::Node* decl) const override { return hoist_of_.contains(decl); }
 
 private:
+    // A class Java declares in a method (a local or anonymous one), as C# has none: a member of the class around it, with a field
+    // `cap_x` for each local it reads, given to each constructor. One written for a library functional interface is handed over as
+    // a delegate to its one method.
+    struct Hoisted {
+        ir::ClassDecl* decl = nullptr;
+        std::vector<std::pair<std::string, ir::TypeP>> captures;
+        std::vector<ir::SymP> fields;
+        std::string delegate_method;
+        ir::TypeP delegate_type;
+    };
+    void prepare_local_classes(cs::Program& program, std::vector<ir::Node*>& classes);
+    void find_local_captures();
+    void add_capture_fields(cs::Program& program);
+    const Hoisted* hoisted(const ir::ClassDecl& c) const;
+    bool has_captures(const ir::ClassDecl& c) const;
     // An inner class that reaches its enclosing instance holds it in a field `outer_`, given to each constructor first.
     void prepare_inner_classes(cs::Program& program, const std::vector<ir::Node*>& classes);
     // The path from the class being written to the instance of `qname` it is inside ("outer_", "outer_.outer_"): empty when it is `this`.
@@ -122,6 +139,12 @@ private:
     std::unordered_map<std::string, std::vector<ir::Node*>> prologue_;    // class -> the statements its constructors run after the base call
     std::map<std::pair<std::string, std::string>, std::string> concrete_;   // (owner, name) -> the class the value held was made of
     std::unordered_map<std::string, ir::SymP> inner_;                     // an inner class that needs its outer instance -> its `outer_` field
+    std::unordered_map<std::string, Hoisted> hoisted_;                    // a class declared in a method, by its qualified name here
+    std::unordered_map<const ir::Node*, ir::ClassDecl*> hoist_of_;        // the tree's ClassDecl -> the class written for it
+    std::unordered_map<const ir::Node*, std::string> refused_;            // the tree's ClassDecl -> why it has no class
+    std::unordered_map<const ir::Node*, std::string> capture_names_;      // a Name that reads a captured local -> the field
+    std::unordered_map<const ir::Node*, std::set<std::string>> via_field_;   // a `new` -> the captures it passes from the class's own fields
+    std::unordered_set<const ir::Node*> before_base_;                     // a `new` in this(...) or super(...): its captures are parameters there
 };
 
 // The factory the C# back end's Options take for "java".

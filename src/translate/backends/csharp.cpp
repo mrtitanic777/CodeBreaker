@@ -1812,7 +1812,10 @@ void Writer::stmt(Node* s, Lines& out, const std::string& ind) {
         out.push_back(ind + "Debug.Assert(" + cond(x->cond) + ");");
         return;
     }
-    if (ir::is<ir::LocalClass>(s)) throw Decline("local-class", "a class declared in a method");
+    if (const auto* x = ir::get<ir::LocalClass>(s)) {
+        if (java_ && lib().local_class(x->decl)) return;   // (written as a member of the class around it)
+        throw Decline("local-class", "a class declared in a method");
+    }
     if (ir::is<ir::CtorCall>(s)) throw Decline("ctor-call", "a constructor call that is not the first statement");
     if (const auto* x = ir::get<ir::Switch>(s)) return switch_stmt(*x, out, ind);
     if (const auto* x = ir::get<ir::Try>(s)) return try_stmt(*x, out, ind);
@@ -2053,6 +2056,9 @@ Ex Writer::dispatch(Node* e) {
     }
     if (const auto* x = ir::get<ir::Name>(e)) {
         if (!x->sym) throw Decline("name", "a name with no symbol");
+        if (java_) {
+            if (auto held = lib().name_text(*this, e)) return {*held, kPrimary};
+        }
         return {lookup(x->sym->name), kPrimary};
     }
     if (const auto* x = ir::get<ir::Lit>(e)) return literal(*x, e->type);
@@ -2233,7 +2239,7 @@ Ex Writer::dispatch(Node* e) {
         return {wrap(x->expr, kPrimary) + " switch { " + text::join(arms, ", ") + " }", kPrimary};
     }
     if (const auto* x = ir::get<ir::New>(e)) {
-        if (x->body != nullptr) throw Decline("anonymous-class", "an anonymous class");
+        if (x->body != nullptr && !java_) throw Decline("anonymous-class", "an anonymous class");
         if (java_) {
             if (auto got = lib().new_object(*this, e)) return *got;
         }

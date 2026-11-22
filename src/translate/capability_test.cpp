@@ -134,7 +134,8 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
                        "    }\n"
                        "}\n");
     cb::fs::write_text(work / "CollectionKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/CollectionKit.java")));
-    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}};
+    cb::fs::write_text(work / "LocalKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/LocalKit.java")));
+    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}, {"csharp", "LocalKit"}};
     for (const auto& [to, program] : cases) {
         const cap::Path* path = cap::find_path("java", to);
         CB_CHECK(path != nullptr);
@@ -163,6 +164,19 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
         const tf::Result tree = capt_run("java", "csharp", work / "TreeBin.java", work / "out-tree", work / "scratch-tree");
         CB_CHECK(tree.verdict == tf::Verdict::Differs);
         CB_CHECK(tree.files.empty());
+        // Java shuffles Set.of on every run: a walk of one has no order to match, so nothing is handed over
+        cb::fs::write_text(work / "Shuffled.java", "import java.util.*;\npublic class Shuffled {\n    public static void main(String[] args) {\n"
+                                                   "        for (String s : Set.of(\"a\", \"b\", \"c\")) System.out.println(s);\n    }\n}\n");
+        const tf::Result shuffled = capt_run("java", "csharp", work / "Shuffled.java", work / "out-shuffled", work / "scratch-shuffled");
+        CB_CHECK(shuffled.verdict != tf::Verdict::Agrees);
+        CB_CHECK(shuffled.files.empty());
+        // Java copies a captured local in before the base constructor runs, C# after: a base that calls back into the class is refused
+        cb::fs::write_text(work / "Early.java", "public class Early {\n    abstract static class Base { Base() { System.out.println(name()); } abstract String name(); }\n"
+                                                "    public static void main(String[] args) {\n        String held = args.length == 0 ? \"seen\" : \"other\";\n"
+                                                "        new Base() { @Override String name() { return held; } };\n    }\n}\n");
+        const tf::Result early = capt_run("java", "csharp", work / "Early.java", work / "out-early", work / "scratch-early");
+        CB_CHECK(early.verdict == tf::Verdict::Refused);
+        CB_CHECK(early.files.empty());
     }
     std::error_code ec;
     stdfs::remove_all(work, ec);

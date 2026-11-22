@@ -163,6 +163,10 @@ public:
     virtual std::optional<std::string> this_text(Context&, ir::Node*) { return std::nullopt; }
     // The word a class of this kind is declared with, where it is not the source's own (a Java record is a C# class).
     virtual std::optional<std::string> class_keyword(const ir::ClassDecl&) { return std::nullopt; }
+    // A name that reads something other than a local of the method being written (a local a class declared in a method copied in).
+    virtual std::optional<std::string> name_text(Context&, ir::Node*) { return std::nullopt; }
+    // Is this class, declared in a method, written as a member of the class around it?
+    virtual bool local_class(const ir::Node* /*decl*/) const { return false; }
 };
 
 // A library for a language, made once per Program.
@@ -213,6 +217,11 @@ public:
     // A member a library adds to a class (an abstract copy of an interface method). Kept here, never added to the
     // caller's tree: the units outlive the program, and a node in arena() must not be reachable from them.
     void add_member(const ir::ClassDecl& c, ir::Node* member) { added_[&c].push_back(member); }
+    // A class a library adds inside `c` (one Java declares in a method): written with c's members and found by its name.
+    void add_class(const ir::ClassDecl& c, ir::Node* class_node) {
+        add_member(c, class_node);
+        index(class_node);
+    }
     // A class's members as written: its own, then those added to it.
     std::vector<ir::Node*> members(const ir::ClassDecl& c) const {
         std::vector<ir::Node*> out(c.members.begin(), c.members.end());

@@ -70,6 +70,33 @@ public static partial class JLib
             if (x is null) throw new NullReferenceException();
         return new List<T>(items);
     }
+
+    // Set.of and Map.of: no nulls, no repeats, no changes. Java shuffles their order afresh on each run, so with two or more items a
+    // walk throws NotSupportedException: no order written here could be the one Java shows.
+    public static JHashSet<T> setOf<T>(params T[] items)
+    {
+        var set = new JHashSet<T>();
+        foreach (T x in items)
+        {
+            if (x is null) throw new NullReferenceException();
+            if (!set.Add(x)) throw new ArgumentException("duplicate element: " + JavaRt.Str((object)x));
+        }
+        set.Freeze();
+        return set;
+    }
+
+    public static JHashMap<K, V> mapOf<K, V>(params (K key, V value)[] items)
+    {
+        var map = new JHashMap<K, V>();
+        foreach ((K key, V value) in items)
+        {
+            if (key is null || value is null) throw new NullReferenceException();
+            if (map.ContainsKey(key)) throw new ArgumentException("duplicate key: " + JavaRt.Str((object)key));
+            map[key] = value;
+        }
+        map.Freeze();
+        return map;
+    }
 }
 
 public class JHashMap<K, V> : IDictionary<K, V>
@@ -89,6 +116,11 @@ public class JHashMap<K, V> : IDictionary<K, V>
     readonly bool linked;
     Node head, tail;
     bool treeBin;      // a bin Java would have made a tree
+    bool frozen;       // Set.of or Map.of
+
+    internal void Freeze() => frozen = true;
+    internal IEnumerable<K> AllKeys() { foreach (Node e in Walk()) yield return e.key; }
+    void Unchanged() { if (frozen) throw new NotSupportedException(); }
 
     public JHashMap() { }
     public JHashMap(int capacity) : this(capacity, 0.75f) { }
@@ -216,6 +248,7 @@ public class JHashMap<K, V> : IDictionary<K, V>
 
     void Put(K key, V value)
     {
+        Unchanged();
         Node[] tab = table ?? Resize();
         int h = Spread(key), i = h & (tab.Length - 1);
         Node p = tab[i];
@@ -250,6 +283,7 @@ public class JHashMap<K, V> : IDictionary<K, V>
 
     public bool Remove(K key)
     {
+        Unchanged();
         if (table == null) return false;
         int h = Spread(key), i = h & (table.Length - 1);
         Node prev = null;
@@ -271,6 +305,7 @@ public class JHashMap<K, V> : IDictionary<K, V>
     IEnumerable<Node> Nodes()
     {
         if (treeBin) throw new NotSupportedException("this HashMap has a bin Java keeps as a tree: its order cannot be reproduced");
+        if (frozen && size > 1) throw new NotSupportedException("Java's Set.of and Map.of change their order from run to run");
         return Walk();
     }
 
@@ -324,6 +359,7 @@ public class JHashMap<K, V> : IDictionary<K, V>
 
     public void Clear()
     {
+        Unchanged();
         if (table != null) Array.Clear(table, 0, table.Length);   // (the table keeps its size, as Java's does)
         size = 0;
         head = tail = null;
@@ -447,6 +483,8 @@ public class JHashSet<T> : ISet<T>
 
     protected JHashSet(JHashMap<T, bool> map) { this.map = map; }
 
+    internal void Freeze() => map.Freeze();
+
     public int Count => map.Count;
     public bool IsReadOnly => false;
 
@@ -484,7 +522,7 @@ public class JHashSet<T> : ISet<T>
     public bool IsSubsetOf(IEnumerable<T> other)
     {
         var o = new JHashSet<T>(other);
-        foreach (T x in this)
+        foreach (T x in map.AllKeys())
             if (!o.Contains(x)) return false;
         return true;
     }
@@ -514,7 +552,7 @@ public class JHashSet<T> : ISet<T>
     public override int GetHashCode()
     {
         int h = 0;
-        foreach (T x in this) h = unchecked(h + JLib.Hash(x));
+        foreach (T x in map.AllKeys()) h = unchecked(h + JLib.Hash(x));
         return h;
     }
 }
